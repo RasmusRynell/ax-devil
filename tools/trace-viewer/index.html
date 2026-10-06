@@ -1,0 +1,2153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trace viewer</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101418;
+        --panel: #181e24;
+        --line: #2c353e;
+        --text: #e3eaf0;
+        --muted: #91a2b1;
+        --accent: #80d9c4;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          13px system-ui,
+          sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+        background: #222b33;
+        border: 1px solid #3b4955;
+        border-radius: 6px;
+        padding: 7px 11px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button[aria-pressed="true"] {
+        background: #224a43;
+        border-color: #80d9c4;
+      }
+      button[hidden] {
+        display: none;
+      }
+      button:hover {
+        background: #33424d;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 2px solid var(--accent);
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      h1 {
+        font-size: 17px;
+        margin: 0;
+        white-space: nowrap;
+      }
+      .badge {
+        font-size: 10px;
+        letter-spacing: 1px;
+        color: var(--accent);
+        margin-left: 8px;
+      }
+      .file {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--muted);
+      }
+      .primary {
+        background: #224a43;
+        border-color: #438476;
+      }
+      #file {
+        display: none;
+      }
+      #notice {
+        padding: 8px 20px;
+        background: #3b3020;
+        color: #f5cc86;
+        border-bottom: 1px solid #635033;
+      }
+      #notice:empty {
+        display: none;
+      }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+      }
+      .toolbar .hint {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      #range {
+        font-variant-numeric: tabular-nums;
+        color: var(--accent);
+        padding-left: 6px;
+      }
+      main {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+      #timeline {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+      #overview {
+        height: 48px;
+        width: 100%;
+        flex: none;
+        border-bottom: 1px solid var(--line);
+        cursor: crosshair;
+      }
+      #scroller {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        position: relative;
+      }
+      #spacer {
+        width: 1px;
+        pointer-events: none;
+      }
+      #canvas {
+        position: sticky;
+        top: 0;
+        display: block;
+        margin-bottom: 0;
+        touch-action: none;
+        cursor: crosshair;
+      }
+      aside {
+        width: 330px;
+        border-left: 1px solid var(--line);
+        background: var(--panel);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      aside h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      #selection {
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+        max-height: 36%;
+        overflow: auto;
+      }
+      #selection p {
+        margin: 7px 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      #call-name {
+        overflow-wrap: anywhere;
+        font-weight: 600;
+        line-height: 1.5;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 0;
+      }
+      dt {
+        color: var(--muted);
+      }
+      dd {
+        margin: 0;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .search {
+        padding: 14px 14px 8px;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .search input {
+        width: 100%;
+      }
+      .search select {
+        flex: 1;
+        min-width: 0;
+        font-size: 12px;
+      }
+      .search button {
+        font-size: 12px;
+      }
+      #results {
+        overflow: auto;
+        flex: 1;
+        padding: 0 8px 10px;
+      }
+      .result {
+        display: block;
+        text-align: left;
+        width: 100%;
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        border-radius: 0;
+        padding: 10px 7px;
+      }
+      .result strong {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .result small {
+        display: block;
+        color: var(--muted);
+        margin-top: 4px;
+        font-variant-numeric: tabular-nums;
+      }
+      .result.active {
+        background: #25423f;
+      }
+      .result:hover {
+        background: #27313a;
+      }
+      #result-count {
+        color: var(--muted);
+        font-size: 11px;
+        padding: 0 15px 9px;
+      }
+      footer {
+        padding: 8px 20px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      #empty {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        background: var(--bg);
+        z-index: 2;
+        padding: 30px;
+      }
+      #empty h2 {
+        font-size: 25px;
+        font-weight: 500;
+        margin: 0 0 12px;
+      }
+      #empty p {
+        color: var(--muted);
+        max-width: 470px;
+        line-height: 1.7;
+        margin: 0 auto 20px;
+      }
+      #empty button {
+        justify-self: center;
+      }
+      #tooltip {
+        position: fixed;
+        pointer-events: none;
+        z-index: 4;
+        background: #26323d;
+        border: 1px solid #536878;
+        border-radius: 6px;
+        padding: 9px 12px;
+        max-width: 500px;
+        overflow-wrap: anywhere;
+        box-shadow: 0 6px 24px #0008;
+        white-space: pre-line;
+      }
+      body.dragging {
+        outline: 3px solid var(--accent);
+        outline-offset: -3px;
+      }
+      #busy {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        background: #101418ed;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        gap: 12px;
+      }
+      #busy[hidden],
+      #empty[hidden],
+      #tooltip[hidden] {
+        display: none;
+      }
+      #busy strong {
+        font-size: 20px;
+      }
+      #busy span {
+        color: var(--muted);
+      }
+      @media (max-width: 850px) {
+        aside {
+          width: 260px;
+        }
+        .toolbar .hint {
+          display: none;
+        }
+        header {
+          padding: 10px;
+        }
+        .badge {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>
+        Trace viewer <span class="badge">LOCAL</span>
+        <span
+          id="ai-status"
+          class="badge"
+          title="Launch server.py to connect an AI agent"
+          >AI offline</span
+        >
+      </h1>
+      <div class="file" id="filename">No recording open</div>
+      <button class="primary" id="open">Open trace…</button
+      ><input id="file" type="file" accept=".json,application/json" />
+    </header>
+    <div id="notice" role="status"></div>
+    <div class="toolbar">
+      <button id="timeline-mode" aria-pressed="true">Timeline</button>
+      <button id="flame-mode" aria-pressed="false">Flame graph</button>
+      <button id="flame-up" hidden>Up one level</button>
+      <button id="show-time" hidden disabled>Show in timeline</button>
+      <button id="fit" disabled>Fit recording</button
+      ><button
+        id="activity"
+        disabled
+        title="Zoom to the central 98% of recorded call starts"
+      >
+        Focus activity</button
+      ><button id="zoom-in" disabled aria-label="Zoom in">+</button
+      ><button id="zoom-out" disabled aria-label="Zoom out">−</button
+      ><button id="focus" disabled>Focus call</button><span id="range"></span
+      ><span class="hint"
+        >Wheel: scroll · Ctrl/⌘ + wheel: zoom · Drag: pan · Double-click:
+        focus</span
+      >
+    </div>
+    <main>
+      <section id="timeline" aria-label="Recorded function timeline">
+        <canvas id="overview" aria-label="Recording overview"></canvas>
+        <div id="scroller">
+          <canvas
+            id="canvas"
+            tabindex="0"
+            aria-label="Thread timeline. Arrow keys pan; plus and minus zoom; F fits recording."
+          ></canvas>
+          <div id="spacer"></div>
+        </div>
+        <div id="empty">
+          <h2>See where the time went.</h2>
+          <p>
+            Open or drop a trace JSON. Explore threads, zoom into a slow moment,
+            and inspect individual calls. Your recording stays in this browser.
+          </p>
+          <button class="primary" id="empty-open">Choose a recording</button>
+        </div>
+        <div id="busy" hidden>
+          <strong>Opening recording</strong
+          ><span id="progress">Reading file…</span
+          ><button id="cancel">Cancel</button>
+        </div>
+      </section>
+      <aside>
+        <section id="selection">
+          <h2 id="selection-title">Selected call</h2>
+          <div id="call-name">Click a block to inspect it.</div>
+          <p id="call-thread">
+            Each thread has its own stack. Wider blocks took longer.
+          </p>
+          <dl id="call-details"></dl>
+        </section>
+        <div class="search">
+          <input
+            id="search"
+            type="search"
+            placeholder="Find a function or source path…"
+            aria-label="Find a function or source path"
+          /><select id="sort" aria-label="Sort functions">
+            <option value="self">Most self time</option>
+            <option value="total">Most total time</option>
+            <option value="count">Most calls</option></select
+          ><button id="next" disabled>Next call</button>
+        </div>
+        <div id="result-count">Functions across the entire recording</div>
+        <div id="results"></div>
+      </aside>
+    </main>
+    <footer>
+      <span id="summary">No upload. No installation. No external services.</span
+      ><span>Elapsed time, not CPU time</span>
+    </footer>
+    <div id="tooltip" hidden></div>
+    <script id="parser" type="text/plain">
+      function sampledEvents(payload) {
+        if (
+          payload.version !== 1 ||
+          !Number.isFinite(payload.duration_ms) ||
+          payload.duration_ms < 0 ||
+          !Number.isFinite(payload.interval_ms) ||
+          payload.interval_ms <= 0 ||
+          !Array.isArray(payload.samples) ||
+          !Array.isArray(payload.frames) ||
+          !payload.frames.every((name) => typeof name === "string") ||
+          !Array.isArray(payload.stacks) ||
+          !payload.stacks.every(
+            (stack) =>
+              Array.isArray(stack) &&
+              stack.every(
+                (id) => Number.isInteger(id) && id >= 0 && id < payload.frames.length,
+              ),
+          )
+        ) {
+          throw Error("Invalid sampled recording schema.");
+        }
+        const events = [],
+          sampleInfo = {
+            interval: payload.interval_ms,
+            count: payload.samples.length,
+            coverage: 0,
+            maxGap: 0,
+            failure: payload.failure,
+          };
+        for (const [tid, name] of Object.entries(payload.threads || {}))
+          events.push({ ph: "M", pid: 0, tid, name: "thread_name", args: { name } });
+        let previous = -1,
+          coveredUntil = 0;
+        for (let i = 0; i < payload.samples.length; i++) {
+          const [time, threads] = payload.samples[i];
+          if (
+            !Number.isFinite(time) ||
+            time < 0 ||
+            time <= previous ||
+            time > payload.duration_ms ||
+            !Array.isArray(threads)
+          )
+            throw Error("Invalid sample timestamp or stack list.");
+          previous = time;
+          const next = payload.samples[i + 1]?.[0] ?? payload.duration_ms;
+          if (!Number.isFinite(next) || next < time)
+            throw Error("Sample timestamps must increase.");
+          // Samples represent at most one nominal interval; never fill long unobserved gaps.
+          const weight = Math.max(
+            0,
+            Math.min(payload.interval_ms, next - time, payload.duration_ms - time),
+          );
+          sampleInfo.maxGap = Math.max(sampleInfo.maxGap, time - coveredUntil);
+          sampleInfo.coverage += weight;
+          coveredUntil = time + weight;
+          const seen = new Set();
+          for (const [tid, stackId] of threads) {
+            if (
+              seen.has(tid) ||
+              !Number.isInteger(stackId) ||
+              !payload.stacks[stackId]
+            )
+              throw Error("Invalid sampled thread stack.");
+            seen.add(tid);
+            for (const id of payload.stacks[stackId])
+              events.push({
+                ph: "X",
+                pid: 0,
+                tid,
+                ts: time * 1000,
+                dur: weight * 1000,
+                name: payload.frames[id],
+              });
+          }
+        }
+        sampleInfo.maxGap = Math.max(
+          sampleInfo.maxGap,
+          payload.duration_ms - coveredUntil,
+        );
+        return { events, sampleInfo };
+      }
+      self.onmessage = async ({ data: file }) => {
+        try {
+          const started = performance.now();
+          self.postMessage({ progress: "Reading and parsing JSON…" });
+          const payload = JSON.parse(await file.text());
+          const sampled =
+            payload.format === "ax-devil-stack-samples"
+              ? sampledEvents(payload)
+              : null;
+          const events = sampled
+            ? sampled.events
+            : Array.isArray(payload)
+              ? payload
+              : payload.traceEvents;
+          if (!Array.isArray(events))
+            throw Error("Expected a traceEvents array in this JSON file.");
+          const overflow = !!payload.viztracer_metadata?.overflow;
+          const threads = new Map(),
+            labels = new Map();
+          let origin = sampled ? 0 : Infinity,
+            end = sampled ? payload.duration_ms * 1000 : -Infinity,
+            ignored = 0;
+          for (const e of events) {
+            const key = `${e?.pid ?? 0}:${e?.tid ?? 0}`;
+            if (e?.ph === "M" && e.name === "thread_name")
+              labels.set(key, String(e.args?.name ?? key));
+            if (e?.ph !== "X") {
+              if (e?.ph !== "M") ignored++;
+              continue;
+            }
+            if (
+              !Number.isFinite(e.ts) ||
+              !Number.isFinite(e.dur) ||
+              e.dur < 0 ||
+              !Number.isFinite(e.ts + e.dur)
+            ) {
+              ignored++;
+              continue;
+            }
+            if (!threads.has(key)) threads.set(key, []);
+            threads.get(key).push(e);
+            origin = Math.min(origin, e.ts);
+            end = Math.max(end, e.ts + e.dur);
+          }
+          if (!threads.size && !sampled)
+            throw Error(
+              "No complete duration events (ph: X) found in this recording.",
+            );
+          self.postMessage({ progress: "Indexing calls and thread stacks…" });
+          const names = [],
+            nameIds = new Map(),
+            stats = [],
+            groups = [],
+            rows = [],
+            flames = [];
+          let count = 0;
+          for (const [key, items] of threads) {
+            items.sort((a, b) => a.ts - b.ts || b.dur - a.dur);
+            const group = {
+              key,
+              name: labels.get(key) || `Thread ${key}`,
+              rows: [],
+              count: items.length,
+              flame: flames.length,
+            };
+            flames.push({
+              name: -1,
+              group: groups.length,
+              parent: -1,
+              total: 0,
+              self: 0,
+              count: 0,
+              children: new Map(),
+            });
+            const stack = [];
+            for (const e of items) {
+              const start = (e.ts - origin) / 1000,
+                duration = e.dur / 1000,
+                finish = start + duration;
+              while (stack.length && stack[stack.length - 1].end <= start + 1e-7)
+                stack.pop();
+              const depth = stack.length;
+              if (group.rows[depth] === undefined) {
+                group.rows[depth] = rows.length;
+                rows.push({
+                  group: groups.length,
+                  depth,
+                  start: [],
+                  end: [],
+                  self: [],
+                  name: [],
+                });
+              }
+              const row = rows[group.rows[depth]],
+                name = String(e.name ?? "(unnamed)");
+              let id = nameIds.get(name);
+              if (id === undefined) {
+                id = names.length;
+                nameIds.set(name, id);
+                names.push(name);
+                stats.push({
+                  count: 0,
+                  total: 0,
+                  self: 0,
+                  row: group.rows[depth],
+                  index: row.start.length,
+                  longest: 0,
+                });
+              }
+              const parentFlame = stack.length
+                ? stack[stack.length - 1].flame
+                : group.flame;
+              let flame = flames[parentFlame].children.get(id);
+              if (flame === undefined) {
+                flame = flames.length;
+                flames[parentFlame].children.set(id, flame);
+                flames.push({
+                  name: id,
+                  group: groups.length,
+                  parent: parentFlame,
+                  total: 0,
+                  self: 0,
+                  count: 0,
+                  children: new Map(),
+                  row: group.rows[depth],
+                  index: row.start.length,
+                  longest: -1,
+                });
+              }
+              const node = flames[flame];
+              node.total += duration;
+              node.self += duration;
+              node.count++;
+              if (duration > node.longest) {
+                node.longest = duration;
+                node.row = group.rows[depth];
+                node.index = row.start.length;
+              }
+              if (!stack.length) {
+                flames[group.flame].total += duration;
+                flames[group.flame].count++;
+              }
+              const stat = stats[id];
+              stat.count++;
+              stat.total += duration;
+              stat.self += duration;
+              if (duration > stat.longest) {
+                stat.longest = duration;
+                stat.row = group.rows[depth];
+                stat.index = row.start.length;
+              }
+              if (stack.length) {
+                const parent = stack[stack.length - 1],
+                  overlap = Math.max(0, Math.min(finish, parent.end) - start);
+                const pr = rows[parent.row];
+                pr.self[parent.index] -= overlap;
+                stats[pr.name[parent.index]].self -= overlap;
+                flames[parent.flame].self -= overlap;
+              }
+              stack.push({
+                row: group.rows[depth],
+                index: row.start.length,
+                end: finish,
+                flame,
+              });
+              row.start.push(start);
+              row.end.push(finish);
+              row.self.push(duration);
+              row.name.push(id);
+              count++;
+            }
+            groups.push(group);
+          }
+          for (const node of flames)
+            node.children = Array.from(node.children.values()).sort(
+              (a, b) =>
+                flames[b].total - flames[a].total || flames[a].name - flames[b].name,
+            );
+          const transfer = [];
+          for (const row of rows) {
+            row.start = new Float64Array(row.start);
+            row.end = new Float64Array(row.end);
+            row.self = new Float64Array(row.self);
+            row.name = new Uint32Array(row.name);
+            for (const field of ["start", "end", "self", "name"])
+              transfer.push(row[field].buffer);
+          }
+          // Overview counts call starts rather than summing overlapping call durations.
+          const histogram = new Uint32Array(500),
+            duration = Math.max(0.001, (end - origin) / 1000);
+          for (const row of rows)
+            for (const start of row.start)
+              histogram[Math.min(499, Math.floor((start / duration) * 500))]++;
+          transfer.push(histogram.buffer);
+          self.postMessage(
+            {
+              result: {
+                names,
+                stats,
+                groups,
+                rows,
+                flames,
+                count,
+                duration,
+                overflow,
+                sampled: sampled?.sampleInfo || null,
+                ignored,
+                histogram,
+                loadMs: performance.now() - started,
+              },
+            },
+            transfer,
+          );
+        } catch (error) {
+          self.postMessage({ error: error.message || String(error) });
+        }
+      };
+    </script>
+    <script id="agent-api">
+      class TraceAgentAPI {
+        constructor(read, navigate) {
+          this.read = read;
+          this.navigate = navigate;
+        }
+        page(args) {
+          const limit = args.limit ?? 5,
+            offset = args.offset ?? 0;
+          if (
+            !Number.isInteger(limit) ||
+            limit < 1 ||
+            limit > 50 ||
+            !Number.isInteger(offset) ||
+            offset < 0 ||
+            offset > 10000
+          )
+            throw Error(
+              "Use limit 1–50 and offset 0–10000. Narrow searches for deeper results.",
+            );
+          return { limit, offset };
+        }
+        context(recordingId) {
+          const state = this.read();
+          if (state.loading)
+            throw Error("A recording is loading. Retry when it finishes.");
+          if (!state.trace)
+            throw Error("Open a recording in the viewer first.");
+          if (recordingId !== state.recordingId)
+            throw Error(
+              "Recording changed or ID is stale. Call get_view again.",
+            );
+          return state;
+        }
+        locate(trace, id) {
+          const flame = /^flame:(\d+)$/.exec(id),
+            timeline = /^timeline:(\d+):(\d+)$/.exec(id);
+          if (flame) {
+            const n = Number(flame[1]);
+            if (trace.flames[n]) return { kind: "flame", node: n };
+          }
+          if (timeline) {
+            const row = Number(timeline[1]),
+              index = Number(timeline[2]);
+            if (trace.rows[row] && index < trace.rows[row].start.length)
+              return { kind: "timeline", row, index };
+          }
+          throw Error(
+            "Unknown item_id. Use IDs from get_view, search_flame, search_timeline, or inspect for this recording.",
+          );
+        }
+        flame(trace, id) {
+          const n = trace.flames[id],
+            g = trace.groups[n.group],
+            base = trace.flames[g.flame].total;
+          return {
+            item_id: `flame:${id}`,
+            name:
+              n.name < 0 ? "(thread root)" : trace.names[n.name].slice(0, 2000),
+            thread_id: g.key,
+            total_ms: n.total,
+            self_ms: Math.max(0, n.self),
+            count: n.count,
+            count_kind: trace.sampled ? "sightings" : "calls",
+            thread_share: base ? n.total / base : 0,
+            parent_id: n.parent < 0 ? null : `flame:${n.parent}`,
+            child_count: n.children.length,
+            representative_id:
+              n.row === undefined ? null : `timeline:${n.row}:${n.index}`,
+          };
+        }
+        timeline(trace, row, index) {
+          const r = trace.rows[row];
+          return {
+            item_id: `timeline:${row}:${index}`,
+            name: trace.names[r.name[index]].slice(0, 2000),
+            thread_id: trace.groups[r.group].key,
+            start_ms: r.start[index],
+            end_ms: r.end[index],
+            total_ms: r.end[index] - r.start[index],
+            self_ms: Math.max(0, r.self[index]),
+            depth: r.depth,
+            timing: trace.sampled ? "sample_window" : "call_duration",
+          };
+        }
+        describe(trace, item) {
+          return item.kind === "flame"
+            ? this.flame(trace, item.node)
+            : this.timeline(trace, item.row, item.index);
+        }
+        getView(args = {}) {
+          const s = this.read(),
+            t = s.trace,
+            { limit, offset } = this.page(args);
+          if (!t) return { status: s.loading ? "loading" : "no_recording" };
+          const selected =
+            s.mode === "flame"
+              ? s.flameSelection === null
+                ? null
+                : this.flame(t, s.flameSelection)
+              : s.selection
+                ? this.timeline(t, s.selection.row, s.selection.index)
+                : null;
+          return {
+            status: s.loading ? "loading" : "ready",
+            recording_id: s.recordingId,
+            filename: s.filename.slice(0, 512),
+            mode: s.mode,
+            visible_range_ms: [s.viewStart, s.viewEnd],
+            selection: selected,
+            highlighted_function:
+              s.highlight >= 0 ? t.names[s.highlight].slice(0, 2000) : null,
+            search_text: s.searchText.slice(0, 512),
+            aggregation_scope:
+              "Flame graphs cover the whole recording, independently per thread.",
+            quality: {
+              kind: t.sampled ? "sampled_python_stacks" : "detailed_trace",
+              duration_ms: t.duration,
+              overflow: t.overflow,
+              sampling: t.sampled
+                ? {
+                    target_interval_ms: t.sampled.interval,
+                    snapshots: t.sampled.count,
+                    represented_ms: t.sampled.coverage,
+                    largest_gap_ms: t.sampled.maxGap,
+                    failure: String(t.sampled.failure || "").slice(0, 500),
+                  }
+                : null,
+              caveat:
+                "Elapsed time includes waits, not CPU utilization. Samples miss short calls and native internals; overflow loses history.",
+            },
+            thread_count: t.groups.length,
+            threads: t.groups.slice(offset, offset + limit).map((g, j) => ({
+              thread_id: g.key,
+              name: g.name.slice(0, 512),
+              root_id: `flame:${g.flame}`,
+              recorded_ms: t.flames[g.flame].total,
+              stack_entries: g.count,
+              collapsed: s.collapsed.has(offset + j),
+              focused_stack_id: s.flameFocus.has(offset + j)
+                ? `flame:${s.flameFocus.get(offset + j)}`
+                : null,
+            })),
+            next_offset:
+              offset + limit < t.groups.length ? offset + limit : null,
+          };
+        }
+        async search(args) {
+          const s = this.context(args.recording_id),
+            t = s.trace,
+            { limit, offset } = this.page(args),
+            view = args.view ?? "flame",
+            sort = args.sort ?? "total";
+          if (
+            !["flame", "timeline"].includes(view) ||
+            !["total", "self", "start"].includes(sort)
+          )
+            throw Error("Invalid search mode or sort.");
+          if (
+            view === "flame" &&
+            (args.start_ms != null || args.end_ms != null || sort === "start")
+          )
+            throw Error(
+              "Flame search covers the whole recording; time bounds use timeline.",
+            );
+          const query = (args.query ?? "").toLowerCase(),
+            min = args.min_ms ?? 0,
+            lo = args.start_ms ?? 0,
+            hi = args.end_ms ?? t.duration;
+          if (
+            query.length > 512 ||
+            ![min, lo, hi].every(Number.isFinite) ||
+            min < 0 ||
+            lo < 0 ||
+            hi <= lo
+          )
+            throw Error("Invalid query or time range.");
+          if (
+            args.thread_id != null &&
+            !t.groups.some((g) => g.key === args.thread_id)
+          )
+            throw Error("Unknown thread_id. Call get_view for threads.");
+          const results = [],
+            capacity = offset + limit + 1;
+          let matched = 0,
+            visited = 0;
+          const compare = (a, b) => {
+            const key =
+              sort === "self"
+                ? "self_ms"
+                : sort === "start"
+                  ? "start_ms"
+                  : "total_ms";
+            return (
+              (sort === "start" ? a[key] - b[key] : b[key] - a[key]) ||
+              a.item_id.localeCompare(b.item_id)
+            );
+          };
+          const consider = (item) => {
+            matched++;
+            let low = 0,
+              high = results.length;
+            while (low < high) {
+              const mid = (low + high) >>> 1;
+              if (compare(results[mid], item) <= 0) low = mid + 1;
+              else high = mid;
+            }
+            if (low < capacity) {
+              results.splice(low, 0, item);
+              if (results.length > capacity) results.pop();
+            }
+          };
+          if (view === "flame") {
+            for (let i = 0; i < t.flames.length; i++) {
+              const n = t.flames[i];
+              if (
+                n.name < 0 ||
+                n.total < min ||
+                (args.thread_id != null &&
+                  t.groups[n.group].key !== args.thread_id) ||
+                !t.names[n.name].toLowerCase().includes(query)
+              )
+                continue;
+              consider(this.flame(t, i));
+            }
+          } else {
+            for (let row = 0; row < t.rows.length; row++) {
+              const r = t.rows[row];
+              if (
+                args.thread_id != null &&
+                t.groups[r.group].key !== args.thread_id
+              )
+                continue;
+              let first = 0,
+                last = r.end.length;
+              while (first < last) {
+                const mid = (first + last) >>> 1;
+                if (r.end[mid] < lo) first = mid + 1;
+                else last = mid;
+              }
+              for (let i = first; i < r.start.length && r.start[i] < hi; i++) {
+                if (++visited % 4096 === 0)
+                  await new Promise((resolve) => setTimeout(resolve, 0));
+                const duration = r.end[i] - r.start[i];
+                if (
+                  duration < min ||
+                  (duration > 0 && r.end[i] <= lo) ||
+                  !t.names[r.name[i]].toLowerCase().includes(query)
+                )
+                  continue;
+                consider(this.timeline(t, row, i));
+              }
+            }
+          }
+          this.context(args.recording_id);
+          return {
+            recording_id: s.recordingId,
+            view,
+            scope:
+              view === "flame"
+                ? "whole_recording"
+                : "overlapping_occurrences; durations are not clipped",
+            matched,
+            offset,
+            items: results.slice(offset, offset + limit),
+            next_offset:
+              offset + limit < matched && offset + limit <= 10000
+                ? offset + limit
+                : null,
+            refine_search: matched > 10000,
+            timing: t.sampled
+              ? "sampled_estimates_including_waits"
+              : "elapsed_including_waits",
+          };
+        }
+        inspect(args) {
+          const s = this.context(args.recording_id),
+            t = s.trace,
+            item = this.locate(t, args.item_id),
+            { offset, limit } = this.page(args),
+            parents = [],
+            children = [];
+          let childCount = 0;
+          if (item.kind === "flame") {
+            const n = t.flames[item.node];
+            let parent = n.parent;
+            while (parent >= 0 && parents.length < 20) {
+              parents.push(this.flame(t, parent));
+              parent = t.flames[parent].parent;
+            }
+            childCount = n.children.length;
+            for (const id of n.children.slice(offset, offset + limit))
+              children.push(this.flame(t, id));
+          } else {
+            const r = t.rows[item.row],
+              g = t.groups[r.group],
+              start = r.start[item.index],
+              end = r.end[item.index];
+            for (
+              let depth = r.depth - 1;
+              depth >= 0 && parents.length < 20;
+              depth--
+            ) {
+              const ri = g.rows[depth],
+                pr = t.rows[ri];
+              let low = 0,
+                high = pr.start.length;
+              while (low < high) {
+                const mid = (low + high) >>> 1;
+                if (pr.start[mid] <= start + 1e-7) low = mid + 1;
+                else high = mid;
+              }
+              const index = low - 1;
+              if (index >= 0 && pr.end[index] >= end - 1e-7)
+                parents.push(this.timeline(t, ri, index));
+            }
+            const ri = g.rows[r.depth + 1];
+            if (ri !== undefined) {
+              const cr = t.rows[ri];
+              let low = 0,
+                high = cr.start.length;
+              while (low < high) {
+                const mid = (low + high) >>> 1;
+                if (cr.start[mid] < start - 1e-7) low = mid + 1;
+                else high = mid;
+              }
+              for (let i = low; i < cr.start.length && cr.start[i] < end; i++) {
+                if (cr.end[i] > end + 1e-7) continue;
+                if (childCount >= offset && children.length < limit)
+                  children.push(this.timeline(t, ri, i));
+                childCount++;
+              }
+            }
+          }
+          return {
+            recording_id: s.recordingId,
+            item: {
+              ...this.describe(t, item),
+              parent_id: parents[0]?.item_id ?? null,
+            },
+            parents,
+            parents_truncated:
+              parents.length === 20 &&
+              (item.kind === "flame"
+                ? parents.at(-1).parent_id !== null
+                : parents.at(-1).depth > 0),
+            children,
+            child_count: childCount,
+            next_offset:
+              offset + limit < childCount && offset + limit <= 10000
+                ? offset + limit
+                : null,
+          };
+        }
+        async dispatch(method, args = {}) {
+          if (method === "get_view") return this.getView(args);
+          if (method === "search") return this.search(args);
+          if (method === "inspect") return this.inspect(args);
+          if (method === "focus") {
+            const s = this.context(args.recording_id);
+            if (args.item_id) {
+              this.locate(s.trace, args.item_id);
+              if (args.start_ms != null || args.end_ms != null)
+                throw Error("Choose one item or one interval.");
+            } else if (
+              !Number.isFinite(args.start_ms) ||
+              !Number.isFinite(args.end_ms) ||
+              args.start_ms < 0 ||
+              args.end_ms <= args.start_ms ||
+              args.end_ms > s.trace.duration
+            )
+              throw Error("Choose a time interval within the recording.");
+            this.navigate(args);
+            return { applied: true, ...this.getView() };
+          }
+          throw Error("Unknown viewer operation.");
+        }
+      }
+    </script>
+    <script>
+      "use strict";
+      const $ = (id) => document.getElementById(id),
+        canvas = $("canvas"),
+        ctx = canvas.getContext("2d"),
+        overview = $("overview"),
+        octx = overview.getContext("2d"),
+        scroller = $("scroller");
+      const LABEL = 170,
+        ROW = 23,
+        RULER = 29;
+      let recordingId = null;
+      let mode = "timeline",
+        flameSelection = null,
+        flameFocus = new Map();
+      let trace = null,
+        worker = null,
+        viewStart = 0,
+        viewEnd = 1,
+        selection = null,
+        highlight = -1,
+        visibleRows = [],
+        collapsed = new Set(),
+        width = 0,
+        height = 0,
+        raf = 0,
+        drag = null,
+        hitRects = [],
+        lastPaintMs = 0;
+      const colors = [
+        "#4e8f91",
+        "#657ec0",
+        "#9b71a6",
+        "#ab8654",
+        "#618b65",
+        "#9c6c75",
+        "#678caa",
+        "#8f8b53",
+      ];
+      const fmt = (ms) =>
+        ms < 1
+          ? `${(ms * 1000).toFixed(2)} µs`
+          : ms < 1000
+            ? `${ms.toFixed(2)} ms`
+            : `${(ms / 1000).toFixed(3)} s`;
+      const lower = (array, value) => {
+        let lo = 0,
+          hi = array.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >>> 1;
+          if (array[mid] < value) lo = mid + 1;
+          else hi = mid;
+        }
+        return lo;
+      };
+      function setMode(nextMode) {
+        mode = nextMode;
+        $("timeline-mode").setAttribute(
+          "aria-pressed",
+          String(mode === "timeline"),
+        );
+        $("flame-mode").setAttribute("aria-pressed", String(mode === "flame"));
+        for (const id of ["activity", "zoom-in", "zoom-out", "next"])
+          $(id).hidden = mode === "flame";
+        for (const id of ["flame-up", "show-time"])
+          $(id).hidden = mode !== "flame";
+        $("overview").style.display = mode === "flame" ? "none" : "";
+        $("fit").textContent =
+          mode === "flame" ? "Reset focus" : "Fit recording";
+        $("focus").textContent =
+          mode === "flame"
+            ? "Focus stack"
+            : trace?.sampled
+              ? "Focus sample"
+              : "Focus call";
+        $("selection-title").textContent =
+          mode === "flame"
+            ? "Aggregated stack"
+            : trace?.sampled
+              ? "Sampled frame"
+              : "Selected call";
+        document.querySelector(".toolbar .hint").textContent =
+          mode === "flame"
+            ? "Click: inspect · Double-click: focus stack · Backspace: up"
+            : "Wheel: scroll · Ctrl/⌘ + wheel: zoom · Drag: pan · Double-click: focus";
+        canvas.setAttribute(
+          "aria-label",
+          mode === "flame"
+            ? "Flame graphs by thread. Double-click a block to focus its stack."
+            : "Thread timeline. Arrow keys pan; plus and minus zoom; F fits recording.",
+        );
+        $("tooltip").hidden = true;
+        scroller.scrollTop = 0;
+        if (trace) {
+          if (mode === "flame" && flameSelection !== null)
+            selectFlame(flameSelection);
+          else if (mode === "timeline" && selection)
+            selectCall(selection.row, selection.index);
+          else {
+            $("call-name").textContent = "Click a block to inspect it.";
+            $("call-thread").textContent =
+              mode === "flame"
+                ? "Repeated stack paths are combined per thread across the whole recording. Horizontal position is not time."
+                : "Choose a call or sampled frame in the timeline.";
+            $("call-details").replaceChildren();
+            $("focus").disabled = true;
+            $("show-time").disabled = true;
+          }
+        }
+        resize();
+      }
+      function appendFlameRows(group, gi) {
+        const root = flameFocus.get(gi) ?? group.flame,
+          node = trace.flames[root],
+          levels = [];
+        const pending =
+          node.name < 0
+            ? node.children.map((id) => ({ id, depth: 0, left: 0, width: 0 }))
+            : [{ id: root, depth: 0, left: 0, width: 1 }];
+        if (node.name < 0) {
+          let left = 0;
+          for (const item of pending) {
+            item.left = left;
+            item.width = node.total
+              ? trace.flames[item.id].total / node.total
+              : 0;
+            left += item.width;
+          }
+        }
+        while (pending.length) {
+          const item = pending.pop(),
+            n = trace.flames[item.id];
+          if (item.width * plotWidth() < 0.5) continue;
+          if (!levels[item.depth]) levels[item.depth] = [];
+          levels[item.depth].push(item);
+          let left = item.left;
+          for (const id of n.children) {
+            const w = n.total
+              ? (item.width * trace.flames[id].total) / n.total
+              : 0;
+            pending.push({
+              id,
+              depth: item.depth + 1,
+              left,
+              width: Math.max(0, Math.min(w, item.left + item.width - left)),
+            });
+            left += w;
+          }
+        }
+        for (let depth = 0; depth < levels.length; depth++)
+          visibleRows.push({
+            group: gi,
+            row: depth,
+            boxes: levels[depth] || [],
+          });
+      }
+      function scrollToGroup(group) {
+        const index = visibleRows.findIndex((item) => item.group === group);
+        scroller.scrollTop = Math.max(0, index * ROW);
+        schedule();
+      }
+      function paintFlames() {
+        ctx.font = "11px system-ui";
+        ctx.textBaseline = "middle";
+        const first = Math.max(0, Math.floor(scroller.scrollTop / ROW)),
+          last = Math.min(
+            visibleRows.length,
+            Math.ceil((scroller.scrollTop + height) / ROW),
+          );
+        for (let i = first; i < last; i++) {
+          const row = visibleRows[i],
+            y = RULER + i * ROW - scroller.scrollTop;
+          if (row.row < 0) {
+            const g = trace.groups[row.group];
+            ctx.fillStyle = "#202a32";
+            ctx.fillRect(0, y, width, ROW - 1);
+            ctx.fillStyle = "#d1e0e8";
+            ctx.fillText(
+              `${collapsed.has(row.group) ? "▸" : "▾"} ${g.name} · ${g.key} · ${fmt(trace.flames[g.flame].total)} recorded${flameFocus.has(row.group) ? ` · focus ${fmt(trace.flames[flameFocus.get(row.group)].total)}` : ""}`,
+              10,
+              y + ROW / 2,
+            );
+            continue;
+          }
+          ctx.fillStyle = "#718694";
+          ctx.fillText(
+            row.row === 0 ? "Stack roots" : `↳ ${row.row}`,
+            12,
+            y + ROW / 2,
+          );
+          for (const box of row.boxes) {
+            const node = trace.flames[box.id],
+              left = LABEL + box.left * plotWidth(),
+              bw = box.width * plotWidth();
+            ctx.globalAlpha =
+              highlight < 0 || node.name === highlight ? 1 : 0.3;
+            ctx.fillStyle = colors[node.name % colors.length];
+            ctx.fillRect(left, y + 1, Math.max(1, bw - 1), ROW - 3);
+            if (flameSelection === box.id) {
+              ctx.globalAlpha = 1;
+              ctx.strokeStyle = "#ecfff8";
+              ctx.lineWidth = 2;
+              ctx.strokeRect(left + 1, y + 2, Math.max(1, bw - 3), ROW - 5);
+            }
+            if (bw > 45) {
+              const name = trace.names[node.name].split(" (")[0],
+                max = Math.floor((bw - 8) / 6);
+              ctx.fillStyle = "#fff";
+              ctx.fillText(
+                name.length > max ? `${name.slice(0, max - 1)}…` : name,
+                left + 4,
+                y + ROW / 2,
+              );
+            }
+            hitRects.push({
+              left,
+              right: left + bw,
+              top: y,
+              bottom: y + ROW - 1,
+              flame: box.id,
+            });
+          }
+          ctx.globalAlpha = 1;
+        }
+        ctx.fillStyle = "#181e24";
+        ctx.fillRect(0, 0, width, RULER);
+        ctx.fillStyle = "#91a2b1";
+        ctx.fillText("THREAD / STACK", 10, RULER / 2);
+        for (let percent = 0; percent <= 100; percent += 25) {
+          const x = LABEL + (percent / 100) * plotWidth();
+          ctx.fillText(`${percent}%`, Math.min(width - 35, x + 4), RULER / 2);
+        }
+        $("range").textContent =
+          "Whole recording · width = share of displayed stack";
+        $("flame-up").disabled = flameFocus.size === 0;
+      }
+      function selectFlame(id) {
+        flameSelection = id;
+        const n = trace.flames[id],
+          g = trace.groups[n.group],
+          total = trace.flames[g.flame].total;
+        highlight = n.name;
+        $("call-name").textContent = trace.names[n.name];
+        $("call-thread").textContent =
+          `${g.name} · ${g.key} · same stack path, whole recording${trace.sampled ? " · sampled estimates" : ""}`;
+        $("call-details").replaceChildren();
+        for (const [label, value] of [
+          ["Total", fmt(n.total)],
+          ["Self", fmt(Math.max(0, n.self))],
+          [
+            "Thread share",
+            `${(total ? (n.total / total) * 100 : 0).toFixed(2)}%`,
+          ],
+          [trace.sampled ? "Sightings" : "Calls", n.count.toLocaleString()],
+        ]) {
+          const dt = document.createElement("dt"),
+            dd = document.createElement("dd");
+          dt.textContent = label;
+          dd.textContent = value;
+          $("call-details").append(dt, dd);
+        }
+        $("focus").disabled = false;
+        $("show-time").disabled = false;
+        schedule();
+      }
+      function flameUp() {
+        const selectedGroup =
+          flameSelection === null
+            ? undefined
+            : trace.flames[flameSelection].group;
+        const group = flameFocus.has(selectedGroup)
+          ? selectedGroup
+          : flameFocus.keys().next().value;
+        if (group === undefined || !flameFocus.has(group)) return;
+        const parent = trace.flames[flameFocus.get(group)].parent;
+        if (parent === trace.groups[group].flame || parent < 0)
+          flameFocus.delete(group);
+        else flameFocus.set(group, parent);
+        rebuildRows();
+        scrollToGroup(group);
+      }
+      $("timeline-mode").onclick = () => setMode("timeline");
+      $("flame-mode").onclick = () => setMode("flame");
+      $("flame-up").onclick = flameUp;
+      $("show-time").onclick = () => {
+        if (flameSelection === null) return;
+        const n = trace.flames[flameSelection];
+        setMode("timeline");
+        selectCall(n.row, n.index, true);
+      };
+      function plotWidth() {
+        return Math.max(1, width - LABEL);
+      }
+      function setRange(start, end) {
+        if (!trace) return;
+        const span = Math.max(
+          Math.min(0.001, trace.duration),
+          Math.min(trace.duration, end - start),
+        );
+        viewStart = Math.max(0, Math.min(trace.duration - span, start));
+        viewEnd = viewStart + span;
+        schedule();
+      }
+      function zoom(factor, ratio = 0.5) {
+        const span = viewEnd - viewStart,
+          anchor = viewStart + span * ratio;
+        setRange(
+          anchor - span * factor * ratio,
+          anchor + span * factor * (1 - ratio),
+        );
+      }
+      function fit() {
+        if (mode === "flame") {
+          flameFocus.clear();
+          rebuildRows();
+          return;
+        }
+        if (trace) setRange(0, trace.duration);
+      }
+      function focusActivity() {
+        if (!trace) return;
+        let cumulative = 0,
+          first = 0,
+          last = 499;
+        for (let i = 0; i < 500; i++) {
+          cumulative += trace.histogram[i];
+          if (cumulative < trace.count * 0.01) first = i;
+          if (cumulative >= trace.count * 0.99) {
+            last = i;
+            break;
+          }
+        }
+        const step = trace.duration / 500;
+        setRange(
+          Math.max(0, (first - 1) * step),
+          Math.min(trace.duration, (last + 2) * step),
+        );
+      }
+      function schedule() {
+        if (!raf)
+          raf = requestAnimationFrame(() => {
+            raf = 0;
+            paint();
+          });
+      }
+      function rebuildRows() {
+        visibleRows = [];
+        if (trace)
+          trace.groups.forEach((g, gi) => {
+            visibleRows.push({ group: gi, row: -1 });
+            if (!collapsed.has(gi))
+              if (mode === "flame") appendFlameRows(g, gi);
+              else
+                for (const ri of g.rows)
+                  visibleRows.push({ group: gi, row: ri });
+          });
+        $("spacer").style.height =
+          `${Math.max(0, RULER + visibleRows.length * ROW - height)}px`;
+        schedule();
+      }
+      function resize() {
+        width = scroller.clientWidth;
+        height = scroller.clientHeight;
+        const dpr = devicePixelRatio || 1;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        overview.width = Math.round(width * dpr);
+        overview.height = 48 * dpr;
+        octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        rebuildRows();
+      }
+      function paint() {
+        const t0 = performance.now();
+        ctx.fillStyle = "#101418";
+        ctx.fillRect(0, 0, width, height);
+        hitRects = [];
+        if (!trace) return;
+        if (mode === "flame") {
+          paintFlames();
+          lastPaintMs = performance.now() - t0;
+          return;
+        }
+        const span = viewEnd - viewStart,
+          pw = plotWidth(),
+          scale = pw / span,
+          scroll = scroller.scrollTop;
+        const x = (time) => LABEL + (time - viewStart) * scale;
+        const first = Math.max(0, Math.floor(scroll / ROW)),
+          last = Math.min(
+            visibleRows.length,
+            Math.ceil((scroll + height) / ROW),
+          );
+        ctx.font = "11px system-ui";
+        ctx.textBaseline = "middle";
+        for (let n = first; n < last; n++) {
+          const item = visibleRows[n],
+            y = RULER + n * ROW - scroll;
+          if (y + ROW < RULER) continue;
+          if (item.row < 0) {
+            ctx.fillStyle = "#202a32";
+            ctx.fillRect(0, y, width, ROW - 1);
+            ctx.fillStyle = "#c7d6df";
+            ctx.fillText(
+              `${collapsed.has(item.group) ? "▸" : "▾"} ${trace.groups[item.group].name} · ${trace.groups[item.group].key}`,
+              10,
+              y + ROW / 2,
+            );
+            continue;
+          }
+          const row = trace.rows[item.row];
+          ctx.fillStyle = n % 2 ? "#131a20" : "#10171c";
+          ctx.fillRect(LABEL, y, pw, ROW - 1);
+          ctx.fillStyle = "#607381";
+          ctx.fillText(
+            `  ${row.depth === 0 ? "Calls" : `↳ ${row.depth}`}`,
+            12,
+            y + ROW / 2,
+          );
+          let i = lower(row.end, viewStart);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(LABEL, y, pw, ROW - 1);
+          ctx.clip();
+          while (i < row.start.length && row.start[i] <= viewEnd) {
+            const left = Math.max(LABEL, x(row.start[i])),
+              right = Math.min(width, x(row.end[i])),
+              bw = Math.max(1, right - left),
+              id = row.name[i];
+            ctx.globalAlpha = highlight < 0 || id === highlight ? 1 : 0.22;
+            ctx.fillStyle = colors[id % colors.length];
+            ctx.fillRect(left, y + 1, Math.max(1, bw - 1), ROW - 3);
+            if (selection?.row === item.row && selection.index === i) {
+              ctx.globalAlpha = 1;
+              ctx.strokeStyle = "#ecfff8";
+              ctx.lineWidth = 2;
+              ctx.strokeRect(left + 1, y + 2, Math.max(1, bw - 3), ROW - 5);
+            }
+            if (bw > 45) {
+              ctx.fillStyle = "#fff";
+              const name = trace.names[id].split(" (")[0],
+                max = Math.floor((bw - 8) / 6);
+              ctx.fillText(
+                name.length > max
+                  ? `${name.slice(0, Math.max(0, max - 1))}…`
+                  : name,
+                left + 4,
+                y + ROW / 2,
+              );
+            }
+            hitRects.push({
+              left,
+              right: left + bw,
+              top: y,
+              bottom: y + ROW - 1,
+              row: item.row,
+              index: i,
+            });
+            i =
+              bw < 2
+                ? Math.max(
+                    i + 1,
+                    lower(
+                      row.end,
+                      viewStart + (Math.floor(left - LABEL) + 2) / scale,
+                    ),
+                  )
+                : i + 1;
+          }
+          ctx.restore();
+          ctx.globalAlpha = 1;
+        }
+        ctx.fillStyle = "#181e24";
+        ctx.fillRect(0, 0, width, RULER);
+        ctx.fillStyle = "#91a2b1";
+        ctx.fillText("THREAD / STACK", 10, RULER / 2);
+        let step = 10 ** Math.floor(Math.log10(span / Math.max(1, pw / 120)));
+        for (const multiple of [1, 2, 5, 10])
+          if (step * multiple >= span / Math.max(1, pw / 120)) {
+            step *= multiple;
+            break;
+          }
+        for (
+          let time = Math.ceil(viewStart / step) * step;
+          time <= viewEnd;
+          time += step
+        ) {
+          const px = x(time);
+          ctx.strokeStyle = "#31404b";
+          ctx.beginPath();
+          ctx.moveTo(px, RULER - 5);
+          ctx.lineTo(px, height);
+          ctx.globalAlpha = 0.4;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = "#a9bac6";
+          ctx.fillText(fmt(time), px + 5, RULER / 2);
+        }
+        ctx.strokeStyle = "#31404b";
+        ctx.beginPath();
+        ctx.moveTo(LABEL, 0);
+        ctx.lineTo(LABEL, height);
+        ctx.stroke();
+        $("range").textContent =
+          `${fmt(viewStart)} – ${fmt(viewEnd)} · ${fmt(span)} visible`;
+        paintOverview();
+        lastPaintMs = performance.now() - t0;
+      }
+      function paintOverview() {
+        octx.fillStyle = "#151d23";
+        octx.fillRect(0, 0, width, 48);
+        const max = Math.max(...trace.histogram, 1);
+        octx.fillStyle = "#456e70";
+        for (let i = 0; i < 500; i++) {
+          const h = (36 * Math.log1p(trace.histogram[i])) / Math.log1p(max);
+          octx.fillRect((i * width) / 500, 46 - h, Math.max(1, width / 500), h);
+        }
+        const a = (viewStart / trace.duration) * width,
+          b = (viewEnd / trace.duration) * width;
+        octx.fillStyle = "#80d9c420";
+        octx.fillRect(a, 0, b - a, 48);
+        octx.strokeStyle = "#80d9c4";
+        octx.strokeRect(a + 0.5, 0.5, Math.max(1, b - a - 1), 47);
+      }
+      function hit(event) {
+        const r = canvas.getBoundingClientRect(),
+          px = event.clientX - r.left,
+          py = event.clientY - r.top;
+        if (py < RULER) return null;
+        return (
+          hitRects.find(
+            (h) =>
+              px >= h.left && px <= h.right && py >= h.top && py < h.bottom,
+          ) || null
+        );
+      }
+      function selectCall(row, index, focus = false) {
+        selection = { row, index };
+        const r = trace.rows[row],
+          name = trace.names[r.name[index]];
+        highlight = r.name[index];
+        $("call-name").textContent = name;
+        $("call-thread").textContent =
+          `${trace.groups[r.group].name} · ${trace.groups[r.group].key} · stack depth ${r.depth}`;
+        $("call-details").replaceChildren();
+        for (const [label, value] of [
+          ["Start", fmt(r.start[index])],
+          [
+            trace.sampled ? "Sample window" : "Duration",
+            fmt(r.end[index] - r.start[index]),
+          ],
+          [
+            trace.sampled ? "Estimated self" : "Self time",
+            fmt(Math.max(0, r.self[index])),
+          ],
+        ]) {
+          const dt = document.createElement("dt"),
+            dd = document.createElement("dd");
+          dt.textContent = label;
+          dd.textContent = value;
+          $("call-details").append(dt, dd);
+        }
+        $("focus").disabled = false;
+        $("next").disabled = false;
+        if (focus) focusSelection();
+        else schedule();
+      }
+      function focusSelection() {
+        if (mode === "flame") {
+          if (flameSelection !== null) {
+            const node = trace.flames[flameSelection];
+            flameFocus.set(node.group, flameSelection);
+            rebuildRows();
+            scrollToGroup(node.group);
+          }
+          return;
+        }
+        if (!selection) return;
+        const r = trace.rows[selection.row],
+          i = selection.index,
+          span = Math.max(0.02, r.end[i] - r.start[i]);
+        setRange(r.start[i] - span * 0.15, r.end[i] + span * 0.15);
+        collapsed.delete(r.group);
+        rebuildRows();
+        const n = visibleRows.findIndex((item) => item.row === selection.row);
+        scroller.scrollTop = Math.max(0, n * ROW - height / 3);
+        schedule();
+      }
+      function showFunctions() {
+        if (!trace) return;
+        const query = $("search").value.trim().toLowerCase(),
+          sort = $("sort").value;
+        const ids = trace.names
+          .map((_, i) => i)
+          .filter((i) => !query || trace.names[i].toLowerCase().includes(query))
+          .sort((a, b) => trace.stats[b][sort] - trace.stats[a][sort]);
+        $("results").replaceChildren();
+        $("result-count").textContent =
+          `${ids.length.toLocaleString()} functions · top ${Math.min(100, ids.length)} · whole recording`;
+        for (const id of ids.slice(0, 100)) {
+          const s = trace.stats[id],
+            button = document.createElement("button"),
+            strong = document.createElement("strong"),
+            small = document.createElement("small");
+          button.className = "result";
+          strong.textContent = trace.names[id].split(" (")[0];
+          small.textContent = `${fmt(Math.max(0, s.self))} self · ${fmt(s.total)} total · ${s.count.toLocaleString()} ${trace.sampled ? "sightings" : "calls"}`;
+          button.title = trace.names[id];
+          button.append(strong, small);
+          button.onclick = () => {
+            if (mode === "flame") {
+              let best = -1;
+              trace.flames.forEach((node, i) => {
+                if (
+                  node.name === id &&
+                  (best < 0 || node.total > trace.flames[best].total)
+                )
+                  best = i;
+              });
+              if (best >= 0) {
+                flameFocus.delete(trace.flames[best].group);
+                collapsed.delete(trace.flames[best].group);
+                rebuildRows();
+                selectFlame(best);
+                scrollToGroup(trace.flames[best].group);
+              }
+            } else selectCall(s.row, s.index, true);
+            document
+              .querySelector(".result.active")
+              ?.classList.remove("active");
+            button.classList.add("active");
+          };
+          $("results").append(button);
+        }
+      }
+      function nextCall() {
+        if (highlight < 0) return;
+        const after = selection
+          ? trace.rows[selection.row].start[selection.index]
+          : -Infinity;
+        let next = null,
+          first = null;
+        trace.rows.forEach((r, ri) => {
+          for (let i = 0; i < r.name.length; i++) {
+            if (r.name[i] !== highlight) continue;
+            const candidate = { row: ri, index: i, time: r.start[i] };
+            if (!first || candidate.time < first.time) first = candidate;
+            if (candidate.time > after && (!next || candidate.time < next.time))
+              next = candidate;
+          }
+        });
+        const target = next || first;
+        if (target) selectCall(target.row, target.index, true);
+      }
+      function openFile(file) {
+        if (!file) return;
+        worker?.terminate();
+        $("busy").hidden = false;
+        $("progress").textContent = "Reading file…";
+        const blob = new Blob([$("parser").textContent], {
+            type: "text/javascript",
+          }),
+          url = URL.createObjectURL(blob);
+        worker = new Worker(url);
+        URL.revokeObjectURL(url);
+        const active = worker;
+        const fail = (message) => {
+          active.terminate();
+          if (worker !== active) return;
+          worker = null;
+          $("busy").hidden = true;
+          $("notice").textContent = `Could not open trace: ${message}`;
+        };
+        active.onerror = (event) => fail(event.message);
+        active.onmessage = ({ data }) => {
+          if (worker !== active) return;
+          if (data.progress) {
+            $("progress").textContent = data.progress;
+            return;
+          }
+          if (data.error) {
+            fail(data.error);
+            return;
+          }
+          trace = data.result;
+          recordingId = crypto.randomUUID();
+          flameSelection = null;
+          flameFocus.clear();
+          active.terminate();
+          worker = null;
+          selection = null;
+          highlight = -1;
+          collapsed.clear();
+          scroller.scrollTop = 0;
+          $("busy").hidden = true;
+          $("empty").hidden = true;
+          $("filename").textContent = file.name;
+          $("filename").title = file.name;
+          $("selection-title").textContent = trace.sampled
+            ? "Sampled frame"
+            : "Selected call";
+          $("sort").options[2].textContent = trace.sampled
+            ? "Most sightings"
+            : "Most calls";
+          $("next").textContent = trace.sampled ? "Next sample" : "Next call";
+          $("focus").textContent = trace.sampled
+            ? "Focus sample"
+            : "Focus call";
+          $("notice").textContent = [
+            trace.sampled
+              ? `Sampled Python stacks · ${(1000 / trace.sampled.interval).toFixed(0)} Hz target · ${((trace.sampled.count / trace.duration) * 1000).toFixed(1)} Hz observed · estimates, not exact call durations. ${((trace.sampled.coverage / trace.duration) * 100).toFixed(1)}% of the recording span represented; largest unsampled gap ${fmt(trace.sampled.maxGap)}.`
+              : "",
+            trace.sampled?.failure
+              ? `Recording stopped early: ${trace.sampled.failure}`
+              : "",
+            trace.overflow
+              ? "Recording buffer filled: older calls were dropped. Missing child calls can inflate self time."
+              : "",
+            trace.ignored
+              ? `${trace.ignored.toLocaleString()} unsupported or invalid events skipped.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          $("summary").textContent =
+            `${trace.sampled ? `${trace.sampled.count.toLocaleString()} snapshots` : `${trace.count.toLocaleString()} calls`} · ${trace.groups.length} ${trace.groups.length === 1 ? "thread" : "threads"} · ${fmt(trace.duration)} · loaded in ${(trace.loadMs / 1000).toFixed(2)} s`;
+          $("call-name").textContent = "Click a block to inspect it.";
+          $("call-thread").textContent = trace.sampled
+            ? "A stack observed at one instant. Blocks represent sampling windows, including waiting. Fast calls can be missed."
+            : "Self time excludes recorded nested calls. Time may include waiting.";
+          $("call-details").replaceChildren();
+          $("search").value = "";
+          for (const id of ["fit", "activity", "zoom-in", "zoom-out"])
+            $(id).disabled = false;
+          for (const id of ["focus", "next"]) $(id).disabled = true;
+          resize();
+          setRange(0, trace.duration);
+          setMode(mode);
+          showFunctions();
+        };
+        active.postMessage(file);
+      }
+      $("open").onclick = $("empty-open").onclick = () => $("file").click();
+      $("file").onchange = () => {
+        openFile($("file").files[0]);
+        $("file").value = "";
+      };
+      $("cancel").onclick = () => {
+        worker?.terminate();
+        worker = null;
+        $("busy").hidden = true;
+      };
+      $("fit").onclick = fit;
+      $("activity").onclick = focusActivity;
+      $("zoom-in").onclick = () => zoom(0.5);
+      $("zoom-out").onclick = () => zoom(2);
+      $("focus").onclick = focusSelection;
+      $("next").onclick = nextCall;
+      let searchTimer;
+      $("search").oninput = () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(showFunctions, 180);
+      };
+      $("sort").onchange = showFunctions;
+      scroller.onscroll = () => {
+        $("tooltip").hidden = true;
+        schedule();
+      };
+      canvas.addEventListener(
+        "wheel",
+        (event) => {
+          if (!trace) return;
+          if (mode === "flame") return;
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            const r = canvas.getBoundingClientRect();
+            zoom(
+              Math.exp(event.deltaY * 0.005),
+              Math.max(
+                0,
+                Math.min(1, (event.clientX - r.left - LABEL) / plotWidth()),
+              ),
+            );
+          } else if (event.shiftKey) {
+            event.preventDefault();
+            const delta = (event.deltaY / plotWidth()) * (viewEnd - viewStart);
+            setRange(viewStart + delta, viewEnd + delta);
+          }
+        },
+        { passive: false },
+      );
+      canvas.onpointerdown = (event) => {
+        if (!trace || event.button !== 0) return;
+        canvas.focus();
+        drag = {
+          x: event.clientX,
+          y: event.clientY,
+          start: viewStart,
+          end: viewEnd,
+          scroll: scroller.scrollTop,
+          moved: false,
+        };
+        canvas.setPointerCapture(event.pointerId);
+      };
+      canvas.onpointermove = (event) => {
+        if (drag) {
+          const dx = event.clientX - drag.x,
+            dy = event.clientY - drag.y;
+          if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+          if (drag.moved) {
+            const delta = (-dx / plotWidth()) * (drag.end - drag.start);
+            if (mode === "timeline")
+              setRange(drag.start + delta, drag.end + delta);
+            scroller.scrollTop = drag.scroll - dy;
+          }
+          $("tooltip").hidden = true;
+          return;
+        }
+        const h = hit(event);
+        if (!h) {
+          $("tooltip").hidden = true;
+          return;
+        }
+        if (mode === "flame") {
+          const node = trace.flames[h.flame];
+          $("tooltip").textContent =
+            `${trace.names[node.name]}\n${fmt(node.total)} total · ${fmt(Math.max(0, node.self))} self · ${node.count.toLocaleString()} ${trace.sampled ? "sightings" : "calls"}`;
+        } else {
+          const r = trace.rows[h.row];
+          $("tooltip").textContent =
+            `${trace.names[r.name[h.index]]}\n${fmt(r.end[h.index] - r.start[h.index])} ${trace.sampled ? "sample window" : "duration"} · ${fmt(Math.max(0, r.self[h.index]))} self`;
+        }
+        $("tooltip").hidden = false;
+        $("tooltip").style.left =
+          `${Math.max(4, Math.min(event.clientX + 14, innerWidth - $("tooltip").offsetWidth - 10))}px`;
+        $("tooltip").style.top =
+          `${Math.max(4, Math.min(event.clientY + 14, innerHeight - $("tooltip").offsetHeight - 10))}px`;
+      };
+      canvas.onpointerup = (event) => {
+        if (!drag) return;
+        const moved = drag.moved;
+        drag = null;
+        if (canvas.hasPointerCapture(event.pointerId))
+          canvas.releasePointerCapture(event.pointerId);
+        if (moved) return;
+        const rect = canvas.getBoundingClientRect(),
+          py = event.clientY - rect.top;
+        if (py < RULER) return;
+        const n = Math.floor((py - RULER + scroller.scrollTop) / ROW),
+          item = visibleRows[n];
+        if (item?.row === -1) {
+          if (collapsed.has(item.group)) collapsed.delete(item.group);
+          else collapsed.add(item.group);
+          rebuildRows();
+          return;
+        }
+        const h = hit(event);
+        if (h) {
+          if (mode === "flame") selectFlame(h.flame);
+          else selectCall(h.row, h.index);
+        } else {
+          highlight = -1;
+          schedule();
+        }
+      };
+      canvas.onpointercancel = () => {
+        drag = null;
+      };
+      canvas.onpointerleave = () => {
+        $("tooltip").hidden = true;
+      };
+      canvas.ondblclick = (event) => {
+        const h = hit(event);
+        if (h) {
+          if (mode === "flame") {
+            selectFlame(h.flame);
+            focusSelection();
+          } else selectCall(h.row, h.index, true);
+        }
+      };
+      canvas.onkeydown = (event) => {
+        if (!trace) return;
+        if (mode === "flame") {
+          if (event.key.toLowerCase() === "f") fit();
+          else if (event.key === "Backspace") flameUp();
+          else return;
+          event.preventDefault();
+          return;
+        }
+        const delta = (viewEnd - viewStart) * 0.2;
+        if (event.key === "ArrowLeft")
+          setRange(viewStart - delta, viewEnd - delta);
+        else if (event.key === "ArrowRight")
+          setRange(viewStart + delta, viewEnd + delta);
+        else if (event.key === "+" || event.key === "=") zoom(0.5);
+        else if (event.key === "-") zoom(2);
+        else if (event.key.toLowerCase() === "f") fit();
+        else return;
+        event.preventDefault();
+      };
+      overview.onpointerdown = (event) => {
+        if (!trace) return;
+        const rect = overview.getBoundingClientRect(),
+          time = ((event.clientX - rect.left) / width) * trace.duration,
+          span = viewEnd - viewStart;
+        setRange(time - span / 2, time + span / 2);
+      };
+      document.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        document.body.classList.add("dragging");
+      });
+      document.addEventListener("dragleave", (event) => {
+        if (!event.relatedTarget) document.body.classList.remove("dragging");
+      });
+      document.addEventListener("drop", (event) => {
+        event.preventDefault();
+        document.body.classList.remove("dragging");
+        openFile(event.dataTransfer.files[0]);
+      });
+      const agentAPI = new TraceAgentAPI(
+        () => ({
+          trace,
+          recordingId,
+          filename: $("filename").textContent,
+          mode,
+          selection,
+          flameSelection,
+          highlight,
+          viewStart,
+          viewEnd,
+          flameFocus,
+          collapsed,
+          searchText: $("search").value,
+          loading: worker !== null,
+        }),
+        (args) => {
+          if (args.item_id) {
+            const item = agentAPI.locate(trace, args.item_id);
+            if (item.kind === "flame") {
+              const node = trace.flames[item.node];
+              collapsed.delete(node.group);
+              if (node.name < 0) {
+                flameSelection = null;
+                highlight = -1;
+                flameFocus.delete(node.group);
+                setMode("flame");
+                rebuildRows();
+                scrollToGroup(node.group);
+              } else {
+                setMode("flame");
+                selectFlame(item.node);
+                focusSelection();
+              }
+            } else {
+              setMode("timeline");
+              selectCall(item.row, item.index, true);
+            }
+          } else {
+            setMode("timeline");
+            setRange(args.start_ms, args.end_ms);
+          }
+        },
+      );
+      let bridgeTimer = null;
+      async function connectAgent() {
+        if (location.protocol !== "http:") return;
+        try {
+          const response = await fetch("/bridge-config");
+          if (!response.ok) return;
+          const config = await response.json();
+          if (config.bridge !== "/bridge") return;
+        } catch {
+          return;
+        }
+        const connect = () => {
+          const socket = new WebSocket(`ws://${location.host}/bridge`);
+          socket.onopen = () => {
+            $("ai-status").textContent = "AI connected";
+            $("ai-status").title =
+              "Local MCP bridge connected. Agents can inspect this view; only focus navigates it.";
+            let previous = "";
+            const sendState = () => {
+              const state = JSON.stringify({
+                type: "state",
+                recording_id: recordingId,
+                filename: $("filename").textContent,
+                mode,
+              });
+              if (socket.readyState === WebSocket.OPEN && state !== previous) {
+                socket.send(state);
+                previous = state;
+              }
+            };
+            sendState();
+            bridgeTimer = setInterval(sendState, 500);
+          };
+          socket.onmessage = async (event) => {
+            let message;
+            try {
+              message = JSON.parse(event.data);
+              const result = await agentAPI.dispatch(
+                message.method,
+                message.args,
+              );
+              if (socket.readyState === WebSocket.OPEN)
+                socket.send(JSON.stringify({ id: message.id, result }));
+            } catch (error) {
+              if (message && socket.readyState === WebSocket.OPEN)
+                socket.send(
+                  JSON.stringify({
+                    id: message.id,
+                    error: error.message || String(error),
+                  }),
+                );
+            }
+          };
+          socket.onclose = () => {
+            clearInterval(bridgeTimer);
+            $("ai-status").textContent = "AI disconnected";
+            setTimeout(connect, 2000);
+          };
+          socket.onerror = () => socket.close();
+        };
+        connect();
+      }
+      connectAgent();
+      new ResizeObserver(resize).observe(scroller);
+      resize();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,105 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ax-devil"
+version = "0.1.0"
+description = "Application for working with Axis devices"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Rasmus Rynell"}
+]
+dependencies = [
+    # Core GUI and video processing
+    "PySide6>=6.9.0,<6.12",
+    "numpy>=2.2.0,<3",
+    "click>=8.2.0,<9",
+    # Isolated plugin installation and standard package requirement parsing
+    "uv>=0.10.12,<0.13",
+    "packaging>=24.0",
+    "pyqtdarktheme-fork>=2.3.4,<3",
+    "av>=16.0.0,<20",
+    "ax-devil-device-api>=0.6.4,<0.8",
+    "ax-devil-mqtt>=0.4.0,<0.6",
+    "ax-devil-rtsp>=0.3.0,<0.4",
+    "aiohttp>=3.14.0,<4",
+    "jsonschema>=4.25.0,<5",
+    "tomli>=2.0.0; python_version < '3.11'",
+]
+
+[dependency-groups]
+dev = [
+    "opencv-python>=4.11.0",
+    "pytest>=7.4",
+    "pytest-qt>=4.2",
+    "ruff==0.16.10",
+    "mypy==2.4.0",
+    "pre-commit>=3.7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rasmusrynell/ax-devil"
+Repository = "https://github.com/rasmusrynell/ax-devil.git"
+Documentation = "https://github.com/rasmusrynell/ax-devil#readme"
+"Bug Tracker" = "https://github.com/rasmusrynell/ax-devil/issues"
+
+[project.scripts]
+ax-devil = "ax_devil.launcher:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+ax_devil = [
+    "resources/*.png",
+    "modules/video_player/engine/quick/*.qml",
+    "modules/scene/rendering/catalog_definitions/*.json",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ax_devil*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short -m 'not integration'"
+markers = [
+    "integration: real installation tests that may download packages",
+    "unit: marks tests that can run without hardware",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+# tools/trace-viewer has its own check with extra dependencies.
+exclude = "tools/trace-viewer/"
+# Disable PySide6-related error codes since there are no official type stubs
+disable_error_code = ["misc"]
+
+[[tool.mypy.overrides]]
+module = [
+    "PySide6",
+    "PySide6.*",
+]
+ignore_missing_imports = true
+disable_error_code = ["misc", "no-untyped-call", "no-untyped-def"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = ["tools/trace-viewer"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "double"

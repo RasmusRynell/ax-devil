@@ -1,0 +1,221 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ "v*" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Superseded branch/PR runs are disposable; never interrupt a release.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            gcc \
+            gobject-introspection \
+            gstreamer1.0-dev \
+            gstreamer1.0-libav \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-rtsp \
+            gstreamer1.0-tools \
+            libffi-dev \
+            libegl1-mesa-dev \
+            libgirepository-2.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libcairo2-dev \
+            pkg-config \
+            xvfb
+
+      - name: Sync project environment
+        run: uv sync --locked
+
+      - name: Check application
+        run: make check
+
+      - name: Set up Node for trace-viewer tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check trace viewer
+        run: QT_QPA_PLATFORM=offscreen make -C tools/trace-viewer check
+
+      - name: Run tests
+        run: make test
+
+      - name: Test packaged installation and plugin upgrades
+        run: make test-integration
+
+      - name: Check tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "${GITHUB_REF_NAME#v}" = "$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)"
+
+      - name: Build package
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: dist
+          path: dist/
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.12"
+          python-version: "3.10"
+          enable-cache: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            gcc \
+            gobject-introspection \
+            gstreamer1.0-dev \
+            gstreamer1.0-libav \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-rtsp \
+            gstreamer1.0-tools \
+            libffi-dev \
+            libegl1-mesa-dev \
+            libgirepository-2.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libcairo2-dev \
+            pkg-config \
+            xvfb
+
+      - name: Sync project environment
+        run: uv sync --locked
+
+      - name: Run tests
+        run: uv run pytest
+
+  lowest:
+    if: github.event_name == 'push'
+    # Users installing from PyPI may get any version the dependency bounds allow; test the oldest.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.12"
+          python-version: "3.10"
+          enable-cache: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            gcc \
+            gobject-introspection \
+            gstreamer1.0-dev \
+            gstreamer1.0-libav \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-rtsp \
+            gstreamer1.0-tools \
+            libffi-dev \
+            libegl1-mesa-dev \
+            libgirepository-2.0-dev \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libcairo2-dev \
+            pkg-config \
+            xvfb
+
+      - name: Install oldest allowed dependencies
+        run: |
+          uv venv
+          uv pip install --resolution lowest-direct -e . --group dev
+
+      - name: Run tests
+        run: .venv/bin/python -m pytest
+
+  release-check:
+    # Install the release in clean Ubuntu containers, exactly as documented, before publishing.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [quality, test, lowest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Check clean installations of the artifacts to publish
+        run: DIST=dist tools/release-check/run.sh
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-check
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

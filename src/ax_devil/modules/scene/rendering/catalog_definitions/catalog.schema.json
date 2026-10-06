@@ -1,0 +1,1792 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema_version": {
+          "const": 3
+        },
+        "description": {
+          "type": "string"
+        },
+        "design_notes": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "schema_version"
+      ],
+      "additionalProperties": false
+    },
+    "templates": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/step"
+            }
+          },
+          "enabled": {
+            "$ref": "#/$defs/expression"
+          },
+          "description": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "feature": {
+            "enum": [
+              "outlines",
+              "ids",
+              "class_names",
+              "confidence",
+              "speed",
+              "movement",
+              "attributes",
+              "relations"
+            ]
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "number",
+                    "integer",
+                    "bool",
+                    "string",
+                    "rgb",
+                    "image_point",
+                    "image_box",
+                    "image_vector",
+                    "image_point_list",
+                    "length",
+                    "image_arrow",
+                    "pen_style",
+                    "elision",
+                    "anchor",
+                    "text_anchor",
+                    "corner_position",
+                    "shape_style",
+                    "color_stops",
+                    "palette",
+                    "label_weight",
+                    "label_runs"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "nullable": {
+                  "type": "boolean"
+                },
+                "default": {},
+                "description": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "minimum": {
+                  "type": "number"
+                },
+                "exclusive_minimum": {
+                  "type": "number"
+                },
+                "maximum": {
+                  "type": "number"
+                },
+                "max_length": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "recipes": {
+      "type": "object",
+      "properties": {
+        "fallbacks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/step"
+                }
+              },
+              "enabled": {
+                "$ref": "#/$defs/expression"
+              },
+              "description": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bindings": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "const": "primary_classification_attribute"
+                    },
+                    "attribute": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value_shape": {
+                      "enum": [
+                        "bool",
+                        "number",
+                        "color_classification_list"
+                      ]
+                    },
+                    "picker": {
+                      "enum": [
+                        "value",
+                        "highest_score"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "attribute",
+                    "value_shape",
+                    "picker"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "classified",
+                      "unclassified"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "selector",
+              "steps"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "classifications": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/step"
+                }
+              },
+              "enabled": {
+                "$ref": "#/$defs/expression"
+              },
+              "description": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bindings": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "const": "primary_classification_attribute"
+                    },
+                    "attribute": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value_shape": {
+                      "enum": [
+                        "bool",
+                        "number",
+                        "color_classification_list"
+                      ]
+                    },
+                    "picker": {
+                      "enum": [
+                        "value",
+                        "highest_score"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "attribute",
+                    "value_shape",
+                    "picker"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "classification"
+                    ]
+                  },
+                  "types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "kind",
+                  "types"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "selector",
+              "steps"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/step"
+                }
+              },
+              "enabled": {
+                "$ref": "#/$defs/expression"
+              },
+              "description": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bindings": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "const": "primary_classification_attribute"
+                    },
+                    "attribute": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value_shape": {
+                      "enum": [
+                        "bool",
+                        "number",
+                        "color_classification_list"
+                      ]
+                    },
+                    "picker": {
+                      "enum": [
+                        "value",
+                        "highest_score"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "attribute",
+                    "value_shape",
+                    "picker"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "relation"
+                    ]
+                  },
+                  "types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "kind",
+                  "types"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "selector",
+              "steps"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "fallbacks",
+        "classifications"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "metadata",
+    "templates",
+    "recipes"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "functionName": {
+      "enum": [
+        "add",
+        "box_anchor",
+        "box_min_size",
+        "clamp",
+        "coalesce",
+        "color_ramp",
+        "div",
+        "gt",
+        "has_area",
+        "if",
+        "inset_box",
+        "is_not_empty",
+        "is_present",
+        "lookup_text",
+        "max",
+        "min",
+        "mul",
+        "number_text",
+        "offset_point",
+        "pick_color",
+        "place_box",
+        "resize_box",
+        "scale_box",
+        "sub",
+        "trim_text",
+        "vector_arrow"
+      ]
+    },
+    "step": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "box"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "geometry": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "geometry"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "line"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "$ref": "#/$defs/expression"
+                },
+                "end": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "start",
+                "end"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "polygon"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "points": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "points"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "polyline"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "points": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "points"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "point"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "circle"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "center": {
+                  "$ref": "#/$defs/expression"
+                },
+                "radius": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "center",
+                "radius"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "text"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "$ref": "#/$defs/expression"
+                },
+                "text": {
+                  "$ref": "#/$defs/expression"
+                },
+                "anchor": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "position",
+                "text",
+                "anchor"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "primitive": {
+              "const": "label"
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "$ref": "#/$defs/expression"
+                },
+                "anchor": {
+                  "$ref": "#/$defs/expression"
+                },
+                "runs": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "position",
+                "anchor",
+                "runs"
+              ],
+              "additionalProperties": false
+            },
+            "style": {
+              "$ref": "#/$defs/expression"
+            }
+          },
+          "required": [
+            "primitive",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "template": {
+              "type": "string",
+              "minLength": 1
+            },
+            "feature": {
+              "enum": [
+                "outlines",
+                "ids",
+                "class_names",
+                "confidence",
+                "speed",
+                "movement",
+                "attributes",
+                "relations"
+              ]
+            },
+            "enabled": {
+              "$ref": "#/$defs/expression"
+            },
+            "visible": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "inputs": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/expression"
+              }
+            }
+          },
+          "required": [
+            "template"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "expression": {
+      "anyOf": [
+        {
+          "type": [
+            "null",
+            "boolean",
+            "number",
+            "string"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expression"
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 2
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "literal": {}
+          },
+          "required": [
+            "literal"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "ref",
+                "call",
+                "literal"
+              ]
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/expression"
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "if"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "condition": {
+                  "$ref": "#/$defs/expression"
+                },
+                "then": {
+                  "$ref": "#/$defs/expression"
+                },
+                "else": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "condition",
+                "then",
+                "else"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "coalesce"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "values": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "add"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "values": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "mul"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "values": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "min"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "values": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "max"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "values": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "sub"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "left": {
+                  "$ref": "#/$defs/expression"
+                },
+                "right": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "left",
+                "right"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "div"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "numerator": {
+                  "$ref": "#/$defs/expression"
+                },
+                "denominator": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "numerator",
+                "denominator"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "clamp"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "$ref": "#/$defs/expression"
+                },
+                "minimum": {
+                  "$ref": "#/$defs/expression"
+                },
+                "maximum": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "value",
+                "minimum",
+                "maximum"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "gt"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "left": {
+                  "$ref": "#/$defs/expression"
+                },
+                "right": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "left",
+                "right"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "is_present"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "is_not_empty"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "has_area"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "geometry": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "geometry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "box_anchor"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "geometry": {
+                  "$ref": "#/$defs/expression"
+                },
+                "anchor": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "geometry",
+                "anchor"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "box_min_size"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "geometry": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "geometry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "offset_point"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "point": {
+                  "$ref": "#/$defs/expression"
+                },
+                "dx": {
+                  "$ref": "#/$defs/expression"
+                },
+                "dy": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "point",
+                "dx",
+                "dy"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "inset_box"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "geometry": {
+                  "$ref": "#/$defs/expression"
+                },
+                "margin": {
+                  "$ref": "#/$defs/expression"
+                },
+                "fraction": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "geometry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "resize_box"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "geometry": {
+                  "$ref": "#/$defs/expression"
+                },
+                "width": {
+                  "$ref": "#/$defs/expression"
+                },
+                "height": {
+                  "$ref": "#/$defs/expression"
+                },
+                "anchor": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "geometry",
+                "anchor"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "scale_box"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "geometry": {
+                  "$ref": "#/$defs/expression"
+                },
+                "x_factor": {
+                  "$ref": "#/$defs/expression"
+                },
+                "y_factor": {
+                  "$ref": "#/$defs/expression"
+                },
+                "anchor": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "geometry",
+                "x_factor",
+                "y_factor",
+                "anchor"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "place_box"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "container": {
+                  "$ref": "#/$defs/expression"
+                },
+                "width": {
+                  "$ref": "#/$defs/expression"
+                },
+                "height": {
+                  "$ref": "#/$defs/expression"
+                },
+                "anchor": {
+                  "$ref": "#/$defs/expression"
+                },
+                "margin": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "container",
+                "width",
+                "height",
+                "anchor",
+                "margin"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "vector_arrow"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "origin": {
+                  "$ref": "#/$defs/expression"
+                },
+                "vector": {
+                  "$ref": "#/$defs/expression"
+                },
+                "gain": {
+                  "$ref": "#/$defs/expression"
+                },
+                "max_length": {
+                  "$ref": "#/$defs/expression"
+                },
+                "head_length": {
+                  "$ref": "#/$defs/expression"
+                },
+                "head_half_width": {
+                  "$ref": "#/$defs/expression"
+                },
+                "min_magnitude": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "origin",
+                "vector",
+                "gain",
+                "max_length",
+                "head_length",
+                "head_half_width",
+                "min_magnitude"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "trim_text"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "$ref": "#/$defs/expression"
+                },
+                "max_length": {
+                  "$ref": "#/$defs/expression"
+                },
+                "delimiter": {
+                  "$ref": "#/$defs/expression"
+                },
+                "suffix": {
+                  "$ref": "#/$defs/expression"
+                },
+                "elide": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "text",
+                "max_length",
+                "delimiter",
+                "suffix"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "number_text"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "$ref": "#/$defs/expression"
+                },
+                "precision": {
+                  "$ref": "#/$defs/expression"
+                },
+                "hide_zero": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "value",
+                "precision",
+                "hide_zero"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "lookup_text"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "$ref": "#/$defs/expression"
+                },
+                "mapping": {
+                  "$ref": "#/$defs/expression"
+                },
+                "default": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "text",
+                "mapping",
+                "default"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "color_ramp"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "$ref": "#/$defs/expression"
+                },
+                "stops": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "value",
+                "stops"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "pick_color"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "$ref": "#/$defs/expression"
+                },
+                "colors": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "text",
+                "colors"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

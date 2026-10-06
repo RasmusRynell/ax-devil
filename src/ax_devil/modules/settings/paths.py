@@ -1,0 +1,38 @@
+"""Central definitions for ax-devil filesystem locations."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+AX_DEVIL_HOME: Path = Path.home() / ".ax_devil"
+CONFIGS_DIR: Path = AX_DEVIL_HOME / "configs"
+CACHE_DIR: Path = AX_DEVIL_HOME / "caches"
+LOGS_DIR: Path = AX_DEVIL_HOME / "logs"
+RENDER_CATALOGS_DIR: Path = AX_DEVIL_HOME / "render_catalogs"
+
+DEFAULT_CONFIG_NAME: str = "default"
+DEFAULT_CONFIG_FILENAME: str = f"{DEFAULT_CONFIG_NAME}.json"
+DEFAULT_CONFIG_PATH: Path = CONFIGS_DIR / DEFAULT_CONFIG_FILENAME
+
+DEFAULT_PLAIN_LOG_FILENAME: str = "default.log"
+DEFAULT_JSON_LOG_FILENAME: str = "default.json"
+DEFAULT_PLAIN_LOG_PATH: Path = LOGS_DIR / DEFAULT_PLAIN_LOG_FILENAME
+DEFAULT_JSON_LOG_PATH: Path = LOGS_DIR / DEFAULT_JSON_LOG_FILENAME
+
+DEFAULT_RENDER_CATALOG_CHOICE_FILENAME: str = "default_catalog.txt"
+
+__all__ = [
+    "AX_DEVIL_HOME",
+    "CONFIGS_DIR",
+    "CACHE_DIR",
+    "LOGS_DIR",
+    "RENDER_CATALOGS_DIR",
+    "DEFAULT_CONFIG_NAME",
+    "DEFAULT_CONFIG_FILENAME",
+    "DEFAULT_CONFIG_PATH",
+    "DEFAULT_PLAIN_LOG_FILENAME",
+    "DEFAULT_JSON_LOG_FILENAME",
+    "DEFAULT_PLAIN_LOG_PATH",
+    "DEFAULT_JSON_LOG_PATH",
+    "DEFAULT_RENDER_CATALOG_CHOICE_FILENAME",
+]

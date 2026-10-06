@@ -1,0 +1,64 @@
+# Installation
+
+ax-devil supports **Linux** and requires **Python 3.10+** (CI checks 3.10 and 3.12).
+
+## Ubuntu 24.04 prerequisites
+
+Install the native dependencies for building and launching the desktop app:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git pipx python3-venv python3-dev ffmpeg gcc pkg-config \
+  gobject-introspection libgirepository-2.0-dev libgirepository1.0-dev \
+  libglib2.0-dev libcairo2-dev libffi-dev libegl1-mesa-dev libgl1-mesa-dev \
+  libgles2-mesa-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 \
+  gstreamer1.0-dev gstreamer1.0-libav \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-ugly gstreamer1.0-rtsp gstreamer1.0-tools
+pipx install uv
+pipx ensurepath
+```
+
+Open a new terminal if `uv` is not yet on your PATH. Other distributions need the equivalent Qt, GStreamer,
+and build packages.
+
+## Run from source
+
+```bash
+git clone https://github.com/RasmusRynell/ax-devil.git
+cd ax-devil
+uv sync --locked
+uv run ax-devil
+```
+
+This opens an empty workspace. Run the [README examples](../README.md#open-your-data) from the repository directory.
+
+## Install from PyPI
+
+After the native prerequisites, install ax-devil as a standalone tool:
+
+```bash
+uv tool install ax-devil
+ax-devil
+```
+
+`python -m pip install ax-devil` inside a virtual environment also works. Either way, replace `uv run ax-devil`
+in the examples with `ax-devil`. Upgrade with `uv tool upgrade ax-devil`; installed plugins follow on the next launch.
+See [plugin upgrades and recovery](plugins.md#upgrades-and-recovery).
+
+## Graphics startup problems
+
+If graphics initialization fails, launch with software rendering:
+
+```bash
+QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software uv run ax-devil
+```
+
+Then set **Settings → General → Appearance → Graphics acceleration** to **Off** to keep software rendering
+on later launches. See [graphics acceleration](settings.md#graphics-acceleration).
+
+## Developing
+
+`uv sync --locked` includes the development tools. Install optional Git hooks with `uv run pre-commit install`
+and fix formatting and lint issues with `make format`. See the [testing runbook](runbooks/testing.md) for checks,
+isolated GUI verification, and installation tests.

@@ -1,0 +1,57 @@
+# Module Map
+
+Use this guide when deciding where current code belongs under `src/ax_devil/`.
+
+## Placement Rules
+
+- Put product code under `src/ax_devil/modules/` unless it is a top-level entry point, a built-in plugin bundle, or a packaged resource.
+- Start from the owning concept, not the current caller.
+- Keep widgets thin. Controllers, domain objects, and module-owned services hold behavior.
+- Put shared labels, descriptions, and ownership decisions on the domain object that owns the concept.
+- Mirror ownership in tests under `tests/modules/`.
+
+## Module Owners
+
+| Code Area | Owner |
+|-----------|-------|
+| App bootstrap, config wiring, logging setup, plugin loading | `src/ax_devil/app.py` |
+| CLI commands and maintenance entry points | `src/ax_devil/cli.py` |
+| Main window menus, app-wide dialogs, diagnostics window launch | `src/ax_devil/modules/application_shell/` |
+| Workspace content, startup requests, intake, state, browser rows, add-content dialogs, split-view hosting, viewer factory, session/controller | `src/ax_devil/modules/workspace/` |
+| Live/offline viewer workflows, media tools, `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
+| `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation, playback speed policy | `src/ax_devil/modules/video_player/` |
+| Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
+| Render catalog viewer: example sheets, the live viewer window, the `ax-devil catalog` commands and the generated language reference | `src/ax_devil/modules/catalog_viewer/` |
+| Frame sources, overlay sources, file providers, transport/runtime source plumbing | `src/ax_devil/modules/data_sources/` |
+| Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
+| Shared filter configs, state, predicates, and filter factories | `src/ax_devil/modules/filtering/` |
+| Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |
+| Locked plugin installation projects and install/update/remove commands | `src/ax_devil/modules/plugin_installation/` |
+| Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
+| Config, settings state, logging, paths, settings dialogs | `src/ax_devil/modules/settings/` |
+| Shortcut definitions, routing, persistence, and shortcut settings UI | `src/ax_devil/modules/shortcuts/` |
+| Shared window/dialog chrome, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
+| Diagnostics windows, metrics, exception reporting | `src/ax_devil/modules/diagnostics/` |
+| Cache services | `src/ax_devil/modules/cache/` |
+
+## Live Sources And Add-Content Placement
+
+`data_sources/live/` groups RTSP, MQTT, and DataHub transport implementations and discovery. Shared source contracts
+remain in `data_sources/base.py`; file sources and providers remain outside `live/`.
+
+`workspace/add_content/` groups the three add-content dialogs and their analytics discovery and playlist-selection
+helpers. Shared content descriptions, intake validation, and startup requests remain at the Workspace root because
+they also serve CLI and startup workflows. Tests mirror both subfolders.
+
+- `data_sources/live/datahub_client.py`: DataHub authentication, protocol parsing, requests, and topic discovery.
+- `data_sources/live/mqtt_discovery.py`: device source queries shared by MQTT validation and discovery.
+- `data_sources/live/websocket_overlay_source.py`: Qt worker execution and conversion of DataHub samples to overlays.
+- `workspace/add_content/analytics_discovery.py`: discovery state, background jobs, and adapters for the live-stream form.
+- `workspace/add_content/analytics_choice.py`: discovery choice presentation; `add_live_stream_dialog.py` composes the form.
+- `video_viewer/stream_media_controller.py`: runtime source construction and playback coordination.
+
+## Outside `modules/`
+
+- `src/ax_devil/core/` contains small foundational types that do not belong to a concept-owned module.
+- `src/ax_devil/plugins/` contains built-in decoder and playlist-resolver plugin bundles.
+- `src/ax_devil/resources/` contains packaged assets.

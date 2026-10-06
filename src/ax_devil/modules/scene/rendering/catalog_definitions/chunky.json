@@ -1,0 +1,1847 @@
+{
+  "metadata": {
+    "id": "built-in.chunky",
+    "name": "Chunky",
+    "schema_version": 3,
+    "description": "Standard drawn bold, for screens seen from a distance or small previews: thick boxes and large tabs."
+  },
+  "templates": {
+    "object_box": {
+      "label": "Object box",
+      "feature": "outlines",
+      "description": "The object's box: a solid outline in its class color, dashed when the object is partly hidden.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Color",
+          "required": true
+        },
+        "occluded": {
+          "type": "bool",
+          "label": "Partly hidden",
+          "description": "Draws the outline dashed.",
+          "default": false
+        },
+        "polygon_points": {
+          "type": "image_point_list",
+          "label": "Outline polygon",
+          "default": null,
+          "nullable": true
+        },
+        "line_width": {
+          "type": "length",
+          "label": "Line width",
+          "minimum": 0,
+          "default": {
+            "value": 3,
+            "unit": "px"
+          }
+        },
+        "fill_opacity": {
+          "type": "integer",
+          "label": "Tint",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 0
+        }
+      },
+      "steps": [
+        {
+          "label": "Box",
+          "primitive": "box",
+          "fields": {
+            "geometry": {
+              "ref": [
+                "parameters",
+                "geometry"
+              ]
+            }
+          },
+          "style": {
+            "stroke": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "width": {
+                "ref": [
+                  "parameters",
+                  "line_width"
+                ]
+              },
+              "pattern": {
+                "call": "if",
+                "args": {
+                  "condition": {
+                    "ref": [
+                      "parameters",
+                      "occluded"
+                    ]
+                  },
+                  "then": "dash",
+                  "else": "solid"
+                }
+              }
+            },
+            "fill": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "alpha": {
+                "ref": [
+                  "parameters",
+                  "fill_opacity"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "label": "Outline polygon",
+          "primitive": "polygon",
+          "enabled": {
+            "call": "is_not_empty",
+            "args": {
+              "value": {
+                "ref": [
+                  "parameters",
+                  "polygon_points"
+                ]
+              }
+            }
+          },
+          "fields": {
+            "points": {
+              "ref": [
+                "parameters",
+                "polygon_points"
+              ]
+            }
+          },
+          "style": {
+            "stroke": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "width": {
+                "value": 1,
+                "unit": "px"
+              },
+              "pattern": "solid"
+            },
+            "fill": null
+          }
+        }
+      ]
+    },
+    "id_tab": {
+      "label": "Id tab",
+      "feature": "ids",
+      "description": "The object's id on a tab in the class color, flush with the box's top-left corner.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Tab color",
+          "required": true
+        },
+        "ink": {
+          "type": "rgb",
+          "label": "Text color",
+          "description": "Black or white, whichever contrasts.",
+          "required": true
+        },
+        "object_id": {
+          "type": "string",
+          "label": "Object id",
+          "required": true
+        },
+        "inside": {
+          "type": "bool",
+          "label": "Inside the box",
+          "description": "Puts the id inside the box's top-left corner instead of above it.",
+          "default": false
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 14,
+            "unit": "px"
+          }
+        },
+        "shift": {
+          "type": "length",
+          "label": "Shift",
+          "description": "Moves the tab left to line up with the outside of the box line.",
+          "default": {
+            "value": -1.5,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "room": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "parameters",
+                "inside"
+              ]
+            },
+            "then": false,
+            "else": {
+              "call": "gt",
+              "args": {
+                "left": {
+                  "ref": [
+                    "parameters",
+                    "geometry",
+                    "y"
+                  ]
+                },
+                "right": {
+                  "call": "div",
+                  "args": {
+                    "numerator": {
+                      "call": "add",
+                      "args": {
+                        "values": [
+                          {
+                            "value": 20,
+                            "unit": "px"
+                          },
+                          {
+                            "value": -1.5,
+                            "unit": "px"
+                          }
+                        ]
+                      }
+                    },
+                    "denominator": {
+                      "value": 1,
+                      "unit": "image_height"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "position": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-left"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "value": -1.5,
+                        "unit": "px"
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
+            },
+            "else": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-left"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "value": -1.5,
+                  "unit": "px"
+                }
+              }
+            }
+          }
+        },
+        "anchor": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": "bottom-left",
+            "else": "top-left"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "ref": [
+                "values",
+                "position"
+              ]
+            },
+            "anchor": {
+              "ref": [
+                "values",
+                "anchor"
+              ]
+            },
+            "runs": [
+              {
+                "text": {
+                  "ref": [
+                    "parameters",
+                    "object_id"
+                  ]
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "ink"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "alpha": 255
+              },
+              "padding_x": {
+                "value": 6,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 2,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "score_tab": {
+      "label": "Score tab",
+      "feature": "confidence",
+      "description": "The detection score, such as 0.87, on a tab flush with the box's bottom-left corner.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Tab color",
+          "required": true
+        },
+        "ink": {
+          "type": "rgb",
+          "label": "Text color",
+          "description": "Black or white, whichever contrasts.",
+          "required": true
+        },
+        "score": {
+          "type": "number",
+          "label": "Score",
+          "required": true
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 14,
+            "unit": "px"
+          }
+        },
+        "shift": {
+          "type": "length",
+          "label": "Shift",
+          "description": "Moves the tab left to line up with the outside of the box line.",
+          "default": {
+            "value": -1.5,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "room": {
+          "call": "gt",
+          "args": {
+            "left": {
+              "call": "sub",
+              "args": {
+                "left": 1,
+                "right": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "y"
+                        ]
+                      },
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "h"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "right": {
+              "call": "div",
+              "args": {
+                "numerator": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "value": 20,
+                        "unit": "px"
+                      },
+                      {
+                        "value": -1.5,
+                        "unit": "px"
+                      }
+                    ]
+                  }
+                },
+                "denominator": {
+                  "value": 1,
+                  "unit": "image_height"
+                }
+              }
+            }
+          }
+        },
+        "position": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-left"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "value": -1.5,
+                  "unit": "px"
+                }
+              }
+            },
+            "else": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-left"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "value": -1.5,
+                        "unit": "px"
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "anchor": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": "top-left",
+            "else": "bottom-left"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "ref": [
+                "values",
+                "position"
+              ]
+            },
+            "anchor": {
+              "ref": [
+                "values",
+                "anchor"
+              ]
+            },
+            "runs": [
+              {
+                "text": {
+                  "call": "number_text",
+                  "args": {
+                    "value": {
+                      "ref": [
+                        "parameters",
+                        "score"
+                      ]
+                    },
+                    "precision": 2,
+                    "hide_zero": false
+                  }
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "ink"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "alpha": 255
+              },
+              "padding_x": {
+                "value": 6,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 2,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "speed_arrow": {
+      "label": "Speed arrow",
+      "feature": "speed",
+      "description": "An arrow in the class color from the box center.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Color",
+          "required": true
+        },
+        "velocity": {
+          "type": "image_vector",
+          "label": "Velocity",
+          "default": null,
+          "nullable": true
+        },
+        "gain": {
+          "type": "number",
+          "label": "Length gain",
+          "minimum": 0,
+          "default": 0.5
+        },
+        "max_length": {
+          "type": "length",
+          "label": "Maximum length",
+          "minimum": 0,
+          "default": {
+            "value": 100,
+            "unit": "px"
+          }
+        },
+        "line_width": {
+          "type": "length",
+          "label": "Line width",
+          "minimum": 0,
+          "default": {
+            "value": 1.5,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "arrow": {
+          "call": "vector_arrow",
+          "args": {
+            "origin": {
+              "call": "box_anchor",
+              "args": {
+                "geometry": {
+                  "ref": [
+                    "parameters",
+                    "geometry"
+                  ]
+                },
+                "anchor": "center"
+              }
+            },
+            "vector": {
+              "ref": [
+                "parameters",
+                "velocity"
+              ]
+            },
+            "gain": {
+              "ref": [
+                "parameters",
+                "gain"
+              ]
+            },
+            "max_length": {
+              "ref": [
+                "parameters",
+                "max_length"
+              ]
+            },
+            "head_length": {
+              "value": 6,
+              "unit": "px"
+            },
+            "head_half_width": {
+              "value": 3.5,
+              "unit": "px"
+            },
+            "min_magnitude": 0.001
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Shaft",
+          "primitive": "line",
+          "enabled": {
+            "call": "is_present",
+            "args": {
+              "value": {
+                "ref": [
+                  "values",
+                  "arrow"
+                ]
+              }
+            }
+          },
+          "fields": {
+            "start": {
+              "ref": [
+                "values",
+                "arrow",
+                "start"
+              ]
+            },
+            "end": {
+              "ref": [
+                "values",
+                "arrow",
+                "end"
+              ]
+            }
+          },
+          "style": {
+            "stroke": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "width": {
+                "ref": [
+                  "parameters",
+                  "line_width"
+                ]
+              },
+              "pattern": "solid"
+            },
+            "fill": null
+          }
+        },
+        {
+          "label": "Head",
+          "primitive": "polygon",
+          "enabled": {
+            "call": "is_present",
+            "args": {
+              "value": {
+                "ref": [
+                  "values",
+                  "arrow"
+                ]
+              }
+            }
+          },
+          "fields": {
+            "points": {
+              "ref": [
+                "values",
+                "arrow",
+                "head_points"
+              ]
+            }
+          },
+          "style": {
+            "stroke": null,
+            "fill": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "alpha": 255
+            }
+          }
+        }
+      ]
+    },
+    "part_link": {
+      "label": "Part link",
+      "feature": "relations",
+      "description": "Connects an object to its part, such as a person to their head: a light line between their centers with a dark-ringed dot on each end.",
+      "parameters": {
+        "whole": {
+          "type": "image_box",
+          "label": "Whole",
+          "required": true
+        },
+        "part": {
+          "type": "image_box",
+          "label": "Part",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Color",
+          "default": [
+            236,
+            239,
+            244
+          ]
+        },
+        "line_width": {
+          "type": "length",
+          "label": "Line width",
+          "minimum": 0,
+          "default": {
+            "value": 3,
+            "unit": "px"
+          }
+        },
+        "dot_radius": {
+          "type": "length",
+          "label": "Dot radius",
+          "minimum": 0,
+          "default": {
+            "value": 4.5,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "start": {
+          "call": "box_anchor",
+          "args": {
+            "geometry": {
+              "ref": [
+                "parameters",
+                "whole"
+              ]
+            },
+            "anchor": "center"
+          }
+        },
+        "end": {
+          "call": "box_anchor",
+          "args": {
+            "geometry": {
+              "ref": [
+                "parameters",
+                "part"
+              ]
+            },
+            "anchor": "center"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Line",
+          "primitive": "line",
+          "fields": {
+            "start": {
+              "ref": [
+                "values",
+                "start"
+              ]
+            },
+            "end": {
+              "ref": [
+                "values",
+                "end"
+              ]
+            }
+          },
+          "style": {
+            "stroke": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "width": {
+                "ref": [
+                  "parameters",
+                  "line_width"
+                ]
+              },
+              "pattern": "solid"
+            },
+            "fill": null
+          }
+        },
+        {
+          "label": "Whole dot",
+          "primitive": "circle",
+          "fields": {
+            "center": {
+              "ref": [
+                "values",
+                "start"
+              ]
+            },
+            "radius": {
+              "ref": [
+                "parameters",
+                "dot_radius"
+              ]
+            }
+          },
+          "style": {
+            "stroke": {
+              "color": [
+                14,
+                16,
+                20
+              ],
+              "width": {
+                "value": 1,
+                "unit": "px"
+              },
+              "pattern": "solid"
+            },
+            "fill": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "alpha": 255
+            }
+          }
+        },
+        {
+          "label": "Part dot",
+          "primitive": "circle",
+          "fields": {
+            "center": {
+              "ref": [
+                "values",
+                "end"
+              ]
+            },
+            "radius": {
+              "ref": [
+                "parameters",
+                "dot_radius"
+              ]
+            }
+          },
+          "style": {
+            "stroke": {
+              "color": [
+                14,
+                16,
+                20
+              ],
+              "width": {
+                "value": 1,
+                "unit": "px"
+              },
+              "pattern": "solid"
+            },
+            "fill": {
+              "color": {
+                "ref": [
+                  "parameters",
+                  "color"
+                ]
+              },
+              "alpha": 255
+            }
+          }
+        }
+      ]
+    }
+  },
+  "recipes": {
+    "fallbacks": [
+      {
+        "id": "motion",
+        "label": "Unclassified",
+        "description": "Objects without a classification.",
+        "selector": {
+          "kind": "unclassified"
+        },
+        "steps": [
+          {
+            "label": "Box",
+            "template": "object_box",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                130,
+                139,
+                150
+              ],
+              "polygon_points": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "polygon_points"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Speed arrow",
+            "template": "speed_arrow",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                130,
+                139,
+                150
+              ],
+              "velocity": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Id",
+            "template": "id_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                130,
+                139,
+                150
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "object_id": {
+                "call": "trim_text",
+                "args": {
+                  "text": {
+                    "ref": [
+                      "scene",
+                      "entity",
+                      "id"
+                    ]
+                  },
+                  "max_length": 10,
+                  "delimiter": null,
+                  "suffix": "…",
+                  "elide": "middle"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "generic_classified",
+        "label": "Other classes",
+        "description": "Classified objects whose class has no object type of its own.",
+        "selector": {
+          "kind": "classified"
+        },
+        "bindings": {
+          "occluded": {
+            "source": "primary_classification_attribute",
+            "attribute": "occluded",
+            "value_shape": "bool",
+            "picker": "value"
+          }
+        },
+        "steps": [
+          {
+            "label": "Box",
+            "template": "object_box",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "polygon_points": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "polygon_points"
+                ]
+              },
+              "occluded": {
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "bindings",
+                        "occluded"
+                      ]
+                    },
+                    false
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "label": "Speed arrow",
+            "template": "speed_arrow",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "velocity": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Id",
+            "template": "id_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "object_id": {
+                "call": "trim_text",
+                "args": {
+                  "text": {
+                    "ref": [
+                      "scene",
+                      "entity",
+                      "id"
+                    ]
+                  },
+                  "max_length": 10,
+                  "delimiter": null,
+                  "suffix": "…",
+                  "elide": "middle"
+                }
+              }
+            }
+          },
+          {
+            "label": "Score",
+            "template": "score_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "score": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "score"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "classifications": [
+      {
+        "id": "vehicle",
+        "label": "Vehicle",
+        "description": "Cars, buses, trucks, bikes and other vehicles.",
+        "selector": {
+          "kind": "classification",
+          "types": [
+            "vehicle",
+            "vehicle_other",
+            "car",
+            "bus",
+            "truck",
+            "bike",
+            "bicycle"
+          ]
+        },
+        "bindings": {
+          "vehicle_color": {
+            "source": "primary_classification_attribute",
+            "attribute": "vehicle_colors",
+            "value_shape": "color_classification_list",
+            "picker": "highest_score"
+          },
+          "occluded": {
+            "source": "primary_classification_attribute",
+            "attribute": "occluded",
+            "value_shape": "bool",
+            "picker": "value"
+          }
+        },
+        "steps": [
+          {
+            "label": "Box",
+            "template": "object_box",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "polygon_points": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "polygon_points"
+                ]
+              },
+              "occluded": {
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "bindings",
+                        "occluded"
+                      ]
+                    },
+                    false
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "label": "Speed arrow",
+            "template": "speed_arrow",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "velocity": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Id",
+            "template": "id_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "object_id": {
+                "call": "trim_text",
+                "args": {
+                  "text": {
+                    "ref": [
+                      "scene",
+                      "entity",
+                      "id"
+                    ]
+                  },
+                  "max_length": 10,
+                  "delimiter": null,
+                  "suffix": "…",
+                  "elide": "middle"
+                }
+              }
+            }
+          },
+          {
+            "label": "Score",
+            "template": "score_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "score": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "score"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "human",
+        "label": "Person",
+        "description": "People.",
+        "selector": {
+          "kind": "classification",
+          "types": [
+            "human"
+          ]
+        },
+        "bindings": {
+          "upper_clothing_color": {
+            "source": "primary_classification_attribute",
+            "attribute": "upper_clothing_colors",
+            "value_shape": "color_classification_list",
+            "picker": "highest_score"
+          },
+          "lower_clothing_color": {
+            "source": "primary_classification_attribute",
+            "attribute": "lower_clothing_colors",
+            "value_shape": "color_classification_list",
+            "picker": "highest_score"
+          },
+          "carries_bag": {
+            "source": "primary_classification_attribute",
+            "attribute": "carries_bag",
+            "value_shape": "bool",
+            "picker": "value"
+          },
+          "occluded": {
+            "source": "primary_classification_attribute",
+            "attribute": "occluded",
+            "value_shape": "bool",
+            "picker": "value"
+          }
+        },
+        "steps": [
+          {
+            "label": "Box",
+            "template": "object_box",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "polygon_points": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "polygon_points"
+                ]
+              },
+              "occluded": {
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "bindings",
+                        "occluded"
+                      ]
+                    },
+                    false
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "label": "Speed arrow",
+            "template": "speed_arrow",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "velocity": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Id",
+            "template": "id_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "ink": [
+                17,
+                17,
+                17
+              ],
+              "object_id": {
+                "call": "trim_text",
+                "args": {
+                  "text": {
+                    "ref": [
+                      "scene",
+                      "entity",
+                      "id"
+                    ]
+                  },
+                  "max_length": 10,
+                  "delimiter": null,
+                  "suffix": "…",
+                  "elide": "middle"
+                }
+              }
+            }
+          },
+          {
+            "label": "Score",
+            "template": "score_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "ink": [
+                17,
+                17,
+                17
+              ],
+              "score": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "score"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "head",
+        "label": "Head",
+        "description": "Heads.",
+        "selector": {
+          "kind": "classification",
+          "types": [
+            "head"
+          ]
+        },
+        "bindings": {
+          "face_visible": {
+            "source": "primary_classification_attribute",
+            "attribute": "face_visible",
+            "value_shape": "number",
+            "picker": "value"
+          },
+          "occluded": {
+            "source": "primary_classification_attribute",
+            "attribute": "occluded",
+            "value_shape": "bool",
+            "picker": "value"
+          }
+        },
+        "steps": [
+          {
+            "label": "Box",
+            "template": "object_box",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "polygon_points": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "polygon_points"
+                ]
+              },
+              "occluded": {
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "bindings",
+                        "occluded"
+                      ]
+                    },
+                    false
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "label": "Speed arrow",
+            "template": "speed_arrow",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "velocity": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Id",
+            "template": "id_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "object_id": {
+                "call": "trim_text",
+                "args": {
+                  "text": {
+                    "ref": [
+                      "scene",
+                      "entity",
+                      "id"
+                    ]
+                  },
+                  "max_length": 10,
+                  "delimiter": null,
+                  "suffix": "…",
+                  "elide": "middle"
+                }
+              },
+              "inside": true
+            }
+          },
+          {
+            "label": "Score",
+            "template": "score_tab",
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "score": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "score"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "id": "has_part",
+        "label": "Has part",
+        "description": "A line from an object to each of its parts.",
+        "selector": {
+          "kind": "relation",
+          "types": [
+            "has_part"
+          ]
+        },
+        "steps": [
+          {
+            "label": "Link",
+            "feature": "relations",
+            "template": "part_link",
+            "inputs": {
+              "whole": {
+                "ref": [
+                  "scene",
+                  "source",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "part": {
+                "ref": [
+                  "scene",
+                  "target",
+                  "observation",
+                  "geometry"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

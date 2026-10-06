@@ -1,0 +1,139 @@
+# AGENTS.md
+
+## Pre-Release Priority
+- Optimize for the current code working correctly.
+- Remove unused behavior and unsupported config shapes instead of carrying extra branches.
+- Keep names, docs, comments, and tests aligned when shared terminology changes.
+
+## Agent Skills
+
+Task-specific instructions for any agent live in `.agents/skills/<name>/SKILL.md`; read the matching one before doing
+that task. `.claude/skills` links to the same folder for Claude Code.
+
+| Skill | Use it when |
+|-------|-------------|
+| `.agents/skills/review/SKILL.md` | Reviewing changes for real problems, module depth, architectural ownership, tests worth merging, and documentation placement |
+| `.agents/skills/render-catalog/SKILL.md` | Changing how overlays on video look: boxes, labels, colors, sizes, arrows, badges |
+
+## Agent Requirements
+
+- Every agent and subagent working in this repository must read this file before making project changes.
+- Every agent and subagent that reads, edits, reviews, or generates Python code must follow the Python guidance in this file.
+- Any Python code that does not follow the Python guidance in this file will be rejected without exception.
+- All code generated in this repository will be evaluated by both a human reviewer and another AI agent.
+
+## Python Guidance
+
+### Baseline
+
+- Target Python 3.10+.
+- Use strict mypy.
+- Use Ruff for linting and formatting.
+
+### Python Commands
+
+```bash
+uv sync       # Create/update .venv with runtime + dev deps
+make check    # ruff format --check + ruff check + mypy
+make format   # ruff check --fix + ruff format
+QT_QPA_PLATFORM=offscreen make test  # Regular offline pytest suite
+QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smoke test (may download packages)
+```
+
+### Code Rules
+
+- Ruff enforces `E`, `F`, and `I` rules, a 120-character line limit, and double quotes.
+- mypy strict mode applies: add type hints throughout and avoid `disallow_untyped_defs` violations.
+- Use `from ax_devil.modules.settings.logging_config import get_logger` and `logger = get_logger(__name__)`. Do not use `print()`.
+- Use f-strings only. Do not use string concatenation or `%` formatting.
+- Add docstrings to public classes, methods, and functions.
+- Add dependencies to `pyproject.toml` only when justified.
+- Prefer minimal diffs. Do not refactor beyond what the task requires.
+
+### Design Guidance
+
+- Prefer simplicity over abstraction and clarity over cleverness.
+- Before adding a special case, step back and ask whether a simpler, general design would handle it, and future cases like it, without branching.
+- Prefer data structures that make the problem trivial over code that manages complexity.
+- The best abstraction is often no abstraction — just the right data in the right collection.
+- If multiple places need the same display or behavior decision, move that decision into the model instead of repeating conditional logic.
+- For closed sets used across the app, prefer typed domain objects over raw strings when that removes duplicated branching.
+- Treat `isinstance` as a code smell. When you find yourself routing by type, ask whether the object can answer the question itself, or whether a uniform collection such as a set or dict keyed by the object removes the branching entirely.
+
+### Done
+
+- For changes to code, tests, dependencies, or runtime/build configuration, run `make check` and
+  `QT_QPA_PLATFORM=offscreen make test`.
+- For prose-only documentation or agent-instruction changes, validate affected links, examples, and consistency,
+  and run applicable documentation or skill validators instead of the application checks.
+- Update tests when behavior changes.
+
+## Project Guidance
+
+### Purpose
+
+PySide6 desktop toolkit for inspecting Axis camera streams, offline video, and analytics overlays.
+
+### Repo Map
+
+| Directory | Responsibility |
+|-----------|---------------|
+| `src/ax_devil/app.py` | Qt application bootstrap, logging, config, settings, plugin loading |
+| `src/ax_devil/cli.py` | Click CLI entry points and maintenance commands |
+| `src/ax_devil/core/` | Remaining foundational data types |
+| `src/ax_devil/modules/` | Concept-owned modules; see `docs/architecture/module-map.md` for current ownership |
+| `src/ax_devil/plugins/` | Built-in decoder and playlist resolver plugin bundles |
+| `tests/` | Pytest suites (unit + integration) |
+| `tools/` | Developer diagnostics and benchmarks, not shipped; see `tools/README.md` |
+
+### Fast Path
+
+- **Workspace UI** — `src/ax_devil/modules/workspace/`
+- **Add-content dialogs and discovery UI** — `src/ax_devil/modules/workspace/add_content/`
+- **Shared window/dialog chrome** — `src/ax_devil/modules/chrome/`
+- **Video player primitives** — `src/ax_devil/modules/video_player/`
+- **Video Viewer workflows** — `src/ax_devil/modules/video_viewer/`
+- **Data pipeline or source changes** — `src/ax_devil/modules/data_sources/`
+- **Live transports and device discovery** — `src/ax_devil/modules/data_sources/live/`
+- **Sync engine changes** — `src/ax_devil/modules/synchronization/`
+- **Adding/modifying a decoder** — `src/ax_devil/plugins/decoders/`; read `docs/architecture/overview.md` §Plugin System
+- **Content model or workspace** — `src/ax_devil/modules/workspace/`
+- **Scene model and rendering** — `src/ax_devil/modules/scene/`
+- **Changing how overlays look** — edit a render catalog JSON file by following `.agents/skills/render-catalog/SKILL.md`
+- **Render catalog viewer and `ax-devil catalog` commands** — `src/ax_devil/modules/catalog_viewer/`; read `docs/architecture/catalog-viewer.md`
+- **Config, settings, logging** — `src/ax_devil/modules/settings/`
+- **Cache** — `src/ax_devil/modules/cache/`
+
+### Project Commands (interactive app launches are for the user)
+
+```bash
+make run                       # Launch with INFO logging
+make run-dev                   # Launch with DEBUG logging
+uv run ax-devil clear-cache --type all --force
+uv run ax-devil list-handlers  # Show available overlay decoder handler types
+uv run ax-devil catalog --help # List, check, render, create and choose render catalogs
+uv run ax-devil                                                    # Open the app workspace
+uv run ax-devil local --video FILE [--overlay FILE --handler-type TYPE]  # Open with offline file
+uv run ax-devil live [--host HOST]                                 # Open live stream
+uv run ax-devil playlist --help                                    # Show playlist resolver entry points
+```
+
+### Project Rules
+
+- Widgets stay thin — business logic lives in controllers and concept-owned modules.
+- New top-level windows must use `modules/chrome/chrome_window.py`; new dialogs must use `modules/chrome/base_dialog.py` so they inherit the shared custom title bar and frameless behavior.
+- Put labels and descriptions on the domain object that owns them. Do not remap them in the UI.
+- All widgets must call `cleanup()` for teardown. Respect existing lifecycle hooks in threaded code.
+- Keep device credentials out of the repo — use `AX_DEVIL_TARGET_*` env vars or config overrides.
+- Tests must never read or write the user's real files. The suite runs in its own home folder and fails if `~/.ax_devil` changes; a test that needs files uses `tmp_path` (see `docs/runbooks/testing.md`).
+- Agent verification runs offscreen or on a private display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
+- When changing names, structure, or shared terminology, carry the change through the affected code, tests, comments, and docs, or explicitly note what is intentionally left unchanged. Unless the user says otherwise.
+- Update docs when architecture or invariants change.
+
+### Read Next
+
+- Module placement guide: `docs/architecture/module-map.md`
+- Architecture and data flows: `docs/architecture/overview.md`
+- Rendering, render catalogs, performance and open rendering work: `docs/architecture/draw-system.md`
+- Critical constraints and invariants: `docs/domain/invariants.md`
+- Testing workflow and patterns: `docs/runbooks/testing.md`
