@@ -30,6 +30,8 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.filtering import FilterConfig
 from ax_devil.modules.scene.model import Scene
@@ -46,8 +48,8 @@ from .overlay_persistence_controls import OverlayPersistenceControls
 from .overlay_visibility_widget import OverlayVisibilityWidget
 from .scene_render_catalog_selector import SceneRenderCatalogSelector
 
-_TAB_PAGE_MARGINS = (0, 6, 6, 0)
-_POPUP_MARGINS = (8, 8, 8, 8)
+_TAB_PAGE_MARGINS = (0, Space.M, Space.M, 0)
+_POPUP_MARGINS = (Space.M, Space.M, Space.M, Space.M)
 
 
 class MediaToolsSection(Enum):
@@ -173,6 +175,8 @@ class MediaToolsPanel(QWidget):
         self._tabs = QTabWidget(self)
         self._tabs.setObjectName("mediaToolsTabs")
         self._tabs.setDocumentMode(True)
+        # Show every tab: the panel widens to fit them instead of hiding some behind scroll arrows.
+        self._tabs.setUsesScrollButtons(False)
         self._object_pane: ObjectHistoryPane | None = None
         self._splitter = QSplitter(Qt.Orientation.Vertical, self)
         self._splitter.setChildrenCollapsible(False)
@@ -186,7 +190,7 @@ class MediaToolsPanel(QWidget):
         corner = QWidget(self)
         corner_layout = QHBoxLayout(corner)
         corner_layout.setContentsMargins(0, 0, 0, 0)
-        corner_layout.setSpacing(2)
+        corner_layout.setSpacing(Space.XS)
         catalog_button = self._popup_button("Catalog", MediaToolsSection.RENDER_CATALOG, self._catalog_selector)
         catalog_button.setObjectName("renderCatalogButton")
         catalog_menu = catalog_button.menu()
@@ -270,7 +274,7 @@ class MediaToolsPanel(QWidget):
         options = QWidget()
         options_layout = QVBoxLayout(options)
         options_layout.setContentsMargins(0, 0, 0, 0)
-        options_layout.setSpacing(16)
+        options_layout.setSpacing(Space.XL)
         for section, content in sections:
             options_layout.addWidget(self._section_widget(section, content))
         options_page = self._scrollable_page(options)
@@ -390,7 +394,7 @@ class MediaToolsPanel(QWidget):
 
     def _section_widget(self, section: MediaToolsSection, content: QWidget) -> QWidget:
         title = QLabel(section.title)
-        title.setStyleSheet("font-weight: 600;")
+        TextRole.STRONG.apply(title)
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.addWidget(title)
@@ -401,7 +405,7 @@ class MediaToolsPanel(QWidget):
         widget.setObjectName(f"mediaToolsSection_{section.value}")
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(Space.S)
         layout.addLayout(header)
         layout.addWidget(content)
         return widget
@@ -426,24 +430,30 @@ class MediaToolsPanel(QWidget):
         button.setToolTip(section.help_html)
         button.setAccessibleName(f"About {section.title}")
         button.setText("i")
-        button.setFixedSize(20, 20)
         button.setAutoRaise(True)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setStyleSheet(
-            """
-            QToolButton {
-                border: none;
-                border-radius: 10px;
-                color: palette(placeholder-text);
-                font-weight: 600;
-                padding: 0;
-            }
-            QToolButton:hover, QToolButton:focus {
-                color: palette(text);
-                background: palette(midlight);
-            }
-            """
-        )
+
+        def apply_size() -> None:
+            # A circle one row high around the "i".
+            size = Height.ROW.px
+            button.setFont(TextRole.SMALL_STRONG.font())
+            button.setFixedSize(size, size)
+            button.setStyleSheet(
+                f"""
+                QToolButton {{
+                    border: none;
+                    border-radius: {size // 2}px;
+                    color: palette(placeholder-text);
+                    padding: 0;
+                }}
+                QToolButton:hover, QToolButton:focus {{
+                    color: palette(text);
+                    background: palette(midlight);
+                }}
+                """
+            )
+
+        follow_appearance(button, apply_size)
         button.clicked.connect(lambda: self._show_section_help(button))
         return button
 

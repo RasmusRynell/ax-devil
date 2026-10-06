@@ -273,8 +273,10 @@ The main UI is a workspace shell: content browser on the left, drag-to-split vie
 `WorkspaceWidget` and the display stack.
 
 Application appearance is owned by `modules/chrome/theme.py`: shared light and dark color overrides feed QDarkTheme,
-and theme setup completes Qt's application palette so custom painters receive matching surfaces, borders and selection
-colors.
+theme setup completes Qt's application palette so custom painters receive matching surfaces, borders and selection
+colors, and the body text size becomes the application font. Both change live; sizes derive from
+`modules/chrome/tokens.py`, and widgets that style themselves rerun that code through
+`modules/chrome/appearance.py`.
 
 ## Data Flow Summary
 

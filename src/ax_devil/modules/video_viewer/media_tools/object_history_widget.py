@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.scene.model import Entity, EntityId, Scene
 
@@ -25,7 +26,6 @@ from .entity_list_widget import entity_detail_html, type_color
 from .frame_labels import frame_link
 
 _STRIP_HEIGHT = 16
-_TEXT_STYLE = "font-size: 10px;"
 
 
 class PresenceStrip(QWidget):
@@ -95,7 +95,7 @@ class ObjectCard(QFrame):
     def __init__(self, entity_id: str, history: SceneHistory, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("objectCard")
-        self.setStyleSheet("#objectCard { background: palette(alternate-base); border-radius: 4px; }")
+        self.setStyleSheet(f"#objectCard {{ background: palette(alternate-base); border-radius: {Radius.CONTROL}px; }}")
         self._entity_id = entity_id
         self._object_history = history.object(entity_id)
         self._scene: Scene | None = None
@@ -105,8 +105,8 @@ class ObjectCard(QFrame):
         types = self._object_history.types if self._object_history is not None else ()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 8, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(Space.S, Space.S, Space.M, Space.S)
+        layout.setSpacing(Space.S)
         self._button = QToolButton(self)
         self._button.setObjectName("objectButton")
         self._button.setCheckable(True)
@@ -172,7 +172,7 @@ class ObjectCard(QFrame):
         label = QLabel(html, self)
         label.setTextFormat(Qt.TextFormat.RichText)
         label.setWordWrap(True)
-        label.setStyleSheet(_TEXT_STYLE)
+        TextRole.SMALL.apply(label)
         return label
 
 
@@ -191,8 +191,8 @@ class ObjectHistoryPane(QWidget):
         self._current_frame: int | None = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 6, 6, 0)
-        layout.setSpacing(4)
+        layout.setContentsMargins(0, Space.M, Space.M, 0)  # Matches the media tools tab pages above
+        layout.setSpacing(Space.S)
         header = QHBoxLayout()
         self._title = QLabel("", self)
         self._title.setTextFormat(Qt.TextFormat.RichText)
@@ -210,7 +210,7 @@ class ObjectHistoryPane(QWidget):
         self._cards_widget = QWidget()
         self._cards_layout = QVBoxLayout(self._cards_widget)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._cards_layout.setSpacing(6)
+        self._cards_layout.setSpacing(Space.S)
         self._cards_layout.addStretch(1)
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)

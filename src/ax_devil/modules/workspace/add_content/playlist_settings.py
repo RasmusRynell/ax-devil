@@ -13,6 +13,7 @@ from typing import cast
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QComboBox, QLabel, QStackedWidget, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import (
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
     PlaylistResolverPlugin,
@@ -40,12 +41,12 @@ def _wrapped_label(text: str) -> QLabel:
 
 
 def _page(layout: QVBoxLayout) -> QWidget:
-    """Return a stacked page holding *layout*'s widgets at the top."""
+    """Return a stacked page holding the finished *layout*'s widgets, kept at the top by a trailing stretch."""
     page = QWidget()
-    page.setLayout(layout)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(12)
-    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    layout.setSpacing(Space.L)
+    layout.addStretch(1)
+    page.setLayout(layout)
     return page
 
 
@@ -67,8 +68,7 @@ class PlaylistSettingsUI(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(Space.L)
 
         layout.addWidget(QLabel("Playlist source"))
 
@@ -77,6 +77,7 @@ class PlaylistSettingsUI(QWidget):
 
         self._resolver_pages = QStackedWidget()
         layout.addWidget(self._resolver_pages)
+        layout.addStretch(1)
         self._resolver_combo.currentIndexChanged.connect(self._resolver_pages.setCurrentIndex)
 
         self._populate_resolvers()
@@ -85,7 +86,6 @@ class PlaylistSettingsUI(QWidget):
         overview = QVBoxLayout()
         overview.addWidget(_wrapped_label(_INTRODUCTION))
         self._resolver_combo.addItem("Select a source...", None)
-        self._resolver_pages.addWidget(_page(overview))
 
         for record in RuntimePluginRegistry.get_plugins(PLAYLIST_RESOLVER_PLUGIN_TYPE):
             if record.status != PluginStatus.LOADED:
@@ -111,6 +111,9 @@ class PlaylistSettingsUI(QWidget):
             page.addWidget(widget)
             self._resolver_combo.addItem(name, widget)
             self._resolver_pages.addWidget(_page(page))
+        # The overview lists every resolver, so it is built last and shown first, matching the combo's first item.
+        self._resolver_pages.insertWidget(0, _page(overview))
+        self._resolver_pages.setCurrentIndex(0)
 
     def _on_playlist_resolved(self, playlist_contents: list[PlaylistContent]) -> None:
         # A resolver the user switched away from may still finish; only the selected one supplies the playlist.

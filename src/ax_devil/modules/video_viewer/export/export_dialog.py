@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_viewer.export.encoder import CompressionPreset
 from ax_devil.modules.video_viewer.export.export_job import ExportJob, ExportLane
@@ -50,7 +51,7 @@ class ExportDialog(BaseDialog):
             lanes = QWidget()
             lanes_layout = QVBoxLayout(lanes)
             lanes_layout.setContentsMargins(0, 0, 0, 0)
-            lanes_layout.setSpacing(2)
+            lanes_layout.setSpacing(Space.XS)
             for lane in self._lanes:
                 check = QCheckBox(lane.name)
                 check.setChecked(True)
@@ -71,7 +72,7 @@ class ExportDialog(BaseDialog):
         self._progress_widget = QWidget()
         progress_layout = QVBoxLayout(self._progress_widget)
         progress_layout.setContentsMargins(0, 0, 0, 0)
-        progress_layout.setSpacing(8)
+        progress_layout.setSpacing(Space.M)
 
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)

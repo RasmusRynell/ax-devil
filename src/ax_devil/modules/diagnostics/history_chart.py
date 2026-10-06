@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, QRect, Qt, Signal
 from PySide6.QtGui import QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPalette, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
 
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.diagnostics.render_metrics import HISTORY_SECONDS, TIMING_BY_KEY, PaintObservation
 
 
@@ -44,8 +45,14 @@ class PaintHistoryChart(QWidget):
             (index, value) for index, item in enumerate(self._history) if (value := item.timings[self._key]) is not None
         ]
 
+    def _plot_area(self) -> QRect:
+        """Return the plot inside gutters sized for the axis labels at the current text size."""
+        metrics = self.fontMetrics()
+        left = Space.S + metrics.horizontalAdvance(f"{self._ceiling:.1f} ms") + Space.M
+        return self.rect().adjusted(left, metrics.height(), -Space.XL, -(metrics.height() + Space.M))
+
     def _position(self, index: int, value: float) -> QPointF:
-        area = self.rect().adjusted(64, 20, -16, -28)
+        area = self._plot_area()
         x = area.right() - (self._now - self._history[index].sample.completed_at) / HISTORY_SECONDS * area.width()
         return QPointF(x, area.bottom() - value / self._ceiling * area.height())
 
@@ -65,7 +72,8 @@ class PaintHistoryChart(QWidget):
         painter = QPainter(self)
         palette = self.palette()
         painter.fillRect(self.rect(), palette.brush(QPalette.ColorRole.Base))
-        area = self.rect().adjusted(64, 20, -16, -28)
+        area = self._plot_area()
+        baseline = self.height() - painter.fontMetrics().descent() - Space.XS
         points = self._points()
         maximum = self._ceiling
         for fraction in (0.0, 0.5, 1.0):
@@ -73,11 +81,9 @@ class PaintHistoryChart(QWidget):
             painter.setPen(palette.color(QPalette.ColorRole.Mid))
             painter.drawLine(area.left(), y, area.right(), y)
             painter.setPen(palette.color(QPalette.ColorRole.Text))
-            painter.drawText(4, y + 4, f"{maximum * fraction:.1f} ms")
-        painter.drawText(area.left(), self.height() - 7, f"−{HISTORY_SECONDS:g} s")
-        painter.drawText(
-            area.right() - painter.fontMetrics().horizontalAdvance("snapshot"), self.height() - 7, "snapshot"
-        )
+            painter.drawText(Space.S, y + painter.fontMetrics().capHeight() // 2, f"{maximum * fraction:.1f} ms")
+        painter.drawText(area.left(), baseline, f"−{HISTORY_SECONDS:g} s")
+        painter.drawText(area.right() - painter.fontMetrics().horizontalAdvance("snapshot"), baseline, "snapshot")
         if not points:
             painter.drawText(area, Qt.AlignmentFlag.AlignCenter, "No measurements in this window")
         else:

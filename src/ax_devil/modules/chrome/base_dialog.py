@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QPushButton, QVBoxLayout, QW
 from ax_devil.modules.chrome.chrome_window import window_uses_custom_frame
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.title_bar import TitleBar
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.chrome.window_frame_controller import WindowFrameController
 from ax_devil.modules.chrome.window_geometry import fit_window
 from ax_devil.modules.settings.logging_config import get_logger
@@ -122,14 +123,14 @@ class BaseDialog(QDialog):
             layout_parent = content_host
 
         self._main_layout = QVBoxLayout(layout_parent)
-        self._main_layout.setContentsMargins(16, 16, 16, 16)
-        self._main_layout.setSpacing(12)
+        self._main_layout.setContentsMargins(Space.XL, Space.XL, Space.XL, Space.XL)
+        self._main_layout.setSpacing(Space.L)
 
         # Only content scrolls; actions remain visible at every window size.
         self._content_widget = QWidget()
         self._content_layout = QVBoxLayout(self._content_widget)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
-        self._content_layout.setSpacing(12)
+        self._content_layout.setSpacing(Space.L)
         if scroll_content:
             self._scroll_area = ContentScrollArea(self._content_widget)
             self._main_layout.addWidget(self._scroll_area, 1)
@@ -149,12 +150,16 @@ class BaseDialog(QDialog):
             metrics = self.fontMetrics()
             fit_window(
                 self,
-                self.sizeHint(),
+                self.opening_size_hint(),
                 center=True,
                 parent_size_fraction=None,
                 maximum_size=QSize(120 * metrics.averageCharWidth(), 48 * metrics.lineSpacing()),
             )
         super().setVisible(visible)
+
+    def opening_size_hint(self) -> QSize:
+        """Return the size to open at; a dialog whose own controls change its content's size returns the largest."""
+        return self.sizeHint()
 
     def showEvent(self, event: QShowEvent) -> None:
         """Refresh custom chrome when the dialog is shown."""
@@ -163,7 +168,7 @@ class BaseDialog(QDialog):
             self._title_bar.sync_buttons()
 
     def changeEvent(self, event: QEvent) -> None:  # noqa: D401 - Qt override
-        """Propagate state and palette changes to custom chrome."""
+        """Propagate window-state changes to custom chrome."""
         super().changeEvent(event)
         if event is None:
             return
@@ -172,8 +177,6 @@ class BaseDialog(QDialog):
                 self._title_bar.sync_buttons()
             if self._frame_controller is not None:
                 self._frame_controller.handle_window_state_change()
-        elif event.type() == QEvent.Type.PaletteChange and self._frame_controller is not None:
-            self._frame_controller.handle_palette_change()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: D401 - Qt override
         """Keep frameless resize grips aligned with the dialog geometry."""

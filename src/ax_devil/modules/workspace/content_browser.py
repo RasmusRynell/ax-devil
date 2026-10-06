@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from PySide6.QtCore import QEvent, QPoint, Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QGuiApplication, QIcon, QPalette
 from PySide6.QtWidgets import (
     QFrame,
@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.content import ConsiderationItemRef, Content
 from ax_devil.modules.workspace.icons import load_resource_icon
 from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
@@ -33,7 +35,7 @@ from ax_devil.modules.workspace.workspace_manager import (
     WorkspaceBrowserRow,
 )
 
-TREE_INDENTATION_PX = 12
+TREE_INDENTATION_PX = Space.L
 TREE_LABEL_COLUMN = 0
 TREE_CONSIDERATION_COLUMN = 1
 TREE_CONSIDERATION_COLUMN_WIDTH_PX = 24
@@ -124,8 +126,8 @@ class ContentBrowserWidget(QWidget):
         layout.setSpacing(0)
 
         toolbar = QHBoxLayout()
-        toolbar.setContentsMargins(4, 2, 4, 2)
-        toolbar.setSpacing(4)
+        toolbar.setContentsMargins(Space.S, Space.XS, Space.S, Space.XS)
+        toolbar.setSpacing(Space.S)
         self._search_edit = self._create_search_edit()
         self._show_excluded_toggle = self._create_show_excluded_toggle()
         toolbar.addWidget(self._search_edit, 1)
@@ -139,6 +141,7 @@ class ContentBrowserWidget(QWidget):
         self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self._tree.customContextMenuRequested.connect(self._show_context_menu)
         self.setStyleSheet("#AxDevilContentBrowser { background: palette(alternate-base); }")
+        follow_appearance(self, self._apply_appearance)
 
     def set_browser_rows(self, rows: tuple[WorkspaceBrowserRow, ...]) -> None:
         """Render explicit workspace browser rows."""
@@ -284,18 +287,16 @@ class ContentBrowserWidget(QWidget):
         self._filter_icon = load_resource_icon("filter-icon.png", color)
         self._filter_off_icon = load_resource_icon("filter-off-icon.png", color)
 
-    def changeEvent(self, event: QEvent) -> None:
-        """Refresh icons and row text colors when the application theme changes."""
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.PaletteChange:
-            self._refresh_icons()
-            self._update_show_excluded_icon(self._show_excluded_toggle, self._show_excluded)
-            self._update_tree_icons()
-            self._push_toggle_icons()
-            for index in range(self._tree.topLevelItemCount()):
-                item = self._tree.topLevelItem(index)
-                if item is not None:
-                    self._refresh_visual_state(item)
+    def _apply_appearance(self) -> None:
+        """Retint icons and row text colors from the current palette."""
+        self._refresh_icons()
+        self._update_show_excluded_icon(self._show_excluded_toggle, self._show_excluded)
+        self._update_tree_icons()
+        self._push_toggle_icons()
+        for index in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(index)
+            if item is not None:
+                self._refresh_visual_state(item)
 
     def _create_tree_item(self, row: WorkspaceBrowserRow) -> QTreeWidgetItem:
         """Create a tree item for one explicit browser row."""

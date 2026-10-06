@@ -28,6 +28,7 @@ from ax_devil.modules.scene.model import (
 )
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.settings_dialog import SettingsDialog
+from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.video_player.ui.controls import video_control_icon
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_viewer.media_tools.entity_list_widget import EntityListWidget
@@ -74,7 +75,7 @@ def _verify_theme_rendering(cache_dir: Path) -> None:
 
         ConfigManager().set_config_path(cache_dir / "config.json")
         app = QApplication([])
-        setup_theme(app, "dark")
+        setup_theme(app, "dark", TextSize.MEDIUM.body_px)
         settings = GlobalSettings()
         settings.theme_changed.connect(apply_theme)
         dialog = SettingsDialog()

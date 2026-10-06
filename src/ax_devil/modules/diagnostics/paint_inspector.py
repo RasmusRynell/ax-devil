@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.tokens import Height, Space
 from ax_devil.modules.diagnostics.paint_inspection import PaintInspection
 
 
@@ -48,9 +50,25 @@ def _table(headers: list[str]) -> QTableWidget:
     table.horizontalHeader().setMinimumSectionSize(70)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-    table.verticalHeader().setDefaultSectionSize(27)
-    table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    show_all_rows(table)
     return table
+
+
+def show_all_rows(table: QTableWidget) -> None:
+    """Size *table* to show every row without scrolling, now and after text-size changes."""
+
+    def fit_rows() -> None:
+        table.verticalHeader().setDefaultSectionSize(Height.ROW.px + Space.S)
+        _fit_height(table)
+
+    table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    follow_appearance(table, fit_rows)
+
+
+def _fit_height(table: QTableWidget) -> None:
+    scrollbar = table.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+    header = table.horizontalHeader().sizeHint().height()
+    table.setFixedHeight(header + table.verticalHeader().length() + scrollbar + 2 * table.frameWidth())
 
 
 def _fill(table: QTableWidget, rows: list[tuple[str, ...]]) -> None:
@@ -60,8 +78,7 @@ def _fill(table: QTableWidget, rows: list[tuple[str, ...]]) -> None:
             item = QTableWidgetItem(value)
             item.setToolTip(value)
             table.setItem(row, column, item)
-    scrollbar = table.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
-    table.setFixedHeight(table.horizontalHeader().height() + table.verticalHeader().length() + scrollbar + 4)
+    _fit_height(table)
 
 
 class PaintInspector(QWidget):

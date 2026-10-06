@@ -130,6 +130,18 @@ Read the sections for the area you change. Explanations of how things work live 
 - Application chrome and inspection panels must remain readable in light and dark mode, including on an open widget
   after an OS theme change. Use the shared palette and semantic status colors; rich text inherits its surface's foreground.
   White playback controls belong on the dark video scrim rather than on a theme-dependent panel surface.
+- Text sizes, margins, gaps, corner radii and repeated chrome heights come from `modules/chrome/tokens.py`, not
+  literals. Text roles and heights derive from the body text size set by the **Text size** preference, which applies
+  live like the theme. Widgets that only inherit the application font and palette follow on their own, and so do
+  stylesheets that use `palette(...)` and fixed tokens. Code that sizes something from the text or colors something
+  from the palette (`TextRole.apply`, `Height`, tinted icons, status colors) runs through
+  `chrome.appearance.follow_appearance`, which reruns it on palette and text-size changes; sizes are never computed
+  at import. The video surface keeps its own `changeEvent` instead, so no Python event filter sees every frame it
+  repaints. Rich text carries weight and family only and takes its size from the label or document showing it.
+  Pixels inside rendered frames (render catalogs, catalog-viewer footage and sheets, export burn-ins) follow the
+  frame, not these tokens.
+- Vertical content layouts keep their rows at the top with a trailing `addStretch`, not `setAlignment(AlignTop)`:
+  an aligned layout is sized by its size hint, ignores wrapped-text height, and overlaps rows when space is short.
 - Shared geometry rules live in `modules/chrome/window_geometry.py`. Initial windows fit the available screen, and
   secondary `ChromeWindow` windows without saved state open at 85% of their top-level parent width and height,
   centered and bounded to the screen, including windows that remember their size. With saved state, parented windows
@@ -144,8 +156,10 @@ Read the sections for the area you change. Explanations of how things work live 
   of 120 average character widths by 48 line spacings. This limit scales with the dialog font and only applies on opening;
   the user can enlarge the window. Wrapped content is measured at the bounded width. It prepares that geometry
   before the window is mapped. After that only the user resizes it: the same path works on stacking and tiling window
-  managers, which may ignore or reposition application-driven resizes. It scrolls content independently of its action
-  buttons when the screen or the user makes it smaller. Re-showing the same dialog preserves the user's size and position.
+  managers, which may ignore or reposition application-driven resizes. A dialog whose own controls change its
+  content's size, such as Quick Setup changing the text size, opens at the size its largest content needs
+  (`opening_size_hint`) and keeps its content at natural size inside, instead of resizing later. It scrolls content
+  independently of its action buttons when the screen or the user makes it smaller. Re-showing the same dialog preserves the user's size and position.
 - A dialog containing its own scrolling view or pages opts out of the outer content scroll area. Views get layout
   stretch, and the content area fills the dialog so those views take the spare height. Settings pages and shortcut lists
   use the shared `ContentScrollArea` to report their natural content size.
@@ -332,6 +346,8 @@ Read the sections for the area you change. Explanations of how things work live 
 
 - Settings changes apply on OK or Apply; settings that need a restart carry one shared marker. The separate
   shortcut editor applies changes on its own OK, independently of the Settings dialog's Apply or Cancel.
+  [Quick Setup](../settings.md#quick-setup) is the exception: its choices apply as they are clicked and are saved
+  however it closes, because the running app is its preview.
 - `ConfigManager` owns config file I/O, version validation, default merging, unsupported-key warnings, raw
   document preservation, runtime path/env expansion, and storage directory creation.
 - Settings validates all editable connection and storage fields before applying any change. Saves replace the

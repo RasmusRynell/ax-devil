@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.application_shell.main_window import MainWindow
-from ax_devil.modules.chrome.theme import apply_theme, setup_theme
+from ax_devil.modules.chrome.theme import apply_text_size, apply_theme, setup_theme
 from ax_devil.modules.diagnostics.exception_handler import install_exception_handler
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import create_scene_render_catalog_manager
@@ -74,8 +74,9 @@ class Application:
             # Qt caches this choice when the first widget window is created.
             global_settings.graphics_acceleration.configure()
             install_exception_handler(show_dialog=True)
-            setup_theme(self.app, global_settings.theme.value)
+            setup_theme(self.app, global_settings.theme.value, global_settings.text_size.body_px)
             global_settings.theme_changed.connect(apply_theme)
+            global_settings.text_size_changed.connect(lambda size: apply_text_size(size.body_px))
 
             shortcut_overrides = config_manager.get("shortcuts", {}) or {}
             shortcut_manager = ShortcutManager(config_overrides=shortcut_overrides)
@@ -91,9 +92,7 @@ class Application:
             self.main_window.show()
             if self.startup_content is not None:
                 self.main_window.load_startup_content(self.startup_content)
-            QTimer.singleShot(0, self.main_window.report_failed_plugins)
-            if self.open_catalog_viewer:
-                QTimer.singleShot(0, self.main_window.show_catalog_viewer)
+            QTimer.singleShot(0, self._show_startup_windows)
 
             _collect_garbage_on_gui_thread(self.app, self.logger)
 
@@ -114,6 +113,15 @@ class Application:
             if self.debug:
                 raise exc
             raise exc
+
+    def _show_startup_windows(self) -> None:
+        """Open start-up windows in order; a modal dialog returns only when closed, so they never stack."""
+        assert self.main_window is not None
+        if not GlobalSettings().quick_setup_done:
+            self.main_window.show_quick_setup()
+        self.main_window.report_failed_plugins()
+        if self.open_catalog_viewer:
+            self.main_window.show_catalog_viewer()
 
 
 def _collect_garbage_on_gui_thread(parent: QObject, logger: Logger) -> None:

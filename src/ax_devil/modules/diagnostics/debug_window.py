@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -40,11 +39,12 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.diagnostics.dashboard_snapshot import DashboardSnapshot, DashboardSnapshotService
 from ax_devil.modules.diagnostics.history_chart import PaintHistoryChart
 from ax_devil.modules.diagnostics.metrics_store import get_metrics_store
 from ax_devil.modules.diagnostics.paint_inspection import InspectionSelection, PaintInspection
-from ax_devil.modules.diagnostics.paint_inspector import PaintInspector
+from ax_devil.modules.diagnostics.paint_inspector import PaintInspector, show_all_rows
 from ax_devil.modules.diagnostics.render_metrics import (
     BUILD_STAGES,
     DELIVERY_STAGES,
@@ -146,7 +146,7 @@ class DebugWindow(ChromeWindow):
         self.filter_input.textChanged.connect(self._filter_viewers)
         sidebar_layout.addWidget(self.filter_input)
         self.viewer_list = QListWidget()
-        self.viewer_list.setSpacing(3)
+        self.viewer_list.setSpacing(Space.XS)
         self.viewer_list.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.viewer_list.currentItemChanged.connect(self._show_selected_viewer)
         sidebar_layout.addWidget(self.viewer_list)
@@ -159,20 +159,17 @@ class DebugWindow(ChromeWindow):
         detail = QWidget()
         detail_layout = QVBoxLayout(detail)
         detail_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
-        detail_layout.setContentsMargins(16, 12, 12, 12)
-        detail_layout.setSpacing(8)
+        detail_layout.setContentsMargins(Space.L, Space.L, Space.L, Space.L)
+        detail_layout.setSpacing(Space.M)
         self.title_label = _label()
-        title_font = self.title_label.font()
-        title_font.setPointSize(title_font.pointSize() + 3)
-        title_font.setBold(True)
-        self.title_label.setFont(title_font)
+        TextRole.HEADING.apply(self.title_label)
         detail_layout.addWidget(self.title_label)
         self.empty_label = _label()
         detail_layout.addWidget(self.empty_label)
         self.measurements = QWidget()
         measurements_layout = QVBoxLayout(self.measurements)
         measurements_layout.setContentsMargins(0, 0, 0, 0)
-        measurements_layout.setSpacing(16)
+        measurements_layout.setSpacing(Space.XL)
 
         cadence = QHBoxLayout()
         self.cadence_values: list[QLabel] = []
@@ -196,10 +193,7 @@ class DebugWindow(ChromeWindow):
             card = QGroupBox(title)
             column = QVBoxLayout(card)
             value = _label("—")
-            font = value.font()
-            font.setPointSize(font.pointSize() + 10)
-            font.setBold(True)
-            value.setFont(font)
+            TextRole.DISPLAY.apply(value)
             value.setWordWrap(False)
             value.setToolTip(note)
             card.setToolTip(note)
@@ -238,8 +232,8 @@ class DebugWindow(ChromeWindow):
         self.detail_tabs = QTabWidget()
         overview = QWidget()
         overview_layout = QVBoxLayout(overview)
-        overview_layout.setContentsMargins(0, 12, 0, 0)
-        overview_layout.setSpacing(16)
+        overview_layout.setContentsMargins(0, Space.L, 0, 0)
+        overview_layout.setSpacing(Space.XL)
         self.detail_tabs.addTab(overview, "Overview")
         self.inspector = PaintInspector()
         self.inspector.stepRequested.connect(self._step_inspection)
@@ -310,8 +304,8 @@ class DebugWindow(ChromeWindow):
     def _detail_rows(parent: QWidget, names: tuple[str, ...]) -> dict[str, QLabel]:
         layout = QFormLayout(parent)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(18)
-        layout.setVerticalSpacing(3)
+        layout.setHorizontalSpacing(Space.XL)
+        layout.setVerticalSpacing(Space.S)
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         labels = {}
         for name in names:
@@ -364,10 +358,7 @@ class DebugWindow(ChromeWindow):
                     font.setBold(True)
                     item.setFont(font)
                 table.setItem(row, column, item)
-        table.verticalHeader().setDefaultSectionSize(28)
-        scrollbar_height = table.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
-        table.setFixedHeight(table.horizontalHeader().height() + table.verticalHeader().length() + scrollbar_height)
-        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        show_all_rows(table)
         return table
 
     @staticmethod

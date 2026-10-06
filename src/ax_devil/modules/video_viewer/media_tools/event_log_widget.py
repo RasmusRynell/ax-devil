@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QPersistentModelIndex, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPalette, QShowEvent
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPalette, QShowEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -36,6 +36,8 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
@@ -47,9 +49,6 @@ LIVE_EVENT_LIMIT = 1000
 
 _EVENT_ROLE = Qt.ItemDataRole.UserRole + 1
 _STATE_ROLE = Qt.ItemDataRole.UserRole + 2
-_ROW_HORIZONTAL_MARGIN = 6
-_ROW_VERTICAL_MARGIN = 3
-_COLUMN_SPACING = 8
 
 
 class EventRowState(enum.Enum):
@@ -198,12 +197,15 @@ class EventLogDelegate(QStyledItemDelegate):
 
     def __init__(self, view: QAbstractItemView) -> None:
         super().__init__(view)
-        font = QFont("monospace")
-        font.setStyleHint(QFont.StyleHint.Monospace)
-        self._font = font
-        self._metrics = QFontMetrics(font)
+        self._view = view
+        follow_appearance(self, self._load_fonts)
+
+    def _load_fonts(self) -> None:
+        self._font = TextRole.MONO.font()
+        self._metrics = QFontMetrics(self._font)
         self._frame_width = self._metrics.horizontalAdvance("#99999")
         self._time_width = self._metrics.horizontalAdvance("00:00:00.000")
+        self._view.doItemsLayout()
 
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -224,26 +226,26 @@ class EventLogDelegate(QStyledItemDelegate):
         style = style_option.widget.style() if style_option.widget is not None else QApplication.style()
         style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, style_option, painter, style_option.widget)
         painter.setFont(self._font)
-        top = rect.top() + _ROW_VERTICAL_MARGIN
+        top = rect.top() + Space.XS
         height = self._metrics.height()
         alignment = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         frame_text = f"#{event.frame_id.sequence_id}"
         frame_width = max(self._frame_width, self._metrics.horizontalAdvance(frame_text))
-        x = rect.left() + _ROW_HORIZONTAL_MARGIN
+        x = rect.left() + Space.S
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         muted_role = QPalette.ColorRole.HighlightedText if selected else QPalette.ColorRole.PlaceholderText
         painter.setPen(option.palette.color(muted_role))
         painter.drawText(QRect(x, top, frame_width, height), alignment, frame_text)
-        x += frame_width + _COLUMN_SPACING
+        x += frame_width + Space.M
         painter.drawText(
             QRect(x, top, self._time_width, height),
             alignment,
             format_frame_time(event.frame_id.timestamp_monotime_us),
         )
-        x += self._time_width + _COLUMN_SPACING
+        x += self._time_width + Space.M
 
-        label_width = max(0, rect.right() - _ROW_HORIZONTAL_MARGIN - x)
+        label_width = max(0, rect.right() - Space.S - x)
         text_role = QPalette.ColorRole.HighlightedText if selected else state.text_role
         painter.setPen(option.palette.color(text_role))
         label = self._metrics.elidedText(event.label, Qt.TextElideMode.ElideRight, label_width)
@@ -256,7 +258,7 @@ class EventLogDelegate(QStyledItemDelegate):
     @property
     def row_height(self) -> int:
         """Return the height every row has."""
-        return (_ROW_VERTICAL_MARGIN * 2) + self._metrics.height()
+        return (Space.XS * 2) + self._metrics.height()
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex) -> QSize:
         """Return the fixed row height."""
@@ -279,7 +281,7 @@ class EventLogWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(Space.M)
 
         self._search = QLineEdit(self)
         self._search.setObjectName("eventSearch")
@@ -289,7 +291,7 @@ class EventLogWidget(QWidget):
         self._kind_boxes: dict[str, QCheckBox] = {}
         self._kind_list = QWidget()
         self._kind_layout = QVBoxLayout(self._kind_list)
-        self._kind_layout.setContentsMargins(8, 8, 8, 8)
+        self._kind_layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
         self._filter_button = QToolButton(self)
         self._filter_button.setObjectName("eventFilterButton")
         self._filter_button.setText("Filter")

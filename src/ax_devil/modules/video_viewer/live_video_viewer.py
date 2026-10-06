@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QStyle, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
@@ -46,28 +47,25 @@ class LiveStatusPanel(QWidget):
             #LiveStatusPanel QLabel {
                 background: transparent;
                 color: white;
-                font-weight: bold;
-                font-size: 14px;
             }
         """)
+        TextRole.STRONG.apply(self)
 
         rows = QVBoxLayout(self)
-        rows.setContentsMargins(12, 8, 12, 8)
-        rows.setSpacing(4)
+        rows.setContentsMargins(Space.L, Space.M, Space.L, Space.M)
+        rows.setSpacing(Space.S)
         layout = QHBoxLayout()
-        layout.setSpacing(8)
+        layout.setSpacing(Space.M)
         rows.addLayout(layout)
 
         self._pause_button = QPushButton(self)
-        self._pause_button.setStyleSheet("""
-            QPushButton {
+        self._pause_button.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
                 color: white;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 4px 8px;
+                padding: {Space.S}px {Space.M}px;
                 border: none;
-            }
+            }}
         """)
         self._pause_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._pause_button.setToolTip("Pause")
@@ -77,7 +75,7 @@ class LiveStatusPanel(QWidget):
         self._state_label = QLabel(self)
 
         self._paused_label = QLabel("PAUSED", self)
-        self._paused_label.setStyleSheet("color: #ff4444; font-weight: bold;")
+        self._paused_label.setStyleSheet("color: #ff4444;")
         self._paused_label.setVisible(False)
 
         self._timestamp_label = QLabel("00:00:00", self)
@@ -93,10 +91,10 @@ class LiveStatusPanel(QWidget):
         self._problem_row = QWidget(self)
         problem_layout = QHBoxLayout(self._problem_row)
         problem_layout.setContentsMargins(0, 0, 0, 0)
-        problem_layout.setSpacing(8)
+        problem_layout.setSpacing(Space.M)
         self._problem_label = QLabel(self._problem_row)
         self._problem_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self._problem_label.setStyleSheet("font-weight: normal; font-size: 13px;")
+        TextRole.BODY.apply(self._problem_label)
         self._problem_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._retry_button = QPushButton("Retry", self._problem_row)
         self._retry_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)

@@ -17,6 +17,7 @@ from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget, detect_available_memory_bytes
+from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
 
 logger = get_logger(__name__)
@@ -37,6 +38,7 @@ class GlobalSettings(QObject):
     overlay_preference_changed = Signal(object, bool)  # OverlayPreference, enabled
     video_cache_budget_changed = Signal(object)
     theme_changed = Signal(str)
+    text_size_changed = Signal(object)  # TextSize
 
     # Generic signal: (setting_dotted_key, new_value)
     setting_changed = Signal(str, object)
@@ -56,7 +58,9 @@ class GlobalSettings(QObject):
         self._overlay_preferences = OverlayPreference.from_config(None)
         self._graphics_acceleration = GraphicsAcceleration.AUTO
         self._theme = ThemeMode.AUTO
+        self._text_size = TextSize.SYSTEM
         self._custom_frame = True
+        self._quick_setup_done = False
         # Capture the inherited override before startup applies our own presentation default.
         self.graphics_acceleration_override = os.environ.get("QT_WIDGETS_RHI")
 
@@ -116,6 +120,31 @@ class GlobalSettings(QObject):
         self.setting_changed.emit("appearance.theme", value.value)
 
     @property
+    def text_size(self) -> TextSize:
+        """Return the body text size preference."""
+        return self._text_size
+
+    @text_size.setter
+    def text_size(self, value: TextSize) -> None:
+        if value == self._text_size:
+            return
+        self._text_size = value
+        self.text_size_changed.emit(value)
+        self.setting_changed.emit("appearance.text_size", value.value)
+
+    @property
+    def quick_setup_done(self) -> bool:
+        """Return whether Quick Setup has been closed with this configuration; until then it opens on start."""
+        return self._quick_setup_done
+
+    @quick_setup_done.setter
+    def quick_setup_done(self, value: bool) -> None:
+        if value == self._quick_setup_done:
+            return
+        self._quick_setup_done = value
+        self.setting_changed.emit("quick_setup_done", value)
+
+    @property
     def graphics_acceleration(self) -> GraphicsAcceleration:
         """Return the saved presentation preference, applied on the next startup."""
         return self._graphics_acceleration
@@ -136,7 +165,9 @@ class GlobalSettings(QObject):
         settings: dict[str, Any] = config_manager.get("settings", {}) or {}
         ui = config_manager.get("ui", {}) or {}
         self._theme = ThemeMode.from_config(ui.get("theme", "auto"))
+        self._text_size = TextSize.from_config(ui.get("text_size", TextSize.SYSTEM.value))
         self._custom_frame = bool((ui.get("window", {}) or {}).get("custom_frame", True))
+        self._quick_setup_done = bool(ui.get("quick_setup_done", False))
         playback = settings.get("playback", {}) or {}
         self._video_cache_budget = VideoCacheBudget.from_config(playback.get("video_cache_total_mib"))
         overlay = settings.get("overlay_interaction", {}) or {}
@@ -151,6 +182,8 @@ class GlobalSettings(QObject):
         settings: dict[str, Any] = config_manager.get_raw("settings", {}) or {}
         ui = config_manager.get_raw("ui", {}) or {}
         ui["theme"] = values["appearance"]["theme"]
+        ui["text_size"] = values["appearance"]["text_size"]
+        ui["quick_setup_done"] = values["quick_setup_done"]
         window = ui.get("window", {}) or {}
         window["custom_frame"] = values["appearance"]["custom_frame"]
         ui["window"] = window
@@ -174,9 +207,11 @@ class GlobalSettings(QObject):
             "appearance": {
                 "graphics_acceleration": self._graphics_acceleration.value,
                 "theme": self._theme.value,
+                "text_size": self._text_size.value,
                 "custom_frame": self._custom_frame,
             },
             "overlay_interaction": OverlayPreference.config_value(self._overlay_preferences),
+            "quick_setup_done": self._quick_setup_done,
         }
 
     def apply_snapshot(self, snapshot: dict[str, Any]) -> None:
@@ -191,10 +226,14 @@ class GlobalSettings(QObject):
         appearance = snapshot.get("appearance", {}) or {}
         if "theme" in appearance:
             self.theme = ThemeMode.from_config(appearance["theme"])
+        if "text_size" in appearance:
+            self.text_size = TextSize.from_config(appearance["text_size"])
         if "custom_frame" in appearance:
             self.custom_frame = bool(appearance["custom_frame"])
         if "graphics_acceleration" in appearance:
             self.graphics_acceleration = GraphicsAcceleration.from_config(appearance["graphics_acceleration"])
+        if "quick_setup_done" in snapshot:
+            self.quick_setup_done = bool(snapshot["quick_setup_done"])
 
     @classmethod
     def reset_instance(cls) -> None:

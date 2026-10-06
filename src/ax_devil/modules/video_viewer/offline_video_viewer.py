@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
 from ax_devil.modules.video_player.engine.playback_speed import (
@@ -142,8 +143,8 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         navigation = QWidget(self)
         navigation.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         nav_layout = QHBoxLayout(navigation)
-        nav_layout.setContentsMargins(8, 0, 8, 0)
-        nav_layout.setSpacing(4)
+        nav_layout.setContentsMargins(Space.M, 0, Space.M, 0)
+        nav_layout.setSpacing(Space.S)
         nav_layout.addStretch(1)
 
         self._prev_button = QPushButton("◀")

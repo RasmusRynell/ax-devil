@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from importlib.resources import files
 
-from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QColor, QCursor, QEnterEvent, QImage, QPainter, QPixmap
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QCursor, QEnterEvent, QFont, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QToolTip, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.theme import StatusColor
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport, VideoTimingProfile
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 
@@ -16,7 +18,6 @@ _RESOURCE_PACKAGE = "ax_devil.resources"
 _WARNING_ICON = "warning-icon.png"
 _INDICATOR_ICON_SIZE = 16
 _INDICATOR_WIDTH = _INDICATOR_ICON_SIZE + 8
-_MODE_BUTTON_HEIGHT = 22
 
 
 def _load_tinted_pixmap(filename: str, color: QColor, size: int) -> QPixmap:
@@ -51,8 +52,8 @@ class OverlayAlignmentIndicator(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFixedWidth(_INDICATOR_WIDTH)
         self._report: OverlayAlignmentReport | None = None
-        self._refresh_icons()
         self.setVisible(False)
+        follow_appearance(self, self._apply_appearance)
 
     def _refresh_icons(self) -> None:
         self._caution_pixmap = _load_tinted_pixmap(
@@ -62,12 +63,10 @@ class OverlayAlignmentIndicator(QLabel):
             _WARNING_ICON, StatusColor.ERROR.color(self.palette()), _INDICATOR_ICON_SIZE
         )
 
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        """Retint an already displayed warning when the palette changes."""
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.PaletteChange:
-            self._refresh_icons()
-            self.update_alignment_report(self._report)
+    def _apply_appearance(self) -> None:
+        """Retint the warning, including one already displayed, from the current palette."""
+        self._refresh_icons()
+        self.update_alignment_report(self._report)
 
     def update_alignment_report(self, report: OverlayAlignmentReport | None) -> None:
         """Show a tinted warning icon when overlay timing needs attention."""
@@ -102,7 +101,7 @@ class TimingDiagnosticsWidget(QWidget):
         self._report: OverlayAlignmentReport | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(Space.S)
 
         self._timing_label = QLabel("Timing: unknown", self)
         self._alignment_label = QLabel("Overlay: none", self)
@@ -113,7 +112,7 @@ class TimingDiagnosticsWidget(QWidget):
 
         button_row = QHBoxLayout()
         button_row.setContentsMargins(0, 0, 0, 0)
-        button_row.setSpacing(6)
+        button_row.setSpacing(Space.S)
         self._exact_button = QPushButton("Exact", self)
         self._previous_button = QPushButton("Previous", self)
         self._mode_group = QButtonGroup(self)
@@ -121,7 +120,6 @@ class TimingDiagnosticsWidget(QWidget):
         self._mode_group.setExclusive(True)
         for button in (self._exact_button, self._previous_button):
             button.setCheckable(True)
-            button.setFixedHeight(_MODE_BUTTON_HEIGHT)
             button_row.addWidget(button)
             self._mode_group.addButton(button)
         button_row.addStretch(1)
@@ -133,13 +131,14 @@ class TimingDiagnosticsWidget(QWidget):
         self._previous_button.clicked.connect(lambda _checked=False: self._emit_timestamp_fallback_policy())
 
         self.setObjectName("timing-diagnostics-widget")
-        self.setStyleSheet("#timing-diagnostics-widget QPushButton { padding: 1px 8px; }")
+        self.setStyleSheet(f"#timing-diagnostics-widget QPushButton {{ padding: 0px {Space.M}px; }}")
+        follow_appearance(self, self._apply_appearance)
 
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        """Refresh the displayed report's status color after a theme switch."""
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.PaletteChange:
-            self.update_alignment_report(self._report)
+    def _apply_appearance(self) -> None:
+        """Size the mode buttons to the text and recolor the displayed report from the current palette."""
+        for button in (self._exact_button, self._previous_button):
+            button.setFixedHeight(Height.ROW.px)
+        self.update_alignment_report(self._report)
 
     def _emit_timestamp_fallback_policy(self) -> None:
         """Emit the selected timestamp fallback policy."""
@@ -192,6 +191,7 @@ class TimingDiagnosticsWidget(QWidget):
         if report is None:
             self._alignment_label.setText("Overlay: none")
             self._alignment_label.setStyleSheet("")
+            self._alignment_label.setFont(QFont())  # inherit body text again
             return
         policy_ratio = report.policy_match_ratio * 100.0
         if report.total_video_frames <= 0 and report.total_overlay_frames > 0:
@@ -216,4 +216,5 @@ class TimingDiagnosticsWidget(QWidget):
         self._alignment_label.setText(
             f"{label}: {prefix} {report.policy_matches}/{report.total_overlay_frames} ({policy_ratio:.0f}%, {details})"
         )
-        self._alignment_label.setStyleSheet(f"color: {color.color(self.palette()).name()}; font-weight: 600;")
+        self._alignment_label.setStyleSheet(color.css(self.palette()))
+        self._alignment_label.setFont(TextRole.STRONG.font())

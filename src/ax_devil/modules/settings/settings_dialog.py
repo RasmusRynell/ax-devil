@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -35,6 +34,7 @@ from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
+from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
@@ -77,6 +77,7 @@ class SettingsDialog(BaseDialog):
     def _setup_content(self) -> None:
         """Build the settings form."""
         self._tabs = QTabWidget()
+        self._page_layouts: list[QVBoxLayout] = []
         layout = self._add_page("General")
 
         appearance_group = QGroupBox("Appearance")
@@ -85,6 +86,10 @@ class SettingsDialog(BaseDialog):
         for theme in ThemeMode:
             self._theme_combo.addItem(theme.label, theme.value)
         appearance_layout.addRow("Theme", self._theme_combo)
+        self._text_size_combo = QComboBox()
+        for size in TextSize:
+            self._text_size_combo.addItem(size.label, size.value)
+        appearance_layout.addRow("Text size", self._text_size_combo)
         self._custom_frame = QCheckBox(_restart_label("Use the app title bar"))
         appearance_layout.addRow(self._custom_frame)
         self._acceleration_combo = QComboBox()
@@ -158,6 +163,9 @@ class SettingsDialog(BaseDialog):
         self._add_note(layout, f"Configuration file: {self._config.config_path}")
         self._add_note(layout, "The configuration file is selected at launch with --config.")
         self._add_note(layout, f"Configuration version: {self._config.get_raw('version')}")
+        # A trailing stretch, not top alignment: an aligned layout ignores wrapped-text height and overlaps rows.
+        for page_layout in self._page_layouts:
+            page_layout.addStretch(1)
         self.add_content_widget(self._tabs, stretch=1)
         apply_rule = QLabel(
             f"Changes in this dialog apply when you click OK or Apply. Settings marked {RESTART_MARK} take effect "
@@ -172,7 +180,7 @@ class SettingsDialog(BaseDialog):
     def _add_page(self, title: str) -> QVBoxLayout:
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._page_layouts.append(layout)
         scroll = ContentScrollArea(content)
         self._tabs.addTab(scroll, title)
         return layout
@@ -216,6 +224,7 @@ class SettingsDialog(BaseDialog):
         for preference, checkbox in self._overlay_checkboxes.items():
             checkbox.setChecked(self._settings.is_overlay_enabled(preference))
         self._theme_combo.setCurrentIndex(self._theme_combo.findData(self._settings.theme.value))
+        self._text_size_combo.setCurrentIndex(self._text_size_combo.findData(self._settings.text_size.value))
         self._acceleration_combo.setCurrentIndex(
             self._acceleration_combo.findData(self._settings.graphics_acceleration.value)
         )
@@ -237,12 +246,14 @@ class SettingsDialog(BaseDialog):
         self._acceleration_description.setText(mode.description)
 
     def _build_snapshot(self) -> dict[str, Any]:
-        """Build a settings snapshot from the current widget state."""
+        """Build a settings snapshot from the widgets; settings this dialog does not show keep their value."""
         return {
+            **self._settings.snapshot(),
             "playback": {"video_cache_total_mib": self._selected_cache_budget().config_value},
             "appearance": {
                 "graphics_acceleration": self._acceleration_combo.currentData(),
                 "theme": self._theme_combo.currentData(),
+                "text_size": self._text_size_combo.currentData(),
                 "custom_frame": self._custom_frame.isChecked(),
             },
             "overlay_interaction": OverlayPreference.config_value(

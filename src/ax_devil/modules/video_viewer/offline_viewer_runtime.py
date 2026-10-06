@@ -13,6 +13,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameData
+from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
@@ -432,13 +433,13 @@ class OfflineSession(QObject):
         if lane_count <= 2:
             h_layout = QHBoxLayout(container)
             h_layout.setContentsMargins(0, 0, 0, 0)
-            h_layout.setSpacing(2)
+            h_layout.setSpacing(Space.XS)
             return h_layout
 
         grid_layout = QGridLayout(container)
         grid_layout.setContentsMargins(0, 0, 0, 0)
-        grid_layout.setHorizontalSpacing(2)
-        grid_layout.setVerticalSpacing(2)
+        grid_layout.setHorizontalSpacing(Space.XS)
+        grid_layout.setVerticalSpacing(Space.XS)
 
         columns = lane_grid_columns(lane_count)
         rows = lane_grid_rows(lane_count)
@@ -465,7 +466,8 @@ class OfflineSession(QObject):
         name_label = QLabel(lane.display_name or lane.video.display_name, display.viewport)
         name_label.setObjectName("lane-indicator-label")
         name_label.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 160); border-radius: 3px; color: white; padding: 2px 6px;"
+            f"background-color: rgba(0, 0, 0, 160); border-radius: {Radius.CONTROL}px; color: white;"
+            f"padding: {Space.XS}px {Space.M}px;"
         )
         display.mount_overlay(
             name_label,

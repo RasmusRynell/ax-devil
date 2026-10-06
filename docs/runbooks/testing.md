@@ -67,6 +67,7 @@ that editable plugin edits apply without reinstalling.
 All agent verification runs away from the user's desktop. Use the offscreen commands above for
 normal tests and visual checks. Save `QWidget.grab()` or `QQuickWindow.grabWindow()` output to
 `tmp_path` or `/tmp` and inspect that image. Send interactions through Qt test events.
+For application UI, see [the write-ui skill's checks](../../.agents/skills/write-ui/SKILL.md#check-it).
 
 For native-window and OpenGL checks, run the existing tests on a private Xvfb display:
 

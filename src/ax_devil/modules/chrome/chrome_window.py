@@ -118,7 +118,7 @@ class ChromeWindow(QMainWindow):
         self.setWindowFlags(flags)
 
     def changeEvent(self, event: QEvent) -> None:  # noqa: D401 - Qt override
-        """Propagate state and palette changes to custom chrome."""
+        """Propagate window-state changes to custom chrome."""
         super().changeEvent(event)
         if event is None:
             return
@@ -129,8 +129,6 @@ class ChromeWindow(QMainWindow):
                 self._title_bar.sync_buttons()
             if self._frame_controller is not None:
                 self._frame_controller.handle_window_state_change()
-        elif event.type() == QEvent.Type.PaletteChange and self._frame_controller is not None:
-            self._frame_controller.handle_palette_change()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: D401 - Qt override
         """Keep frameless resize grips aligned with the window geometry."""

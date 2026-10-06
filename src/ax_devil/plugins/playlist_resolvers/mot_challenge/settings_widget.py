@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import PlaylistResolverWidget
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -44,7 +45,7 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(Space.L)
 
         # Root directory row
         form = FormLayout()

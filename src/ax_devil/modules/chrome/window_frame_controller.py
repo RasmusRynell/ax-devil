@@ -1,18 +1,15 @@
-"""Frameless window controller: native resize grips and palette-based styling.
+"""Frameless window controller: native resize grips, the optional border, and window-state sync.
 
 Uses ``QWindow.startSystemResize()`` for native edge/corner resizing instead
 of manual mouse-delta geometry math, matching how modern toolkits handle
-frameless windows.  Chrome colours are derived from the active ``QPalette``
-so the window adapts to light, dark, or custom themes automatically.
+frameless windows. The title bar styles itself from the palette.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QColor, QMouseEvent, QPalette, QResizeEvent
+from PySide6.QtGui import QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import QWidget
-
-from ax_devil.modules.chrome.title_bar import TitleBar
 
 RESIZE_MARGIN = 5
 WINDOW_BORDER_WIDTH = 1
@@ -31,7 +28,7 @@ _GRIP_SPECS: tuple[tuple[str, Qt.Edge, Qt.CursorShape], ...] = (
 
 
 class WindowFrameController:
-    """Manages frameless window chrome: native resize grips, palette styling, and state sync."""
+    """Manages frameless window chrome: native resize grips, the border, and state sync."""
 
     def __init__(self, window: QWidget, *, show_border: bool = False) -> None:
         self._window = window
@@ -40,12 +37,11 @@ class WindowFrameController:
         self._grips: dict[str, _ResizeGrip] = {}
 
     def initialize(self) -> None:
-        """Install grips and apply initial palette styles."""
+        """Install the border and resize grips."""
         margin = WINDOW_BORDER_WIDTH if self._show_border else 0
         self._window.setContentsMargins(margin, margin, margin, margin)
         self._install_border()
         self._install_grips()
-        self.apply_palette_style()
 
     def handle_window_state_change(self) -> None:
         """Toggle grip visibility when the window maximizes or restores."""
@@ -56,10 +52,6 @@ class WindowFrameController:
         _ = event
         self._update_border_geometry()
         self._update_grip_geometry()
-
-    def handle_palette_change(self) -> None:
-        """Re-derive chrome colours from the current palette."""
-        self.apply_palette_style()
 
     def restore_from_maximized(self, x_ratio: float, cursor_pos: QPoint, title_bar_height: int) -> None:
         """Restore a maximized window and position it under the cursor.
@@ -83,28 +75,6 @@ class WindowFrameController:
         new_x = int(cursor_pos.x() - target.width() * ratio)
         new_y = int(cursor_pos.y() - title_bar_height / 2)
         self._window.move(new_x, max(new_y, 0))
-
-    def apply_palette_style(self) -> None:
-        """Generate and apply a stylesheet derived from the active ``QPalette``."""
-        pal = self._window.palette()
-        text = pal.color(QPalette.ColorRole.Text)
-
-        hover_bg = QColor(text)
-        hover_bg.setAlpha(18)
-        hover_border = QColor(text)
-        hover_border.setAlpha(26)
-        pressed_bg = QColor(text)
-        pressed_bg.setAlpha(31)
-
-        title_bar = self._window.findChild(TitleBar)
-        if title_bar is None:
-            return
-        title_bar.apply_palette_style(
-            text=text,
-            hover_bg=hover_bg,
-            hover_border=hover_border,
-            pressed_bg=pressed_bg,
-        )
 
     def _install_grips(self) -> None:
         for key, edges, cursor in _GRIP_SPECS:

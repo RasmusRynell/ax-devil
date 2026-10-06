@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from weakref import ref
 
-from PySide6.QtCore import QEvent, QSize, Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QCloseEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QComboBox,
@@ -29,9 +29,11 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.catalog_viewer.sheets import Sheet, drawing_errors, sheet_frame, sheets
 from ax_devil.modules.chrome import BaseDialog
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.chrome_window import ChromeWindow, window_uses_custom_frame
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.theme import StatusColor
+from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalog,
     SceneRenderCatalogListing,
@@ -124,6 +126,7 @@ class CatalogViewerWindow(ChromeWindow):
         self._error: str | None = None
         self._loaded_at: datetime | None = None
         self._shown_key: object = None
+        self._description_status: StatusColor | None = None
         self._changes = 0
 
         self._catalogs = QComboBox(self)
@@ -149,7 +152,6 @@ class CatalogViewerWindow(ChromeWindow):
         self._banner.setObjectName("catalogViewerError")
         self._banner.setWordWrap(True)
         self._banner.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self._apply_error_style()
         self._banner.hide()
         self._tabs = QTabBar(self)
         self._tabs.setObjectName("catalogViewerTabs")
@@ -171,22 +173,24 @@ class CatalogViewerWindow(ChromeWindow):
         manager.catalogFileChanged.connect(self._on_file_changed)
         manager.catalogListingChanged.connect(self._on_listing_changed)
         self.show_catalog(self._path)
+        follow_appearance(self, self._apply_appearance)
+
+    def _apply_appearance(self) -> None:
+        """Recolor the error banner, state and any drawing-error description from the current palette."""
+        self._apply_error_style()
+        self._show_state()
+        self._style_description()
+
+    def _style_description(self) -> None:
+        status = self._description_status
+        self._description.setStyleSheet(status.css(self.palette()) if status is not None else "")
 
     def _apply_error_style(self) -> None:
         color = StatusColor.ERROR.color(self.palette()).name()
         self._banner.setStyleSheet(
-            f"color: {color}; border: 1px solid {color}; border-radius: 4px; padding: 6px 10px;"
-            "background: palette(alternate-base);"
+            f"color: {color}; border: 1px solid {color}; border-radius: {Radius.CONTROL}px;"
+            f"padding: {Space.S}px {Space.M}px; background: palette(alternate-base);"
         )
-
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        """Update visible error colors when the application appearance changes."""
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.PaletteChange and hasattr(self, "_description"):
-            self._apply_error_style()
-            self._show_state()
-            if self._description.styleSheet():
-                self._description.setStyleSheet(f"color: {StatusColor.ERROR.color(self.palette()).name()};")
 
     def show_catalog(self, path: Path) -> None:
         """Show the catalog file at *path*."""
@@ -290,7 +294,7 @@ class CatalogViewerWindow(ChromeWindow):
         self._use_as_default.setEnabled(self._manager.can_use_as_default(self._path))
         if self._error is not None:
             self._state.setText("● Does not load")
-            self._state.setStyleSheet(f"color: {StatusColor.ERROR.color(self.palette()).name()};")
+            self._state.setStyleSheet(StatusColor.ERROR.css(self.palette()))
             shown = "Showing the last version that loaded." if self._catalog is not None else "Nothing to show yet."
             self._banner.setText(f"{self._error}\n{shown}")
             self._banner.show()
@@ -298,7 +302,7 @@ class CatalogViewerWindow(ChromeWindow):
         updated = f" · updated {self._loaded_at:%H:%M:%S}" if self._changes and self._loaded_at is not None else ""
         self._state.setText(f"● Live{updated}")
         self._state.setToolTip("Redrawn every time the catalog file is saved")
-        self._state.setStyleSheet(f"color: {StatusColor.SUCCESS.color(self.palette()).name()};")
+        self._state.setStyleSheet(StatusColor.SUCCESS.css(self.palette()))
         self._banner.hide()
 
     def _show_tabs(self) -> None:
@@ -326,7 +330,8 @@ class CatalogViewerWindow(ChromeWindow):
         if sheet is None or self._catalog is None:
             self._renderer.clear()
             self._description.clear()
-            self._description.setStyleSheet("")
+            self._description_status = None
+            self._style_description()
             self._shown_key = None
             return
         if not self.isVisible():
@@ -341,10 +346,11 @@ class CatalogViewerWindow(ChromeWindow):
             first, count = diagnostics[0], len(diagnostics)
             plural = "s" if count > 1 else ""
             self._description.setText(f"{count} drawing error{plural}: {first.location}: {first.message}")
-            self._description.setStyleSheet(f"color: {StatusColor.ERROR.color(self.palette()).name()};")
+            self._description_status = StatusColor.ERROR
         else:
             self._description.setText(sheet.description)
-            self._description.setStyleSheet("")
+            self._description_status = None
+        self._style_description()
 
     # Catalog files ---------------------------------------------------------------------------------------------
 
@@ -398,21 +404,21 @@ class CatalogViewerWindow(ChromeWindow):
 
     def _build(self) -> None:
         header = QHBoxLayout()
-        header.setSpacing(8)
+        header.setSpacing(Space.M)
         header.addWidget(QLabel("Catalog", self))
         header.addWidget(self._catalogs)
         header.addWidget(self._new)
         header.addWidget(self._delete)
         header.addWidget(self._apply_to_all)
         header.addWidget(self._use_as_default)
-        header.addSpacing(4)
+        header.addSpacing(Space.S)
         header.addWidget(self._file, 1)
-        header.addSpacing(12)
+        header.addSpacing(Space.L)
         header.addWidget(self._state)
         central = QFrame(self)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(Space.L, Space.M, Space.L, Space.M)
+        layout.setSpacing(Space.M)
         layout.addLayout(header)
         layout.addWidget(self._banner)
         layout.addWidget(self._tabs)

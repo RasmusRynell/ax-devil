@@ -7,11 +7,12 @@ the session hooks here fail the run if the user's real ax-devil folders changed 
 import json
 import shutil
 from pathlib import Path
-from typing import Callable, Generator
+from typing import Callable, Generator, Iterator
 from unittest.mock import patch
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import (
@@ -172,3 +173,13 @@ def render_catalog_manager(temp_dir: Path) -> SceneRenderCatalogManager:
 def render_catalog_selection(render_catalog_manager: SceneRenderCatalogManager) -> SceneRenderCatalogSelection:
     """Return an independent render catalog selection backed by the shared test manager."""
     return render_catalog_manager.create_selection()
+
+
+@pytest.fixture
+def restore_app_appearance(qapp: QApplication) -> Iterator[None]:
+    """Put back the application font, palette and stylesheet that a test changes, such as by changing the text size."""
+    font, palette, stylesheet = qapp.font(), qapp.palette(), qapp.styleSheet()
+    yield
+    qapp.setFont(font)
+    qapp.setPalette(palette)
+    qapp.setStyleSheet(stylesheet)

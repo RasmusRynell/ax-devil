@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import (
     DECODER_PLUGIN_TYPE,
     ApplicationPluginLoader,
@@ -58,8 +59,8 @@ class PluginWindow(ChromeWindow):
     def _setup_ui(self) -> None:
         central = QWidget(self)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(Space.L, Space.L, Space.L, Space.L)
+        layout.setSpacing(Space.M)
 
         controls = QHBoxLayout()
         controls.addWidget(self._status_label)
@@ -77,7 +78,7 @@ class PluginWindow(ChromeWindow):
         layout.addWidget(self._table)
 
         details_layout = QHBoxLayout()
-        details_layout.setSpacing(12)
+        details_layout.setSpacing(Space.L)
 
         file_group = QGroupBox("File-to-Scene Decoders")
         file_group_layout = QVBoxLayout(file_group)

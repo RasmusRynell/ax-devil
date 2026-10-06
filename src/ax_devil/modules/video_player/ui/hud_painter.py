@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontDatabase, QFontMetrics, QPainter, QPalette
+from PySide6.QtGui import QFontMetrics, QPainter, QPalette
 from PySide6.QtWidgets import QWidget
+
+from ax_devil.modules.chrome.tokens import Space, TextRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,18 +43,17 @@ class HudPainter:
         tab_color = widget.palette().color(QPalette.ColorRole.AlternateBase)
         border_color = widget.palette().color(QPalette.ColorRole.Mid)
         text_color = widget.palette().color(QPalette.ColorRole.Text)
-        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        font.setPointSize(9)
+        font = TextRole.MONO_SMALL.font()
         painter.setFont(font)
         metrics = QFontMetrics(font)
-        line_height = metrics.height() + 2
+        line_height = metrics.height() + Space.XS
         sections = HudPainter._split_info_overlay_sections(stats)
-        padding = 8
+        padding = Space.M
 
-        tab_padding_x = 10
-        tab_height = line_height + 6
-        row_gap = 4
-        section_gap = 8
+        tab_padding_x = Space.M
+        tab_height = line_height + Space.S
+        row_gap = Space.S
+        section_gap = Space.M
         content_width = 0
         content_height = 0
         for section in sections:
@@ -68,10 +69,10 @@ class HudPainter:
 
         rect_width = content_width + padding * 2
         rect_height = max(tab_height, content_height - section_gap) + padding * 2
-        painter.fillRect(10, 10, rect_width, rect_height, bg_color)
+        painter.fillRect(Space.M, Space.M, rect_width, rect_height, bg_color)
 
-        x_offset = 10 + padding
-        y_offset = 10 + padding
+        x_offset = Space.M + padding
+        y_offset = Space.M + padding
         painter.setPen(text_color)
         for section in sections:
             tab_width = metrics.horizontalAdvance(section.title) + tab_padding_x * 2

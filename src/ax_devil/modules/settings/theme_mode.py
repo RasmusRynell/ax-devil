@@ -19,7 +19,7 @@ class ThemeMode(str, Enum):
     @property
     def label(self) -> str:
         """Return the settings label."""
-        return {self.AUTO: "Follow system", self.LIGHT: "Light", self.DARK: "Dark"}[self]
+        return {self.AUTO: "System", self.LIGHT: "Light", self.DARK: "Dark"}[self]
 
     @classmethod
     def from_config(cls, value: object) -> ThemeMode:

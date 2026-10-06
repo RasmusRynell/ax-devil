@@ -3,6 +3,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFormLayout, QWidget
 
+from ax_devil.modules.chrome.tokens import Space
+
 
 class FormLayout(QFormLayout):
     """Keep rows compact, grow fields, and wrap labels on narrow screens."""
@@ -12,8 +14,8 @@ class FormLayout(QFormLayout):
         # Containers keep Qt's style-provided padding; nested layouts add none.
         if parent is None:
             self.setContentsMargins(0, 0, 0, 0)
-        self.setHorizontalSpacing(12)
-        self.setVerticalSpacing(3)
+        self.setHorizontalSpacing(Space.L)
+        self.setVerticalSpacing(Space.S)
         self.setFormAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)

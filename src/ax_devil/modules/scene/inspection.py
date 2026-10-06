@@ -11,12 +11,11 @@ from typing import Any, Iterable, Sequence
 
 from ax_devil.modules.scene.model import Attribute, Classification, ColorClassification, Entity, Geometry, Score
 
-_FONT_SIZE = "10px"
-# Inherit the text color from the QLabel or document's paint palette. The same
-# HTML is shown in side panels and hover cards, including after a theme switch.
-_BOLD = f"font-size:{_FONT_SIZE};font-weight:600;"
-_VALUE = f"font-size:{_FONT_SIZE};font-weight:400;"
-_MONO = f"font-size:{_FONT_SIZE};font-family:monospace;font-weight:400;"
+# Inherit the text color and size from the QLabel or document showing the HTML. The same HTML is shown in side
+# panels and hover cards, so it follows theme and text-size changes there.
+_BOLD = "font-weight:600;"
+_VALUE = "font-weight:400;"
+_MONO = "font-family:monospace;font-weight:400;"
 _INDENT = "&nbsp;&nbsp;&nbsp;&nbsp;"
 _MAX_PER_ROW = 4
 

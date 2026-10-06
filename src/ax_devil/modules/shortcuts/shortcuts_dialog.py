@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QApplication,
     QFrame,
     QHBoxLayout,
     QKeySequenceEdit,
@@ -18,8 +16,10 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome import BaseDialog
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.theme import StatusColor
+from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import ShortcutDefinition, ShortcutManager
 
 
@@ -37,8 +37,8 @@ class _ShortcutRow(QFrame):
         self.setObjectName("ShortcutRow")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 3, 8, 3)
-        layout.setSpacing(8)
+        layout.setContentsMargins(Space.XL, Space.XS, Space.M, Space.XS)
+        layout.setSpacing(Space.M)
 
         self._name_label = QLabel(definition.display_name)
         self._name_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -88,8 +88,9 @@ class _CategorySection(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._header = QLabel(category.upper())
+        self._header = QLabel(category)
         self._header.setObjectName("CategoryHeader")
+        TextRole.CAPTION.apply(self._header)
         layout.addWidget(self._header)
 
         self._row_container = QWidget(self)
@@ -135,25 +136,16 @@ class ShortcutsDialog(BaseDialog):
         self._sections: list[_CategorySection] = []
         self._all_rows: list[_ShortcutRow] = []
 
-        self._apply_styles()
+        follow_appearance(self, self._apply_styles)
         self._setup_content()
         self._setup_buttons()
 
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        """Refresh conflict colors when the appearance changes."""
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.PaletteChange:
-            self._apply_styles()
-
     def _apply_styles(self) -> None:
         """Apply palette-aware styles."""
-        error = StatusColor.ERROR.color(QApplication.palette()).name()
+        error = StatusColor.ERROR.color(self.palette()).name()
         stylesheet = f"""
             QLabel#CategoryHeader {{
-                font-size: 11px;
-                font-weight: bold;
-                letter-spacing: 1px;
-                padding: 6px 8px 3px 8px;
+                padding: {Space.M}px {Space.M}px {Space.XS}px {Space.M}px;
                 color: palette(placeholder-text);
                 background: palette(window);
                 border-bottom: 1px solid palette(mid);
@@ -165,20 +157,19 @@ class ShortcutsDialog(BaseDialog):
                 background: palette(alternate-base);
             }}
             QLineEdit#SearchBar {{
-                padding: 5px 10px;
+                padding: {Space.S}px {Space.M}px;
                 border: 1px solid palette(mid);
-                border-radius: 4px;
+                border-radius: {Radius.CONTROL}px;
             }}
             QLineEdit#SearchBar:focus {{
                 border-color: palette(link);
             }}
             QLabel#ConflictLabel {{
                 color: {error};
-                padding: 2px 8px;
+                padding: {Space.XS}px {Space.M}px;
             }}
         """
-        if self.styleSheet() != stylesheet:
-            self.setStyleSheet(stylesheet)
+        self.setStyleSheet(stylesheet)
 
     def _setup_content(self) -> None:
         """Build the search bar and category-grouped shortcut list."""

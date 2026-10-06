@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QComboBox,
@@ -82,7 +81,6 @@ class AddLiveStreamDialog(BaseDialog):
         form = QWidget()
         layout = QVBoxLayout(form)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         raw_device_defaults = self._raw_defaults["device"]
         raw_live_defaults = self._raw_defaults["live_stream"]
@@ -251,6 +249,7 @@ class AddLiveStreamDialog(BaseDialog):
         # Reserve the line up front so a message appearing later never makes the content scroll.
         self._validation_label.setMinimumHeight(self._validation_label.fontMetrics().lineSpacing())
         layout.addWidget(self._validation_label)
+        layout.addStretch(1)
 
         self.add_content_widget(form)
 

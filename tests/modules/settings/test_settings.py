@@ -15,6 +15,7 @@ from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
+from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
 
 
@@ -154,7 +155,13 @@ def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: C
     settings.save_to_config(config)
     config.save()
     saved = json.loads(config.config_path.read_text(encoding="utf-8"))
-    assert saved["ui"] == {"theme": "light", "window": {"custom_frame": False}, "custom": "$KEEP_RAW"}
+    assert saved["ui"] == {
+        "theme": "light",
+        "text_size": "system",
+        "quick_setup_done": False,
+        "window": {"custom_frame": False},
+        "custom": "$KEEP_RAW",
+    }
 
     settings.load_from_config(config)
     reopened = SettingsDialog()
@@ -169,6 +176,11 @@ def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: C
 @pytest.mark.parametrize("invalid", ["unknown", None, True, {}, []])
 def test_invalid_theme_follows_system(invalid: object) -> None:
     assert ThemeMode.from_config(invalid) is ThemeMode.AUTO
+
+
+@pytest.mark.parametrize("invalid", ["huge", None, 14, {}])
+def test_invalid_text_size_follows_system(invalid: object) -> None:
+    assert TextSize.from_config(invalid) is TextSize.SYSTEM
 
 
 def test_all_preferences_persist_and_storage_waits_for_restart(
@@ -198,6 +210,7 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
                 assert editor._choices is not None
                 editor._choices.setEditText(edits[field.path])
     dialog._custom_frame.setChecked(False)
+    dialog._text_size_combo.setCurrentIndex(dialog._text_size_combo.findData("large"))
     assert dialog._apply()
     saved = json.loads(config.config_path.read_text())
     assert saved["defaults"]["device"]["password"] == "$CAMERA_SECRET"
@@ -206,12 +219,14 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
     assert saved["defaults"]["live_stream"]["analytics-websocket"]["device_api_protocol"] == "http"
     assert saved["defaults"]["live_stream"]["rtsp"]["data_stream_handler"] == "UNAVAILABLE_PLUGIN"
     assert saved["ui"]["window"]["custom_frame"] is False
+    assert saved["ui"]["text_size"] == "large"
     assert saved["storage"]["cache_dir"] == str(tmp_path / "new-cache")
     assert config.get("storage") == active_storage
     config.activate_storage()
     assert config.get("storage")["cache_dir"] == str(tmp_path / "new-cache")
     reopened = SettingsDialog()
     qtbot.addWidget(reopened)
+    assert reopened._text_size_combo.currentData() == "large"
     for field, editor in reopened._configuration_editors.items():
         if field.path in edits:
             assert editor.text() == edits[field.path]

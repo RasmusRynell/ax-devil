@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import PlaylistResolverWidget, get_file_decoder_definitions
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -26,7 +27,7 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(Space.L)
         form = FormLayout()
         layout.addLayout(form)
 

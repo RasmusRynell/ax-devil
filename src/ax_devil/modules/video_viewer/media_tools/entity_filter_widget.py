@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.filtering import (
     FilterConfig,
     FilterOption,
@@ -72,7 +73,7 @@ class EntityFilterWidget(QWidget):
         filter_group = QGroupBox("Entity Filters") if self._show_title else QWidget()
         filter_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         filter_layout = QVBoxLayout(filter_group)
-        filter_layout.setSpacing(8)
+        filter_layout.setSpacing(Space.M)
         if not self._show_title:
             filter_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -81,7 +82,7 @@ class EntityFilterWidget(QWidget):
 
         controls_layout = QHBoxLayout()
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(24)
+        controls_layout.setSpacing(Space.XL)
         controls_layout.addWidget(QLabel("Columns"))
 
         self._columns_selector = QComboBox()
@@ -93,23 +94,22 @@ class EntityFilterWidget(QWidget):
         # Ensure text remains visible even with narrow layouts.
         self._columns_selector.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._columns_selector.setMinimumContentsLength(1)
-        self._columns_selector.setMinimumWidth(72)
         controls_layout.addWidget(self._columns_selector)
 
         self._toggle_all_button = QPushButton("Toggle")
         self._toggle_all_button.setObjectName("toggleAllButton")
         self._toggle_all_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._toggle_all_button.setStyleSheet(
-            """
-            QPushButton#toggleAllButton {
+            f"""
+            QPushButton#toggleAllButton {{
                 border: 1px solid palette(Midlight);
-                border-radius: 6px;
-                padding: 4px 12px;
+                border-radius: {Radius.CONTROL}px;
+                padding: {Space.S}px {Space.L}px;
                 background: palette(Base);
-            }
-            QPushButton#toggleAllButton:hover {
+            }}
+            QPushButton#toggleAllButton:hover {{
                 border-color: palette(Highlight);
-            }
+            }}
             """
         )
         controls_layout.addWidget(self._toggle_all_button)
@@ -119,8 +119,8 @@ class EntityFilterWidget(QWidget):
 
         self._grid_layout = QGridLayout()
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
-        self._grid_layout.setHorizontalSpacing(12)
-        self._grid_layout.setVerticalSpacing(4)
+        self._grid_layout.setHorizontalSpacing(Space.L)
+        self._grid_layout.setVerticalSpacing(Space.S)
 
         filter_layout.addLayout(self._grid_layout)
         filter_layout.addStretch()

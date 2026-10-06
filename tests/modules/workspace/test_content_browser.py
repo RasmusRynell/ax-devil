@@ -224,6 +224,7 @@ def test_palette_change_refreshes_existing_row_colors(qtbot: QtBot) -> None:
         palette = browser.palette()
         palette.setColor(QPalette.ColorRole.Text, color)
         browser.setPalette(palette)
+        QCoreApplication.processEvents()  # Restyling runs on the next event-loop turn.
         assert top.foreground(0).color() == color
         excluded_color = QColor(color)
         excluded_color.setAlphaF(0.5)

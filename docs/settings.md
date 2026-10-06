@@ -2,19 +2,32 @@
 
 **Settings** edits the active configuration file, which is selected at launch with `--config`:
 
-- **General:** theme, window title bar, graphics acceleration, video cache memory, overlay interaction, and
+- **General:** theme, text size, window title bar, graphics acceleration, video cache memory, overlay interaction, and
   keyboard shortcuts.
 - **Stream defaults:** device credentials and defaults for RTSP, MQTT, and DataHub connections.
 - **Storage:** window state, cache, log, and render catalog folders.
 - **Advanced:** the active configuration's location and version.
 
 **Apply** saves all pages, **OK** saves and closes, and **Cancel** discards changes since the last Apply.
-Theme changes apply immediately; stream defaults apply to newly opened live-stream dialogs.
-Storage, title bar, and graphics changes need a restart. Changing storage locations does not move existing files.
+Stream defaults apply to newly opened live-stream dialogs.
+Theme and text size changes apply immediately; storage, title bar, and graphics changes need a restart. Changing storage locations does not move existing files.
 Keyboard shortcuts are confirmed in their own dialog.
 
 Connection and storage fields keep `$VARIABLE_NAME` references as written. Password references stay visible
 while literal passwords are masked. Numeric and storage references must resolve to valid values to save.
+
+## Quick Setup
+
+On first start, **Quick Setup** asks for the theme and text size. Choices apply as they are clicked and are saved
+when the dialog closes. **Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to `true`; set it
+to `false` to show it on the next start.
+
+## Text size
+
+**General → Appearance → Text size** (`ui.text_size`) sets the body text size of the whole interface; headings,
+captions, list rows, and title bars scale with it, while margins stay fixed. **System** (the default) uses the
+operating system's interface font size; **Small**, **Medium**, **Large**, and **Larger** are 13, 15, 18, and 21 px.
+The typeface always follows the operating system. Changes apply to open windows immediately.
 
 ## Graphics acceleration
 

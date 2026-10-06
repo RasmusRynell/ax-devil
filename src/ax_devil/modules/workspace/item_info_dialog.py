@@ -6,6 +6,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QAbstractScrollArea, QHeaderView, QLabel, QTreeWidget, QTreeWidgetItem, QWidget
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
 
 
@@ -28,7 +29,7 @@ class _InformationTree(QTreeWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
         label.setWordWrap(True)
-        label.setContentsMargins(2, 0, 2, 0)
+        label.setContentsMargins(Space.XS, 0, Space.XS, 0)
         self.setItemWidget(item, 1, label)
         self._values.append((item, label))
         item.setSizeHint(1, label.sizeHint())

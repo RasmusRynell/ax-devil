@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QMessageBox, QPushButton
+from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
@@ -302,6 +302,7 @@ def test_theme_changes_preserve_live_and_error_status(
             palette.setColor(QPalette.ColorRole.Window, QColor("black" if dark else "white"))
             window.setPalette(palette)
             expected = StatusColor.ERROR if broken else StatusColor.SUCCESS
+            QApplication.processEvents()  # Restyling runs on the next event-loop turn.
             assert window._state.palette().color(window._state.foregroundRole()) == expected.color(window.palette())
 
 

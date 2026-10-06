@@ -6,11 +6,11 @@ Allows adding any widget to a side panel that can be expanded/collapsed via drag
 
 from typing import Optional, Protocol
 
-from PySide6 import QtGui
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QPropertyAnimation, Qt, Signal
 from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPaintEvent, QPalette
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
 
 from ..constants import (
@@ -18,7 +18,7 @@ from ..constants import (
     DEFAULT_FADE_DURATION,
     DRAG_THRESHOLD_PIXELS,
     HANDLE_DOT_COUNT,
-    HANDLE_DOT_SIZE,
+    HANDLE_DOT_SIZE_PX,
     HANDLE_HEIGHT,
     HANDLE_WIDTH,
     PANEL_ANIMATION_DURATION,
@@ -33,8 +33,10 @@ logger = get_logger(__name__)
 class DraggableTarget(Protocol):
     """Protocol defining the interface for objects that can be dragged/resized."""
 
-    expanded_width: int
     is_collapsed: bool
+
+    @property
+    def expanded_width(self) -> int: ...
 
     def width(self) -> int: ...
     def setFixedWidth(self, width: int, /) -> None: ...
@@ -81,7 +83,7 @@ class DraggableHandle(FadingWidget):
             dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
             # Make dots smaller
             font = dot.font()
-            font.setPointSize(HANDLE_DOT_SIZE)  # Smaller font size
+            font.setPixelSize(HANDLE_DOT_SIZE_PX)
             dot.setFont(font)
             layout.addWidget(dot)
 
@@ -177,7 +179,7 @@ class DraggablePanel(FadingWidget):
         # Set panel configuration BEFORE calling super().__init__
         self.animation_duration: int = animation_duration
         self.collapsed_width: int = collapsed_width
-        self.expanded_width: int = expanded_width
+        self._expanded_width = expanded_width
         self.is_collapsed: bool = True
 
         # Animation components (will be initialized in _setup_animations)
@@ -204,6 +206,29 @@ class DraggablePanel(FadingWidget):
         # Start collapsed
         self.setFixedWidth(self.collapsed_width)
 
+    @property
+    def expanded_width(self) -> int:
+        """Return the open width: the configured width, widened when the content needs more, as at large text."""
+        return max(self._expanded_width, self._content_minimum_width())
+
+    def _content_minimum_width(self) -> int:
+        content = self._content_widget
+        if content is None:
+            return 0
+        margins = self._content_layout.contentsMargins()
+        return content.minimumSizeHint().width() + margins.left() + margins.right()
+
+    def event(self, event: QEvent) -> bool:
+        """Widen an open panel whose content grew, as after a live text-size change, instead of clipping it."""
+        if (
+            event.type() == QEvent.Type.LayoutRequest
+            and not self.is_collapsed
+            and self.animation.state() != QAbstractAnimation.State.Running
+            and self.width() < self._content_minimum_width()
+        ):
+            self.setFixedWidth(self._content_minimum_width())
+        return super().event(event)
+
     def _setup_animations(self) -> None:
         """Setup smooth animations for expand/collapse."""
         # First call parent to setup fade animations and opacity effect
@@ -226,8 +251,8 @@ class DraggablePanel(FadingWidget):
 
         # Main content layout
         self._content_layout = QVBoxLayout(self)
-        self._content_layout.setContentsMargins(10, 10, 10, 10)
-        self._content_layout.setSpacing(5)
+        self._content_layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
+        self._content_layout.setSpacing(Space.S)
 
     def set_content_widget(self, widget: Optional[QWidget]) -> None:
         """Set the widget to display in the panel content area."""
@@ -236,14 +261,7 @@ class DraggablePanel(FadingWidget):
         content_widget = widget
         if content_widget is None:
             content_widget = QLabel("No content")
-            # Use theme placeholder text color
-            palette = content_widget.palette()
-            color = palette.color(QtGui.QPalette.ColorRole.PlaceholderText)
-            palette.setColor(QtGui.QPalette.ColorRole.WindowText, color)
-            content_widget.setPalette(palette)
-            font = content_widget.font()
-            font.setItalic(True)
-            content_widget.setFont(font)
+            content_widget.setStyleSheet("color: palette(placeholder-text); font-style: italic;")
             content_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._content_widget = content_widget

@@ -2,7 +2,7 @@
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QScrollArea
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QScrollArea
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
@@ -147,3 +147,19 @@ def test_settings_pages_scroll_without_moving_actions(qtbot: QtBot) -> None:
     QApplication.processEvents()
     stream_page = next(page for page in dialog.findChildren(ContentScrollArea) if dialog._tabs.indexOf(page) == 1)
     assert stream_page.verticalScrollBar().maximum() > 0
+
+
+def test_narrow_settings_page_scrolls_instead_of_overlapping_rows(qtbot: QtBot) -> None:
+    """When wrapped descriptions need more height than the page has, the page scrolls and no row is cut off."""
+    dialog = SettingsDialog()
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog.resize(380, 400)
+    QApplication.processEvents()
+    page = dialog._tabs.currentWidget()
+    assert page is not None
+    for group in page.findChildren(QGroupBox):
+        for label in group.findChildren(QLabel):
+            if label.isVisible():
+                assert group.rect().contains(label.mapTo(group, label.rect().bottomRight())), label.text()
+                assert label.height() >= label.heightForWidth(label.width()), label.text()

@@ -182,6 +182,10 @@ class MainWindow(ChromeWindow):
         help_menu = menu_bar.addMenu("Help")
         assert help_menu is not None
 
+        quick_setup_action = QAction("Quick Setup", self)
+        quick_setup_action.triggered.connect(self.show_quick_setup)
+        help_menu.addAction(quick_setup_action)
+
         about_action = QAction("About", self)
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
@@ -310,6 +314,13 @@ class MainWindow(ChromeWindow):
     def load_startup_content(self, startup: StartupContent) -> None:
         """Load resolved startup content into the workspace."""
         self._workspace_session.load_startup_content(startup)
+
+    def show_quick_setup(self) -> None:
+        """Show Quick Setup for theme and text size, as on first start and from Help → Quick Setup."""
+        from ax_devil.modules.settings.quick_setup_dialog import QuickSetupDialog
+
+        with QuickSetupDialog(parent=self) as dialog:
+            dialog.exec()
 
     def _on_about(self) -> None:
         """Handle Help -> About action."""

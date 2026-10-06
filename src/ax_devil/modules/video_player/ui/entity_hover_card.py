@@ -9,18 +9,20 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
-_CARD_STYLE = """
-QFrame#EntityHoverCard {
+from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
+
+_CARD_STYLE = f"""
+QFrame#EntityHoverCard {{
     background-color: palette(base);
     border: 1px solid palette(mid);
-    border-radius: 8px;
-}
-QFrame#EntityHoverCard QLabel {
+    border-radius: {Radius.POPUP}px;
+}}
+QFrame#EntityHoverCard QLabel {{
     background: transparent;
-}
+}}
 """
 _ANCHOR_OFFSET = 14
-_CARD_PADDING = 4
+_CARD_PADDING = Space.S
 
 
 class EntityHoverCard(QFrame):
@@ -33,12 +35,13 @@ class EntityHoverCard(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
         layout.setSpacing(0)
 
         self._label = QLabel()
         self._label.setTextFormat(Qt.TextFormat.RichText)
         self._label.setWordWrap(False)
+        TextRole.SMALL.apply(self._label)
         layout.addWidget(self._label)
 
         self._current_target_id: str | None = None

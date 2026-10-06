@@ -28,6 +28,7 @@ that task. `.claude/skills` links to the same folder for Claude Code.
 |-------|-------------|
 | `.agents/skills/review/SKILL.md` | Reviewing changes for real problems, module depth, architectural ownership, tests worth merging, and documentation placement |
 | `.agents/skills/render-catalog/SKILL.md` | Changing how overlays on video look: boxes, labels, colors, sizes, arrows, badges |
+| `.agents/skills/write-ui/SKILL.md` | Adding or restyling application UI: windows, dialogs, panels, fonts, spacing, colors, text size |
 | `.agents/skills/write-plugin/SKILL.md` | Writing a decoder or playlist resolver plugin, for the user's own data or to ship with ax-devil |
 
 ## Agent Requirements

@@ -8,13 +8,13 @@ from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QToolButton, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.icons import load_resource_icon
 
 logger = get_logger(__name__)
 
-HEADER_HEIGHT_PX = 28
-HEADER_BUTTON_SIZE_PX = 24
 HEADER_ICON_SIZE_PX = 16
 
 if TYPE_CHECKING:
@@ -67,12 +67,11 @@ class WorkspaceWidget(QFrame):
         self._header_widget = QFrame()
         self._header_widget.setObjectName("WorkspaceWidgetHeader")
         self._header_layout = QHBoxLayout(self._header_widget)
-        self._header_layout.setContentsMargins(8, 0, 2, 0)
-        self._header_layout.setSpacing(2)
+        self._header_layout.setContentsMargins(Space.M, 0, Space.XS, 0)
+        self._header_layout.setSpacing(Space.XS)
 
         # Title label on the left; italic while the pane is a replaceable preview
         self._title_label = QLabel("")
-        self._title_label.setObjectName("WorkspaceWidgetTitle")
         self._header_layout.addWidget(self._title_label)
 
         # Spacer to push buttons to the right
@@ -98,15 +97,13 @@ class WorkspaceWidget(QFrame):
         self._main_layout.addLayout(self._content_layout)
 
         self._apply_base_styling()
-        self._refresh_header_icons()
-        self._update_pin_state()
+        follow_appearance(self, self._apply_appearance)
 
     def _create_header_button(self) -> QToolButton:
         """Create one header icon button with a comfortable click target."""
         button = QToolButton(self._header_widget)
         button.setAutoRaise(True)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setFixedSize(HEADER_BUTTON_SIZE_PX, HEADER_BUTTON_SIZE_PX)
         button.setIconSize(QSize(HEADER_ICON_SIZE_PX, HEADER_ICON_SIZE_PX))
         return button
 
@@ -125,13 +122,11 @@ class WorkspaceWidget(QFrame):
             #WorkspaceWidgetHeader {{
                 border-bottom: 0px;
                 border-radius: 0px;
-                min-height: {HEADER_HEIGHT_PX}px;
-                max-height: {HEADER_HEIGHT_PX}px;
             }}
 
             #WorkspaceWidgetHeader QToolButton {{
                 border: none;
-                border-radius: 4px;
+                border-radius: {Radius.CONTROL}px;
                 background-color: transparent;
             }}
             #WorkspaceWidgetHeader QToolButton:hover {{
@@ -139,14 +134,6 @@ class WorkspaceWidget(QFrame):
             }}
             #WorkspaceWidgetHeader QToolButton:pressed {{
                 background-color: palette(Mid);
-            }}
-
-            #WorkspaceWidgetTitle {{
-                font-weight: 600;
-            }}
-            #WorkspaceWidgetTitle[preview="true"] {{
-                font-style: italic;
-                font-weight: 400;
             }}
             """
         )
@@ -163,12 +150,13 @@ class WorkspaceWidget(QFrame):
             self.close_requested.emit()
         return bool(super().event(e))
 
-    def changeEvent(self, event: QEvent) -> None:
-        """Retint header icons when the application theme changes."""
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.PaletteChange:
-            self._refresh_header_icons()
-            self._update_pin_state()
+    def _apply_appearance(self) -> None:
+        """Size the header to the text and tint its icons from the current palette."""
+        self._header_widget.setFixedHeight(Height.PANE_HEADER.px)
+        for button in (self._pin_button, self._close_button):
+            button.setFixedSize(Height.CONTROL.px, Height.CONTROL.px)
+        self._refresh_header_icons()
+        self._update_pin_state()
 
     def _refresh_header_icons(self) -> None:
         """Build header icons from the current palette."""
@@ -230,9 +218,9 @@ class WorkspaceWidget(QFrame):
             self._pin_button.setIcon(self._unpinned_icon)
             self._pin_button.setToolTip("Pin: keep this pane open when other content is opened")
             self._title_label.setToolTip("Preview (italic): the next opened content replaces this pane")
-        self._title_label.setProperty("preview", not self._pinned)
-        self._title_label.style().unpolish(self._title_label)
-        self._title_label.style().polish(self._title_label)
+        title_font = (TextRole.STRONG if self._pinned else TextRole.BODY).font()
+        title_font.setItalic(not self._pinned)
+        self._title_label.setFont(title_font)
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
         """Return the workspace item currently visible in the widget."""

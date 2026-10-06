@@ -9,7 +9,7 @@ proportional cursor positioning.
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QColor, QMouseEvent
+from PySide6.QtGui import QMouseEvent, QPalette
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -20,8 +20,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-TITLE_BAR_HEIGHT = 28
-BUTTON_SIZE = 28
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+
 DRAG_THRESHOLD = 4
 
 
@@ -88,11 +90,11 @@ class TitleBar(QWidget):
         self.setObjectName("AxDevilTitleBar")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setFixedHeight(TITLE_BAR_HEIGHT)
 
         self._build_ui()
         window.windowTitleChanged.connect(self._title_label.setText)
         self.sync_buttons()
+        follow_appearance(self, self._apply_appearance)
 
     # -- Construction -------------------------------------------------------
 
@@ -103,7 +105,7 @@ class TitleBar(QWidget):
 
         self._title_label = QLabel(self._window.windowTitle(), self)
         self._title_label.setObjectName("AxDevilTitleLabel")
-        self._title_label.setContentsMargins(6, 0, 0, 0)
+        self._title_label.setContentsMargins(Space.M, 0, Space.S, 0)
         self._title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout.addWidget(self._title_label)
 
@@ -154,7 +156,6 @@ class TitleBar(QWidget):
         btn.setIcon(self.style().standardIcon(icon))
         btn.setToolTip(tooltip)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setFixedSize(BUTTON_SIZE, BUTTON_SIZE)
         return btn
 
     # -- Public API ---------------------------------------------------------
@@ -170,57 +171,47 @@ class TitleBar(QWidget):
         self._btn_max.setIcon(self.style().standardIcon(icon))
         self._btn_max.setToolTip("Restore" if maximized else "Maximize")
 
-    def apply_palette_style(
-        self,
-        *,
-        text: QColor,
-        hover_bg: QColor,
-        hover_border: QColor,
-        pressed_bg: QColor,
-    ) -> None:
-        """Apply palette-aware styling only to the custom title bar subtree."""
-        background = "palette(alternate-base)"
-        text_rgba = f"rgba({text.red()}, {text.green()}, {text.blue()}, {text.alpha()})"
-        hover_bg_rgba = f"rgba({hover_bg.red()}, {hover_bg.green()}, {hover_bg.blue()}, {hover_bg.alpha()})"
-        hover_border_rgba = (
-            f"rgba({hover_border.red()}, {hover_border.green()}, {hover_border.blue()}, {hover_border.alpha()})"
-        )
-        pressed_bg_rgba = f"rgba({pressed_bg.red()}, {pressed_bg.green()}, {pressed_bg.blue()}, {pressed_bg.alpha()})"
+    def _apply_appearance(self) -> None:
+        """Size the bar and its buttons to the text, and color them from the current palette."""
+        height = Height.TITLE_BAR.px
+        self.setFixedHeight(height)
+        for button in (self._btn_min, self._btn_max, self._btn_close):
+            button.setFixedSize(height, height)
+        self._title_label.setFont(TextRole.STRONG.font())
+        palette = self.palette()
+        text = QPalette.ColorRole.Text
+        hover_bg = palette_color_css(palette, text, alpha=0.07)
+        hover_border = palette_color_css(palette, text, alpha=0.1)
+        pressed_bg = palette_color_css(palette, text, alpha=0.12)
         self.setStyleSheet(
             f"""
-            #AxDevilTitleBar {{
-                background: {background};
-                border-bottom: 1px solid {hover_border_rgba};
-            }}
-            #AxDevilWindowControls {{
-                background: {background};
-                border-bottom: 1px solid {hover_border_rgba};
+            #AxDevilTitleBar, #AxDevilWindowControls {{
+                background: palette(alternate-base);
+                border-bottom: 1px solid {hover_border};
             }}
             #AxDevilTitleLabel {{
-                color: {text_rgba};
-                font-size: 12px;
-                font-weight: 600;
+                color: palette(text);
             }}
             #AxDevilMenuBar {{
                 background: transparent;
                 border: none;
             }}
             #AxDevilMenuBar::item {{
-                padding: 2px 8px;
+                padding: {Space.XS}px {Space.M}px;
                 margin: 0px 0px;
-                border-radius: 4px;
+                border-radius: {Radius.CONTROL}px;
             }}
             #AxDevilTitleBar QToolButton {{
                 border: 1px solid transparent;
                 background: transparent;
-                color: {text_rgba};
+                color: palette(text);
             }}
             #AxDevilTitleBar QToolButton:hover {{
-                background: {hover_bg_rgba};
-                border-color: {hover_border_rgba};
+                background: {hover_bg};
+                border-color: {hover_border};
             }}
             #AxDevilTitleBar QToolButton:pressed {{
-                background: {pressed_bg_rgba};
+                background: {pressed_bg};
             }}
             #AxDevilCloseButton:hover {{
                 background: rgba(232, 17, 35, 217);

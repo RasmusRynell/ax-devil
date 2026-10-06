@@ -8,6 +8,8 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.playback_speed import (
     DEFAULT_PLAYBACK_SPEED,
@@ -19,7 +21,6 @@ from ax_devil.modules.video_player.engine.playback_speed import (
 )
 
 from ..constants import (
-    CONTROL_BUTTON_ROW_HEIGHT,
     CONTROL_PANEL_HEIGHT,
     CONTROL_PANEL_PADDING,
     DEFAULT_AUTO_HIDE_DELAY,
@@ -35,6 +36,27 @@ from ..constants import (
 from .fading import FadingWidget
 
 logger = get_logger(__name__)
+
+
+# White controls on the dark video scrim. Fonts are set on the widgets, so they follow the text size.
+def _button_style(horizontal_padding: int) -> str:
+    return f"""
+        QPushButton {{
+            background-color: transparent;
+            color: white;
+            padding: {Space.M}px {horizontal_padding}px;
+            min-width: {Space.XL + Space.S}px;
+        }}
+    """
+
+
+_READOUT_STYLE = """
+    QAbstractSpinBox, QLabel {
+        background-color: transparent;
+        border: 0px;
+        color: white;
+    }
+"""
 
 
 def video_control_icon(widget: QtWidgets.QWidget, icon_type: QtWidgets.QStyle.StandardPixmap) -> QtGui.QIcon:
@@ -237,7 +259,7 @@ class BaseVideoControlPanel(FadingWidget):
         # Main vertical layout for two-row structure (now inside the styled container)
         self._main_layout = QtWidgets.QVBoxLayout(self._styled_container)
         self._main_layout.setContentsMargins(CONTROL_PANEL_PADDING, 0, CONTROL_PANEL_PADDING, CONTROL_PANEL_PADDING)
-        self._main_layout.setSpacing(4)  # Add spacing between timeline and controls (same as button spacing)
+        self._main_layout.setSpacing(Space.S)  # Same gap between timeline and controls as between buttons
 
         # Add spacer at the top to push controls to the bottom
         self._main_layout.addStretch(1)
@@ -254,25 +276,17 @@ class BaseVideoControlPanel(FadingWidget):
         # Controls container for buttons
         self._controls_container = QtWidgets.QWidget(self._styled_container)
         self._controls_container.setAutoFillBackground(False)
-        self._controls_container.setFixedHeight(CONTROL_BUTTON_ROW_HEIGHT)
         self._controls_container.setStyleSheet("QWidget { background-color: transparent; border: 0px; }")
+        TextRole.STRONG.apply(self._controls_container)
 
         self._container_layout = QtWidgets.QHBoxLayout(self._controls_container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
-        self._container_layout.setSpacing(4)
+        self._container_layout.setSpacing(Space.S)
         self._main_layout.addWidget(self._controls_container)
 
         self.play_pause_btn = QtWidgets.QPushButton(self._controls_container)
         self.play_pause_btn.setAutoFillBackground(False)
-        self.play_pause_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 8px 12px;
-            }
-        """)
+        self.play_pause_btn.setStyleSheet(_button_style(Space.L))
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
         self._container_layout.addWidget(self.play_pause_btn)
         self._update_play_button()
@@ -362,15 +376,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         for text, delta in [("«10", -10), ("«1", -1), ("1»", 1), ("10»", 10)]:
             btn = QtWidgets.QPushButton(text, self)
             btn.setAutoFillBackground(False)
-            btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 8px 12px;
-            }
-        """)
+            btn.setStyleSheet(_button_style(Space.L))
             btn.clicked.connect(lambda checked=False, d=delta: self.frameStepRequested.emit(d))
             self._container_layout.addWidget(btn)
 
@@ -390,27 +396,14 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         self.frame_spinbox.setAutoFillBackground(False)
         self.frame_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.frame_spinbox.setMinimum(0)
-        # set background to transparent, set border to 0, and text color to white
-        self.frame_spinbox.setStyleSheet("""
-            QSpinBox {
-                background-color: transparent;
-                border: 0px;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-            }
-        """)
+        self.frame_spinbox.setStyleSheet(_READOUT_STYLE)
+        TextRole.MONO.apply(self.frame_spinbox)
         self.frame_spinbox.editingFinished.connect(self._on_spinbox_editing_finished)
         time_layout.addWidget(self.frame_spinbox)
 
         self._total_label = QtWidgets.QLabel("/ Unknown", self)
-        self._total_label.setStyleSheet("""
-            QLabel {
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-            }
-        """)
+        self._total_label.setStyleSheet(_READOUT_STYLE)
+        TextRole.MONO.apply(self._total_label)
         time_layout.addWidget(self._total_label)
 
         self._container_layout.addWidget(time_container)
@@ -419,21 +412,12 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         speed_container = QtWidgets.QWidget(self)
         speed_container.setAutoFillBackground(False)
         speed_layout = QtWidgets.QHBoxLayout(speed_container)
-        speed_layout.setContentsMargins(6, 0, 0, 0)
-        speed_layout.setSpacing(2)
+        speed_layout.setContentsMargins(Space.S, 0, 0, 0)
+        speed_layout.setSpacing(Space.XS)
 
         self.speed_down_btn = QtWidgets.QPushButton("-", self)
         self.speed_down_btn.setAutoFillBackground(False)
-        self.speed_down_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 8px 8px;
-                min-width: 20px;
-            }
-        """)
+        self.speed_down_btn.setStyleSheet(_button_style(Space.M))
         self.speed_down_btn.clicked.connect(lambda: self.step_playback_speed(-1))
         speed_layout.addWidget(self.speed_down_btn)
 
@@ -445,31 +429,19 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         self.speed_spinbox.setSingleStep(0.1)
         self.speed_spinbox.setSuffix("x")
         self.speed_spinbox.setValue(DEFAULT_PLAYBACK_SPEED)
-        self.speed_spinbox.setStyleSheet("""
-            QDoubleSpinBox {
-                background-color: transparent;
-                border: 0px;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-                min-width: 66px;
-            }
-        """)
+        self.speed_spinbox.setStyleSheet(_READOUT_STYLE)
+
+        def apply_speed_font() -> None:
+            self.speed_spinbox.setFont(TextRole.MONO.font())
+            self.speed_spinbox.setMinimumWidth(self.speed_spinbox.fontMetrics().horizontalAdvance("00.00x") + Space.M)
+
+        follow_appearance(self.speed_spinbox, apply_speed_font)
         self.speed_spinbox.valueChanged.connect(self._on_speed_changed)
         speed_layout.addWidget(self.speed_spinbox)
 
         self.speed_up_btn = QtWidgets.QPushButton("+", self)
         self.speed_up_btn.setAutoFillBackground(False)
-        self.speed_up_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 8px 8px;
-                min-width: 20px;
-            }
-        """)
+        self.speed_up_btn.setStyleSheet(_button_style(Space.M))
         self.speed_up_btn.clicked.connect(lambda: self.step_playback_speed(1))
         speed_layout.addWidget(self.speed_up_btn)
         self._container_layout.addWidget(speed_container)

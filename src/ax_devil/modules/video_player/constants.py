@@ -4,6 +4,8 @@ Centralizes all timing, sizing, and styling constants used across
 video player widgets for consistent behavior and easy customization.
 """
 
+from ax_devil.modules.chrome.tokens import Space
+
 # ===== FADE ANIMATION TIMING =====
 # Consistent fade in/out timing for all floating controls
 DEFAULT_FADE_DURATION = 200  # milliseconds
@@ -18,7 +20,7 @@ INFO_OVERLAY_BACKGROUND_ALPHA = 128  # Semi-transparent background for info over
 HANDLE_WIDTH = 30
 HANDLE_HEIGHT = 60
 HANDLE_DOT_COUNT = 3
-HANDLE_DOT_SIZE = 16  # Font size for dots
+HANDLE_DOT_SIZE_PX = 21  # Glyph size of the handle's dots, an icon rather than text
 DRAG_THRESHOLD_PIXELS = 2  # Minimum movement before drag starts
 
 # ===== PANEL ANIMATION SETTINGS =====
@@ -29,8 +31,7 @@ PANEL_EXPANDED_WIDTH = 400
 # ===== UI STYLING =====
 CONTROL_PANEL_HEIGHT = 50  # Two-row layout: timeline + controls (YouTube style)
 TIMELINE_HEIGHT = 10  # Slim timeline bar height
-CONTROL_BUTTON_ROW_HEIGHT = 32  # Height for button row
-CONTROL_PANEL_PADDING = 10  # Internal padding from video edges
+CONTROL_PANEL_PADDING = Space.M  # Internal padding from video edges
 
 # ===== TIMELINE SLIDER =====
 TIMELINE_GROOVE_HEIGHT = 4  # Height of the active track

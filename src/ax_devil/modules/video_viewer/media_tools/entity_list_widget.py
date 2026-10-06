@@ -17,7 +17,6 @@ from PySide6.QtCore import QAbstractListModel, QModelIndex, QPersistentModelInde
 from PySide6.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
-    QFont,
     QFontMetrics,
     QPainter,
     QPalette,
@@ -39,7 +38,9 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.theme import StatusColor
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.history_filtering import history_type_filter_keeps
 from ax_devil.modules.scene.filtering import matches_id_query
@@ -69,16 +70,8 @@ _DEFAULT_TYPE_COLOR = "#7f7f7f"
 _ENTITY_ROLE = Qt.ItemDataRole.UserRole + 1
 _DETAIL_ROLE = Qt.ItemDataRole.UserRole + 3
 _EXPANDED_ROLE = Qt.ItemDataRole.UserRole + 4
-_ROW_HORIZONTAL_MARGIN = 6
-_ROW_VERTICAL_MARGIN = 3
-_ROW_DETAIL_SPACING = 2
 _ROW_FALLBACK_WIDTH = 240
 _DOT_DIAMETER = 8
-_DOT_SPACING = 3
-_SPAN_SPACING = 6
-_DETAIL_KEY_STYLE = 'valign="top" style="font-size:10px;font-weight:600;padding-right:8px;"'
-_DETAIL_VALUE_STYLE = 'style="font-size:10px;"'
-_DETAIL_ID_STYLE = 'style="font-family:monospace;"'
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,16 +316,15 @@ class EntityListDelegate(QStyledItemDelegate):
     def __init__(self, view: QAbstractItemView) -> None:
         super().__init__(view)
         self._view = view
-        id_font = QFont("monospace")
-        id_font.setStyleHint(QFont.StyleHint.Monospace)
-        value_font = QFont("monospace")
-        value_font.setStyleHint(QFont.StyleHint.Monospace)
-        glyph_font = QFont()
-        self._fonts = {"id": id_font, "value": value_font, "glyph": glyph_font}
+        follow_appearance(self, self._load_fonts)
+
+    def _load_fonts(self) -> None:
+        self._fonts = {"id": TextRole.MONO.font(), "value": TextRole.MONO.font(), "glyph": TextRole.BODY.font()}
         self._metrics = {name: QFontMetrics(font) for name, font in self._fonts.items()}
         # Fixed-width confidence column so values line up across rows.
         self._min_widths = {"value": self._metrics["value"].horizontalAdvance("100%")}
         self._summary_height = max(metrics.height() for metrics in self._metrics.values())
+        self._view.doItemsLayout()
 
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -345,8 +337,8 @@ class EntityListDelegate(QStyledItemDelegate):
         style = style_option.widget.style() if style_option.widget is not None else QApplication.style()
         rect = option.rect
         content_width = self._content_width(option)
-        content_left = rect.left() + _ROW_HORIZONTAL_MARGIN
-        content_top = rect.top() + _ROW_VERTICAL_MARGIN
+        content_left = rect.left() + Space.S
+        content_top = rect.top() + Space.XS
         item = index.data(_ENTITY_ROLE)
         if isinstance(item, EntityListItem):
             if item.expanded:
@@ -360,7 +352,7 @@ class EntityListDelegate(QStyledItemDelegate):
                 palette.setColor(QPalette.ColorRole.Text, palette.color(QPalette.ColorRole.HighlightedText))
             self._draw_summary(painter, content_left, content_left + content_width, content_top, item, palette)
             if item.expanded:
-                detail_top = content_top + self._summary_height + _ROW_DETAIL_SPACING
+                detail_top = content_top + self._summary_height + Space.XS
                 detail_rect = QRect(
                     content_left, detail_top, content_width, self._html_height(item.detail_html, content_width)
                 )
@@ -371,11 +363,11 @@ class EntityListDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex) -> QSize:
         """Return a fixed collapsed height, plus laid-out detail height when expanded."""
-        height = (_ROW_VERTICAL_MARGIN * 2) + self._summary_height
+        height = (Space.XS * 2) + self._summary_height
         if bool(index.data(_EXPANDED_ROLE)):
             content_width = self._content_width(option)
             detail_height = self._html_height(str(index.data(_DETAIL_ROLE) or ""), content_width)
-            height += _ROW_DETAIL_SPACING + detail_height + _ROW_VERTICAL_MARGIN
+            height += Space.XS + detail_height + Space.XS
         return QSize(option.rect.width(), height)
 
     def _draw_summary(
@@ -388,7 +380,7 @@ class EntityListDelegate(QStyledItemDelegate):
             self._draw_span(
                 painter, QRect(x - width, top, width, self._summary_height), span, span.text, align_right, palette
             )
-            x -= width + _SPAN_SPACING
+            x -= width + Space.S
         limit = x
         # Untyped (motion) entities keep a gray dot so ids stay in one column.
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -398,8 +390,8 @@ class EntityListDelegate(QStyledItemDelegate):
         for object_type in item.types or ("",):
             painter.setBrush(QColor(type_color(object_type)))
             painter.drawEllipse(x, dot_top, _DOT_DIAMETER, _DOT_DIAMETER)
-            x += _DOT_DIAMETER + _DOT_SPACING
-        x += _SPAN_SPACING - _DOT_SPACING
+            x += _DOT_DIAMETER + Space.XS
+        x += Space.S - Space.XS
         id_span = SummarySpan(item.entity_id, None, "id")
         text = self._metrics["id"].elidedText(item.entity_id, Qt.TextElideMode.ElideMiddle, max(0, limit - x))
         alignment = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -420,7 +412,7 @@ class EntityListDelegate(QStyledItemDelegate):
         painter.translate(rect.topLeft())
         context = QAbstractTextDocumentLayout.PaintContext()
         context.palette = palette
-        _text_document(html, rect.width()).documentLayout().draw(painter, context)
+        _text_document(html, rect.width(), TextRole.SMALL.px).documentLayout().draw(painter, context)
         painter.restore()
 
     def _content_width(self, option: QStyleOptionViewItem) -> int:
@@ -428,17 +420,20 @@ class EntityListDelegate(QStyledItemDelegate):
         row_width = option.rect.width() or self._view.viewport().width()
         if row_width <= 0:
             row_width = _ROW_FALLBACK_WIDTH
-        return max(1, row_width - (_ROW_HORIZONTAL_MARGIN * 2))
+        return max(1, row_width - (Space.S * 2))
 
     @staticmethod
     def _html_height(html: str, width: int) -> int:
-        return ceil(_text_document(html, width).size().height())
+        return ceil(_text_document(html, width, TextRole.SMALL.px).size().height())
 
 
 @lru_cache(maxsize=512)
-def _text_document(html: str, width: int) -> QTextDocument:
-    """Return a laid-out document; shared by sizeHint and paint so each row is laid out once."""
+def _text_document(html: str, width: int, size_px: int) -> QTextDocument:
+    """Return a laid-out document at *size_px* text; shared by sizeHint and paint so each row is laid out once."""
     document = QTextDocument()
+    font = TextRole.SMALL.font()
+    font.setPixelSize(size_px)
+    document.setDefaultFont(font)
     document.setHtml(html)
     document.setTextWidth(max(1, width))
     return document
@@ -458,12 +453,13 @@ def _build_trailing(entity: Entity) -> tuple[SummarySpan, ...]:
 
 def _detail_row(key: str, value_html: str) -> str:
     """Return one key/value row of the expanded detail table."""
-    return f"<tr><td {_DETAIL_KEY_STYLE}>{escape(key)}</td><td {_DETAIL_VALUE_STYLE}>{value_html}</td></tr>"
+    key_style = f"font-weight:600; padding-right:{Space.M}px;"
+    return f'<tr><td valign="top" style="{key_style}">{escape(key)}</td><td>{value_html}</td></tr>'
 
 
 def entity_detail_html(entity: Entity) -> str:
     """Build detail HTML: every populated entity and latest-observation field, debug included."""
-    rows = [_detail_row("id", f"<span {_DETAIL_ID_STYLE}>{escape(str(entity.id))}</span>")]
+    rows = [_detail_row("id", f'<span style="font-family:monospace;">{escape(str(entity.id))}</span>')]
     rows.extend(_detail_row(name, html) for name, html in entity_detail_items(entity))
     return f'<table cellspacing="0" cellpadding="1">{"".join(rows)}</table>'
 
@@ -502,16 +498,16 @@ class EntityListWidget(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(8)
+        root_layout.setSpacing(Space.M)
 
         # Header
         header_layout = QVBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(2)
+        header_layout.setSpacing(Space.XS)
 
         if self._show_title:
             title = QLabel("Entities", self)
-            title.setStyleSheet("font-weight: 600;")
+            TextRole.STRONG.apply(title)
             header_layout.addWidget(title)
 
         self._count_label = QLabel("", self)

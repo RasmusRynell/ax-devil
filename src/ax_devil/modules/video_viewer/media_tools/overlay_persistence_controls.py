@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 
 
@@ -55,7 +56,7 @@ class OverlayPersistenceControls(QGroupBox):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setSpacing(4)
+        layout.setSpacing(Space.S)
         if not self._show_title:
             layout.setContentsMargins(0, 0, 0, 0)
             self.setFlat(True)
@@ -64,7 +65,7 @@ class OverlayPersistenceControls(QGroupBox):
         layout.addWidget(self._enabled_checkbox)
 
         timeout_row = QHBoxLayout()
-        timeout_row.setSpacing(4)
+        timeout_row.setSpacing(Space.S)
 
         self._timeout_spin.setRange(0, 100000)
         self._timeout_spin.setSingleStep(1)
@@ -75,7 +76,7 @@ class OverlayPersistenceControls(QGroupBox):
         layout.addLayout(timeout_row)
 
         opacity_row = QHBoxLayout()
-        opacity_row.setSpacing(4)
+        opacity_row.setSpacing(Space.S)
         opacity_label = QLabel("Reused overlay opacity:")
 
         self._opacity_spin.setRange(0.0, 1.0)

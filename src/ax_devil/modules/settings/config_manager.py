@@ -32,6 +32,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "ui": {
         "theme": "auto",
+        "text_size": "system",
+        "quick_setup_done": False,
         "window": {
             "custom_frame": True,
         },
@@ -289,7 +291,6 @@ class ConfigManager:
 
     def save(self) -> None:
         self._load_if_needed()
-        logger.info(f"ConfigManager Saving config at {self._config_path}")
         save_config(self._raw_config, self._config_path)
 
     @property

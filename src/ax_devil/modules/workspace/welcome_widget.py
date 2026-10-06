@@ -12,7 +12,6 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
-    QFontDatabase,
     QFontMetricsF,
     QMouseEvent,
     QPainter,
@@ -22,6 +21,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.workspace.startup_request import VideoFileStartup
 
 if TYPE_CHECKING:
@@ -29,15 +29,15 @@ if TYPE_CHECKING:
 
     from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 
-_KEY_BADGE_H_PAD = 6
-_KEY_BADGE_V_PAD = 4
-_KEY_BADGE_RADIUS = 4
-_KEY_BADGE_GAP = 6
-_HINT_ROW_SPACING = 4
-_LABEL_KEY_GAP = 20
-_GROUP_SPACING = 40
-_ROW_H_PAD = 10
-_ROW_RADIUS = 6
+_KEY_BADGE_H_PAD = Space.S
+_KEY_BADGE_V_PAD = Space.XS
+_KEY_BADGE_RADIUS = Radius.CONTROL
+_KEY_BADGE_GAP = Space.S
+_HINT_ROW_SPACING = Space.S
+_LABEL_KEY_GAP = Space.XL
+_GROUP_SPACING = 2 * Space.XL
+_ROW_H_PAD = Space.M
+_ROW_RADIUS = Radius.CONTROL
 _MAX_LABEL_WIDTH = 420.0
 _RECENT_GROUP = "Recent"
 _DROP_HINT = "Or drop a video file, with an optional overlay file, anywhere here"
@@ -189,15 +189,10 @@ class WelcomeWidget(QWidget):
         return groups
 
 
-def _fonts(widget: QWidget) -> _WelcomeFonts:
-    label_font = QFont(widget.font())
-    label_font.setPointSize(10)
-    badge_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-    badge_font.setPointSize(9)
-    header_font = QFont(widget.font())
-    header_font.setPointSize(8)
-    header_font.setCapitalization(QFont.Capitalization.AllUppercase)
-    header_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.2)
+def _fonts() -> _WelcomeFonts:
+    label_font = TextRole.BODY.font()
+    badge_font = TextRole.MONO_SMALL.font()
+    header_font = TextRole.CAPTION.font()
     return _WelcomeFonts(
         label=label_font,
         badge=badge_font,
@@ -210,7 +205,7 @@ def _fonts(widget: QWidget) -> _WelcomeFonts:
 
 def _layout_rows(widget: QWidget, groups: OrderedDict[str, list[WelcomeItem]]) -> _WelcomeLayout:
     """Measure and center every group, row, and the drop hint in *widget*."""
-    fonts = _fonts(widget)
+    fonts = _fonts()
     measured: list[list[tuple[WelcomeItem, str, list[str], float]]] = []
     max_label_width = 0.0
     max_badge_width = 0.0
@@ -283,7 +278,7 @@ def _row_index_at(rows: list[_PlacedRow], pos: QPointF) -> int | None:
 
 def _draw_layout(painter: QPainter, widget: QWidget, layout: _WelcomeLayout, hovered: int | None) -> None:
     """Draw section headers, rows with key badges, the hover highlight, and the drop hint."""
-    fonts = _fonts(widget)
+    fonts = _fonts()
     palette = widget.palette()
     label_color = palette.color(QPalette.ColorRole.Text)
     muted_color = QColor(label_color)
