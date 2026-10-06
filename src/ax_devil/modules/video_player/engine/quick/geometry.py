@@ -158,7 +158,8 @@ def convex_rows(points: NDArray[np.float64], minimum: NDArray[np.float64]) -> ND
     convex = np.all(turns > 0, axis=1) | np.all(turns < 0, axis=1)
     finite = np.all(np.isfinite(points), axis=(1, 2))
     long = np.all(lengths >= minimum[:, None], axis=1)
-    return convex & finite & long & (_widths(points) >= minimum)
+    rows: NDArray[np.bool_] = convex & finite & long & (_widths(points) >= minimum)
+    return rows
 
 
 @dataclass(frozen=True, slots=True)

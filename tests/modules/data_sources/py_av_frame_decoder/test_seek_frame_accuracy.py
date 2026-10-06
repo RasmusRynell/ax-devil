@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.pyav_abstraction import PyAvAbstraction
 
@@ -86,9 +87,9 @@ def mp4_video(tmp_path: Path) -> Path:
     return p
 
 
-def _read_all_sequential(video_path: Path) -> dict[int, np.ndarray]:
+def _read_all_sequential(video_path: Path) -> dict[int, NDArray[Any]]:
     """Read every frame sequentially → {frame_index: pixels}."""
-    frames: dict[int, np.ndarray] = {}
+    frames: dict[int, NDArray[Any]] = {}
     with PyAvAbstraction(str(video_path)) as reader:
         idx = 0
         while True:
@@ -100,16 +101,16 @@ def _read_all_sequential(video_path: Path) -> dict[int, np.ndarray]:
     return frames
 
 
-def _read_frame_via_jump(video_path: Path, frame_index: int) -> np.ndarray:
+def _read_frame_via_jump(video_path: Path, frame_index: int) -> NDArray[Any]:
     """Read a single frame via jump_to → its pixels."""
     with PyAvAbstraction(str(video_path)) as reader:
         decoded = reader.jump_to(frame_index)
         target = {idx: f for idx, f in decoded}
         assert frame_index in target, f"jump_to({frame_index}) did not return target frame"
-        return cast(np.ndarray, target[frame_index].to_ndarray(format="rgb24").copy())
+        return cast(NDArray[Any], target[frame_index].to_ndarray(format="rgb24").copy())
 
 
-def _find_offset(jumped: np.ndarray, sequential: dict[int, np.ndarray], target: int) -> int | None:
+def _find_offset(jumped: NDArray[Any], sequential: dict[int, NDArray[Any]], target: int) -> int | None:
     """Find which sequential frame the jumped pixels actually match."""
     for offset in range(-100, 100):
         check = target + offset

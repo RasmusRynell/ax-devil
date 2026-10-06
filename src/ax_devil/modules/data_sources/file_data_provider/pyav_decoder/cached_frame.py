@@ -3,7 +3,7 @@
 from typing import Any
 
 import av
-import numpy as np
+from numpy.typing import NDArray
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
 from ax_devil.modules.settings.logging_config import get_logger
@@ -53,7 +53,7 @@ class CachedFrame:
             sum(plane.buffer_size for plane in video_frame.planes), video_frame.width * video_frame.height * 3
         )
         self._video_frame: av.VideoFrame | None = video_frame
-        self._numpy_array: np.ndarray | None = None
+        self._numpy_array: NDArray[Any] | None = None
         self._is_converted = False
         self.logger.debug(
             f"CachedFrame created: id={id(self)}, frame_index={frame_index}, has_frame={video_frame is not None}"
@@ -87,7 +87,7 @@ class CachedFrame:
             duration_s=self.duration_s,
         )
 
-    def _to_numpy(self) -> np.ndarray:
+    def _to_numpy(self) -> NDArray[Any]:
         if self._is_converted:
             assert self._numpy_array is not None, "Converted frame should have numpy array"
             return self._numpy_array

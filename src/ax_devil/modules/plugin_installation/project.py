@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
@@ -30,7 +30,8 @@ ENTRY_POINT_GROUPS = ("ax_devil.decoder_plugins", "ax_devil.playlist_resolver_pl
 def read_project(directory: Path) -> dict[str, Any]:
     """Read standard Python project metadata."""
     with (directory / "pyproject.toml").open("rb") as file:
-        return cast(dict[str, Any], tomllib.load(file))
+        project: dict[str, Any] = tomllib.load(file)
+    return project
 
 
 def installation_root(host: Host) -> Path:

@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
+from numpy.typing import NDArray
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +15,7 @@ class DecodedFrame:
     """
 
     frame_index: int
-    pixels: np.ndarray
+    pixels: NDArray[Any]
     timestamp_us: float
     period_after_s: float | None = None
     source_timing_metadata: dict[str, Any] = field(default_factory=dict)

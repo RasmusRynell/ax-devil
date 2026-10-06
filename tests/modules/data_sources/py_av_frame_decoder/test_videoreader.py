@@ -17,6 +17,7 @@ from typing import Any, Callable, Generator
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_worker import WorkerState
@@ -736,7 +737,7 @@ class TestPrefetchBehavior:
             def __init__(self, index: int) -> None:
                 self.index = index
 
-            def to_ndarray(self, format: str = "rgb24") -> np.ndarray:
+            def to_ndarray(self, format: str = "rgb24") -> NDArray[Any]:
                 return np.zeros((2, 2, 3), dtype=np.uint8)
 
         class _StubPyAv:

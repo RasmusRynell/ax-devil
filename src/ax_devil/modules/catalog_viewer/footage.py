@@ -90,7 +90,7 @@ def _asphalt(painter: QPainter, rect: QRectF, rng: random.Random) -> None:
     painter.drawEllipse(QPointF(rect.left() + rect.width() * 0.3, rect.top() + rect.height() * 0.7), 40, 18)
     painter.setBrush(QColor(236, 236, 224))
     x = rect.left() + rect.width() * rng.uniform(0.55, 0.7)
-    for y in np.arange(rect.top() - rng.uniform(0, 60), rect.bottom(), 70.0):
+    for y in np.arange(rect.top() - rng.uniform(0, 60), rect.bottom(), 70.0).tolist():
         painter.drawPolygon(
             QPolygonF([QPointF(x, y), QPointF(x + 7, y), QPointF(x + 12, y + 38), QPointF(x + 5, y + 38)])
         )
@@ -229,7 +229,7 @@ def _paint_street(painter: QPainter, light: _Light) -> None:
     painter.fillRect(QRectF(0, FRAME_HEIGHT * HORIZON, FRAME_WIDTH, FRAME_HEIGHT), light.ground)
     painter.setPen(Qt.PenStyle.NoPen)
     # Distant buildings in the haze at the end of the street.
-    for left in np.arange(0.38, 0.62, 0.035):
+    for left in np.arange(0.38, 0.62, 0.035).tolist():
         top = HORIZON - rng.uniform(0.04, 0.11)
         haze = light.sky[1].darker(rng.randint(108, 125))
         painter.fillRect(QRectF(_point(left, top), _point(left + 0.033, HORIZON + 0.002)), haze)
@@ -243,7 +243,7 @@ def _paint_street(painter: QPainter, light: _Light) -> None:
     painter.setBrush(light.marking)
     for bottom in (0.4, 0.64):
         # Three metres of paint every nine metres, from four metres in front of the camera.
-        for distance in np.arange(4.0, 120.0, 9.0):
+        for distance in np.arange(4.0, 120.0, 9.0).tolist():
             near, far = HORIZON + (1 - HORIZON) * 4 / distance, HORIZON + (1 - HORIZON) * 4 / (distance + 3)
             half_near, half_far = 0.006 * (near - HORIZON), 0.006 * (far - HORIZON)
             x_near, x_far = lane(bottom, near), lane(bottom, far)
@@ -302,8 +302,8 @@ def _asphalt_grain(painter: QPainter, rng: random.Random) -> None:
 
 def _windows(painter: QPainter, rng: random.Random, light: _Light, side: float, near_bottom: float) -> None:
     """Paint rows of windows along a facade, and lit shop windows at street level."""
-    for column in np.arange(0.04, 0.8, 0.09):
-        for row in np.arange(0.06, 0.78, 0.12):
+    for column in np.arange(0.04, 0.8, 0.09).tolist():
+        for row in np.arange(0.06, 0.78, 0.12).tolist():
             corners = []
             for share, height in (
                 (column, row),
