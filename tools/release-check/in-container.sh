@@ -35,11 +35,11 @@ step "Prerequisites from docs/installation.md"
 documented /release/repo/docs/installation.md "## Ubuntu 24.04 prerequisites"
 export PATH="$HOME/.local/bin:$PATH"
 
-step "Documented example plugin"
+step "Example plugin from the write-plugin skill"
 mkdir -p "$HOME/example-plugin"
 python3 - <<'EOF'
 import pathlib, re
-guide = pathlib.Path("/release/repo/docs/plugins.md").read_text()
+guide = pathlib.Path("/release/repo/.agents/skills/write-plugin/reference.md").read_text()
 for name, language in (("pyproject.toml", "toml"), ("example_plugin.py", "python")):
     block = re.search(rf"### {re.escape(name)}\n\n```{language}\n(.*?)```", guide, re.DOTALL).group(1)
     (pathlib.Path.home() / "example-plugin" / name).write_text(block)
@@ -111,15 +111,16 @@ pip)
     check_upgrade
     ;;
 source)
-    step "Run from source, as in README.md"
+    step "Run from source, as in docs/installation.md"
     # Developers resolve everything, including ax-devil, from the clone and its lockfile.
     unset UV_FIND_LINKS PIP_FIND_LINKS
     cd "$HOME"
     # A local copy owned by this user stands in for the GitHub repository.
     mkdir -p "$HOME/remote" && cp -r /release/repo "$HOME/remote/ax-devil"
-    sed "s#https://github.com/[^ ]*/ax-devil\.git#$HOME/remote/ax-devil#" /release/repo/README.md >"$HOME/README.local.md"
-    grep -q "git clone $HOME/remote/ax-devil" "$HOME/README.local.md" || fail "README clone URL was not redirected"
-    documented "$HOME/README.local.md" "## Get started"
+    sed "s#https://github.com/[^ ]*/ax-devil\.git#$HOME/remote/ax-devil#" /release/repo/docs/installation.md \
+        >"$HOME/installation.local.md"
+    grep -q "git clone $HOME/remote/ax-devil" "$HOME/installation.local.md" || fail "clone URL was not redirected"
+    documented "$HOME/installation.local.md" "## Run from source"
     cd "$HOME/ax-devil"
     step "Developer checks"
     make check

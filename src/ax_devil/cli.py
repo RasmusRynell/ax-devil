@@ -162,7 +162,15 @@ def _build_runtime_context(log_level: str, config: Path | None, debug: bool) -> 
     }
 
 
-@click.group(invoke_without_command=True)
+@click.group(
+    invoke_without_command=True,
+    epilog=(
+        "\b\n"
+        "Documentation: https://github.com/RasmusRynell/ax-devil\n"
+        "Agent guidance: https://github.com/RasmusRynell/ax-devil/blob/main/AGENTS.md\n"
+        "Agent skills:   https://github.com/RasmusRynell/ax-devil/tree/main/.agents/skills"
+    ),
+)
 @apply_run_options
 @click.pass_context
 def cli(
@@ -171,7 +179,10 @@ def cli(
     config: Path | None,
     debug: bool,
 ) -> None:
-    """ax-devil: Application for working with Axis devices"""
+    """View video, live Axis cameras, and analytics overlays.
+
+    Run without a command to open the workspace.
+    """
     setup_logging(console_log_level="WARNING", console_only=True)
     ctx.obj = _build_runtime_context(log_level=log_level, config=config, debug=debug)
     if ctx.invoked_subcommand is None:

@@ -81,12 +81,9 @@ excluded items in the browser list, so the two controls use different icons and 
 information dialogs are disposed after closing.
 
 Rows render `WorkspaceBrowserRow.display_text` with middle elision, so file extensions stay visible in a narrow
-sidebar. When sibling rows share a label, `WorkspaceManager` adds a location hint: the shortest trailing folder path
-that tells their sources apart (`parking_lot_cam3.mp4 — site_a`), or, when the folders match, the shortest trailing
-source path including the file name or camera head. Rows with the same source, or without a source location (such as playlists), are numbered `(1)`, `(2)`. The row tooltip shows the full source location (file path, or
-host and camera head for live streams).
-Lane rows use the overlay file location when present, and the video location for plain or live lanes.
-Search matches the displayed text, including the hint.
+sidebar. When sibling rows share a label, `WorkspaceManager` adds the shortest location hint that tells their sources
+apart, or numbers them; the tooltip shows the full source location, and search matches the displayed text including
+the hint.
 
 Opening from the browser has two placements. Double-click and **Open** replace the preview pane through
 `SplitView.replace_or_open`. Ctrl+double-click and **Open to the Side** call `SplitView.open_to_side`, which splits
@@ -203,7 +200,5 @@ while the frame is zoomed in or showing info.
 
 ## Extension Points
 
-- New top-level windows should inherit from `ChromeWindow`.
-- New dialogs should inherit from `BaseDialog`.
 - New center-pane tools should inherit from `WorkspaceWidget`, implement `get_display_name()` and `_setup_widget_ui()`, emit `on_screen_item_changed` when visible Workspace content changes, and implement `cleanup()`.
 - New viewer widgets should be opened through `WorkspaceController`.

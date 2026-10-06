@@ -30,11 +30,13 @@ Auto does not detect incompatible drivers or fall back automatically; if startup
 
 ## Video cache memory
 
-**General → Playback → Memory for video caching** sets one allowance shared equally by all open offline
-videos; opening or closing a video redistributes it. **Auto** (default) is 25% of the RAM available at startup;
-**Manual** takes a size in GiB. Memory is only used as needed, and Apply resizes existing caches immediately.
-Decoder, display, and other application memory come on top, so this is not a total RAM limit.
-See [playback memory measurements](runbooks/playback-memory.md).
+**General → Playback → Memory for video caching** (`settings.playback.video_cache_total_mib`) sets one allowance shared
+equally by all open offline videos; opening or closing a video redistributes it. More memory keeps more frames ready for
+seeking. **Auto** (default) is 25% of the RAM available at startup, or 1 GiB if detection fails; **Manual** takes
+0.25–1024 GiB. Memory is only used as needed, and Apply resizes existing caches immediately. Decoder, display, and other
+application memory come on top, so this is not a total RAM limit: with 1 GiB of cache, playback uses roughly 1.5–2.5 GiB
+in total, and seeking in long-GOP 4K video can raise process memory by several GiB, which may stay resident. Auto does
+not watch other applications or prevent swapping.
 
 ## Configuration and local data
 

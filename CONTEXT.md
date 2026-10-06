@@ -34,18 +34,8 @@ Shared language for ax-devil's inspection workspace. This file names the current
 
 - Video Content is either Seekable Video Content or Live Video Content.
 - Video Content, Overlay Content, and Playlist Content are descriptions. Runtime sources are created only when a viewer opens them.
-- Seekable Video Content uses `FileVideoSourceSpec`; file overlays use `FileOverlaySourceSpec`.
-- Live Video Content uses `LiveRTSPStreamSpec`; embedded RTSP overlays use `LiveRTSPOverlaySourceSpec`; MQTT overlays use `LiveMQTTOverlaySourceSpec`; DataHub WebSocket overlays use `LiveWebSocketOverlaySourceSpec`.
-- Playlist Content contains `PlaylistEntry` values. Each entry contains `EntryLane` values, and playlist lanes must reference Seekable Video Content.
-- Standalone lane expansion belongs to the content object through `standalone_lanes()`.
-- The Workspace owns session facts and browser-row projection. The UI renders those facts without inventing its own content model.
-- Startup Request types resolve through `WorkspaceIntake` before content enters the Workspace.
-- `WorkspaceViewerFactory` routes by concrete content type: seekable video and playlists open `OfflineVideoViewerWidget`; live video opens `LiveVideoViewerWidget`.
-- Video Viewer workflows own source construction, synchronization, controls, playlist navigation, filtering, Scene inspection, and overlay persistence.
-- Timestamp Matching belongs to synchronization; Overlay Lookup belongs to file overlay providers.
-- Frame Display and Frame Viewport own reusable frame/overlay presentation, viewport interaction, hover reporting, and mount points.
-- Scene rendering converts `Scene` -> optional filter -> Scene Render Catalog -> Draw Recipe -> direct `DrawingTarget` calls -> `PreparedDrawing`.
-- The drawing target and backend preparation belong to `ax_devil.modules.video_player`; Scene-to-drawing catalog execution belongs to `ax_devil.modules.scene.rendering`.
+- How these concepts are built and routed is in `docs/architecture/overview.md`; their rules are in
+  `docs/domain/invariants.md`.
 
 ## Usage Notes
 

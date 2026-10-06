@@ -43,13 +43,6 @@ remain in `data_sources/base.py`; file sources and providers remain outside `liv
 helpers. Shared content descriptions, intake validation, and startup requests remain at the Workspace root because
 they also serve CLI and startup workflows. Tests mirror both subfolders.
 
-- `data_sources/live/datahub_client.py`: DataHub authentication, protocol parsing, requests, and topic discovery.
-- `data_sources/live/mqtt_discovery.py`: device source queries shared by MQTT validation and discovery.
-- `data_sources/live/websocket_overlay_source.py`: Qt worker execution and conversion of DataHub samples to overlays.
-- `workspace/add_content/analytics_discovery.py`: discovery state, background jobs, and adapters for the live-stream form.
-- `workspace/add_content/analytics_choice.py`: discovery choice presentation; `add_live_stream_dialog.py` composes the form.
-- `video_viewer/stream_media_controller.py`: runtime source construction and playback coordination.
-
 ## Outside `modules/`
 
 - `src/ax_devil/core/` contains small foundational types that do not belong to a concept-owned module.

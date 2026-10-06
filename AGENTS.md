@@ -1,5 +1,19 @@
 # AGENTS.md
 
+## Who You Are Helping
+
+Work out from the request which of two people you are helping; it decides what to read and what you may change.
+
+- **Using ax-devil**: opening recordings, connecting cameras, comparing results, restyling overlays, or making
+  ax-devil read their own data. Read `docs/usage.md`, `docs/plugins.md`, and the matching skill. Their catalogs and
+  plugins live outside this repository; leave the app's source unchanged. If what they want needs an app change
+  (a bug or missing feature), say so and ask before switching to development.
+- **Developing ax-devil**: changing the app's code, tests, docs, or built-in plugins and catalogs. Follow everything
+  below, read the docs under Read Next, and finish with the Done checks.
+
+Plugins belong to both. A plugin for the user's own data is a separate package outside this repository. A plugin
+shipped with ax-devil goes in `src/ax_devil/plugins/` and is development. The `write-plugin` skill covers both.
+
 ## Pre-Release Priority
 - Optimize for the current code working correctly.
 - Remove unused behavior and unsupported config shapes instead of carrying extra branches.
@@ -14,6 +28,7 @@ that task. `.claude/skills` links to the same folder for Claude Code.
 |-------|-------------|
 | `.agents/skills/review/SKILL.md` | Reviewing changes for real problems, module depth, architectural ownership, tests worth merging, and documentation placement |
 | `.agents/skills/render-catalog/SKILL.md` | Changing how overlays on video look: boxes, labels, colors, sizes, arrows, badges |
+| `.agents/skills/write-plugin/SKILL.md` | Writing a decoder or playlist resolver plugin, for the user's own data or to ship with ax-devil |
 
 ## Agent Requirements
 
@@ -65,7 +80,7 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 - For changes to code, tests, dependencies, or runtime/build configuration, run `make check` and
   `QT_QPA_PLATFORM=offscreen make test`.
 - For prose-only documentation or agent-instruction changes, validate affected links, examples, and consistency,
-  and run applicable documentation or skill validators instead of the application checks.
+  instead of running the application checks.
 - Update tests when behavior changes.
 
 ## Project Guidance
@@ -74,66 +89,27 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 
 PySide6 desktop toolkit for inspecting Axis camera streams, offline video, and analytics overlays.
 
-### Repo Map
-
-| Directory | Responsibility |
-|-----------|---------------|
-| `src/ax_devil/app.py` | Qt application bootstrap, logging, config, settings, plugin loading |
-| `src/ax_devil/cli.py` | Click CLI entry points and maintenance commands |
-| `src/ax_devil/core/` | Remaining foundational data types |
-| `src/ax_devil/modules/` | Concept-owned modules; see `docs/architecture/module-map.md` for current ownership |
-| `src/ax_devil/plugins/` | Built-in decoder and playlist resolver plugin bundles |
-| `tests/` | Pytest suites (unit + integration) |
-| `tools/` | Developer diagnostics and benchmarks, not shipped; see `tools/README.md` |
-
-### Fast Path
-
-- **Workspace UI** — `src/ax_devil/modules/workspace/`
-- **Add-content dialogs and discovery UI** — `src/ax_devil/modules/workspace/add_content/`
-- **Shared window/dialog chrome** — `src/ax_devil/modules/chrome/`
-- **Video player primitives** — `src/ax_devil/modules/video_player/`
-- **Video Viewer workflows** — `src/ax_devil/modules/video_viewer/`
-- **Data pipeline or source changes** — `src/ax_devil/modules/data_sources/`
-- **Live transports and device discovery** — `src/ax_devil/modules/data_sources/live/`
-- **Sync engine changes** — `src/ax_devil/modules/synchronization/`
-- **Adding/modifying a decoder** — `src/ax_devil/plugins/decoders/`; read `docs/architecture/overview.md` §Plugin System
-- **Content model or workspace** — `src/ax_devil/modules/workspace/`
-- **Scene model and rendering** — `src/ax_devil/modules/scene/`
-- **Changing how overlays look** — edit a render catalog JSON file by following `.agents/skills/render-catalog/SKILL.md`
-- **Render catalog viewer and `ax-devil catalog` commands** — `src/ax_devil/modules/catalog_viewer/`; read `docs/architecture/catalog-viewer.md`
-- **Config, settings, logging** — `src/ax_devil/modules/settings/`
-- **Cache** — `src/ax_devil/modules/cache/`
-
 ### Project Commands (interactive app launches are for the user)
 
 ```bash
-make run                       # Launch with INFO logging
-make run-dev                   # Launch with DEBUG logging
-uv run ax-devil clear-cache --type all --force
-uv run ax-devil list-handlers  # Show available overlay decoder handler types
-uv run ax-devil catalog --help # List, check, render, create and choose render catalogs
-uv run ax-devil                                                    # Open the app workspace
-uv run ax-devil local --video FILE [--overlay FILE --handler-type TYPE]  # Open with offline file
-uv run ax-devil live [--host HOST]                                 # Open live stream
-uv run ax-devil playlist --help                                    # Show playlist resolver entry points
+make run        # Launch with INFO logging
+make run-dev    # Launch with DEBUG logging
+uv run ax-devil --help  # Every command; each has its own --help
 ```
 
 ### Project Rules
 
-- Widgets stay thin — business logic lives in controllers and concept-owned modules.
-- New top-level windows must use `modules/chrome/chrome_window.py`; new dialogs must use `modules/chrome/base_dialog.py` so they inherit the shared custom title bar and frameless behavior.
-- Put labels and descriptions on the domain object that owns them. Do not remap them in the UI.
-- All widgets must call `cleanup()` for teardown. Respect existing lifecycle hooks in threaded code.
 - Keep device credentials out of the repo — use `AX_DEVIL_TARGET_*` env vars or config overrides.
 - Tests must never read or write the user's real files. The suite runs in its own home folder and fails if `~/.ax_devil` changes; a test that needs files uses `tmp_path` (see `docs/runbooks/testing.md`).
 - Agent verification runs offscreen or on a private display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
 - When changing names, structure, or shared terminology, carry the change through the affected code, tests, comments, and docs, or explicitly note what is intentionally left unchanged. Unless the user says otherwise.
-- Update docs when architecture or invariants change.
+- Update docs when architecture or invariants change. Each fact has one home; link to it instead of repeating it.
 
 ### Read Next
 
-- Module placement guide: `docs/architecture/module-map.md`
-- Architecture and data flows: `docs/architecture/overview.md`
-- Rendering, render catalogs, performance and open rendering work: `docs/architecture/draw-system.md`
-- Critical constraints and invariants: `docs/domain/invariants.md`
+- Where code belongs: `docs/architecture/module-map.md`
+- Rules for the area you change: `docs/domain/invariants.md`
+- Terms: `CONTEXT.md`
+- Architecture and data flows: `docs/architecture/overview.md`, `docs/architecture/ui-framework.md`
+- Rendering and render catalogs: `docs/architecture/draw-system.md`, `docs/architecture/catalog-viewer.md`
 - Testing workflow and patterns: `docs/runbooks/testing.md`

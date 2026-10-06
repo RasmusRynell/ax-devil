@@ -72,7 +72,6 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short -m 'not integration'"
 markers = [
     "integration: real installation tests that may download packages",
-    "unit: marks tests that can run without hardware",
 ]
 
 [tool.mypy]

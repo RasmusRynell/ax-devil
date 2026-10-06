@@ -1,6 +1,6 @@
 # Draw System Architecture
 
-This document describes the current Scene draw system. It is meant as the handoff map for future changes: where behavior lives, which contracts matter, and which parts should stay separate.
+This document describes the Scene draw system: where behavior lives, which contracts matter, and which parts should stay separate.
 
 ## Core Ownership
 
@@ -44,7 +44,7 @@ Live and offline viewers differ only in how they obtain `FrameData` and `Overlay
 
 `VideoFrameRenderer` retains the QWidget interaction shell and hosts a `QuickSurface`
 (`QQuickWidget`) as the sole video and overlay renderer. Graphics Off selects
-`QT_QUICK_BACKEND=software` at startup. There is no separate painter display path.
+`QT_QUICK_BACKEND=software` at startup.
 `QT_WIDGETS_RHI` controls widget presentation, not the viewer implementation.
 Auto prepares accelerated presentation before the first window opens, so the first
 viewer can be added without recreating it. Off uses software rendering. Explicit
@@ -68,7 +68,7 @@ filled rectangles. Convex polygons get a fan fill with a coverage fringe and str
 corners. Narrow rectangles, rounded rectangles (a nonzero `radius` in the box style), strokes below one physical pixel, dashed
 styles, concave or degenerate polygons, circles, points, polylines and all software drawing use ShapePaths. Qt handles
 curves, odd-even fills, arbitrary polygons and other
-complex paths. There is no intermediate painter path or reverse conversion. All geometry of a frame is packed into
+complex paths. All geometry of a frame is packed into
 batches, split only at 60,000 vertices.
 Geometry, paths, text and labels are separate pools and separate layers, drawn bottom to top in that order, so text
 stays readable above shapes. Draw order across entities, and within a layer, is intentionally not preserved: overlapping
@@ -107,7 +107,7 @@ resolved SVG input to Qt, not application-generated GPU geometry.
 Catalog evaluation reports failures per row before anything reaches the `DrawingBuffer`: a row that fails any
 demanded check emits none of its recipe's primitives, and other rows are unaffected. Successful output is published
 only when scene evaluation completes. The surface owns a reusable buffer. It retains the preceding prepared drawing
-to keep active text resources alive. There is no primitive replay pass, adapter or alternate production evaluator.
+to keep active text resources alive.
 
 `QuickOverlay` compares final records in each pool and updates changed resources/transforms only.
 Reused prepared drawings bypass item traversal. Paths use local coordinates and a separate origin;
@@ -163,7 +163,6 @@ integration tradeoff, not a claim that Python preparation has moved off the GUI 
 marked `WA_DontShowOnScreen`. It renders at native source resolution, compensates for
 desktop device-pixel ratio, and reads back the framebuffer for the encoder. Export runs
 on the GUI thread and owns its rendering resources until completion or cancellation.
-There is no separate painter export implementation.
 
 ## Presentation Assembly
 
@@ -245,53 +244,18 @@ resolved from the filtered Scene, and the relation is skipped when its recipe, e
 latest observation is missing. This makes entity filtering apply to relations without a separate relation-filtering
 policy.
 
-Six built-in catalogs ship in `catalog_definitions/`, listed in this order (`BUILT_IN_CATALOG_PATHS`):
-
-| Catalog | Look |
-| ------- | ---- |
-| **Standard** (default) | 1.5 px boxes in the class color, the id (long ids elided in the middle) on a flush tab above the top-left corner and the score on a flush tab below the bottom-left corner. Heads, which sit at the top of people, show their id just inside the box's top-left corner. |
-| **Minimal** | 1 px boxes only, for crowds; details are on hover. |
-| **Chunky** | Standard with 3 px boxes and 14 px tabs, for screens seen from a distance. |
-| **Glass** | Rounded boxes with a faint tint and dark ring, the id on a dark pill above, the score as a meter and number on a pill below (red below 0.5), clothing or vehicle color chips and a Bag or Face tag inside the box; a head's id sits inside its box, with the Face tag in the bottom corner. |
-| **Tracking** | For debugging tracking: 1.5 px boxes edged with thin black lines and a small id, all in a color picked from the object's id (`pick_color`), so id switches show as color changes. No class names or confidence. |
-| **Classic** | The original look, described below. |
-
-All but Tracking color objects by class instead of naming it. All six dash the outline of occluded objects, draw
-speed arrows when the view enables Speed arrows, and link a part to its whole (`has_part`) with a light line between
-their centers and a dot on each end. Only Classic shows motion symbols.
-
-Classic has nine templates: `arrow`, `confidence_bar`, `movement_badge`,
-`object_box`, `object_label`, `square_marker`, `swatch`, `velocity_indicator`, and `vertical_progress_bar`.
-
-Classic recipes. Every entity recipe draws the object box and a label with the display id. Indicators stay visible on
-tiny detections: color swatch dots, the bag marker, motion symbols and confidence bar spacing scale with the box within
-fixed pixel limits, while ids and class names keep a fixed size. A size or inset set on a step stays exact. These
-sizes are catalog expressions; the renderer applies no implicit size adjustments. Color swatches are borderless dots
-without score text; bindings still choose the highest-score color. Velocity arrows follow
-the view's Speed arrows choice; movement badges appear when the entity has a movement state and
-Movement badges is enabled. An absent optional attribute omits its visual.
-
-| Recipe | Selector | Draws in addition |
-| ------ | -------- | ----------------- |
-| `motion` | fallback `unclassified` | Nothing: entities whose latest observation has no classification. Their box uses a light blue-gray 1.5 px outline. |
-| `generic_classified` | fallback `classified` | Confidence bar and the highest-score class, for classes without a specific recipe (`license_plate`, `animal`, `unknown`, custom labels). |
-| `vehicle` | `vehicle`, `vehicle_other`, `car`, `bus`, `truck`, `bike`, `bicycle` | Confidence bar and a swatch for the highest-score `vehicle_colors`. |
-| `human` | `human` | Confidence bar, upper and lower clothing color swatches, and a gray bag marker midway down the right edge from `carries_bag`. |
-| `head` | `head` | Confidence bar, plus an inner box and bar for numeric `face_visible`. |
-| `has_part` | relation `has_part` | A dashed line between the two endpoint geometry centers. |
+Six built-in catalogs ship in `catalog_definitions/`, listed in the order of `BUILT_IN_CATALOG_PATHS`. Their looks are
+summarized in the [README](../../README.md#change-how-overlays-look); each JSON file is the reference for its own
+templates and recipes, and `ax-devil catalog list` lists them.
 
 Recipe selection is catalog policy. Decoder classification strings are evidence, not UI routing logic.
 
 ## Overlay Visibility
 
-**Details** beside the media tools Catalog button controls which semantic components a view draws. Entity filters
-choose participating objects; visibility chooses the information drawn for those objects. Inspection and hover
-retain all data, including hidden confidence. New views enable everything. Each live view and offline lane has its
-own immutable `OverlayVisibility`; offline playlist viewers retain preferences by original lane position across
-entry navigation and lane exclusion. Preferences are not saved across application restarts. Changing catalogs or
-applying a catalog to all views preserves each view's choices; unsupported controls are disabled without discarding
-those choices. Unused templates and permanently hidden components do not enable controls. Reset enables all groups,
-including currently unsupported ones.
+**Details** beside the media tools Catalog button controls which semantic components a view draws; the user-facing
+behavior is in [Usage](../usage.md#overlay-details). Each live view and offline lane has its own immutable
+`OverlayVisibility`; offline playlist viewers retain it by original lane position. Unused templates and permanently
+hidden components do not enable controls.
 
 `visibility.py` owns the eight typed `OverlayFeature` identifiers, their labels and descriptions: `outlines`, `ids`,
 `class_names`, `confidence`, `speed`, `movement`, `attributes`, and `relations`. A template or step may declare
@@ -342,7 +306,6 @@ Ownership within `template_runtime/`:
   Only demanded Scene fields are read, once per column per frame, and whole columns are validated at once.
   Finished Scene recipes retain only their update function, not compiler plans.
 - `quick/batching.py` owns reusable NumPy vertex scratch storage and ordered geometry publication.
-  There is no custom native extension, C++ source, alternate evaluator or native build requirement.
 
 File loading and in-memory compilation use the same validation boundary. Parsing rejects duplicate JSON keys;
 structural and semantic validation complete before activation. A document whose content hash matches the packaged
@@ -494,8 +457,9 @@ The media tools panel contains `SceneRenderCatalogSelector`, but the selector is
 If a selection's active catalog path is missing or invalid, that selection keeps its last successfully compiled catalog and publishes an error status. Status is derived in order: listed invalid, listed missing, the recorded load error, then "Selected catalog". A listing refresh therefore never hides a load error. Selectors show their selection status and keep the selected path visible so the user can reload, switch catalogs, or open the viewer.
 
 Catalog files are edited outside the app, usually by an AI agent following `.agents/skills/render-catalog/SKILL.md`.
-The manager watches every listed catalog file and the directories holding them; when a file changes, is replaced or is
-removed it refreshes the listing and emits `catalogFileChanged(path)`. Every selection whose active path is that file
+The manager watches every listed catalog file, invalid ones included, and the directories holding them. After 150 ms of
+quiet it compares file fingerprints; for each file that changed, was replaced (as many editors save) or was removed, it
+refreshes the listing and emits `catalogFileChanged(path)`. Every selection whose active path is that file
 loads the new version, keeping the last one in use if it does not load, and other selections are untouched. The
 catalog viewer (`ax_devil.modules.catalog_viewer`), opened from **View → Render Catalogs** or a selector's **View**
 button, draws a catalog on example sheets and redraws on every change; it and the `ax-devil catalog` commands are
@@ -558,98 +522,38 @@ together with its Coordinates and Display Rendering sections.
   created without a selection. Normal app startup uses the app-owned `SceneRenderCatalogManager` instead.
 - Catalog JSON is treated as machine-authored configuration; Python runtime, schema, and tests are the readable source of truth for behavior.
 
-## Settled Decisions
+## Decisions
 
 Revisit these only with new measurements that change the tradeoff.
 
-- **Catalog execution stays compiled Python.** Recipes compile to ordinary Python update functions that evaluate each
-  recipe once over NumPy row columns. A C++ extension was measured about three times faster, but maintaining catalog
-  semantics in C++ and shipping binary wheels per platform and Python ABI outweighed the gain. No further catalog
-  execution work is planned: at 250 entities per lane, evaluation is about 2.4 ms per lane.
-- **Text keeps Qt's native glyph rendering.** Text items are matched by content so appearing or disappearing labels do
-  not rebuild other glyph nodes. A bitmap label atlas looked worse and was rejected. No further text work is planned.
+- **Catalog execution stays compiled Python.** Recipes compile to Python update functions that evaluate each recipe
+  once over NumPy row columns. A C++ extension was measured about three times faster, but is not worth maintaining catalog
+  semantics twice and shipping binary wheels per platform and Python ABI.
+- **Text uses Qt's native glyph rendering.** Text items are matched by content, so labels that appear or disappear do
+  not rebuild other glyph nodes. A bitmap label atlas looks worse.
+- **Labels share one `LabelLayer`** that keeps their textures, so returning content such as changing scores is not
+  repainted and uploaded again.
 - **Garbage collection runs on the GUI thread over a frozen startup heap.** `app.py` freezes everything alive after
-  startup and runs cyclic collection from a GUI-thread timer; a full collection over the unfrozen startup heap paused
-  about 13 ms. Do not change global GC thresholds to improve benchmarks.
+  startup and collects from a GUI-thread timer; collecting the unfrozen startup heap pauses about 13 ms. Do not change
+  global GC thresholds to improve benchmarks.
 
-## Performance Reference
+## Performance
 
-### Real playback
+The GUI thread is the limit; video decoding costs little (about 0.09 cores for 1080p25). With 250 moving objects per
+lane on a 1080p25 recording, two lanes play at full rate and four lanes saturate one core, where playback stays in
+real time by showing fewer frames. Per lane, catalog evaluation takes about 2.4 ms and text preparation about 0.9 ms.
+A first open of a large ADF file is dominated by parsing; later opens use the cache.
 
-Measured 2026-09-27 on the full application (decoding, overlay lookup, Scene presentation and inspection, catalog
-rendering and display) started through `create_app` with one playlist entry: a 45 s 1080p25 H.264 clip at 8 Mbit/s
-shared by 1, 2 or 4 lanes, each with its own ADF beta overlay of 250 moving, classified objects per frame. Default
-settings, 1x playback, 25 s measured after 5 s warm-up, Wayland/OpenGL, Qt 6.10.2, RTX 5080. A CPU limit is a cgroup
-quota, only a rough stand-in for a slower machine. Values are Python 3.12 / 3.14:
-
-| Lanes | Displayed fps per lane | Displayed fps per lane, 1-core limit | Process CPU, no limit |
-|---:|---:|---:|---:|
-| 1 | 25 / 25 | 25 / 25 | 0.62 / 0.54 cores |
-| 2 | 25 / 25 | 25 / 25 | 0.97 / 0.83 cores |
-| 4 | 16.2 / 20.3 | 12.8 / 15.5 | 1.19 / 1.18 cores |
-
-Process CPU per displayed frame is 18–25 ms on 3.12 and 15–22 ms on 3.14. The GUI thread is the bottleneck: it
-saturates one core at four lanes, while video decoding costs about 0.09 cores. When overloaded, playback stays close to
-real time by presenting fewer frames. Event-loop stalls over 100 ms occur only at four lanes under a 1-core limit on 3.12
-(about five per 25 s). Without a CPU limit, time to first frame is 1.0–1.3 s with warm
-caches; with cold caches four lanes take 12.8 s on 3.12 and 8.9 s on 3.14, dominated by the first ADF parse. The
-method and the comparison with the previous QPainter renderer are in PR #33.
-
-### Rendering stages
-
-`tools/benchmark_catalog_lanes.py` drives production viewers with the packaged catalog and a new moving Scene per
-lane per frame; see [Testing](../runbooks/testing.md#rendering-benchmarks) for commands. Measured 2026-09-22 with four
-960×480 lanes, 1080p video and 250 entities per lane, summed over the four lanes, median of 60 rounds,
-Wayland/OpenGL, Qt 6.10.2, RTX 5080:
-
-| Stage | Median |
-|---|---:|
-| Catalog evaluation and drawing preparation | 24 ms |
-| Qt item binding | 4.1 ms |
-| Scene graph synchronization | 0.8 ms |
-| Render submission | 3.6 ms |
-| Process CPU per round, median / p95 | 36 / 38 ms |
-
-Per lane, catalog evaluation including column extraction is about 2.4 ms and text preparation about 0.9 ms. These are
-CPU observations; GPU execution and screen presentation are not measured.
-
-### Retained label textures
-
-Measured 2026-10-03 with `tools/benchmark_catalog_lanes.py --lanes 4 --entities 250`: Standard with 400 labels per
-lane, four 960×540 lanes, and a new 1080p image and moving Scene per lane every round, over 120 measured rounds after
-warm-up, on a private Xvfb display with Python 3.14.8, Qt 6.10.2 and an RTX 5080. Before and after ran alternately;
-each value is the median over runs (three on OpenGL, two on software) of each run's median round, in milliseconds.
-*Before* is one `LabelItem` per label with atlas textures (`5dfd9ef`); *after* is the `LabelLayer`.
-
-| Backend, workload | Label stages (binding + quick frame) | Frame total | Process CPU |
-|---|---:|---:|---:|
-| OpenGL, moving labels | 6.9 → 6.2 | 56.4 → 53.4 | 55.8 → 52.8 |
-| OpenGL, changing scores | 15.0 → 7.0 | 64.5 → 55.1 | 64.7 → 54.0 |
-| Software, moving labels | 20.5 → 20.2 | 59.2 → 59.1 | 62.2 → 61.5 |
-| Software, changing scores | 28.0 → 22.3 | 68.4 → 61.8 | 71.4 → 64.3 |
-
-Frame total is every piece of GUI-thread work in a round: catalog drawing, overlay binding, each lane's whole Qt
-Quick frame (polish, sync, render and frame end) and the window's composition and flush. It agrees with wall time
-and process CPU within about a millisecond, so nothing per-frame is left out. Stages unrelated to labels vary by
-about a millisecond between runs, so smaller differences are noise.
-
-Moving labels reuse their textures in both designs; the layer moves their per-frame cost from binding on the GUI
-side into its own scene-graph sync, for a small net saving. Changing scores is where it pays: score labels that come
-back reuse retained textures instead of being repainted and uploaded, halving the label cost on OpenGL. Visiting
-only the groups whose visibility changed, rather than every cached group, made no measurable difference here.
-
-On Xvfb, composition and flush take about 24 ms per round with OpenGL because each frame is copied back to the X
-server; a real display differs. GPU execution is not included: waiting for the GPU after composition
-(`--gpu-sync`) measured about 0 ms on this setup. Software rounds show periodic spikes near 170 ms in both designs.
+These figures come from the full app playing a 45 s 1080p25 H.264 clip (8 Mbit/s) in a playlist of 1, 2 or 4 lanes,
+each with an ADF overlay of 250 moving objects, on Qt 6.10.2 with an RTX 5080; a cgroup CPU quota stood in for a
+slower machine. As a baseline for `tools/benchmark_catalog_lanes.py --lanes 4 --entities 250` on that machine, one
+round costs about 24 ms of catalog evaluation and drawing preparation, 4.1 ms of item binding, 0.8 ms of scene graph
+sync and 3.6 ms of render submission, for 36 ms of process CPU. Measure changes with the
+[rendering benchmarks](../runbooks/testing.md#rendering-benchmarks).
 
 ## Open Work
 
-### Catalog viewer and agent authoring
-
-Catalogs are changed by agents editing the JSON and shown live by the viewer. Its handoff, decisions and progress are
-kept in [Catalog Viewer](catalog-viewer.md#handoff).
-
 ### Catalog language
 
-- Add ellipse, rounded-box, arc, pie, chord, path and image primitives to catalog JSON.
+- Add ellipse, arc, pie, chord, path and image primitives to catalog JSON.
 - Let bindings read attributes beyond the primary classification.

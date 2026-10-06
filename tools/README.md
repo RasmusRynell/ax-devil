@@ -6,7 +6,7 @@ folder; `make -C tools/trace-viewer check` covers the trace viewer.
 
 | Tool | Use it to |
 |------|-----------|
-| [`trace-viewer/`](trace-viewer/README.md) | Explore a performance recording from **Debug Stats** as a timeline and flame graph, optionally with an AI agent. |
+| [`trace-viewer/`](trace-viewer/README.md) | Explore a performance recording from **Debug → Debug Metrics** as a timeline and flame graph, optionally with an AI agent. |
 | `benchmark_quick_renderer.py` | Measure Qt Quick renderer CPU cost with synthetic shapes. |
 | `benchmark_catalog_lanes.py` | Measure production viewers rendering the packaged catalog across several lanes. |
 | `benchmark_template_runtime.py` | Measure catalog evaluation and drawing preparation offscreen. |

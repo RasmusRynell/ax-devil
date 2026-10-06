@@ -103,15 +103,10 @@ pause handling. `FileFrameSource` instead owns one `FileFrameDelivery` worker fo
 requests, PyAV serialization, lazy prefetch, callback delivery, and shutdown. `Seekable` adds `jump_to()`,
 `get_total_frames()`, `get_current_frame()`, and `step_delta()`.
 
-Offline sources join the process-wide `FrameCachePool` through `data_sources/video_cache_memory.py`.
-That module binds `GlobalSettings.video_cache_budget_changed` to the pool; settings owns the Auto/manual
-preference, hardware detection and explanatory text. Auto uses 25% of Linux MemAvailable measured once at startup, with no fixed ceiling.
-The pool divides the total allowance equally and shrinks caches before growing any share on source open/close or
-setting changes. `FrameCache` serializes resizing with frame admission; decoder cleanup closes the cache and returns
-its share. Pool code acquires cache locks, so cache code must release its lock before deregistering from the pool.
-`CachedFrame` reserves the larger of source planes and eventual RGB24 pixels. Prefetch shares the allowance and
-protects the current/nearer forward frames; oversized frames still deliver uncached. Diagnostic snapshots report
-frame count, reserved bytes and each source's current share, not total process RAM.
+Offline sources join the process-wide `FrameCachePool` through `data_sources/video_cache_memory.py`, which binds
+`GlobalSettings.video_cache_budget_changed` to the pool. The pool splits one allowance equally across open sources;
+see [Offline Video Cache Memory](../domain/invariants.md#offline-video-cache-memory) for its rules and
+[Settings](../settings.md#video-cache-memory) for the user-facing setting.
 
 File overlays do not produce data or maintain playback position. `FileOverlaySource` owns its decoder-backed provider,
 serves synchronous `OverlayLookup` requests, and closes that provider explicitly and idempotently. Push-based live
@@ -135,15 +130,9 @@ Its optional `RTSPOverlayDecoder` groups the payload decoder, handler identity, 
 Without that definition, it registers no application-data callback. Source selection follows the content specification;
 implementing `OverlaySource` does not mean embedded overlays are enabled.
 
-The DataHub client uses encrypted HTTPS/WSS by default, with certificate verification intentionally disabled for
-this development tool. This provides transport encryption without authenticating device identity and is not
-suitable for production or hostile networks. HTTP/WS is explicitly selectable; there is no automatic transport
-downgrade or certificate exception UI/persistence.
-The client rejects all redirects before following them, including authenticated token requests and the WebSocket
-handshake, so a redirect cannot reach another host or change protocols.
-The session-token request starts without credentials, then responds to the advertised authentication scheme,
-preferring Digest over Basic. A rejected Digest attempt does not fall back to Basic. Basic remains supported when
-advertised alone, including over HTTP; that HTTP mode exposes credentials to anyone observing the connection.
+The DataHub client's transport rules are in [Data Pipeline invariants](../domain/invariants.md#data-pipeline). Its session-token request starts without
+credentials, then answers the advertised scheme, preferring Digest over Basic; a rejected Digest attempt does not fall
+back to Basic. Basic over HTTP exposes credentials to anyone observing the connection.
 
 The controller keeps frame/overlay inputs separate from its collection of owned sources. This lets it manage each
 transport once per lifecycle operation and connect each source's errors once, even when one object supplies both inputs.
@@ -184,20 +173,15 @@ the live-stream dialog supplies the transport-specific fetch function and defaul
 ## Synchronization
 
 Live viewing uses `StreamSync`, a pure Python engine wrapped by `QtStreamSync`. It buffers frames by arrival delay and
-selects the newest queued overlay at or before each frame within an inclusive, fixed 10 ms tolerance, independent of
-FPS. Future samples wait; stale samples are discarded. Only matched samples enter live sticky persistence, whose
-separate timeout controls reuse on subsequent frames. With sticky disabled, unmatched frames have no overlay.
-Frame and overlay arrivals both release frames whose delay has elapsed; the engine is
-intentionally event-driven and does not use a wall-clock timer for an idle stream.
+pairs each with the newest overlay at or before it within a fixed tolerance; it is event-driven, with no wall-clock
+timer. The exact matching and persistence rules are in [Frame Identity](../domain/invariants.md#frame-identity).
 
 `StreamMediaController` wires the selected frame and overlay signals into the sync adapter and forwards synchronized
 results to `SceneFramePresenter`. Sharing an RTSP connection does not imply that frame and overlay arrivals are paired;
 both inputs retain their capture timestamps for synchronization.
 
-Timestamp matching policy also lives in synchronization. It answers only which overlay timestamp matches a video
-timestamp: exact first, otherwise the latest previous overlay timestamp within the configured tolerance. Future overlay
-timestamps are not selected before their video time is reached. File overlay providers consume that policy, but own
-provider-specific lookup behavior such as sequence fallback and lookup metadata.
+Timestamp matching policy also lives in synchronization; file overlay providers consume it but own their own lookup
+behavior, such as sequence fallback and lookup metadata.
 
 Offline viewing receives frame events through `OfflineSession`; each `OfflineLane` pulls overlay data through
 `OverlayLookup.get_overlay_at_frame()`, and `SceneFramePresenter` assembles the display frame.
@@ -209,22 +193,16 @@ use actual frame timestamps for expiry, including variable frame rates.
 
 ### Scene history
 
-While indexing, file overlay providers feed every served sample to a `SceneHistoryCollector` and persist the resulting
-`SceneHistoryRecords` with the index: each Scene event's label and involved entity ids, and each entity's runs of
-consecutive samples with the classification types it had. `FileOverlaySource.scene_history()` places those records on
-the bound video as a `SceneHistory`: events land on the first video frame at or after their sample, and objects span
-exactly the frames whose looked-up sample contains them, using the provider's lookup matching plus the lane's sticky
-selection (`OverlayPersistencePolicy.sample_selection()`). Lanes place the history again whenever the sticky settings
-or the timestamp fallback policy change.
+While indexing, file overlay providers record each Scene event and each entity's runs of samples as
+`SceneHistoryRecords`, stored with the index. `FileOverlaySource.scene_history()` places them on the bound video, using
+the lane's lookup matching and sticky selection, and lanes place them again when either changes. The placement rules
+are in [Data Pipeline invariants](../domain/invariants.md#data-pipeline).
 
-`MediaToolsPanel` is the viewer's Scene inspector sink and forwards each new per-frame update to the entity list, the
-event log and the object history pane; each defers its work while hidden, including inside a collapsed side panel. With a history, the entity list can switch between the displayed frame and every
-object in the file (highlighting those on the displayed frame and applying the decoder's type filters to the recorded
-types), the **Events** tab lists every event (searchable by text and filterable by the event kinds it holds), and selecting an event or entity shows an `ObjectCard` per involved
-object: a presence strip over the video with its event ticks, and a button that opens the object's data on the displayed
-frame, following playback. Links, the strip and double-clicked events request frames through the panel, which offline
-lanes route to `OfflineSession.jump_to_frame()`. Live viewers have no history: their event log appends the events of
-newly shown overlays and keeps the newest 1000.
+`MediaToolsPanel` is the viewer's Scene inspector sink. It forwards each per-frame update to the entity list, the event
+log and the object history pane, which defer work while hidden. With a history, the entity list can show every object
+in the file, the **Events** tab lists every event, and selecting one shows an `ObjectCard` per involved object with a
+presence strip; frame links route to `OfflineSession.jump_to_frame()`. Live viewers have no history: their event log
+appends the events of newly shown overlays and keeps the newest 1000.
 
 ## Scene Model And Rendering
 
@@ -262,13 +240,10 @@ environment. Plugin API version, class contract, plugin IDs, and decoder handler
 registration. One invalid external entry point does not prevent other plugins or the application from loading.
 
 `launcher.py` selects the prepared plugin interpreter before Qt imports; management commands stay in the base
-interpreter. `modules/plugin_installation/` owns the separate locked uv project, combining an editable app checkout,
-exact installed app release, or the app's direct wheel/Git source with selected plugins, constrained to the dependency
-versions installed with the app. Storage belongs to the checkout/base-environment location; an atomic `current` link
-activates a prepared project after app/source identity and plugin validation. App, Python, installed-dependency, or
-project-metadata changes invalidate that runtime; the next launch rebuilds it and falls back to the current base app
-if that fails. Plugin management never modifies the base environment.
-See [Creating and using plugins](../plugins.md) for commands, upgrades, storage, and recovery.
+interpreter. `modules/plugin_installation/` owns the separate locked uv project that holds installed plugins; its rules
+are in [Plugin System invariants](../domain/invariants.md#plugin-system).
+See [Installing and managing plugins](../plugins.md) for commands, upgrades, storage, and recovery, and the
+[write-plugin skill](../../.agents/skills/write-plugin/SKILL.md) for writing plugins.
 
 Built-in decoder plugin bundles:
 
@@ -281,9 +256,7 @@ Built-in decoder plugin bundles:
 | `uvg-vcm` | `UVG_VCM` | none |
 | `axis-onvif-xml` | `ONVIF_XML` | `ONVIF_XML` |
 
-The UVG-VCM provider parses the whole v1.0 JSON document into a derived frame cache, keeping normalized geometry
-and using video sequence indices for alignment. See the [dataset contract](../datasets/uvg-vcm.md#decoder-behavior)
-for supported annotations and ambiguous tracking IDs.
+The UVG-VCM decoder's behavior is described with the [dataset](../datasets/uvg-vcm.md#decoder-behavior).
 
 Built-in playlist resolver bundles:
 
@@ -296,28 +269,12 @@ Built-in playlist resolver bundles:
 
 The main UI is a workspace shell: content browser on the left, drag-to-split viewer area in the center, and application actions in `MainWindow`.
 
-Key owners:
-
-- `MainWindow`: application shell, menus, shortcuts, dialogs, diagnostics windows, and `WorkspaceSession`.
-- `WorkspaceSession`: public Workspace facade for composition, content mutation, startup loading, focused viewer lookup, and
-  teardown.
-- `ApplicationWindow`: static central layout shell.
-- `WorkspaceController`: UI coordination and synchronization between content browser, state, split view, and viewers.
-- `SplitView`: pane layout, drag/drop splitting, focused widget tracking, and removal/collapse behavior.
-- `WorkspaceWidget`: common pane frame and lifecycle contract.
-- `LiveVideoViewerWidget`: live Video Viewer workflow.
-- `OfflineVideoViewerWidget`: offline and playlist Video Viewer workflow.
-- `FrameDisplay`: reusable display shell.
-- `FrameViewport`: interactive viewing area.
-- `VideoFrameRenderer`: coalesces frame delivery and prepares frames and overlay drawings for the Quick surface.
-
-New top-level windows should inherit from `ChromeWindow`; new dialogs should inherit from `BaseDialog`.
+[UI Framework Structure](ui-framework.md) describes its owners: `MainWindow`, `WorkspaceSession`, `SplitView`,
+`WorkspaceWidget` and the display stack.
 
 Application appearance is owned by `modules/chrome/theme.py`: shared light and dark color overrides feed QDarkTheme,
 and theme setup completes Qt's application palette so custom painters receive matching surfaces, borders and selection
-colors. Automatic OS changes refresh that palette after the theme engine finishes applying its stylesheet. Widget styles
-use palette roles, rich-text inspection content inherits its surface's foreground, and status colors select readable
-foregrounds for each appearance. Playback controls retain white icons and text on their dark video scrim.
+colors.
 
 ## Data Flow Summary
 
@@ -325,7 +282,7 @@ Live pipeline:
 
 ```
 RTSPSource.frameReady -> QtStreamSync.push_frame()
-RTSPSource.overlayReady OR MQTTOverlaySource.overlayReady -> QtStreamSync.push_overlay()
+RTSPSource / MQTTOverlaySource / WebSocketOverlaySource .overlayReady -> QtStreamSync.push_overlay()
 QtStreamSync.syncReady -> StreamMediaController._on_sync_result()
   -> SceneFramePresenter.prepare_frame()
   -> FrameDisplay.display_frame()
@@ -354,11 +311,8 @@ FileFrameSource -> FileFrameDelivery -> PyAV frame decoder/cache
 - `GlobalSettings`: reactive runtime settings singleton backed by config on load/save.
 - `ShortcutManager`: default shortcut registration, `QAction` installation, override-only persistence, conflict detection, and rebinding.
 - `CacheManager`: hash-based cache path generation and cache clearing.
-- `IndexedFrameCache`: persisted decoded frame artifacts for providers that need derived caches.
-  Stores binary pickle payloads with optional per-frame gzip compression (level 1) after a JSON header.
-  Header offsets and lengths support direct frame reads without decoding other frames; payloads need no text encoding
-  or line separators.
-  Once opened, frame reads use the retained handle until close, even if the cache path is removed.
+- `IndexedFrameCache`: persisted decoded frame artifacts for providers that need derived caches, readable one frame at
+  a time.
 - Scene stores: `SourceIndexedSceneStore` for source-record indexes and `IndexedFrameSceneStore` for decoded frame
   artifacts. Both accept persisted data only when its complete artifact identity matches the source fingerprint, decoder
   name, explicit artifact version, Scene model version, and provider-owned decode options.

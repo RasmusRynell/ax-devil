@@ -16,8 +16,8 @@ First public release, planned as 0.1.0.
 - Object inspector with type filtering, attributes, per-object history, and scene events.
 - Playlists that group recordings and comparison lanes into a review sequence.
 - Export of video with overlays, preserving source frame timing. Exports contain no audio.
-- Render catalogs controlling overlay appearance, with built-in Standard, Minimal, Chunky, Glass, and Tracking
-  styles, and a catalog viewer for previewing, copying, and applying them.
+- Render catalogs controlling overlay appearance, with built-in Standard, Minimal, Chunky, Glass, Tracking,
+  and Classic styles, and a catalog viewer for previewing, copying, and applying them.
 - Decoder and playlist resolver plugins, installed into isolated environments with `ax-devil plugins`.
 
 ### Known limitations

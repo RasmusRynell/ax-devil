@@ -5,8 +5,8 @@ in a browser and drop a JSON recording onto it. No build, server, or upload is r
 The viewer is a separate developer tool, not bundled with the application or its wheel.
 It reads ax-devil stack samples and VizTracer/Chrome complete-duration events (`ph: "X"`).
 
-To record, open **Debug Stats** in ax-devil, click **Start recording**, reproduce the activity,
-and click **Stop recording** to save. See [recording details](../../src/ax_devil/modules/diagnostics/README.md#record-a-performance-timeline).
+To record, open **Debug → Debug Metrics** in ax-devil, click **Start recording**, reproduce the activity,
+and click **Stop recording** to save. See [recording details](../../docs/runbooks/diagnostics.md#record-a-performance-timeline).
 
 ## Explore a recording
 

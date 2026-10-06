@@ -33,30 +33,20 @@ make -C tools/trace-viewer check  # Python relay/schema tests and Node parser/na
 The combined CI quality job runs these checks too. The tool's MCP dependencies remain separate from the application
 environment.
 
-The regular suite exercises installation transactions, generated uv configuration, and launch routing with uv mocked.
-It also stages the example from `docs/plugins.md` with local package metadata and a tiny dependency, then checks real
-entry-point discovery, decoding, missing-dependency errors, and API rejection in fresh Python processes.
+The regular suite covers plugin installation with uv mocked, plus real entry-point discovery and decoding of the
+minimal package from `.agents/skills/write-plugin/reference.md` in fresh Python processes.
 
-`make test-integration` exercises the documented editable plugin through the public development CLI, then builds
-app and plugin wheels and installs them using `uv tool install`, pip from a wheel directory, and pip from a wheel path
-into fresh environments.
-It runs outside the checkout with isolated user storage, loads packaged icons/catalogs and built-ins, opens and closes
-the real offscreen main window, and decodes through the installed fixture plugin. It checks plugin upgrades,
-failed-resolution/validation rollback, base app upgrades, automatic and failed refresh at launch, removal, and cleanup.
-Base package inventories and repo metadata/lockfiles are checked for unintended changes. The public launcher runs
-from a directory containing shadowing modules, and installation is exercised with inherited uv source overrides
-and `PYTHONPATH`. Editable source changes must remain visible without reinstalling.
-
-The tests use temporary directories and the normal package cache/network. Synthetic app versions are built only in
-temporary source copies and resolved through a temporary wheel directory; nothing is published. They may download
-and build packages and require the same system libraries as a normal installation.
+`make test-integration` installs the app and that plugin for real (editable, `uv tool install`, and pip from wheels)
+outside the checkout with isolated storage, then checks launching, decoding, upgrades, rollback, refresh at launch and
+removal. It may download and build packages, needs the same system libraries as a normal installation, and publishes
+nothing.
 
 CI uses two jobs for pull requests: `quality` shares one Python 3.12 environment for application checks,
 trace-viewer checks, the regular suite, installation smoke tests, and package builds; `test` runs the regular
 suite on the minimum supported Python 3.10. Pushes to `main` and release tags also run `lowest`, which tests
 Python 3.10 with the oldest allowed dependencies (`uv pip install --resolution lowest-direct -e . --group dev`).
 Superseded runs on the same branch or PR are canceled; release runs are not interrupted.
-Pytest excludes the `integration` marker by default; `-m integration` selects it explicitly. There is no opt-in skip flag.
+Pytest excludes the `integration` marker by default; `-m integration` selects it explicitly.
 
 ## Package artifacts
 
@@ -111,12 +101,6 @@ Never launch verification windows, send input, or capture screenshots on the use
 If the required isolated environment is unavailable, report the check as unrun and its coverage limit.
 Real-device checks use configured test devices; the offline suite mocks external services.
 
-## Test Path
-
-Pytest scans the main test tree configured in `pyproject.toml`:
-
-- `tests/` — main test suites, including built-in plugin tests
-
 ## Test organization
 
 ```
@@ -147,12 +131,6 @@ Config and settings tests live under `tests/modules/settings/`.
 
 ## Writing a new test
 
-1. Place the file in the appropriate subdirectory.
-2. Name it `test_*.py` with functions named `test_*`.
-3. Use `tmp_path` for file I/O.
-4. Mock external sources — never depend on a live camera or MQTT broker.
-5. Run `make check` and `QT_QPA_PLATFORM=offscreen make test` before submitting.
-
 Each new test should protect a meaningful failure: wrong frames or overlays, lost settings, leaked workers,
 failed plugin loading, or damaged output. Prefer strengthening an existing case over adding another smoke test.
 Assert observable output using explicit expectations; avoid constructor echoes, deleted-name checks and exact
@@ -165,13 +143,6 @@ modify them. Immutable reference images and TLS certificates can use module/sess
 and writable caches remain independent. A cache or prefetch test should check retained frames and require successful delivery
 without additional decoding; request speed alone cannot prove a cache hit.
 
-## Markers
-
-| Marker | Purpose |
-|--------|---------|
-| `@pytest.mark.unit` | Tests that can run without hardware |
-| `@pytest.mark.integration` | Real installation smoke tests; run with `make test-integration` |
-
 ## Tests never touch the user's files
 
 `tests/__init__.py` gives every run its own temporary home folder (`HOME` and the XDG folders) before any app code is
@@ -181,12 +152,6 @@ The session hooks in `tests/conftest.py` record the user's real
 `~/.ax_devil/configs`, `render_catalogs` and `plugins` and the plugin data folder before the run, and fail it if any of
 them changed. After each test the shared configuration is pointed back at the suite's own file, so a test that switches
 it cannot affect later ones. A test that needs files uses `tmp_path`.
-
-## Render catalog checks
-
-`QT_QPA_PLATFORM=offscreen uv run ax-devil catalog check [FILE]` loads a catalog and draws every example sheet the viewer shows, and
-`QT_QPA_PLATFORM=offscreen uv run ax-devil catalog render [FILE] --out DIR` writes those sheets as PNG images to look at. Use them after changing
-a catalog, including the built-in one.
 
 ## Quick renderer verification
 
@@ -203,9 +168,10 @@ Other pixel-coordinate tests assume scale 1. Linux/OpenGL results do not certify
 
 ## Rendering benchmarks
 
-Reference results and the real-playback measurements live in
-[Draw System Architecture](../architecture/draw-system.md#performance-reference); this section only covers how to run
-the tools. `tools/benchmark_quick_renderer.py` measures the Quick renderer with synthetic shapes. For a native-window
+Expected costs are in [Draw System performance](../architecture/draw-system.md#performance). On Xvfb, OpenGL
+composition adds about 24 ms per round because each frame is copied back to the X server; a real display differs.
+`--gpu-sync` adds about 0 ms there, and software-backend rounds spike near 170 ms regardless of the change under
+test. `tools/benchmark_quick_renderer.py` measures the Quick renderer with synthetic shapes. For a native-window
 comparison on a private display, run each backend separately. These results do not certify physical GPU performance:
 
 ```bash
@@ -250,3 +216,12 @@ without other verification running. Confidence values cycle through sixty two-de
 cache workload, not a claim about every camera's score distribution. Label tests in `test_quick_renderer.py` cover
 shared textures, bounded eviction, disappearing instances, clearing and scene-graph recreation. Run them on both
 the offscreen software backend and the private OpenGL display to check native resource destruction.
+
+## Playback memory
+
+To check the [video cache memory](../settings.md#video-cache-memory) figures, generate clips with FFmpeg `testsrc2`
+at 1080p and 4K, 30 fps, 20 seconds:
+`libx264 -preset ultrafast -crf 28 -g 60 -pix_fmt yuv420p -threads 2` (long-GOP: `-g 300 -sc_threshold 0`). Play
+them offscreen without overlays with Manual 1 GiB in fresh processes, recording indexing separately from cached opens.
+Play to the end, probe retained and evicted frames, change the allowance during playback, and open and close sources
+to check redistribution and cleanup.

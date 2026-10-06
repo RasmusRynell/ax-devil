@@ -7,8 +7,7 @@ No inference model or conversion to CVAT is needed.
 ## Prepare a playlist
 
 The official page embeds ordinary MP4s alongside the RAW YUV downloads. Use the MP4s for convenient playback;
-they are compressed previews, not the uncompressed benchmark originals. Volleyball Game's full sequence is
-ten seconds, Floorball Game's is seven seconds, and Job Fair, Traffic Lights, and Highway Drive are ten seconds each.
+they are compressed previews, not the uncompressed benchmark originals.
 
 From the repository directory, download the five videos and their annotations into separate folders with matching
 file stems. `curl` is only needed for this download step:
@@ -76,7 +75,7 @@ with local copies and add it next to any published video or GIF:
 
 > Demo footage and annotations derived from the [UVG-VCM dataset](https://tie-ultravideo.rd.tuni.fi/UVG-VCM/index.html)
 > by the Ultra Video Group, Tampere University, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-> Visualization overlays and video transcoding were added by this project.
+> Visualization overlays were added by this project.
 
 For unchanged official MP4s, credit video compression to the dataset authors; this project's overlays are drawn
 at playback time. Describe the project's actual modifications when publishing a derived asset.

@@ -79,10 +79,8 @@ for timing boundaries, cache hits, and submission versus paint semantics.
 
 ## Lane fullscreen
 
-Click a lane, then press **F** to show that display fullscreen. **F** or **Esc** restores
-its original layout position. Fullscreen opens on the monitor containing the lane's center.
-**F11** continues to toggle the application window.
-`LaneFullscreenController` temporarily hosts the existing `FrameDisplay` in a
+Lane fullscreen (keys in [Usage](../../../../docs/usage.md#video-and-overlays)) opens on the monitor containing the
+lane's center. `LaneFullscreenController` temporarily hosts the existing `FrameDisplay` in a
 `ChromeWindow`; sources, synchronization, and sibling lanes remain owned by the viewer
 and keep running. Playback and playlist shortcuts reuse the main window actions.
 Multi-lane transport controls stay in the workspace; use playback shortcuts while fullscreen.

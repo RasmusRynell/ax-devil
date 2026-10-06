@@ -31,7 +31,8 @@ uv sync --locked
 uv run ax-devil
 ```
 
-This opens an empty workspace. Run the [README examples](../README.md#open-your-data) from the repository directory.
+This opens an empty workspace. To run the [README examples](../README.md#open-your-data) from source, prefix them
+with `uv run` in the repository directory.
 
 ## Install from PyPI
 
@@ -42,16 +43,16 @@ uv tool install ax-devil
 ax-devil
 ```
 
-`python -m pip install ax-devil` inside a virtual environment also works. Either way, replace `uv run ax-devil`
-in the examples with `ax-devil`. Upgrade with `uv tool upgrade ax-devil`; installed plugins follow on the next launch.
-See [plugin upgrades and recovery](plugins.md#upgrades-and-recovery).
+`python -m pip install ax-devil` inside a virtual environment also works. Upgrade with `uv tool upgrade ax-devil`;
+installed plugins follow on the next launch. See [plugin upgrades and recovery](plugins.md#upgrades-and-recovery).
 
 ## Graphics startup problems
 
 If graphics initialization fails, launch with software rendering:
 
 ```bash
-QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software uv run ax-devil
+QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software ax-devil         # standalone installation
+QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software uv run ax-devil  # source checkout
 ```
 
 Then set **Settings → General → Appearance → Graphics acceleration** to **Off** to keep software rendering

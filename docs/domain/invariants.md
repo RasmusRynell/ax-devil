@@ -1,12 +1,7 @@
 # Domain Invariants
 
 Rules that must remain true across the system. Violating these causes subtle bugs, data corruption, or crashes.
-
-## Pre-release Policy
-
-- Optimize for the current code working correctly.
-- Remove unused behavior. For config, warn on unsupported keys while preserving the user's raw document.
-- Keep shared terminology aligned with code, tests, and docs when names change.
+Read the sections for the area you change. Explanations of how things work live in the architecture docs.
 
 ## Content Model
 
@@ -37,7 +32,6 @@ Rules that must remain true across the system. Violating these causes subtle bug
 - `NormalizedPoint` rejects out-of-range coordinates unless `allow_outside=True`.
 - Prepared drawings and styles are immutable values. Never mutate shared vertex bytes, Qt value objects or text layouts after publication.
 - Catalog instructions resolve normalized coordinates directly into final backend data; no intermediate primitive list is produced.
-- Catalog pen, font, and radius sizes scale from `min(width, height)`.
 
 ## Display Rendering
 
@@ -265,7 +259,8 @@ Rules that must remain true across the system. Violating these causes subtle bug
 - Scene file providers retain only the two most recently used decoded scenes, keyed by resolved source timestamp.
   Consecutive playback and immediate revisits reuse them; older scenes reload from indexed storage. Large decoded
   histories cause expensive garbage-collection pauses across viewers on the shared GUI thread.
-- Cache files live under `~/.ax_devil/caches/` and can be rebuilt.
+- Cache files live under `~/.ax_devil/caches/` and can be rebuilt. An opened frame cache keeps reading through its
+  retained file handle until closed, even if the cache file is removed.
 
 ## Export
 
@@ -314,11 +309,10 @@ Rules that must remain true across the system. Violating these causes subtle bug
   prepared drawing without refiltering the Scene or rebuilding hover data. Paused displays refresh immediately.
 - Export captures the selected executable variant, so later visibility choices do not change an ongoing export.
 - Catalog file loads validate structure before activation; failed loads retain the previous compiled catalog.
-  The app does not write catalog contents; they are edited outside it. When a watched catalog file changes, every
-  selection showing it loads the new version, and one that does not load keeps the last version in use.
+  The app does not write catalog contents; they are edited outside it.
 - Value limits are data on the value types (and on template parameters that declare them). Validation, generated row
   checks and the generated language reference all read the same limits; only `RULES` holds checks that limits cannot express.
-  Version 2 calculated values resolve by dependencies and evaluate lazily once per invocation. Rendering identity ignores
+  Calculated values resolve by dependencies and evaluate lazily once per invocation. Rendering identity ignores
   mapping order and descriptive metadata, but preserves ordered steps and the compiler semantic revision.
 - A selection records every failed load of its active path, including the validation done by **Apply to all** and
   **Use as default**, and clears it only after a successful compile. While a failure is recorded, its status shows the
@@ -326,7 +320,7 @@ Rules that must remain true across the system. Violating these causes subtle bug
 - Catalog `enabled`, `if`, and `coalesce` short-circuit; unused arithmetic is not executed by constant folding.
 - Parameters and calculated values have separate scopes. Template input types and nullable reference guards are checked
   before activation. Runtime recipe errors discard that recipe's entire output and preserve unaffected recipes.
-- Version 2 lengths resolve against the target dimensions. Strokes of width zero are absent; fonts have no hidden size
+- Lengths resolve against the target dimensions. Strokes of width zero are absent; fonts have no hidden size
   offset. Generic Qt painting retains subpixel geometry and remains independent of Scene semantics.
 - Catalog writes validate before atomically replacing the destination.
 - The drawing target, preparation and submission data live under `ax_devil.modules.video_player`, which never
@@ -350,11 +344,3 @@ Rules that must remain true across the system. Violating these causes subtle bug
 - All keyboard shortcuts are defined in `DEFAULT_SHORTCUTS`.
 - `ShortcutManager` installs once on `MainWindow`; late registration after install is rejected.
 - Shortcut persistence is override-only. Empty `"shortcuts"` means all defaults apply.
-
-## Tests And Security
-
-- Tests must run offline. Network calls or package downloads require explicit approval.
-- PySide6 tests use `pytest-qt`; prefer controller-level tests for UI behavior.
-- Live streaming features require mocks or fallbacks in tests.
-- Device credentials must never be committed. Use `AX_DEVIL_TARGET_*`, MQTT env vars, or config overrides.
-- Configuration and caches live under `~/.ax_devil/`, outside the repository.

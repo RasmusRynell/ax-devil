@@ -14,12 +14,12 @@ documented in [Draw System Architecture](../../../../../docs/architecture/draw-s
   hover targets and reports preparation metrics; `ReportedCatalogErrors` limits repeated catalog error logs.
 - `catalog.py`: `SceneRenderCatalog` recipe routing and per-recipe row-column execution and
   `SceneRenderCatalogLoader` validation and compilation.
-- `catalog_store.py`: `SceneRenderCatalogStore`, the user-store file lifecycle, the listing with the packaged built-in
-  catalog first, and the default catalog choice.
+- `catalog_store.py`: `SceneRenderCatalogStore`, the user-store file lifecycle, the listing with the six packaged built-in
+  catalogs first, and the default catalog choice.
 - `catalog_manager.py`: `SceneRenderCatalogManager` (discovery, compiled reuse, default catalog, apply to all) and
   `SceneRenderCatalogSelection` (one consumer's active catalog and visibility choices).
 - `visibility.py`: typed semantic feature groups and immutable per-view visibility preferences.
-- `catalog_definitions/`: the packaged version 3 built-in catalog and its generated JSON Schema.
+- `catalog_definitions/`: the six packaged built-in catalogs (schema version 3) and their generated JSON Schema.
 - `template_runtime/`: the catalog language: definitions, generated schema, compiler and row-column execution.
   Per-file ownership is listed under
   [Catalog JSON And Compilation](../../../../../docs/architecture/draw-system.md#catalog-json-and-compilation).
