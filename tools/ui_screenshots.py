@@ -9,7 +9,8 @@ Settings dialog does::
     PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/after uv run pytest -p tests.conftest tools/ui_screenshots.py -q
 
 Shots go to ``AX_DEVIL_UI_SHOTS`` (default ``/tmp/ax-devil-ui-shots``) as ``<theme>-<text size>-<surface>.png``.
-Dialogs larger than a window size get an extra ``-wide`` or ``-narrow`` shot clamped to it.
+Dialogs larger than a window size get an extra ``-wide`` or ``-narrow`` shot clamped to it. Each run first deletes
+the theme's earlier shots there, so a folder reused across runs holds only current shots.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from typing import cast
 
 import pytest
 from PySide6.QtCore import QSize, QTimer
-from PySide6.QtWidgets import QApplication, QDialog, QTabWidget
+from PySide6.QtWidgets import QApplication, QDialog, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
@@ -147,6 +148,8 @@ def test_screenshots(
     Switches text size live.
     """
     OUT.mkdir(parents=True, exist_ok=True)
+    for stale in OUT.glob(f"{theme}-*.png"):
+        stale.unlink()
     monkeypatch.setattr(CacheManager, "_get_base_cache_dir", lambda self: tmp_path / "cache")
     apply_theme(theme)
     # Change the text size through the setting, as the app does, so dialogs show the matching choice.
@@ -189,7 +192,9 @@ def test_screenshots(
     viewer = _show_tracked_frame(qtbot, session.focused_offline_viewer())
     shortcuts.get_action("view.toggle_media_tools").trigger()
     media_tools_tabs = viewer.findChild(QTabWidget, "mediaToolsTabs")
-    assert media_tools_tabs is not None
+    entities_page = viewer.findChild(QWidget, "mediaToolsEntities")
+    events_page = viewer.findChild(QWidget, "mediaToolsEvents")
+    assert media_tools_tabs is not None and entities_page is not None and events_page is not None
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         prefix = f"{theme}-{text_size.value}"
@@ -197,10 +202,10 @@ def test_screenshots(
             window.resize(*size)
             qtbot.wait(500)
             window.grab().save(str(OUT / f"{prefix}-video-{size_name}.png"))
-        media_tools_tabs.setCurrentIndex(1)
+        media_tools_tabs.setCurrentWidget(events_page)
         qtbot.wait(200)
         window.grab().save(str(OUT / f"{prefix}-video-events-narrow.png"))
-        media_tools_tabs.setCurrentIndex(0)
+        media_tools_tabs.setCurrentWidget(entities_page)
         for name, action_id in (
             ("settings", "app.settings"),
             ("shortcuts", "app.keyboard_shortcuts"),
