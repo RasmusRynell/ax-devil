@@ -105,9 +105,13 @@ def _show_tracked_frame(qtbot: QtBot, viewer: OfflineVideoViewerWidget | None) -
     viewer.pause_playback()
     viewport = viewer.findChild(FrameViewport)
     assert viewport is not None
-    qtbot.waitUntil(lambda: viewport._video_frame is not None, timeout=10000)
-    viewer.step_frames(SHOWN_FRAME)
-    qtbot.wait(500)
+    viewer._jump_to_frame(SHOWN_FRAME)
+
+    def shows_frame() -> bool:
+        return viewport._video_frame is not None and viewport._video_frame.frame.frame_id == SHOWN_FRAME
+
+    qtbot.waitUntil(shows_frame, timeout=10000)
+    qtbot.wait(200)  # Let the media tools follow the new frame.
     return viewer
 
 
