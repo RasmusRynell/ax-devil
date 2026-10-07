@@ -19,8 +19,7 @@ INFO_OVERLAY_BACKGROUND_ALPHA = 128  # Semi-transparent background for info over
 # ===== DRAGGABLE HANDLE SETTINGS =====
 HANDLE_WIDTH = 30
 HANDLE_HEIGHT = 60
-HANDLE_DOT_COUNT = 3
-HANDLE_DOT_SIZE_PX = 21  # Glyph size of the handle's dots, an icon rather than text
+HANDLE_ICON_SIZE_PX = 24
 DRAG_THRESHOLD_PIXELS = 2  # Minimum movement before drag starts
 
 # ===== PANEL ANIMATION SETTINGS =====

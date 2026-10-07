@@ -9,6 +9,7 @@ from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.playback_speed import (
@@ -59,14 +60,9 @@ _READOUT_STYLE = """
 """
 
 
-def video_control_icon(widget: QtWidgets.QWidget, icon_type: QtWidgets.QStyle.StandardPixmap) -> QtGui.QIcon:
+def video_control_icon(icon: Icon) -> QtGui.QIcon:
     """Return a white playback icon for controls on the dark video scrim."""
-    pixmap = widget.style().standardIcon(icon_type).pixmap(QtCore.QSize(32, 32))
-    painter = QtGui.QPainter(pixmap)
-    painter.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_SourceIn)
-    painter.fillRect(pixmap.rect(), QtCore.Qt.GlobalColor.white)
-    painter.end()
-    return QtGui.QIcon(pixmap)
+    return icon.icon(QtGui.QColor(QtCore.Qt.GlobalColor.white))
 
 
 class TimelineSliderPainter:
@@ -308,16 +304,8 @@ class BaseVideoControlPanel(FadingWidget):
             self.set_playing(not self._playing)
 
     def _update_play_button(self) -> None:
-        widget_style = self.style()
-        if widget_style is None:
-            return
-
-        sp = QtWidgets.QStyle.StandardPixmap
-        icon_type = sp.SP_MediaPause if self._playing else sp.SP_MediaPlay
-        tooltip = "Pause" if self._playing else "Play"
-
-        self.play_pause_btn.setIcon(video_control_icon(self, icon_type))
-        self.play_pause_btn.setToolTip(tooltip)
+        self.play_pause_btn.setIcon(video_control_icon(Icon.PAUSE if self._playing else Icon.PLAY))
+        self.play_pause_btn.setToolTip("Pause" if self._playing else "Play")
 
     def set_playing(self, playing: bool, *, emit_signals: bool = True) -> None:
         if playing == self._playing:
@@ -373,8 +361,17 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
 
         # ===== BOTTOM ROW: Controls =====
         # Navigation buttons
-        for text, delta in [("«10", -10), ("«1", -1), ("1»", 1), ("10»", 10)]:
-            btn = QtWidgets.QPushButton(text, self)
+        steps = [
+            (Icon.STEP_BACK_MANY, "Back 10 frames", -10),
+            (Icon.STEP_BACK, "Back 1 frame", -1),
+            (Icon.STEP_FORWARD, "Forward 1 frame", 1),
+            (Icon.STEP_FORWARD_MANY, "Forward 10 frames", 10),
+        ]
+        for icon, tooltip, delta in steps:
+            btn = QtWidgets.QPushButton(self)
+            btn.setIcon(video_control_icon(icon))
+            btn.setToolTip(tooltip)
+            btn.setAccessibleName(tooltip)
             btn.setAutoFillBackground(False)
             btn.setStyleSheet(_button_style(Space.L))
             btn.clicked.connect(lambda checked=False, d=delta: self.frameStepRequested.emit(d))

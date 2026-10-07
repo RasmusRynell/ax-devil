@@ -2,44 +2,19 @@
 
 from __future__ import annotations
 
-from importlib.resources import files
-
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QCursor, QEnterEvent, QFont, QImage, QPainter, QPixmap
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QCursor, QEnterEvent, QFont
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QToolTip, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport, VideoTimingProfile
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 
-_RESOURCE_PACKAGE = "ax_devil.resources"
-_WARNING_ICON = "warning-icon.png"
 _INDICATOR_ICON_SIZE = 16
 _INDICATOR_WIDTH = _INDICATOR_ICON_SIZE + 8
-
-
-def _load_tinted_pixmap(filename: str, color: QColor, size: int) -> QPixmap:
-    """Load a packaged icon scaled to ``size`` and recolored with a flat tint."""
-    icon_path = files(_RESOURCE_PACKAGE).joinpath(filename)
-    image = QImage(str(icon_path))
-    if image.isNull():
-        return QPixmap()
-    image = image.scaled(
-        size,
-        size,
-        Qt.AspectRatioMode.KeepAspectRatio,
-        Qt.TransformationMode.SmoothTransformation,
-    )
-    tinted = QImage(image.size(), QImage.Format.Format_ARGB32_Premultiplied)
-    tinted.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(tinted)
-    painter.drawImage(0, 0, image)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-    painter.fillRect(tinted.rect(), color)
-    painter.end()
-    return QPixmap.fromImage(tinted)
 
 
 class OverlayAlignmentIndicator(QLabel):
@@ -56,12 +31,9 @@ class OverlayAlignmentIndicator(QLabel):
         follow_appearance(self, self._apply_appearance)
 
     def _refresh_icons(self) -> None:
-        self._caution_pixmap = _load_tinted_pixmap(
-            _WARNING_ICON, StatusColor.WARNING.color(self.palette()), _INDICATOR_ICON_SIZE
-        )
-        self._weak_pixmap = _load_tinted_pixmap(
-            _WARNING_ICON, StatusColor.ERROR.color(self.palette()), _INDICATOR_ICON_SIZE
-        )
+        size, scale = QSize(_INDICATOR_ICON_SIZE, _INDICATOR_ICON_SIZE), self.devicePixelRatioF()
+        self._caution_pixmap = Icon.WARNING.icon(StatusColor.WARNING.color(self.palette())).pixmap(size, scale)
+        self._weak_pixmap = Icon.WARNING.icon(StatusColor.ERROR.color(self.palette())).pixmap(size, scale)
 
     def _apply_appearance(self) -> None:
         """Retint the warning, including one already displayed, from the current palette."""

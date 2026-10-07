@@ -6,10 +6,12 @@ Allows adding any widget to a side panel that can be expanded/collapsed via drag
 
 from typing import Optional, Protocol
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QPropertyAnimation, Qt, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QPropertyAnimation, QSize, Qt, Signal
 from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPaintEvent, QPalette
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -17,9 +19,8 @@ from ..constants import (
     DEFAULT_AUTO_HIDE_DELAY,
     DEFAULT_FADE_DURATION,
     DRAG_THRESHOLD_PIXELS,
-    HANDLE_DOT_COUNT,
-    HANDLE_DOT_SIZE_PX,
     HANDLE_HEIGHT,
+    HANDLE_ICON_SIZE_PX,
     HANDLE_WIDTH,
     PANEL_ANIMATION_DURATION,
     PANEL_COLLAPSED_WIDTH,
@@ -76,16 +77,11 @@ class DraggableHandle(FadingWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Dots will use theme text color automatically
-
-        for _ in range(HANDLE_DOT_COUNT):
-            dot = QLabel("•", self)  # Smaller bullet character
-            dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            # Make dots smaller
-            font = dot.font()
-            font.setPixelSize(HANDLE_DOT_SIZE_PX)
-            dot.setFont(font)
-            layout.addWidget(dot)
+        grip = QLabel(self)
+        grip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(grip)
+        size = QSize(HANDLE_ICON_SIZE_PX, HANDLE_ICON_SIZE_PX)
+        follow_appearance(grip, lambda: grip.setPixmap(Icon.DRAG.icon().pixmap(size, grip.devicePixelRatioF())))
 
     def setTarget(self, target: DraggableTarget) -> None:
         """Set the target object to be controlled by this handle."""

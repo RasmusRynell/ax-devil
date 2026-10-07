@@ -15,12 +15,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QMenuBar,
     QSizePolicy,
-    QStyle,
     QToolButton,
     QWidget,
 )
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 
@@ -125,9 +125,9 @@ class TitleBar(QWidget):
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(0)
 
-        self._btn_min = self._make_button(QStyle.StandardPixmap.SP_TitleBarMinButton, "Minimize")
-        self._btn_max = self._make_button(QStyle.StandardPixmap.SP_TitleBarMaxButton, "Maximize")
-        self._btn_close = self._make_button(QStyle.StandardPixmap.SP_TitleBarCloseButton, "Close")
+        self._btn_min = self._make_button(Icon.MINIMIZE, "Minimize")
+        self._btn_max = self._make_button(Icon.MAXIMIZE, "Maximize")
+        self._btn_close = self._make_button(Icon.CLOSE, "Close")
         self._btn_close.setObjectName("AxDevilCloseButton")
 
         if self._show_minimize:
@@ -150,10 +150,10 @@ class TitleBar(QWidget):
 
         layout.addWidget(controls, 0, Qt.AlignmentFlag.AlignRight)
 
-    def _make_button(self, icon: QStyle.StandardPixmap, tooltip: str) -> QToolButton:
+    def _make_button(self, icon: Icon, tooltip: str) -> QToolButton:
         btn = QToolButton(self)
         btn.setAutoRaise(True)
-        btn.setIcon(self.style().standardIcon(icon))
+        btn.setIcon(icon.icon())
         btn.setToolTip(tooltip)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         return btn
@@ -165,10 +165,7 @@ class TitleBar(QWidget):
         if not self._show_maximize:
             return
         maximized = self._window.isMaximized()
-        icon = (
-            QStyle.StandardPixmap.SP_TitleBarNormalButton if maximized else QStyle.StandardPixmap.SP_TitleBarMaxButton
-        )
-        self._btn_max.setIcon(self.style().standardIcon(icon))
+        self._btn_max.setIcon((Icon.RESTORE if maximized else Icon.MAXIMIZE).icon())
         self._btn_max.setToolTip("Restore" if maximized else "Maximize")
 
     def _apply_appearance(self) -> None:

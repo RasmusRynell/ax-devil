@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.scene.model import Entity, EntityId, Scene
@@ -200,7 +201,7 @@ class ObjectHistoryPane(QWidget):
         self._title.linkActivated.connect(lambda href: self.frameRequested.emit(int(href)))
         header.addWidget(self._title, 1)
         close_button = QToolButton(self)
-        close_button.setText("×")
+        close_button.setIcon(Icon.CLOSE.icon())
         close_button.setAutoRaise(True)
         close_button.setToolTip("Close")
         close_button.clicked.connect(self.clear)

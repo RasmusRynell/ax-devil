@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QImage, QPalette
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QWidget
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.theme import StatusColor, apply_text_size, apply_theme, setup_theme
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
@@ -146,7 +147,7 @@ def _verify_theme_rendering(cache_dir: Path) -> None:
             assert _foreground_pixels(selected, QRect(10, 30, 300, 110), dark=dark) > 100, mode
             entities._list_view.clearSelection()
 
-            icon = video_control_icon(host, host.style().StandardPixmap.SP_MediaPlay).pixmap(32, 32).toImage()
+            icon = video_control_icon(Icon.PLAY).pixmap(32, 32).toImage()
             opaque = [
                 icon.pixelColor(x, y) for y in range(32) for x in range(32) if icon.pixelColor(x, y).alpha() > 200
             ]

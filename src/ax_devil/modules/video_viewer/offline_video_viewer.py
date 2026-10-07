@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
@@ -147,7 +148,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         nav_layout.setSpacing(Space.S)
         nav_layout.addStretch(1)
 
-        self._prev_button = QPushButton("◀")
+        self._prev_button = QPushButton(Icon.STEP_BACK.icon(), "")
         self._prev_button.setToolTip("Previous entry")
         self._prev_button.clicked.connect(self._step_prev)
         nav_layout.addWidget(self._prev_button)
@@ -155,7 +156,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         self._nav_label = QLabel()
         nav_layout.addWidget(self._nav_label)
 
-        self._next_button = QPushButton("▶")
+        self._next_button = QPushButton(Icon.STEP_FORWARD.icon(), "")
         self._next_button.setToolTip("Next entry")
         self._next_button.clicked.connect(self._step_next)
         nav_layout.addWidget(self._next_button)

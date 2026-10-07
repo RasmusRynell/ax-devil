@@ -133,8 +133,9 @@ Read the sections for the area you change. Explanations of how things work live 
 - Text sizes, margins, gaps, corner radii and repeated chrome heights come from `modules/chrome/tokens.py`, not
   literals. Text roles and heights derive from the body text size set by the **Text size** preference, which applies
   live like the theme. Widgets that only inherit the application font and palette follow on their own, and so do
-  stylesheets that use `palette(...)` and fixed tokens. Code that sizes something from the text or colors something
-  from the palette (`TextRole.apply`, `Height`, tinted icons, status colors) runs through
+  stylesheets that use `palette(...)` and fixed tokens, and icons from `chrome/icons.py` drawn without a fixed color.
+  Application icons come from that bundled set, not Qt standard pixmaps or text glyphs. Code that sizes something from the text or colors something
+  from the palette (`TextRole.apply`, `Height`, fixed-color icons, status colors) runs through
   `chrome.appearance.follow_appearance`, which reruns it on palette and text-size changes; sizes are never computed
   at import. The video surface keeps its own `changeEvent` instead, so no Python event filter sees every frame it
   repaints. Rich text carries weight and family only and takes its size from the label or document showing it.
