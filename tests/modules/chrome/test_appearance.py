@@ -85,4 +85,6 @@ def test_playback_readouts_are_not_cut_off_after_text_size_changes(qtbot: QtBot)
             field = box.lineEdit()
             assert field is not None
             assert field.fontMetrics().horizontalAdvance(field.text()) <= field.contentsRect().width()
+            assert field.fontMetrics().height() <= field.contentsRect().height()
+            assert box.rect().contains(field.geometry())
             assert field.font().pixelSize() == box.font().pixelSize()

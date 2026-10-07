@@ -12,7 +12,7 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.chrome.appearance import notify_text_size_changed
-from ax_devil.modules.chrome.tokens import Space, body_px
+from ax_devil.modules.chrome.tokens import Height, Space, body_px
 
 # Keep overrides in the theme engine so widgets, icons, and QPalette agree.
 DARK_COLORS: dict[str, str] = {
@@ -117,7 +117,21 @@ def _install_stylesheet(app: QApplication) -> None:
     theme_rules = app.styleSheet().split(_TEXT_SIZE_RULES)[0]
     # Group-box titles sit in the box's top margin; give them room for the current text size.
     title_room = body_px() // 2
-    sized_rules = f"QGroupBox {{ margin-top: {title_room + Space.XS}px; padding-top: {title_room}px; }}"
+    # QSS minimum heights describe the content box. Allow Qt to grow it for taller fonts or icons.
+    # Equal vertical padding aligns adjacent fields/buttons; default buttons have no border in QDarkTheme.
+    control_content = Height.CONTROL.px - 2 * Space.XS - 2
+    sized_rules = f"""
+        QGroupBox {{ margin-top: {title_room + Space.XS}px; padding-top: {title_room}px; }}
+        QLineEdit, QAbstractSpinBox, QComboBox, QPushButton {{
+            min-height: {control_content}px;
+            padding-top: {Space.XS}px;
+            padding-bottom: {Space.XS}px;
+        }}
+        QPushButton:default, QPushButton:flat {{
+            padding-top: {Space.XS + 1}px;
+            padding-bottom: {Space.XS + 1}px;
+        }}
+    """
     app.setStyleSheet(f"{theme_rules}{_TEXT_SIZE_RULES}{sized_rules}")
 
 

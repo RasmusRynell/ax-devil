@@ -9,11 +9,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage, QPalette
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QWidget
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.palette_css import palette_color_css
-from ax_devil.modules.chrome.theme import StatusColor, apply_theme, setup_theme
+from ax_devil.modules.chrome.theme import StatusColor, apply_text_size, apply_theme, setup_theme
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import (
@@ -155,6 +155,22 @@ def _verify_theme_rendering(cache_dir: Path) -> None:
                 foreground = _luminance(status.color(app.palette()))
                 background = _luminance(app.palette().color(QPalette.ColorRole.AlternateBase))
                 assert (max(foreground, background) + 0.05) / (min(foreground, background) + 0.05) >= 4.5
+
+        # Open forms keep their editors readable when text grows and shrinks, including the line edits
+        # embedded in spinboxes and editable combos, whose parent allocates their available height.
+        dialog._video_cache_mode.setCurrentIndex(1)
+        dialog.show()
+        for mode, size in (("dark", 13), ("light", 21), ("dark", 13)):
+            apply_theme(mode)
+            apply_text_size(size)
+            for page in range(3):
+                dialog._tabs.setCurrentIndex(page)
+                app.processEvents()
+                for field in dialog.findChildren(QLineEdit):
+                    if field.isVisible():
+                        assert field.contentsRect().height() >= field.fontMetrics().height()
+                        parent = field.parentWidget()
+                        assert parent is not None and parent.rect().contains(field.geometry())
 
         # Qt CSS alpha uses 0..255. A fractional value would render this nearly invisible.
         background_widget = QWidget()

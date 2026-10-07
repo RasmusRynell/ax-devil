@@ -140,6 +140,9 @@ Read the sections for the area you change. Explanations of how things work live 
   repaints. Rich text carries weight and family only and takes its size from the label or document showing it.
   Pixels inside rendered frames (render catalogs, catalog-viewer footage and sheets, export burn-ins) follow the
   frame, not these tokens.
+- The theme gives standard single-line inputs and push buttons a shared `Height.CONTROL` minimum and vertical
+  padding. Natural size hints may grow controls for taller fonts or icons; wrapped content and expanded list rows
+  keep their content-driven height.
 - Vertical content layouts keep their rows at the top with a trailing `addStretch`, not `setAlignment(AlignTop)`:
   an aligned layout is sized by its size hint, ignores wrapped-text height, and overlaps rows when space is short.
 - Shared geometry rules live in `modules/chrome/window_geometry.py`. Initial windows fit the available screen, and

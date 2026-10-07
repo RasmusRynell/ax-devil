@@ -27,6 +27,7 @@ from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.settings.settings import GlobalSettings
+from ax_devil.modules.settings.settings_dialog import SettingsDialog
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
@@ -47,6 +48,11 @@ def _grab_next_dialog(name: str, before: Callable[[QDialog], None] | None = None
                     before(widget)
                     QApplication.processEvents()
                 widget.grab().save(str(OUT / f"{name}.png"))
+                natural = widget.size()
+                for size_name, (width, height) in WINDOW_SIZES.items():
+                    widget.resize(min(natural.width(), width), min(natural.height(), height))
+                    QApplication.processEvents()
+                    widget.grab().save(str(OUT / f"{name}-{size_name}.png"))
                 widget.reject()
 
     QTimer.singleShot(300, grab)
@@ -99,9 +105,26 @@ def test_screenshots(
             window.resize(*size)
             qtbot.wait(500)
             window.grab().save(str(OUT / f"{prefix}-video-{size_name}.png"))
-        for name, action_id in (("settings", "app.settings"), ("shortcuts", "app.keyboard_shortcuts")):
+        for name, action_id in (
+            ("settings", "app.settings"),
+            ("shortcuts", "app.keyboard_shortcuts"),
+            ("add-video", "app.add_video"),
+        ):
             _grab_next_dialog(f"{prefix}-{name}")
             shortcuts.get_action(action_id).trigger()
+        _grab_next_dialog(
+            f"{prefix}-settings-storage", lambda dialog: cast(SettingsDialog, dialog)._tabs.setCurrentIndex(2)
+        )
+        shortcuts.get_action("app.settings").trigger()
+        _grab_next_dialog(
+            f"{prefix}-settings-streams", lambda dialog: cast(SettingsDialog, dialog)._tabs.setCurrentIndex(1)
+        )
+        shortcuts.get_action("app.settings").trigger()
+        _grab_next_dialog(
+            f"{prefix}-settings-manual-cache",
+            lambda dialog: cast(SettingsDialog, dialog)._video_cache_mode.setCurrentIndex(1),
+        )
+        shortcuts.get_action("app.settings").trigger()
         _grab_next_dialog(f"{prefix}-quick-setup")
         window.show_quick_setup()
     # Quick Setup opens with room for the largest text size; picking it must not need scrolling.
