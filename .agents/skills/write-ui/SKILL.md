@@ -79,7 +79,9 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
 1. Take screenshots before and after the change, offscreen and isolated from the user's settings:
    `PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/ui-before uv run pytest -p tests.conftest tools/ui_screenshots.py -q`
    (then again with `/tmp/ui-after`). Add the surface you changed to `tools/ui_screenshots.py` if it is missing.
-2. Open the PNGs and compare dark and light, Default and Larger text, wide and narrow windows. The change is done
+2. Open the PNGs and compare dark and light, `medium` and `larger` text, wide and narrow windows. The change is done
    when nothing is clipped, overlapping or unreadable and the new UI matches its neighbours' sizes and spacing.
+   To read one image instead of two, join a before and after shot with ImageMagick:
+   `montage /tmp/ui-before/X.png /tmp/ui-after/X.png -tile 2x1 -geometry +4+0 /tmp/X-compare.png`.
 3. Test behavior, and test cut-offs and overlaps that a size change could bring back. Leave fonts, colors and
    paddings untested; the screenshots cover them.
