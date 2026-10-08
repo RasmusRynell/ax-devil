@@ -3,9 +3,9 @@
 import shutil
 import struct
 import subprocess
+from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
-from typing import Callable
 from unittest.mock import patch
 
 import av

@@ -5,8 +5,6 @@ version details, and other relevant information when accessed from Help ->
 About.
 """
 
-from typing import Optional
-
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
@@ -23,7 +21,7 @@ class AboutDialog(BaseDialog):
     Displays application name, version, description, and other relevant information in a clean, professional layout.
     """
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent, title="About ax-devil", modal=True)
 
         self._logger = get_logger(__name__)

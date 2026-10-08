@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any
 
 from ax_devil.modules.scene.model import (
     RGB,
@@ -19,7 +19,7 @@ from ax_devil.modules.scene.model import (
 from ax_devil.plugins.decoders.adf_beta.consolidated import ADFBetaConsolidatedDecoder, resolve_scenes
 
 
-def _build_track_payload(track_id: str, timestamp: str, class_type: str = "Car") -> Dict[str, Any]:
+def _build_track_payload(track_id: str, timestamp: str, class_type: str = "Car") -> dict[str, Any]:
     return {
         "id": track_id,
         "classes": [{"type": class_type, "score": 0.95}],

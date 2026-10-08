@@ -4,7 +4,7 @@ Simple draggable handle and collapsible panel system integrated with video playe
 Allows adding any widget to a side panel that can be expanded/collapsed via dragging.
 """
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QPropertyAnimation, QSize, Qt, Signal
 from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPaintEvent, QPalette
@@ -52,7 +52,7 @@ class DraggableHandle(FadingWidget):
     dragMoved = Signal(float)
     dragEnded = Signal(float)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             parent=parent,
             fade_duration=DEFAULT_FADE_DURATION,
@@ -65,7 +65,7 @@ class DraggableHandle(FadingWidget):
         self.is_dragging = False
         self.drag_start_x = 0.0
         self.drag_start_width = 0
-        self.target_object: Optional[DraggableTarget] = None
+        self.target_object: DraggableTarget | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -167,7 +167,7 @@ class DraggablePanel(FadingWidget):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         animation_duration: int = PANEL_ANIMATION_DURATION,
         collapsed_width: int = PANEL_COLLAPSED_WIDTH,
         expanded_width: int = PANEL_EXPANDED_WIDTH,
@@ -183,7 +183,7 @@ class DraggablePanel(FadingWidget):
         self.min_animation: QPropertyAnimation
 
         # Content widget management
-        self._content_widget: Optional[QWidget] = None
+        self._content_widget: QWidget | None = None
         self._content_layout: QVBoxLayout
 
         super().__init__(
@@ -250,7 +250,7 @@ class DraggablePanel(FadingWidget):
         self._content_layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
         self._content_layout.setSpacing(Space.S)
 
-    def set_content_widget(self, widget: Optional[QWidget]) -> None:
+    def set_content_widget(self, widget: QWidget | None) -> None:
         """Set the widget to display in the panel content area."""
         self._clear_content_widget()
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Optional
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
 from ax_devil.modules.data_sources.base import OverlayLookup
@@ -14,7 +13,7 @@ class OverlayPersistenceSettings:
     """Configuration used when deciding whether to reuse previous overlays."""
 
     enabled: bool = False
-    timeout_ms: Optional[int] = 2050
+    timeout_ms: int | None = 2050
     opacity: float = 1.0
 
     def copy(self) -> "OverlayPersistenceSettings":
@@ -31,7 +30,7 @@ class OverlayPersistenceSettings:
 class OverlaySelection:
     """Determines which overlay to display and how to present it."""
 
-    overlay: Optional[OverlayData]
+    overlay: OverlayData | None
     reused: bool
     effective_opacity: float
 
@@ -98,7 +97,7 @@ class OverlayPersistencePolicy:
     def select_overlay(
         self,
         frame_id: FrameIdentifier,
-        candidate: Optional[OverlayData],
+        candidate: OverlayData | None,
     ) -> OverlaySelection:
         """Determine which overlay should be forwarded to the renderer.
 

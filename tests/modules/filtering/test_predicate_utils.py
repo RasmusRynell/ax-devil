@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption, FilterState
 from ax_devil.modules.filtering.predicate_utils import (

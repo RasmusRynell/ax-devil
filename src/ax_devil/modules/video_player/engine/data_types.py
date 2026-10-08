@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 from PySide6.QtGui import QImage
 
@@ -24,8 +24,8 @@ class VideoFrame:
 
     image: QImage
     timestamp: float  # Frame timestamp for synchronization
-    frame_id: Optional[int] = None
-    metadata: Optional[dict[str, Any]] = None
+    frame_id: int | None = None
+    metadata: dict[str, Any] | None = None
     timestamp_monotime_us: float | None = None
 
 
@@ -87,8 +87,8 @@ class VideoOverlayData:
 
     drawing_generator: DrawingGenerator
     timestamp: float  # Overlay timestamp for synchronization
-    overlay_id: Optional[int] = None
-    metadata: Optional[dict[str, Any]] = None
+    overlay_id: int | None = None
+    metadata: dict[str, Any] | None = None
     interaction_provider: HoverInteractionProvider | None = None
     metrics_provider: DrawingPreparationMetricsProvider | None = None
     timestamp_monotime_us: float | None = None
@@ -102,7 +102,7 @@ class VideoFrameWithOverlays:
     """
 
     frame: VideoFrame
-    overlays: Optional[VideoOverlayData]
+    overlays: VideoOverlayData | None
 
     def prepare_overlays(self, context: RenderContext, buffer: DrawingBuffer) -> tuple[PreparedDrawing | None, float]:
         """Retrieve prepared drawing data and resolve their clamped opacity."""

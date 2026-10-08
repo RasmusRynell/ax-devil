@@ -4,8 +4,9 @@ This module provides the BaseDialog class that handles common dialog functionali
 consistent styling across all dialogs.
 """
 
+from collections.abc import Callable
 from types import TracebackType
-from typing import Callable, Optional, TypeVar
+from typing import TypeVar
 
 from PySide6.QtCore import QEvent, QPoint, QSize, Qt
 from PySide6.QtGui import QCloseEvent, QResizeEvent, QShowEvent
@@ -34,7 +35,7 @@ class BaseDialog(QDialog):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         title: str = "Dialog",
         modal: bool = True,
         *,
@@ -79,7 +80,7 @@ class BaseDialog(QDialog):
         self.cleanup()
         super().done(result)
 
-    def _resolve_use_custom_frame(self, parent: Optional[QWidget]) -> bool:
+    def _resolve_use_custom_frame(self, parent: QWidget | None) -> bool:
         """Inherit custom-frame usage from the top-level parent window when available."""
         if parent is None:
             return False
@@ -194,7 +195,7 @@ class BaseDialog(QDialog):
         self._content_layout.addWidget(widget, stretch)
 
     def add_button(
-        self, text: str, callback: Optional[Callable[[], None]] = None, is_default: bool = False
+        self, text: str, callback: Callable[[], None] | None = None, is_default: bool = False
     ) -> QPushButton:
         """Add a button to the dialog button area.
 
@@ -218,7 +219,7 @@ class BaseDialog(QDialog):
         self._button_layout.addWidget(button)
         return button
 
-    def add_standard_buttons(self, include_cancel: bool = True) -> tuple[QPushButton, Optional[QPushButton]]:
+    def add_standard_buttons(self, include_cancel: bool = True) -> tuple[QPushButton, QPushButton | None]:
         """Add standard OK/Cancel buttons.
 
         Args:

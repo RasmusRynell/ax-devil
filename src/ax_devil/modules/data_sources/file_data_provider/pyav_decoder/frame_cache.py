@@ -5,7 +5,7 @@ import threading
 import weakref
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Optional, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.cached_frame import CachedFrame
 from ax_devil.modules.settings.logging_config import get_logger
@@ -20,8 +20,8 @@ class _CacheEntry:
     budget_bytes: int
     reserved_bytes: int = 0
     size: int = 0
-    min_index: Optional[int] = None
-    max_index: Optional[int] = None
+    min_index: int | None = None
+    max_index: int | None = None
     ranges: tuple[tuple[int, int], ...] = ()
 
 
@@ -30,8 +30,8 @@ class CacheSnapshot(TypedDict):
     size: int
     reserved_bytes: int
     budget_bytes: int
-    min_index: Optional[int]
-    max_index: Optional[int]
+    min_index: int | None
+    max_index: int | None
     ranges: tuple[tuple[int, int], ...]
 
 
@@ -40,8 +40,8 @@ class FrameCacheRegistry:
 
     def __init__(self) -> None:
         self.logger = get_logger(__name__)
-        self._entries: Dict[int, _CacheEntry] = {}
-        self._refs: Dict[int, weakref.ReferenceType["FrameCache"]] = {}
+        self._entries: dict[int, _CacheEntry] = {}
+        self._refs: dict[int, weakref.ReferenceType["FrameCache"]] = {}
         self._lock = threading.RLock()
 
     def register(self, cache: "FrameCache") -> None:
@@ -61,8 +61,8 @@ class FrameCacheRegistry:
         *,
         size: int,
         reserved_bytes: int,
-        min_index: Optional[int],
-        max_index: Optional[int],
+        min_index: int | None,
+        max_index: int | None,
         ranges: tuple[tuple[int, int], ...],
     ) -> None:
         """Update cached frame statistics for the specified cache."""
@@ -77,10 +77,10 @@ class FrameCacheRegistry:
                 entry.max_index = max_index
                 entry.ranges = ranges
 
-    def snapshot_details(self) -> Dict[str, CacheSnapshot]:
+    def snapshot_details(self) -> dict[str, CacheSnapshot]:
         """Return a snapshot of cache details keyed by identifier."""
         with self._lock:
-            snapshot: Dict[str, CacheSnapshot] = {}
+            snapshot: dict[str, CacheSnapshot] = {}
             for cache_id, entry in self._entries.items():
                 snapshot[str(cache_id)] = CacheSnapshot(
                     label=entry.label,
@@ -93,7 +93,7 @@ class FrameCacheRegistry:
                 )
             return snapshot
 
-    def compute_rollup(self) -> Dict[str, int]:
+    def compute_rollup(self) -> dict[str, int]:
         """Aggregate cache statistics for quick lookups."""
         with self._lock:
             cache_count = len(self._entries)
@@ -125,7 +125,7 @@ class FrameCache:
     """Thread-safe LRU cache for video frames with statistics."""
 
     def __init__(
-        self, budget_bytes: int, *, identifier: Optional[str] = None, pool: "FrameCachePool | None" = None
+        self, budget_bytes: int, *, identifier: str | None = None, pool: "FrameCachePool | None" = None
     ) -> None:
         if budget_bytes < 0:
             raise ValueError("Frame cache byte budget cannot be negative")
@@ -186,7 +186,7 @@ class FrameCache:
             self._pool.deregister(self)
         get_frame_cache_registry().deregister(self)
 
-    def get(self, frame_index: int) -> Optional[CachedFrame]:
+    def get(self, frame_index: int) -> CachedFrame | None:
         """Get frame by index, returns None if not cached."""
         with self._lock:
             if frame_index in self._cache:

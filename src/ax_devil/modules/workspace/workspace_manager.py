@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Sequence, Set
+from collections.abc import Callable, Sequence, Set
 from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import PurePath
-from typing import Callable, Literal
+from typing import Literal
 
 from PySide6.QtCore import QObject, Signal
 

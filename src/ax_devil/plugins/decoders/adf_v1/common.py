@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Set, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from ax_devil.modules.filtering.filter_config import FilterConfig
 from ax_devil.modules.filtering.predicate_utils import ClassFilterSpec, make_other_classification_predicate
@@ -44,16 +45,16 @@ _ADF_V1_FILTER_SPECS: tuple[ClassFilterSpec, ...] = (
     ClassFilterSpec("show_faces", "Faces", (KnownClassificationType.Face.value,)),
 )
 
-_ADF_V1_KNOWN_TYPES: Set[str] = {type_name for spec in _ADF_V1_FILTER_SPECS for type_name in spec.types}
+_ADF_V1_KNOWN_TYPES: set[str] = {type_name for spec in _ADF_V1_FILTER_SPECS for type_name in spec.types}
 
 
 def decode_scene_payload(
     payload: Any,
     *,
     decoder_name: str,
-    decode_dict: Callable[[Dict[str, Any]], SceneType],
+    decode_dict: Callable[[dict[str, Any]], SceneType],
     decode_string: Callable[[str], SceneType],
-) -> Optional[SceneType]:
+) -> SceneType | None:
     """Normalize payload variants (bytes/str/dict) for Scene decoders."""
     if payload is None:
         return None
@@ -69,7 +70,7 @@ def decode_scene_payload(
     raise TypeError(f"Unsupported payload type for {decoder_name}: {type(payload)!r}")
 
 
-def image_from_snapshot(snapshot: Dict[str, Any] | None) -> Image:
+def image_from_snapshot(snapshot: dict[str, Any] | None) -> Image:
     """Convert an ADF snapshot payload to an Image, requiring all fields to be present."""
     if snapshot is None:
         raise ValueError("Image payload missing")

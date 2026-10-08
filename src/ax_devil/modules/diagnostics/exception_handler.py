@@ -12,13 +12,16 @@ from __future__ import annotations
 
 import sys
 import traceback
+from collections.abc import Callable
 from types import TracebackType
-from typing import Any, Callable, Optional
+from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ax_devil.modules.settings.logging_config import get_logger
+
+ExceptHook = Callable[[type[BaseException], BaseException, TracebackType | None], Any]
 
 
 class ExceptionHandler(QObject):
@@ -33,9 +36,7 @@ class ExceptionHandler(QObject):
         self._show_dialog = show_dialog
         self._exception_count = 0
         self._max_exceptions = 10  # Prevent infinite error loops
-        self._original_excepthook: Optional[
-            Callable[[type[BaseException], BaseException, TracebackType | None], Any]
-        ] = None
+        self._original_excepthook: ExceptHook | None = None
 
         # Connect to our own signal to handle exceptions in the main thread
         self.exception_occurred.connect(self._handle_exception_in_main_thread)
@@ -137,7 +138,7 @@ The application will attempt to continue running, but some features may not work
 
 
 # Global exception handler instance
-_exception_handler: Optional[ExceptionHandler] = None
+_exception_handler: ExceptionHandler | None = None
 
 
 def install_exception_handler(show_dialog: bool = True) -> ExceptionHandler:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import gc
-from typing import Dict, Optional
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache import (
     CacheSnapshot,
@@ -149,14 +148,14 @@ def test_range_insert_merges_adjacent_segments() -> None:
         gc.collect()
 
 
-def _get_entry_by_label(snapshot: Dict[str, CacheSnapshot], label: str) -> Optional[CacheSnapshot]:
+def _get_entry_by_label(snapshot: dict[str, CacheSnapshot], label: str) -> CacheSnapshot | None:
     for data in snapshot.values():
         if data.get("label") == label:
             return data
     return None
 
 
-def _require_entry(snapshot: Dict[str, CacheSnapshot], label: str) -> CacheSnapshot:
+def _require_entry(snapshot: dict[str, CacheSnapshot], label: str) -> CacheSnapshot:
     entry = _get_entry_by_label(snapshot, label)
     if entry is None:
         raise AssertionError(f"Missing snapshot entry for label '{label}'")

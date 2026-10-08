@@ -5,7 +5,6 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Deque, Optional
 
 import numpy as np
 from ax_devil_rtsp import (
@@ -71,7 +70,7 @@ class RTSPSource(FrameSource, OverlaySource):
         rtsp_url: str,
         source_id: str = "rtsp",
         buffer_size: int = 10,
-        parent: Optional[QObject] = None,
+        parent: QObject | None = None,
         *,
         overlay: RTSPOverlayDecoder | None = None,
     ) -> None:
@@ -81,8 +80,8 @@ class RTSPSource(FrameSource, OverlaySource):
 
         self.source_id = source_id
         self._overlay = overlay
-        self.frame_buffer: Deque[VideoSample[NDArray[np.uint8]]] = deque(maxlen=buffer_size)
-        self.overlay_buffer: Deque[SceneMetadata] = deque(maxlen=buffer_size)
+        self.frame_buffer: deque[VideoSample[NDArray[np.uint8]]] = deque(maxlen=buffer_size)
+        self.overlay_buffer: deque[SceneMetadata] = deque(maxlen=buffer_size)
         self.buffer_lock = Lock()
         self.frame_count = 0
         self.overlay_count = 0

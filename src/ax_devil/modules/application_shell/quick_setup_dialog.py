@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import replace
 from functools import partial
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from PySide6.QtCore import QRect, QRectF, QSize, Qt
 from PySide6.QtGui import (
@@ -256,7 +256,7 @@ def _text_size_at(label: QLabel, role: TextRole) -> Callable[[int], QSize]:
 class QuickSetupDialog(BaseDialog):
     """Pick theme and text size, with the running app as the live preview."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent, title="Quick Setup", modal=True)
         self._settings = GlobalSettings()
         self._config = ConfigManager()

@@ -1,8 +1,8 @@
 """Tests for video_analyzer module - real functionality testing only."""
 
 import shutil
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Sequence
 from unittest.mock import patch
 
 import pytest
