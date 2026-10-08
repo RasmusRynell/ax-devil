@@ -10,10 +10,12 @@ from ax_devil.modules.workspace.content import (
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
     LiveOverlayMode,
+    LiveOverlaySourceSpec,
     LiveRTSPOverlaySourceSpec,
     LiveRTSPStreamSpec,
     LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
+    OnScreenWorkspaceItem,
     OverlayContent,
     OverlaySourceKind,
     OverlaySourceSpec,
@@ -34,7 +36,6 @@ from ax_devil.modules.workspace.startup_request import (
     ResolvedPlaylistStartup,
     StartupContent,
     VideoFileStartup,
-    resolve_startup_content,
 )
 from ax_devil.modules.workspace.viewer_factory import (
     WorkspaceViewerFactory,
@@ -42,7 +43,6 @@ from ax_devil.modules.workspace.viewer_factory import (
     default_workspace_viewer_factory,
 )
 from ax_devil.modules.workspace.workspace_manager import (
-    OnScreenWorkspaceItem,
     WorkspaceBrowserRow,
     WorkspaceManager,
 )
@@ -57,6 +57,7 @@ __all__ = [
     "FileVideoSourceSpec",
     "LiveMQTTOverlaySourceSpec",
     "LiveOverlayMode",
+    "LiveOverlaySourceSpec",
     "LiveRTSPOverlaySourceSpec",
     "LiveRTSPStreamSpec",
     "LiveWebSocketOverlaySourceSpec",
@@ -83,5 +84,4 @@ __all__ = [
     "create_entry_lane",
     "default_workspace_intake",
     "default_workspace_viewer_factory",
-    "resolve_startup_content",
 ]

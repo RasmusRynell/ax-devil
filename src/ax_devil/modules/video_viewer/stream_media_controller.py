@@ -98,31 +98,14 @@ class StreamMediaController:
     def _open_sources(self) -> None:
         """Create the video transport and any separate overlay transport for the content."""
         content = self._content
-        overlay_spec = content.overlays[0].source_spec if content.overlays else None
-        embedded_overlay = None
-        if isinstance(overlay_spec, LiveRTSPOverlaySourceSpec):
-            embedded_overlay = RTSPOverlayDecoder(
-                decoder=get_payload_decoder(overlay_spec.handler_type),
-                handler_type=overlay_spec.handler_type,
-                filter_factory=get_payload_filter_factory(overlay_spec.handler_type),
-            )
+        embedded_overlay, separate_overlay = self._open_overlay_transport(content)
         rtsp_source = RTSPSource(
             self._build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None),
             overlay=embedded_overlay,
         )
-        overlay_source: OverlaySource | None = None
-        try:
-            if embedded_overlay is not None:
-                overlay_source = rtsp_source
-            elif isinstance(overlay_spec, (LiveMQTTOverlaySourceSpec, LiveWebSocketOverlaySourceSpec)):
-                overlay_source = self._create_overlay_source(content, overlay_spec)
-        except Exception:
-            rtsp_source.stop()
-            rtsp_source.deleteLater()
-            raise
         self.video_source = rtsp_source
-        self.overlay_source = overlay_source
-        self._sources = list(dict.fromkeys((rtsp_source, overlay_source or rtsp_source)))
+        self.overlay_source = rtsp_source if embedded_overlay is not None else separate_overlay
+        self._sources = list(dict.fromkeys((rtsp_source, separate_overlay or rtsp_source)))
 
     def _feeds(self) -> list[LiveFeed]:
         """Return the feed carried by each owned transport, video first."""
@@ -328,41 +311,50 @@ class StreamMediaController:
         synchronizer.syncReady.connect(self._on_sync_result)
         return synchronizer
 
-    def _create_overlay_source(
-        self,
-        content: LiveVideoContent,
-        source_spec: LiveMQTTOverlaySourceSpec | LiveWebSocketOverlaySourceSpec,
-    ) -> OverlaySource:
+    def _open_overlay_transport(
+        self, content: LiveVideoContent
+    ) -> tuple[RTSPOverlayDecoder | None, OverlaySource | None]:
+        """Return the decoder for overlays embedded in RTSP, or the separate overlay transport, for *content*."""
         from ax_devil.modules.data_sources import MQTTOverlaySource, WebSocketOverlaySource
 
+        source_spec = content.overlay_spec
+        if source_spec is None:
+            return None, None
         decoder = get_payload_decoder(source_spec.handler_type)
         filter_factory = get_payload_filter_factory(source_spec.handler_type)
-        if isinstance(source_spec, LiveMQTTOverlaySourceSpec):
-            return MQTTOverlaySource(
-                broker_host=source_spec.broker_host,
-                broker_port=source_spec.broker_port,
-                broker_username=source_spec.broker_username,
-                broker_password=source_spec.broker_password,
-                device_host=content.source_spec.host,
-                device_username=content.source_spec.username,
-                device_password=content.source_spec.password,
-                device_api_protocol=source_spec.device_api_protocol,
-                analytics_data_source_key=source_spec.analytics_data_source_key,
-                decoder=decoder,
-                handler_type=source_spec.handler_type,
-                filter_factory=filter_factory,
-            )
-        return WebSocketOverlaySource(
-            topic=source_spec.topic,
-            channel_id=source_spec.channel_id,
-            device_host=content.source_spec.host,
-            device_username=content.source_spec.username,
-            device_password=content.source_spec.password,
-            device_api_protocol=source_spec.device_api_protocol,
-            decoder=decoder,
-            handler_type=source_spec.handler_type,
-            filter_factory=filter_factory,
-        )
+        match source_spec:
+            case LiveRTSPOverlaySourceSpec():
+                embedded = RTSPOverlayDecoder(
+                    decoder=decoder, handler_type=source_spec.handler_type, filter_factory=filter_factory
+                )
+                return embedded, None
+            case LiveMQTTOverlaySourceSpec():
+                return None, MQTTOverlaySource(
+                    broker_host=source_spec.broker_host,
+                    broker_port=source_spec.broker_port,
+                    broker_username=source_spec.broker_username,
+                    broker_password=source_spec.broker_password,
+                    device_host=content.source_spec.host,
+                    device_username=content.source_spec.username,
+                    device_password=content.source_spec.password,
+                    device_api_protocol=source_spec.device_api_protocol,
+                    analytics_data_source_key=source_spec.analytics_data_source_key,
+                    decoder=decoder,
+                    handler_type=source_spec.handler_type,
+                    filter_factory=filter_factory,
+                )
+            case LiveWebSocketOverlaySourceSpec():
+                return None, WebSocketOverlaySource(
+                    topic=source_spec.topic,
+                    channel_id=source_spec.channel_id,
+                    device_host=content.source_spec.host,
+                    device_username=content.source_spec.username,
+                    device_password=content.source_spec.password,
+                    device_api_protocol=source_spec.device_api_protocol,
+                    decoder=decoder,
+                    handler_type=source_spec.handler_type,
+                    filter_factory=filter_factory,
+                )
 
     def _build_rtsp_url(self, source_spec: LiveRTSPStreamSpec, *, metadata: bool) -> str:
         from ax_devil_rtsp import build_axis_rtsp_url

@@ -14,7 +14,7 @@ from ax_devil.modules.workspace import (
     SeekableVideoContent,
 )
 from ax_devil.modules.workspace.intake import WorkspaceDecoderOption, WorkspaceIntake
-from ax_devil.modules.workspace.startup_request import LiveStreamStartup, VideoFileStartup, resolve_startup_content
+from ax_devil.modules.workspace.startup_request import LiveStreamStartup, VideoFileStartup
 
 
 class _OptionProvider:
@@ -166,24 +166,18 @@ def test_intake_rejects_non_positive_camera_head() -> None:
 def test_startup_resolution_uses_intake_for_workspace_content_shapes() -> None:
     intake = WorkspaceIntake(_OptionProvider())
 
-    [offline] = resolve_startup_content(
-        VideoFileStartup(
-            video_path=Path("/tmp/video.mp4"),
-            overlay_path=Path("/tmp/overlay.jsonl"),
-            handler_type="FILE",
-        ),
-        intake=intake,
-    )
-    [live] = resolve_startup_content(
-        LiveStreamStartup(
-            host="camera.local",
-            username="root",
-            password="pass",
-            overlay_mode=LiveOverlayMode.RTSP,
-            handler_type="LIVE",
-        ),
-        intake=intake,
-    )
+    [offline] = VideoFileStartup(
+        video_path=Path("/tmp/video.mp4"),
+        overlay_path=Path("/tmp/overlay.jsonl"),
+        handler_type="FILE",
+    ).resolve(intake)
+    [live] = LiveStreamStartup(
+        host="camera.local",
+        username="root",
+        password="pass",
+        overlay_mode=LiveOverlayMode.RTSP,
+        handler_type="LIVE",
+    ).resolve(intake)
 
     assert isinstance(offline, SeekableVideoContent)
     assert offline.source_spec.path == Path("/tmp/video.mp4")
@@ -199,18 +193,15 @@ def test_startup_resolution_uses_intake_for_workspace_content_shapes() -> None:
 def test_startup_resolution_passes_websocket_settings_to_intake() -> None:
     intake = WorkspaceIntake(_OptionProvider())
 
-    [live] = resolve_startup_content(
-        LiveStreamStartup(
-            host="camera.local",
-            username="root",
-            password="pass",
-            overlay_mode=LiveOverlayMode.WEBSOCKET,
-            handler_type="LIVE",
-            websocket_topic="com.axis.scene.frame.v1",
-            websocket_channel_id=2,
-        ),
-        intake=intake,
-    )
+    [live] = LiveStreamStartup(
+        host="camera.local",
+        username="root",
+        password="pass",
+        overlay_mode=LiveOverlayMode.WEBSOCKET,
+        handler_type="LIVE",
+        websocket_topic="com.axis.scene.frame.v1",
+        websocket_channel_id=2,
+    ).resolve(intake)
 
     assert isinstance(live, LiveVideoContent)
     assert live.overlays[0].source_spec == LiveWebSocketOverlaySourceSpec(

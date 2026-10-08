@@ -211,7 +211,7 @@ def test_browser_rows_defer_information_building_until_requested() -> None:
     information = WorkspaceItemInfo(title="test.mp4", fields=(("type", "seekable video"),))
 
     with patch(
-        "ax_devil.modules.workspace.workspace_manager.build_content_information",
+        "ax_devil.modules.workspace.workspace_manager.build_video_information",
         return_value=information,
     ) as build_information:
         row = state.get_browser_rows()[0]

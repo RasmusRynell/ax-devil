@@ -21,7 +21,6 @@ from ax_devil.modules.workspace.split_view import SplitView
 from ax_devil.modules.workspace.startup_request import (
     StartupContent,
     VideoFileStartup,
-    resolve_startup_content,
     video_file_requests,
 )
 from ax_devil.modules.workspace.workspace_manager import WorkspaceManager
@@ -94,7 +93,7 @@ class WorkspaceSession(QObject):
     def load_startup_content(self, startup: StartupContent) -> bool:
         """Resolve startup content and add it to the workspace; return whether anything was added."""
         try:
-            contents = resolve_startup_content(startup, self._intake)
+            contents = startup.resolve(self._intake)
         except (TypeError, ValueError) as exc:
             self._logger.warning(str(exc))
             return False
