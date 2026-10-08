@@ -6,7 +6,15 @@ from collections import OrderedDict, defaultdict
 from typing import cast
 
 from PySide6.QtCore import QPointF
-from PySide6.QtQuick import QQuickItem, QQuickWindow, QSGImageNode, QSGNode, QSGOpacityNode, QSGTexture
+from PySide6.QtQuick import (
+    QQuickItem,
+    QQuickWindow,
+    QSGImageNode,
+    QSGNode,
+    QSGOpacityNode,
+    QSGTexture,
+    QSGTransformNode,
+)
 from shiboken6 import delete
 
 from ..drawing import LabelSprite
@@ -65,7 +73,7 @@ class _SpriteGroup(QSGOpacityNode):
             delete(image)
 
 
-class _LabelNode(QSGNode):
+class _LabelNode(QSGTransformNode):
     """Cache recently used sprite groups without retaining a frame history or external GPU resources.
 
     ``groups`` runs from least to most recently shown, so every hidden group comes before the visible ones. Each frame
@@ -74,6 +82,8 @@ class _LabelNode(QSGNode):
 
     def __init__(self) -> None:
         super().__init__()
+        # Software rendering caches inherited state on transform/opacity nodes, not plain QSGNodes.
+        # An identity transform keeps new and returning sprite groups in the layer's coordinate space.
         self.groups: OrderedDict[LabelSprite, _SpriteGroup] = OrderedDict()
         self._shown: set[LabelSprite] = set()
         self._hidden_bytes = 0
