@@ -36,23 +36,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
             gcc \
-            gobject-introspection \
-            gstreamer1.0-dev \
-            gstreamer1.0-libav \
-            gstreamer1.0-plugins-bad \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-ugly \
-            gstreamer1.0-rtsp \
-            gstreamer1.0-tools \
-            libffi-dev \
             libegl1-mesa-dev \
-            libgirepository-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
             libgl1-mesa-dev \
             libgles2-mesa-dev \
-            libcairo2-dev \
             pkg-config \
             xvfb
 
@@ -107,23 +93,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
             gcc \
-            gobject-introspection \
-            gstreamer1.0-dev \
-            gstreamer1.0-libav \
-            gstreamer1.0-plugins-bad \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-ugly \
-            gstreamer1.0-rtsp \
-            gstreamer1.0-tools \
-            libffi-dev \
             libegl1-mesa-dev \
-            libgirepository-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
             libgl1-mesa-dev \
             libgles2-mesa-dev \
-            libcairo2-dev \
             pkg-config \
             xvfb
 
@@ -153,23 +125,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
             gcc \
-            gobject-introspection \
-            gstreamer1.0-dev \
-            gstreamer1.0-libav \
-            gstreamer1.0-plugins-bad \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-ugly \
-            gstreamer1.0-rtsp \
-            gstreamer1.0-tools \
-            libffi-dev \
             libegl1-mesa-dev \
-            libgirepository-2.0-dev \
-            libgirepository1.0-dev \
-            libglib2.0-dev \
             libgl1-mesa-dev \
             libgles2-mesa-dev \
-            libcairo2-dev \
             pkg-config \
             xvfb
 

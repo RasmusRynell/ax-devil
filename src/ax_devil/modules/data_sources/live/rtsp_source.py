@@ -4,12 +4,19 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from logging import ERROR
 from threading import Lock
-from typing import Any, Deque, Optional, cast
+from typing import Deque, Optional
 
 import numpy as np
-from ax_devil_rtsp.rtsp_data_retrievers import RtspDataRetriever
+from ax_devil_rtsp import (
+    SceneMetadata,
+    StartCancelledError,
+    StreamConfig,
+    StreamError,
+    StreamSession,
+    VideoOutput,
+    VideoSample,
+)
 from numpy.typing import NDArray
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QImage
@@ -23,9 +30,16 @@ from ..base import FrameSource, OverlaySource, Worker
 
 logger = get_logger(__name__)
 
+CONNECTION_TIMEOUT_S = 10.0
+
+
+def rtsp_stream_config(*, metadata: bool) -> StreamConfig:
+    """Return the session configuration for live video, with embedded scene metadata when requested."""
+    return StreamConfig(video=VideoOutput.RGBA, metadata=metadata, timeout=CONNECTION_TIMEOUT_S)
+
 
 class _RTSPWorker(Worker):
-    """Worker that handles RTSP frame and overlay processing."""
+    """Worker that connects the RTSP session and turns its buffered data into frames and overlays."""
 
     def __init__(self, rtsp_source: "RTSPSource", source_id: str) -> None:
         super().__init__(source_id)
@@ -66,96 +80,64 @@ class RTSPSource(FrameSource, OverlaySource):
         logger.info(f"Initializing RTSP source {source_id}")
 
         self.source_id = source_id
-        self.rtsp_url = rtsp_url
         self._overlay = overlay
-        self.frame_buffer: Deque[dict[str, Any]] = deque(maxlen=buffer_size)
-        self.overlay_buffer: Deque[dict[str, Any]] = deque(maxlen=buffer_size)
+        self.frame_buffer: Deque[VideoSample[NDArray[np.uint8]]] = deque(maxlen=buffer_size)
+        self.overlay_buffer: Deque[SceneMetadata] = deque(maxlen=buffer_size)
         self.buffer_lock = Lock()
         self.frame_count = 0
         self.overlay_count = 0
-        self.retriever_started = False
-        self.has_warned_frame_count_mismatch = False
-        self.connection_timeout = 10  # seconds
+        self._session_started = False
+        # Orders sourceConnected (worker thread) before sourceError (session thread).
+        self._status_lock = Lock()
+        self._early_failure = ""
+        self._warned_missing_capture_time = False
 
         self._worker = _RTSPWorker(self, source_id)
         self._own_worker(self._worker)
         self._worker.sourceError.connect(self.sourceError.emit)
         self._worker.sourceFinished.connect(self._on_worker_finished)
 
-        self.retriever: RtspDataRetriever | None = RtspDataRetriever(
-            rtsp_url=self.rtsp_url,
-            on_video_data=self._on_video_frame,
-            on_application_data=self._on_application_data if overlay is not None else None,
-            on_error=self._on_error,
-            on_session_start=self._on_session_start,
-            latency=100,  # Low latency for real-time
-            connection_timeout=self.connection_timeout,
-            log_level=ERROR,
+        self.session: StreamSession | None = StreamSession(
+            rtsp_url,
+            rtsp_stream_config(metadata=overlay is not None),
+            on_video=self._on_video,
+            on_metadata=self._on_metadata if overlay is not None else None,
+            on_failure=self._on_failure,
         )
 
     def _on_worker_finished(self) -> None:
         """Handle worker finished signal."""
         logger.debug(f"Worker finished for {self.source_id}")
 
-    def _on_session_start(self, payload: dict[str, Any]) -> None:
-        """Callback when session starts."""
-        logger.debug(f"RTSP session started for {self.source_id}")
-        self.sourceConnected.emit()
+    def _on_video(self, sample: VideoSample[NDArray[np.uint8]]) -> None:
+        """Keep the newest frames; runs on the session's receive thread."""
+        with self.buffer_lock:
+            self.frame_buffer.append(sample)
 
-    def _on_video_frame(self, payload: dict[str, Any]) -> None:
-        """Callback when video frame is received from RTSP."""
-        try:
-            # Store frame in buffer
-            with self.buffer_lock:
-                self.frame_buffer.append(payload)
+    def _on_metadata(self, document: SceneMetadata) -> None:
+        """Keep the newest metadata documents; runs on the session's receive thread."""
+        with self.buffer_lock:
+            self.overlay_buffer.append(document)
 
-        except Exception as e:
-            logger.error(f"Error in RTSP video frame callback: {e}")
-
-    def _on_application_data(self, payload: dict[str, Any]) -> None:
-        """Callback when application data is received from RTSP."""
-        try:
-            # Store application data in overlay buffer
-            with self.buffer_lock:
-                self.overlay_buffer.append(payload)
-
-        except Exception as e:
-            logger.error(f"Error in RTSP application data callback: {e}")
-
-    def _on_error(self, payload: dict[str, Any]) -> None:
-        """Handle RTSP errors."""
-        error_msg = payload.get("message", "Unknown RTSP error")
-        logger.error(f"RTSP Error: {error_msg}")
-        self.sourceError.emit(f"RTSP Error: {error_msg}")
+    def _on_failure(self, failure: BaseException) -> None:
+        """Report a stream that failed after it started; the session has already logged it."""
+        with self._status_lock:
+            if self._session_started:
+                self.sourceError.emit(f"RTSP Error: {failure}")
+            else:
+                self._early_failure = f"RTSP Error: {failure}"
 
     def play(self) -> bool:
-        """Start RTSP stream and data processing."""
+        """Start the worker, which connects the RTSP session before processing data."""
         logger.debug(f"Play requested for {self.source_id}")
-
-        if self.retriever is None:
+        if self.session is None:
             return False  # Stopped sources are terminal; reopening creates a new source.
-
-        # Start RTSP retriever if not already running
-        if not self.retriever_started:
-            try:
-                logger.debug("Starting RTSP retriever")
-                self.retriever.start()
-                self.retriever_started = True
-                logger.debug("RTSP retriever started successfully")
-            except Exception as e:
-                logger.error(f"Failed to start RTSP: {str(e)}")
-                self.sourceError.emit(f"Failed to start RTSP: {str(e)}")
-                return False
-        elif self.retriever_started:
-            logger.debug("RTSP retriever already started, skipping start")
-
-        # Start worker for data processing
         result = self._worker.play()
         logger.debug(f"Play result: {result}, worker running: {self._worker.is_playing()}")
         return result
 
     def pause(self) -> None:
-        """Pause data processing."""
+        """Pause data processing; the RTSP session stays connected."""
         logger.debug(f"Pause requested for {self.source_id}")
         self._worker.pause()
 
@@ -163,27 +145,21 @@ class RTSPSource(FrameSource, OverlaySource):
         """Stop RTSP stream and clean up."""
         logger.debug(f"Stopping {self.source_id}")
 
-        # Request worker shutdown and allow up to two seconds for processing to finish.
+        # Stopping the session first also cancels a connection attempt the worker is blocked in.
+        session, self.session = self.session, None
+        if session is not None:
+            session.stop()
         self._worker.stop()
         if not self._worker.wait(2000):
             logger.warning(f"Worker thread did not exit within 2s for {self.source_id}")
+        if session is not None:
+            session.join(1.0)
 
-        # Stop RTSP retriever
-        if self.retriever:
-            try:
-                self.retriever.stop()
-                logger.debug("RTSP retriever stopped")
-            except Exception as e:
-                logger.warning(f"Error stopping RTSP retriever: {e}")
-            self.retriever = None
-
-        # Discard buffered input after stopping the transport.
         with self.buffer_lock:
             self.frame_buffer.clear()
             self.overlay_buffer.clear()
         self.frame_count = 0
         self.overlay_count = 0
-        self.retriever_started = False
 
         self.cleanup_posted_events()
         logger.debug(f"Stopped {self.source_id}")
@@ -193,17 +169,41 @@ class RTSPSource(FrameSource, OverlaySource):
         return bool(self._worker.wait(timeout))
 
     def _process_data(self) -> bool:
-        """Process both video frames and application data.
+        """Connect on the first call, then process both video frames and scene metadata.
 
-        Returns True to keep the run loop alive. The Worker.run() loop handles
+        Returns False only when connecting fails or is cancelled. Otherwise the Worker.run() loop handles
         pause/stop — this method never decides thread lifecycle.
         """
+        if not self._session_started:
+            return self._start_session()
+
         frame_processed = self._process_video_frame()
-        overlay_processed = self._process_application_data()
+        overlay_processed = self._process_metadata()
 
         if not frame_processed and not overlay_processed:
             time.sleep(0.01)  # Avoid busy-spin when no data available
 
+        return True
+
+    def _start_session(self) -> bool:
+        """Connect the RTSP session on the worker thread so the UI never waits for the camera."""
+        session = self.session
+        if session is None:
+            return False
+        try:
+            session.start()
+        except StartCancelledError:
+            return False
+        except StreamError as exc:
+            logger.error(f"Failed to start RTSP: {exc}")
+            self.sourceError.emit(f"Failed to start RTSP: {exc}")
+            return False
+        logger.debug(f"RTSP session started for {self.source_id}")
+        with self._status_lock:
+            self._session_started = True
+            self.sourceConnected.emit()
+            if self._early_failure:
+                self.sourceError.emit(self._early_failure)
         return True
 
     def _process_video_frame(self) -> bool:
@@ -211,60 +211,40 @@ class RTSPSource(FrameSource, OverlaySource):
         with self.buffer_lock:
             if len(self.frame_buffer) == 0:
                 return False
-            frame = self.frame_buffer.popleft()
+            sample = self.frame_buffer.popleft()
 
-        frame_data: NDArray[np.uint8] = cast(NDArray[np.uint8], frame.get("data"))
-        latest_rtp = frame.get("latest_rtp_data") or {}
-        capture_timestamp_str = latest_rtp.get("human_time", "")
-
-        if not capture_timestamp_str or capture_timestamp_str == "":
-            logger.warning("No capture time found! data cannot be used with sync, not yet implemented!")
+        if sample.capture_time_ns is None:
+            if not self._warned_missing_capture_time:
+                logger.warning("RTSP video has no capture time (onvifreplayext=1); frames cannot be synchronized")
+                self._warned_missing_capture_time = True
             return False
 
-        # Convert from "2025-07-12 16:10:01.033397 UTC" to float (epoch, including milliseconds)
-        dt = datetime.strptime(capture_timestamp_str, "%Y-%m-%d %H:%M:%S.%f UTC").replace(tzinfo=timezone.utc)
-        capture_timestamp = dt.timestamp()
+        pixels = sample.data
+        height, width = pixels.shape[:2]
+        qimage = QImage(pixels.data, width, height, pixels.strides[0], QImage.Format.Format_RGBX8888).copy()
 
-        diagnostics = frame.get("diagnostics") or {}
-        stream_frame_count = diagnostics.get("video_sample_count")
-
-        # Convert to QImage - ensure data is contiguous and properly copied
-        height, width = frame_data.shape[:2]
-        bytes_per_line = 3 * width
-
-        # Ensure the array is contiguous and make a proper copy
-        frame_array = np.ascontiguousarray(frame_data).tobytes()
-        qimage = QImage(frame_array, width, height, bytes_per_line, QImage.Format.Format_RGB888).copy()
-
-        # Emit frame
         self.frame_count += 1
         # For RTSP, use device-provided capture timestamp as monotime
         frame_id = FrameIdentifier(
             sequence_id=self.frame_count,
-            timestamp_monotime_us=capture_timestamp * 1000000.0,  # Convert seconds to microseconds
+            timestamp_monotime_us=sample.capture_time_ns / 1000.0,
         )
         self.frameReady.emit(FrameData(content=qimage, frame_id=frame_id, source_id=self.source_id))
-        if not self.has_warned_frame_count_mismatch and self.frame_count != stream_frame_count:
-            logger.warning(f"Frame count mismatch: {self.frame_count} != {stream_frame_count}")
-            self.has_warned_frame_count_mismatch = True
-
         return True
 
-    def _process_application_data(self) -> bool:
-        """Process application data from buffer and emit as overlay."""
-        # Check if we have application data
+    def _process_metadata(self) -> bool:
+        """Decode one buffered scene metadata document and emit it as an overlay."""
         with self.buffer_lock:
             if len(self.overlay_buffer) == 0:
-                return False  # No overlay data available
-            data = self.overlay_buffer.popleft()
+                return False
+            document = self.overlay_buffer.popleft()
 
         if self._overlay is None:
             logger.debug("No overlay decoder configured; skipping overlay data.")
             return False
 
         try:
-            xml_data = data.get("data")
-            scene = self._overlay.decoder.decode(xml_data)
+            scene = self._overlay.decoder.decode(document.xml)
             if scene is None:
                 logger.debug("Decoder did not return a scene; skipping overlay emission.")
                 return False
@@ -294,13 +274,12 @@ class RTSPSource(FrameSource, OverlaySource):
                 metadata={},
             )
 
-            # Emit overlay
             self.emit_overlay(overlay_data)
 
             return True
 
         except Exception as e:
-            logger.error(f"Error processing application data: {e}", exc_info=True)
+            logger.error(f"Error processing scene metadata: {e}", exc_info=True)
             return False
 
     @property

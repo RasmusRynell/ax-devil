@@ -25,7 +25,7 @@ dependencies = [
     "av>=16.0.0,<20",
     "ax-devil-device-api>=0.6.4,<0.8",
     "ax-devil-mqtt>=0.4.0,<0.6",
-    "ax-devil-rtsp>=0.3.0,<0.4",
+    "ax-devil-rtsp>=0.5.0,<0.6",
     "aiohttp>=3.14.0,<4",
     "jsonschema>=4.25.0,<5",
     "tomli>=2.0.0; python_version < '3.11'",
@@ -49,6 +49,10 @@ Documentation = "https://github.com/rasmusrynell/ax-devil#readme"
 
 [project.scripts]
 ax-devil = "ax_devil.launcher:main"
+
+# ax-devil-rtsp 0.5.0 is not on PyPI yet; drop this source once it is released.
+[tool.uv.sources]
+ax-devil-rtsp = { git = "https://github.com/RasmusRynell/ax-devil-rtsp", branch = "feat/pyav-backend" }
 
 [tool.setuptools]
 package-dir = {"" = "src"}
