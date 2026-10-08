@@ -18,7 +18,7 @@ from PySide6.QtCore import QTimer, SignalInstance
 
 from ax_devil.core.data_types import FrameData, OverlayData
 from ax_devil.modules.data_sources.base import DataSource, FrameSource, OverlaySource
-from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder, RTSPSource
+from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder, RTSPSource, rtsp_stream_config
 from ax_devil.modules.diagnostics.metrics_store import (
     get_metrics_store,
     metrics_enabled,
@@ -107,7 +107,7 @@ class StreamMediaController:
                 filter_factory=get_payload_filter_factory(overlay_spec.handler_type),
             )
         rtsp_source = RTSPSource(
-            self._build_rtsp_url(content.source_spec, get_application_data=embedded_overlay is not None),
+            self._build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None),
             overlay=embedded_overlay,
         )
         overlay_source: OverlaySource | None = None
@@ -364,20 +364,18 @@ class StreamMediaController:
             filter_factory=filter_factory,
         )
 
-    def _build_rtsp_url(self, source_spec: LiveRTSPStreamSpec, *, get_application_data: bool) -> str:
+    def _build_rtsp_url(self, source_spec: LiveRTSPStreamSpec, *, metadata: bool) -> str:
         from ax_devil_rtsp import build_axis_rtsp_url
 
         if source_spec.stream_url:
             return source_spec.stream_url
         return str(
             build_axis_rtsp_url(
-                ip=source_spec.host,
+                source_spec.host,
+                rtsp_stream_config(metadata=metadata),
                 username=source_spec.username,
                 password=source_spec.password,
-                video_source=source_spec.camera_head,
-                get_video_data=True,
-                get_application_data=get_application_data,
-                rtp_ext=True,
+                camera=source_spec.camera_head,
                 resolution=source_spec.resolution,
             )
         )

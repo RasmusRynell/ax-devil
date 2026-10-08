@@ -253,6 +253,7 @@ Read the sections for the area you change. Explanations of how things work live 
 - DataHub sample reception waits until data arrives or shutdown cancels it. Idle silence is not a transport error;
   connection and request deadlines remain bounded separately from streaming.
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
+- RTSP connects on its worker thread: `play()` never waits for the camera, and `stop()` cancels a pending connect.
 - Scene file provider artifacts invalidate unless their complete artifact identity matches: source fingerprint, decoder
   name, explicit artifact version, Scene model version, and provider-owned decode options.
 - Changing Scene model dataclass fields requires bumping `SCENE_MODEL_VERSION`: major when breaking, minor when

@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ax_devil_rtsp import StreamConfig
 from PySide6.QtCore import QCoreApplication, QThread
 from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
@@ -308,7 +309,7 @@ def test_live_controller_enables_embedded_rtsp_overlay(
     monkeypatch.setattr("ax_devil.modules.video_viewer.stream_media_controller.RTSPSource", _CombinedSource)
     monkeypatch.setattr(
         "ax_devil_rtsp.build_axis_rtsp_url",
-        lambda **kwargs: rtsp_options.update(kwargs) or "rtsp://camera.local/axis",
+        lambda host, config, **kwargs: rtsp_options.update(config=config, **kwargs) or "rtsp://camera.local/axis",
     )
     decoder = MagicMock()
     filter_factory = MagicMock()
@@ -329,7 +330,8 @@ def test_live_controller_enables_embedded_rtsp_overlay(
     assert overlay.filter_factory is filter_factory
     assert controller.overlay_source is controller._sources[0]
     assert controller._sources == [controller.video_source]
-    assert rtsp_options["get_application_data"] is True
+    config = rtsp_options["config"]
+    assert isinstance(config, StreamConfig) and config.metadata
 
     controller.cleanup()
 
@@ -397,7 +399,7 @@ def test_live_controller_opens_mqtt_overlay_source_from_spec(
     monkeypatch.setattr("ax_devil.modules.data_sources.MQTTOverlaySource", _OverlaySource)
     monkeypatch.setattr(
         "ax_devil_rtsp.build_axis_rtsp_url",
-        lambda **kwargs: rtsp_options.update(kwargs) or "rtsp://camera.local/axis",
+        lambda host, config, **kwargs: rtsp_options.update(config=config, **kwargs) or "rtsp://camera.local/axis",
     )
     monkeypatch.setattr(stream_media_controller, "get_payload_decoder", lambda handler_type: f"decoder:{handler_type}")
     monkeypatch.setattr(stream_media_controller, "get_payload_filter_factory", lambda handler_type: None)
@@ -415,7 +417,8 @@ def test_live_controller_opens_mqtt_overlay_source_from_spec(
     assert opened["analytics_data_source_key"] == "topic"
     assert opened["decoder"] == "decoder:LIVE"
     assert opened["handler_type"] == "LIVE"
-    assert rtsp_options["get_application_data"] is False
+    config = rtsp_options["config"]
+    assert isinstance(config, StreamConfig) and not config.metadata
 
     controller.cleanup()
 
@@ -522,7 +525,7 @@ def test_live_input_routing_and_unique_lifecycle(
     from ax_devil.modules.filtering import build_default_filter_config
 
     transport = MagicMock()
-    monkeypatch.setattr(rtsp_source, "RtspDataRetriever", transport)
+    monkeypatch.setattr(rtsp_source, "StreamSession", transport)
     mqtt = MagicMock(spec=OverlaySource)
     mqtt_filter = build_default_filter_config()
     mqtt.get_filter_config.return_value = mqtt_filter
@@ -547,7 +550,7 @@ def test_live_input_routing_and_unique_lifecycle(
     )
     source = controller.video_source
     assert isinstance(source, RTSPSource)
-    assert (transport.call_args.kwargs["on_application_data"] is not None) == (mode == "rtsp")
+    assert (transport.call_args.kwargs["on_metadata"] is not None) == (mode == "rtsp")
     assert controller._sources == ([source, mqtt] if mode == "mqtt" else [source])
     expected_filter = {"none": None, "rtsp": rtsp_filter, "mqtt": mqtt_filter}[mode]
     assert controller.get_filter_config() is expected_filter
@@ -876,14 +879,14 @@ def test_live_controller_retry_reports_reopen_failure(
     )
     try:
         monkeypatch.setattr(
-            stream_media_controller, "RTSPSource", MagicMock(side_effect=RuntimeError("GStreamer is missing"))
+            stream_media_controller, "RTSPSource", MagicMock(side_effect=RuntimeError("RTSP is unavailable"))
         )
 
         controller.retry()
 
         status = controller.connection_status
         assert status.headline.state is LiveConnectionState.FAILED
-        assert status.headline.reason == "Failed to reopen live stream: GStreamer is missing"
+        assert status.headline.reason == "Failed to reopen live stream: RTSP is unavailable"
         assert status.needs_retry
         assert live_transports[0][0].stopped
     finally:

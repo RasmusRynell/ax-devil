@@ -4,23 +4,18 @@ ax-devil supports **Linux** and requires **Python 3.10+** (CI checks 3.10 and 3.
 
 ## Ubuntu 24.04 prerequisites
 
-Install the native dependencies for building and launching the desktop app:
+Install the native dependencies for running the desktop app:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y git pipx python3-venv python3-dev ffmpeg gcc pkg-config \
-  gobject-introspection libgirepository-2.0-dev libgirepository1.0-dev \
-  libglib2.0-dev libcairo2-dev libffi-dev libegl1-mesa-dev libgl1-mesa-dev \
-  libgles2-mesa-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 \
-  gstreamer1.0-dev gstreamer1.0-libav \
-  gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-  gstreamer1.0-plugins-ugly gstreamer1.0-rtsp gstreamer1.0-tools
+sudo apt-get install -y git pipx python3-venv ffmpeg libegl1-mesa-dev libgl1-mesa-dev \
+  libgles2-mesa-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1
 pipx install uv
 pipx ensurepath
 ```
 
-Open a new terminal if `uv` is not yet on your PATH. Other distributions need the equivalent Qt, GStreamer,
-and build packages.
+Open a new terminal if `uv` is not yet on your PATH. Other distributions need the equivalent Qt and FFmpeg
+packages.
 
 ## Run from source
 

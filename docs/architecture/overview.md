@@ -127,7 +127,7 @@ Data-source timing and alignment report models live with the data sources that p
 
 `RTSPSource` shares connection management, buffering, and frame conversion across both RTSP modes.
 Its optional `RTSPOverlayDecoder` groups the payload decoder, handler identity, and filter factory.
-Without that definition, it registers no application-data callback. Source selection follows the content specification;
+Without that definition, it requests no scene metadata stream. Source selection follows the content specification;
 implementing `OverlaySource` does not mean embedded overlays are enabled.
 
 The DataHub client's transport rules are in [Data Pipeline invariants](../domain/invariants.md#data-pipeline). Its session-token request starts without
