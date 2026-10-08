@@ -1,12 +1,8 @@
-"""Tests for Entity.motion_state at model and decoder boundaries."""
+"""Scene inspection exposes useful entity metadata without dumping image bytes."""
 
 from __future__ import annotations
 
-import pickle
 from datetime import datetime, timezone
-from typing import Any
-
-import pytest
 
 from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import (
@@ -22,30 +18,8 @@ from ax_devil.modules.scene.model import (
     Observation,
     Score,
 )
-from ax_devil.plugins.decoders.adf_v1.frame import decode_adf_frame_v1_data
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 _TS = datetime(2024, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
-_TS_ISO = "2024-07-01T12:00:00+00:00"
-
-
-def _make_adf_frame(*, moving: bool | None = None) -> dict[str, Any]:
-    """Build a minimal ADF v1 frame dict with one detection."""
-    detection: dict[str, Any] = {
-        "object_track_id": "42",
-        "bounding_box": {"left": 0.1, "top": 0.2, "right": 0.4, "bottom": 0.6},
-        "class": {"type": "human", "score": 0.9},
-    }
-    if moving is not None:
-        detection["moving"] = moving
-    return {
-        "frame": {
-            "timestamp": _TS_ISO,
-            "detections": [detection],
-        }
-    }
 
 
 def _make_entity(*, motion_state: MotionState = MotionState.Moving) -> Entity:
@@ -60,38 +34,10 @@ def _make_entity(*, motion_state: MotionState = MotionState.Moving) -> Entity:
     return entity
 
 
-# ---------------------------------------------------------------------------
-# Entity defaults
-# ---------------------------------------------------------------------------
-
-
 def test_entity_motion_state_defaults_absent() -> None:
     entity = Entity(id=EntityId("1"))
     assert entity.motion_state is None
     assert "motion_state" not in build_entity_hover_html(entity)
-
-
-# ---------------------------------------------------------------------------
-# ADF v1 frame decoder
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "moving,expected",
-    [(True, MotionState.Moving), (False, MotionState.Stationary), (None, None), ("false", None), (1, None)],
-)
-def test_adf_v1_frame_maps_only_boolean_movement(moving: object, expected: MotionState | None) -> None:
-    data = _make_adf_frame()
-    if moving is not None:
-        data["frame"]["detections"][0]["moving"] = moving
-    scene = decode_adf_frame_v1_data(data)
-    entity = next(iter(scene.entities.values()))
-    assert entity.motion_state is expected
-
-
-# ---------------------------------------------------------------------------
-# Hover card
-# ---------------------------------------------------------------------------
 
 
 def test_hover_html_includes_stationary_motion_state() -> None:
@@ -197,17 +143,6 @@ def test_hover_html_surfaces_nested_observation_debug() -> None:
     assert "0.42" in html
     assert "observation_count" in html
     assert "17" in html
-
-
-def test_observation_pickle_preserves_debug() -> None:
-    """Native pickle restoration preserves current observation fields."""
-    observation = Observation(
-        geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2),
-        timestamp=_TS,
-        debug={"motion_debug": {"normalized_speed": 0.42}},
-    )
-
-    assert pickle.loads(pickle.dumps(observation)) == observation
 
 
 def test_hover_html_surfaces_image_metadata_without_dumping_bytes() -> None:

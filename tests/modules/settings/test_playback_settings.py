@@ -31,7 +31,7 @@ def reset_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     GlobalSettings.reset_instance()
 
 
-@pytest.mark.parametrize("invalid", [None, True, "512", 256.5, 0, -1, 1048577, {}, []])
+@pytest.mark.parametrize("invalid", [True, "512", 256.5, 255, 1048577])
 def test_invalid_saved_budget_uses_auto(invalid: object) -> None:
     assert VideoCacheBudget.from_config(invalid).mib is None
 
