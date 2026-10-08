@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.application_shell.main_window import MainWindow
+from ax_devil.modules.application_shell.restart import relaunch_if_requested
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme, setup_theme
 from ax_devil.modules.diagnostics.exception_handler import install_exception_handler
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
@@ -106,6 +107,8 @@ class Application:
                 config_manager.set("shortcuts", overrides)
                 config_manager.save()
 
+            if self.app is not None:
+                relaunch_if_requested(self.app)
             return exit_code
         except Exception as exc:
             logger = self.logger or get_logger(__name__)

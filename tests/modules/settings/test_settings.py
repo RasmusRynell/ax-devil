@@ -461,21 +461,33 @@ def test_saving_a_restart_setting_asks_to_restart_now(qtbot: QtBot, monkeypatch:
         GlobalSettings.reset_instance()
 
 
-def test_restart_starts_the_same_command_after_quitting(monkeypatch: pytest.MonkeyPatch, qapp: QApplication) -> None:
+def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(
+    monkeypatch: pytest.MonkeyPatch, qapp: QApplication, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Restart Now only quits; the app relaunches itself after its exit-time saves, once, and reports a failure."""
     from ax_devil.modules.application_shell import restart
 
     started: list[tuple[str, list[str]]] = []
+    results = [(True, 42), (False, -1)]
 
-    def start_detached(program: str, arguments: list[str]) -> bool:
+    def start_detached(program: str, arguments: list[str]) -> tuple[bool, int]:
         started.append((program, arguments))
-        return True
+        return results.pop(0)
 
     monkeypatch.setattr(sys, "orig_argv", ["/usr/bin/python3", "-I", "-m", "ax_devil.cli"])
     monkeypatch.setattr(QProcess, "startDetached", start_detached)
     monkeypatch.setattr(QApplication, "closeAllWindows", lambda: None)
-    monkeypatch.setattr(QApplication, "quit", lambda: qapp.aboutToQuit.emit())
+    monkeypatch.setattr(QApplication, "quit", lambda: None)
+
+    restart.relaunch_if_requested(qapp)
+    assert started == []  # No restart was asked for.
 
     restart.restart_application()
-    qapp.aboutToQuit.emit()  # A later quit does not start another copy.
-
+    assert started == []  # Nothing starts before the app has saved on exit.
+    restart.relaunch_if_requested(qapp)
+    restart.relaunch_if_requested(qapp)
     assert started == [("/usr/bin/python3", ["-I", "-m", "ax_devil.cli"])]
+
+    restart.restart_application()
+    restart.relaunch_if_requested(qapp)
+    assert "Could not restart ax-devil" in caplog.text

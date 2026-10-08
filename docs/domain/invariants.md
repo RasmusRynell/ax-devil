@@ -355,8 +355,9 @@ Read the sections for the area you change. Explanations of how things work live 
 
 ## Settings And Shortcuts
 
-- Settings changes apply on OK or Apply; settings that need a restart carry one shared marker. The separate
-  shortcut editor applies changes on its own OK, independently of the Settings dialog's Apply or Cancel.
+- Settings changes apply on OK; settings that need a restart carry one shared marker, and saving a change to one
+  offers to restart, which relaunches only after the exit-time saves. The separate shortcut editor applies changes on
+  its own OK, independently of the Settings dialog's OK or Cancel.
   [Quick Setup](../settings.md#quick-setup) is the exception: its choices apply as they are clicked and are saved
   however it closes, because the running app is its preview.
 - `ConfigManager` owns config file I/O, version validation, default merging, unsupported-key warnings, raw
