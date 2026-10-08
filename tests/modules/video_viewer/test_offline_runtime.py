@@ -370,8 +370,13 @@ def test_offline_session_shared_secondary_presents_latest_frame_with_each_lanes_
     worker.start()
     worker.join()
     assert displays[0].frames == displays[1].frames == []
+    assert secondary_source.requests == [7]
     qtbot.waitUntil(lambda: secondary_source.requests == [7, 9])  # type: ignore[attr-defined]
-    secondary_source.complete(9)
+    worker = threading.Thread(target=lambda: secondary_source.complete(9))
+    worker.start()
+    worker.join()
+    assert displays[0].frames == displays[1].frames == []
+    qtbot.waitUntil(lambda: all(display.frames for display in displays))  # type: ignore[attr-defined]
     assert [frame.frame.frame_id for frame in primary_display.frames] == [7, 9]
     for index, display in enumerate(displays):
         assert [frame.frame.frame_id for frame in display.frames] == [9]
