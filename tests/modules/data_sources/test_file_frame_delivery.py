@@ -252,3 +252,22 @@ def test_file_frame_source_uses_one_delivery_worker_for_playback_and_seek(
         source.stop()
 
     assert source.wait()
+
+
+def test_file_frame_source_reports_its_length_without_reading_every_timestamp(
+    temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The length is the last frame's time plus its own period; it needs no full timestamp list."""
+    monkeypatch.setattr(CacheManager, "_get_base_cache_dir", lambda self: temp_dir / "cache")
+    video_path = temp_dir / "length.mp4"
+    create_test_video(video_path, duration=1.0, fps=20)
+    source = FileFrameSource(str(video_path), source_id="length-test")
+    try:
+        duration = source.get_duration_s()
+        assert duration == pytest.approx(source.get_total_frames() / 20, abs=0.001)
+        assert source._frame_timestamps_us is None
+        assert source.get_frame_size() is not None
+    finally:
+        source.stop()
+    assert source.wait()
+    assert source.get_duration_s() is None

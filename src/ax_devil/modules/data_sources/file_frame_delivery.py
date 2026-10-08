@@ -204,6 +204,10 @@ class FileFrameDelivery(BaseWorker):
         """Return the frames that are decoded and cached, as inclusive ``(first, last)`` runs."""
         return self._decoder.get_cached_ranges()
 
+    def get_frame_time_us(self, frame_number: int) -> float:
+        """Return one frame's presentation time in microseconds since the first frame."""
+        return self._decoder.get_frame_time_us(frame_number)
+
     def get_frame_period_after_s(self, frame_number: int) -> float | None:
         """Return the source cadence for one frame."""
         return self._decoder.get_frame_period_after_s(frame_number)

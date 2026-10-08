@@ -402,7 +402,8 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         super().__init__(parent)
         self._user_is_scrubbing = False
         self._frame_rate = 0.0
-        self._frame_times_us: tuple[int, ...] = ()
+        self._duration_s = 0.0
+        self._shown_seconds: float | None = None  # The decoded time of the frame on screen, when known.
         self._playback_speed = DEFAULT_PLAYBACK_SPEED
         self._cached_ranges_provider: Callable[[], tuple[tuple[int, int], ...]] | None = None
         self._cached_ranges_timer = QtCore.QTimer(self)
@@ -516,17 +517,20 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         total_frames: int,
         frame_rate: float,
         cached_ranges: Callable[[], tuple[tuple[int, int], ...]] | None = None,
-        frame_times_us: tuple[int, ...] = (),
+        duration_s: float | None = None,
     ) -> None:
         """Follow a video of *total_frames* at *frame_rate* frames per second; zero or less hides the time.
 
-        *frame_times_us* gives each frame's time from the first frame, so variable frame rates show true times;
-        without it, times count frames at *frame_rate*. *cached_ranges* reports the decoded frames as inclusive
-        ``(first, last)`` runs; the timeline shows them, refreshed while the panel is visible.
+        *duration_s* is the video's length, which sizes the time readout; without it, frames count at *frame_rate*.
+        *cached_ranges* reports the decoded frames as inclusive ``(first, last)`` runs; the timeline shows them,
+        refreshed while the panel is visible.
         """
         self.set_total_frames(total_frames)
         self._frame_rate = frame_rate
-        self._frame_times_us = frame_times_us if len(frame_times_us) == total_frames else ()
+        self._duration_s = (
+            duration_s if duration_s is not None else total_frames / frame_rate if frame_rate > 0 else 0.0
+        )
+        self._shown_seconds = None
         self._size_timecode()
         self._show_timecode()
         self._set_available(self._timecode_label, frame_rate > 0)
@@ -552,18 +556,17 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         """Return the shown time of the current frame, or an empty string when the frame rate is unknown."""
         return self._timecode_label.text()
 
-    def _frame_seconds(self, frame: int) -> float:
-        if self._frame_times_us:
-            return self._frame_times_us[min(max(frame, 0), len(self._frame_times_us) - 1)] / 1_000_000
-        return frame / self._frame_rate if self._frame_rate > 0 else 0.0
-
     def _show_timecode(self) -> None:
+        """Show the decoded time of the frame on screen, or, while scrubbing, the frame number at the frame rate."""
         if self._frame_rate > 0:
-            self._timecode_label.setText(format_timecode(self._frame_seconds(self.frame_spinbox.value())))
+            seconds = self._shown_seconds
+            if seconds is None:
+                seconds = self.frame_spinbox.value() / self._frame_rate
+            self._timecode_label.setText(format_timecode(seconds))
 
     def _size_timecode(self) -> None:
         """Fit the time to its longest text for this video, so it never grows into the row while playing."""
-        longest = format_timecode(self._frame_seconds(self.frame_spinbox.maximum()))
+        longest = format_timecode(self._duration_s)
         # The time is fixed-width text, so the longest time is as wide as any other of its length.
         width = self._timecode_label.fontMetrics().horizontalAdvance(longest)
         self._timecode_label.setMinimumWidth(width + Space.L + Space.XS)
@@ -607,6 +610,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
     def _on_slider_changed(self, value: int) -> None:
         if self.timeline_slider.value() != self.frame_spinbox.value():
             self.frame_spinbox.setValue(value)
+        self._shown_seconds = None
         self._show_timecode()
 
     def _on_spinbox_editing_finished(self) -> None:
@@ -623,10 +627,12 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         self._total_label.setText(f" / {total - 1}")
         self._size_frame_spinbox()
 
-    def set_current_frame(self, frame: int) -> None:
+    def set_current_frame(self, frame: int, seconds: float | None = None) -> None:
+        """Show *frame* as current; *seconds* is its decoded time, which variable frame rates need to show truly."""
         if self._user_is_scrubbing:
             return
 
+        self._shown_seconds = seconds
         self.timeline_slider.blockSignals(True)
         self.frame_spinbox.blockSignals(True)
         self.timeline_slider.setValue(frame)

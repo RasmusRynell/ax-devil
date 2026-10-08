@@ -235,6 +235,18 @@ class FileFrameSource(SeekableFrameSource):
         """Return the frames that play without decoding, as inclusive ``(first, last)`` runs."""
         return self._frame_delivery.get_cached_ranges() if self._frame_delivery is not None else ()
 
+    def get_duration_s(self) -> float | None:
+        """Return the video's length: the last frame's time plus how long it shows, or None when unknown."""
+        if self._frame_delivery is None or self.total_frames <= 0:
+            return None
+        last = self.total_frames - 1
+        try:
+            last_time_us = self._frame_delivery.get_frame_time_us(last)
+        except (IndexError, RuntimeError, ValueError) as exc:
+            logger.debug(f"Failed to read the last frame time of {self.source_id}: {exc}")
+            return None
+        return last_time_us / 1_000_000 + self.get_frame_period_after_s(last)
+
     def get_frame_size(self) -> tuple[int, int] | None:
         """Return the video's width and height in pixels, or None when the file does not say."""
         width, height = self._original_size

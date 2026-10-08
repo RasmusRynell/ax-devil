@@ -45,9 +45,8 @@ def test_time_follows_the_frame_at_the_video_frame_rate(qtbot: QtBot) -> None:
 
     assert panel.timecode_text() == "1:01.20"
 
-    # Variable frame rates show each frame's own time.
-    panel.show_video(total_frames=3, frame_rate=25.0, frame_times_us=(0, 40_000, 1_500_000))
-    panel.set_current_frame(2)
+    # Variable frame rates show the decoded time of the frame on screen.
+    panel.set_current_frame(2, seconds=1.5)
     assert panel.timecode_text() == "0:01.50"
     assert format_timecode(3725.5) == "1:02:05.50"
     assert format_timecode(65.4, hundredths=False) == "1:05"

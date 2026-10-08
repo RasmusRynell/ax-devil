@@ -50,12 +50,7 @@ from ax_devil.modules.workspace import EntryLane, SeekableVideoContent
 
 def show_video_on_controls(controls: SeekableVideoControlPanel, source: FileFrameSource) -> None:
     """Let *controls* follow *source*'s frame count, frame rate and cached frames."""
-    controls.show_video(
-        source.get_total_frames(),
-        float(source.fps),
-        source.get_cached_ranges,
-        source.get_frame_timestamps_us(),
-    )
+    controls.show_video(source.get_total_frames(), float(source.fps), source.get_cached_ranges, source.get_duration_s())
 
 
 def video_details(source: FileFrameSource) -> str:
@@ -67,10 +62,10 @@ def video_details(source: FileFrameSource) -> str:
     fps = float(source.fps)
     if fps > 0:
         parts.append(f"{round(fps, 2):g} fps")
-        # The last frame's time plus one frame, so variable frame rates show their true length.
-        times = source.get_frame_timestamps_us()
-        length = times[-1] / 1_000_000 + 1 / fps if times else source.get_total_frames() / fps
-        parts.append(format_timecode(length, hundredths=False))
+        length = source.get_duration_s()
+        parts.append(
+            format_timecode(length if length is not None else source.get_total_frames() / fps, hundredths=False)
+        )
     return " · ".join(parts)
 
 
@@ -137,7 +132,7 @@ class OfflineLane:
         """Display a synced frame and update lane-owned controls."""
         self.display.display_frame(frame)
         if self.controls is not None and frame.frame.frame_id is not None:
-            self.controls.set_current_frame(frame.frame.frame_id)
+            self.controls.set_current_frame(frame.frame.frame_id, frame.frame.timestamp)
 
     def present_frame(self, frame_data: FrameData) -> None:
         """Present one offline frame using direct overlay lookup."""
@@ -304,6 +299,7 @@ class OfflineSession(QObject):
         self._media = media
         self._source_pool = source_pool
         self._is_playing = False
+        self._current_frame_seconds: float | None = None
         self._min_valid_primary_generation: int | None = None
         self._secondary_frame_relay = _SecondaryFrameRelay(self)
         self._secondary_frame_relay.frameReady.connect(self._display_secondary_frame)
@@ -370,6 +366,11 @@ class OfflineSession(QObject):
     def current_frame(self) -> int:
         """Return the current primary frame index."""
         return self._current_frame
+
+    @property
+    def current_frame_seconds(self) -> float | None:
+        """Return the decoded time of the primary frame on screen, or None before the first frame."""
+        return self._current_frame_seconds
 
     @property
     def is_playing(self) -> bool:
@@ -824,6 +825,7 @@ class OfflineSession(QObject):
 
         if source_index == 0:
             self._current_frame = self._bounded_frame(frame_data.frame_id.sequence_id)
+            self._current_frame_seconds = frame_data.frame_id.timestamp_monotime_us / 1_000_000
             self.currentFrameChanged.emit(self.current_frame)
         for lane in self.lanes:
             if lane.source_index == source_index:

@@ -98,6 +98,9 @@ class _TrackedFrameSource(SeekableFrameSource):
     def get_cached_ranges(self) -> tuple[tuple[int, int], ...]:
         return ()
 
+    def get_duration_s(self) -> float | None:
+        return None
+
     def get_current_frame(self) -> int:
         return self._current_frame
 
@@ -346,6 +349,7 @@ def _stub_frame_source() -> MagicMock:
     source.fps = 25.0
     source.get_frame_size.return_value = (640, 480)
     source.get_cached_ranges.return_value = ((0, 9),)
+    source.get_duration_s.return_value = None
     source.get_current_frame.return_value = 0
     source.get_playback_speed.return_value = 1.0
     source.get_position_generation.return_value = 0
@@ -675,7 +679,7 @@ class TestOfflineVideoViewerWidget:
     def test_single_video_pane_names_it_once_and_describes_it_in_the_header(self, qtbot: QtBot) -> None:
         """A lane named like its pane shows no name on the video; the header shows the video's size, rate and length."""
         source = _stub_frame_source()
-        source.get_frame_timestamps_us.return_value = tuple(frame * 40_000 for frame in range(100))
+        source.get_duration_s.return_value = 4.0
         content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
         widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)

@@ -311,7 +311,8 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
 
     def _sync_global_current_frame(self, frame: int) -> None:
         if self._has_active_global_controls() and self._global_controls is not None:
-            self._global_controls.set_current_frame(frame)
+            seconds = self._runtime.current_frame_seconds if self._runtime is not None else None
+            self._global_controls.set_current_frame(frame, seconds)
 
     def _sync_global_playback_state(self, playing: bool) -> None:
         if self._has_active_global_controls() and self._global_controls is not None:
