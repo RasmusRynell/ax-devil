@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from itertools import count
 from time import perf_counter
-from typing import Optional
 
 from PySide6 import QtCore
 from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
@@ -56,7 +55,7 @@ class VideoFrameRenderer(QWidget):
 
         self.setMinimumSize(QSize(100, 100))
         self.setMouseTracking(True)
-        self._video_frame: Optional[VideoFrameWithOverlays] = None
+        self._video_frame: VideoFrameWithOverlays | None = None
         self._viewport = ViewportState(
             zoom_level=_ZOOM_MIN,
             zoom_min=_ZOOM_MIN,

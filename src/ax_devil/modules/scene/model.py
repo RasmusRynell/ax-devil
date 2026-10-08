@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import base64
+import builtins
 import enum
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: Tuple[int, int] = (1, 0)
+SCENE_MODEL_VERSION: tuple[int, int] = (1, 0)
 
 
 # ---------------------------------------------------------------------------#
@@ -185,11 +186,11 @@ class Attribute:
 class Geometry:
     """Base for geometric primitives in normalized image space."""
 
-    def as_xywh(self) -> Tuple[float, float, float, float]:
+    def as_xywh(self) -> tuple[float, float, float, float]:
         """Return ``(x, y, width, height)`` bounds in normalized image coordinates."""
         raise NotImplementedError
 
-    def polygon_points(self) -> List["NormalizedPoint"] | None:
+    def polygon_points(self) -> list["NormalizedPoint"] | None:
         """Return polygon points when this geometry has an explicit polygon shape."""
         return None
 
@@ -228,7 +229,7 @@ class BoundingBox(Geometry):
         )
 
     # Helpers ----------------------------------------------------------------------
-    def as_xywh(self) -> Tuple[float, float, float, float]:
+    def as_xywh(self) -> tuple[float, float, float, float]:
         """Return (x, y, width, height)."""
         return self.top_left.x, self.top_left.y, self.width, self.height
 
@@ -237,13 +238,13 @@ class BoundingBox(Geometry):
 class Polygon(Geometry):
     """Polygon in normalized image space."""
 
-    points: List[NormalizedPoint]
+    points: list[NormalizedPoint]
 
     def __post_init__(self) -> None:
         if len(self.points) < 3:
             raise ValueError("Polygon must contain at least 3 points.")
 
-    def as_xywh(self) -> Tuple[float, float, float, float]:
+    def as_xywh(self) -> tuple[float, float, float, float]:
         """Return ``(x, y, width, height)`` bounds in normalized image coordinates."""
         xs = [point.x for point in self.points]
         ys = [point.y for point in self.points]
@@ -253,7 +254,7 @@ class Polygon(Geometry):
         max_y = max(ys)
         return min_x, min_y, max_x - min_x, max_y - min_y
 
-    def polygon_points(self) -> List[NormalizedPoint]:
+    def polygon_points(self) -> list[NormalizedPoint]:
         """Return this polygon's normalized points."""
         return self.points
 
@@ -294,7 +295,7 @@ class ImageVelocity:
 class GeographicCoordinates:
     latitude: float
     longitude: float
-    elevation: Optional[float] = None  # metres
+    elevation: float | None = None  # metres
 
 
 @dataclass(slots=True)
@@ -320,7 +321,7 @@ class Classification:
 
     type: ClassificationType  # str alias
     score: Score
-    attributes: List[Attribute] = field(default_factory=list)
+    attributes: list[Attribute] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.type:
@@ -340,12 +341,12 @@ class Classification:
                 return attr.value
         return None
 
-    def attribute_items(self, attr_name: str, item_type: Type[_TAttributeItem]) -> List[_TAttributeItem]:
+    def attribute_items(self, attr_name: str, item_type: builtins.type[_TAttributeItem]) -> list[_TAttributeItem]:
         """Return typed list items from a classification attribute."""
         value = self.attribute_value(attr_name)
         if not isinstance(value, list):
             return []
-        items: List[_TAttributeItem] = []
+        items: list[_TAttributeItem] = []
         for item in value:
             if not isinstance(item, item_type):
                 return []
@@ -380,16 +381,16 @@ class Observation:
     """Observation of an entity at a specific time."""
 
     geometry: Geometry
-    classification: List[Classification] = field(default_factory=list)
-    timestamp: Optional[datetime] = None
-    frame_number: Optional[int] = None
-    confidence: Optional[Score] = None
-    velocity_in_image_space: Optional[ImageVelocity] = None
-    velocity_in_world_space: Optional[WorldVelocity] = None
-    geographical_coordinates: Optional[GeographicCoordinates] = None
-    world_coordinates: Optional[SphericalCoordinates] = None
+    classification: list[Classification] = field(default_factory=list)
+    timestamp: datetime | None = None
+    frame_number: int | None = None
+    confidence: Score | None = None
+    velocity_in_image_space: ImageVelocity | None = None
+    velocity_in_world_space: WorldVelocity | None = None
+    geographical_coordinates: GeographicCoordinates | None = None
+    world_coordinates: SphericalCoordinates | None = None
     # Decoder-owned, free-form, picklable; ax-devil only displays it.
-    debug: Dict[str, Any] = field(default_factory=dict)
+    debug: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.timestamp is None and self.frame_number is None:
@@ -409,8 +410,8 @@ class Entity:
     """Track of a real-world entity."""
 
     id: EntityId
-    observations: List[Observation] = field(default_factory=list)
-    images: List[Image] = field(default_factory=list)
+    observations: list[Observation] = field(default_factory=list)
+    images: list[Image] = field(default_factory=list)
     end_reason: str | None = None
     motion_state: MotionState | None = None
 
@@ -512,7 +513,7 @@ class Event:
         raise NotImplementedError
 
     @property
-    def involved_entity_ids(self) -> Tuple[EntityId, ...]:
+    def involved_entity_ids(self) -> tuple[EntityId, ...]:
         """Return the entities this event involves."""
         raise NotImplementedError
 
@@ -542,7 +543,7 @@ class Delete(Operation):
         return f"{self.kind} {self.entity_id}"
 
     @property
-    def involved_entity_ids(self) -> Tuple[EntityId, ...]:
+    def involved_entity_ids(self) -> tuple[EntityId, ...]:
         """Return the entities this event involves."""
         return (self.entity_id,)
 
@@ -561,7 +562,7 @@ class Rename(Operation):
         return f"{self.kind} {self.from_entity_id} → {self.to_entity_id}"
 
     @property
-    def involved_entity_ids(self) -> Tuple[EntityId, ...]:
+    def involved_entity_ids(self) -> tuple[EntityId, ...]:
         """Return the entities this event involves."""
         return (self.from_entity_id, self.to_entity_id)
 
@@ -570,7 +571,7 @@ class Rename(Operation):
 class Merge(Operation):
     """Merge multiple entities into one."""
 
-    entity_ids: List[EntityId]
+    entity_ids: list[EntityId]
     target_entity_id: EntityId
     operation_type: ClassVar[OperationType] = OperationType.Merge
 
@@ -580,7 +581,7 @@ class Merge(Operation):
         return f"{self.kind} {', '.join(self.entity_ids)} → {self.target_entity_id}"
 
     @property
-    def involved_entity_ids(self) -> Tuple[EntityId, ...]:
+    def involved_entity_ids(self) -> tuple[EntityId, ...]:
         """Return the entities this event involves."""
         return (*self.entity_ids, self.target_entity_id)
 
@@ -590,7 +591,7 @@ class Split(Operation):
     """Split an entity into multiple entities."""
 
     source_entity_id: EntityId
-    new_entity_ids: List[EntityId]
+    new_entity_ids: list[EntityId]
     operation_type: ClassVar[OperationType] = OperationType.Split
 
     @property
@@ -599,7 +600,7 @@ class Split(Operation):
         return f"{self.kind} {self.source_entity_id} → {', '.join(self.new_entity_ids)}"
 
     @property
-    def involved_entity_ids(self) -> Tuple[EntityId, ...]:
+    def involved_entity_ids(self) -> tuple[EntityId, ...]:
         """Return the entities this event involves."""
         return (self.source_entity_id, *self.new_entity_ids)
 
@@ -623,11 +624,11 @@ class EntityRelation:
 @dataclass(slots=True)
 class Scene:
     time_slice: TimeSlice
-    entities: Dict[EntityId, Entity] = field(default_factory=dict)
-    events: List[Event] = field(default_factory=list)
+    entities: dict[EntityId, Entity] = field(default_factory=dict)
+    events: list[Event] = field(default_factory=list)
     relations: set[EntityRelation] = field(default_factory=set)
     # Decoder-owned, free-form, picklable; retained for decoder/provider diagnostics, not displayed in the UI.
-    debug: Dict[str, Any] = field(default_factory=dict)
+    debug: dict[str, Any] = field(default_factory=dict)
 
     def add_entity(self, entity: Entity) -> None:
         """Register a fully-constructed entity."""

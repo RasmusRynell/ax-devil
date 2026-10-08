@@ -6,9 +6,10 @@ import json
 import re
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any
 
 from ax_devil.modules.cache import CacheManager
 from ax_devil.modules.settings.logging_config import get_logger
@@ -30,7 +31,7 @@ class Fingerprint:
         st = p.stat()
         return cls(st.st_ino, st.st_size, st.st_mtime_ns)
 
-    def as_tuple(self) -> Tuple[int, int, int]:
+    def as_tuple(self) -> tuple[int, int, int]:
         return (self.inode, self.size, self.mtime_ns)
 
 
@@ -80,9 +81,9 @@ class VideoAnalyzer:
         count_frames: bool = False,
         count_packets: bool = False,
         deep: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Use ffprobe to get video stream information."""
-        cmd: List[str] = [
+        cmd: list[str] = [
             self.ffprobe,
             "-v",
             "error",
@@ -150,7 +151,7 @@ class VideoAnalyzer:
             return 0.0
         return num / den if den else 0.0
 
-    def _ffmpeg_count(self, path: Path) -> Optional[Dict[str, Any]]:
+    def _ffmpeg_count(self, path: Path) -> dict[str, Any] | None:
         """Use ffmpeg to count frames by copying to null muxer."""
         cmd = [
             self.ffmpeg,
@@ -177,10 +178,10 @@ class VideoAnalyzer:
             return None
 
         matches = self._FRAME_RE.findall(out)
-        frames: Optional[int] = int(matches[-1]) if matches else None
+        frames: int | None = int(matches[-1]) if matches else None
 
-        progress_entries: list[Dict[str, str]] = []
-        current_entry: Dict[str, str] = {}
+        progress_entries: list[dict[str, str]] = []
+        current_entry: dict[str, str] = {}
         for raw_line in out.strip().splitlines():
             if "=" not in raw_line:
                 continue
@@ -229,7 +230,7 @@ class VideoAnalyzer:
             "duration_sec": frames / fps if fps else 0.0,
         }
 
-    def _pyav_probe(self, path: Path) -> Optional[Dict[str, Any]]:
+    def _pyav_probe(self, path: Path) -> dict[str, Any] | None:
         """Use PyAV to extract metadata as final fallback."""
         try:
             import av
@@ -259,7 +260,7 @@ class VideoAnalyzer:
             return None
         return None
 
-    def _is_valid_metadata(self, meta: Dict[str, Any]) -> bool:
+    def _is_valid_metadata(self, meta: dict[str, Any]) -> bool:
         """Validate metadata has required fields with valid values."""
         required_fields = ["fps", "frame_count", "width", "height"]
         for field in required_fields:
@@ -272,7 +273,7 @@ class VideoAnalyzer:
         """Get cache file path for a video file using unified CacheManager."""
         return self.cache_manager.get_cache_path("video_metadata", p, self.cache_suffix)
 
-    def _load_cache(self, p: Path) -> Optional[Dict[str, Any]]:
+    def _load_cache(self, p: Path) -> dict[str, Any] | None:
         """Load cached metadata if available and valid."""
         cache_file = self._get_cache_path(p)
         if not cache_file.exists():
@@ -280,14 +281,14 @@ class VideoAnalyzer:
         try:
             cached = json.loads(cache_file.read_text())
             if tuple(cached["fingerprint"]) == Fingerprint.from_path(p).as_tuple():
-                meta: Dict[str, Any] = cached["metadata"]
+                meta: dict[str, Any] = cached["metadata"]
                 meta["source"] += " (cache)"
                 return meta
         except (OSError, KeyError, json.JSONDecodeError, ValueError):
             pass
         return None
 
-    def _save_cache(self, p: Path, meta: Dict[str, Any]) -> None:
+    def _save_cache(self, p: Path, meta: dict[str, Any]) -> None:
         """Save metadata to cache file."""
         cache_file = self._get_cache_path(p)
 
@@ -307,7 +308,7 @@ class VideoAnalyzer:
                 pass
             raise
 
-    def analyze(self, path: Path, *, refresh: bool = False) -> Dict[str, Any]:
+    def analyze(self, path: Path, *, refresh: bool = False) -> dict[str, Any]:
         """Analyze video file and return metadata."""
         if not path.exists():
             raise FileNotFoundError(path)

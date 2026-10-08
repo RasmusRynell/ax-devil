@@ -1,7 +1,8 @@
 """PyAV-based video reading abstraction."""
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
 import av
 from av.video.stream import VideoStream
@@ -35,7 +36,7 @@ class PyAvAbstraction:
     def __init__(
         self,
         video_path: str,
-        cache_path: Optional[Path] = None,
+        cache_path: Path | None = None,
         open_config: VideoOpenConfig | None = None,
     ) -> None:
         """Initialize video reader with frame indexing.
@@ -66,8 +67,8 @@ class PyAvAbstraction:
         self.stream: VideoStream = self.container.streams.video[0]
         self.stream.thread_type = "AUTO"  # 5x faster decoding
         self._current_frame_index = 0
-        self._packet_gen: Optional[Iterator[av.Packet[VideoStream]]] = None
-        self._frame_gen: Optional[Iterator[av.VideoFrame]] = None
+        self._packet_gen: Iterator[av.Packet[VideoStream]] | None = None
+        self._frame_gen: Iterator[av.VideoFrame] | None = None
 
         # Initialize frame index for reliable seeking
         self.frame_index = FrameIndex(self.video_path, cache_path, open_config=open_config)
@@ -84,7 +85,7 @@ class PyAvAbstraction:
         return self._current_frame_index
 
     # Public API methods
-    def read_next(self) -> Optional[av.VideoFrame]:
+    def read_next(self) -> av.VideoFrame | None:
         """Read and decode the next frame sequentially.
 
         Returns:
@@ -245,7 +246,7 @@ class PyAvAbstraction:
 
     # Internal helper methods
 
-    def _get_next_frame(self) -> Optional[av.VideoFrame]:
+    def _get_next_frame(self) -> av.VideoFrame | None:
         """Get the next decoded frame from current stream position."""
         self._ensure_packet_generator()
 
@@ -262,7 +263,7 @@ class PyAvAbstraction:
         if self._packet_gen is None:
             self._packet_gen = self.container.demux(self.stream)
 
-    def _try_get_frame_from_current_packet(self) -> Optional[av.VideoFrame]:
+    def _try_get_frame_from_current_packet(self) -> av.VideoFrame | None:
         """Extract next frame from current packet's frame generator."""
         if self._frame_gen is None:
             return None

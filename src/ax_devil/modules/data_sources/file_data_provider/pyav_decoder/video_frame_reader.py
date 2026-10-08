@@ -1,11 +1,11 @@
 """VideoFrameReader prototype with frame operations and caching."""
 
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from logging import WARNING
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Callable, Optional
 
 import av
 
@@ -40,8 +40,8 @@ class FrameReaderWorker(BaseWorker):
         video_path: str,
         cache_budget_bytes: int,
         prefetch_count: int,
-        cache_path: Optional[Path] = None,
-        cache_identifier: Optional[str] = None,
+        cache_path: Path | None = None,
+        cache_identifier: str | None = None,
         open_config: VideoOpenConfig | None = None,
         cache_pool: FrameCachePool | None = None,
     ) -> None:
@@ -63,7 +63,7 @@ class FrameReaderWorker(BaseWorker):
 
         self._current_read_frame = 0
         self._prefetch_started = False
-        self._worker: Optional["FrameWorker"] = None
+        self._worker: "FrameWorker" | None = None
 
         self._total_frames = self._frame_processor.get_total_frames()
 
@@ -150,7 +150,7 @@ class FrameReaderWorker(BaseWorker):
                 return False
 
             # Prefetch the next frame
-            video_frame: Optional[av.VideoFrame] = self._frame_processor.read_next()
+            video_frame: av.VideoFrame | None = self._frame_processor.read_next()
             if not self._cache.contains(current_pos):
                 if video_frame is not None:
                     logger.debug(f"Prefetching frame {current_pos}")
@@ -197,7 +197,7 @@ class FrameReaderWorker(BaseWorker):
         self._update_current_read_frame(frame_index)
         return decoded_frame
 
-    def _decode_and_cache_frame(self, frame_index: int) -> Optional[CachedFrame]:
+    def _decode_and_cache_frame(self, frame_index: int) -> CachedFrame | None:
         """Decode frame and cache all intermediate frames.
 
         Args:
@@ -237,7 +237,7 @@ class FrameReaderWorker(BaseWorker):
     def _is_within_prefetch_window(self, frame_index: int) -> bool:
         return self._current_read_frame < frame_index <= self._current_read_frame + self._prefetch_count
 
-    def _maybe_prefetch_jump_log(self, frame_index: int, decoder_pos: int) -> Optional[JumpLog]:
+    def _maybe_prefetch_jump_log(self, frame_index: int, decoder_pos: int) -> JumpLog | None:
         if not self._is_within_prefetch_window(frame_index):
             return None
         return (
@@ -268,7 +268,7 @@ class FrameReaderWorker(BaseWorker):
         frame_index: int,
         decoder_pos: int,
         *,
-        log_this: Optional[JumpLog] = None,
+        log_this: JumpLog | None = None,
     ) -> DecodedFrames:
         if log_this:
             level, message = log_this
@@ -292,7 +292,7 @@ class FrameReaderWorker(BaseWorker):
                 self._cache.put(frame_idx, cached_frame)
                 logger.debug(f"Cached intermediate frame {frame_idx}")
 
-    def _extract_target_frame(self, decoded_frames: DecodedFrames, expected_frame_index: int) -> Optional[CachedFrame]:
+    def _extract_target_frame(self, decoded_frames: DecodedFrames, expected_frame_index: int) -> CachedFrame | None:
         """Extract target frame from decoded frames and validate it.
 
         Args:
@@ -389,8 +389,8 @@ class VideoFrameReader:
         prefetch_count: int = 30,
         callback_threads: int = 4,
         worker_timeout: float = 5.0,
-        cache_path: Optional[Path] = None,
-        cache_identifier: Optional[str] = None,
+        cache_path: Path | None = None,
+        cache_identifier: str | None = None,
         open_config: VideoOpenConfig | None = None,
     ) -> None:
         # Store parameters for recreating worker
@@ -406,8 +406,8 @@ class VideoFrameReader:
         self._callback_executor = ThreadPoolExecutor(max_workers=callback_threads, thread_name_prefix="callback")
 
         # Worker instances will be created in open()
-        self._frame_reader_worker: Optional[FrameReaderWorker] = None
-        self._worker: Optional[FrameWorker] = None
+        self._frame_reader_worker: FrameReaderWorker | None = None
+        self._worker: FrameWorker | None = None
 
         # Shutdown coordination
         self._shutting_down = False

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence, cast
+from typing import Any, cast
 
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
@@ -45,8 +46,8 @@ from ax_devil.plugins.decoders.adf_beta.common import (
 logger = get_logger(__name__)
 
 
-def _parse_class_attributes(mapped_type: str, cls_data: Dict[str, Any]) -> List[Attribute]:
-    attrs: List[Attribute] = []
+def _parse_class_attributes(mapped_type: str, cls_data: dict[str, Any]) -> list[Attribute]:
+    attrs: list[Attribute] = []
 
     if mapped_type in (
         KnownClassificationType.Car.value,
@@ -60,13 +61,13 @@ def _parse_class_attributes(mapped_type: str, cls_data: Dict[str, Any]) -> List[
             attrs.append(Attribute(name="vehicle_colors", value=vehicle_colors))
 
     elif mapped_type == KnownClassificationType.Human.value:
-        upper_clothing_colors: List[ColorClassification] = []
+        upper_clothing_colors: list[ColorClassification] = []
         if raw_upper_clothing_colors := cls_data.get("upper_clothing_colors"):
             upper_clothing_colors.extend(parse_colors_webcolors(raw_upper_clothing_colors))
         if upper_clothing_colors:
             attrs.append(Attribute(name="upper_clothing_colors", value=upper_clothing_colors))
 
-        lower_clothing_colors: List[ColorClassification] = []
+        lower_clothing_colors: list[ColorClassification] = []
         if raw_lower_clothing_color := cls_data.get("lower_clothing_colors"):
             lower_clothing_colors.extend(parse_colors_webcolors(raw_lower_clothing_color))
         if lower_clothing_colors:
@@ -89,8 +90,8 @@ def _ensure(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def _classifications_from_classes(classes_raw: Any) -> List[Classification]:
-    classifications: List[Classification] = []
+def _classifications_from_classes(classes_raw: Any) -> list[Classification]:
+    classifications: list[Classification] = []
     for cls_data in classes_raw or []:
         cls_type = cls_data["type"]
         cls_score = float(cls_data["score"])
@@ -109,7 +110,7 @@ def _classifications_from_classes(classes_raw: Any) -> List[Classification]:
     return classifications
 
 
-def _make_consolidated_observation(obs: Dict[str, Any], classes: List[Classification]) -> Observation:
+def _make_consolidated_observation(obs: dict[str, Any], classes: list[Classification]) -> Observation:
     """Build an observation for consolidated payloads, including optional vectors."""
     ts = parse_timestamp(obs.get("timestamp"))
     if ts is None:
@@ -152,16 +153,16 @@ def _make_consolidated_observation(obs: Dict[str, Any], classes: List[Classifica
     return observation
 
 
-def _normalize_track_entry(track_entry: Any) -> Dict[str, Any] | None:
+def _normalize_track_entry(track_entry: Any) -> dict[str, Any] | None:
     if track_entry is None:
         return None
     inner = track_entry.get("object")
     if isinstance(inner, dict):
         return inner
-    return cast(Dict[str, Any], track_entry)
+    return cast(dict[str, Any], track_entry)
 
 
-def _scene_from_track(track: Dict[str, Any]) -> Scene:
+def _scene_from_track(track: dict[str, Any]) -> Scene:
     entity_id = track.get("id")
     if not entity_id:
         raise ValueError("Track missing id")
@@ -204,7 +205,7 @@ def _scene_from_track(track: Dict[str, Any]) -> Scene:
     return scene
 
 
-def _iter_tracks(data: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+def _iter_tracks(data: dict[str, Any]) -> Iterable[dict[str, Any]]:
     version = data.get("version")
     if version is not None:
         if version != "1.0.0-beta1":
@@ -220,9 +221,9 @@ def _iter_tracks(data: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
         yield track
 
 
-def decode_consolidated_adf_json(data: Dict[str, Any]) -> Scene | None:
-    scene_entities: Dict[EntityId, Entity] = {}
-    timestamps: List[datetime] = []
+def decode_consolidated_adf_json(data: dict[str, Any]) -> Scene | None:
+    scene_entities: dict[EntityId, Entity] = {}
+    timestamps: list[datetime] = []
 
     for track in _iter_tracks(data):
         scene = _scene_from_track(track)
@@ -252,8 +253,8 @@ def decode_consolidated_adf_string(json_string: str) -> Scene | None:
     return decode_consolidated_adf_json(data)
 
 
-def resolve_scenes(consolidated_scenes: Sequence[Scene | None]) -> List[Scene]:
-    frame_buckets: Dict[datetime, OrderedDict[EntityId, Entity]] = OrderedDict()
+def resolve_scenes(consolidated_scenes: Sequence[Scene | None]) -> list[Scene]:
+    frame_buckets: dict[datetime, OrderedDict[EntityId, Entity]] = OrderedDict()
 
     for scene in consolidated_scenes:
         if scene is None:
@@ -270,7 +271,7 @@ def resolve_scenes(consolidated_scenes: Sequence[Scene | None]) -> List[Scene]:
                     bucket[entity.id] = frame_entity
                 frame_entity.add_observation(observation)
 
-    frames: List[Scene] = []
+    frames: list[Scene] = []
     for ts in sorted(frame_buckets.keys()):
         bucket = frame_buckets[ts]
         frame_scene = Scene(time_slice=TimeSlice(start=ts, end=ts))

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any
 
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
@@ -55,9 +56,9 @@ __all__ = [
 ]
 
 
-def _parse_class_attributes(mapped_type: str, class_payload: Dict[str, Any]) -> List[Attribute]:
+def _parse_class_attributes(mapped_type: str, class_payload: dict[str, Any]) -> list[Attribute]:
     """Translate consolidated classification attributes into world model attributes."""
-    attributes: List[Attribute] = []
+    attributes: list[Attribute] = []
 
     if mapped_type == KnownClassificationType.Human.value:
         if upper_colors := class_payload.get("upper_clothing_colors"):
@@ -92,9 +93,9 @@ def _parse_class_attributes(mapped_type: str, class_payload: Dict[str, Any]) -> 
     return attributes
 
 
-def _classifications_from_classes(classes_raw: Any) -> List[Classification]:
+def _classifications_from_classes(classes_raw: Any) -> list[Classification]:
     """Return consolidated classifications mapped to `ADF_V1_CLASSIFICATION_MAP`."""
-    classifications: List[Classification] = []
+    classifications: list[Classification] = []
     for class_payload in classes_raw or []:
         class_type_raw = class_payload.get("type")
         if class_type_raw is None:
@@ -110,7 +111,7 @@ def _classifications_from_classes(classes_raw: Any) -> List[Classification]:
     return classifications
 
 
-def _parse_world_velocity(payload: Dict[str, Any] | None) -> WorldVelocity | None:
+def _parse_world_velocity(payload: dict[str, Any] | None) -> WorldVelocity | None:
     if payload is None:
         return None
     pitch = payload.get("pitch")
@@ -121,7 +122,7 @@ def _parse_world_velocity(payload: Dict[str, Any] | None) -> WorldVelocity | Non
     return WorldVelocity(pitch=float(pitch), yaw=float(yaw), speed=float(speed))
 
 
-def _parse_world_coordinates(world_position: Dict[str, Any] | None) -> SphericalCoordinates | None:
+def _parse_world_coordinates(world_position: dict[str, Any] | None) -> SphericalCoordinates | None:
     if world_position is None:
         return None
     distance = world_position.get("distance")
@@ -132,7 +133,7 @@ def _parse_world_coordinates(world_position: Dict[str, Any] | None) -> Spherical
     return SphericalCoordinates(distance=float(distance), azimuth=float(azimuth), elevation=float(elevation))
 
 
-def _parse_geographical_coordinates(geoposition: Dict[str, Any] | None) -> GeographicCoordinates | None:
+def _parse_geographical_coordinates(geoposition: dict[str, Any] | None) -> GeographicCoordinates | None:
     if geoposition is None:
         return None
     latitude = geoposition.get("latitude")
@@ -147,7 +148,7 @@ def _parse_geographical_coordinates(geoposition: Dict[str, Any] | None) -> Geogr
     )
 
 
-def _image_from_consolidated_snapshot(snapshot: Dict[str, Any] | None) -> Image | None:
+def _image_from_consolidated_snapshot(snapshot: dict[str, Any] | None) -> Image | None:
     if snapshot is None:
         return None
     payload = dict(snapshot)
@@ -161,7 +162,7 @@ def _ensure(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def _make_consolidated_observation(observation_payload: Dict[str, Any], classes: List[Classification]) -> Observation:
+def _make_consolidated_observation(observation_payload: dict[str, Any], classes: list[Classification]) -> Observation:
     """Construct an `Observation` from a consolidated track observation payload."""
     ts = parse_timestamp(observation_payload.get("timestamp"))
     if ts is None:
@@ -183,7 +184,7 @@ def _make_consolidated_observation(observation_payload: Dict[str, Any], classes:
     return observation
 
 
-def _scene_from_track(track: Dict[str, Any]) -> Scene:
+def _scene_from_track(track: dict[str, Any]) -> Scene:
     """Convert a single consolidated track payload into a `Scene`."""
     raw_entity_id = track.get("id")
     if raw_entity_id is None:
@@ -240,7 +241,7 @@ class ADFFrameV1ConsolidatedDecoder(PayloadToSceneDecoder):
         )
 
 
-def _iter_tracks(data: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+def _iter_tracks(data: dict[str, Any]) -> Iterable[dict[str, Any]]:
     """Iterate over track payloads from consolidated data.
 
     The beta implementation accepts both single-track payloads and arrays gated by a
@@ -261,10 +262,10 @@ def _iter_tracks(data: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
         yield raw_track
 
 
-def decode_adf_frame_v1_consolidated_json(data: Dict[str, Any]) -> Scene | None:
+def decode_adf_frame_v1_consolidated_json(data: dict[str, Any]) -> Scene | None:
     """Decode a consolidated ADF v1 payload represented as a dictionary."""
-    scenes: Dict[EntityId, Entity] = {}
-    timestamps: List[datetime] = []
+    scenes: dict[EntityId, Entity] = {}
+    timestamps: list[datetime] = []
 
     for track in _iter_tracks(data):
         scene = _scene_from_track(track)
@@ -306,13 +307,13 @@ def decode_adf_frame_v1_consolidated_string(payload: str) -> Scene | None:
     return decode_adf_frame_v1_consolidated_json(data)
 
 
-def resolve_scenes(consolidated_scenes: Sequence[Scene | None]) -> List[Scene]:
+def resolve_scenes(consolidated_scenes: Sequence[Scene | None]) -> list[Scene]:
     """Flatten consolidated tracks into per-frame scenes.
 
     This helper matches the beta decoder behaviour, grouping observations by timestamp
     so the resulting stream can be cached in JSONL form.
     """
-    frame_buckets: Dict[datetime, OrderedDict[EntityId, Entity]] = OrderedDict()
+    frame_buckets: dict[datetime, OrderedDict[EntityId, Entity]] = OrderedDict()
 
     for scene in consolidated_scenes:
         if scene is None:
@@ -329,7 +330,7 @@ def resolve_scenes(consolidated_scenes: Sequence[Scene | None]) -> List[Scene]:
                     bucket[entity.id] = frame_entity
                 frame_entity.add_observation(observation)
 
-    frames: List[Scene] = []
+    frames: list[Scene] = []
     for ts in sorted(frame_buckets.keys()):
         bucket = frame_buckets[ts]
         frame_scene = Scene(time_slice=TimeSlice(start=ts, end=ts))

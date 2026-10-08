@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Optional, Set
 
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.predicate_utils import ClassFilterSpec, make_other_classification_predicate
@@ -35,7 +34,7 @@ logger = get_logger(__name__)
 # XML CONSTANTS
 ###############################################################################
 
-NS: Dict[str, str] = {
+NS: dict[str, str] = {
     "tt": "http://www.onvif.org/ver10/schema",
     "bd": "http://www.onvif.org/ver20/analytics/humanbody",
 }
@@ -49,7 +48,7 @@ def _strip_ns(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def _text(elem: Optional[ET.Element]) -> Optional[str]:
+def _text(elem: ET.Element | None) -> str | None:
     return elem.text.strip() if elem is not None and elem.text else None
 
 
@@ -68,7 +67,7 @@ def _onvif_to_norm(x: float, y: float) -> NormalizedPoint:
     return NormalizedPoint(_clip01((x + 1.0) * _HALF), _clip01((1.0 - y) * _HALF))
 
 
-def _bbox_from_attrs(attrs: Dict[str, str]) -> BoundingBox:
+def _bbox_from_attrs(attrs: dict[str, str]) -> BoundingBox:
     left, top, right, bottom = map(float, (attrs["left"], attrs["top"], attrs["right"], attrs["bottom"]))
     p1, p2 = _onvif_to_norm(left, top), _onvif_to_norm(right, bottom)
     x_min, y_min = min(p1.x, p2.x), min(p1.y, p2.y)
@@ -81,9 +80,9 @@ def _bbox_from_attrs(attrs: Dict[str, str]) -> BoundingBox:
 ###############################################################################
 
 
-def _parse_colors(obj: ET.Element, xpath: str) -> List[ColorClassification]:
+def _parse_colors(obj: ET.Element, xpath: str) -> list[ColorClassification]:
     clusters = obj.findall(xpath, NS)
-    colors: List[ColorClassification] = []
+    colors: list[ColorClassification] = []
 
     for c in clusters:
         colorspace = c.get("Colorspace")
@@ -139,14 +138,14 @@ def _map_class(name: str) -> ClassificationType:
 ###############################################################################
 
 
-def _geometry_from_obj(obj: ET.Element) -> Optional[Geometry]:
+def _geometry_from_obj(obj: ET.Element) -> Geometry | None:
     bbox = obj.find("./tt:Appearance/tt:Shape/tt:BoundingBox", NS)
     if bbox is not None:
         return _bbox_from_attrs(bbox.attrib)
 
     poly = obj.find("./tt:Appearance/tt:Shape/tt:Polygon", NS)
     if poly is not None:
-        pts: List[NormalizedPoint] = []
+        pts: list[NormalizedPoint] = []
         for p in poly.findall("./tt:Point", NS):
             x_str = p.get("x")
             y_str = p.get("y")
@@ -168,8 +167,8 @@ def _geometry_from_obj(obj: ET.Element) -> Optional[Geometry]:
     return None
 
 
-def _classifications_from_obj(obj: ET.Element) -> List[Classification]:
-    out: List[Classification] = []
+def _classifications_from_obj(obj: ET.Element) -> list[Classification]:
+    out: list[Classification] = []
 
     t = obj.find("./tt:Appearance/tt:Class/tt:Type", NS)
     if t is not None and (name := _text(t)):
@@ -255,7 +254,7 @@ def decode_onvif_xml(xml: str) -> Scene:
         raise ValueError("Frame lacks a valid UtcTime attribute")
 
     scene = Scene(time_slice=TimeSlice(start=ts, end=ts))
-    entities: Dict[str, Entity] = {}
+    entities: dict[str, Entity] = {}
 
     # Objects → observations
     for obj in frame.findall(".//tt:Object", NS):
@@ -315,12 +314,12 @@ _ONVIF_FILTER_SPECS: tuple[ClassFilterSpec, ...] = (
     ClassFilterSpec("show_faces", "Faces", ("face",)),
 )
 
-_ONVIF_KNOWN_TYPES: Set[str] = {type_name for spec in _ONVIF_FILTER_SPECS for type_name in spec.types}
+_ONVIF_KNOWN_TYPES: set[str] = {type_name for spec in _ONVIF_FILTER_SPECS for type_name in spec.types}
 
 
 def build_onvif_filter_config() -> FilterConfig:
     """Return the filter configuration for ONVIF XML decoders."""
-    options: List[FilterOption] = []
+    options: list[FilterOption] = []
     for index, spec in enumerate(_ONVIF_FILTER_SPECS):
         options.append(spec.build_option(index))
 

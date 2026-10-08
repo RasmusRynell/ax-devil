@@ -1,6 +1,7 @@
 """Base interface for data providers that work with FrameIdentifier objects."""
 
-from typing import Callable, Optional, Protocol, Set
+from collections.abc import Callable
+from typing import Protocol
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import OverlayLookupResult
@@ -18,7 +19,7 @@ class FrameIdentifierDataProvider(Protocol):
     to use for lookups (sequence_id, timestamp_monotime_us, or both).
     """
 
-    def load_by_frame_id(self, frame_identifier: FrameIdentifier) -> Optional[Scene]:
+    def load_by_frame_id(self, frame_identifier: FrameIdentifier) -> Scene | None:
         """Load scene data using FrameIdentifier.
 
         Args:
@@ -51,7 +52,7 @@ class FrameIdentifierDataProvider(Protocol):
         """Get total number of frames/scenes available."""
         ...
 
-    def get_available_frames(self) -> Set[int]:
+    def get_available_frames(self) -> set[int]:
         """Get set of available frame indices."""
         ...
 
@@ -65,7 +66,7 @@ class FrameIdentifierDataProvider(Protocol):
         """Return whether provider-owned sequence lookup is enabled."""
         ...
 
-    def get_available_sequences(self) -> Set[int]:
+    def get_available_sequences(self) -> set[int]:
         """Get set of available sequence identifiers."""
         ...
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Dict, Tuple
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -37,8 +35,8 @@ class EntityFilterWidget(QWidget):
 
         self._filter_model = filter_model
         self._show_title = show_title
-        self._checkboxes: Dict[str, QCheckBox] = {}
-        self._options: Tuple[FilterOption, ...] = ()
+        self._checkboxes: dict[str, QCheckBox] = {}
+        self._options: tuple[FilterOption, ...] = ()
 
         self._setup_ui()
         self._build_controls()

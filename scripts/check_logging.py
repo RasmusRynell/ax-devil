@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, NamedTuple
+from typing import NamedTuple
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOGGING_CONFIG = Path("src/ax_devil/modules/settings/logging_config.py")
