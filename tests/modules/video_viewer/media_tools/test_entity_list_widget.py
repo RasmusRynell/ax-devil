@@ -23,6 +23,7 @@ from ax_devil.modules.video_viewer.media_tools.entity_list_widget import (
     _build_trailing,
     _detail_row,
     _movement_span,
+    split_id_and_class,
 )
 
 
@@ -365,3 +366,13 @@ def test_hidden_inspector_defers_rows_and_shows_only_latest_scene(qtbot: QtBot) 
     widget.clear()
     widget.show()
     assert widget._model.rowCount() == 0
+
+
+def test_long_ids_leave_room_for_the_class() -> None:
+    """Both fit when there is room; otherwise a long id is shortened so the class stays visible."""
+    assert split_id_and_class(300, 40, 50, 8) == (40, 50)
+    id_room, class_room = split_id_and_class(150, 260, 50, 8)
+    assert class_room == 50 and id_room == 150 - 8 - 50
+    assert split_id_and_class(150, 260, 0, 8) == (150, 0)
+    id_room, class_room = split_id_and_class(90, 260, 120, 8)
+    assert 0 < class_room <= 30 and id_room + 8 + class_room == 90

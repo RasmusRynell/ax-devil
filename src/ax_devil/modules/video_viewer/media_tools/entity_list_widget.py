@@ -423,21 +423,23 @@ class EntityListDelegate(QStyledItemDelegate):
             painter.drawEllipse(x, dot_top, _DOT_DIAMETER, _DOT_DIAMETER)
             x += _DOT_DIAMETER + Space.XS
         x += Space.S - Space.XS
-        id_span = SummarySpan(item.entity_id, None, "id")
-        text = self._metrics["id"].elidedText(item.entity_id, Qt.TextElideMode.ElideMiddle, max(0, limit - x))
         alignment = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self._draw_span(
-            painter, QRect(x, top, max(0, limit - x), self._summary_height), id_span, text, alignment, palette
+        class_width = self._metrics["class"].horizontalAdvance(item.class_name) if item.class_name else 0
+        id_room, class_room = split_id_and_class(
+            max(0, limit - x), self._metrics["id"].horizontalAdvance(item.entity_id), class_width, Space.M
         )
+        id_span = SummarySpan(item.entity_id, None, "id")
+        text = self._metrics["id"].elidedText(item.entity_id, Qt.TextElideMode.ElideMiddle, id_room)
+        self._draw_span(painter, QRect(x, top, id_room, self._summary_height), id_span, text, alignment, palette)
         x += self._metrics["id"].horizontalAdvance(text) + Space.M
-        if item.class_name and x < limit:
+        if class_room > 0:
             muted = QPalette(palette)
             if not selected:
                 muted.setColor(QPalette.ColorRole.Text, palette.color(QPalette.ColorRole.PlaceholderText))
-            class_text = self._metrics["class"].elidedText(item.class_name, Qt.TextElideMode.ElideRight, limit - x)
+            class_text = self._metrics["class"].elidedText(item.class_name, Qt.TextElideMode.ElideRight, class_room)
             class_span = SummarySpan(item.class_name, None, "class")
             self._draw_span(
-                painter, QRect(x, top, limit - x, self._summary_height), class_span, class_text, alignment, muted
+                painter, QRect(x, top, class_room, self._summary_height), class_span, class_text, alignment, muted
             )
 
     def _draw_span(
@@ -730,6 +732,19 @@ class EntityListWidget(QWidget):
 # ------------------------------------------------------------------
 # Shared presentation helpers
 # ------------------------------------------------------------------
+
+
+def split_id_and_class(room: int, id_width: int, class_width: int, gap: int) -> tuple[int, int]:
+    """Return the widths for a row's id and class in *room*; when both do not fit, each keeps a share.
+
+    The class keeps up to a third of the room, so a long tracker id still leaves its class readable.
+    """
+    if class_width <= 0:
+        return room, 0
+    if id_width + gap + class_width <= room:
+        return id_width, class_width
+    class_room = min(class_width, room // 3)
+    return max(0, room - gap - class_room), class_room
 
 
 def type_color(object_type: str) -> str:
