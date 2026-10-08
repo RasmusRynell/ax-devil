@@ -102,6 +102,8 @@ def _write_tracks(path: Path) -> Path:
 def _show_tracked_frame(qtbot: QtBot, viewer: OfflineVideoViewerWidget | None) -> OfflineVideoViewerWidget:
     """Pause *viewer* on the frame that the tracks and events are built around, and return it."""
     assert viewer is not None
+    # Entries open in the background, so the viewport appears after the content is loaded.
+    qtbot.waitUntil(lambda: viewer.findChild(FrameViewport) is not None, timeout=10000)
     viewer.pause_playback()
     viewport = viewer.findChild(FrameViewport)
     assert viewport is not None
