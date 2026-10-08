@@ -87,9 +87,22 @@ class _TrackedFrameSource(SeekableFrameSource):
         self._playback_speed = 1.0
         self.speed_updates: list[float] = []
         self.async_frame_requests: list[int] = []
+        self.fps = 25.0
 
     def get_total_frames(self) -> int:
         return self._total_frames
+
+    def get_frame_size(self) -> tuple[int, int] | None:
+        return (640, 480)
+
+    def get_cached_ranges(self) -> tuple[tuple[int, int], ...]:
+        return ()
+
+    def get_duration_s(self) -> float | None:
+        return None
+
+    def peek_frame_seconds(self, frame_number: int) -> float | None:
+        return None
 
     def get_current_frame(self) -> int:
         return self._current_frame
@@ -336,6 +349,11 @@ def _assert_renderer_metrics_match_live_widgets(
 def _stub_frame_source() -> MagicMock:
     source = MagicMock()
     source.get_total_frames.return_value = 100
+    source.fps = 25.0
+    source.get_frame_size.return_value = (640, 480)
+    source.get_cached_ranges.return_value = ((0, 9),)
+    source.get_duration_s.return_value = None
+    source.peek_frame_seconds.return_value = None
     source.get_current_frame.return_value = 0
     source.get_playback_speed.return_value = 1.0
     source.get_position_generation.return_value = 0
@@ -648,6 +666,21 @@ class TestOfflineVideoViewerWidget:
         widget.toggle_playback()
         source.reset_to_start.assert_called_once()
 
+    def test_single_video_pane_names_it_once_and_describes_it_in_the_header(self, qtbot: QtBot) -> None:
+        """A lane named like its pane shows no name on the video; the header shows the video's size, rate and length."""
+        source = _stub_frame_source()
+        source.get_duration_s.return_value = 4.0
+        content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
+        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
+        _attach_offline_widget(qtbot, widget)
+        widget.resize(900, 600)
+        widget.show()
+
+        assert widget.findChild(QLabel, "lane-indicator-label") is None
+        assert widget.header_details() == "640×480 · 25 fps · 0:04"
+        controls = widget.findChildren(SeekableVideoControlPanel)[0]
+        assert controls.timeline_slider.cached_ranges() == ((0, 9),)
+
     def test_single_video_seekable_controls_route_to_workflow_actions(self, qtbot: QtBot) -> None:
         source = _stub_frame_source()
         content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
@@ -662,7 +695,7 @@ class TestOfflineVideoViewerWidget:
         controls.jumpToRequested.emit(42)
         controls.playRequested.emit()
         controls.pauseRequested.emit()
-        controls.step_playback_speed(1)
+        controls.set_playback_speed(1.1)
 
         source.jump_to.assert_any_call(10)
         source.jump_to.assert_any_call(42)
@@ -801,7 +834,7 @@ class TestOfflineVideoViewerWidget:
         assert len(controls) == 1
         assert not controls[0].isHidden()
         assert controls[0].timeline_slider.maximum() == 99
-        controls[0].step_playback_speed(1)
+        controls[0].set_playback_speed(1.1)
         assert frame_sources[0].speed_updates[-1] == 1.1
 
         frame_sources[0].frameReady.emit(_frame_data(7))
@@ -931,6 +964,37 @@ class TestOfflineVideoViewerWidget:
         assert label is not None
         assert label.text() == "No considered lanes in this entry"
         runtime.cleanup()
+
+    def test_entry_without_considered_lanes_clears_the_shared_controls(self, qtbot: QtBot) -> None:
+        """Stepping to an entry whose lanes are all excluded leaves no frames, time or cache from the previous one."""
+        playlist = PlaylistContent(
+            display_name="Playlist",
+            entries=(
+                PlaylistEntry(
+                    lanes=_make_local_content("A", with_overlay=True).standalone_lanes(), default_considered=True
+                ),
+                PlaylistEntry(
+                    lanes=_make_local_content("B", with_overlay=True).standalone_lanes(), default_considered=True
+                ),
+            ),
+        )
+        workspace_manager = WorkspaceManager()
+        workspace_manager.add_content(playlist)
+        workspace_manager.set_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 1, 0), False)
+        widget = OfflineVideoViewerWidget(
+            playlist, consideration_query=workspace_manager, render_catalog_manager=self._render_catalog_manager
+        )
+        _attach_offline_widget(qtbot, widget)
+        controls = widget._global_controls
+        assert controls is not None and controls.timeline_slider.maximum() > 0
+
+        widget.step_next_entry()
+
+        assert widget._runtime is not None and not widget._runtime.lanes
+        assert controls.timeline_slider.maximum() == 0
+        assert controls.timecode_text() == "" or not controls._timecode_label.isVisibleTo(controls)
+        assert controls.timeline_slider.cached_ranges() == ()
+        assert widget.header_details() == ""
 
     def test_multi_video_entry(self, qtbot: QtBot) -> None:
         """PlaylistEntry with multiple videos renders through the lane pipeline."""

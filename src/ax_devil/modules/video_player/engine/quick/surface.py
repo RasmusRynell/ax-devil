@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QEvent, QRectF, Qt, QUrl
-from PySide6.QtGui import QImage, QPalette, QShowEvent
+from PySide6.QtCore import QRectF, Qt, QUrl
+from PySide6.QtGui import QImage, QShowEvent
 from PySide6.QtQuick import QSGRendererInterface
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget
+
+from ax_devil.modules.chrome.theme import VIDEO_CANVAS
 
 from ..drawing import DrawingStyle, Paint
 from .items import VideoTextureItem
@@ -128,16 +130,10 @@ class QuickSurface(QQuickWidget):
         self.quickWindow().releaseResources()
 
     def _apply_background(self) -> None:
-        """Fill letterbox areas with the host background so nothing stale shows outside the image."""
-        self.setClearColor(self.palette().color(QPalette.ColorRole.Window))
+        """Fill letterbox areas with the video canvas so nothing stale shows outside the image."""
+        self.setClearColor(VIDEO_CANVAS)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """Restore the clear color after Qt recreates the window during reparenting."""
         self._apply_background()
         super().showEvent(event)
-
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        """Follow theme changes so the letterbox keeps matching the surrounding background."""
-        if event.type() == QEvent.Type.PaletteChange:
-            self._apply_background()
-        super().changeEvent(event)

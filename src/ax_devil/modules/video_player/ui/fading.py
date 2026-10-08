@@ -77,6 +77,8 @@ class FadingWidget(QWidget):
 
     def fade_in(self) -> None:
         """Fade widget in."""
+        if self._cleaned_up:
+            return
         current_opacity = self.opacity_effect.opacity()
 
         # Skip if already fully visible
@@ -97,6 +99,8 @@ class FadingWidget(QWidget):
 
     def fade_out(self) -> None:
         """Fade widget out."""
+        if self._cleaned_up:
+            return
         current_opacity = self.opacity_effect.opacity()
 
         # Skip if already fully invisible
@@ -113,7 +117,9 @@ class FadingWidget(QWidget):
         self._logger.debug(f"Fading out {self.hover_element_name}")
 
     def start_auto_hide_timer(self) -> None:
-        """Start the auto-hide timer."""
+        """Start the auto-hide timer; a cleaned-up widget no longer fades."""
+        if self._cleaned_up:
+            return
         self.hide_timer.start(self.auto_hide_delay)
         self._logger.debug(f"Started auto-hide timer for {self.hover_element_name}")
 
