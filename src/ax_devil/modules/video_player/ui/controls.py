@@ -8,11 +8,7 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Space, TextRole
-from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.video_player.engine.playback_speed import (
+from ax_devil.core.playback_speed import (
     DEFAULT_PLAYBACK_SPEED,
     MAX_PLAYBACK_SPEED,
     MIN_PLAYBACK_SPEED,
@@ -20,6 +16,10 @@ from ax_devil.modules.video_player.engine.playback_speed import (
     format_playback_speed,
     step_playback_speed,
 )
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.tokens import Space, TextRole
+from ax_devil.modules.settings.logging_config import get_logger
 
 from ..constants import (
     CONTROL_PANEL_HEIGHT,
