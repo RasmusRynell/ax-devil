@@ -316,7 +316,6 @@ def test_welcome_hints_empty_without_manager(qtbot: QtBot) -> None:
 
 def test_welcome_hints_reflect_rebinding(qtbot: QtBot) -> None:
     """Welcome widget reflects rebound shortcuts."""
-    from PySide6.QtGui import QKeySequence
 
     sv = _make_split_view(qtbot)
     sm = ShortcutManager()
