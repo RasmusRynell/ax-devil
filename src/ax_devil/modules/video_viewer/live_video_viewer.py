@@ -22,8 +22,8 @@ from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
 from ax_devil.modules.workspace import LiveVideoContent
+from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
-from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
 
 logger = get_logger(__name__)
 
@@ -273,7 +273,7 @@ class LiveVideoViewerWidget(WorkspaceWidget):
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem:
         """Return the workspace item shown by this viewer."""
-        return OnScreenWorkspaceItem(kind="video", content_id=self._content.content_id)
+        return self._content.on_screen_item()
 
     def cleanup(self) -> None:
         """Tear down controller, display, and tools panel."""

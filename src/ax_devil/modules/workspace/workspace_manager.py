@@ -16,6 +16,7 @@ from ax_devil.modules.workspace.content import (
     ConsiderationItemRef,
     Content,
     LiveVideoContent,
+    OnScreenWorkspaceItem,
     OverlaySourceKind,
     PlaylistContent,
     PlaylistEntry,
@@ -23,24 +24,16 @@ from ax_devil.modules.workspace.content import (
 )
 from ax_devil.modules.workspace.item_info import (
     WorkspaceItemInfo,
-    build_content_information,
     build_playlist_entry_information,
+    build_playlist_information,
     build_playlist_lane_information,
+    build_video_information,
     build_video_lane_information,
 )
 
 WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay"]
 
 logger = get_logger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class OnScreenWorkspaceItem:
-    """One item currently shown by a workspace viewer."""
-
-    kind: Literal["video", "playlist_entry"]
-    content_id: str
-    entry_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +203,7 @@ class WorkspaceManager(QObject):
                 icon_kind="playlist",
                 activation_target=(content, 0),
                 removable_content=content,
-                information_factory=partial(build_content_information, content),
+                information_factory=partial(build_playlist_information, content),
                 is_open=self._is_content_open(content.content_id, open_items),
                 children=children,
                 location=content.source_location,
@@ -222,12 +215,8 @@ class WorkspaceManager(QObject):
             icon_kind=self._icon_kind_for_video(content),
             activation_target=(content, 0),
             removable_content=content,
-            information_factory=partial(build_content_information, content),
-            export_target=(
-                OnScreenWorkspaceItem(kind="video", content_id=content.content_id)
-                if isinstance(content, SeekableVideoContent)
-                else None
-            ),
+            information_factory=partial(build_video_information, content),
+            export_target=None if content.is_live else content.on_screen_item(),
             is_open=self._is_content_open(content.content_id, open_items),
             children=self._video_lane_rows(content),
             location=content.source_location,
@@ -241,11 +230,7 @@ class WorkspaceManager(QObject):
         open_items: Set[OnScreenWorkspaceItem],
     ) -> WorkspaceBrowserRow:
         """Build a row for one playlist entry."""
-        open_item = OnScreenWorkspaceItem(
-            kind="playlist_entry",
-            content_id=playlist.content_id,
-            entry_index=entry_index,
-        )
+        open_item = playlist.on_screen_item(entry_index)
         children: tuple[WorkspaceBrowserRow, ...] = ()
         if entry.should_show_lane_children():
             children = tuple(
@@ -322,7 +307,7 @@ class WorkspaceManager(QObject):
 
     def _icon_kind_for_video(self, video: SeekableVideoContent | LiveVideoContent) -> WorkspaceBrowserIconKind:
         """Return the browser icon kind for a video row."""
-        return "live_video" if isinstance(video, LiveVideoContent) else "video"
+        return "live_video" if video.is_live else "video"
 
     def _icon_kind_for_playlist_entry(self, entry: PlaylistEntry) -> WorkspaceBrowserIconKind:
         """Return the browser icon kind for a playlist entry row."""
