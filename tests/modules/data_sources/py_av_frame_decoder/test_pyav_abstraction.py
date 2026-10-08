@@ -1,7 +1,7 @@
 """Tests for pyav_abstraction.py module - real functionality testing only."""
 
+from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import Callable, Generator
 
 import av
 import numpy as np

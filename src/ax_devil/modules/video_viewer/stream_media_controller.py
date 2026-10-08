@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
@@ -65,12 +66,12 @@ class StreamMediaController:
     ) -> None:
         self._logger = logger
 
-        self.frame_display: Optional[FrameDisplay] = frame_display
+        self.frame_display: FrameDisplay | None = frame_display
         self._frame_displayed = frame_displayed
         self._content = content
         self._render_catalog_selection = render_catalog_selection
-        self._scene_filter: Optional[SessionFilter] = None
-        self._scene_inspector: Optional["SceneInspectorSink"] = None
+        self._scene_filter: SessionFilter | None = None
+        self._scene_inspector: "SceneInspectorSink" | None = None
         self._presenter = SceneFramePresenter(scene_render_catalog=self._render_catalog_selection.active_catalog())
         self._overlay_persistence = OverlayPersistenceSettings.default_enabled()
         self._overlay_policy = OverlayPersistencePolicy(self._overlay_persistence.copy())
@@ -83,7 +84,7 @@ class StreamMediaController:
         self._stall_timer.setInterval(1000)
         self._stall_timer.timeout.connect(self._check_video_stall)
 
-        self.synchronizer: Optional[QtStreamSync] = self._init_synchronizer(frame_display)
+        self.synchronizer: QtStreamSync | None = self._init_synchronizer(frame_display)
         self.video_source: FrameSource | None = None
         self.overlay_source: OverlaySource | None = None
         self._sources: list[DataSource] = []

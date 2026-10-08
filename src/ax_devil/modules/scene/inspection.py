@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from datetime import datetime
 from enum import Enum
 from html import escape
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from ax_devil.modules.scene.model import Attribute, Classification, ColorClassification, Entity, Geometry, Score
 

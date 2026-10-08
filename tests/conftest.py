@@ -6,8 +6,8 @@ the session hooks here fail the run if the user's real ax-devil folders changed 
 
 import json
 import shutil
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
-from typing import Callable, Generator, Iterator
 from unittest.mock import patch
 
 import pytest

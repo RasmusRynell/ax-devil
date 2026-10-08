@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any
 
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
@@ -31,7 +32,7 @@ logger = get_logger(__name__)
 __all__ = ["CVATSceneDataProvider", "CVATMetadata", "CVATDecoder"]
 
 
-def _metadata_to_payload(metadata: CVATMetadata) -> Dict[str, Any]:
+def _metadata_to_payload(metadata: CVATMetadata) -> dict[str, Any]:
     """Serialisable payload for storing CVAT metadata in the cache."""
     payload = asdict(metadata)
     payload["labels"] = list(metadata.labels)
@@ -79,7 +80,7 @@ class CVATSceneDataProvider(SceneDecoderFileProvider):
 
     def __init__(self, xml_file: str | Path) -> None:
         self._cvat_metadata: CVATMetadata | None = None
-        self._labels: Tuple[str, ...] = ()
+        self._labels: tuple[str, ...] = ()
 
         super().__init__(
             file_path=xml_file,
@@ -107,12 +108,12 @@ class CVATSceneDataProvider(SceneDecoderFileProvider):
 
         return super()._build_scene_maps(parse_result.payloads, decoder)
 
-    def _collect_additional_cache_metadata(self) -> Dict[str, Any]:
+    def _collect_additional_cache_metadata(self) -> dict[str, Any]:
         if self._cvat_metadata is None:
             return {}
         return {"cvat_metadata": _metadata_to_payload(self._cvat_metadata)}
 
-    def _restore_additional_state_from_cache(self, raw_metadata: Dict[str, Any]) -> None:
+    def _restore_additional_state_from_cache(self, raw_metadata: dict[str, Any]) -> None:
         metadata_payload = raw_metadata.get("cvat_metadata")
         cvat_metadata = _payload_to_metadata(metadata_payload)
         if cvat_metadata is None:
@@ -154,10 +155,10 @@ class CVATSceneDataProvider(SceneDecoderFileProvider):
                 return None
         return current
 
-    def list_metadata_paths(self) -> List[str]:
+    def list_metadata_paths(self) -> list[str]:
         """List available metadata paths for discovery."""
         metadata = self._require_cvat_metadata().all_metadata
-        paths: List[str] = []
+        paths: list[str] = []
 
         def build_paths(node: Any, prefix: str = "") -> None:
             if isinstance(node, dict):

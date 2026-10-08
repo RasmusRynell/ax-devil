@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Optional, Sequence, cast
+from typing import cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QPalette
@@ -39,7 +40,7 @@ HandlerDefinition = FileToSceneDecoderDefinition | PayloadToSceneDecoderDefiniti
 class PluginWindow(ChromeWindow):
     """Minimal plug-in inspector with a reload button."""
 
-    def __init__(self, parent: Optional[QWidget] = None, *, use_custom_frame: bool = False) -> None:
+    def __init__(self, parent: QWidget | None = None, *, use_custom_frame: bool = False) -> None:
         super().__init__(parent=parent, use_custom_frame=use_custom_frame, show_custom_frame_border=True)
         self.setWindowTitle("Plug-ins")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)

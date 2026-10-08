@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtGui import QImage
 
@@ -33,7 +33,7 @@ class TimestampedData:
     frame_id: FrameIdentifier  # Frame identifier with sequence_id and monotime
     content: Any  # The actual data content
     source_id: str = "Unknown"
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,8 +5,9 @@ from __future__ import annotations
 import copy
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Any, Mapping
+from typing import Any
 
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference

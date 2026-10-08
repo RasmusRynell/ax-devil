@@ -8,8 +8,8 @@ Tests the whole system working together:
 """
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import av
 import numpy as np

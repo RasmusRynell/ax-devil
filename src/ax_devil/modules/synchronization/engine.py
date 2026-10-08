@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Deque, Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from ax_devil.modules.diagnostics.metrics_store import remove_instance, set_metric
 from ax_devil.modules.settings.logging_config import get_logger
@@ -31,7 +32,7 @@ class SyncResult(Generic[FrameType, OverlayType]):
     """Result of synchronization operation."""
 
     frame: TimestampedData[FrameType]
-    overlay: Optional[TimestampedData[OverlayType]]
+    overlay: TimestampedData[OverlayType] | None
 
 
 class StreamSync(Generic[FrameType, OverlayType]):
@@ -50,12 +51,12 @@ class StreamSync(Generic[FrameType, OverlayType]):
         self.object_name = object_name
         self.delay_s = delay_ms / 1000.0
 
-        self._frame_queue: Deque[TimestampedData[FrameType]] = deque(maxlen=max_queue_size)
-        self._overlay_queue: Deque[TimestampedData[OverlayType]] = deque(maxlen=max_queue_size)
+        self._frame_queue: deque[TimestampedData[FrameType]] = deque(maxlen=max_queue_size)
+        self._overlay_queue: deque[TimestampedData[OverlayType]] = deque(maxlen=max_queue_size)
         self._early_eviction_logged = False
 
         # Callback for emitting synchronized results
-        self._emit_callback: Optional[Callable[[SyncResult[FrameType, OverlayType]], None]] = None
+        self._emit_callback: Callable[[SyncResult[FrameType, OverlayType]], None] | None = None
 
     def set_output_callback(self, callback: Callable[[SyncResult[FrameType, OverlayType]], None]) -> None:
         """Set callback for synchronized frame output."""

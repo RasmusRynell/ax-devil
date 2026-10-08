@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Optional
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -59,7 +58,7 @@ class SettingsDialog(BaseDialog):
     The separate shortcut editor applies its changes on its own **OK**.
     """
 
-    def __init__(self, parent: Optional[QWidget] = None, *, shortcut_manager: ShortcutManager | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, shortcut_manager: ShortcutManager | None = None) -> None:
         super().__init__(parent=parent, title="Settings", modal=True, scroll_content=False)
         self._logger = get_logger(__name__)
         self._settings = GlobalSettings()

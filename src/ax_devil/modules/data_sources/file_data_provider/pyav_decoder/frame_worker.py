@@ -3,7 +3,6 @@
 import threading
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Optional
 
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -46,7 +45,7 @@ class FrameWorker:
         self._thread_name = thread_name
 
         # Thread management
-        self._worker_thread: Optional[threading.Thread] = None
+        self._worker_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
         self._resume_event = threading.Event()

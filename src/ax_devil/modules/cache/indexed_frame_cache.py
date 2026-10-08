@@ -5,7 +5,7 @@ import json
 import mmap
 import pickle
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, Optional
+from typing import Any, BinaryIO
 
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -58,11 +58,11 @@ class IndexedFrameCache:
         self._compress_cfg = bool(compress)
 
         # populated lazily on first read
-        self._header: Optional[dict[str, Any]] = None
-        self._payload0: Optional[int] = None  # abs. byte offset of first frame
-        self._mm: Optional[mmap.mmap] = None  # active mmap
-        self._mmap_fh: Optional[BinaryIO] = None  # file handle kept alive for mmap
-        self._fh: Optional[BinaryIO] = None  # fallback handle when mmap off
+        self._header: dict[str, Any] | None = None
+        self._payload0: int | None = None  # abs. byte offset of first frame
+        self._mm: mmap.mmap | None = None  # active mmap
+        self._mmap_fh: BinaryIO | None = None  # file handle kept alive for mmap
+        self._fh: BinaryIO | None = None  # fallback handle when mmap off
 
     # ------------------------------------------------------------------ #
     # helpers                                                            #
@@ -125,9 +125,9 @@ class IndexedFrameCache:
 
     def save(
         self,
-        frames: Dict[int, Any],
+        frames: dict[int, Any],
         *,
-        meta: Optional[Dict[str, Any]] = None,
+        meta: dict[str, Any] | None = None,
         overwrite: bool = True,
     ) -> None:
         """
@@ -140,8 +140,8 @@ class IndexedFrameCache:
             raise FileExistsError(self.cache_file)
 
         items = sorted(frames.items())  # deterministic order
-        frame_to_byte: Dict[str, int] = {}
-        frame_lengths: Dict[str, int] = {}
+        frame_to_byte: dict[str, int] = {}
+        frame_lengths: dict[str, int] = {}
         encoded_frames: list[bytes] = []
 
         offset = 0  # bytes after header newline
@@ -218,7 +218,7 @@ class IndexedFrameCache:
         except Exception:
             return set()
 
-    def load_metadata(self) -> Dict[str, Any] | None:
+    def load_metadata(self) -> dict[str, Any] | None:
         """Metadata dict recorded at save-time (or *None* if cache missing)."""
         if not self.exists():
             return None
