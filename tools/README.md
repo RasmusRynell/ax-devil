@@ -12,7 +12,7 @@ folder; `make -C tools/trace-viewer check` covers the trace viewer.
 | `benchmark_template_runtime.py` | Measure catalog evaluation and drawing preparation offscreen. |
 | `timestamp_alignment_report.py` | Write a TSV of every video frame and overlay timestamp, decoded with the app's own decoders and matched with its policies. |
 | [`release-check/`](release-check/run.sh) | Install a release candidate in clean Ubuntu containers as documented; see [Package artifacts](../docs/runbooks/testing.md#package-artifacts). |
-| `ui_screenshots.py` | Save offscreen screenshots of the main UI surfaces in both themes and two text sizes, to compare a UI change; see the [write-ui skill](../.agents/skills/write-ui/SKILL.md#check-it). |
+| `ui_screenshots.py` | Save offscreen screenshots of the main UI surfaces, with overlays on the video, in both themes and two text sizes, to compare a UI change; see the [write-ui skill](../.agents/skills/write-ui/SKILL.md#check-it). |
 | `show_timestamps.py` | Print a quick timestamp table for a video and a VOD `.od` or MOTE `.xml` file. Needs only PyAV, so it also runs outside this project. |
 
 How to run the benchmarks and read their results: [Rendering benchmarks](../docs/runbooks/testing.md#rendering-benchmarks).
