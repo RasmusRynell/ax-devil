@@ -70,7 +70,7 @@ class SettingsDialog(BaseDialog):
         self._setup_content()
         self._setup_buttons()
         self._load_from_settings()
-        self._restart_values = self._current_restart_values()
+        self._restart_values = self._saved_restart_values()
         self.restart_requested = False  # Set when the user chose to restart after saving.
         self._logger.debug("SettingsDialog initialized")
 
@@ -278,7 +278,7 @@ class SettingsDialog(BaseDialog):
         before = self._restart_values
         if not self._apply():
             return
-        if self._current_restart_values() != before:
+        if self._saved_restart_values() != before:
             self.restart_requested = self._ask_to_restart()
         self.accept()
 
@@ -293,8 +293,11 @@ class SettingsDialog(BaseDialog):
         box.exec()
         return box.clickedButton() is restart
 
-    def _current_restart_values(self) -> tuple[object, ...]:
-        """Return the values of every setting marked as needing a restart, as shown in the dialog."""
+    def _saved_restart_values(self) -> tuple[object, ...]:
+        """Return the saved values of every setting marked as needing a restart, as the next start reads them.
+
+        Comparing saved values, not editor text, ignores edits that save the same value, such as added spaces.
+        """
         restart_fields = [
             field
             for section in (*CONNECTION_SECTIONS, STORAGE_SECTION)
@@ -302,7 +305,7 @@ class SettingsDialog(BaseDialog):
             for field in section.fields
         ]
         return (
-            self._custom_frame.isChecked(),
-            self._acceleration_combo.currentData(),
-            *(self._configuration_editors[field].text() for field in restart_fields),
+            self._settings.custom_frame,
+            self._settings.graphics_acceleration,
+            *(field_value(self._config, field) for field in restart_fields),
         )

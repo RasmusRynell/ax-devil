@@ -454,6 +454,14 @@ def test_saving_a_restart_setting_asks_to_restart_now(qtbot: QtBot, monkeypatch:
 
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
+        editor = next(editor for field, editor in dialog._configuration_editors.items() if field.directory)
+        assert editor._text is not None
+        editor._text.setText(f"  {editor.text()}  ")
+        dialog._on_ok()
+        assert asked == []  # The same path with spaces saves the same value.
+
+        dialog = SettingsDialog()
+        qtbot.addWidget(dialog)
         dialog._custom_frame.setChecked(not dialog._custom_frame.isChecked())
         dialog._on_ok()
         assert asked == [True] and dialog.restart_requested
