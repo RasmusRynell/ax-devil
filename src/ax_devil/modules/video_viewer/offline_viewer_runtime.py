@@ -11,6 +11,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameData
+from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
@@ -22,7 +23,6 @@ from ax_devil.modules.scene.rendering import (
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.synchronization import TimestampFallbackPolicy
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
-from ax_devil.modules.video_player.engine.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.video_player.engine.viewport_state import NormalizedViewport, ZoomStep
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel, format_timecode
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay

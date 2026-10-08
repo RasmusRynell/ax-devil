@@ -15,16 +15,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.core.playback_speed import (
+    DEFAULT_PLAYBACK_SPEED,
+    clamp_playback_speed,
+    step_playback_speed,
+)
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
-from ax_devil.modules.video_player.engine.playback_speed import (
-    DEFAULT_PLAYBACK_SPEED,
-    clamp_playback_speed,
-    step_playback_speed,
-)
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
@@ -43,8 +43,8 @@ from ax_devil.modules.workspace import (
     PlaylistEntry,
     SeekableVideoContent,
 )
+from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
-from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
 
 logger = get_logger(__name__)
 
@@ -462,17 +462,9 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
     def get_display_name(self) -> str:
         return self._content.display_name
 
-    def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
+    def current_on_screen_item(self) -> OnScreenWorkspaceItem:
         """Return the workspace item shown by this viewer."""
-        if isinstance(self._content, PlaylistContent):
-            return OnScreenWorkspaceItem(
-                kind="playlist_entry",
-                content_id=self._content.content_id,
-                entry_index=self._current_index,
-            )
-        if isinstance(self._content, SeekableVideoContent):
-            return OnScreenWorkspaceItem(kind="video", content_id=self._content.content_id)
-        return None
+        return self._content.on_screen_item(self._current_index)
 
     def get_contents(self) -> list[SeekableVideoContent]:
         entries = self._get_entries()
@@ -509,9 +501,6 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
 
         if item_ref.kind == "video_lane":
             self._open_entry(self._current_index)
-            return
-
-        if not isinstance(self._content, PlaylistContent):
             return
 
         if item_ref.kind == "playlist_entry" and item_ref.entry_index == self._current_index:

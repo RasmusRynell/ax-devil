@@ -34,12 +34,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.application_shell.configuration_preferences import apply_preferences
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.theme import DARK_COLORS, LIGHT_COLORS
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole, body_px
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.configuration_preferences import apply_preferences
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize

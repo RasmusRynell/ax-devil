@@ -16,9 +16,9 @@ from ax_devil.modules.workspace import (
     SeekableVideoContent,
     WorkspaceManager,
 )
+from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.viewer_factory import WorkspaceViewerFactory
 from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
-from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
 
 
 class _DummyViewer(WorkspaceWidget):

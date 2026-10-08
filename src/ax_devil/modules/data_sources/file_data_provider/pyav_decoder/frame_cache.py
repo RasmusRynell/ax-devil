@@ -153,13 +153,11 @@ class FrameCache:
             pool.register(self)
 
     def __del__(self) -> None:
-        """Destructor with debug logging."""
+        """Release the cache's memory and registrations when it is garbage collected."""
         try:
-            cache_size = len(self._cache) if hasattr(self, "_cache") else 0
-            self.logger.debug(f"FrameCache destroyed: id={id(self)}, had {cache_size} frames")
             self.close()
         except Exception:
-            pass
+            self.logger.debug(f"FrameCache id={id(self)} failed to close on garbage collection", exc_info=True)
 
     def set_budget_bytes(self, budget_bytes: int) -> None:
         """Resize a live cache and evict excess history under the cache lock."""

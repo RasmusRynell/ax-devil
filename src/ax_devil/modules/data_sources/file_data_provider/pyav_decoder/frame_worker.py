@@ -58,18 +58,6 @@ class FrameWorker:
 
         logger.debug(f"FrameWorker created: id={id(self)}, thread_name={thread_name}")
 
-    def __del__(self) -> None:
-        """Destructor with debug logging."""
-        try:
-            thread_name = getattr(self, "_thread_name", "unknown")
-            has_work_executor = hasattr(self, "_work_executor") and self._work_executor is not None
-            logger.debug(
-                f"FrameWorker destroyed: id={id(self)}, thread_name={thread_name}, "
-                f"has_work_executor={has_work_executor}"
-            )
-        except Exception:
-            pass
-
     @property
     def state(self) -> WorkerState:
         """Get current worker state."""

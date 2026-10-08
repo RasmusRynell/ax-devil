@@ -9,13 +9,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.content import (
-    ConsiderationItemRef,
-    Content,
-    LiveVideoContent,
-    PlaylistContent,
-    SeekableVideoContent,
-)
+from ax_devil.modules.workspace.content import ConsiderationItemRef, Content
 from ax_devil.modules.workspace.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.workspace_manager import WorkspaceManager
 
@@ -71,24 +65,23 @@ class WorkspaceController(QObject):
         self._content_browser.set_browser_rows(rows)
         self._content_browser.setVisible(bool(rows))
 
-    def _on_content_activated(self, content: object, start_index: int = 0) -> None:
+    def _on_content_activated(self, content: Content, start_index: int = 0) -> None:
         """Open a double-clicked browser item in the preview pane."""
         self._open_browser_content(content, start_index, self._center_area.replace_or_open)
 
-    def _on_content_open_to_side_requested(self, content: object, start_index: int = 0) -> None:
+    def _on_content_open_to_side_requested(self, content: Content, start_index: int = 0) -> None:
         """Open a browser item in a new split without replacing any pane."""
         self._open_browser_content(content, start_index, self._center_area.open_to_side)
 
     def _open_browser_content(
         self,
-        content: object,
+        content: Content,
         start_index: int,
         place: Callable[[WorkspaceWidget], None],
     ) -> None:
         """Pause open viewers and open browser content with the requested pane placement."""
-        if isinstance(content, (SeekableVideoContent, LiveVideoContent, PlaylistContent)):
-            self._pause_all_viewers()
-            self._open_content(content, start_index=start_index, place=place)
+        self._pause_all_viewers()
+        self._open_content(content, start_index=start_index, place=place)
 
     def _on_export_requested(self, item: object) -> None:
         """Export from the viewer currently showing the item."""
@@ -97,23 +90,17 @@ class WorkspaceController(QObject):
                 widget.export_video()
                 return
 
-    def _on_contents_added(self, contents: list[object]) -> None:
+    def _on_contents_added(self, contents: list[Content]) -> None:
         """Preview the first newly added content item in the current workspace."""
         if not contents:
             return
 
         self._sync_content_browser()
-        first = contents[0]
-        if isinstance(first, PlaylistContent):
-            self._logger.debug(f"New playlist added: {first.display_name} ({len(first.entries)} entries)")
-            self._open_content(first)
-        elif isinstance(first, (SeekableVideoContent, LiveVideoContent)):
-            self._open_content(first)
+        self._logger.debug(f"New content added: {contents[0].display_name}")
+        self._open_content(contents[0])
 
-    def _on_content_removed(self, content: object) -> None:
+    def _on_content_removed(self, content: Content) -> None:
         """Close any viewer showing or tracking the removed content."""
-        if not isinstance(content, (SeekableVideoContent, LiveVideoContent, PlaylistContent)):
-            return
         for widget, tracked_content_ids in tuple(self._widget_content_ids.items()):
             if content.content_id in tracked_content_ids:
                 self._center_area.remove_workspace_widget(widget)

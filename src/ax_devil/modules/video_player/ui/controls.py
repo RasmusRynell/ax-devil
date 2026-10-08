@@ -5,15 +5,15 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
-from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.video_player.engine.playback_speed import (
+from ax_devil.core.playback_speed import (
     DEFAULT_PLAYBACK_SPEED,
     clamp_playback_speed,
     format_playback_speed,
 )
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.settings.logging_config import get_logger
 
 from ..constants import (
     CONTROL_PANEL_PADDING,
@@ -284,18 +284,9 @@ class BaseVideoControlPanel(FadingWidget):
         self._container_layout.addWidget(self.play_pause_btn)
         self._update_play_button()
         follow_appearance(self, self._apply_appearance)
-        try:
-            _id = id(self)
-            _cls = self.__class__.__name__
-            self.destroyed.connect(lambda _=None, _id=_id, _cls=_cls: logger.debug(f"{_cls}.destroyed id={_id}"))
-        except Exception:
-            pass
-
-    def __del__(self) -> None:
-        try:
-            logger.debug(f"BaseVideoControlPanel deleted id={id(self)} class={self.__class__.__name__}")
-        except Exception:
-            pass
+        _id = id(self)
+        _cls = self.__class__.__name__
+        self.destroyed.connect(lambda _=None, _id=_id, _cls=_cls: logger.debug(f"{_cls}.destroyed id={_id}"))
 
     def _icon_button(self) -> QtWidgets.QPushButton:
         button = QtWidgets.QPushButton(self._controls_container)

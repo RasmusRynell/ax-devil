@@ -9,10 +9,10 @@ import pytest
 from PySide6.QtWidgets import QAbstractScrollArea, QApplication
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode

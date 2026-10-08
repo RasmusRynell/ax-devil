@@ -72,18 +72,6 @@ class FrameReaderWorker(BaseWorker):
             f"cache_budget_bytes={cache_budget_bytes}, prefetch={prefetch_count}, total_frames={self._total_frames}"
         )
 
-    def __del__(self) -> None:
-        """Destructor with debug logging."""
-        try:
-            cached_frames = self._cache.size() if hasattr(self, "_cache") and self._cache else 0
-            has_frame_processor = hasattr(self, "_frame_processor") and self._frame_processor is not None
-            logger.debug(
-                f"FrameReaderWorker destroyed: id={id(self)}, cached_frames={cached_frames}, "
-                f"has_frame_processor={has_frame_processor}"
-            )
-        except Exception:
-            pass
-
     def do_work(self) -> bool:
         """Execute one unit of work. Returns True if work was done."""
         # Check for frame requests first (priority)
@@ -431,19 +419,6 @@ class VideoFrameReader:
         logger.debug(
             f"VideoFrameReader created: id={id(self)}, video={video_path}, cache_budget_bytes={cache_budget_bytes}"
         )
-
-    def __del__(self) -> None:
-        """Destructor with debug logging."""
-        try:
-            video_path = getattr(self, "_video_path", "unknown")
-            has_worker = hasattr(self, "_worker") and self._worker is not None
-            has_frame_reader_worker = hasattr(self, "_frame_reader_worker") and self._frame_reader_worker is not None
-            logger.debug(
-                f"VideoFrameReader destroyed: id={id(self)}, video={video_path}, "
-                f"has_worker={has_worker}, has_frame_reader_worker={has_frame_reader_worker}"
-            )
-        except Exception:
-            pass
 
     def _ensure_open(self) -> None:
         """Ensure the reader is in a valid open state, raise exception if not."""

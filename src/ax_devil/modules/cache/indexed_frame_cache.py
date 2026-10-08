@@ -262,7 +262,5 @@ class IndexedFrameCache:
         try:
             # Ensure handles are closed on GC as a last resort
             self.close()
-            file_name = getattr(getattr(self, "cache_file", None), "name", "<unknown>")
-            logger.debug(f"IndexedFrameCache deleted id={id(self)} file={file_name}")
         except Exception:
-            pass
+            logger.debug(f"IndexedFrameCache id={id(self)} failed to close on garbage collection", exc_info=True)

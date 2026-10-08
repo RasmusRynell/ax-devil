@@ -25,10 +25,10 @@ from ax_devil.modules.workspace import (
     WorkspaceManager,
 )
 from ax_devil.modules.workspace.add_content.add_video_dialog import AddVideoDialog
+from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.recent_videos import RecentVideos
 from ax_devil.modules.workspace.session import WorkspaceSession
 from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
-from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
 
 
 def _required_top_item(workspace_session: WorkspaceSession, index: int = 0) -> QTreeWidgetItem:

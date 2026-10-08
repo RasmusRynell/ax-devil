@@ -19,8 +19,7 @@ HEADER_ICON_SIZE_PX = 16
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-    from ax_devil.modules.workspace.content import ConsiderationItemRef
-    from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
+    from ax_devil.modules.workspace.content import ConsiderationItemRef, OnScreenWorkspaceItem
 
 
 class WorkspaceWidget(QFrame):
