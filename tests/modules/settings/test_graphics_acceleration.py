@@ -69,8 +69,10 @@ def test_dialog_cancel_apply_and_reopen(qtbot: QtBot, monkeypatch: pytest.Monkey
         qtbot.addWidget(reopened)
         assert reopened._acceleration_combo.currentData() == "off"
         reopened._acceleration_combo.setCurrentIndex(reopened._acceleration_combo.findData("auto"))
+        monkeypatch.setattr(SettingsDialog, "_ask_to_restart", lambda self: False)  # Restart later.
         reopened._on_ok()
         assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.AUTO
+        assert not reopened.restart_requested
     finally:
         GlobalSettings.reset_instance()
 

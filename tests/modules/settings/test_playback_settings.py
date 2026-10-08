@@ -104,7 +104,7 @@ def test_dialog_cancel_apply_and_return_to_auto(qtbot: QtBot) -> None:
     qtbot.addWidget(applied)
     applied._video_cache_mode.setCurrentIndex(1)
     applied._video_cache_spin.setValue(1.5)
-    applied._on_apply()
+    applied._apply()
     applied._video_cache_spin.setValue(2.0)
     applied.reject()
     assert GlobalSettings().video_cache_budget.mib == 1536

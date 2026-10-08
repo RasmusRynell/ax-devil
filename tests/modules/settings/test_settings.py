@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
+from PySide6.QtCore import QProcess
+from PySide6.QtWidgets import QApplication, QPushButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -156,8 +159,8 @@ def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: C
     applied = SettingsDialog()
     qtbot.addWidget(applied)
     applied._theme_combo.setCurrentIndex(applied._theme_combo.findData("light"))
-    applied._on_apply()
-    applied._on_apply()
+    applied._apply()
+    applied._apply()
     assert changes == ["light"]
     applied._theme_combo.setCurrentIndex(applied._theme_combo.findData("dark"))
     applied.reject()
@@ -409,22 +412,70 @@ def test_storage_environment_references_validate_before_saving(
 
 
 def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> None:
-    """Restart-only settings, and only those, carry the Restart badge beside their name."""
-    from PySide6.QtWidgets import QAbstractButton, QLabel
+    """Restart-only settings share one marker, and no other text talks about restarting."""
+    from PySide6.QtWidgets import QCheckBox, QGroupBox, QLabel
 
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    marked = set()
-    for badge in dialog.findChildren(QLabel, "RestartBadge"):
-        row = badge.parentWidget()
-        assert row is not None
-        named = next(
-            child for child in row.findChildren(QLabel) + row.findChildren(QAbstractButton) if child is not badge
-        )
-        marked.add(named.text())
+    texts = [
+        *(label.text() for label in dialog.findChildren(QLabel)),
+        *(checkbox.text() for checkbox in dialog.findChildren(QCheckBox)),
+        *(group.title() for group in dialog.findChildren(QGroupBox)),
+    ]
+    marker = "(requires restart)"
+    marked = {text.removesuffix(f" {marker}") for text in texts if text.endswith(marker)}
     assert marked == {"Use the app title bar", "Graphics acceleration", "Storage locations"}
-    texts = [label.text() for label in dialog.findChildren(QLabel)]
-    assert not [text for text in texts if "restart" in text.lower() and text != "Restart"]
+    assert not [text for text in texts if "restart" in text.lower() and not text.endswith(marker)]
     assert "Shortcut changes apply when you click OK in the shortcut editor, even if you cancel Settings." in texts
+
+
+def test_saving_a_restart_setting_asks_to_restart_now(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a saved change marked (requires restart) asks; the answer is left for the main window to act on."""
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
+
+    GlobalSettings.reset_instance()
+    try:
+        asked: list[bool] = []
+
+        def ask_to_restart(self: SettingsDialog) -> bool:
+            asked.append(True)
+            return True
+
+        monkeypatch.setattr(SettingsDialog, "_ask_to_restart", ask_to_restart)
+
+        dialog = SettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
+        dialog._on_ok()
+        assert asked == [] and not dialog.restart_requested
+
+        dialog = SettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._custom_frame.setChecked(not dialog._custom_frame.isChecked())
+        dialog._on_ok()
+        assert asked == [True] and dialog.restart_requested
+        assert not any(button.text() == "Apply" for button in dialog.findChildren(QPushButton))
+    finally:
+        GlobalSettings.reset_instance()
+
+
+def test_restart_starts_the_same_command_after_quitting(monkeypatch: pytest.MonkeyPatch, qapp: QApplication) -> None:
+    from ax_devil.modules.application_shell import restart
+
+    started: list[tuple[str, list[str]]] = []
+
+    def start_detached(program: str, arguments: list[str]) -> bool:
+        started.append((program, arguments))
+        return True
+
+    monkeypatch.setattr(sys, "orig_argv", ["/usr/bin/python3", "-I", "-m", "ax_devil.cli"])
+    monkeypatch.setattr(QProcess, "startDetached", start_detached)
+    monkeypatch.setattr(QApplication, "closeAllWindows", lambda: None)
+    monkeypatch.setattr(QApplication, "quit", lambda: qapp.aboutToQuit.emit())
+
+    restart.restart_application()
+    qapp.aboutToQuit.emit()  # A later quit does not start another copy.
+
+    assert started == [("/usr/bin/python3", ["-I", "-m", "ax_devil.cli"])]

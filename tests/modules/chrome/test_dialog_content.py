@@ -2,7 +2,7 @@
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QScrollArea, QWidget
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QScrollArea
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
@@ -159,7 +159,7 @@ def test_narrow_settings_page_scrolls_instead_of_overlapping_rows(qtbot: QtBot) 
     QApplication.processEvents()
     page = dialog._tabs.currentWidget()
     assert page is not None
-    for group in page.findChildren(QWidget, "SettingsSection"):
+    for group in page.findChildren(QGroupBox):
         for label in group.findChildren(QLabel):
             if label.isVisible():
                 assert group.rect().contains(label.mapTo(group, label.rect().bottomRight())), label.text()

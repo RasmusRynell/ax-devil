@@ -8,8 +8,9 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
-    QHBoxLayout,
+    QGroupBox,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -28,7 +29,6 @@ from ax_devil.modules.application_shell.configuration_preferences import (
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.form_layout import FormLayout
-from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
@@ -40,57 +40,23 @@ from ax_devil.modules.settings.theme_mode import ThemeMode
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
 
-RESTART_HINT = "Takes effect the next time ax-devil starts"
+RESTART_MARK = "(requires restart)"
+"""Suffix on every setting that takes effect only after restarting the app."""
 
 
-def _restart_badge() -> QLabel:
-    """Return the small badge that marks a setting taking effect only after a restart."""
-    badge = QLabel("Restart")
-    badge.setObjectName("RestartBadge")
-    badge.setToolTip(RESTART_HINT)
-    badge.setStyleSheet(
-        f"QLabel#RestartBadge {{ color: palette(placeholder-text); border: 1px solid palette(mid);"
-        f" border-radius: {Radius.CONTROL}px; padding: 0px {Space.S}px; }}"
-    )
-    TextRole.SMALL.apply(badge)
-    return badge
-
-
-def _with_restart_badge(widget: QWidget) -> QWidget:
-    """Return *widget* followed by a restart badge."""
-    row = QWidget()
-    layout = QHBoxLayout(row)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(Space.M)
-    layout.addWidget(widget)
-    layout.addWidget(_restart_badge())
-    layout.addStretch(1)
-    return row
-
-
-def _section(title: str, *, requires_restart: bool = False) -> tuple[QWidget, QWidget]:
-    """Return a settings section with a small-caps heading, and the widget to fill with its rows."""
-    section = QWidget()
-    section.setObjectName("SettingsSection")
-    layout = QVBoxLayout(section)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(Space.S)
-    heading = QLabel(title)
-    TextRole.CAPTION.apply(heading)
-    heading.setStyleSheet("color: palette(placeholder-text);")
-    layout.addWidget(_with_restart_badge(heading) if requires_restart else heading)
-    content = QWidget()
-    layout.addWidget(content)
-    return section, content
+def _restart_label(text: str) -> str:
+    """Return *text* marked as a setting that takes effect after a restart."""
+    return f"{text} {RESTART_MARK}"
 
 
 class SettingsDialog(BaseDialog):
     """Dialog for editing global application settings.
 
     Reads a snapshot of ``GlobalSettings`` on open. Changes are applied
-    only when the user clicks **OK** (apply + close) or **Apply** (apply,
-    stay open).  **Cancel** discards uncommitted changes. Settings that
-    only take effect after a restart carry a **Restart** badge.
+    only when the user clicks **OK**; **Cancel** discards them. Settings that
+    only take effect after a restart carry ``RESTART_MARK`` in their label;
+    saving a change to one asks whether to restart now, and sets
+    ``restart_requested`` when the user agrees.
     The separate shortcut editor applies its changes on its own **OK**.
     """
 
@@ -104,6 +70,8 @@ class SettingsDialog(BaseDialog):
         self._setup_content()
         self._setup_buttons()
         self._load_from_settings()
+        self._restart_values = self._current_restart_values()
+        self.restart_requested = False  # Set when the user chose to restart after saving.
         self._logger.debug("SettingsDialog initialized")
 
     # ------------------------------------------------------------------
@@ -116,9 +84,8 @@ class SettingsDialog(BaseDialog):
         self._page_layouts: list[QVBoxLayout] = []
         layout = self._add_page("General")
 
-        appearance_group, appearance_content = _section("Appearance")
-        appearance_layout = FormLayout(appearance_content)
-        appearance_layout.setContentsMargins(0, 0, 0, 0)
+        appearance_group = QGroupBox("Appearance")
+        appearance_layout = FormLayout(appearance_group)
         self._theme_combo = QComboBox()
         for theme in ThemeMode:
             self._theme_combo.addItem(theme.label, theme.value)
@@ -127,14 +94,12 @@ class SettingsDialog(BaseDialog):
         for size in TextSize:
             self._text_size_combo.addItem(size.label, size.value)
         appearance_layout.addRow("Text size", self._text_size_combo)
-        self._custom_frame = QCheckBox("Use the app title bar")
-        appearance_layout.addRow(_with_restart_badge(self._custom_frame))
+        self._custom_frame = QCheckBox(_restart_label("Use the app title bar"))
+        appearance_layout.addRow(self._custom_frame)
         self._acceleration_combo = QComboBox()
         for mode in GraphicsAcceleration:
             self._acceleration_combo.addItem(mode.label, mode.value)
-        acceleration_label = QLabel("Graphics acceleration")
-        acceleration_label.setBuddy(self._acceleration_combo)
-        appearance_layout.addRow(_with_restart_badge(acceleration_label), self._acceleration_combo)
+        appearance_layout.addRow(_restart_label("Graphics acceleration"), self._acceleration_combo)
         self._acceleration_description = QLabel()
         self._acceleration_description.setWordWrap(True)
         appearance_layout.addRow(self._acceleration_description)
@@ -146,9 +111,8 @@ class SettingsDialog(BaseDialog):
         self._acceleration_combo.currentIndexChanged.connect(self._update_acceleration_description)
         layout.addWidget(appearance_group)
 
-        playback_group, playback_content = _section("Playback")
-        playback_layout = FormLayout(playback_content)
-        playback_layout.setContentsMargins(0, 0, 0, 0)
+        playback_group = QGroupBox("Playback")
+        playback_layout = FormLayout(playback_group)
         self._video_cache_mode = QComboBox()
         self._video_cache_mode.addItem(VideoCacheBudget.AUTO_LABEL, True)
         self._video_cache_mode.addItem(VideoCacheBudget.MANUAL_LABEL, False)
@@ -167,9 +131,8 @@ class SettingsDialog(BaseDialog):
         self._video_cache_mode.currentIndexChanged.connect(self._update_video_cache_controls)
         layout.addWidget(playback_group)
 
-        overlay_group, overlay_content = _section("Video Overlays")
-        overlay_layout = QVBoxLayout(overlay_content)
-        overlay_layout.setContentsMargins(0, 0, 0, 0)
+        overlay_group = QGroupBox("Video Overlays")
+        overlay_layout = QVBoxLayout(overlay_group)
         self._overlay_checkboxes: dict[OverlayPreference, QCheckBox] = {}
         for preference in OverlayPreference:
             checkbox = QCheckBox(preference.label)
@@ -215,7 +178,6 @@ class SettingsDialog(BaseDialog):
     def _add_page(self, title: str) -> QVBoxLayout:
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setSpacing(Space.XL)
         self._page_layouts.append(layout)
         scroll = ContentScrollArea(content)
         self._tabs.addTab(scroll, title)
@@ -227,9 +189,8 @@ class SettingsDialog(BaseDialog):
         layout.addWidget(label)
 
     def _add_config_section(self, layout: QVBoxLayout, section: ConfigSection) -> None:
-        group, content = _section(section.title, requires_restart=section.requires_restart)
-        form = FormLayout(content)
-        form.setContentsMargins(0, 0, 0, 0)
+        group = QGroupBox(_restart_label(section.title) if section.requires_restart else section.title)
+        form = FormLayout(group)
         for field in section.fields:
             editor = ConfigurationEditor(field, field_value(self._config, field))
             self._configuration_editors[field] = editor
@@ -242,9 +203,8 @@ class SettingsDialog(BaseDialog):
                 dialog.exec()
 
     def _setup_buttons(self) -> None:
-        """Add OK / Apply / Cancel buttons."""
+        """Add OK / Cancel buttons."""
         self.add_button("OK", self._on_ok, is_default=True)
-        self.add_button("Apply", self._on_apply)
         self.add_button("Cancel", self.reject)
 
     # ------------------------------------------------------------------
@@ -314,10 +274,35 @@ class SettingsDialog(BaseDialog):
     # ------------------------------------------------------------------
 
     def _on_ok(self) -> None:
-        """Apply and close."""
-        if self._apply():
-            self.accept()
+        """Save and close; when a saved change needs a restart, ask whether to restart now."""
+        before = self._restart_values
+        if not self._apply():
+            return
+        if self._current_restart_values() != before:
+            self.restart_requested = self._ask_to_restart()
+        self.accept()
 
-    def _on_apply(self) -> None:
-        """Apply and keep dialog open."""
-        self._apply()
+    def _ask_to_restart(self) -> bool:
+        """Ask whether to restart now for the saved changes that need it; return True for now."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Restart ax-devil?")
+        box.setText("Some changes take effect after a restart.")
+        restart = box.addButton("Restart Now", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(restart)
+        box.exec()
+        return box.clickedButton() is restart
+
+    def _current_restart_values(self) -> tuple[object, ...]:
+        """Return the values of every setting marked as needing a restart, as shown in the dialog."""
+        restart_fields = [
+            field
+            for section in (*CONNECTION_SECTIONS, STORAGE_SECTION)
+            if section.requires_restart
+            for field in section.fields
+        ]
+        return (
+            self._custom_frame.isChecked(),
+            self._acceleration_combo.currentData(),
+            *(self._configuration_editors[field].text() for field in restart_fields),
+        )

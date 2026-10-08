@@ -80,7 +80,8 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
   unavoidable, derive it from `Height` or `TextRole.<ROLE>.px` so it grows with the text.
 - **A new user preference** follows `ThemeMode` and `TextSize` in `modules/settings/`: a `str` enum with
   `label` and `from_config`, a `GlobalSettings` property, a row in the Settings dialog, and a paragraph in
-  `docs/settings.md`. Apply it live when Qt allows; mark it with the **Restart** badge only when it cannot.
+  `docs/settings.md`. Apply it live when Qt allows; mark it `(requires restart)` only when it cannot;
+  saving such a change offers to restart ax-devil.
 
 ## Check it
 

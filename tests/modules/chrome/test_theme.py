@@ -120,7 +120,7 @@ def _verify_theme_rendering(cache_dir: Path) -> None:
 
         for mode in ("light", "dark", "light"):
             dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData(mode))
-            dialog._on_apply()
+            dialog._apply()
             app.processEvents()
             app.processEvents()
             dark = mode == "dark"
