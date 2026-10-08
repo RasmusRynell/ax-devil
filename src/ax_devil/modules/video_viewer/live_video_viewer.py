@@ -281,7 +281,7 @@ class LiveVideoViewerWidget(WorkspaceWidget):
             try:
                 self._controller.cleanup()
             except Exception:
-                pass
+                logger.exception("Live stream controller failed to clean up")
             self._controller = None
         if self._tools_panel:
             try:
@@ -290,7 +290,7 @@ class LiveVideoViewerWidget(WorkspaceWidget):
                 self._tools_panel.cleanup()
                 self._tools_panel.deleteLater()
             except Exception:
-                pass
+                logger.exception("Live media tools failed to clean up")
             self._tools_panel = None
         if self._frame_display:
             try:
@@ -298,6 +298,6 @@ class LiveVideoViewerWidget(WorkspaceWidget):
                 self._frame_display.setParent(None)
                 self._frame_display.deleteLater()
             except Exception:
-                pass
+                logger.exception("Live frame display failed to clean up")
             self._frame_display = None
         self._status_panel = None

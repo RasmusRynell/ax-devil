@@ -59,19 +59,6 @@ class CachedFrame:
             f"CachedFrame created: id={id(self)}, frame_index={frame_index}, has_frame={video_frame is not None}"
         )
 
-    def __del__(self) -> None:
-        """Destructor with debug logging."""
-        try:
-            has_video_frame = hasattr(self, "_video_frame") and self._video_frame is not None
-            has_numpy_array = hasattr(self, "_numpy_array") and self._numpy_array is not None
-            is_converted = getattr(self, "_is_converted", False)
-            self.logger.debug(
-                f"CachedFrame destroyed: id={id(self)}, converted={is_converted}, "
-                f"has_video_frame={has_video_frame}, has_numpy_array={has_numpy_array}"
-            )
-        except Exception:
-            pass
-
     def to_decoded_frame(self) -> DecodedFrame:
         """Return the complete decoded frame payload, converting pixels on first access.
 
