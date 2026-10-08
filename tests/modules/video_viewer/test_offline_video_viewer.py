@@ -481,6 +481,10 @@ class TestOfflineVideoViewerWidget:
         assert widget._nav_label.text() == "Entry 1 / 2"
         assert widget._global_controls is not None
         assert widget._navigation_controls is not None
+        assert widget._prev_button is not None
+        assert widget._next_button is not None
+        assert widget._prev_button.accessibleName() == "Previous entry"
+        assert widget._next_button.accessibleName() == "Next entry"
         assert widget._global_controls._context_widget is widget._navigation_controls
         assert widget.get_content_layout().indexOf(widget._navigation_controls) == -1
 

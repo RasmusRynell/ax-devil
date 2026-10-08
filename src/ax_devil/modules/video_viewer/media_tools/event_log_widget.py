@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
-    QToolButton,
     QVBoxLayout,
     QWidget,
     QWidgetAction,
@@ -37,6 +36,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.scene.model import Scene
@@ -292,17 +292,13 @@ class EventLogWidget(QWidget):
         self._kind_list = QWidget()
         self._kind_layout = QVBoxLayout(self._kind_list)
         self._kind_layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
-        self._filter_button = QToolButton(self)
-        self._filter_button.setObjectName("eventFilterButton")
-        self._filter_button.setText("Filter")
-        self._filter_button.setToolTip("Show only events of the checked kinds")
-        self._filter_button.setAutoRaise(True)
-        self._filter_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        menu = QMenu(self._filter_button)
+        menu = QMenu(self)
         kinds_action = QWidgetAction(menu)
         kinds_action.setDefaultWidget(self._kind_list)
         menu.addAction(kinds_action)
-        self._filter_button.setMenu(menu)
+        self._filter_button = MenuButton("Filter", menu, self)
+        self._filter_button.setObjectName("eventFilterButton")
+        self._filter_button.setToolTip("Show only events of the checked kinds")
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.addWidget(self._search, 1)

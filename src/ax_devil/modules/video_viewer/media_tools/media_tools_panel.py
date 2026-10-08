@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QMenu,
     QScrollArea,
     QSplitter,
-    QStyle,
     QTabWidget,
     QToolButton,
     QToolTip,
@@ -31,6 +30,8 @@ from PySide6.QtWidgets import (
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.filtering import FilterConfig
@@ -205,7 +206,7 @@ class MediaToolsPanel(QWidget):
             # Export is a one-shot action, so it lives beside the tabs instead of taking a tab.
             self._export_button = QToolButton(self)
             self._export_button.setObjectName("exportVideoButton")
-            self._export_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+            self._export_button.setIcon(Icon.EXPORT.icon())
             self._export_button.setToolTip("Export video with overlays")
             self._export_button.setAccessibleName("Export video with overlays")
             self._export_button.setAutoRaise(True)
@@ -380,16 +381,12 @@ class MediaToolsPanel(QWidget):
         container_layout.setContentsMargins(*_POPUP_MARGINS)
         container_layout.addWidget(content)
 
-        button = QToolButton(self)
-        button.setText(text)
-        button.setToolTip(section.help_html)
-        button.setAutoRaise(True)
-        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        menu = QMenu(button)
+        menu = QMenu(self)
         action = QWidgetAction(menu)
         action.setDefaultWidget(container)
         menu.addAction(action)
-        button.setMenu(menu)
+        button = MenuButton(text, menu, self)
+        button.setToolTip(section.help_html)
         return button
 
     def _section_widget(self, section: MediaToolsSection, content: QWidget) -> QWidget:

@@ -9,11 +9,11 @@ from importlib.resources import files
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
 import ax_devil
 from ax_devil.app import create_app
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.plugin_system import ApplicationPluginLoader, get_payload_decoder
 from ax_devil.modules.plugin_system.validate import validate_plugins
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
@@ -49,10 +49,10 @@ def main() -> None:
         entered = True
         window = application.main_window
         assert window is not None and window.isVisible()
-        for asset in files("ax_devil.resources").iterdir():
-            if asset.name.endswith(".png"):
-                pixmap = QPixmap()
-                assert pixmap.loadFromData(asset.read_bytes()), asset.name
+        assert files("ax_devil.resources").joinpath("icons").joinpath("LICENSE").is_file()
+        for icon in Icon:
+            image = icon.icon().pixmap(16, 16).toImage()
+            assert any(image.pixelColor(x, y).alpha() for y in range(16) for x in range(16)), icon.name
 
         QTimer.singleShot(0, window.close)
         return int(original_exec())

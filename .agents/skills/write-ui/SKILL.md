@@ -21,6 +21,8 @@ choosing its own sizes and colors.
 | Colors | `palette(...)` in stylesheets, `QPalette` roles when painting, `StatusColor` for success/warning/error | `modules/chrome/theme.py` |
 | Palette color with alpha in a stylesheet | `palette_color_css` | `modules/chrome/palette_css.py` |
 | Status-colored text | `StatusColor.<NAME>.css(palette)` | `modules/chrome/theme.py` |
+| Icons | `Icon.<NAME>.icon()` follows the theme on its own; pass a color only for status or the video scrim. Add a Lucide SVG to `resources/icons/` for a new one | `modules/chrome/icons.py` |
+| Button that opens a menu (`Filter ⌄`) | `MenuButton(text, menu)` | `modules/chrome/menu_button.py` |
 | Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
@@ -33,6 +35,8 @@ sizes may be computed, how to top-align content, which colors belong on the vide
 
 ```python
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 
 layout = QVBoxLayout(panel)
@@ -54,7 +58,7 @@ button.setStyleSheet(f"""
 
 def apply_appearance() -> None:  # anything sized from text, or colored from the palette in code
     header.setFixedHeight(Height.PANE_HEADER.px)
-    pin.setIcon(load_resource_icon("pin-icon.png", header.palette().color(QPalette.ColorRole.WindowText)))
+    warning.setPixmap(Icon.WARNING.icon(StatusColor.WARNING.color(header.palette())).pixmap(16, 16))
 
 
 follow_appearance(header, apply_appearance)  # runs now, then on every theme or text-size change
@@ -63,7 +67,9 @@ TextRole.SMALL.apply(card_label)  # rich text takes its size and color from the 
 card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escape(value)}')
 ```
 
-- **Body text needs nothing.** Widgets inherit the application font and palette and follow changes on their own.
+- **Body text needs nothing.** Widgets inherit the application font and palette and follow changes on their own,
+  and so do icons from `Icon.<NAME>.icon()` without a color (`pin.setIcon(Icon.PIN.icon())`).
+- **Icons, not glyphs.** Use an `Icon` for buttons and markers instead of text characters such as `×`, `⋯` or `«`.
 - **React through `follow_appearance`,** not a `changeEvent` override for `PaletteChange`.
 - **Pick the role by purpose.** Body text for content, `SMALL` for secondary labels, `CAPTION` for section headings
   (`.apply` adds its uppercase), `MONO` for frame numbers, IDs and times, `STRONG` for titles.

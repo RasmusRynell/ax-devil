@@ -6,8 +6,9 @@ import traceback
 from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QStyle, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
@@ -111,14 +112,8 @@ class LiveStatusPanel(QWidget):
 
     def _update_pause_button_icon(self, paused: bool) -> None:
         """Set the button icon based on pause state."""
-        widget_style = self.style()
-        if widget_style is None:
-            return
-        sp = QStyle.StandardPixmap
-        icon_type = sp.SP_MediaPlay if paused else sp.SP_MediaPause
-        tooltip = "Resume" if paused else "Pause"
-        self._pause_button.setIcon(video_control_icon(self, icon_type))
-        self._pause_button.setToolTip(tooltip)
+        self._pause_button.setIcon(video_control_icon(Icon.PLAY if paused else Icon.PAUSE))
+        self._pause_button.setToolTip("Resume" if paused else "Pause")
 
     def show_connection_status(self, status: LiveConnectionStatus) -> None:
         """Show the stream state, any feed problems and whether a retry is needed."""

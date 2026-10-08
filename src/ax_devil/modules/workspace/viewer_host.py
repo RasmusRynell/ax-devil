@@ -5,13 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
-from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.icons import load_resource_icon
 
 logger = get_logger(__name__)
 
@@ -83,6 +82,7 @@ class WorkspaceWidget(QFrame):
         self._header_layout.addWidget(self._pin_button)
 
         self._close_button = self._create_header_button()
+        self._close_button.setIcon(Icon.CLOSE.icon())
         self._close_button.setToolTip("Close this pane")
         self._close_button.clicked.connect(self._on_close_button_clicked)
         self._header_layout.addWidget(self._close_button)
@@ -151,19 +151,11 @@ class WorkspaceWidget(QFrame):
         return bool(super().event(e))
 
     def _apply_appearance(self) -> None:
-        """Size the header to the text and tint its icons from the current palette."""
+        """Size the header and its buttons to the text."""
         self._header_widget.setFixedHeight(Height.PANE_HEADER.px)
         for button in (self._pin_button, self._close_button):
             button.setFixedSize(Height.CONTROL.px, Height.CONTROL.px)
-        self._refresh_header_icons()
         self._update_pin_state()
-
-    def _refresh_header_icons(self) -> None:
-        """Build header icons from the current palette."""
-        color = self.palette().color(QPalette.ColorRole.WindowText)
-        self._unpinned_icon = load_resource_icon("pin-icon.png", color)
-        self._pinned_icon = load_resource_icon("pinned-icon.png", color)
-        self._close_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TitleBarCloseButton))
 
     def get_content_layout(self) -> QVBoxLayout:
         """Get the content layout for subclasses to add their widgets.
@@ -211,11 +203,11 @@ class WorkspaceWidget(QFrame):
         self._pin_button.setChecked(self._pinned)
         self._pin_button.blockSignals(False)
         if self._pinned:
-            self._pin_button.setIcon(self._pinned_icon)
+            self._pin_button.setIcon(Icon.PINNED.icon())
             self._pin_button.setToolTip("Unpin: let opened content replace this pane")
             self._title_label.setToolTip("Pinned: opened content will not replace this pane")
         else:
-            self._pin_button.setIcon(self._unpinned_icon)
+            self._pin_button.setIcon(Icon.PIN.icon())
             self._pin_button.setToolTip("Pin: keep this pane open when other content is opened")
             self._title_label.setToolTip("Preview (italic): the next opened content replaces this pane")
         title_font = (TextRole.STRONG if self._pinned else TextRole.BODY).font()

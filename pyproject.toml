@@ -55,7 +55,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
 ax_devil = [
-    "resources/*.png",
+    "resources/icons/*.svg",
+    "resources/icons/LICENSE",
     "modules/video_player/engine/quick/*.qml",
     "modules/scene/rendering/catalog_definitions/*.json",
 ]

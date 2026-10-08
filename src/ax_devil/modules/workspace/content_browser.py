@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QBrush, QColor, QGuiApplication, QIcon, QPalette
+from PySide6.QtGui import QAction, QBrush, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -25,9 +25,9 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.content import ConsiderationItemRef, Content
-from ax_devil.modules.workspace.icons import load_resource_icon
 from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.workspace_manager import (
@@ -42,22 +42,18 @@ TREE_CONSIDERATION_COLUMN_WIDTH_PX = 24
 TREE_ROW_ROLE = Qt.ItemDataRole.UserRole
 
 
-def _icon_color(palette: QPalette) -> QColor:
-    """Return the foreground color used for monochrome content browser icons."""
-    return palette.color(QPalette.ColorRole.Text)
+_KIND_ICONS: dict[WorkspaceBrowserIconKind, Icon] = {
+    "video": Icon.VIDEO,
+    "live_video": Icon.LIVE_VIDEO,
+    "playlist": Icon.PLAYLIST,
+    "overlay": Icon.OVERLAY,
+}
 
 
 class _ConsiderationToggle(QToolButton):
     """Small eye toggle used to include or exclude a tree item."""
 
-    def __init__(
-        self,
-        *,
-        considered: bool,
-        considered_icon: QIcon | None = None,
-        excluded_icon: QIcon | None = None,
-        parent: QWidget | None = None,
-    ) -> None:
+    def __init__(self, *, considered: bool, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAutoRaise(True)
         self.setCheckable(True)
@@ -79,29 +75,16 @@ class _ConsiderationToggle(QToolButton):
             }
             """
         )
-        if considered_icon is not None and excluded_icon is not None:
-            self._considered_icon = considered_icon
-            self._excluded_icon = excluded_icon
-        else:
-            color = _icon_color(self.palette())
-            self._considered_icon = load_resource_icon("eye-open-icon.png", color)
-            self._excluded_icon = load_resource_icon("eye-closed-icon.png", color)
         self.toggled.connect(self._update_icon)
         self._update_icon(considered)
 
     def _update_icon(self, considered: bool) -> None:
-        self.setIcon(self._considered_icon if considered else self._excluded_icon)
+        self.setIcon((Icon.SHOWN if considered else Icon.HIDDEN).icon())
         self.setToolTip(
             "Included in playback layout/navigation. Click to exclude."
             if considered
             else "Excluded from playback layout/navigation. Click to include."
         )
-
-    def set_shared_icons(self, considered_icon: QIcon, excluded_icon: QIcon) -> None:
-        """Replace the toggle icons and refresh the displayed icon."""
-        self._considered_icon = considered_icon
-        self._excluded_icon = excluded_icon
-        self._update_icon(self.isChecked())
 
 
 class ContentBrowserWidget(QWidget):
@@ -119,7 +102,6 @@ class ContentBrowserWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._show_excluded = False
         self._search_query = ""
-        self._refresh_icons()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -223,10 +205,10 @@ class ContentBrowserWidget(QWidget):
     def _update_show_excluded_icon(self, toggle: QToolButton, show: bool) -> None:
         """Update the icon and tooltip of the show-excluded browser filter."""
         if show:
-            toggle.setIcon(self._filter_off_icon)
+            toggle.setIcon(Icon.FILTER_OFF.icon())
             toggle.setToolTip("Showing excluded items. Click to hide them from this list.")
         else:
-            toggle.setIcon(self._filter_icon)
+            toggle.setIcon(Icon.FILTER.icon())
             toggle.setToolTip("Excluded items are hidden from this list. Click to show them.")
 
     def _on_show_excluded_toggled(self, show: bool) -> None:
@@ -275,24 +257,8 @@ class ContentBrowserWidget(QWidget):
         """Return whether the tree item label matches the active search query."""
         return not self._search_query or self._search_query in self._row_data(item).display_text.casefold()
 
-    def _refresh_icons(self) -> None:
-        """Rebuild monochrome icons from the current palette."""
-        color = _icon_color(self.palette())
-        self._video_icon = load_resource_icon("video-icon.png", color)
-        self._live_video_icon = load_resource_icon("live-stream-icon.png", color)
-        self._playlist_icon = load_resource_icon("playlist-icon.png", color)
-        self._overlay_icon = load_resource_icon("overlay-icon.png", color)
-        self._considered_icon = load_resource_icon("eye-open-icon.png", color)
-        self._excluded_icon = load_resource_icon("eye-closed-icon.png", color)
-        self._filter_icon = load_resource_icon("filter-icon.png", color)
-        self._filter_off_icon = load_resource_icon("filter-off-icon.png", color)
-
     def _apply_appearance(self) -> None:
-        """Retint icons and row text colors from the current palette."""
-        self._refresh_icons()
-        self._update_show_excluded_icon(self._show_excluded_toggle, self._show_excluded)
-        self._update_tree_icons()
-        self._push_toggle_icons()
+        """Recolor row text from the current palette."""
         for index in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(index)
             if item is not None:
@@ -302,7 +268,7 @@ class ContentBrowserWidget(QWidget):
         """Create a tree item for one explicit browser row."""
         item = QTreeWidgetItem([row.display_text, ""])
         item.setData(TREE_LABEL_COLUMN, TREE_ROW_ROLE, row)
-        item.setIcon(TREE_LABEL_COLUMN, self._icon_for_kind(row.icon_kind))
+        item.setIcon(TREE_LABEL_COLUMN, _KIND_ICONS[row.icon_kind].icon())
         for child_row in row.children:
             item.addChild(self._create_tree_item(child_row))
         return item
@@ -312,15 +278,6 @@ class ContentBrowserWidget(QWidget):
         row = item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE)
         assert isinstance(row, WorkspaceBrowserRow)
         return row
-
-    def _icon_for_kind(self, icon_kind: WorkspaceBrowserIconKind) -> QIcon:
-        """Return the rendered icon for one logical tree icon kind."""
-        return {
-            "video": self._video_icon,
-            "live_video": self._live_video_icon,
-            "playlist": self._playlist_icon,
-            "overlay": self._overlay_icon,
-        }[icon_kind]
 
     def _install_tree_widgets(self, item: QTreeWidgetItem) -> None:
         """Install item widgets after the tree item has been attached."""
@@ -337,8 +294,6 @@ class ContentBrowserWidget(QWidget):
         """Attach the eye toggle for one consideration-capable tree item."""
         toggle = _ConsiderationToggle(
             considered=self._row_data(item).is_considered,
-            considered_icon=self._considered_icon,
-            excluded_icon=self._excluded_icon,
             parent=self._tree,
         )
         toggle.toggled.connect(
@@ -367,39 +322,6 @@ class ContentBrowserWidget(QWidget):
             child = item.child(index)
             if child is not None:
                 self._refresh_visual_state(child)
-
-    def _update_tree_icons(self) -> None:
-        """Update icons on existing tree items without rebuilding the tree."""
-        for i in range(self._tree.topLevelItemCount()):
-            item = self._tree.topLevelItem(i)
-            if item is None:
-                continue
-            self._update_item_icons(item)
-
-    def _update_item_icons(self, item: QTreeWidgetItem) -> None:
-        """Reassign the correct icon on *item* and all its children."""
-        item.setIcon(TREE_LABEL_COLUMN, self._icon_for_kind(self._row_data(item).icon_kind))
-        for i in range(item.childCount()):
-            child = item.child(i)
-            if child is not None:
-                self._update_item_icons(child)
-
-    def _push_toggle_icons(self) -> None:
-        """Push the shared toggle icons to all existing consideration toggles."""
-        for i in range(self._tree.topLevelItemCount()):
-            item = self._tree.topLevelItem(i)
-            if item is not None:
-                self._push_toggle_icons_recursive(item)
-
-    def _push_toggle_icons_recursive(self, item: QTreeWidgetItem) -> None:
-        """Push shared icons to the toggle on *item* and recurse into children."""
-        toggle = self._tree.itemWidget(item, TREE_CONSIDERATION_COLUMN)
-        if isinstance(toggle, _ConsiderationToggle):
-            toggle.set_shared_icons(self._considered_icon, self._excluded_icon)
-        for i in range(item.childCount()):
-            child = item.child(i)
-            if child is not None:
-                self._push_toggle_icons_recursive(child)
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         """Open the double-clicked item; Ctrl+double-click opens it to the side."""

@@ -9,11 +9,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QPalette
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMenu, QToolButton, QTreeWidget, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.workspace import (
     ConsiderationItemRef,
     FileVideoSourceSpec,
@@ -25,7 +26,6 @@ from ax_devil.modules.workspace.content_browser import (
     TREE_INDENTATION_PX,
     ContentBrowserWidget,
 )
-from ax_devil.modules.workspace.icons import load_resource_icon
 from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
@@ -37,17 +37,6 @@ def _noop() -> NoReturn:
 
 def _make_video(name: str = "test.mp4") -> SeekableVideoContent:
     return SeekableVideoContent(display_name=name, source_spec=FileVideoSourceSpec(path=Path(f"/tmp/{name}")))
-
-
-def _first_opaque_pixel_color(icon: QIcon) -> QColor:
-    pixmap = icon.pixmap(32, 32)
-    image = pixmap.toImage()
-    for y in range(image.height()):
-        for x in range(image.width()):
-            color = image.pixelColor(x, y)
-            if color.alpha() > 0:
-                return color
-    raise AssertionError("Expected icon to contain at least one opaque pixel")
 
 
 def _required_top_item(browser: ContentBrowserWidget, index: int = 0) -> QTreeWidgetItem:
@@ -66,17 +55,6 @@ def _required_child(item: QTreeWidgetItem, index: int) -> QTreeWidgetItem:
     child = item.child(index)
     assert child is not None
     return child
-
-
-def test_load_icon_tints_monochrome_assets(qtbot: QtBot) -> None:
-    color = QColor("#f5f5f5")
-
-    icon = load_resource_icon("video-icon.png", color)
-
-    tinted = _first_opaque_pixel_color(icon)
-    assert abs(tinted.red() - color.red()) <= 2
-    assert abs(tinted.green() - color.green()) <= 2
-    assert abs(tinted.blue() - color.blue()) <= 2
 
 
 def test_renders_explicit_rows(qtbot: QtBot) -> None:
@@ -586,8 +564,8 @@ def test_excluded_filter_and_row_toggle_use_different_icons_and_tooltips(qtbot: 
     assert isinstance(row_toggle, QToolButton)
     filter_image = browser._show_excluded_toggle.icon().pixmap(16, 16).toImage()
     eye_images = (
-        browser._considered_icon.pixmap(16, 16).toImage(),
-        browser._excluded_icon.pixmap(16, 16).toImage(),
+        Icon.SHOWN.icon().pixmap(16, 16).toImage(),
+        Icon.HIDDEN.icon().pixmap(16, 16).toImage(),
     )
 
     assert row_toggle.icon().pixmap(16, 16).toImage() in eye_images

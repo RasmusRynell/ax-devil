@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.scene.rendering import SceneRenderCatalog, SceneRenderCatalogSelection
 
 
@@ -67,8 +68,9 @@ class SceneRenderCatalogSelector(QGroupBox):
 
         self._catalog_actions_button = QToolButton(self)
         self._catalog_actions_button.setObjectName("renderCatalogActionsButton")
-        self._catalog_actions_button.setText("⋯")
+        self._catalog_actions_button.setIcon(Icon.MORE.icon())
         self._catalog_actions_button.setToolTip("More catalog actions")
+        self._catalog_actions_button.setAccessibleName("More catalog actions")
         self._catalog_actions_button.setMenu(self._catalog_actions_menu)
         self._catalog_actions_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._catalog_actions_button.setStyleSheet("QToolButton::menu-indicator { image: none; }")

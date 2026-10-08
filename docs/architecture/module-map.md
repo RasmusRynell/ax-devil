@@ -30,7 +30,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
 | Config, settings state, logging, paths, settings dialogs | `src/ax_devil/modules/settings/` |
 | Shortcut definitions, routing, persistence, and shortcut settings UI | `src/ax_devil/modules/shortcuts/` |
-| Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
+| Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons and menu buttons, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
 | Diagnostics windows, metrics, exception reporting | `src/ax_devil/modules/diagnostics/` |
 | Cache services | `src/ax_devil/modules/cache/` |
 
@@ -47,4 +47,5 @@ they also serve CLI and startup workflows. Tests mirror both subfolders.
 
 - `src/ax_devil/core/` contains small foundational types that do not belong to a concept-owned module.
 - `src/ax_devil/plugins/` contains built-in decoder and playlist-resolver plugin bundles.
-- `src/ax_devil/resources/` contains packaged assets.
+- `src/ax_devil/resources/` contains packaged assets; `resources/icons/` holds the bundled Lucide SVGs (ISC license
+  alongside) drawn by `modules/chrome/icons.py`.
