@@ -96,6 +96,7 @@ class WorkspaceController(QObject):
             return
 
         self._sync_content_browser()
+        self._logger.debug(f"New content added: {contents[0].display_name}")
         self._open_content(contents[0])
 
     def _on_content_removed(self, content: Content) -> None:

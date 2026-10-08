@@ -22,6 +22,7 @@ from ax_devil.modules.workspace import (
     PlaylistEntry,
     SeekableVideoContent,
 )
+from ax_devil.modules.workspace.item_info import build_video_information
 
 
 def _live_source_spec() -> LiveRTSPStreamSpec:
@@ -254,3 +255,21 @@ def test_content_owns_supported_consideration_items() -> None:
     assert seekable_item.ref == ConsiderationItemRef.video_lane(seekable.content_id, 0)
     assert seekable_item.default_considered
     assert live.consideration_items() == ()
+
+
+def test_live_information_never_shows_passwords() -> None:
+    mqtt = LiveMQTTOverlaySourceSpec(
+        handler_type="LIVE", broker_host="broker.local", broker_username="mqtt-user", broker_password="mqtt-secret"
+    )
+    websocket = LiveWebSocketOverlaySourceSpec(handler_type="LIVE", topic="com.axis.scene.frame.v1")
+    for overlay_spec in (mqtt, websocket):
+        video = LiveVideoContent(
+            display_name="Live",
+            source_spec=LiveRTSPStreamSpec(host="camera.local", username="root", password="camera-secret"),
+            overlays=(OverlayContent(display_name="Overlay", source_spec=overlay_spec),),
+        )
+        info = build_video_information(video)
+
+        shown = [value for item in (info, *info.children) for _label, value in item.fields]
+        assert "camera.local" in shown and "root" in shown
+        assert not any("secret" in value for value in shown)
