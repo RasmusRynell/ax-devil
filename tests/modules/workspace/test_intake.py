@@ -210,17 +210,3 @@ def test_startup_resolution_passes_websocket_settings_to_intake() -> None:
         channel_id=2,
         device_api_protocol="https",
     )
-
-
-def test_intake_preserves_string_live_overlay_mode_compatibility() -> None:
-    intake = WorkspaceIntake(_OptionProvider())
-
-    content = intake.create_live_stream(
-        host="camera.local",
-        username="root",
-        password="pass",
-        overlay_mode="rtsp",
-        handler_type="LIVE",
-    )
-
-    assert content.overlays[0].source_spec == LiveRTSPOverlaySourceSpec(handler_type="LIVE")

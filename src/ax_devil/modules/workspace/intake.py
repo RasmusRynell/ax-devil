@@ -148,7 +148,7 @@ class WorkspaceIntake:
         resolution: str = "1280x720",
         display_name: str | None = None,
         stream_url: str | None = None,
-        overlay_mode: LiveOverlayMode | str = LiveOverlayMode.NONE,
+        overlay_mode: LiveOverlayMode = LiveOverlayMode.NONE,
         handler_type: str | None = None,
         mqtt_host: str = "",
         mqtt_port: int = 1883,
@@ -160,12 +160,9 @@ class WorkspaceIntake:
         websocket_channel_id: int = 1,
     ) -> LiveVideoContent:
         """Create live Workspace video content after validating overlay selection."""
-        resolved_overlay_mode = (
-            overlay_mode if isinstance(overlay_mode, LiveOverlayMode) else LiveOverlayMode.from_value(overlay_mode)
-        )
         if camera_head < 1:
             raise ValueError("Camera Head must be a positive integer.")
-        if resolved_overlay_mode is LiveOverlayMode.MQTT:
+        if overlay_mode is LiveOverlayMode.MQTT:
             if not mqtt_host:
                 raise ValueError("MQTT Host is required for MQTT overlay mode.")
             if not analytics_data_source_key:
@@ -174,14 +171,14 @@ class WorkspaceIntake:
                 raise ValueError("MQTT Port must be between 1 and 65535.")
             if device_api_protocol not in {"https", "http"}:
                 raise ValueError("Device API protocol must be http or https.")
-        if resolved_overlay_mode is LiveOverlayMode.WEBSOCKET:
+        if overlay_mode is LiveOverlayMode.WEBSOCKET:
             if not websocket_topic:
                 raise ValueError("Topic is required for WebSocket overlay mode.")
             if websocket_channel_id < 1:
                 raise ValueError("Channel ID must be a positive integer.")
             if device_api_protocol not in {"https", "http"}:
                 raise ValueError("Device API protocol must be http or https.")
-        if resolved_overlay_mode.requires_handler:
+        if overlay_mode.requires_handler:
             self._require_known_handler(handler_type, self.live_overlay_decoder_options(), "live overlay")
         elif handler_type is not None:
             raise ValueError("Overlay handler was selected without an overlay mode.")
@@ -196,7 +193,7 @@ class WorkspaceIntake:
         )
         overlays: tuple[OverlayContent, ...] = ()
 
-        if resolved_overlay_mode is LiveOverlayMode.RTSP:
+        if overlay_mode is LiveOverlayMode.RTSP:
             assert handler_type is not None
             rtsp_overlay_spec = LiveRTSPOverlaySourceSpec(handler_type=handler_type)
             overlays = (
@@ -205,7 +202,7 @@ class WorkspaceIntake:
                     source_spec=rtsp_overlay_spec,
                 ),
             )
-        elif resolved_overlay_mode is LiveOverlayMode.MQTT:
+        elif overlay_mode is LiveOverlayMode.MQTT:
             assert handler_type is not None
             mqtt_overlay_spec = LiveMQTTOverlaySourceSpec(
                 handler_type=handler_type,
@@ -222,7 +219,7 @@ class WorkspaceIntake:
                     source_spec=mqtt_overlay_spec,
                 ),
             )
-        elif resolved_overlay_mode is LiveOverlayMode.WEBSOCKET:
+        elif overlay_mode is LiveOverlayMode.WEBSOCKET:
             assert handler_type is not None
             websocket_overlay_spec = LiveWebSocketOverlaySourceSpec(
                 handler_type=handler_type,
