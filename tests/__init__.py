@@ -21,6 +21,12 @@ REAL_DATA_HOME = Path(
     )
 )
 OWNS_TEST_HOME = "AX_DEVIL_TESTS_HOME" not in os.environ
+# xdist workers inherit the controller's environment, but must not share mutable app storage.
+# Subprocesses started inside a worker keep that worker's home, just like nested serial runs.
+_worker = os.environ.get("PYTEST_XDIST_WORKER")
+if _worker is not None and os.environ.get("AX_DEVIL_TESTS_HOME_WORKER") != _worker:
+    OWNS_TEST_HOME = True
+    os.environ["AX_DEVIL_TESTS_HOME_WORKER"] = _worker
 if OWNS_TEST_HOME:
     os.environ["AX_DEVIL_TESTS_HOME"] = tempfile.mkdtemp(prefix="ax-devil-test-home-")
 TEST_HOME = Path(os.environ["AX_DEVIL_TESTS_HOME"])

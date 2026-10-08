@@ -139,8 +139,9 @@ Read the sections for the area you change. Explanations of how things work live 
   Application icons come from that bundled set, not Qt standard pixmaps or text glyphs. Code that sizes something from the text or colors something
   from the palette (`TextRole.apply`, `Height`, fixed-color icons, status colors) runs through
   `chrome.appearance.follow_appearance`, which reruns it on palette and text-size changes; sizes are never computed
-  at import. The video surface keeps its own `changeEvent` instead, so no Python event filter sees every frame it
-  repaints. Rich text carries weight and family only and takes its size from the label or document showing it.
+  at import. The video surface and its letterbox stay near-black (`chrome.theme.VIDEO_CANVAS`) in both themes, so
+  they do not follow the palette and no Python event filter sees every frame they repaint. Rich text carries weight
+  and family only and takes its size from the label or document showing it.
   Pixels inside rendered frames (render catalogs, catalog-viewer footage and sheets, export burn-ins) follow the
   frame, not these tokens.
 - The theme gives standard single-line inputs and push buttons a shared `Height.CONTROL` minimum and vertical

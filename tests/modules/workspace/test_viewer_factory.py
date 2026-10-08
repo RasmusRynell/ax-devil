@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -16,39 +15,8 @@ from ax_devil.modules.workspace import (
     SeekableVideoContent,
     WorkspaceManager,
 )
-from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.viewer_factory import WorkspaceViewerFactory
-from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
-
-
-class _DummyViewer(WorkspaceWidget):
-    """Minimal viewer used to isolate Workspace viewer factory behavior."""
-
-    def __init__(
-        self,
-        payload: object,
-        render_catalog_manager: SceneRenderCatalogManager,
-        start_index: int = 0,
-        parent: QWidget | None = None,
-        consideration_query: WorkspaceManager | None = None,
-    ) -> None:
-        self.payload = payload
-        self.start_index = start_index
-        self.consideration_query = consideration_query
-        self.render_catalog_manager = render_catalog_manager
-        super().__init__(parent)
-
-    def _setup_widget_ui(self) -> None:
-        pass
-
-    def get_display_name(self) -> str:
-        return "dummy"
-
-    def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
-        return None
-
-    def cleanup(self) -> None:
-        pass
+from tests.helpers.workspace import DummyViewer
 
 
 def _make_seekable(name: str) -> SeekableVideoContent:
@@ -64,11 +32,11 @@ def test_viewer_factory_selects_offline_viewer_for_seekable_video(
     manager = WorkspaceManager()
     manager.add_content(content)
 
-    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         opened = viewer_factory.open(content, consideration_query=manager)
 
     qtbot.addWidget(opened.widget)
-    assert isinstance(opened.widget, _DummyViewer)
+    assert isinstance(opened.widget, DummyViewer)
     assert opened.widget.payload is content
     assert opened.widget.render_catalog_manager is render_catalog_manager
     assert opened.widget.consideration_query is manager
@@ -86,11 +54,11 @@ def test_viewer_factory_selects_live_viewer_for_live_video(
         source_spec=LiveRTSPStreamSpec(host="camera.local", username="root", password="pass"),
     )
 
-    with patch("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", _DummyViewer):
+    with patch("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", DummyViewer):
         opened = viewer_factory.open(content)
 
     qtbot.addWidget(opened.widget)
-    assert isinstance(opened.widget, _DummyViewer)
+    assert isinstance(opened.widget, DummyViewer)
     assert opened.widget.payload is content
     assert opened.widget.render_catalog_manager is render_catalog_manager
     assert opened.tracked_contents == (content,)
@@ -114,11 +82,11 @@ def test_viewer_factory_tracks_unique_playlist_video_dependencies(
     )
     manager = WorkspaceManager()
 
-    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         opened = viewer_factory.open(playlist, start_index=2, consideration_query=manager)
 
     qtbot.addWidget(opened.widget)
-    assert isinstance(opened.widget, _DummyViewer)
+    assert isinstance(opened.widget, DummyViewer)
     assert opened.widget.payload is playlist
     assert opened.widget.start_index == 2
     assert opened.widget.consideration_query is manager
@@ -138,11 +106,11 @@ def test_viewer_factory_normalizes_playlist_start_index(
         entries=(PlaylistEntry(lanes=content.standalone_lanes(), default_considered=True),),
     )
 
-    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         opened = viewer_factory.open(playlist, start_index=3)
 
     qtbot.addWidget(opened.widget)
-    assert isinstance(opened.widget, _DummyViewer)
+    assert isinstance(opened.widget, DummyViewer)
     assert opened.widget.start_index == 0
 
 
@@ -157,9 +125,9 @@ def test_viewer_factory_normalizes_negative_playlist_start_index(
         entries=(PlaylistEntry(lanes=content.standalone_lanes(), default_considered=True),),
     )
 
-    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         opened = viewer_factory.open(playlist, start_index=-1)
 
     qtbot.addWidget(opened.widget)
-    assert isinstance(opened.widget, _DummyViewer)
+    assert isinstance(opened.widget, DummyViewer)
     assert opened.widget.start_index == 0

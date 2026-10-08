@@ -23,7 +23,8 @@ def step_playback_speed(current: float, delta_steps: int, *, floor: float | None
     else:
         stepped = current + (PLAYBACK_SPEED_STEP * delta_steps)
 
-    clamped = clamp_playback_speed(stepped)
+    # Hundredths, as the controls show, so repeated steps do not drift.
+    clamped = round(clamp_playback_speed(stepped), 2)
     if floor is None:
         return clamped
     return max(floor, clamped)
@@ -36,8 +37,5 @@ def scale_frame_period(base_period_s: float, speed: float) -> float:
 
 
 def format_playback_speed(speed: float) -> str:
-    """Format speed for user-facing controls."""
-    clamped = clamp_playback_speed(speed)
-    if clamped in {MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED, DEFAULT_PLAYBACK_SPEED}:
-        return f"{clamped:.1f}x" if clamped != MIN_PLAYBACK_SPEED else f"{clamped:.2f}x"
-    return f"{clamped:.2f}".rstrip("0").rstrip(".") + "x"
+    """Format speed for user-facing controls, such as ``1×``, ``0.25×`` or ``1.7×``."""
+    return f"{round(clamp_playback_speed(speed), 2):g}×"

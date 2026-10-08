@@ -87,9 +87,22 @@ class _TrackedFrameSource(SeekableFrameSource):
         self._playback_speed = 1.0
         self.speed_updates: list[float] = []
         self.async_frame_requests: list[int] = []
+        self.fps = 25.0
 
     def get_total_frames(self) -> int:
         return self._total_frames
+
+    def get_frame_size(self) -> tuple[int, int] | None:
+        return (640, 480)
+
+    def get_cached_ranges(self) -> tuple[tuple[int, int], ...]:
+        return ()
+
+    def get_duration_s(self) -> float | None:
+        return None
+
+    def peek_frame_seconds(self, frame_number: int) -> float | None:
+        return None
 
     def get_current_frame(self) -> int:
         return self._current_frame
@@ -336,6 +349,11 @@ def _assert_renderer_metrics_match_live_widgets(
 def _stub_frame_source() -> MagicMock:
     source = MagicMock()
     source.get_total_frames.return_value = 100
+    source.fps = 25.0
+    source.get_frame_size.return_value = (640, 480)
+    source.get_cached_ranges.return_value = ((0, 9),)
+    source.get_duration_s.return_value = None
+    source.peek_frame_seconds.return_value = None
     source.get_current_frame.return_value = 0
     source.get_playback_speed.return_value = 1.0
     source.get_position_generation.return_value = 0
@@ -460,22 +478,19 @@ class TestOfflineVideoViewerWidget:
     def _set_render_catalog_manager(self, render_catalog_manager: SceneRenderCatalogManager) -> None:
         self._render_catalog_manager = render_catalog_manager
 
-    def test_display_name_single_video(self, qtbot: QtBot) -> None:
-        content = _make_local_content("Solo")
-        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
-        _attach_offline_widget(qtbot, widget)
-        assert widget.get_display_name() == "Solo"
-
     def test_construction_defers_initial_entry_load(self, qtbot: QtBot) -> None:
-        content = _make_local_content("Solo")
+        opened: list[_TrackedFrameSource] = []
+        content = _make_seekable_content("Solo", frame_source_opener=_make_tracked_frame_source_opener("Solo", opened))
         widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
         qtbot.addWidget(widget)
 
-        assert widget._runtime is None
+        assert widget.get_display_name() == "Solo"
+        assert opened == []
 
         widget.on_workspace_attached()
 
-        assert widget._runtime is not None
+        assert len(opened) == 1
+        assert len(widget.findChildren(FrameDisplay)) == 1
 
     def test_refresh_item_consideration_after_cleanup_is_noop(self, qtbot: QtBot) -> None:
         v1 = _make_local_content("A")
@@ -532,7 +547,7 @@ class TestOfflineVideoViewerWidget:
         widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
 
-        assert widget._current_index == 0
+        assert widget.current_on_screen_item().entry_index == 0
         assert widget._nav_label is not None
         assert widget._nav_label.text() == "Entry 1 / 2"
         assert widget._global_controls is not None
@@ -544,12 +559,12 @@ class TestOfflineVideoViewerWidget:
         assert widget._global_controls._context_widget is widget._navigation_controls
         assert widget.get_content_layout().indexOf(widget._navigation_controls) == -1
 
-        widget._step_next()
-        assert widget._current_index == 1
+        widget.step_next_entry()
+        assert widget.current_on_screen_item().entry_index == 1
         assert widget._nav_label.text() == "Entry 2 / 2"
 
-        widget._step_next()
-        assert widget._current_index == 1
+        widget.step_next_entry()
+        assert widget.current_on_screen_item().entry_index == 1
 
     def test_navigation_controls_position_stays_stable_while_loading(
         self, qtbot: QtBot, deferred_background: _DeferredBackground
@@ -573,7 +588,7 @@ class TestOfflineVideoViewerWidget:
         assert nav_bar is not None
         baseline_y = nav_bar.geometry().y()
 
-        widget._step_next()
+        widget.step_next_entry()
         QCoreApplication.processEvents()
         assert nav_bar.geometry().y() == baseline_y
 
@@ -606,11 +621,11 @@ class TestOfflineVideoViewerWidget:
         )
         _attach_offline_widget(qtbot, widget)
 
-        widget._step_next()
-        assert widget._current_index == 2
+        widget.step_next_entry()
+        assert widget.current_on_screen_item().entry_index == 2
 
-        widget._step_prev()
-        assert widget._current_index == 0
+        widget.step_prev_entry()
+        assert widget.current_on_screen_item().entry_index == 0
 
     def test_playlist_starts_on_first_enabled_entry(self, qtbot: QtBot) -> None:
         v1 = _make_local_content("A")
@@ -636,7 +651,7 @@ class TestOfflineVideoViewerWidget:
         )
         _attach_offline_widget(qtbot, widget)
 
-        assert widget._current_index == 1
+        assert widget.current_on_screen_item().entry_index == 1
 
     def test_play_at_eof_restarts(self, qtbot: QtBot) -> None:
         source = _stub_frame_source()
@@ -646,34 +661,41 @@ class TestOfflineVideoViewerWidget:
 
         source.reset_to_start.assert_not_called()
         source.get_current_frame.return_value = 99
+        widget.pause_playback()
 
-        widget._start_playback()
+        widget.toggle_playback()
         source.reset_to_start.assert_called_once()
 
-    def test_single_video_composes_frame_display_and_seekable_controls(self, qtbot: QtBot) -> None:
+    def test_single_video_pane_names_it_once_and_describes_it_in_the_header(self, qtbot: QtBot) -> None:
+        """A lane named like its pane shows no name on the video; the header shows the video's size, rate and length."""
         source = _stub_frame_source()
+        source.get_duration_s.return_value = 4.0
         content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
         widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
+        widget.resize(900, 600)
+        widget.show()
 
-        displays = widget.findChildren(FrameDisplay)
-        controls = widget.findChildren(SeekableVideoControlPanel)
-
-        assert len(displays) == 1
-        assert len(controls) == 1
+        assert widget.findChild(QLabel, "lane-indicator-label") is None
+        assert widget.header_details() == "640×480 · 25 fps · 0:04"
+        controls = widget.findChildren(SeekableVideoControlPanel)[0]
+        assert controls.timeline_slider.cached_ranges() == ((0, 9),)
 
     def test_single_video_seekable_controls_route_to_workflow_actions(self, qtbot: QtBot) -> None:
         source = _stub_frame_source()
         content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
         widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
-        controls = widget.findChildren(SeekableVideoControlPanel)[0]
+        assert len(widget.findChildren(FrameDisplay)) == 1
+        panels = widget.findChildren(SeekableVideoControlPanel)
+        assert len(panels) == 1
+        controls = panels[0]
 
         controls.frameStepRequested.emit(10)
         controls.jumpToRequested.emit(42)
         controls.playRequested.emit()
         controls.pauseRequested.emit()
-        controls.step_playback_speed(1)
+        controls.set_playback_speed(1.1)
 
         source.jump_to.assert_any_call(10)
         source.jump_to.assert_any_call(42)
@@ -705,18 +727,18 @@ class TestOfflineVideoViewerWidget:
         widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
 
-        widget._step_next()
+        widget.step_next_entry()
 
-        assert widget._current_index == 1
+        assert widget.current_on_screen_item().entry_index == 1
         assert widget._runtime is None
         mock_warning.assert_called_once()
         assert "broken entry" in mock_warning.call_args.args[2]
         assert len(opened) == 1
         _assert_frame_source_disposed(opened[0])
 
-        widget._step_prev()
+        widget.step_prev_entry()
 
-        assert widget._current_index == 0
+        assert widget.current_on_screen_item().entry_index == 0
         assert widget._runtime is not None
 
     def test_navigating_while_loading_opens_the_newest_entry(
@@ -740,11 +762,11 @@ class TestOfflineVideoViewerWidget:
         first_runtime = widget._runtime
         assert first_runtime is not None
 
-        widget._step_next()
+        widget.step_next_entry()
         assert widget._runtime is None
         _assert_frame_source_disposed(sources["A"][0])
-        widget._step_next()
-        assert widget._current_index == 2
+        widget.step_next_entry()
+        assert widget.current_on_screen_item().entry_index == 2
         assert widget._nav_label is not None
         assert widget._nav_label.text() == "Entry 3 / 3"
 
@@ -789,36 +811,6 @@ class TestOfflineVideoViewerWidget:
         assert len(opened) == 1
         _assert_frame_source_disposed(opened[0])
 
-    def test_shared_video_multi_overlay(self, qtbot: QtBot) -> None:
-        """Single video with multiple overlays creates multiple lanes sharing one video source."""
-        source = _stub_frame_source()
-        source.get_total_frames.return_value = 123
-        content = _make_seekable_content(
-            "multi-overlay",
-            frame_source_opener=lambda: source,
-            overlays=(
-                _make_overlay_content("first"),
-                _make_overlay_content("second"),
-            ),
-        )
-        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
-        _attach_offline_widget(qtbot, widget)
-
-        assert content.overlays[0].source_spec is not None
-        assert isinstance(content.overlays[0].source_spec, FileOverlaySourceSpec)
-        assert content.overlays[0].source_spec.handler_type == "TEST_FILE"
-        assert content.overlays[0].source_spec.decoder_kwargs["name"] == "first"
-        assert widget._runtime is not None
-        assert len(widget._runtime.lanes) == 2
-        assert widget._runtime.video_source_count() == 1
-        assert widget._global_controls is not None
-        assert widget._use_global_controls
-        assert not widget._global_controls.isHidden()
-        assert all(lane.controls is None for lane in widget._runtime.lanes)
-        assert widget._global_controls.timeline_slider.maximum() == 122
-        source.jump_to.assert_called_with(0)
-        source.play.assert_called()
-
     def test_shared_video_multi_overlay_lanes_follow_one_timeline(self, qtbot: QtBot) -> None:
         """Shared-video lanes should present the same primary frame index."""
         frame_sources: list[_TrackedFrameSource] = []
@@ -837,6 +829,13 @@ class TestOfflineVideoViewerWidget:
         assert widget._runtime is not None
         assert len(frame_sources) == 1
         assert len(overlay_sources) == 2
+        assert len(widget.findChildren(FrameDisplay)) == 2
+        controls = widget.findChildren(SeekableVideoControlPanel)
+        assert len(controls) == 1
+        assert not controls[0].isHidden()
+        assert controls[0].timeline_slider.maximum() == 99
+        controls[0].set_playback_speed(1.1)
+        assert frame_sources[0].speed_updates[-1] == 1.1
 
         frame_sources[0].frameReady.emit(_frame_data(7))
         QCoreApplication.processEvents()
@@ -844,14 +843,14 @@ class TestOfflineVideoViewerWidget:
         assert widget._runtime.current_frame == 7
         assert [source.requested_frame_ids[-1].sequence_id for source in overlay_sources] == [7, 7]
 
-        widget._jump_to_frame(12)
+        controls[0].jumpToRequested.emit(12)
         frame_sources[0].frameReady.emit(_frame_data(12))
         QCoreApplication.processEvents()
 
         assert widget._runtime.current_frame == 12
         assert [source.requested_frame_ids[-1].sequence_id for source in overlay_sources] == [12, 12]
 
-        widget._step_frames(3)
+        widget.step_frames(3)
         frame_sources[0].frameReady.emit(_frame_data(15))
         QCoreApplication.processEvents()
 
@@ -965,6 +964,37 @@ class TestOfflineVideoViewerWidget:
         assert label is not None
         assert label.text() == "No considered lanes in this entry"
         runtime.cleanup()
+
+    def test_entry_without_considered_lanes_clears_the_shared_controls(self, qtbot: QtBot) -> None:
+        """Stepping to an entry whose lanes are all excluded leaves no frames, time or cache from the previous one."""
+        playlist = PlaylistContent(
+            display_name="Playlist",
+            entries=(
+                PlaylistEntry(
+                    lanes=_make_local_content("A", with_overlay=True).standalone_lanes(), default_considered=True
+                ),
+                PlaylistEntry(
+                    lanes=_make_local_content("B", with_overlay=True).standalone_lanes(), default_considered=True
+                ),
+            ),
+        )
+        workspace_manager = WorkspaceManager()
+        workspace_manager.add_content(playlist)
+        workspace_manager.set_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 1, 0), False)
+        widget = OfflineVideoViewerWidget(
+            playlist, consideration_query=workspace_manager, render_catalog_manager=self._render_catalog_manager
+        )
+        _attach_offline_widget(qtbot, widget)
+        controls = widget._global_controls
+        assert controls is not None and controls.timeline_slider.maximum() > 0
+
+        widget.step_next_entry()
+
+        assert widget._runtime is not None and not widget._runtime.lanes
+        assert controls.timeline_slider.maximum() == 0
+        assert controls.timecode_text() == "" or not controls._timecode_label.isVisibleTo(controls)
+        assert controls.timeline_slider.cached_ranges() == ()
+        assert widget.header_details() == ""
 
     def test_multi_video_entry(self, qtbot: QtBot) -> None:
         """PlaylistEntry with multiple videos renders through the lane pipeline."""
@@ -1524,11 +1554,11 @@ class TestOfflineVideoViewerWidget:
         try:
             _assert_renderer_metrics_match_live_widgets(widget, baseline_frame_viewports=baseline_frame_viewports)
 
-            widget._step_next()
+            widget.step_next_entry()
             QCoreApplication.processEvents()
             _assert_renderer_metrics_match_live_widgets(widget, baseline_frame_viewports=baseline_frame_viewports)
 
-            widget._step_prev()
+            widget.step_prev_entry()
             QCoreApplication.processEvents()
             _assert_renderer_metrics_match_live_widgets(widget, baseline_frame_viewports=baseline_frame_viewports)
 
@@ -1562,7 +1592,7 @@ class TestOfflineVideoViewerWidget:
         widget.show()
         QCoreApplication.processEvents()
 
-        widget._step_next()
+        widget.step_next_entry()
         QCoreApplication.processEvents()
 
         assert widget._runtime is not None
@@ -1599,7 +1629,7 @@ class TestOfflineVideoViewerWidget:
         assert widget._global_controls is not None
         assert widget._use_global_controls
 
-        widget._step_next()
+        widget.step_next_entry()
 
         assert widget._runtime is not None
         assert widget._use_global_controls
@@ -1630,32 +1660,14 @@ class TestOfflineVideoViewerWidget:
             render_catalog_manager=self._render_catalog_manager,
         )
         _attach_offline_widget(qtbot, widget)
-        assert widget._current_index == 0
+        assert widget.current_on_screen_item().entry_index == 0
 
         entry_ref = ConsiderationItemRef.playlist_entry(playlist.content_id, 0)
         workspace_manager.set_item_considered(entry_ref, False)
         widget.refresh_item_consideration(entry_ref, False)
         QCoreApplication.processEvents()
 
-        assert widget._current_index == 1
-
-    def test_multi_lane_global_speed_control_updates_shared_source(self, qtbot: QtBot) -> None:
-        source = _stub_frame_source()
-        content = _make_seekable_content(
-            "multi-overlay",
-            frame_source_opener=lambda: source,
-            overlays=(
-                _make_overlay_content("first"),
-                _make_overlay_content("second"),
-            ),
-        )
-        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
-        _attach_offline_widget(qtbot, widget)
-
-        assert widget._global_controls is not None
-        widget._global_controls.step_playback_speed(1)
-
-        assert source.set_playback_speed.call_args_list[-1].args == (1.1,)
+        assert widget.current_on_screen_item().entry_index == 1
 
     def test_selected_playback_speed_is_reapplied_after_entry_switch(self, qtbot: QtBot) -> None:
         frame_sources: list[_TrackedFrameSource] = []
@@ -1672,10 +1684,12 @@ class TestOfflineVideoViewerWidget:
         widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
 
-        widget.set_playback_speed(1.8)
-        widget._step_next()
+        for speed in (0.1, 8.0, 0.2):
+            widget.set_playback_speed(speed)
+            assert frame_sources[0].speed_updates[-1] == speed
+        widget.step_next_entry()
 
-        assert frame_sources[-1].speed_updates[-1] == 1.8
+        assert frame_sources[-1].speed_updates[-1] == 0.2
 
     def test_overlay_visibility_survives_navigation_and_is_snapshotted_for_export(self, qtbot: QtBot) -> None:
         """Rebuilt playlist lanes keep preferences; an export retains its selected compiled variant."""
@@ -1703,13 +1717,13 @@ class TestOfflineVideoViewerWidget:
         assert lane.presenter is not None
         full = lane.presenter.scene_render_catalog
         confidence, _reset = details(lane)
-        widget._runtime.pause_playback()
+        widget.pause_playback()
         with patch.object(lane.display, "refresh_overlays", wraps=lane.display.refresh_overlays) as refresh:
             confidence.setChecked(False)
             refresh.assert_called_once()
         assert not widget._runtime.is_playing
         assert lane.presenter.scene_render_catalog is not full
-        widget._step_next()
+        widget.step_next_entry()
         assert widget._runtime is not None
         lane = widget._runtime.lanes[0]
         confidence, reset = details(lane)
@@ -1718,28 +1732,14 @@ class TestOfflineVideoViewerWidget:
         frozen = lane.presenter.scene_render_catalog
         with patch("ax_devil.modules.video_viewer.export.ExportDialog") as dialog_type:
             dialog_type.return_value.__enter__.return_value.exec.side_effect = reset.click
-            widget._runtime.export_lanes()
+            widget.export_video()
             export_lanes = dialog_type.call_args.args[0]
         assert export_lanes[0].presenter.scene_render_catalog is frozen
         assert lane.presenter.scene_render_catalog is not frozen
-        widget._step_prev()
+        widget.step_prev_entry()
         assert widget._runtime is not None
         confidence, _reset = details(widget._runtime.lanes[0])
         assert confidence.isChecked()
-
-    def test_rapid_playback_speed_transitions_update_source_immediately(self, qtbot: QtBot) -> None:
-        source = _stub_frame_source()
-        content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
-        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
-        _attach_offline_widget(qtbot, widget)
-
-        widget.set_playback_speed(0.1)
-        widget.set_playback_speed(8.0)
-        widget.set_playback_speed(0.2)
-
-        assert source.set_playback_speed.call_args_list[-3].args == (0.1,)
-        assert source.set_playback_speed.call_args_list[-2].args == (8.0,)
-        assert source.set_playback_speed.call_args_list[-1].args == (0.2,)
 
 
 class TestMediaToolsToggle:
@@ -1795,9 +1795,9 @@ class TestMediaToolsToggle:
         assert widget._runtime is not None
         assert [display.is_side_panel_open() for display in widget._runtime.displays] == [True]
 
-        widget._step_next()
+        widget.step_next_entry()
 
-        assert widget._current_index == 1 and widget._runtime is not None
+        assert widget.current_on_screen_item().entry_index == 1 and widget._runtime is not None
         assert [display.is_side_panel_open() for display in widget._runtime.displays] == [False]
 
     def test_new_viewer_starts_closed_after_another_viewer_opened_tools(self, qtbot: QtBot) -> None:

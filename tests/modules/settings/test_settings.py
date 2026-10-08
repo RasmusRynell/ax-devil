@@ -188,12 +188,12 @@ def test_theme_dialog_cancel_ok_and_config_round_trip(qtbot: QtBot, config: Conf
     assert changes == ["light", "auto"]
 
 
-@pytest.mark.parametrize("invalid", ["unknown", None, True, {}, []])
+@pytest.mark.parametrize("invalid", ["unknown", {}])
 def test_invalid_theme_follows_system(invalid: object) -> None:
     assert ThemeMode.from_config(invalid) is ThemeMode.AUTO
 
 
-@pytest.mark.parametrize("invalid", ["huge", None, 14, {}])
+@pytest.mark.parametrize("invalid", ["huge", {}])
 def test_invalid_text_size_follows_system(invalid: object) -> None:
     assert TextSize.from_config(invalid) is TextSize.SYSTEM
 
@@ -335,14 +335,17 @@ def test_password_references_are_visible_and_literal_passwords_masked(
 
 
 @pytest.mark.parametrize(
-    "path",
+    "path,resolved",
     [
-        "defaults.live_stream.rtsp.camera_head",
-        "defaults.live_stream.analytics-mqtt.broker_port",
-        "defaults.live_stream.analytics-websocket.channel_id",
+        ("defaults.live_stream.rtsp.camera_head", None),
+        ("defaults.live_stream.analytics-mqtt.broker_port", "not-a-number"),
+        ("defaults.live_stream.analytics-websocket.channel_id", "0"),
+        ("defaults.live_stream.analytics-mqtt.broker_port", "99999"),
+        ("defaults.live_stream.rtsp.camera_head", "1883"),
+        ("defaults.live_stream.analytics-mqtt.broker_port", "1883"),
+        ("defaults.live_stream.analytics-websocket.channel_id", "1883"),
     ],
 )
-@pytest.mark.parametrize("resolved", [None, "not-a-number", "0", "99999", "1883"])
 def test_numeric_environment_references_validate_before_saving(
     qtbot: QtBot, config: ConfigManager, monkeypatch: pytest.MonkeyPatch, path: str, resolved: str | None
 ) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QImage, QPalette
+from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.video_player.engine.drawing import DrawingStyle, _get_font, _text_block
@@ -17,11 +17,9 @@ pytestmark = pytest.mark.usefixtures("qapp")
 def _paint(primitive: DrawCall) -> QImage:
     surface = QuickSurface()
     surface.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-    palette = surface.palette()
-    palette.setColor(QPalette.ColorRole.Window, QColor("transparent"))
-    surface.setPalette(palette)
     surface.resize(200, 100)
     surface.show()
+    surface.setClearColor(QColor("transparent"))  # Only the drawing, without the video canvas.
     try:
         target = QRectF(0, 0, 200, 100)
         surface.set_overlays(prepare_calls([primitive], surface.drawing_buffer(target, 100)), 1, target, 100, None)

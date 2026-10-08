@@ -11,6 +11,9 @@ from ax_devil.modules.workspace import (
     LiveRTSPOverlaySourceSpec,
     LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
+    PlaylistContent,
+    PlaylistEntry,
+    ResolvedPlaylistStartup,
     SeekableVideoContent,
 )
 from ax_devil.modules.workspace.intake import WorkspaceDecoderOption, WorkspaceIntake
@@ -163,31 +166,37 @@ def test_intake_rejects_non_positive_camera_head() -> None:
         intake.create_live_stream(host="camera.local", username="root", password="pass", camera_head=0)
 
 
-def test_startup_resolution_uses_intake_for_workspace_content_shapes() -> None:
+@pytest.mark.parametrize("with_overlay", [False, True])
+def test_startup_resolution_uses_intake_for_workspace_content_shapes(with_overlay: bool) -> None:
     intake = WorkspaceIntake(_OptionProvider())
 
     [offline] = VideoFileStartup(
         video_path=Path("/tmp/video.mp4"),
-        overlay_path=Path("/tmp/overlay.jsonl"),
-        handler_type="FILE",
+        overlay_path=Path("/tmp/overlay.jsonl") if with_overlay else None,
+        handler_type="FILE" if with_overlay else None,
     ).resolve(intake)
     [live] = LiveStreamStartup(
         host="camera.local",
         username="root",
         password="pass",
-        overlay_mode=LiveOverlayMode.RTSP,
-        handler_type="LIVE",
+        overlay_mode=LiveOverlayMode.RTSP if with_overlay else LiveOverlayMode.NONE,
+        handler_type="LIVE" if with_overlay else None,
     ).resolve(intake)
 
     assert isinstance(offline, SeekableVideoContent)
     assert offline.source_spec.path == Path("/tmp/video.mp4")
-    assert offline.overlays[0].source_spec == FileOverlaySourceSpec(
-        path=Path("/tmp/overlay.jsonl"),
-        handler_type="FILE",
-    )
     assert isinstance(live, LiveVideoContent)
     assert live.source_spec.host == "camera.local"
-    assert live.overlays[0].source_spec == LiveRTSPOverlaySourceSpec(handler_type="LIVE")
+    assert offline.display_name == "video.mp4"
+    assert live.display_name == "Live: camera.local"
+    assert offline.metadata == live.metadata == {}
+    if with_overlay:
+        assert offline.overlays[0].source_spec == FileOverlaySourceSpec(
+            path=Path("/tmp/overlay.jsonl"), handler_type="FILE"
+        )
+        assert live.overlays[0].source_spec == LiveRTSPOverlaySourceSpec(handler_type="LIVE")
+    else:
+        assert offline.overlays == live.overlays == ()
 
 
 def test_startup_resolution_passes_websocket_settings_to_intake() -> None:
@@ -210,3 +219,16 @@ def test_startup_resolution_passes_websocket_settings_to_intake() -> None:
         channel_id=2,
         device_api_protocol="https",
     )
+
+
+def test_resolved_playlist_startup_preserves_contents() -> None:
+    """Resolver output passes through startup without reconstructing its playlist."""
+    intake = WorkspaceIntake(_OptionProvider())
+    video = intake.create_seekable_video(video_path=Path("/tmp/video.mp4"))
+    playlist = PlaylistContent(
+        display_name="Resolved",
+        entries=(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),),
+    )
+
+    assert ResolvedPlaylistStartup(playlists=(playlist,)).resolve(intake) == (playlist,)
+    assert ResolvedPlaylistStartup(playlists=()).resolve(intake) == ()
