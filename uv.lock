@@ -388,7 +388,7 @@ requires-dist = [
     { name = "av", specifier = ">=17.0.0,<20" },
     { name = "ax-devil-device-api", specifier = ">=0.6.4,<0.8" },
     { name = "ax-devil-mqtt", specifier = ">=0.4.0,<0.6" },
-    { name = "ax-devil-rtsp", specifier = ">=0.5.0,<0.6" },
+    { name = "ax-devil-rtsp", specifier = ">=0.5.1,<0.6" },
     { name = "click", specifier = ">=8.2.0,<9" },
     { name = "jsonschema", specifier = ">=4.25.0,<5" },
     { name = "numpy", specifier = ">=2.2.0,<3" },
@@ -440,7 +440,7 @@ wheels = [
 
 [[package]]
 name = "ax-devil-rtsp"
-version = "0.5.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "av", version = "17.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -451,9 +451,9 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/0e/66bed1527b3963429d01365a08d9bf27d117fb30ee35618b8892cb601032/ax_devil_rtsp-0.5.0.tar.gz", hash = "sha256:25949306328d59c5186418101215cdab87352e99bb44c8022fe1471ba71e9195", size = 29333, upload-time = "2026-10-08T16:22:21.471Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/3b/3760bbf043bf5e54b7123a33a1d436b8269de84e29fddb2b4531ba088961/ax_devil_rtsp-0.5.1.tar.gz", hash = "sha256:e4238f4a7997a67ad7d40caabaaee36c96588d8fcf9da35fb638b8f9755c3936", size = 29720, upload-time = "2026-10-08T17:11:30.412Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/51/2a/361b924513d1166259ed7feea6b84c7b82d4c1c2663000f814b4d86ab9b8/ax_devil_rtsp-0.5.0-py3-none-any.whl", hash = "sha256:d956da216eac36c243bf5b338b1ac480816a1f0ac1cd2476a3c7940c7d8285ac", size = 21589, upload-time = "2026-10-08T16:22:20.327Z" },
+    { url = "https://files.pythonhosted.org/packages/58/0e/dbf33ff304fcfe8ca4e0b3be4e16c2359960da933134212d166d9db6e5d0/ax_devil_rtsp-0.5.1-py3-none-any.whl", hash = "sha256:677e5aeff62cb93de834218037a50fde6f597ea5a8125c2f4543ee2df3d5f320", size = 21748, upload-time = "2026-10-08T17:11:29.477Z" },
 ]
 
 [[package]]
