@@ -35,11 +35,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
-            gcc \
             libegl1-mesa-dev \
             libgl1-mesa-dev \
             libgles2-mesa-dev \
-            pkg-config \
             xvfb
 
       - name: Sync project environment
@@ -92,11 +90,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
-            gcc \
             libegl1-mesa-dev \
             libgl1-mesa-dev \
             libgles2-mesa-dev \
-            pkg-config \
             xvfb
 
       - name: Sync project environment
@@ -124,11 +120,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
-            gcc \
             libegl1-mesa-dev \
             libgl1-mesa-dev \
             libgles2-mesa-dev \
-            pkg-config \
             xvfb
 
       - name: Install oldest allowed dependencies

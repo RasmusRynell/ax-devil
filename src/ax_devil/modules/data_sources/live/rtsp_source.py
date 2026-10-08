@@ -145,15 +145,15 @@ class RTSPSource(FrameSource, OverlaySource):
         """Stop RTSP stream and clean up."""
         logger.debug(f"Stopping {self.source_id}")
 
-        # Stopping the session first also cancels a connection attempt the worker is blocked in.
+        # Stopping the session first also cancels a connection attempt the worker is blocked in. The session's
+        # receive thread is not joined: a pending TCP connect keeps it alive until it times out, and once stopped it
+        # reports no failure.
         session, self.session = self.session, None
         if session is not None:
             session.stop()
         self._worker.stop()
         if not self._worker.wait(2000):
             logger.warning(f"Worker thread did not exit within 2s for {self.source_id}")
-        if session is not None:
-            session.join(1.0)
 
         with self.buffer_lock:
             self.frame_buffer.clear()

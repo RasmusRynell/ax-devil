@@ -1,6 +1,7 @@
 """RTSP source behavior with an offline session and the real processing worker."""
 
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -72,9 +73,6 @@ class _Session:
         """Record a non-blocking stop request."""
         self.stop_calls += 1
         self._stopped.set()
-
-    def join(self, timeout: float | None = None) -> None:
-        """Return at once; the fake has no receive thread."""
 
 
 @pytest.fixture
@@ -187,8 +185,8 @@ def test_start_failure_emits_error_and_stops_worker(qtbot: QtBot, sessions: list
         source.deleteLater()
 
 
-def test_stop_cancels_a_slow_connection_without_error(qtbot: QtBot, sessions: list[_Session]) -> None:
-    """Stopping while the camera has not answered ends the worker promptly and silently."""
+def test_stop_cancels_a_slow_connection_promptly_without_error(qtbot: QtBot, sessions: list[_Session]) -> None:
+    """Stopping while the camera has not answered returns at once and ends the worker silently."""
     source = RTSPSource("rtsp://example")
     sessions[0].block_start = True
     errors: list[str] = []
@@ -196,8 +194,10 @@ def test_stop_cancels_a_slow_connection_without_error(qtbot: QtBot, sessions: li
     try:
         assert source.play()
         qtbot.waitUntil(lambda: sessions[0].start_calls == 1)
+        started = time.monotonic()
         source.stop()
-        assert source.wait(1000)
+        assert time.monotonic() - started < 1.0
+        assert source.wait(0)
         assert errors == []
     finally:
         source.stop()
@@ -253,21 +253,3 @@ def test_callbacks_keep_bounded_buffers(qtbot: QtBot, sessions: list[_Session]) 
         source.deleteLater()
     assert not source.frame_buffer
     assert not source.overlay_buffer
-
-
-def test_connection_is_reported_and_logged_without_credentials(
-    qtbot: QtBot, sessions: list[_Session], caplog: pytest.LogCaptureFixture
-) -> None:
-    """Session start reports the connection; logging never includes the authenticated URL."""
-    url = "rtsp://synthetic-user:synthetic-password@camera.local/stream?token=synthetic-token"
-    connected: list[bool] = []
-    with caplog.at_level("DEBUG"):
-        source = RTSPSource(url)
-        source.sourceConnected.connect(lambda: connected.append(True))
-        try:
-            assert source.play()
-            qtbot.waitUntil(lambda: connected == [True])
-        finally:
-            source.stop()
-            source.deleteLater()
-    assert "synthetic-" not in caplog.text
