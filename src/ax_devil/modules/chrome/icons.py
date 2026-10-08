@@ -12,6 +12,7 @@ from PySide6.QtSvg import QSvgRenderer
 
 RESOURCE_PACKAGE = "ax_devil.resources"
 _DISABLED_OPACITY = 0.4
+_LUCIDE_STROKE = 'stroke-width="1.5"'
 
 
 class Icon(Enum):
@@ -20,9 +21,7 @@ class Icon(Enum):
     PLAY = ("play", True)
     PAUSE = ("pause", True)
     STEP_BACK = ("chevron-left", False)
-    STEP_BACK_MANY = ("chevrons-left", False)
     STEP_FORWARD = ("chevron-right", False)
-    STEP_FORWARD_MANY = ("chevrons-right", False)
     MINIMIZE = ("minus", False)
     MAXIMIZE = ("square", False)
     RESTORE = ("copy", False)
@@ -47,24 +46,26 @@ class Icon(Enum):
         self.file_stem = file_stem
         self.filled = filled
 
-    def icon(self, color: QColor | None = None) -> QIcon:
+    def icon(self, color: QColor | None = None, *, stroke: float = 1.5) -> QIcon:
         """Return the icon in ``color``, or in the application palette's text color whenever it is painted.
 
         Without a color the icon follows theme changes on its own: widgets repaint on palette changes and
-        each paint reads the current palette.
+        each paint reads the current palette. ``stroke`` is the line width on the 24-unit icon grid; heavier lines
+        keep outlines legible over video.
         """
-        return QIcon(_IconEngine(self, color))
+        return QIcon(_IconEngine(self, color, stroke))
 
 
 @cache
-def _svg(icon: Icon) -> str:
+def _svg(icon: Icon, stroke: float) -> str:
     text = files(RESOURCE_PACKAGE).joinpath("icons").joinpath(f"{icon.file_stem}.svg").read_text(encoding="utf-8")
+    text = text.replace(_LUCIDE_STROKE, f'stroke-width="{stroke:g}"')
     return text.replace('fill="none"', 'fill="currentColor"') if icon.filled else text
 
 
-def _render(icon: Icon, color: QColor, size: QSize, scale: float) -> QPixmap:
-    """Render ``icon`` centered in ``size`` logical pixels, cached by icon, color, size and scale."""
-    key = f"ax-devil-icon:{icon.name}:{color.rgba():08x}:{size.width()}x{size.height()}@{scale:g}"
+def _render(icon: Icon, color: QColor, stroke: float, size: QSize, scale: float) -> QPixmap:
+    """Render ``icon`` centered in ``size`` logical pixels, cached by icon, color, stroke, size and scale."""
+    key = f"ax-devil-icon:{icon.name}:{color.rgba():08x}:{stroke:g}:{size.width()}x{size.height()}@{scale:g}"
     pixmap = QPixmap()
     if QPixmapCache.find(key, pixmap):
         return pixmap
@@ -73,7 +74,7 @@ def _render(icon: Icon, color: QColor, size: QSize, scale: float) -> QPixmap:
     pixmap.fill(Qt.GlobalColor.transparent)
     side = min(size.width(), size.height())
     target = QRectF((size.width() - side) / 2, (size.height() - side) / 2, side, side)
-    renderer = QSvgRenderer(QByteArray(_svg(icon).replace("currentColor", color.name()).encode()))
+    renderer = QSvgRenderer(QByteArray(_svg(icon, stroke).replace("currentColor", color.name()).encode()))
     painter = QPainter(pixmap)
     painter.setOpacity(color.alphaF())
     renderer.render(painter, target)
@@ -85,14 +86,15 @@ def _render(icon: Icon, color: QColor, size: QSize, scale: float) -> QPixmap:
 class _IconEngine(QIconEngine):
     """Draw one bundled SVG icon at any size in a fixed color or the current palette's."""
 
-    def __init__(self, icon: Icon, color: QColor | None) -> None:
+    def __init__(self, icon: Icon, color: QColor | None, stroke: float) -> None:
         super().__init__()
         self._icon = icon
         self._color = color
+        self._stroke = stroke
 
     def clone(self) -> QIconEngine:
-        """Return a copy that draws the same icon in the same color."""
-        return _IconEngine(self._icon, self._color)
+        """Return a copy that draws the same icon in the same color and stroke."""
+        return _IconEngine(self._icon, self._color, self._stroke)
 
     def pixmap(self, size: QSize, mode: QIcon.Mode, state: QIcon.State) -> QPixmap:
         """Return the icon at ``size`` device-independent pixels."""
@@ -100,7 +102,7 @@ class _IconEngine(QIconEngine):
 
     def scaledPixmap(self, size: QSize, mode: QIcon.Mode, state: QIcon.State, scale: float) -> QPixmap:  # noqa: N802
         """Return the icon at ``size`` logical pixels for a ``scale`` device pixel ratio."""
-        return _render(self._icon, self._color_for(mode), size, scale)
+        return _render(self._icon, self._color_for(mode), self._stroke, size, scale)
 
     def paint(self, painter: QPainter, rect: QRect, mode: QIcon.Mode, state: QIcon.State) -> None:
         """Draw the icon into ``rect``."""

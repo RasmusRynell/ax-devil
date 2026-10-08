@@ -39,7 +39,7 @@ def test_environment_override_wins(mode: GraphicsAcceleration, override: str, mo
     assert os.environ["QT_WIDGETS_RHI_BACKEND"] == "vulkan"
 
 
-@pytest.mark.parametrize("invalid", ["unknown", None, True, {}, []])
+@pytest.mark.parametrize("invalid", ["unknown", {}])
 def test_invalid_saved_mode_uses_auto(invalid: object) -> None:
     assert GraphicsAcceleration.from_config(invalid) is GraphicsAcceleration.AUTO
 

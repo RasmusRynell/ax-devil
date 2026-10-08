@@ -260,6 +260,11 @@ class FrameCache:
         with self._lock:
             return len(self._cache)
 
+    def cached_ranges(self) -> tuple[tuple[int, int], ...]:
+        """Return the cached frame indices as sorted, inclusive ``(first, last)`` runs."""
+        with self._lock:
+            return tuple((start, end) for start, end in self._ranges)
+
     def _publish_registry_state(self) -> None:
         with self._lock:
             size = len(self._cache)

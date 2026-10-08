@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics, QPainter, QPalette
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.theme import VIDEO_CANVAS, VIDEO_CANVAS_TEXT
 from ax_devil.modules.chrome.tokens import Space, TextRole
 
 
@@ -23,8 +24,9 @@ class HudPainter:
 
     @staticmethod
     def draw_background_content(painter: QPainter, widget: QWidget, background_text: str) -> None:
+        painter.fillRect(widget.rect(), VIDEO_CANVAS)
         painter.setFont(widget.font())
-        painter.setPen(widget.palette().color(QPalette.ColorRole.PlaceholderText))
+        painter.setPen(VIDEO_CANVAS_TEXT)
 
         padding = 20
         text_rect = widget.rect().adjusted(padding, padding, -padding, -padding)

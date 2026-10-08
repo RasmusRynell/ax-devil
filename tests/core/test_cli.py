@@ -537,57 +537,69 @@ def test_cli_live_uses_resolved_config_defaults(monkeypatch: pytest.MonkeyPatch,
     assert startup.device_api_protocol == "https"
 
 
-def test_live_startup_normalizes_config_mode_before_selecting_handler(monkeypatch: pytest.MonkeyPatch) -> None:
-    cli_module = _import_cli_module(monkeypatch)
-    defaults = {
-        "device": {"host": "camera.example"},
-        "live_stream": {
-            "overlay_source": "MQTT",
-            "rtsp": {},
-            "analytics-mqtt": {
-                "data_stream_handler": "ADF_BETA_FRAME",
-                "broker_host": "mqtt.example",
-                "data_source_key": "analytics/source",
-            },
-        },
-    }
-    monkeypatch.setattr(cli_module.ConfigManager, "get", lambda self, key, default=None: defaults)
+@pytest.mark.parametrize(
+    ("configured_mode", "arguments", "expected_mode"),
+    [
+        pytest.param("MQTT", [], "mqtt", id="normalize-config-mode"),
+        pytest.param("websocket", [], "websocket", id="websocket-config"),
+        pytest.param(
+            "websocket",
+            ["--topic", "override.topic", "--channel-id", "4", "--device-api-protocol", "https"],
+            "websocket",
+            id="websocket-cli-overrides",
+        ),
+    ],
+)
+def test_cli_live_selects_handler_and_transport_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    configured_mode: str,
+    arguments: list[str],
+    expected_mode: str,
+) -> None:
+    """The public live command normalizes the configured mode and applies transport overrides."""
+    captured: dict[str, Any] = {}
+    app_module = ModuleType("ax_devil.app")
 
-    startup = cli_module._live_startup_from_config()
+    class DummyApp:
+        def run(self) -> int:
+            """Avoid launching an interactive application."""
+            return 0
 
-    assert startup.overlay_mode is cli_module.LiveOverlayMode.MQTT
-    assert startup.handler_type == "ADF_BETA_FRAME"
+    def create_app(*args: Any, **kwargs: Any) -> DummyApp:
+        captured.update(kwargs)
+        return DummyApp()
 
-
-def test_live_startup_resolves_websocket_config_and_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    cli_module = _import_cli_module(monkeypatch)
-    defaults = {
-        "device": {"host": "camera.example"},
-        "live_stream": {
-            "overlay_source": "websocket",
-            "rtsp": {},
-            "analytics-mqtt": {},
-            "analytics-websocket": {
-                "data_stream_handler": "ADF_BETA_FRAME",
-                "topic": "configured.topic",
-                "channel_id": 2,
-                "device_api_protocol": "http",
-            },
-        },
-    }
-    monkeypatch.setattr(cli_module.ConfigManager, "get", lambda self, key, default=None: defaults)
-
-    startup = cli_module._live_startup_from_config(
-        websocket_topic="override.topic",
-        websocket_channel_id=4,
-        device_api_protocol="https",
+    setattr(app_module, "create_app", create_app)
+    monkeypatch.setitem(sys.modules, "ax_devil.app", app_module)
+    config_module = importlib.import_module("ax_devil.modules.settings.config_manager")
+    config = copy.deepcopy(config_module.DEFAULT_CONFIG)
+    config["defaults"]["device"]["host"] = "camera.example"
+    live = config["defaults"]["live_stream"]
+    live["overlay_source"] = configured_mode
+    live["analytics-mqtt"].update(
+        data_stream_handler="ADF_BETA_FRAME", broker_host="mqtt.example", data_source_key="analytics/source"
     )
+    live["analytics-websocket"].update(
+        data_stream_handler="ADF_V1_FRAME", topic="configured.topic", channel_id=2, device_api_protocol="http"
+    )
+    config_path = tmp_path / "live-config.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    cli_module = _import_cli_module(monkeypatch)
 
-    assert startup.overlay_mode is cli_module.LiveOverlayMode.WEBSOCKET
-    assert startup.handler_type == "ADF_BETA_FRAME"
-    assert startup.websocket_topic == "override.topic"
-    assert startup.websocket_channel_id == 4
-    assert startup.device_api_protocol == "https"
+    result = CliRunner().invoke(cli_module.cli, ["--config", str(config_path), "live", *arguments])
+
+    assert result.exit_code == 0, result.output
+    startup = captured["startup_content"]
+    assert startup.overlay_mode.value == expected_mode
+    if expected_mode == "mqtt":
+        assert startup.handler_type == "ADF_BETA_FRAME"
+        assert startup.mqtt_host == "mqtt.example"
+        assert startup.analytics_data_source_key == "analytics/source"
+    else:
+        assert startup.handler_type == "ADF_V1_FRAME"
+        expected = ("override.topic", 4, "https") if arguments else ("configured.topic", 2, "http")
+        assert (startup.websocket_topic, startup.websocket_channel_id, startup.device_api_protocol) == expected
 
 
 @pytest.mark.parametrize(

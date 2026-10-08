@@ -8,6 +8,11 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Real development, pip/tool, a
 make check                                     # Formatting, linting, logging conventions, and strict types
 ```
 
+`make test` distributes whole files across available CPUs, capped at eight workers. Use
+`make test TEST_WORKERS=0` for serial debugging or set a smaller worker count on constrained machines.
+Each worker owns a separate temporary home and app storage; subprocesses inside a worker reuse that worker's home.
+Focused `uv run pytest ...` commands and the installation integration suite stay serial.
+
 To run a specific test file or test:
 
 ```bash

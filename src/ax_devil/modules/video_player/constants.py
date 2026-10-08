@@ -29,13 +29,13 @@ PANEL_EXPANDED_WIDTH = 400
 PANEL_MAX_PANE_SHARE = 0.5  # Open panels take at most this share of their pane, unless their content needs more
 
 # ===== UI STYLING =====
-CONTROL_PANEL_HEIGHT = 50  # Two-row layout: timeline + controls (YouTube style)
-TIMELINE_HEIGHT = 10  # Slim timeline bar height
 CONTROL_PANEL_PADDING = Space.M  # Internal padding from video edges
 
 # ===== TIMELINE SLIDER =====
-TIMELINE_GROOVE_HEIGHT = 4  # Height of the active track
-TIMELINE_HANDLE_RADIUS = 6  # Radius of the draggable knob
+TIMELINE_GROOVE_HEIGHT = 3  # Height of the track
+TIMELINE_GROOVE_HOVER_HEIGHT = 5  # Height of the track while the pointer is over it
+TIMELINE_HANDLE_RADIUS = 6  # Radius of the draggable knob, shown while the pointer is over the track
+TIMELINE_CACHED_ALPHA = 140  # Alpha for frames that are decoded and cached
 TIMELINE_TRACK_ALPHA_ENABLED = 90  # Alpha for full track when enabled
 TIMELINE_TRACK_ALPHA_DISABLED = 40  # Alpha for full track when disabled
 TIMELINE_PROGRESS_ALPHA_ENABLED = 220  # Alpha for played section when enabled

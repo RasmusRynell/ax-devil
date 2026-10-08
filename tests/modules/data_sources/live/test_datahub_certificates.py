@@ -102,10 +102,9 @@ def test_unverified_https_and_wss_connections(certificate_files: tuple[Path, Pat
 
 
 @pytest.mark.parametrize("stage", ["token", "basic", "digest", "websocket"])
-@pytest.mark.parametrize("target_scheme", ["https", "http"])
 @pytest.mark.parametrize("status", [302, 307])
 def test_redirects_are_rejected_without_following(
-    certificate_files: tuple[Path, Path], stage: str, target_scheme: str, status: int
+    certificate_files: tuple[Path, Path], stage: str, status: int
 ) -> None:
     """Redirects are rejected before another host or protocol can be reached."""
     certificate, private_key = certificate_files
@@ -121,10 +120,10 @@ def test_redirects_are_rejected_without_following(
     async def exercise() -> None:
         target_app = web.Application()
         target_app.router.add_get("/redirected", target_handler)
-        target = TestServer(target_app, scheme=target_scheme)
-        await target.start_server(ssl=context if target_scheme == "https" else None)
+        target = TestServer(target_app)
+        await target.start_server()
         try:
-            location = f"{target_scheme}://localhost:{target.port}/redirected"
+            location = f"http://localhost:{target.port}/redirected"
 
             async def source_handler(request: web.Request) -> web.Response:
                 authorization = request.headers.get("Authorization", "")

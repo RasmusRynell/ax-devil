@@ -10,7 +10,15 @@ import av
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.cached_frame import CachedFrame
 
 
-def create_test_video(path: Path, duration: float = 1.0, fps: int = 30) -> None:
+def create_test_video(
+    path: Path,
+    duration: float = 1.0,
+    fps: int = 30,
+    *,
+    gop: int = 10,
+    b_frames: int = 0,
+    container: str | None = None,
+) -> None:
     """Create a small H.264 test video using ffmpeg's test source."""
     cmd = [
         "ffmpeg",
@@ -24,11 +32,15 @@ def create_test_video(path: Path, duration: float = 1.0, fps: int = 30) -> None:
         "-preset",
         "ultrafast",
         "-keyint_min",
-        "10",
+        str(gop),
         "-g",
-        "10",
-        str(path),
+        str(gop),
+        "-bf",
+        str(b_frames),
     ]
+    if container is not None:
+        cmd.extend(["-f", container])
+    cmd.append(str(path))
     subprocess.run(cmd, check=True, capture_output=True)
 
 

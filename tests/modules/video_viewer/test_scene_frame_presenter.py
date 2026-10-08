@@ -34,7 +34,6 @@ from ax_devil.modules.scene.rendering.catalog import (
 )
 from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-from ax_devil.modules.video_viewer.media_tools import EntityFilterWidget
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
 
@@ -141,16 +140,12 @@ def test_presenter_applies_overlay_persistence_and_marks_reused_overlay() -> Non
     }
 
 
-def test_presenter_returns_filtered_inspection_scene_but_keeps_renderer_filter_aware(qtbot: QtBot) -> None:
+def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes() -> None:
+    """Changing the filter updates a retained overlay without requiring another video frame."""
     model = SessionFilter(build_default_filter_config())
-    filter_widget = EntityFilterWidget(filter_model=model)
-    qtbot.addWidget(filter_widget)
-    filter_widget._checkboxes["show_humans"].setChecked(False)
-    qtbot.waitUntil(lambda: not model.is_enabled("show_humans"))
-
+    model.set_enabled("show_humans", False)
     scene = _build_scene("entity-1")
     presenter = SceneFramePresenter(scene_filter=model)
-
     presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene))
 
     inspected_scene = presentation.inspection.scene
@@ -158,23 +153,16 @@ def test_presenter_returns_filtered_inspection_scene_but_keeps_renderer_filter_a
     assert not inspected_scene.entities
     assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_monotime_us=1_000_000.0)
     assert presentation.inspection.metadata == {}
-
-    assert presentation.display_frame.overlays is not None
-    assert presentation.display_frame.overlays.interaction_provider is not None
-    assert (
-        getattr(presentation.display_frame.overlays.drawing_generator, "__self__")
-        is presentation.display_frame.overlays.interaction_provider
-    )
-    assert id(presentation.display_frame.overlays.metrics_provider) == id(
-        presentation.display_frame.overlays.interaction_provider
-    )
-    assert presentation.display_frame.overlays.interaction_provider.hit_test(0.2, 0.2) is None
-    assert (
-        presentation.display_frame.overlays.drawing_generator(
-            RenderContext.create(640, 480), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(640, 480)))
-        )
-        == PreparedDrawing()
-    )
+    overlay = presentation.display_frame.overlays
+    assert overlay is not None
+    provider = overlay.interaction_provider
+    assert provider is not None
+    context = RenderContext.create(640, 480)
+    for enabled in (False, True, False):
+        model.set_enabled("show_humans", enabled)
+        drawing = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
+        assert bool(drawing) == enabled
+        assert (provider.hit_test(0.2, 0.2) is not None) == enabled
 
 
 def test_presenter_reuses_one_filtered_scene_for_inspection_rendering_and_hover() -> None:
@@ -340,3 +328,35 @@ def test_visibility_change_reuses_filtered_scene_and_hover_cards(qtbot: QtBot) -
     assert scene_filter.calls == 1
     selection.reset_visibility()
     assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == initial
+
+
+def test_hover_interaction_uses_latest_observation_for_multi_observation_entities() -> None:
+    scene = Scene(time_slice=TimeSlice(start=0, end=1))
+    entity = Entity(id=EntityId("entity-1"))
+    entity.add_observation(
+        Observation(
+            geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2, allow_outside=True),
+            classification=[],
+            frame_number=0,
+            timestamp=datetime.now(timezone.utc),
+        )
+    )
+    entity.add_observation(
+        Observation(
+            geometry=BoundingBox.from_xywh(0.2, 0.2, 0.2, 0.2, allow_outside=True),
+            classification=[],
+            frame_number=1,
+            timestamp=datetime.now(timezone.utc),
+        )
+    )
+    scene.add_entity(entity)
+
+    converted = SceneFramePresenter().prepare_frame(_build_frame(1), _build_overlay(1, scene)).display_frame
+    assert converted.overlays is not None
+    provider = converted.overlays.interaction_provider
+    assert provider is not None
+
+    assert provider.hit_test(0.15, 0.15) is None
+    latest_hit = provider.hit_test(0.25, 0.25)
+    assert latest_hit is not None
+    assert latest_hit.bounds == (0.2, 0.2, 0.2, 0.2)

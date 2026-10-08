@@ -86,6 +86,11 @@ LIGHT_COLORS: dict[str, str] = {
 
 THEME_COLORS: dict[str, str | dict[str, str]] = {"[dark]": DARK_COLORS, "[light]": LIGHT_COLORS}
 
+# The video surface and its letterbox stay near-black in both themes, so footage looks the same and the white
+# playback controls on the scrim stay readable.
+VIDEO_CANVAS = QColor("#0e0f10")
+VIDEO_CANVAS_TEXT = QColor("#8b9097")
+
 
 def setup_theme(app: QApplication, mode: str, size_px: int) -> None:
     """Apply both palettes and the body text size, and keep custom Qt painting in sync with OS theme changes."""

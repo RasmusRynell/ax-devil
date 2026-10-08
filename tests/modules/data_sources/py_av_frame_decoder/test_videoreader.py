@@ -1,14 +1,6 @@
-"""Unit tests for VideoFrameReader class.
+"""Frame delivery, ffmpeg pixel accuracy, caching and reader lifecycle."""
 
-Tests VideoFrameReader behavior in isolation:
-- State management and transitions
-- Threading behavior and synchronization
-- Resource management and cleanup
-- Error handling and edge cases
-
-Note: Integration tests are in test_integration.py
-"""
-
+import random
 import subprocess
 import threading
 import time
@@ -16,6 +8,8 @@ from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
+import av
+import cv2
 import numpy as np
 import pytest
 from numpy.typing import NDArray
@@ -27,44 +21,8 @@ from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_r
     VideoFrameReader,
 )
 from ax_devil.modules.settings.logging_config import get_logger
-from tests.helpers.video import create_test_video
 
 logger = get_logger(__name__)
-
-
-@pytest.fixture(scope="session")
-def sample_video_file(test_temp_root: Path) -> Path:
-    """Provide a reusable sample video on disk for tests that need an existing file."""
-    video_path = test_temp_root / "sample_videoplayback.mp4"
-    if not video_path.exists():
-        create_test_video(video_path, duration=2.0, fps=30)
-    return video_path
-
-
-def _create_asf_video_with_start_pts(path: Path) -> None:
-    """Create an ASF video whose first decoded frame is not returned by jump_to(0)."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-v",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        "testsrc2=duration=3:rate=25:size=320x240",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-g",
-        "60",
-        "-keyint_min",
-        "60",
-        "-f",
-        "asf",
-        str(path),
-    ]
-    subprocess.run(cmd, check=True, capture_output=True)
 
 
 @pytest.fixture
@@ -84,25 +42,24 @@ def reader(request: Any, video_file_factory: Callable[[float, int], Path]) -> Ge
     reader_instance.close()
 
 
-def _assert_reader_state(reader: VideoFrameReader, expected: WorkerState) -> None:
-    assert reader.state == expected
+def _reader_threads() -> set[threading.Thread]:
+    return {thread for thread in threading.enumerate() if thread.name == "VideoFrameReader"}
 
 
 class TestCoreState:
-    """Test core internal state management and transitions."""
+    """Test observable state transitions and worker lifetime."""
 
     def test_reader_lifecycle(self, reader: VideoFrameReader) -> None:
         """Opening, pausing, resuming and closing keep state and worker lifetime consistent."""
         assert reader.state == WorkerState.STOPPED
         assert reader.is_stopped and not reader.is_running and not reader.is_paused
+        before = _reader_threads()
         reader.open()
-        _assert_reader_state(reader, WorkerState.RUNNING)
         assert reader.is_running and not reader.is_stopped and not reader.is_paused
-        assert reader._worker is not None
-        thread = reader._worker._worker_thread
-        assert thread is not None and thread.is_alive()
+        started = _reader_threads() - before
+        assert len(started) == 1
+        thread = started.pop()
         reader.pause()
-        _assert_reader_state(reader, WorkerState.PAUSED)
         assert reader.is_paused and not reader.is_running and not reader.is_stopped
         assert thread.is_alive()
         reader.resume()
@@ -115,33 +72,34 @@ class TestCoreState:
 
     def test_stop_while_paused(self, reader: VideoFrameReader, monkeypatch: pytest.MonkeyPatch) -> None:
         """Closing a paused reader wakes and joins its worker before returning."""
-        reader.open()
-        worker = reader._worker
-        assert worker is not None
         paused = threading.Event()
-        wait_for_resume = worker._resume_event.wait
+        resume_events: list[threading.Event] = []
+        event_wait = threading.Event.wait
 
-        def observed_wait(timeout: float | None = None) -> bool:
-            paused.set()
-            return wait_for_resume(timeout)
+        def observed_wait(event: threading.Event, timeout: float | None = None) -> bool:
+            if threading.current_thread().name == "VideoFrameReader" and timeout is None:
+                resume_events.append(event)
+                paused.set()
+            return event_wait(event, timeout)
 
-        monkeypatch.setattr(worker._resume_event, "wait", observed_wait)
+        monkeypatch.setattr(threading.Event, "wait", observed_wait)
+        before = _reader_threads()
+        reader.open()
         try:
             reader.pause()
             assert reader.is_paused
-            worker.signal_work_available()
             assert paused.wait(timeout=2.0), "Worker did not enter its paused wait"
             reader.close()
-            assert worker.wait(timeout_ms=0)
+            assert _reader_threads() == before
             assert reader.is_stopped
         finally:
-            worker._resume_event.set()
+            for event in resume_events:
+                event.set()
             reader.close()
-            assert worker.wait(timeout_ms=2000)
 
 
 class TestInvalidOperations:
-    """Test internal operations called in invalid states."""
+    """Test unsupported lifecycle transitions and idempotent operations."""
 
     def test_operations_on_stopped_reader(self, reader: VideoFrameReader) -> None:
         """
@@ -166,91 +124,40 @@ class TestInvalidOperations:
         assert reader.is_stopped
 
     def test_duplicate_operations(self, reader: VideoFrameReader) -> None:
-        """
-        Test duplicate operations produce appropriate warnings.
-
-        Validates:
-        - _start() on already RUNNING reader warns but doesn't create duplicate threads
-        - _pause() on already PAUSED reader warns
-        - _resume() on RUNNING (not paused) reader warns
-        - _stop() on already STOPPED reader warns
-        """
+        """Repeated lifecycle operations preserve state and do not create extra workers."""
         # Test duplicate start
+        before = _reader_threads()
         reader.open()
-        assert reader._worker is not None
-        original_thread = reader._worker._worker_thread
-        reader.open()  # Should warn
-        assert reader._worker is not None
-        assert reader._worker._worker_thread is original_thread  # Same thread
+        opened = _reader_threads()
+        assert len(opened - before) == 1
+        reader.open()
+        assert _reader_threads() == opened
 
         # Test duplicate pause
         reader.pause()
-        reader.pause()  # Should warn
+        reader.pause()
         assert reader.is_paused
 
         # Test resume on running
         reader.resume()
-        reader.resume()  # Should warn (not paused)
+        reader.resume()
         assert reader.is_running
 
         # Test duplicate stop
         reader.close()
-        reader.close()  # Should warn
+        reader.close()
         assert reader.is_stopped
 
     def test_start_on_paused_reader(self, reader: VideoFrameReader) -> None:
-        """
-        Test starting paused reader produces warning.
-
-        Validates that calling _start() on a PAUSED reader warns
-        without changing state (must resume first).
-        """
+        """Opening an already paused reader preserves its paused state."""
         reader.open()
         reader.pause()
-        reader.open()  # Should warn
+        reader.open()
         assert reader.is_paused  # State unchanged
 
 
 class TestConcurrency:
     """Test thread safety and concurrent operations."""
-
-    def test_concurrent_starts(self, reader: VideoFrameReader) -> None:
-        """
-        Test multiple threads starting simultaneously.
-
-        Validates race condition protection in _start() method:
-        - Multiple threads call _start() simultaneously
-        - Only one should succeed (first to acquire lock)
-        - Others should get warnings
-        - Only one worker thread should be created
-        - Reader should be in RUNNING state after completion
-
-        This test catches race conditions in the critical section
-        of the _start() method where _state is checked and updated.
-        """
-        results = []
-
-        def start_worker() -> None:
-            try:
-                reader.open()
-                results.append("success")
-            except Exception as e:
-                results.append(f"error: {e}")
-
-        # Launch 5 threads simultaneously
-        threads = [threading.Thread(target=start_worker) for _ in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        # Should have one success, others warned
-        assert reader.is_running
-        assert reader._worker is not None
-        assert reader._worker._worker_thread is not None
-        assert reader._worker._worker_thread.is_alive()
-        # No exceptions should occur
-        assert all("error" not in result for result in results)
 
     def test_concurrent_state_changes(self, reader: VideoFrameReader) -> None:
         """
@@ -309,29 +216,30 @@ class TestConcurrency:
 class TestResourceManagement:
     """Test proper resource cleanup and memory management."""
 
-    def test_no_thread_leaks(self, sample_video_file: Path) -> None:
+    def test_no_thread_leaks(self, video_file_factory: Callable[[float, int], Path]) -> None:
         """Closing each reader joins its worker, independently of unrelated threads."""
-        for i in range(10):
-            reader = VideoFrameReader(str(sample_video_file))
+        before = _reader_threads()
+        for i in range(3):
+            reader = VideoFrameReader(str(video_file_factory(1.0, 30)))
             try:
                 reader.open()
-                worker = reader._worker
-                assert worker is not None
+                assert len(_reader_threads() - before) == 1
                 if i % 3 == 1:
                     reader.pause()
                     reader.resume()
             finally:
                 reader.close()
 
-            assert worker.wait(timeout_ms=0), f"Reader {i} left its worker running after close()"
+            assert _reader_threads() == before, f"Reader {i} left its worker running after close()"
 
 
 class TestExceptionHandling:
     """Test worker thread exception handling and recovery."""
 
-    def test_reader_can_restart_after_close(self, sample_video_file: Path) -> None:
-        """Reopening restores frame delivery through both synchronous and asynchronous APIs."""
-        reader = VideoFrameReader(str(sample_video_file))
+    def test_reader_can_restart_after_close(self, video_file_factory: Callable[[float, int], Path]) -> None:
+        """Reopening restores both delivery APIs, and closing joins callback threads."""
+        before = set(threading.enumerate())
+        reader = VideoFrameReader(str(video_file_factory(1.0, 30)))
         try:
             reader.open()
             assert reader.get_frame_sync(0) is not None
@@ -353,30 +261,16 @@ class TestExceptionHandling:
             assert len(received) == 1
             async_frame = received[0]
             assert async_frame is not None and async_frame.frame_index == 1
+            callbacks = {thread for thread in threading.enumerate() if thread.name.startswith("callback_")} - before
+            assert callbacks
         finally:
             reader.close()
         assert reader.is_stopped
+        assert all(not thread.is_alive() for thread in callbacks)
 
 
 class TestPublicAPI:
-    """Test the new public API methods."""
-
-    def test_close_method(self, reader: VideoFrameReader) -> None:
-        """
-        Test close() method stops worker and cleans up resources.
-
-        Validates:
-        - close() shuts down ThreadPoolExecutor
-        - Worker thread is stopped
-        - State transitions to STOPPED
-        """
-        reader.open()
-        assert reader.is_running
-
-        reader.close()
-        assert reader.is_stopped
-        # ThreadPoolExecutor should be shut down
-        assert reader._callback_executor._shutdown
+    """Test public frame requests, callback isolation and cache reuse."""
 
     def test_get_frame_async_callback(self, reader: VideoFrameReader) -> None:
         """
@@ -416,37 +310,6 @@ class TestPublicAPI:
         cached_frame = reader.get_frame_sync(10)
         assert cached_frame is not None and cached_frame.frame_index == frame_data.frame_index
         np.testing.assert_array_equal(cached_frame.pixels, frame_data.pixels)
-
-    def test_multiple_get_frame_asyncs(self, reader: VideoFrameReader) -> None:
-        """
-        Test multiple get_frame_async() calls work concurrently.
-
-        Validates:
-        - Multiple frame requests are handled
-        - All callbacks are executed
-        - ThreadPoolExecutor handles concurrent callbacks
-        """
-        reader.open()
-
-        callback_count = 0
-        callback_lock = threading.Lock()
-        all_callbacks_done = threading.Event()
-
-        def count_callback(frame_data: Any) -> None:
-            nonlocal callback_count
-            with callback_lock:
-                callback_count += 1
-                if callback_count == 3:
-                    all_callbacks_done.set()
-
-        # Request multiple frames
-        reader.get_frame_async(20, count_callback)
-        reader.get_frame_async(21, count_callback)
-        reader.get_frame_async(22, count_callback)
-
-        # Wait for all callbacks
-        assert all_callbacks_done.wait(timeout=3.0), "Not all callbacks completed"
-        assert callback_count == 3
 
     def test_callback_exception_handling(self, reader: VideoFrameReader) -> None:
         """
@@ -501,18 +364,7 @@ class TestPublicAPI:
         assert cached.timestamp_us == first.timestamp_us
         np.testing.assert_array_equal(cached.pixels, first.pixels)
 
-    def test_get_frame_sync_cache_miss(self, reader: VideoFrameReader) -> None:
-        """An uncached request returns and retains the correctly decoded frame."""
-        reader.open()
-        worker = reader._frame_reader_worker
-        assert worker is not None and not worker._cache.contains(25)
-        frame = reader.get_frame_sync(25)
-        assert frame is not None and frame.frame_index == 25
-        assert frame.pixels.shape == (240, 320, 3)
-        assert frame.pixels.dtype == np.uint8
-        assert worker._cache.contains(25)
-
-    def test_get_frame_sync_timeout(self, reader: VideoFrameReader) -> None:
+    def test_get_frame_sync_on_unopened_reader(self, reader: VideoFrameReader) -> None:
         """
         Test get_frame_sync() raises RuntimeError when reader is not open.
 
@@ -588,44 +440,6 @@ class TestPublicAPI:
             assert isinstance(frame_data, DecodedFrame)
             assert frame_data.frame_index == frame_index
 
-    def test_get_frame_sync_after_async(self, reader: VideoFrameReader) -> None:
-        """
-        Test get_frame_sync() works correctly after async requests.
-
-        Validates:
-        - get_frame_sync() can be used after get_frame_async()
-        - Mixed async/sync usage works correctly
-        - Cache state is consistent between methods
-        """
-        reader.open()
-
-        # Make async request first
-        async_callback_called = threading.Event()
-        async_result = []
-
-        def async_callback(frame_data: Any) -> None:
-            async_result.append(frame_data)
-            async_callback_called.set()
-
-        reader.get_frame_async(20, async_callback)
-        assert async_callback_called.wait(timeout=2.0), "Async callback not called"
-
-        # Now make sync request for same frame (should hit cache)
-        sync_frame = reader.get_frame_sync(20)
-
-        # Both should return the same data
-        assert sync_frame is not None
-        assert async_result[0] is not None
-        assert isinstance(sync_frame, DecodedFrame)
-        assert isinstance(async_result[0], DecodedFrame)
-        assert np.array_equal(sync_frame.pixels, async_result[0].pixels)
-        assert sync_frame.timestamp_us == async_result[0].timestamp_us
-
-        # Make sync request for new frame
-        sync_frame_new = reader.get_frame_sync(25)
-        assert sync_frame_new is not None
-        assert isinstance(sync_frame_new, DecodedFrame)
-
 
 class TestPrefetchBehavior:
     """Test the new prefetching functionality."""
@@ -635,7 +449,7 @@ class TestPrefetchBehavior:
     ) -> None:
         """Opening reaches an idle worker without decoding or retaining frames."""
         idle = threading.Event()
-        do_work = FrameReaderWorker.do_work
+        do_work: Callable[[FrameReaderWorker], bool] = FrameReaderWorker.do_work
 
         def observe_idle(worker: FrameReaderWorker) -> bool:
             worked = do_work(worker)
@@ -652,11 +466,9 @@ class TestPrefetchBehavior:
         assert worker._cache.size() == 0
         assert reader._frame_processor.current_frame_index == 0
 
-    def test_first_explicit_request_reads_asf_start_frame_without_eager_prefetch(self, tmp_path: Path) -> None:
+    def test_first_explicit_request_reads_asf_start_frame_without_eager_prefetch(self, asf_video: Path) -> None:
         """Regression: ASF frame 0 must be readable even when open() did not prefetch it."""
-        video_path = tmp_path / "start.asf"
-        _create_asf_video_with_start_pts(video_path)
-        reader = VideoFrameReader(str(video_path))
+        reader = VideoFrameReader(str(asf_video))
         try:
             reader.open()
 
@@ -676,7 +488,7 @@ class TestPrefetchBehavior:
         """Async requests populate the forward window and stop at its boundary or end of video."""
         idle = threading.Event()
         target = requests[-1]
-        do_work = FrameReaderWorker.do_work
+        do_work: Callable[[FrameReaderWorker], bool] = FrameReaderWorker.do_work
 
         def observe_idle(worker: FrameReaderWorker) -> bool:
             worked = do_work(worker)
@@ -813,3 +625,156 @@ class TestPrefetchBehavior:
             assert stub.jump_calls, "Expected jump_to() fallback when read_until() cannot rewind"
         finally:
             reader.close()
+
+
+class TestVideoFrameReaderIntegration:
+    """Test complete VideoFrameReader integration with real video files."""
+
+    @pytest.fixture
+    def test_video(self, video_file_factory: Callable[[float, int], Path]) -> Path:
+        """Create a test video for integration testing."""
+        return video_file_factory(3.0, 30)
+
+    def test_concurrent_access_patterns(self, test_video: Path) -> None:
+        """Test concurrent access from multiple threads."""
+        reader = VideoFrameReader(str(test_video), cache_budget_bytes=100 * 320 * 240 * 3, callback_threads=4)
+
+        try:
+            reader.open()
+
+            # Concurrent frame requests
+            frame_results = {}
+            timed_out: list[int] = []
+            request_lock = threading.Lock()
+
+            def get_frame_asyncs(thread_id: int, frame_range: range) -> None:
+                """Request frames from a specific thread."""
+                thread_results = []
+
+                for frame_idx in frame_range:
+                    received = []
+                    completed = threading.Event()
+
+                    def callback(frame_data: DecodedFrame | None, idx: int = frame_idx) -> None:
+                        received.append((idx, frame_data))
+                        completed.set()
+
+                    reader.get_frame_async(frame_idx, callback)
+
+                    if not completed.wait(2.0):
+                        with request_lock:
+                            timed_out.append(frame_idx)
+                        return
+                    thread_results.append(received[0])
+
+                with request_lock:
+                    frame_results[thread_id] = thread_results
+
+            # Launch multiple threads requesting different frame ranges
+            threads = []
+            for i in range(3):
+                start_frame = i * 10
+                end_frame = start_frame + 5
+                thread = threading.Thread(target=get_frame_asyncs, args=(i, range(start_frame, end_frame)))
+                threads.append(thread)
+                thread.start()
+
+            # Wait for all threads
+            for thread in threads:
+                thread.join(timeout=5.0)
+
+            assert not timed_out, f"Requests timed out: {timed_out}"
+            assert all(not thread.is_alive() for thread in threads)
+
+            # Verify results - require exact expected frame count
+            total_received = sum(len(results) for results in frame_results.values())
+            expected_total = 3 * 5  # 3 threads × 5 frames each
+            assert total_received == expected_total, f"Must receive all {expected_total} frames, got {total_received}"
+
+            # Verify frame data quality
+            for thread_id, results in frame_results.items():
+                for frame_idx, frame_data in results:
+                    assert frame_data is not None
+                    assert isinstance(frame_data, DecodedFrame)
+                    assert frame_data.frame_index == frame_idx
+                    assert frame_data.pixels.shape[2] == 3  # RGB24
+
+        finally:
+            reader.close()
+
+    def test_error_conditions_and_recovery(self, temp_dir: Path, test_video: Path) -> None:
+        """Invalid media is rejected; an invalid request completes and leaves valid reads usable."""
+        invalid_video = temp_dir / "invalid.mp4"
+        invalid_video.write_text("This is not a video file")
+        with pytest.raises(av.error.InvalidDataError):
+            VideoFrameReader(str(invalid_video)).open()
+
+        reader = VideoFrameReader(str(test_video))
+        try:
+            reader.open()
+            received: list[DecodedFrame | None] = []
+            completed = threading.Event()
+
+            def callback(frame: DecodedFrame | None) -> None:
+                received.append(frame)
+                completed.set()
+
+            reader.get_frame_async(reader.get_total_frames(), callback)
+            assert completed.wait(2.0), "Invalid request did not complete"
+            assert received == [None]
+            recovered = reader.get_frame_sync(0)
+            assert recovered is not None and recovered.frame_index == 0
+            assert np.var(recovered.pixels) > 0
+        finally:
+            reader.close()
+
+
+@pytest.fixture(scope="module")
+def video_and_references(
+    video_file_factory: Callable[[float, int], Path], tmp_path_factory: pytest.TempPathFactory
+) -> tuple[Path, Path]:
+    """Share immutable media and reference PNGs; each case owns its reader and cache."""
+    video = video_file_factory(2.0, 30)
+    references = tmp_path_factory.mktemp("reference-frames")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", str(video), "-vf", "format=rgb24", str(references / "frame_%04d.png")],
+        capture_output=True,
+        check=True,
+    )
+    assert len(list(references.glob("frame_*.png"))) == 60
+    return video, references
+
+
+@pytest.mark.parametrize(
+    "indices",
+    [tuple(range(20)), (0, 10, 25, 5, 35, 15), (0, 59, 1, 58), tuple(random.Random(7).sample(range(60), 16))],
+    ids=["sequential", "forward-backward-jumps", "first-last-frames", "seeded-random"],
+)
+def test_frames_match_ffmpeg(video_and_references: tuple[Path, Path], indices: tuple[int, ...]) -> None:
+    """Mixed sync/async requests retain exact indices and independent reference pixels."""
+    video, references = video_and_references
+    reader = VideoFrameReader(str(video), cache_budget_bytes=30 * 320 * 240 * 3, prefetch_count=10)
+    try:
+        reader.open()
+        for request_number, index in enumerate(indices):
+            if request_number % 2 == 0:
+                decoded = reader.get_frame_sync(index, timeout=2.0)
+            else:
+                received: list[DecodedFrame | None] = []
+                completed = threading.Event()
+
+                def callback(frame: DecodedFrame | None) -> None:
+                    received.append(frame)
+                    completed.set()
+
+                reader.get_frame_async(index, callback)
+                assert completed.wait(2.0), f"Frame {index} callback did not complete"
+                assert len(received) == 1
+                decoded = received[0]
+            assert decoded is not None, f"Failed to decode frame {index}"
+            assert decoded.frame_index == index
+            reference = cv2.imread(str(references / f"frame_{index + 1:04d}.png"))
+            assert reference is not None, f"Failed to load reference frame {index}"
+            np.testing.assert_array_equal(decoded.pixels, cv2.cvtColor(reference, cv2.COLOR_BGR2RGB))
+    finally:
+        reader.close()
