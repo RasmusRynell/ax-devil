@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
@@ -66,3 +67,16 @@ def test_timeline_shows_the_cached_frames_reported_by_the_video(qtbot: QtBot) ->
     panel.show_video(total_frames=100, frame_rate=25.0)
     assert panel.timeline_slider.cached_ranges() == ()
     QApplication.processEvents()
+
+
+def test_controls_ignore_fade_requests_after_cleanup(qtbot: QtBot) -> None:
+    """A hide requested after teardown, as a lane switch can send, must not touch the deleted opacity effect."""
+    panel = SeekableVideoControlPanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.cleanup()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)  # Deletes the opacity effect.
+
+    panel.start_auto_hide_timer()
+    panel.fade_in()
+    qtbot.wait(panel.auto_hide_delay + 50)

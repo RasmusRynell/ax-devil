@@ -266,9 +266,11 @@ class BaseVideoControlPanel(FadingWidget):
         self._main_layout.addWidget(self._timeline_container)
 
         self._controls_container = QtWidgets.QWidget(self._styled_container)
+        self._controls_container.setObjectName("playbackControlsRow")
         self._controls_container.setAutoFillBackground(False)
         self._controls_container.setStyleSheet(
-            f"QWidget {{ background-color: transparent; border: 0px; }}{_BUTTON_STYLE}"
+            # Scoped by name, so the speed menu that pops up from the row keeps the theme's surface.
+            f"#playbackControlsRow {{ background-color: transparent; border: 0px; }}{_BUTTON_STYLE}"
         )
         TextRole.STRONG.apply(self._controls_container)
 
