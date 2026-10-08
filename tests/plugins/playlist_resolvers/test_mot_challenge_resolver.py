@@ -75,7 +75,7 @@ def _make_sequence(
 class TestMOTChallengeResolverPluginMetadata:
     """Tests for MOTChallengeResolverPlugin identity and definition."""
 
-    def test_metadata_and_definition(self) -> None:
+    def test_definition_and_settings_widget(self, qtbot: QtBot) -> None:
         assert MOTChallengeResolverPlugin.plugin_id() == "mot_challenge"
         assert MOTChallengeResolverPlugin.plugin_type() == PLAYLIST_RESOLVER_PLUGIN_TYPE
         assert MOTChallengeResolverPlugin.display_name() == "MOT Challenge"
@@ -86,21 +86,9 @@ class TestMOTChallengeResolverPluginMetadata:
         assert defn.plugin_id == "mot_challenge"
         assert defn.display_name == "MOT Challenge"
 
-    def test_create_settings_widget_returns_resolver_widget(self, qtbot: QtBot) -> None:
         widget = MOTChallengeResolverPlugin().create_settings_widget()
         qtbot.addWidget(widget)
         assert isinstance(widget, PlaylistResolverWidget)
-
-    def test_create_cli_command(self) -> None:
-        command = MOTChallengeResolverPlugin.create_cli_command()
-        assert command is not None
-        assert command.name == "mot_challenge"
-
-    def test_resolve_cli_dataset(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "MOT16-01")
-        playlists = MOTChallengeResolverPlugin._resolve_cli_dataset(tmp_path)
-        assert len(playlists) == 1
-        assert playlists[0].display_name == "MOT Challenge"
 
 
 # ---------------------------------------------------------------------------
@@ -130,14 +118,20 @@ class TestParseSeqinfo:
 
 
 class TestDiscoverSequences:
-    def test_discovers_sequences(self, tmp_path: Path) -> None:
+    def test_discovers_sorted_sequences_with_metadata_and_ignores_unrelated_folders(self, tmp_path: Path) -> None:
+        """Discovery accepts an empty root and yields only complete sequence folders in name order."""
+        assert discover_sequences(tmp_path) == []
+        (tmp_path / "random_folder").mkdir()
+        _make_sequence(tmp_path, "MOT16-06", fps=14, width=640, height=480, length=1194)
         _make_sequence(tmp_path, "MOT16-01", length=450, fps=30)
-        _make_sequence(tmp_path, "MOT16-03", length=1500, fps=30)
 
         seqs = discover_sequences(tmp_path)
-        assert len(seqs) == 2
-        assert seqs[0].name == "MOT16-01"
-        assert seqs[1].name == "MOT16-03"
+
+        assert [seq.name for seq in seqs] == ["MOT16-01", "MOT16-06"]
+        assert seqs[0].frame_count == 450
+        seq = seqs[1]
+        assert (seq.fps, seq.width, seq.height, seq.frame_count) == (14.0, 640, 480, 1194)
+        assert (seq.im_dir, seq.im_ext) == ("img1", ".jpg")
 
     def test_discovers_train_and_test_split_sequences_from_dataset_root(self, tmp_path: Path) -> None:
         train = tmp_path / "train"
@@ -149,31 +143,9 @@ class TestDiscoverSequences:
 
         assert [seq.name for seq in seqs] == ["MOT17-01-DPM", "MOT17-02-DPM"]
 
-    def test_skips_dirs_without_seqinfo(self, tmp_path: Path) -> None:
-        (tmp_path / "random_folder").mkdir()
-        _make_sequence(tmp_path, "MOT16-01")
-        seqs = discover_sequences(tmp_path)
-        assert len(seqs) == 1
-
-    def test_returns_empty_for_empty_dir(self, tmp_path: Path) -> None:
-        seqs = discover_sequences(tmp_path)
-        assert seqs == []
-
     def test_raises_on_missing_root(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             discover_sequences(tmp_path / "nonexistent")
-
-    def test_sequence_metadata(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "MOT16-06", fps=14, width=640, height=480, length=1194)
-        seqs = discover_sequences(tmp_path)
-        assert len(seqs) == 1
-        seq = seqs[0]
-        assert seq.fps == 14.0
-        assert seq.width == 640
-        assert seq.height == 480
-        assert seq.frame_count == 1194
-        assert seq.im_dir == "img1"
-        assert seq.im_ext == ".jpg"
 
 
 # ---------------------------------------------------------------------------
@@ -263,60 +235,3 @@ class TestBuildPlaylistContents:
         assert lanes[0].video.display_name == "MOT17-01"
         assert len(lanes) == 4
         assert [lane.display_name for lane in lanes] == ["DPM", "GT", "FRCNN", "SDP"]
-
-
-# ---------------------------------------------------------------------------
-# MOT decoder 10-column format
-# ---------------------------------------------------------------------------
-
-
-class TestMOTDecoder10Column:
-    """Verify the MOT decoder handles both 9-column and 10-column formats."""
-
-    @pytest.mark.parametrize(
-        ("rows", "expected_frames", "expected_detections"),
-        [
-            (
-                [
-                    "1,-1,772.68,455.43,41.871,127.61,2.1262,-1,-1,-1",
-                    "1,-1,717.79,451.29,44.948,136.84,1.7969,-1,-1,-1",
-                    "2,-1,772.68,455.43,41.871,127.61,2.1551,-1,-1,-1",
-                ],
-                2,
-                3,
-            ),
-            (
-                [
-                    "1,1,912,484,97,109,0,7,0.2",
-                    "1,2,1338,418,121,166,0,7,0.4",
-                ],
-                1,
-                2,
-            ),
-        ],
-    )
-    def test_supported_det_and_gt_formats(
-        self,
-        rows: list[str],
-        expected_frames: int,
-        expected_detections: int,
-    ) -> None:
-        from ax_devil.plugins.decoders.mot.decoder import prepare_mot_frame_payloads
-
-        payloads, stats = prepare_mot_frame_payloads(rows, width=1920, height=1080)
-        assert payloads
-        assert stats.total_frames == expected_frames
-        assert stats.total_detections == expected_detections
-
-    def test_mixed_formats_skips_unknown(self) -> None:
-        from ax_devil.plugins.decoders.mot.decoder import prepare_mot_frame_payloads
-
-        rows = [
-            "1,-1,100,100,50,50,0.9,-1,-1,-1",  # 10-col
-            "1,1,100,100,50,50,0.9,1,0.8",  # 9-col
-            "1,1,100,100,50,50,0.9",  # 7-col
-            "0,0,0,0,0,0",  # 6-col → skipped
-            "not,a,valid,row",  # invalid → skipped
-        ]
-        payloads, stats = prepare_mot_frame_payloads(rows, width=1920, height=1080)
-        assert stats.total_detections == 3

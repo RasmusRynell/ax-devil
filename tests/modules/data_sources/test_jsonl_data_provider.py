@@ -11,7 +11,7 @@ from unittest.mock import call, patch
 import pytest
 
 from ax_devil.core.data_types import FrameIdentifier
-from ax_devil.modules.cache import CacheManager, IndexedFrameCache
+from ax_devil.modules.cache import IndexedFrameCache
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
     StorageMode,
@@ -28,6 +28,8 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
+
+pytestmark = pytest.mark.usefixtures("isolated_cache")
 
 
 def simple_test_decoder(json_string: str) -> Scene:
@@ -117,53 +119,50 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    # Create provider
-                    provider = _build_provider(temp_file)
+            # Create provider
+            provider = _build_provider(temp_file)
 
-                    # Test basic functionality
-                    assert provider.get_total_frames() == 2
-                    available_frames = provider.get_available_frames()
-                    # Should have timestamp keys instead of line numbers
-                    assert len(available_frames) == 2
-                    # Check that all keys are positive integers (timestamp microseconds)
-                    assert all(isinstance(key, int) and key > 0 for key in available_frames)
+            # Test basic functionality
+            assert provider.get_total_frames() == 2
+            available_frames = provider.get_available_frames()
+            # Should have timestamp keys instead of line numbers
+            assert len(available_frames) == 2
+            # Check that all keys are positive integers (timestamp microseconds)
+            assert all(isinstance(key, int) and key > 0 for key in available_frames)
 
-                    # Test loading scenes using actual timestamp keys
-                    from ax_devil.core.data_types import FrameIdentifier
+            # Test loading scenes using actual timestamp keys
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    # Get the actual timestamp keys
-                    timestamp_keys = list(available_frames)
+            # Get the actual timestamp keys
+            timestamp_keys = list(available_frames)
 
-                    # Test loading first scene
-                    frame_id_0 = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(timestamp_keys[0]))
-                    scene_0 = provider.load_by_frame_id(frame_id_0)
-                    assert scene_0 is not None
-                    assert isinstance(scene_0, Scene)
-                    assert len(scene_0.entities) == 1
-                    assert EntityId("person_1") in scene_0.entities
+            # Test loading first scene
+            frame_id_0 = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(timestamp_keys[0]))
+            scene_0 = provider.load_by_frame_id(frame_id_0)
+            assert scene_0 is not None
+            assert isinstance(scene_0, Scene)
+            assert len(scene_0.entities) == 1
+            assert EntityId("person_1") in scene_0.entities
 
-                    # Test loading second scene
-                    frame_id_1 = FrameIdentifier(sequence_id=1, timestamp_monotime_us=float(timestamp_keys[1]))
-                    scene_1 = provider.load_by_frame_id(frame_id_1)
-                    assert scene_1 is not None
-                    assert isinstance(scene_1, Scene)
-                    assert len(scene_1.entities) == 1
-                    assert EntityId("car_1") in scene_1.entities
+            # Test loading second scene
+            frame_id_1 = FrameIdentifier(sequence_id=1, timestamp_monotime_us=float(timestamp_keys[1]))
+            scene_1 = provider.load_by_frame_id(frame_id_1)
+            assert scene_1 is not None
+            assert isinstance(scene_1, Scene)
+            assert len(scene_1.entities) == 1
+            assert EntityId("car_1") in scene_1.entities
 
-                    # Test metadata
-                    metadata = provider.get_metadata()
-                    assert metadata.total_lines == 2
-                    assert metadata.decoder_name == "test_decoder"
-                    assert metadata.file_path == temp_file
-                    assert isinstance(metadata.source_fingerprint, SourceFingerprint)
-                    assert metadata.sequence_lookup_enabled is False
-                    assert len(metadata.timestamp_to_sequence) == 2
+            # Test metadata
+            metadata = provider.get_metadata()
+            assert metadata.total_lines == 2
+            assert metadata.decoder_name == "test_decoder"
+            assert metadata.file_path == temp_file
+            assert isinstance(metadata.source_fingerprint, SourceFingerprint)
+            assert metadata.sequence_lookup_enabled is False
+            assert len(metadata.timestamp_to_sequence) == 2
 
-                    # Clean up
-                    provider.close()
+            # Clean up
+            provider.close()
 
         finally:
             # Clean up temp file
@@ -182,37 +181,34 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    # Provider with sequence lookup disabled (default)
-                    disabled_provider = _build_provider(
-                        temp_file,
-                        timestamp_fallback_policy=TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY),
-                    )
+            # Provider with sequence lookup disabled (default)
+            disabled_provider = _build_provider(
+                temp_file,
+                timestamp_fallback_policy=TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY),
+            )
 
-                    # Build a FrameIdentifier with incorrect timestamp but valid sequence index
-                    from ax_devil.core.data_types import FrameIdentifier
+            # Build a FrameIdentifier with incorrect timestamp but valid sequence index
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    sequence_timestamp_us = max(disabled_provider.get_available_frames())
-                    mismatched_identifier = FrameIdentifier(
-                        sequence_id=1,
-                        timestamp_monotime_us=float(sequence_timestamp_us + 1),
-                    )
-                    assert disabled_provider.load_by_frame_id(mismatched_identifier) is None
-                    disabled_provider.close()
+            sequence_timestamp_us = max(disabled_provider.get_available_frames())
+            mismatched_identifier = FrameIdentifier(
+                sequence_id=1,
+                timestamp_monotime_us=float(sequence_timestamp_us + 1),
+            )
+            assert disabled_provider.load_by_frame_id(mismatched_identifier) is None
+            disabled_provider.close()
 
-                    # Provider with sequence lookup enabled should recover via sequence id
-                    enabled_provider = _build_provider(
-                        temp_file,
-                        supports_sequence_lookup=True,
-                        timestamp_fallback_policy=TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY),
-                    )
+            # Provider with sequence lookup enabled should recover via sequence id
+            enabled_provider = _build_provider(
+                temp_file,
+                supports_sequence_lookup=True,
+                timestamp_fallback_policy=TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY),
+            )
 
-                    scene = enabled_provider.load_by_frame_id(mismatched_identifier)
-                    assert isinstance(scene, Scene)
-                    assert scene is not None
-                    enabled_provider.close()
+            scene = enabled_provider.load_by_frame_id(mismatched_identifier)
+            assert isinstance(scene, Scene)
+            assert scene is not None
+            enabled_provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -229,34 +225,31 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(
-                        temp_file,
-                        timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=5_000),
-                    )
+            provider = _build_provider(
+                temp_file,
+                timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=5_000),
+            )
 
-                    from ax_devil.core.data_types import FrameIdentifier
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    request_timestamp_us = max(provider.get_available_frames()) + 1_000
-                    frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
+            request_timestamp_us = max(provider.get_available_frames()) + 1_000
+            frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
 
-                    result = provider.lookup_by_frame_id(frame_id)
-                    assert result.scene is not None
-                    assert result.to_overlay_metadata() == {
-                        "requested_timestamp_us": request_timestamp_us,
-                        "matched_timestamp_us": request_timestamp_us - 1_000,
-                        "timestamp_match_type": "tolerated_past",
-                        "timestamp_tolerance_us": 5_000,
-                        "timestamp_effective_tolerance_us": 5_000,
-                        "timestamp_fallback_mode": "previous_with_tolerance",
-                        "overlay_alignment_basis": "timestamp",
-                        "requested_sequence_id": 0,
-                        "matched_sequence_id": 0,
-                        "timestamp_offset_us": -1_000,
-                    }
-                    provider.close()
+            result = provider.lookup_by_frame_id(frame_id)
+            assert result.scene is not None
+            assert result.to_overlay_metadata() == {
+                "requested_timestamp_us": request_timestamp_us,
+                "matched_timestamp_us": request_timestamp_us - 1_000,
+                "timestamp_match_type": "tolerated_past",
+                "timestamp_tolerance_us": 5_000,
+                "timestamp_effective_tolerance_us": 5_000,
+                "timestamp_fallback_mode": "previous_with_tolerance",
+                "overlay_alignment_basis": "timestamp",
+                "requested_sequence_id": 0,
+                "matched_sequence_id": 0,
+                "timestamp_offset_us": -1_000,
+            }
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -273,36 +266,33 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(
-                        temp_file,
-                        timestamp_fallback_policy=TimestampFallbackPolicy(
-                            mode=TimestampFallbackMode.EXACT_ONLY,
-                            tolerance_us=5_000,
-                        ),
-                    )
+            provider = _build_provider(
+                temp_file,
+                timestamp_fallback_policy=TimestampFallbackPolicy(
+                    mode=TimestampFallbackMode.EXACT_ONLY,
+                    tolerance_us=5_000,
+                ),
+            )
 
-                    from ax_devil.core.data_types import FrameIdentifier
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    request_timestamp_us = max(provider.get_available_frames()) + 1_000
-                    frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
+            request_timestamp_us = max(provider.get_available_frames()) + 1_000
+            frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
 
-                    result = provider.lookup_by_frame_id(frame_id)
-                    assert result.scene is None
-                    assert result.to_overlay_metadata() == {
-                        "requested_timestamp_us": request_timestamp_us,
-                        "matched_timestamp_us": None,
-                        "timestamp_match_type": "missing",
-                        "timestamp_tolerance_us": 5_000,
-                        "timestamp_effective_tolerance_us": 0,
-                        "timestamp_fallback_mode": "exact_only",
-                        "overlay_alignment_basis": "timestamp",
-                        "requested_sequence_id": 0,
-                        "matched_sequence_id": None,
-                    }
-                    provider.close()
+            result = provider.lookup_by_frame_id(frame_id)
+            assert result.scene is None
+            assert result.to_overlay_metadata() == {
+                "requested_timestamp_us": request_timestamp_us,
+                "matched_timestamp_us": None,
+                "timestamp_match_type": "missing",
+                "timestamp_tolerance_us": 5_000,
+                "timestamp_effective_tolerance_us": 0,
+                "timestamp_fallback_mode": "exact_only",
+                "overlay_alignment_basis": "timestamp",
+                "requested_sequence_id": 0,
+                "matched_sequence_id": None,
+            }
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -320,32 +310,29 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(
-                        temp_file,
-                        supports_sequence_lookup=True,
-                        timestamp_fallback_policy=TimestampFallbackPolicy(
-                            mode=TimestampFallbackMode.EXACT_ONLY,
-                            tolerance_us=5_000,
-                        ),
-                    )
+            provider = _build_provider(
+                temp_file,
+                supports_sequence_lookup=True,
+                timestamp_fallback_policy=TimestampFallbackPolicy(
+                    mode=TimestampFallbackMode.EXACT_ONLY,
+                    tolerance_us=5_000,
+                ),
+            )
 
-                    from ax_devil.core.data_types import FrameIdentifier
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    sequence_timestamp_us = max(provider.get_available_frames())
-                    result = provider.lookup_by_frame_id(
-                        FrameIdentifier(sequence_id=1, timestamp_monotime_us=float(sequence_timestamp_us + 1))
-                    )
+            sequence_timestamp_us = max(provider.get_available_frames())
+            result = provider.lookup_by_frame_id(
+                FrameIdentifier(sequence_id=1, timestamp_monotime_us=float(sequence_timestamp_us + 1))
+            )
 
-                    assert result.scene is not None
-                    assert result.match_type == "sequence"
-                    assert result.alignment_basis == "sequence"
-                    assert result.requested_sequence_id == 1
-                    assert result.matched_sequence_id == 1
-                    assert result.timestamp_fallback_policy.mode is TimestampFallbackMode.EXACT_ONLY
-                    provider.close()
+            assert result.scene is not None
+            assert result.match_type == "sequence"
+            assert result.alignment_basis == "sequence"
+            assert result.requested_sequence_id == 1
+            assert result.matched_sequence_id == 1
+            assert result.timestamp_fallback_policy.mode is TimestampFallbackMode.EXACT_ONLY
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -362,22 +349,19 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(
-                        temp_file,
-                        supports_sequence_lookup=True,
-                        timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=5_000),
-                    )
+            provider = _build_provider(
+                temp_file,
+                supports_sequence_lookup=True,
+                timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=5_000),
+            )
 
-                    from ax_devil.core.data_types import FrameIdentifier
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    request_timestamp_us = min(provider.get_available_frames()) - 1_000
-                    frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
+            request_timestamp_us = min(provider.get_available_frames()) - 1_000
+            frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
 
-                    assert provider.load_by_frame_id(frame_id) is None
-                    provider.close()
+            assert provider.load_by_frame_id(frame_id) is None
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -394,21 +378,18 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(
-                        temp_file,
-                        timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=5_000),
-                    )
+            provider = _build_provider(
+                temp_file,
+                timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=5_000),
+            )
 
-                    from ax_devil.core.data_types import FrameIdentifier
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    request_timestamp_us = min(provider.get_available_frames()) - 1_000
-                    frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
+            request_timestamp_us = min(provider.get_available_frames()) - 1_000
+            frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(request_timestamp_us))
 
-                    assert provider.load_by_frame_id(frame_id) is None
-                    provider.close()
+            assert provider.load_by_frame_id(frame_id) is None
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -432,20 +413,17 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(temp_file)
+            provider = _build_provider(temp_file)
 
-                    # Should only count non-empty lines (3 valid JSON lines)
-                    assert provider.get_total_frames() == 3
-                    available_frames = provider.get_available_frames()
-                    # Should have 3 timestamp keys instead of line numbers
-                    assert len(available_frames) == 3
-                    # Check that all keys are positive integers (timestamp microseconds)
-                    assert all(isinstance(key, int) and key > 0 for key in available_frames)
+            # Should only count non-empty lines (3 valid JSON lines)
+            assert provider.get_total_frames() == 3
+            available_frames = provider.get_available_frames()
+            # Should have 3 timestamp keys instead of line numbers
+            assert len(available_frames) == 3
+            # Check that all keys are positive integers (timestamp microseconds)
+            assert all(isinstance(key, int) and key > 0 for key in available_frames)
 
-                    provider.close()
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -469,20 +447,17 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(temp_file)
+            provider = _build_provider(temp_file)
 
-                    # Should only count valid JSON lines (3 valid JSON lines)
-                    assert provider.get_total_frames() == 3
-                    available_frames = provider.get_available_frames()
-                    # Should have 3 timestamp keys instead of line numbers
-                    assert len(available_frames) == 3
-                    # Check that all keys are positive integers (timestamp microseconds)
-                    assert all(isinstance(key, int) and key > 0 for key in available_frames)
+            # Should only count valid JSON lines (3 valid JSON lines)
+            assert provider.get_total_frames() == 3
+            available_frames = provider.get_available_frames()
+            # Should have 3 timestamp keys instead of line numbers
+            assert len(available_frames) == 3
+            # Check that all keys are positive integers (timestamp microseconds)
+            assert all(isinstance(key, int) and key > 0 for key in available_frames)
 
-                    provider.close()
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -506,33 +481,30 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    # First provider builds and persists the source index
-                    provider1 = _build_provider(temp_file)
-                    original_frames = provider1.get_available_frames()
-                    original_metadata = provider1.get_metadata()
-                    provider1.close()
+            # First provider builds and persists the source index
+            provider1 = _build_provider(temp_file)
+            original_frames = provider1.get_available_frames()
+            original_metadata = provider1.get_metadata()
+            provider1.close()
 
-                    # Second provider should restore from persisted index, not rebuild
-                    with patch.object(
-                        type(provider1._store), "_rebuild", side_effect=AssertionError("rebuild must not be called")
-                    ):
-                        provider2 = _build_provider(temp_file)
-                        assert provider2.get_available_frames() == original_frames
-                        assert provider2.get_total_frames() == original_metadata.total_lines
+            # Second provider should restore from persisted index, not rebuild
+            with patch.object(
+                type(provider1._store), "_rebuild", side_effect=AssertionError("rebuild must not be called")
+            ):
+                provider2 = _build_provider(temp_file)
+                assert provider2.get_available_frames() == original_frames
+                assert provider2.get_total_frames() == original_metadata.total_lines
 
-                        # Scenes should still load correctly via seek+decode from source
-                        from ax_devil.core.data_types import FrameIdentifier
+                # Scenes should still load correctly via seek+decode from source
+                from ax_devil.core.data_types import FrameIdentifier
 
-                        for ts in original_frames:
-                            frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(ts))
-                            scene = provider2.load_by_frame_id(frame_id)
-                            assert scene is not None
-                            assert isinstance(scene, Scene)
+                for ts in original_frames:
+                    frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(ts))
+                    scene = provider2.load_by_frame_id(frame_id)
+                    assert scene is not None
+                    assert isinstance(scene, Scene)
 
-                        provider2.close()
+                provider2.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -552,22 +524,19 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    provider = _build_provider(temp_file)
-                    timestamp_key = next(iter(provider.get_available_frames()))
+            provider = _build_provider(temp_file)
+            timestamp_key = next(iter(provider.get_available_frames()))
 
-                    Path(temp_file).write_text(
-                        '{"timestamp":"2024-01-01T12:00:00Z","detections":[{"id":"broken',
-                        encoding="utf-8",
-                    )
+            Path(temp_file).write_text(
+                '{"timestamp":"2024-01-01T12:00:00Z","detections":[{"id":"broken',
+                encoding="utf-8",
+            )
 
-                    from ax_devil.core.data_types import FrameIdentifier
+            from ax_devil.core.data_types import FrameIdentifier
 
-                    frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(timestamp_key))
-                    assert provider.load_by_frame_id(frame_id) is None
-                    provider.close()
+            frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(timestamp_key))
+            assert provider.load_by_frame_id(frame_id) is None
+            provider.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
@@ -584,28 +553,25 @@ class TestJSONLDataProvider:
             temp_file = f.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    # Build initial index
-                    provider1 = _build_provider(temp_file)
-                    assert provider1.get_total_frames() == 1
-                    provider1.close()
+            # Build initial index
+            provider1 = _build_provider(temp_file)
+            assert provider1.get_total_frames() == 1
+            provider1.close()
 
-                    # Modify the source file so its fingerprint changes
-                    with open(temp_file, "a") as f:
-                        f.write(json.dumps({"timestamp": "2024-01-01T12:00:01Z", "detections": []}) + "\n")
+            # Modify the source file so its fingerprint changes
+            with open(temp_file, "a") as f:
+                f.write(json.dumps({"timestamp": "2024-01-01T12:00:01Z", "detections": []}) + "\n")
 
-                    # New provider should detect mismatch and rebuild
-                    provider2 = _build_provider(temp_file)
-                    assert provider2.get_total_frames() == 2
-                    assert len(provider2.get_available_frames()) == 2
-                    provider2.close()
+            # New provider should detect mismatch and rebuild
+            provider2 = _build_provider(temp_file)
+            assert provider2.get_total_frames() == 2
+            assert len(provider2.get_available_frames()) == 2
+            provider2.close()
 
         finally:
             Path(temp_file).unlink(missing_ok=True)
 
-    def test_source_index_requires_matching_artifact_identity(self) -> None:
+    def test_source_index_requires_matching_artifact_identity(self, isolated_cache: Path) -> None:
         """Source indexes rebuild for changed options, legacy entries, and version bumps."""
         test_data = [{"timestamp": "2024-01-01T12:00:00Z", "detections": []}]
 
@@ -615,33 +581,30 @@ class TestJSONLDataProvider:
             temp_file = file_obj.name
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    initial_provider = _build_provider(temp_file, decode_options={"profile": "initial"})
-                    initial_provider.close()
+            initial_provider = _build_provider(temp_file, decode_options={"profile": "initial"})
+            initial_provider.close()
 
-                    index_path = next(cache_path.glob("*.scene-index.json"))
-                    changed_options_provider = _build_provider(temp_file, decode_options={"profile": "changed"})
-                    changed_options_provider.close()
-                    changed_payload: dict[str, Any] = json.loads(index_path.read_text(encoding="utf-8"))
-                    assert changed_payload["metadata"]["artifact_identity"]["decode_options"] == {"profile": "changed"}
+            index_path = next(isolated_cache.glob("*.scene-index.json"))
+            changed_options_provider = _build_provider(temp_file, decode_options={"profile": "changed"})
+            changed_options_provider.close()
+            changed_payload: dict[str, Any] = json.loads(index_path.read_text(encoding="utf-8"))
+            assert changed_payload["metadata"]["artifact_identity"]["decode_options"] == {"profile": "changed"}
 
-                    changed_payload["metadata"].pop("artifact_identity")
-                    index_path.write_text(json.dumps(changed_payload), encoding="utf-8")
-                    legacy_provider = _build_provider(temp_file, decode_options={"profile": "changed"})
-                    legacy_provider.close()
-                    rebuilt_payload: dict[str, Any] = json.loads(index_path.read_text(encoding="utf-8"))
-                    assert "artifact_identity" in rebuilt_payload["metadata"]
+            changed_payload["metadata"].pop("artifact_identity")
+            index_path.write_text(json.dumps(changed_payload), encoding="utf-8")
+            legacy_provider = _build_provider(temp_file, decode_options={"profile": "changed"})
+            legacy_provider.close()
+            rebuilt_payload: dict[str, Any] = json.loads(index_path.read_text(encoding="utf-8"))
+            assert "artifact_identity" in rebuilt_payload["metadata"]
 
-                    versioned_provider = _build_provider(
-                        temp_file,
-                        artifact_version=2,
-                        decode_options={"profile": "changed"},
-                    )
-                    versioned_provider.close()
-                    versioned_payload: dict[str, Any] = json.loads(index_path.read_text(encoding="utf-8"))
-                    assert versioned_payload["metadata"]["artifact_identity"]["artifact_version"] == 2
+            versioned_provider = _build_provider(
+                temp_file,
+                artifact_version=2,
+                decode_options={"profile": "changed"},
+            )
+            versioned_provider.close()
+            versioned_payload: dict[str, Any] = json.loads(index_path.read_text(encoding="utf-8"))
+            assert versioned_payload["metadata"]["artifact_identity"]["artifact_version"] == 2
         finally:
             Path(temp_file).unlink(missing_ok=True)
 
@@ -668,55 +631,52 @@ class TestJSONLDataProvider:
                 return super()._build_scene_maps(payloads, decoder)
 
         try:
-            with tempfile.TemporaryDirectory() as cache_dir:
-                cache_path = Path(cache_dir)
-                with patch.object(CacheManager, "get_cache_subdir", return_value=cache_path):
-                    cold_provider = _build_provider(
-                        temp_file,
-                        storage_mode=StorageMode.DERIVED_CACHE,
-                        provider_type=CountingProvider,
-                    )
-                    cold_provider.close()
-                    assert len(builds) == 1
+            cold_provider = _build_provider(
+                temp_file,
+                storage_mode=StorageMode.DERIVED_CACHE,
+                provider_type=CountingProvider,
+            )
+            cold_provider.close()
+            assert len(builds) == 1
 
-                    warm_provider = _build_provider(
-                        temp_file,
-                        storage_mode=StorageMode.DERIVED_CACHE,
-                        provider_type=CountingProvider,
-                    )
-                    warm_provider.close()
-                    assert len(builds) == 1
+            warm_provider = _build_provider(
+                temp_file,
+                storage_mode=StorageMode.DERIVED_CACHE,
+                provider_type=CountingProvider,
+            )
+            warm_provider.close()
+            assert len(builds) == 1
 
-                    cache_reader = IndexedFrameCache(temp_file, cache_type="test_decoder")
-                    cached_metadata = cache_reader.load_metadata()
-                    cached_frames = {
-                        frame_id: cache_reader.load_frame(frame_id) for frame_id in cache_reader.available_frames()
-                    }
-                    cache_reader.close()
-                    assert isinstance(cached_metadata, dict)
-                    assert "artifact_identity" in cached_metadata
+            cache_reader = IndexedFrameCache(temp_file, cache_type="test_decoder")
+            cached_metadata = cache_reader.load_metadata()
+            cached_frames = {
+                frame_id: cache_reader.load_frame(frame_id) for frame_id in cache_reader.available_frames()
+            }
+            cache_reader.close()
+            assert isinstance(cached_metadata, dict)
+            assert "artifact_identity" in cached_metadata
 
-                    cached_metadata.pop("artifact_identity")
-                    legacy_cache = IndexedFrameCache(temp_file, cache_type="test_decoder")
-                    legacy_cache.save(frames=cached_frames, meta=cached_metadata)
-                    legacy_cache.close()
+            cached_metadata.pop("artifact_identity")
+            legacy_cache = IndexedFrameCache(temp_file, cache_type="test_decoder")
+            legacy_cache.save(frames=cached_frames, meta=cached_metadata)
+            legacy_cache.close()
 
-                    legacy_provider = _build_provider(
-                        temp_file,
-                        storage_mode=StorageMode.DERIVED_CACHE,
-                        provider_type=CountingProvider,
-                    )
-                    legacy_provider.close()
-                    assert len(builds) == 2
+            legacy_provider = _build_provider(
+                temp_file,
+                storage_mode=StorageMode.DERIVED_CACHE,
+                provider_type=CountingProvider,
+            )
+            legacy_provider.close()
+            assert len(builds) == 2
 
-                    versioned_provider = _build_provider(
-                        temp_file,
-                        storage_mode=StorageMode.DERIVED_CACHE,
-                        artifact_version=2,
-                        provider_type=CountingProvider,
-                    )
-                    versioned_provider.close()
-                    assert len(builds) == 3
+            versioned_provider = _build_provider(
+                temp_file,
+                storage_mode=StorageMode.DERIVED_CACHE,
+                artifact_version=2,
+                provider_type=CountingProvider,
+            )
+            versioned_provider.close()
+            assert len(builds) == 3
         finally:
             Path(temp_file).unlink(missing_ok=True)
 
@@ -769,12 +729,11 @@ def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode,
     ]
     path = tmp_path / "scenes.jsonl"
     path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
-    with patch.object(CacheManager, "get_cache_subdir", return_value=tmp_path):
-        provider = _build_provider(
-            path,
-            storage_mode=storage_mode,
-            timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=10_000),
-        )
+    provider = _build_provider(
+        path,
+        storage_mode=storage_mode,
+        timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=10_000),
+    )
     timestamps = sorted(provider.get_available_frames())
     frames = [FrameIdentifier(sequence_id=index, timestamp_monotime_us=ts) for index, ts in enumerate(timestamps)]
     try:
@@ -816,8 +775,7 @@ def test_sticky_selection_is_independent_of_navigation(tmp_path: Path) -> None:
         {"timestamp": "2024-01-01T12:00:10Z", "detections": []},
     ]
     path.write_text("".join(f"{json.dumps(record)}\n" for record in records))
-    with patch.object(CacheManager, "get_cache_subdir", return_value=tmp_path):
-        provider = _build_provider(path)
+    provider = _build_provider(path)
     source = FileOverlaySource(path, lambda _: provider, "test", timestamp_fallback_policy=TimestampFallbackPolicy())
     policy = OverlayPersistencePolicy(OverlayPersistenceSettings(enabled=True, timeout_ms=2050, opacity=0.4))
     first, second = sorted(provider.get_available_frames())

@@ -5,10 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverWidget
-from ax_devil.modules.workspace import FileOverlaySourceSpec, OverlaySourceKind, SeekableVideoContent
+from ax_devil.modules.workspace import (
+    FileOverlaySourceSpec,
+    OverlaySourceKind,
+    ResolvedPlaylistStartup,
+    SeekableVideoContent,
+)
 from ax_devil.plugins.playlist_resolvers.folder_pair.plugin import FolderPairResolverPlugin
 from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import build_playlist_contents, discover_folder_pairs
 from ax_devil.plugins.playlist_resolvers.folder_pair.settings_widget import FolderPairSettingsWidget
@@ -22,7 +28,7 @@ def _write_file(path: Path) -> None:
 class TestFolderPairResolverPluginMetadata:
     """Tests for FolderPairResolverPlugin identity and definition."""
 
-    def test_metadata_and_definition(self) -> None:
+    def test_definition_and_settings_widget(self, qtbot: QtBot) -> None:
         assert FolderPairResolverPlugin.plugin_id() == "folder_pair"
         assert FolderPairResolverPlugin.plugin_type() == PLAYLIST_RESOLVER_PLUGIN_TYPE
         assert FolderPairResolverPlugin.display_name() == "Folder Pair"
@@ -33,26 +39,37 @@ class TestFolderPairResolverPluginMetadata:
         assert defn.plugin_id == "folder_pair"
         assert defn.display_name == "Folder Pair"
 
-    def test_create_settings_widget_returns_resolver_widget(self, qtbot: QtBot) -> None:
         widget = FolderPairResolverPlugin().create_settings_widget()
         qtbot.addWidget(widget)
         assert isinstance(widget, PlaylistResolverWidget)
 
-    def test_create_cli_command(self) -> None:
-        command = FolderPairResolverPlugin.create_cli_command()
-        assert command is not None
-        assert command.name == "folder_pair"
-
-    def test_resolve_cli_dataset(self, tmp_path: Path) -> None:
+    def test_cli_resolves_folder_pair(self, tmp_path: Path) -> None:
+        """The contributed command produces startup content through its public runtime callback."""
         videos_dir = tmp_path / "videos"
         overlays_dir = tmp_path / "annotations"
         _write_file(videos_dir / "sample.mp4")
         _write_file(overlays_dir / "sample.json")
+        startups: list[ResolvedPlaylistStartup] = []
+        command = FolderPairResolverPlugin.create_cli_command()
+        assert command is not None
 
-        playlists = FolderPairResolverPlugin._resolve_cli_dataset(videos_dir, overlays_dir, "ADF_BETA_FRAME")
+        result = CliRunner().invoke(
+            command,
+            [str(videos_dir), str(overlays_dir), "--handler-type", "ADF_BETA_FRAME"],
+            obj={"run_with_startup_content": startups.append},
+        )
 
-        assert len(playlists) == 1
-        assert playlists[0].display_name == "Folder Pair"
+        assert result.exit_code == 0, result.output
+        [startup] = startups
+        [playlist] = startup.playlists
+        assert playlist.display_name == "Folder Pair"
+        lane = playlist.entries[0].lanes[0]
+        assert isinstance(lane.video, SeekableVideoContent)
+        assert lane.video.source_spec.path == videos_dir / "sample.mp4"
+        assert lane.overlay is not None
+        assert lane.overlay.source_spec == FileOverlaySourceSpec(
+            path=overlays_dir / "sample.json", handler_type="ADF_BETA_FRAME"
+        )
 
 
 class TestDiscoverFolderPairs:
