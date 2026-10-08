@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
-from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
@@ -374,7 +374,7 @@ class OfflineSession(QObject):
             rollback.callback(container.deleteLater)
             lane_layout = cls._create_lane_layout(container, len(media.lanes))
             if not media.lanes:
-                lane_layout.addWidget(QLabel("No considered lanes in this entry"))
+                lane_layout.addWidget(QLabel("No considered lanes in this entry"), 0, 0)
             source_pool = [
                 _PooledVideoSource(
                     source=source,
@@ -415,17 +415,14 @@ class OfflineSession(QObject):
         return runtime
 
     @staticmethod
-    def _create_lane_layout(container: QWidget, lane_count: int) -> QHBoxLayout | QGridLayout:
-        if lane_count <= 2:
-            h_layout = QHBoxLayout(container)
-            h_layout.setContentsMargins(0, 0, 0, 0)
-            h_layout.setSpacing(Space.XS)
-            return h_layout
-
+    def _create_lane_layout(container: QWidget, lane_count: int) -> QGridLayout:
         grid_layout = QGridLayout(container)
         grid_layout.setContentsMargins(0, 0, 0, 0)
         grid_layout.setHorizontalSpacing(Space.XS)
         grid_layout.setVerticalSpacing(Space.XS)
+
+        if lane_count == 0:
+            return grid_layout
 
         columns = lane_grid_columns(lane_count)
         rows = lane_grid_rows(lane_count)
@@ -438,7 +435,7 @@ class OfflineSession(QObject):
     @staticmethod
     def _add_lane_display(
         parent_widget: QWidget,
-        lane_layout: QHBoxLayout | QGridLayout,
+        lane_layout: QGridLayout,
         lane_count: int,
         lane_index: int,
         lane: EntryLane,
@@ -465,12 +462,9 @@ class OfflineSession(QObject):
         display.mount_overlay(alignment_indicator, position=OverlayPosition.FRAME_TOP_RIGHT)
         pane_layout.addWidget(display, 1)
 
-        if isinstance(lane_layout, QGridLayout):
-            columns = lane_grid_columns(lane_count)
-            row, column = divmod(lane_index, columns)
-            lane_layout.addWidget(pane, row, column)
-            return alignment_indicator
-        lane_layout.addWidget(pane)
+        columns = lane_grid_columns(lane_count)
+        row, column = divmod(lane_index, columns)
+        lane_layout.addWidget(pane, row, column)
         return alignment_indicator
 
     @classmethod
@@ -481,7 +475,7 @@ class OfflineSession(QObject):
         position: int,
         lane_count: int,
         container: QWidget,
-        lane_layout: QHBoxLayout | QGridLayout,
+        lane_layout: QGridLayout,
         *,
         source_pool: list[_PooledVideoSource],
         render_catalog_manager: SceneRenderCatalogManager,
