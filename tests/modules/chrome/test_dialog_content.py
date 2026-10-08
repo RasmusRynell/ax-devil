@@ -2,7 +2,7 @@
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QScrollArea
+from PySide6.QtWidgets import QApplication, QLabel, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
@@ -31,6 +31,7 @@ def test_shortcut_list_uses_window_space_and_preserves_search(qtbot: QtBot, poin
     assert areas
     scroll = min(areas, key=lambda area: area.viewport().height())
     assert scroll.viewport().height() > dialog.height() // 2
+    assert scroll.horizontalScrollBar().maximum() == 0  # Key chips fit beside every action name.
     previous_height = scroll.viewport().height()
     dialog.resize(dialog.width(), dialog.height() + 100)
     QApplication.processEvents()
@@ -158,7 +159,7 @@ def test_narrow_settings_page_scrolls_instead_of_overlapping_rows(qtbot: QtBot) 
     QApplication.processEvents()
     page = dialog._tabs.currentWidget()
     assert page is not None
-    for group in page.findChildren(QGroupBox):
+    for group in page.findChildren(QWidget, "SettingsSection"):
         for label in group.findChildren(QLabel):
             if label.isVisible():
                 assert group.rect().contains(label.mapTo(group, label.rect().bottomRight())), label.text()

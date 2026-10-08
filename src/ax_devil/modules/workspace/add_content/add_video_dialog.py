@@ -12,12 +12,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QWidget,
 )
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
+from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.intake import VIDEO_FILE_SUFFIXES, default_workspace_intake
 from ax_devil.modules.workspace.startup_request import VideoFileStartup
@@ -52,12 +53,14 @@ class AddVideoDialog(BaseDialog):
         self._video_path_edit = QLineEdit()
         self._video_path_edit.setPlaceholderText("Required")
         self._video_path_edit.textChanged.connect(self._refresh)
-        form_layout.addRow("Video File:", self._file_row(self._video_path_edit, self._browse_video))
+        form_layout.addRow("Video File", self._file_row(self._video_path_edit, self._browse_video, "a video file"))
 
         self._overlay_path_edit = QLineEdit()
         self._overlay_path_edit.setPlaceholderText("Optional")
         self._overlay_path_edit.textChanged.connect(self._on_overlay_changed)
-        form_layout.addRow("Overlay File:", self._file_row(self._overlay_path_edit, self._browse_overlay))
+        form_layout.addRow(
+            "Overlay File", self._file_row(self._overlay_path_edit, self._browse_overlay, "an overlay file")
+        )
 
         # Handler type dropdown (populated from decoder plugins)
         self._handler_combo = QComboBox()
@@ -65,10 +68,10 @@ class AddVideoDialog(BaseDialog):
         for decoder in self._intake.file_decoder_options():
             self._handler_combo.addItem(decoder.display_name, decoder.handler_type)
         self._handler_combo.currentIndexChanged.connect(self._refresh)
-        form_layout.addRow("Data Handler:", self._handler_combo)
+        form_layout.addRow("Data Handler", self._handler_combo)
 
         self._name_edit = QLineEdit()
-        form_layout.addRow("Display Name:", self._name_edit)
+        form_layout.addRow("Display Name", self._name_edit)
 
         self._message_label = QLabel()
         self._message_label.setWordWrap(True)
@@ -79,15 +82,14 @@ class AddVideoDialog(BaseDialog):
         self.add_content_widget(form)
 
     @staticmethod
-    def _file_row(edit: QLineEdit, browse: Callable[[], None]) -> QWidget:
+    def _file_row(edit: QLineEdit, browse: Callable[[], None], what: str) -> QWidget:
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Space.XS)
         edit.setMinimumWidth(edit.fontMetrics().averageCharWidth() * 36)
-        button = QPushButton("Browse...")
-        button.clicked.connect(browse)
         layout.addWidget(edit, 1)
-        layout.addWidget(button)
+        layout.addWidget(BrowseButton(what, browse))
         return row
 
     def _browse_video(self) -> None:

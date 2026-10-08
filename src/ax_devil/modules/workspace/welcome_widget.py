@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetricsF,
+    QKeySequence,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -21,6 +22,13 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.key_chips import (
+    KeyChipColors,
+    draw_key_chips,
+    key_chip_parts,
+    key_chips_height,
+    key_chips_width,
+)
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.workspace.startup_request import VideoFileStartup
 
@@ -29,10 +37,6 @@ if TYPE_CHECKING:
 
     from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 
-_KEY_BADGE_H_PAD = Space.S
-_KEY_BADGE_V_PAD = Space.XS
-_KEY_BADGE_RADIUS = Radius.CONTROL
-_KEY_BADGE_GAP = Space.S
 _HINT_ROW_SPACING = Space.S
 _LABEL_KEY_GAP = Space.XL
 _GROUP_SPACING = 2 * Space.XL
@@ -48,7 +52,7 @@ class WelcomeItem:
     """One clickable welcome row: a label, its key binding text, and what clicking it does."""
 
     label: str
-    keys: str
+    keys: QKeySequence
     tooltip: str
     activate: Callable[[], None]
 
@@ -171,7 +175,7 @@ class WelcomeWidget(QWidget):
                 groups.setdefault(defn.welcome_group or "General", []).append(
                     WelcomeItem(
                         label=defn.display_name,
-                        keys=seq.toString() if seq is not None else "",
+                        keys=seq if seq is not None else QKeySequence(),
                         tooltip="",
                         activate=lambda action_id=defn.action_id, manager=sm: manager.get_action(action_id).trigger(),
                     )
@@ -180,7 +184,7 @@ class WelcomeWidget(QWidget):
             groups[_RECENT_GROUP] = [
                 WelcomeItem(
                     label=entry.label,
-                    keys="",
+                    keys=QKeySequence(),
                     tooltip=entry.description,
                     activate=lambda entry=entry: self.recent_video_requested.emit(entry),
                 )
@@ -213,14 +217,14 @@ def _layout_rows(widget: QWidget, groups: OrderedDict[str, list[WelcomeItem]]) -
         group_rows = []
         for item in items:
             label = fonts.label_fm.elidedText(item.label, Qt.TextElideMode.ElideMiddle, _MAX_LABEL_WIDTH)
-            key_parts = [k.strip() for k in item.keys.split("+")] if item.keys else []
-            badge_w = _measure_badge_group(fonts.badge_fm, key_parts)
+            key_parts = key_chip_parts(item.keys)
+            badge_w = key_chips_width(fonts.badge_fm, key_parts)
             max_label_width = max(max_label_width, fonts.label_fm.horizontalAdvance(label))
             max_badge_width = max(max_badge_width, badge_w)
             group_rows.append((item, label, key_parts, badge_w))
         measured.append(group_rows)
 
-    row_height = max(fonts.label_fm.height(), fonts.badge_fm.height() + 2 * _KEY_BADGE_V_PAD)
+    row_height = max(fonts.label_fm.height(), key_chips_height(fonts.badge_fm))
     header_height = fonts.header_fm.height()
     show_headers = len(groups) > 1
     hint_height = fonts.label_fm.height()
@@ -284,12 +288,7 @@ def _draw_layout(painter: QPainter, widget: QWidget, layout: _WelcomeLayout, hov
     muted_color = QColor(label_color)
     muted_color.setAlphaF(0.6)
 
-    badge_text_color = QColor(label_color)
-    badge_text_color.setAlphaF(0.85)
-    window_color = palette.color(QPalette.ColorRole.Window)
-    dark = window_color.lightnessF() < 0.5
-    badge_bg_color = window_color.lighter(160) if dark else window_color.darker(110)
-    badge_border_color = badge_bg_color.lighter(130) if dark else badge_bg_color.darker(120)
+    chip_colors = KeyChipColors.for_palette(palette)
     hover_color = QColor(palette.color(QPalette.ColorRole.Highlight))
     hover_color.setAlphaF(0.14)
 
@@ -310,64 +309,15 @@ def _draw_layout(painter: QPainter, widget: QWidget, layout: _WelcomeLayout, hov
             QPointF(layout.label_x, center_y + (fonts.label_fm.ascent() - fonts.label_fm.descent()) / 2),
             row.label,
         )
-        _draw_badge_group(
+        draw_key_chips(
             painter,
             fonts.badge,
-            fonts.badge_fm,
             row.key_parts,
             layout.badge_right - row.badge_width,
-            center_y - fonts.badge_fm.height() / 2 - _KEY_BADGE_V_PAD,
-            badge_text_color,
-            badge_bg_color,
-            badge_border_color,
+            center_y - key_chips_height(fonts.badge_fm) / 2,
+            chip_colors,
         )
 
     painter.setFont(fonts.label)
     painter.setPen(muted_color)
     painter.drawText(layout.drop_hint, _DROP_HINT)
-
-
-def _measure_badge_group(fm: QFontMetricsF, key_parts: list[str]) -> float:
-    """Return total pixel width of a badge group like [Ctrl] [N]."""
-    total = 0.0
-    for i, part in enumerate(key_parts):
-        total += fm.horizontalAdvance(part) + 2 * _KEY_BADGE_H_PAD
-        if i < len(key_parts) - 1:
-            total += _KEY_BADGE_GAP
-    return total
-
-
-def _draw_badge_group(
-    painter: QPainter,
-    font: QFont,
-    fm: QFontMetricsF,
-    key_parts: list[str],
-    x: float,
-    y: float,
-    text_color: QColor,
-    bg_color: QColor,
-    border_color: QColor,
-) -> None:
-    """Draw a sequence of key badges like [Ctrl] [N]."""
-    painter.setFont(font)
-    badge_h = fm.height() + 2 * _KEY_BADGE_V_PAD
-
-    cursor_x = x
-    for i, part in enumerate(key_parts):
-        text_w = fm.horizontalAdvance(part)
-        badge_w = text_w + 2 * _KEY_BADGE_H_PAD
-
-        badge_rect = QRectF(cursor_x, y, badge_w, badge_h)
-        path = QPainterPath()
-        path.addRoundedRect(badge_rect, _KEY_BADGE_RADIUS, _KEY_BADGE_RADIUS)
-        painter.fillPath(path, bg_color)
-        painter.setPen(border_color)
-        painter.drawPath(path)
-
-        painter.setPen(text_color)
-        text_y = y + _KEY_BADGE_V_PAD + fm.ascent()
-        painter.drawText(QPointF(cursor_x + _KEY_BADGE_H_PAD, text_y), part)
-
-        cursor_x += badge_w
-        if i < len(key_parts) - 1:
-            cursor_x += _KEY_BADGE_GAP

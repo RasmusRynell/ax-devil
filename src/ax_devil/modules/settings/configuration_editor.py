@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QWidget
 
+from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.settings.configuration_preferences import ConfigField, is_environment_reference
 from ax_devil.modules.workspace.intake import default_workspace_intake
 
@@ -50,9 +51,7 @@ class ConfigurationEditor(QWidget):
             self.setFocusProxy(edit)
             layout.addWidget(edit, 1)
         if field.directory:
-            browse = QPushButton("Browse…", self)
-            browse.clicked.connect(self._browse)
-            layout.addWidget(browse)
+            layout.addWidget(BrowseButton("a folder", self._browse, self))
         self.setToolTip(field.path)
 
     def text(self) -> str:

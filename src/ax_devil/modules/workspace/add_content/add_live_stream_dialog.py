@@ -96,7 +96,7 @@ class AddLiveStreamDialog(BaseDialog):
         connection_layout = FormLayout()
 
         self._name_edit = QLineEdit()
-        connection_layout.addRow("Display Name:", self._name_edit)
+        connection_layout.addRow("Display Name", self._name_edit)
 
         hint = _apply_env_hint
 
@@ -104,7 +104,7 @@ class AddLiveStreamDialog(BaseDialog):
         self._host_edit.setPlaceholderText("e.g. 192.168.1.100")
         hint(self._host_edit, str(raw_device_defaults.get("host", "")), device_defaults.get("host", ""))
         self._host_edit.textChanged.connect(self._on_host_changed)
-        connection_layout.addRow("Host:", self._host_edit)
+        connection_layout.addRow("Host", self._host_edit)
 
         self._username_edit = QLineEdit()
         hint(
@@ -112,7 +112,7 @@ class AddLiveStreamDialog(BaseDialog):
             str(raw_device_defaults.get("username", "")),
             device_defaults.get("username", ""),
         )
-        connection_layout.addRow("Username:", self._username_edit)
+        connection_layout.addRow("Username", self._username_edit)
 
         self._password_edit = QLineEdit()
         hint(
@@ -122,20 +122,20 @@ class AddLiveStreamDialog(BaseDialog):
             mask=True,
         )
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        connection_layout.addRow("Password:", self._password_edit)
+        connection_layout.addRow("Password", self._password_edit)
 
         self._camera_head_edit = QLineEdit()
         self._camera_head_edit.setText(str(integer_default(rtsp_defaults.get("camera_head"), 1)))
         self._camera_head_edit.setValidator(QIntValidator(1, 9999, self))
-        connection_layout.addRow("Camera Head:", self._camera_head_edit)
+        connection_layout.addRow("Camera Head", self._camera_head_edit)
 
         self._resolution_edit = QLineEdit()
         self._resolution_edit.setText(rtsp_defaults.get("resolution", "1280x720"))
-        connection_layout.addRow("Resolution:", self._resolution_edit)
+        connection_layout.addRow("Resolution", self._resolution_edit)
 
         self._stream_url_edit = QLineEdit()
         self._stream_url_edit.setPlaceholderText("Optional — overrides auto-built URL")
-        connection_layout.addRow("Custom Stream URL:", self._stream_url_edit)
+        connection_layout.addRow("Custom Stream URL", self._stream_url_edit)
 
         layout.addLayout(connection_layout)
 
@@ -146,17 +146,17 @@ class AddLiveStreamDialog(BaseDialog):
         for mode in LiveOverlayMode:
             self._overlay_mode_combo.addItem(mode.display_name, mode.value)
         self._overlay_mode_combo.currentIndexChanged.connect(self._on_overlay_mode_changed)
-        overlay_layout.addRow("Overlay Mode:", self._overlay_mode_combo)
+        overlay_layout.addRow("Overlay Mode", self._overlay_mode_combo)
 
         self._handler_combo = QComboBox()
         self._handler_combo.addItem("(None)", None)
         self._populate_handler_types()
-        overlay_layout.addRow("Handler Type:", self._handler_combo)
+        overlay_layout.addRow("Handler Type", self._handler_combo)
 
         self._mqtt_device_protocol_combo = QComboBox()
         self._mqtt_device_protocol_combo.addItems(["https", "http"])
         self._mqtt_device_protocol_combo.setToolTip("Protocol used to reach the device's API (HTTPS or HTTP).")
-        overlay_layout.addRow("Device Protocol:", self._mqtt_device_protocol_combo)
+        overlay_layout.addRow("Device Protocol", self._mqtt_device_protocol_combo)
 
         # One page per mode, in combo order; the stack is sized for the largest page. The None page explains every
         # mode, and each other page starts with its own description.
@@ -181,7 +181,7 @@ class AddLiveStreamDialog(BaseDialog):
             str(raw_mqtt_defaults.get("broker_host", "")),
             mqtt_defaults.get("broker_host", ""),
         )
-        mqtt_layout.addRow("MQTT Host:", self._mqtt_host_edit)
+        mqtt_layout.addRow("MQTT Host", self._mqtt_host_edit)
 
         self._mqtt_username_edit = QLineEdit()
         hint(
@@ -189,7 +189,7 @@ class AddLiveStreamDialog(BaseDialog):
             str(raw_mqtt_defaults.get("broker_username", "")),
             mqtt_defaults.get("broker_username", ""),
         )
-        mqtt_layout.addRow("MQTT Username:", self._mqtt_username_edit)
+        mqtt_layout.addRow("MQTT Username", self._mqtt_username_edit)
 
         self._mqtt_password_edit = QLineEdit()
         hint(
@@ -199,18 +199,18 @@ class AddLiveStreamDialog(BaseDialog):
             mask=True,
         )
         self._mqtt_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        mqtt_layout.addRow("MQTT Password:", self._mqtt_password_edit)
+        mqtt_layout.addRow("MQTT Password", self._mqtt_password_edit)
 
         self._mqtt_port_spin = QSpinBox()
         self._mqtt_port_spin.setRange(1, 65535)
         self._mqtt_port_spin.setValue(integer_default(mqtt_defaults.get("broker_port"), 1883))
-        mqtt_layout.addRow("MQTT Port:", self._mqtt_port_spin)
+        mqtt_layout.addRow("MQTT Port", self._mqtt_port_spin)
 
         self._data_source_choice = AnalyticsChoice(
             AnalyticsChoiceLoader(list_analytics_data_source_keys, "data sources", self),
             str(mqtt_defaults.get("data_source_key", "")),
         )
-        mqtt_layout.addRow("Data Source:", self._data_source_choice)
+        mqtt_layout.addRow("Data Source", self._data_source_choice)
 
         websocket_layout = transport_forms[LiveOverlayMode.WEBSOCKET]
 
@@ -218,13 +218,13 @@ class AddLiveStreamDialog(BaseDialog):
             AnalyticsChoiceLoader(list_datahub_topics, "DataHub topics", self),
             str(websocket_defaults.get("topic", "")),
         )
-        websocket_layout.addRow("DataHub Topic:", self._websocket_topic_choice)
+        websocket_layout.addRow("DataHub Topic", self._websocket_topic_choice)
 
         self._websocket_channel_id_spin = QSpinBox()
         self._websocket_channel_id_spin.setRange(1, 9999)
         self._websocket_channel_id_spin.setValue(integer_default(websocket_defaults.get("channel_id"), 1))
         self._websocket_channel_id_spin.setToolTip("Instance of the DataHub topic to subscribe to. Most devices use 1.")
-        websocket_layout.addRow("Topic Channel:", self._websocket_channel_id_spin)
+        websocket_layout.addRow("Topic Channel", self._websocket_channel_id_spin)
 
         self._transport_choices = {
             LiveOverlayMode.MQTT: self._data_source_choice,

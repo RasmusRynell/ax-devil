@@ -399,24 +399,22 @@ def test_storage_environment_references_validate_before_saving(
 
 
 def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> None:
-    """Restart-only settings share one marker, and the dialog states its apply rule once."""
-    from PySide6.QtWidgets import QCheckBox, QGroupBox, QLabel
+    """Restart-only settings, and only those, carry the Restart badge beside their name."""
+    from PySide6.QtWidgets import QAbstractButton, QLabel
 
     from ax_devil.modules.settings.settings_dialog import SettingsDialog
 
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    texts = [
-        *(label.text() for label in dialog.findChildren(QLabel)),
-        *(checkbox.text() for checkbox in dialog.findChildren(QCheckBox)),
-        *(group.title() for group in dialog.findChildren(QGroupBox)),
-    ]
-    marker = "(requires restart)"
-    marked = {text.removesuffix(f" {marker}") for text in texts if text.endswith(marker)}
+    marked = set()
+    for badge in dialog.findChildren(QLabel, "RestartBadge"):
+        row = badge.parentWidget()
+        assert row is not None
+        named = next(
+            child for child in row.findChildren(QLabel) + row.findChildren(QAbstractButton) if child is not badge
+        )
+        marked.add(named.text())
     assert marked == {"Use the app title bar", "Graphics acceleration", "Storage locations"}
-    restart_mentions = [text for text in texts if "restart" in text.lower() and not text.endswith(marker)]
-    assert restart_mentions == [
-        "Changes in this dialog apply when you click OK or Apply. Settings marked (requires restart) take effect "
-        "the next time the app starts."
-    ]
+    texts = [label.text() for label in dialog.findChildren(QLabel)]
+    assert not [text for text in texts if "restart" in text.lower() and text != "Restart"]
     assert "Shortcut changes apply when you click OK in the shortcut editor, even if you cancel Settings." in texts

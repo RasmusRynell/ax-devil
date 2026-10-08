@@ -58,14 +58,14 @@ class ExportDialog(BaseDialog):
                 check.toggled.connect(self._update_export_enabled)
                 lanes_layout.addWidget(check)
                 self._lane_checks.append(check)
-            form_layout.addRow("Lanes:", lanes)
+            form_layout.addRow("Lanes", lanes)
 
         self._quality_combo = QComboBox()
         self._presets = CompressionPreset.all_presets()
         for preset in self._presets:
             self._quality_combo.addItem(preset.label)
         self._quality_combo.setCurrentIndex(self._presets.index(CompressionPreset.default()))
-        form_layout.addRow("Quality:", self._quality_combo)
+        form_layout.addRow("Quality", self._quality_combo)
 
         self.add_content_widget(self._options_widget)
 

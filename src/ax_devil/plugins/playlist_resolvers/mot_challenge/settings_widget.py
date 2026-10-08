@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import PlaylistResolverWidget
@@ -55,13 +56,12 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
         self._root_input = QLineEdit()
         self._root_input.setPlaceholderText("Path to MOT dataset root directory")
         dir_row.addWidget(self._root_input, 1)
-        self._browse_btn = QPushButton("Browse...")
-        self._browse_btn.clicked.connect(self._browse_root)
+        self._browse_btn = BrowseButton("the MOT dataset folder", self._browse_root)
         dir_row.addWidget(self._browse_btn)
         self._scan_btn = QPushButton("Scan")
         self._scan_btn.clicked.connect(self._scan_sequences)
         dir_row.addWidget(self._scan_btn)
-        form.addRow("MOT Root:", directory)
+        form.addRow("MOT Root", directory)
         layout.addLayout(form)
 
         # Sequence list

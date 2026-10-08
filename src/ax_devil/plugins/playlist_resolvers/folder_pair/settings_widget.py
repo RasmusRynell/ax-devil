@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import PlaylistResolverWidget, get_file_decoder_definitions
@@ -41,7 +42,7 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
         self._decoder_combo.addItem("Select a decoder...", None)
         for decoder in get_file_decoder_definitions():
             self._decoder_combo.addItem(f"{decoder.display_name} ({decoder.handler_type})", decoder.handler_type)
-        form.addRow("Decoder:", self._decoder_combo)
+        form.addRow("Decoder", self._decoder_combo)
 
         action_row = QHBoxLayout()
         action_row.addStretch()
@@ -65,9 +66,7 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
         path_input = QLineEdit()
         path_input.setPlaceholderText(placeholder)
         row.addWidget(path_input, 1)
-        browse_btn = QPushButton("Browse...")
-        browse_btn.clicked.connect(lambda: self._browse_directory(path_input))
-        row.addWidget(browse_btn)
+        row.addWidget(BrowseButton("a folder", lambda: self._browse_directory(path_input)))
         layout.addRow(label, field)
         return path_input
 

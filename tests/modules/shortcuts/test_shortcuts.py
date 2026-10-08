@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QRect
+from PySide6.QtCore import QCoreApplication, QRect, Qt
 from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.key_chips import CHORD_BREAK, key_chip_parts
 from ax_devil.modules.shortcuts.shortcuts import ShortcutDefinition, ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog, _ShortcutRow
 
@@ -254,3 +256,51 @@ class TestShortcutsDialog:
         dialog._on_editing_finished(third)
 
         assert "conflicts with" in dialog._conflict_label.text()
+
+
+def test_shortcut_rows_show_keys_as_chips_and_edit_on_click(qtbot: QtBot, window: QWidget) -> None:
+    manager = ShortcutManager()
+    manager.register(_make_definition("action.a", "Ctrl+Shift+A"))
+    manager.install(window)
+    dialog = ShortcutsDialog(manager)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    row = _shortcut_dialog_row(dialog, "action.a")
+    assert row.chips.parts() == ["Ctrl", "Shift", "A"]
+    assert row.editor.isHidden()
+
+    row.chips.clicked.emit()
+    assert not row.editor.isHidden() and row.chips.isHidden()
+
+    row.editor.setKeySequence(QKeySequence("Ctrl++"))
+    row.editor.editingFinished.emit()
+    assert row.editor.isHidden() and not row.chips.isHidden()
+    assert row.chips.parts() == ["Ctrl", "+"]
+
+
+def test_shortcut_rows_are_editable_from_the_keyboard(qtbot: QtBot, window: QWidget) -> None:
+    """Tab reaches each row's keys, Enter opens the editor, and focus returns to the row when editing ends."""
+    manager = ShortcutManager()
+    manager.register(_make_definition("action.a", "Ctrl+A"))
+    manager.install(window)
+    dialog = ShortcutsDialog(manager)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    row = _shortcut_dialog_row(dialog, "action.a")
+    assert row.chips.focusPolicy() & Qt.FocusPolicy.TabFocus
+
+    row.chips.setFocus()
+    QTest.keyClick(row.chips, Qt.Key.Key_Return)
+    assert not row.editor.isHidden()
+    qtbot.waitUntil(row.editor.hasFocus)
+
+    row.editor.editingFinished.emit()
+    assert row.editor.isHidden()
+    assert row.chips.hasFocus()
+
+
+def test_key_chips_split_chords_and_name_keys_like_the_platform() -> None:
+    assert key_chip_parts(QKeySequence("Ctrl+K, Ctrl+Shift+S")) == ["Ctrl", "K", CHORD_BREAK, "Ctrl", "Shift", "S"]
+    assert key_chip_parts(QKeySequence("Ctrl++")) == ["Ctrl", "+"]
+    assert key_chip_parts(QKeySequence("Ctrl+,")) == ["Ctrl", ","]
+    assert key_chip_parts(QKeySequence()) == []
