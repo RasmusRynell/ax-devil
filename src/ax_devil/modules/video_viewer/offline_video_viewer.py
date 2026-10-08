@@ -150,6 +150,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
 
         self._prev_button = QPushButton(Icon.STEP_BACK.icon(), "")
         self._prev_button.setToolTip("Previous entry")
+        self._prev_button.setAccessibleName("Previous entry")
         self._prev_button.clicked.connect(self._step_prev)
         nav_layout.addWidget(self._prev_button)
 
@@ -158,6 +159,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
 
         self._next_button = QPushButton(Icon.STEP_FORWARD.icon(), "")
         self._next_button.setToolTip("Next entry")
+        self._next_button.setAccessibleName("Next entry")
         self._next_button.clicked.connect(self._step_next)
         nav_layout.addWidget(self._next_button)
         nav_layout.addStretch(1)
