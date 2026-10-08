@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QEnterEvent, QMouseEvent, QShowEvent
+from PySide6.QtGui import QEnterEvent, QMouseEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
@@ -111,8 +111,9 @@ class FrameDisplay(QWidget):
             widget.fade_in()
 
     def enable_side_panel(self, initial_widget: QWidget | None = None) -> None:
-        """Enable the generic side-panel mount point and optional initial content."""
+        """Enable the generic side-panel mount point and optional initial content, fitted to the current width."""
         self._side_panel_controller.enable(initial_widget)
+        self._side_panel_controller.fit_to_pane(self.width())
 
     def set_side_panel_widget(self, widget: QWidget | None) -> None:
         """Set caller-owned content in the side-panel mount point."""
@@ -141,6 +142,11 @@ class FrameDisplay(QWidget):
         if not self._initial_focus_claimed:
             self._initial_focus_claimed = True
             self._viewport.setFocus()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Keep an open side panel at its share of the pane."""
+        super().resizeEvent(event)
+        self._side_panel_controller.fit_to_pane(event.size().width())
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Handle mouse movement for optional fading mount-point chrome."""
