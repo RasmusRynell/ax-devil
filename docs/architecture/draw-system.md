@@ -123,8 +123,9 @@ the bounded inactive-layout LRU evicts their keys; movement therefore does not f
 
 Offscreen culling uses the surface viewport translated into overlay-local coordinates, rather
 than the image bounds: overlays may remain visible in letterboxing. The `label` primitive is the exception: a label
-that would stick out of the image, such as a tab above a box at its top edge, moves just inside it, on screen and in
-exports. Plain `text`, such as the Classic catalog's ids, is not moved. Pan and viewport-size changes
+anchored on the image that would stick out of it, such as a tab above a box at its top edge, moves just inside it on
+whole device pixels, on screen and in exports. Labels anchored off the image, as for boxes wholly outside the frame, and
+plain `text`, such as the Classic catalog's ids, are not moved. Pan and viewport-size changes
 invalidate preparation even when the Scene and image dimensions are unchanged. Whole operations
 outside conservative bounds are omitted before item allocation/update, on hardware and software.
 Bounds include square-cap/bevel stroke extents and a two-physical-pixel antialias margin.

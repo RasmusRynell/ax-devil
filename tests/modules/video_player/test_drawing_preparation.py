@@ -293,3 +293,20 @@ def test_rounded_boxes_are_paths_with_arcs_even_on_hardware() -> None:
     drawing = buffer.finish()
     assert [" a " in path.geometry for path in drawing.paths] == [True]
     assert sum(mesh.operation_count for mesh in drawing.meshes) == 1
+
+
+@pytest.mark.parametrize("dpr", [1.0, 1.5])
+def test_labels_on_the_image_stay_inside_it_on_whole_device_pixels(dpr: float) -> None:
+    """Edge labels move inside a fractional-sized image without rounding back out; off-image labels stay put."""
+    settings = replace(_SETTINGS, width=199.6, height=99.7, dpr=dpr)
+    buffer = DrawingBuffer(settings)
+    LabelCall(1.0, 1.0, "top-left", _label("Person", "12")).submit(buffer)
+    LabelCall(0.5, 0.0, "bottom-left", _label("Person", "12")).submit(buffer)
+    LabelCall(1.2, 0.5, "top-left", _label("Person", "12")).submit(buffer)  # A box wholly right of the frame.
+    corner, top_edge, *outside = buffer.finish().labels
+    for label in (corner, top_edge):
+        x, y = label.position.x(), label.position.y()
+        assert 0 <= x and x + label.sprite.width <= settings.width
+        assert 0 <= y and y + label.sprite.height <= settings.height
+        assert (x * dpr).is_integer() and (y * dpr).is_integer()
+    assert not outside or outside[0].position.x() >= settings.width

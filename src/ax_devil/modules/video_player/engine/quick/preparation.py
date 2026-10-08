@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
+from math import floor
 from typing import NamedTuple, cast
 
 import numpy as np
@@ -59,9 +60,17 @@ class DrawingSettings:
         return cls(context.width, context.height, context.scale_factor)
 
 
-def _inside(start: float, length: float, limit: float) -> float:
-    """Return *start* moved so ``start..start + length`` lies within ``0..limit``, when it fits."""
-    return start if length > limit else min(max(start, 0.0), limit - length)
+def _snapped(start: float, length: float, limit: float, dpr: float, inside: bool) -> float:
+    """Return *start* on a whole device pixel; when *inside*, moved so ``start..start + length`` stays in ``0..limit``.
+
+    Snapping happens first, so rounding never pushes a label back out of the image.
+    """
+    snapped = round(start * dpr) / dpr
+    if not inside or length > limit:
+        return snapped
+    if snapped + length > limit:
+        snapped = floor((limit - length) * dpr) / dpr
+    return max(snapped, 0.0)
 
 
 class MeshData(NamedTuple):
@@ -282,13 +291,14 @@ class DrawingBuffer:
             if sprite is None:
                 continue
             fx, fy = _ANCHORS.get(str(anchor[row]), (0.0, 0.0))
-            # Labels that would stick out of the image, as above a box at its top edge, move inside it.
-            left = _inside(float(x[row]) * s.width - fx * sprite.width, sprite.width, s.width)
-            top = _inside(float(y[row]) * s.height - fy * sprite.height, sprite.height, s.height)
+            # A label anchored on the image, as above a box at its top edge, moves inside it; one anchored off the
+            # image, as for a box wholly outside the frame, stays where it is and is culled like the box.
+            on_image = 0.0 <= x[row] <= 1.0 and 0.0 <= y[row] <= 1.0
+            left = _snapped(float(x[row]) * s.width - fx * sprite.width, sprite.width, s.width, s.dpr, on_image)
+            top = _snapped(float(y[row]) * s.height - fy * sprite.height, sprite.height, s.height, s.dpr, on_image)
             if not self._visible(left, top, sprite.width, sprite.height):
                 continue
-            position = QPointF(round(left * s.dpr) / s.dpr, round(top * s.dpr) / s.dpr)
-            self._labels.append(LabelData(sprite, position))
+            self._labels.append(LabelData(sprite, QPointF(left, top)))
 
     def _visible(self, x: float, y: float, width: float, height: float, stroke: float = 0.0) -> bool:
         if self._viewport is None:
