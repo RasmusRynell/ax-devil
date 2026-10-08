@@ -175,10 +175,8 @@ Each lane's media tools live in its display's side panel. **View → Media Tools
 focused viewer through `WorkspaceWidget.toggle_media_tools()`; an offline session toggles only the lane containing
 keyboard focus, or the first lane when focus is outside its displays. Every viewer, and every playlist entry, starts
 with the media tools closed. The drag handle on the right edge of the video opens, resizes or closes one lane's panel.
-An open panel takes at most half its pane unless its content needs more. When the pane shrinks so far that the video
-beside the panel would be narrower than `PANEL_MIN_VIDEO_WIDTH`, the panel closes instead of squeezing the video, and
-it reopens once the pane has room again; a panel the user closed stays closed, and one opened by hand in a pane
-without room stays open.
+An open panel takes at most half its pane unless its content needs more, and follows pane and content size changes.
+It only opens and closes when the user asks.
 
 **View → Zoom In / Zoom Out / Reset Zoom** (`Ctrl++`, `Ctrl+-`, `Ctrl+0`) route to the focused viewer through
 `WorkspaceWidget.zoom(ZoomStep)` and zoom around the view center. An offline session uses the lane containing

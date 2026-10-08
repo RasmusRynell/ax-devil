@@ -190,65 +190,40 @@ def test_dragging_side_panel_fully_open_and_closed_updates_content_visibility(qt
         panel.cleanup()
 
 
-def test_side_panel_steps_aside_instead_of_squeezing_the_video(qtbot: QtBot) -> None:
-    """An open panel takes at most half the pane, closes when the pane shrinks too far and reopens when it grows."""
+def _display_in_window(qtbot: QtBot, width: int) -> tuple[QWidget, FrameDisplay, DraggablePanel, QLabel]:
     window = QWidget()
     qtbot.addWidget(window)
     layout = QHBoxLayout(window)
     layout.setContentsMargins(0, 0, 0, 0)
     display = FrameDisplay()
     layout.addWidget(display)
-    display.enable_side_panel(QLabel("tools"))
-    window.resize(1200, 400)
+    content = QLabel("tools")
+    display.enable_side_panel(content)
+    window.resize(width, 400)
     window.show()
     panel = display.findChild(DraggablePanel)
     assert panel is not None
+    return window, display, panel, content
 
-    def resize(width: int) -> None:
-        window.resize(width, 400)
-        QCoreApplication.processEvents()
-        assert display.width() == width
 
+def test_side_panel_takes_at_most_half_the_pane_and_stays_open_when_it_narrows(qtbot: QtBot) -> None:
+    """An open panel never closes on its own; it takes at most half its pane unless its content needs more."""
+    window, display, panel, _content = _display_in_window(qtbot, 1200)
     display.set_side_panel_open(True)
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
-    assert display.viewport.width() >= 1200 // 2
+    assert panel.width() == 400
 
-    resize(400)  # A half-pane panel would leave 200 px of video.
-    assert not display.is_side_panel_open()
-    assert display.viewport.width() == 400
-
-    resize(1000)
+    window.resize(600, 400)
+    qtbot.waitUntil(lambda: panel.width() == 300)
     assert display.is_side_panel_open()
-    assert display.viewport.width() >= 1000 // 2
 
-    # A panel the user closed stays closed when room returns.
-    display.set_side_panel_open(False)
-    qtbot.waitUntil(lambda: panel.width() == 0)
-    resize(400)
-    resize(1200)
-    assert not display.is_side_panel_open()
-
-    # Opened by hand without room, it stays open while the pane narrows.
-    resize(450)
-    display.set_side_panel_open(True)
-    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
-    window.resize(420, 400)
-    QCoreApplication.processEvents()
+    window.resize(1200, 400)
+    qtbot.waitUntil(lambda: panel.width() == 400)
     assert display.is_side_panel_open()
 
 
 def test_side_panel_opening_during_a_resize_ends_at_the_new_pane_width(qtbot: QtBot) -> None:
-    window = QWidget()
-    qtbot.addWidget(window)
-    layout = QHBoxLayout(window)
-    layout.setContentsMargins(0, 0, 0, 0)
-    display = FrameDisplay()
-    layout.addWidget(display)
-    display.enable_side_panel(QLabel("tools"))
-    window.resize(1200, 400)
-    window.show()
-    panel = display.findChild(DraggablePanel)
-    assert panel is not None
+    window, display, panel, _content = _display_in_window(qtbot, 1200)
 
     display.set_side_panel_open(True)
     window.resize(560, 400)
@@ -258,28 +233,12 @@ def test_side_panel_opening_during_a_resize_ends_at_the_new_pane_width(qtbot: Qt
     assert display.viewport.width() == 280
 
 
-def test_side_panel_refits_when_its_content_grows(qtbot: QtBot) -> None:
-    """Content that grows, as after a larger text size, closes a panel that would leave the video too narrow."""
-    window = QWidget()
-    qtbot.addWidget(window)
-    layout = QHBoxLayout(window)
-    layout.setContentsMargins(0, 0, 0, 0)
-    display = FrameDisplay()
-    layout.addWidget(display)
-    content = QLabel("tools")
-    display.enable_side_panel(content)
-    window.resize(800, 400)
-    window.show()
-    panel = display.findChild(DraggablePanel)
-    assert panel is not None
+def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
+    """Content that grows, as after a larger text size, widens the open panel instead of being clipped."""
+    _window, display, panel, content = _display_in_window(qtbot, 1200)
     display.set_side_panel_open(True)
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
 
-    content.setMinimumWidth(620)  # The video beside it would be under 240 px.
-    qtbot.waitUntil(lambda: not display.is_side_panel_open())
-    assert display.viewport.width() == 800
-
-    # Once the content fits again, the next pane resize reopens the panel the user opened.
-    content.setMinimumWidth(0)
-    window.resize(820, 400)
-    qtbot.waitUntil(display.is_side_panel_open)
+    content.setMinimumWidth(620)
+    qtbot.waitUntil(lambda: panel.width() >= 620)
+    assert display.is_side_panel_open()

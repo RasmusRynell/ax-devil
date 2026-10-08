@@ -26,7 +26,6 @@ from ..constants import (
     PANEL_COLLAPSED_WIDTH,
     PANEL_EXPANDED_WIDTH,
     PANEL_MAX_PANE_SHARE,
-    PANEL_MIN_VIDEO_WIDTH,
 )
 from .fading import FadingWidget
 
@@ -179,8 +178,6 @@ class DraggablePanel(FadingWidget):
         self.collapsed_width: int = collapsed_width
         self._expanded_width = expanded_width
         self.is_collapsed: bool = True
-        self._wants_open = False  # The user's choice, kept while a narrow pane closes the panel.
-        self._opened_without_room = False  # Opened by hand in a pane too narrow; stays open until it fits once.
         self._pane_width: int | None = None
         self._fitted_width = 0  # The open width the panel was last fitted for.
 
@@ -217,35 +214,21 @@ class DraggablePanel(FadingWidget):
         return max(preferred, self._content_minimum_width())
 
     def fit_to_pane(self, pane_width: int) -> None:
-        """Follow a pane resize: a shrinking pane closes the panel when the video beside it would be too narrow, and
-        a growing pane reopens it once there is room.
-
-        Only a panel the user opened reopens. A panel opened by hand in a pane without room stays open until the pane
-        has had room for it once.
-        """
-        shrinking = self._pane_width is not None and pane_width < self._pane_width
+        """Follow a pane resize: an open panel takes its width for the new pane."""
         self._pane_width = pane_width
-        self._refit(may_close=shrinking)
+        self._refit()
 
-    def _refit(self, *, may_close: bool) -> None:
-        """Open, close or resize the panel for the current pane and content; close only when *may_close*."""
+    def _refit(self) -> None:
+        """Give an open panel the open width for the current pane and content; a closed panel stays closed."""
         self._fitted_width = self.expanded_width
-        if not self._wants_open:
+        if self.is_collapsed:
             return
-        fits = self._fits()
-        if fits:
-            self._opened_without_room = False
-        animating = self.animation.state() == QAbstractAnimation.State.Running
-        if self.is_collapsed and fits:
-            self._set_open_now(True)
-        elif not self.is_collapsed and not fits and may_close and not self._opened_without_room:
-            self._set_open_now(False)
-        elif not self.is_collapsed and animating:
+        if self.animation.state() == QAbstractAnimation.State.Running:
             # An opening panel ends at the width for the new pane.
             self.animation.setEndValue(self.expanded_width)
             self.min_animation.setEndValue(self.expanded_width)
-        elif not self.is_collapsed and self.width() != self.expanded_width:
-            self._set_open_now(True)
+        elif self.width() != self.expanded_width:
+            self.setFixedWidth(self.expanded_width)
 
     def _content_minimum_width(self) -> int:
         content = self._content_widget
@@ -255,13 +238,12 @@ class DraggablePanel(FadingWidget):
         return content.minimumSizeHint().expandedTo(content.minimumSize()).width() + margins.left() + margins.right()
 
     def event(self, event: QEvent) -> bool:
-        """Refit the panel when its content's size changes, as after a live text-size change.
+        """Refit an open panel when its content's size changes, as after a live text-size change.
 
-        Content that grows can widen the panel past half the pane or leave the video too narrow, so the panel follows
-        the same rules as for a pane resize. A width the user dragged to stays until the content size changes.
+        A width the user dragged to stays until the content size changes.
         """
         if event.type() == QEvent.Type.LayoutRequest and self.expanded_width != self._fitted_width:
-            self._refit(may_close=True)
+            self._refit()
         return super().event(event)
 
     def _setup_animations(self) -> None:
@@ -307,30 +289,8 @@ class DraggablePanel(FadingWidget):
         if widget is not None:
             self._logger.debug(f"Set content widget: {widget.__class__.__name__}")
 
-    def yielding_width(self) -> int:
-        """Return how much narrower the pane may become because this open panel would close instead of squeezing."""
-        return 0 if self.is_collapsed or self._opened_without_room else self.expanded_width
-
-    def _fits(self) -> bool:
-        """Return whether the open panel leaves the video beside it wide enough, or the pane width is unknown."""
-        return self._pane_width is None or self._pane_width - self.expanded_width >= PANEL_MIN_VIDEO_WIDTH
-
-    def _set_open_now(self, is_open: bool) -> None:
-        """Open or close the panel without animating, as a pane resize does; keeps the user's choice."""
-        self.animation.stop()
-        self.min_animation.stop()
-        width = self.expanded_width if is_open else self.collapsed_width
-        self.setMinimumWidth(width)
-        self.setMaximumWidth(width)
-        if self._content_widget is not None:
-            self._content_widget.setVisible(is_open)
-        if self.is_collapsed == is_open:
-            self.is_collapsed = not is_open
-            self.panelToggled.emit(is_open)
-
     def collapse(self) -> None:
         """Collapse the panel."""
-        self._wants_open = False
         if self.is_collapsed and self.width() == self.collapsed_width:
             return
 
@@ -348,9 +308,7 @@ class DraggablePanel(FadingWidget):
         self._logger.debug("Panel collapsed")
 
     def expand(self) -> None:
-        """Expand the panel, even in a pane too narrow to keep it open on its own."""
-        self._wants_open = True
-        self._opened_without_room = not self._fits()
+        """Expand the panel."""
         if not self.is_collapsed and self.width() == self.expanded_width:
             return
 

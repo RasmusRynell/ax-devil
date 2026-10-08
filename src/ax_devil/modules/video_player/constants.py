@@ -27,7 +27,6 @@ PANEL_ANIMATION_DURATION = 400  # milliseconds
 PANEL_COLLAPSED_WIDTH = 0
 PANEL_EXPANDED_WIDTH = 400
 PANEL_MAX_PANE_SHARE = 0.5  # Open panels take at most this share of their pane, unless their content needs more
-PANEL_MIN_VIDEO_WIDTH = 240  # Narrower video beside an open panel closes the panel until the pane widens again
 
 # ===== UI STYLING =====
 CONTROL_PANEL_HEIGHT = 50  # Two-row layout: timeline + controls (YouTube style)

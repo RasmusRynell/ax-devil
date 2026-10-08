@@ -75,13 +75,9 @@ class SidePanelController:
         self._logger.debug(f"Side panel widget set: {widget_name}")
 
     def fit_to_pane(self, pane_width: int) -> None:
-        """Size the panel for a pane *pane_width* wide; a pane too narrow for panel and video closes the panel."""
+        """Size an open panel for a pane *pane_width* wide."""
         if self._side_panel is not None:
             self._side_panel.fit_to_pane(pane_width)
-
-    def yielding_width(self) -> int:
-        """Return the width an open panel gives up to a narrowing pane by closing, or 0."""
-        return self._side_panel.yielding_width() if self._side_panel is not None else 0
 
     def is_open(self) -> bool:
         """Return whether the side panel is expanded or expanding."""

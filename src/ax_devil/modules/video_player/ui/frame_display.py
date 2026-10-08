@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QEnterEvent, QMouseEvent, QResizeEvent, QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
@@ -40,8 +40,6 @@ class FrameDisplay(QWidget):
         self._initial_focus_claimed = False
         self._controls: list[QWidget] = []
         self._main_layout = QHBoxLayout(self)
-        # The minimum width comes from minimumSizeHint, which leaves out a side panel that closes when space runs out.
-        self._main_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self._main_layout.setContentsMargins(0, 0, 0, 0)
         self._main_layout.setSpacing(0)
         self._main_layout.addWidget(self._viewport, 1)
@@ -60,7 +58,6 @@ class FrameDisplay(QWidget):
             connect_controls_visibility=self._connect_controls_visibility,
             panel_toggled=self.sidePanelToggled.emit,
         )
-        self.sidePanelToggled.connect(self.updateGeometry)
 
     @property
     def viewport(self) -> FrameViewport:
@@ -145,18 +142,10 @@ class FrameDisplay(QWidget):
             self._initial_focus_claimed = True
             self._viewport.setFocus()
 
-    def minimumSizeHint(self) -> QSize:  # noqa: N802
-        """Return the smallest size, letting the pane narrow past an open side panel, which then closes."""
-        hint = super().minimumSizeHint()
-        return QSize(max(0, hint.width() - self._side_panel_controller.yielding_width()), hint.height())
-
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        """Close the side panel while the video beside it would be too narrow, and reopen it when room returns."""
+        """Keep an open side panel at its share of the pane."""
         super().resizeEvent(event)
-        yielding = self._side_panel_controller.yielding_width()
         self._side_panel_controller.fit_to_pane(event.size().width())
-        if self._side_panel_controller.yielding_width() != yielding:
-            self.updateGeometry()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Handle mouse movement for optional fading mount-point chrome."""
