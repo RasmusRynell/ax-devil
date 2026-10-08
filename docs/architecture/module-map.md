@@ -24,7 +24,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Render catalog viewer: example sheets, the live viewer window, the `ax-devil catalog` commands and the generated language reference | `src/ax_devil/modules/catalog_viewer/` |
 | Frame sources, overlay sources, file providers, transport/runtime source plumbing | `src/ax_devil/modules/data_sources/` |
 | Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
-| Shared filter configs, state, predicates, and filter factories | `src/ax_devil/modules/filtering/` |
+| Session filtering, shared configs, state, predicates, and filter factories | `src/ax_devil/modules/filtering/` |
 | Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |
 | Locked plugin installation projects and install/update/remove commands | `src/ax_devil/modules/plugin_installation/` |
 | Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |

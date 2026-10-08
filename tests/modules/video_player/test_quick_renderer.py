@@ -247,7 +247,7 @@ def test_moving_text_updates_position_and_replaces_glyphs(surface: QuickSurface)
 
 
 def test_graphics_off_keeps_the_quick_surface(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(GlobalSettings(), "_graphics_acceleration", GraphicsAcceleration.OFF)
+    monkeypatch.setattr(GlobalSettings(), "graphics_acceleration", GraphicsAcceleration.OFF)
     widget = FrameViewport()
     qtbot.addWidget(widget)
     widget.resize(200, 100)

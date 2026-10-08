@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
+from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
@@ -67,8 +69,15 @@ class TestGlobalSettingsConfigRoundTrip:
         config.set("settings", {"custom": {"keep": "$AX_DEVIL_TEST_SETTING"}})
 
         settings = GlobalSettings()
+        settings.theme = ThemeMode.DARK
+        settings.graphics_acceleration = GraphicsAcceleration.OFF
+        settings.text_size = TextSize.LARGER
+        settings.custom_frame = False
+        settings.quick_setup_done = True
+        settings.video_cache_budget = VideoCacheBudget(512)
         for preference in OverlayPreference:
             settings.set_overlay_enabled(preference, False)
+        expected = settings.snapshot()
         settings.save_to_config(config)
         config.save()
 
@@ -80,6 +89,7 @@ class TestGlobalSettingsConfigRoundTrip:
         GlobalSettings.reset_instance()
         restored = GlobalSettings()
         restored.load_from_config(reopened)
+        assert restored.snapshot() == expected
         assert not any(restored.is_overlay_enabled(preference) for preference in OverlayPreference)
         assert reopened.get("settings")["custom"] == {"keep": "resolved-value"}
 
@@ -96,7 +106,7 @@ class TestGlobalSettingsSnapshot:
 
         snap = settings.snapshot()
 
-        settings.apply_snapshot({"overlay_interaction": {"hover_enabled": True}})
+        settings.apply_snapshot(replace(settings.snapshot(), enabled_overlays=frozenset(OverlayPreference)))
         assert settings.is_overlay_enabled(OverlayPreference.HOVER) is True
         assert received == [False, True]
 
@@ -114,8 +124,8 @@ def test_graphics_acceleration_round_trip_does_not_apply_until_startup(
     settings = GlobalSettings()
     changes: list[tuple[str, Any]] = []
     settings.setting_changed.connect(lambda key, value: changes.append((key, value)))
-    settings.apply_snapshot({"appearance": {"graphics_acceleration": "off"}})
-    settings.apply_snapshot({"appearance": {"graphics_acceleration": "off"}})
+    settings.apply_snapshot(replace(settings.snapshot(), graphics_acceleration=GraphicsAcceleration.OFF))
+    settings.apply_snapshot(replace(settings.snapshot(), graphics_acceleration=GraphicsAcceleration.OFF))
     assert changes == [("appearance.graphics_acceleration", "off")]
     assert settings.graphics_acceleration is GraphicsAcceleration.OFF
     assert "QT_WIDGETS_RHI" not in os.environ
@@ -140,7 +150,7 @@ def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: C
     assert dialog._theme_combo.currentData() == "dark"
     dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
     dialog.reject()
-    assert settings.snapshot()["appearance"]["theme"] == "dark"
+    assert settings.snapshot().theme == ThemeMode.DARK
     assert changes == []
 
     applied = SettingsDialog()
@@ -169,7 +179,7 @@ def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: C
     assert reopened._theme_combo.currentData() == "light"
     reopened._theme_combo.setCurrentIndex(reopened._theme_combo.findData("auto"))
     reopened._on_ok()
-    assert settings.snapshot()["appearance"]["theme"] == "auto"
+    assert settings.snapshot().theme == ThemeMode.AUTO
     assert changes == ["light", "auto"]
 
 

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
     from ax_devil.modules.scene.rendering.catalog_manager import SceneRenderCatalogSelection
-    from ax_devil.modules.video_viewer.media_tools import EntityFilterWidget
     from ax_devil.modules.video_viewer.scene_inspection import SceneInspectorSink
 
 
@@ -27,6 +26,7 @@ from ax_devil.modules.diagnostics.metrics_store import (
     source_identity,
 )
 from ax_devil.modules.filtering import FilterConfig
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.plugin_system import get_payload_decoder, get_payload_filter_factory
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.synchronization import QtStreamSync, SyncResult
@@ -69,7 +69,7 @@ class StreamMediaController:
         self._frame_displayed = frame_displayed
         self._content = content
         self._render_catalog_selection = render_catalog_selection
-        self._filter_widget: Optional["EntityFilterWidget"] = None
+        self._scene_filter: Optional[SessionFilter] = None
         self._scene_inspector: Optional["SceneInspectorSink"] = None
         self._presenter = SceneFramePresenter(scene_render_catalog=self._render_catalog_selection.active_catalog())
         self._overlay_persistence = OverlayPersistenceSettings.default_enabled()
@@ -265,19 +265,20 @@ class StreamMediaController:
     def get_filter_config(self) -> FilterConfig | None:
         return self.overlay_source.get_filter_config() if self.overlay_source else None
 
-    def attach_filter_widget(self, filter_widget: "EntityFilterWidget") -> None:
-        if self._filter_widget is filter_widget:
+    def attach_scene_filter(self, scene_filter: SessionFilter) -> None:
+        """Share the session filter and refresh paused drawing and inspection after edits."""
+        if self._scene_filter is scene_filter:
             return
 
-        if self._filter_widget is not None:
+        if self._scene_filter is not None:
             try:
-                self._filter_widget.filterChanged.disconnect(self._on_filter_changed)
+                self._scene_filter.changed.disconnect(self._on_filter_changed)
             except Exception:
-                self._logger.debug("filterChanged disconnect failed or already disconnected")
+                self._logger.debug("changed disconnect failed or already disconnected")
 
-        self._filter_widget = filter_widget
-        self._presenter.attach_filter_widget(filter_widget)
-        self._filter_widget.filterChanged.connect(self._on_filter_changed)
+        self._scene_filter = scene_filter
+        self._presenter.attach_scene_filter(scene_filter)
+        self._scene_filter.changed.connect(self._on_filter_changed)
 
     def attach_scene_inspector(self, scene_inspector: "SceneInspectorSink | None") -> None:
         """Register a scene inspector sink for entity list updates."""
@@ -401,11 +402,11 @@ class StreamMediaController:
                 self.synchronizer.syncReady.disconnect(self._on_sync_result)
             except Exception:
                 self._logger.debug("syncReady disconnect failed or already disconnected")
-        if self._filter_widget is not None:
+        if self._scene_filter is not None:
             try:
-                self._filter_widget.filterChanged.disconnect(self._on_filter_changed)
+                self._scene_filter.changed.disconnect(self._on_filter_changed)
             except Exception:
-                self._logger.debug("filterChanged disconnect failed or already disconnected")
+                self._logger.debug("changed disconnect failed or already disconnected")
 
     def _disconnect_source_signals(self) -> None:
         for signal, slot in self._source_slots:
@@ -444,7 +445,7 @@ class StreamMediaController:
         self.frame_display = None
         self._frame_displayed = None
         self._connection_changed = None
-        self._filter_widget = None
+        self._scene_filter = None
         self._scene_inspector = None
         self._presenter = SceneFramePresenter()
 

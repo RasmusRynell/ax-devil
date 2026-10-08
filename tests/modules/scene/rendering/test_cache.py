@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import cast
 
 import pytest
 
-from ax_devil.modules.filtering import FilterConfig, FilterState, build_default_filter_config
+from ax_devil.modules.filtering import build_default_filter_config
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -27,24 +28,8 @@ from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 
-@dataclass(slots=True)
-class _SceneFilter:
-    filter_config: FilterConfig
-    filter_state: FilterState
-
-    def process_scene(self, scene: Scene) -> Scene:
-        """Return a filtered scene."""
-        from ax_devil.modules.scene.filtering import process_scene
-
-        return process_scene(scene, self.filter_config, self.filter_state)
-
-
-class _EmptySceneFilter:
+class _EmptySceneFilter(SessionFilter):
     """Filter adapter returning a caller-controlled Scene."""
-
-    def __init__(self) -> None:
-        self.filter_config = build_default_filter_config()
-        self.filter_state = FilterState(self.filter_config)
 
     def process_scene(self, scene: Scene) -> Scene:
         """Return an empty Scene even though filter state allows the source entity."""
@@ -97,8 +82,8 @@ def test_cached_scene_overlay_misses_when_context_size_changes() -> None:
 def test_cached_scene_overlay_misses_when_filter_state_changes_and_hover_tracks_filter() -> None:
     scene = _human_scene()
     filter_config = build_default_filter_config()
-    filter_state = FilterState(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, filter_widget=_SceneFilter(filter_config, filter_state))
+    filter_state = SessionFilter(filter_config)
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
     context = RenderContext.create(640, 480)
 
     drawing_before = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
@@ -115,7 +100,7 @@ def test_cached_scene_overlay_misses_when_filter_state_changes_and_hover_tracks_
 
 def test_cached_scene_overlay_uses_filter_adapter_process_scene() -> None:
     scene = _human_scene()
-    overlay = CachedSceneOverlay(scene=scene, filter_widget=_EmptySceneFilter())
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=_EmptySceneFilter())
 
     primitives = overlay.prepare_drawing(
         RenderContext.create(640, 480), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(640, 480)))
@@ -150,8 +135,8 @@ def test_reported_catalog_errors_evict_least_recent_instead_of_silencing_new_err
 def test_cached_scene_overlay_vehicle_filter_removes_primitives_and_pinned_hover() -> None:
     scene = _vehicle_scene()
     filter_config = build_default_filter_config()
-    filter_state = FilterState(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, filter_widget=_SceneFilter(filter_config, filter_state))
+    filter_state = SessionFilter(filter_config)
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
     context = RenderContext.create(640, 480)
 
     drawing_before = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
@@ -171,8 +156,8 @@ def test_cached_scene_overlay_vehicle_filter_removes_primitives_and_pinned_hover
 def test_cached_scene_overlay_head_filter_removes_primitives_and_pinned_hover() -> None:
     scene = _head_scene()
     filter_config = build_default_filter_config()
-    filter_state = FilterState(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, filter_widget=_SceneFilter(filter_config, filter_state))
+    filter_state = SessionFilter(filter_config)
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
     context = RenderContext.create(640, 480)
 
     drawing_before = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
@@ -192,8 +177,8 @@ def test_cached_scene_overlay_head_filter_removes_primitives_and_pinned_hover() 
 def test_cached_scene_overlay_pinned_hover_lookup_tracks_filter_state() -> None:
     scene = _human_scene()
     filter_config = build_default_filter_config()
-    filter_state = FilterState(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, filter_widget=_SceneFilter(filter_config, filter_state))
+    filter_state = SessionFilter(filter_config)
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
 
     visible_hit = overlay.get_hit_by_id("human-1")
     assert visible_hit is not None
@@ -313,7 +298,7 @@ def _head_scene() -> Scene:
 
 def test_filter_work_before_paint_is_reported_once_and_cache_hits_have_no_duration() -> None:
     scene = _human_scene()
-    overlay = CachedSceneOverlay(scene=scene, filter_widget=_EmptySceneFilter())
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=_EmptySceneFilter())
     context = RenderContext.create(640, 480)
     overlay.filtered_scene()  # Presenter/inspector does this before the paint handler.
     overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
@@ -349,8 +334,8 @@ def test_primitive_build_reasons_follow_changed_inputs_and_clear_on_reuse() -> N
 
     scene = _human_scene()
     filter_config = build_default_filter_config()
-    filter_state = FilterState(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, filter_widget=_SceneFilter(filter_config, filter_state))
+    filter_state = SessionFilter(filter_config)
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
     context = RenderContext.create(640, 480)
     first = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
     assert _build_reasons(overlay) == (DrawingBuildReason.INITIAL,)
@@ -411,3 +396,25 @@ def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettin
     second = overlay.prepare_drawing(context, DrawingBuffer(changed))
     assert second is not first
     assert overlay.prepare_drawing(context, DrawingBuffer(changed)) is second
+
+
+def test_cached_scene_overlay_tracks_search_and_toggle_all_without_new_scene() -> None:
+    scene = _human_scene()
+    model = SessionFilter(build_default_filter_config())
+    overlay = CachedSceneOverlay(scene=scene, scene_filter=model)
+    context = RenderContext.create(640, 480)
+    settings = DrawingSettings.for_context(context)
+    first = overlay.prepare_drawing(context, DrawingBuffer(settings))
+    assert len(first) > 0
+
+    model.set_id_query("missing")
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
+    assert overlay.hit_test(0.2, 0.3) is None
+
+    model.set_id_query("")
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) > 0
+    assert overlay.hit_test(0.2, 0.3) is not None
+
+    model.toggle_all()
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
+    assert overlay.hit_test(0.2, 0.3) is None

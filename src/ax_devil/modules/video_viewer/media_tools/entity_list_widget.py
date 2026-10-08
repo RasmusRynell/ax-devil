@@ -42,11 +42,9 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
-from ax_devil.modules.filtering.history_filtering import history_type_filter_keeps
-from ax_devil.modules.scene.filtering import matches_id_query
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.inspection import entity_detail_items
 from ax_devil.modules.scene.model import Entity, MotionState, Scene
-from ax_devil.modules.scene.rendering.cache import SceneFilter
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 
 from .frame_labels import CURRENT_FRAME_HIGHLIGHT, format_short_frame_time
@@ -464,25 +462,6 @@ def entity_detail_html(entity: Entity) -> str:
     return f'<table cellspacing="0" cellpadding="1">{"".join(rows)}</table>'
 
 
-def _filtered_objects(objects: Sequence[ObjectHistory], scene_filter: SceneFilter) -> list[ObjectHistory]:
-    """Return the objects the id search and the decoder's type filters keep.
-
-    The filtering module judges each distinct set of recorded classification types once.
-    """
-    config, state = scene_filter.filter_config, scene_filter.filter_state
-    kept_by_types: dict[tuple[str, ...], bool] = {}
-    kept: list[ObjectHistory] = []
-    for history in objects:
-        if not matches_id_query(history.entity_id, state):
-            continue
-        keep = kept_by_types.get(history.types)
-        if keep is None:
-            keep = kept_by_types[history.types] = history_type_filter_keeps(history.types, config, state)
-        if keep:
-            kept.append(history)
-    return kept
-
-
 class EntityListWidget(QWidget):
     """Entity list for the side panel.
 
@@ -538,11 +517,11 @@ class EntityListWidget(QWidget):
         self._row_scene: Scene | None = None
         self._scope = EntityScope.FRAME
         self._history: SceneHistory | None = None
-        self._scene_filter: SceneFilter | None = None
+        self._scene_filter: SessionFilter | None = None
         self._file_rows_stale = True
         self.clear()
 
-    def set_history(self, history: SceneHistory, scene_filter: SceneFilter) -> None:
+    def set_history(self, history: SceneHistory, scene_filter: SessionFilter) -> None:
         """Enable the whole-file scope, filtered like the overlay."""
         self._history = history
         self._scene_filter = scene_filter
@@ -624,7 +603,7 @@ class EntityListWidget(QWidget):
         assert self._history is not None and self._scene_filter is not None
         if self._file_rows_stale:
             self._file_rows_stale = False
-            objects = _filtered_objects(self._history.objects, self._scene_filter)
+            objects = self._scene_filter.filter_history(self._history.objects)
             self._model.set_rows([FileObjectRow(history) for history in objects])
             self._sync_uniform_item_sizes()
         if self._model.set_current_frame(self._frame_id.sequence_id if self._frame_id is not None else None):
