@@ -404,6 +404,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         self._frame_rate = 0.0
         self._duration_s = 0.0
         self._shown_seconds: float | None = None  # The decoded time of the frame on screen, when known.
+        self._frame_seconds: Callable[[int], float | None] | None = None
         self._playback_speed = DEFAULT_PLAYBACK_SPEED
         self._cached_ranges_provider: Callable[[], tuple[tuple[int, int], ...]] | None = None
         self._cached_ranges_timer = QtCore.QTimer(self)
@@ -518,10 +519,13 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         frame_rate: float,
         cached_ranges: Callable[[], tuple[tuple[int, int], ...]] | None = None,
         duration_s: float | None = None,
+        frame_seconds: Callable[[int], float | None] | None = None,
     ) -> None:
         """Follow a video of *total_frames* at *frame_rate* frames per second; zero or less hides the time.
 
         *duration_s* is the video's length, which sizes the time readout; without it, frames count at *frame_rate*.
+        *frame_seconds* looks up a frame's own time without waiting, for the frame picked while scrubbing; when it has
+        no answer, the time counts frames at *frame_rate* until the frame is shown.
         *cached_ranges* reports the decoded frames as inclusive ``(first, last)`` runs; the timeline shows them,
         refreshed while the panel is visible.
         """
@@ -531,6 +535,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
             duration_s if duration_s is not None else total_frames / frame_rate if frame_rate > 0 else 0.0
         )
         self._shown_seconds = None
+        self._frame_seconds = frame_seconds
         self._size_timecode()
         self._show_timecode()
         self._set_available(self._timecode_label, frame_rate > 0)
@@ -610,7 +615,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
     def _on_slider_changed(self, value: int) -> None:
         if self.timeline_slider.value() != self.frame_spinbox.value():
             self.frame_spinbox.setValue(value)
-        self._shown_seconds = None
+        self._shown_seconds = self._frame_seconds(value) if self._frame_seconds is not None else None
         self._show_timecode()
 
     def _on_spinbox_editing_finished(self) -> None:

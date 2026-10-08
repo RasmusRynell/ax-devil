@@ -247,6 +247,19 @@ class FileFrameSource(SeekableFrameSource):
             return None
         return last_time_us / 1_000_000 + self.get_frame_period_after_s(last)
 
+    def peek_frame_seconds(self, frame_number: int) -> float | None:
+        """Return a frame's time in seconds from the first frame, or None when unknown or the decoder is busy.
+
+        Never waits, so the GUI can call it on every slider move.
+        """
+        if self._frame_delivery is None or not 0 <= frame_number < self.total_frames:
+            return None
+        try:
+            time_us = self._frame_delivery.try_frame_time_us(frame_number)
+        except (IndexError, RuntimeError, ValueError):
+            return None
+        return None if time_us is None else time_us / 1_000_000
+
     def get_frame_size(self) -> tuple[int, int] | None:
         """Return the video's width and height in pixels, or None when the file does not say."""
         width, height = self._original_size

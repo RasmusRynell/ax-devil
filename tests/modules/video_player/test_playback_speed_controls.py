@@ -48,6 +48,14 @@ def test_time_follows_the_frame_at_the_video_frame_rate(qtbot: QtBot) -> None:
     # Variable frame rates show the decoded time of the frame on screen.
     panel.set_current_frame(2, seconds=1.5)
     assert panel.timecode_text() == "0:01.50"
+
+    # While scrubbing, the picked frame shows its own time when the lookup answers, else counts frames.
+    times = {1000: 61.2}
+    panel.show_video(total_frames=9000, frame_rate=25.0, frame_seconds=times.get)
+    panel.timeline_slider.setValue(1000)
+    assert panel.timecode_text() == "1:01.20"
+    panel.timeline_slider.setValue(500)
+    assert panel.timecode_text() == "0:20.00"
     assert format_timecode(3725.5) == "1:02:05.50"
     assert format_timecode(65.4, hundredths=False) == "1:05"
 

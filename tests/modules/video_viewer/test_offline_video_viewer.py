@@ -101,6 +101,9 @@ class _TrackedFrameSource(SeekableFrameSource):
     def get_duration_s(self) -> float | None:
         return None
 
+    def peek_frame_seconds(self, frame_number: int) -> float | None:
+        return None
+
     def get_current_frame(self) -> int:
         return self._current_frame
 
@@ -350,6 +353,7 @@ def _stub_frame_source() -> MagicMock:
     source.get_frame_size.return_value = (640, 480)
     source.get_cached_ranges.return_value = ((0, 9),)
     source.get_duration_s.return_value = None
+    source.peek_frame_seconds.return_value = None
     source.get_current_frame.return_value = 0
     source.get_playback_speed.return_value = 1.0
     source.get_position_generation.return_value = 0

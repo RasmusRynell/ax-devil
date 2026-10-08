@@ -50,7 +50,13 @@ from ax_devil.modules.workspace import EntryLane, SeekableVideoContent
 
 def show_video_on_controls(controls: SeekableVideoControlPanel, source: FileFrameSource) -> None:
     """Let *controls* follow *source*'s frame count, frame rate and cached frames."""
-    controls.show_video(source.get_total_frames(), float(source.fps), source.get_cached_ranges, source.get_duration_s())
+    controls.show_video(
+        source.get_total_frames(),
+        float(source.fps),
+        source.get_cached_ranges,
+        source.get_duration_s(),
+        source.peek_frame_seconds,
+    )
 
 
 def video_details(source: FileFrameSource) -> str:

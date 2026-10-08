@@ -208,6 +208,10 @@ class FileFrameDelivery(BaseWorker):
         """Return one frame's presentation time in microseconds since the first frame."""
         return self._decoder.get_frame_time_us(frame_number)
 
+    def try_frame_time_us(self, frame_number: int) -> float | None:
+        """Return one frame's presentation time, or None without waiting when the decoder is busy."""
+        return self._decoder.try_frame_time_us(frame_number)
+
     def get_frame_period_after_s(self, frame_number: int) -> float | None:
         """Return the source cadence for one frame."""
         return self._decoder.get_frame_period_after_s(frame_number)

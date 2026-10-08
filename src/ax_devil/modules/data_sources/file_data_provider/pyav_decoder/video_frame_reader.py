@@ -367,6 +367,15 @@ class FrameReaderWorker(BaseWorker):
         with self._pyav_lock:
             return self._frame_processor.get_frame_time_us(frame_index)
 
+    def try_frame_time_us(self, frame_index: int) -> float | None:
+        """Return a frame's presentation time, or None at once when the decoder is busy, so callers never wait."""
+        if not self._pyav_lock.acquire(blocking=False):
+            return None
+        try:
+            return self._frame_processor.get_frame_time_us(frame_index)
+        finally:
+            self._pyav_lock.release()
+
     def get_frame_times_us(self) -> tuple[int, ...]:
         """Return all frame presentation times in microseconds since the first indexed frame."""
         with self._pyav_lock:

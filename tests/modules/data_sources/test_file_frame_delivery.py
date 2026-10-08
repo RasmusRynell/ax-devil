@@ -266,6 +266,8 @@ def test_file_frame_source_reports_its_length_without_reading_every_timestamp(
         duration = source.get_duration_s()
         assert duration == pytest.approx(source.get_total_frames() / 20, abs=0.001)
         assert source._frame_timestamps_us is None
+        assert source.peek_frame_seconds(10) == pytest.approx(0.5, abs=0.001)
+        assert source.peek_frame_seconds(source.get_total_frames()) is None
         assert source.get_frame_size() is not None
     finally:
         source.stop()
