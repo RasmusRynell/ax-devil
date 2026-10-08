@@ -8,6 +8,7 @@ from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics
 from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.intake import is_video_file
@@ -48,6 +49,7 @@ class ApplicationWindow(QWidget):
         self._content_browser.rows_changed.connect(self._apply_sidebar)
         self._splitter.splitterMoved.connect(self._on_splitter_moved)
         self._apply_sidebar()
+        follow_appearance(self, self._follow_text_size)
 
     def toggle_sidebar(self) -> None:
         """Show or hide the content browser."""
@@ -79,9 +81,16 @@ class ApplicationWindow(QWidget):
         if not show:
             self._content_browser.hide()
             return
-        total = sum(self._splitter.sizes())
-        width = self._sidebar_width or QFontMetrics(QApplication.font()).averageCharWidth() * _SIDEBAR_CHARS
         self._content_browser.show()
+        self._set_sidebar_width(self._sidebar_width or _default_sidebar_width())
+
+    def _follow_text_size(self) -> None:
+        """Keep a sidebar the user never dragged at its default width for the current text size."""
+        if self._sidebar_width is None and self.is_sidebar_shown():
+            self._set_sidebar_width(_default_sidebar_width())
+
+    def _set_sidebar_width(self, width: int) -> None:
+        total = sum(self._splitter.sizes())
         self._splitter.setSizes([width, max(0, total - width)])
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
@@ -135,6 +144,11 @@ class ApplicationWindow(QWidget):
         self._splitter.setChildrenCollapsible(True)
 
         main_layout.addWidget(self._splitter, 1)
+
+
+def _default_sidebar_width() -> int:
+    """Return the sidebar's width before the user drags it: a number of average body-text characters."""
+    return QFontMetrics(QApplication.font()).averageCharWidth() * _SIDEBAR_CHARS
 
 
 def _local_files(mime_data: QMimeData) -> list[Path]:
