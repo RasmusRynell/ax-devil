@@ -15,6 +15,7 @@ from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.scene.rendering import (
+    OverlayFeature,
     OverlayVisibility,
     SceneRenderCatalogManager,
     SceneRenderCatalogSelection,
@@ -363,13 +364,14 @@ class OfflineSession(QObject):
         *,
         render_catalog_manager: SceneRenderCatalogManager,
         use_lane_controls: bool = True,
-        lane_visibility: dict[int, OverlayVisibility] | None = None,
+        lane_choices: dict[int, dict[OverlayFeature, bool]] | None = None,
     ) -> "OfflineSession":
         """Build the displays for one entry over its opened *media*; the session then owns the media.
 
-        Only creates widgets, so it never waits for file work. *lane_visibility* holds overlay visibility by original
-        lane position; each lane starts from its entry and writes its changes back, so choices carry over to the next
-        entry. If building fails, the caller keeps the media.
+        Only creates widgets, so it never waits for file work. *lane_choices* holds the overlay details the user
+        turned on or off, by original lane position; each lane starts from its own default with them applied and writes
+        its changes back, so choices carry over to the next entry while each entry keeps its own defaults. If building
+        fails, the caller keeps the media.
         """
         with ExitStack() as rollback:
             container = QWidget(parent_widget)
@@ -398,7 +400,7 @@ class OfflineSession(QObject):
                     source_pool=source_pool,
                     render_catalog_manager=render_catalog_manager,
                     use_lane_controls=use_lane_controls and len(media.lanes) == 1,
-                    lane_visibility={} if lane_visibility is None else lane_visibility,
+                    lane_choices={} if lane_choices is None else lane_choices,
                     rollback=rollback,
                 )
                 for position, opened in enumerate(media.lanes)
@@ -475,6 +477,14 @@ class OfflineSession(QObject):
         lane_layout.addWidget(pane)
         return alignment_indicator
 
+    @staticmethod
+    def _initial_visibility(opened: OpenedLane) -> OverlayVisibility:
+        """Start without confidence when every score in the overlay is 1.0, as ground truth writes; it says nothing."""
+        history = opened.scene_history
+        if history is not None and history.only_full_scores:
+            return OverlayVisibility().with_feature(OverlayFeature.CONFIDENCE, False)
+        return OverlayVisibility()
+
     @classmethod
     def _build_lane(
         cls,
@@ -488,7 +498,7 @@ class OfflineSession(QObject):
         source_pool: list[_PooledVideoSource],
         render_catalog_manager: SceneRenderCatalogManager,
         use_lane_controls: bool,
-        lane_visibility: dict[int, OverlayVisibility],
+        lane_choices: dict[int, dict[OverlayFeature, bool]],
         rollback: ExitStack,
     ) -> OfflineLane:
         lane_content = opened.lane
@@ -509,14 +519,20 @@ class OfflineSession(QObject):
         overlay_policy = opened.overlay_policy
         display.viewport.set_diagnostics_sources((overlay_source.diagnostics_id,) if overlay_source else ())
         timing_controls = TimingDiagnosticsWidget()
+        start = cls._initial_visibility(opened)
+        earlier = lane_choices.get(opened.lane_index, {})
         render_catalog_selection = render_catalog_manager.create_selection(
-            visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container
+            visibility=start.with_choices(earlier), parent=container
         )
 
         def remember_visibility(
-            *, selection: SceneRenderCatalogSelection = render_catalog_selection, lane_index: int = opened.lane_index
+            *,
+            selection: SceneRenderCatalogSelection = render_catalog_selection,
+            lane_index: int = opened.lane_index,
+            start: OverlayVisibility = start,
+            earlier: dict[OverlayFeature, bool] = earlier,
         ) -> None:
-            lane_visibility[lane_index] = selection.visibility
+            lane_choices[lane_index] = selection.visibility.choices_since(start, earlier)
 
         render_catalog_selection.selectionChanged.connect(remember_visibility)
         tools_panel = MediaToolsPanel(

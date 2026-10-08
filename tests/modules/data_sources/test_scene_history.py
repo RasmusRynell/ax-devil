@@ -149,6 +149,7 @@ def test_records_round_trip_and_reject_malformed_metadata() -> None:
     assert SceneHistoryRecords.from_metadata(None) is None
     assert SceneHistoryRecords.from_metadata({"events": [], "tracks": [["a", ["human"], [[0, "1"]]]]}) is None
     assert SceneHistoryRecords.from_metadata({"events": [[True, "x", []]], "tracks": []}) is None
+    assert SceneHistoryRecords.from_metadata({"events": [], "tracks": []}) is None  # From before only_full_scores.
 
 
 def test_placement_follows_the_sample_each_frame_shows() -> None:
@@ -283,3 +284,35 @@ def test_source_index_without_history_is_rebuilt(tmp_path: Path) -> None:
         assert [track.entity_id for track in provider._store.catalog.history.tracks] == ["a"]
     finally:
         provider.close()
+
+
+def _scene(*entities: Entity) -> Scene:
+    scene = Scene(time_slice=TimeSlice(start=0, end=0))
+    for entity in entities:
+        scene.add_entity(entity)
+    return scene
+
+
+def _scored(entity_id: str, score: float) -> Entity:
+    entity = _entity(entity_id)
+    entity.observations[-1].classification[0].score = Score(score)
+    return entity
+
+
+def test_records_tell_ground_truth_scores_apart_from_real_ones() -> None:
+    """Sources whose every score is exactly 1.0 are flagged; one real score or no scores at all is not."""
+
+    def only_full(*samples: Scene) -> bool:
+        collector = SceneHistoryCollector()
+        for key, scene in enumerate(samples):
+            collector.add(key, scene)
+        records = collector.records()
+        assert SceneHistoryRecords.from_metadata(json.loads(json.dumps(records.to_metadata()))) == records
+        return records.only_full_scores
+
+    assert only_full(_scene(_scored("a", 1.0)), _scene(_scored("a", 1.0), _scored("b", 1.0)))
+    assert not only_full(_scene(_scored("a", 1.0)), _scene(_scored("b", 0.97)))
+    assert not only_full(_scene(), _scene())
+    unknown = _entity("a")
+    unknown.observations[-1].classification.clear()
+    assert not only_full(_scene(unknown))

@@ -41,10 +41,15 @@ class SampleTrack:
 
 @dataclass(frozen=True, slots=True)
 class SceneHistoryRecords:
-    """Sample-keyed events and entity appearances persisted with a Scene file index."""
+    """Sample-keyed events and entity appearances persisted with a Scene file index.
+
+    *only_full_scores* is true when the source has scores and every one is exactly 1.0, as annotation formats write in
+    place of a real confidence.
+    """
 
     events: tuple[SampleEvent, ...]
     tracks: tuple[SampleTrack, ...]
+    only_full_scores: bool = False
 
     def to_metadata(self) -> dict[str, Any]:
         """Return the JSON-compatible form persisted with the index."""
@@ -53,6 +58,7 @@ class SceneHistoryRecords:
             "tracks": [
                 [track.entity_id, list(track.types), [list(run) for run in track.runs]] for track in self.tracks
             ],
+            "only_full_scores": self.only_full_scores,
         }
 
     @classmethod
@@ -73,9 +79,10 @@ class SceneHistoryRecords:
                 )
                 for entity_id, types, runs in _list(raw["tracks"])
             )
+            only_full_scores = _bool(raw["only_full_scores"])
         except (KeyError, TypeError, ValueError):
             return None
-        return cls(events, tracks)
+        return cls(events, tracks, only_full_scores)
 
 
 class SceneHistoryCollector:
@@ -88,6 +95,7 @@ class SceneHistoryCollector:
         self._events: dict[int, tuple[SampleEvent, ...]] = {}
         self._entities: dict[int, tuple[tuple[str, tuple[str, ...]], ...]] = {}  # (entity id, types) per sample.
         self._types: dict[tuple[str, ...], tuple[str, ...]] = {}  # Shares equal type tuples across samples.
+        self._full_scores: dict[int, bool] = {}  # Whether every score of a sample is 1.0, for samples with scores.
 
     def add(self, timestamp_key: int, scene: Scene) -> None:
         """Record the events and entities of one sample."""
@@ -95,11 +103,20 @@ class SceneHistoryCollector:
             SampleEvent(timestamp_key, event.kind, event.label, _involved_ids(event)) for event in scene.events
         )
         entities: list[tuple[str, tuple[str, ...]]] = []
+        scores: list[float] = []
         for entity_id, entity in scene.entities.items():
             observation = entity.latest_observation
             types = tuple(c.type for c in observation.classification) if observation is not None else ()
             entities.append((sys.intern(str(entity_id)), self._types.setdefault(types, types)))
+            if observation is not None:
+                scores.extend(c.score.value for c in observation.classification)
+                if observation.confidence is not None:
+                    scores.append(observation.confidence.value)
         self._entities[timestamp_key] = tuple(entities)
+        if scores:
+            self._full_scores[timestamp_key] = all(score == 1.0 for score in scores)
+        else:
+            self._full_scores.pop(timestamp_key, None)
 
     def records(self) -> SceneHistoryRecords:
         """Return events in sample order and each entity's runs of consecutive samples."""
@@ -126,6 +143,7 @@ class SceneHistoryCollector:
                 )
                 for entity_id, entity_runs in runs.items()
             ),
+            only_full_scores=bool(self._full_scores) and all(self._full_scores.values()),
         )
 
 
@@ -189,10 +207,12 @@ class SceneHistory:
         events: tuple[FrameEvent, ...],
         objects: tuple[ObjectHistory, ...],
         frame_count: int,
+        only_full_scores: bool = False,
     ) -> None:
         self.events = events
         self.objects = objects  # Ordered by first appearance.
         self.frame_count = frame_count
+        self.only_full_scores = only_full_scores  # See SceneHistoryRecords.
         self._objects_by_id = {history.entity_id: history for history in objects}
         self._events_by_id: dict[str, list[FrameEvent]] = {}
         for event in events:
@@ -241,7 +261,12 @@ class SceneHistory:
             if spans:
                 objects.append(ObjectHistory(track.entity_id, track.types, tuple(spans), frame_times_us))
         objects.sort(key=lambda history: (history.spans[0][0], history.entity_id))
-        return cls(events=tuple(events), objects=tuple(objects), frame_count=frame_count)
+        return cls(
+            events=tuple(events),
+            objects=tuple(objects),
+            frame_count=frame_count,
+            only_full_scores=records.only_full_scores,
+        )
 
     def object(self, entity_id: str) -> ObjectHistory | None:
         """Return the history of *entity_id*, or None when it is never shown in the video."""
@@ -276,6 +301,12 @@ def _append_span(spans: list[FrameSpan], span: FrameSpan) -> None:
 def _int(value: Any) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise TypeError(f"Expected int, got {type(value).__name__}")
+    return value
+
+
+def _bool(value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"Expected bool, got {type(value).__name__}")
     return value
 
 

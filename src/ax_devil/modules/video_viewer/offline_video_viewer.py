@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
-from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
+from ax_devil.modules.scene.rendering import OverlayFeature, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
 from ax_devil.modules.video_player.engine.playback_speed import (
@@ -94,7 +94,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         self._loading_indicator: LoadingIndicator | None = None
         self._playback_speed = DEFAULT_PLAYBACK_SPEED
         self._initial_entry_loaded = False
-        self._lane_visibility: dict[int, OverlayVisibility] = {}
+        self._lane_choices: dict[int, dict[OverlayFeature, bool]] = {}
         super().__init__(parent)
 
     def _get_entries(self) -> tuple[PlaylistEntry, ...]:
@@ -194,7 +194,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
                     media,
                     render_catalog_manager=self._render_catalog_manager,
                     use_lane_controls=self._entry_count() == 1,
-                    lane_visibility=self._lane_visibility,
+                    lane_choices=self._lane_choices,
                 )
             except Exception as exc:
                 logger.exception(f"Failed to build displays for entry {index + 1}")

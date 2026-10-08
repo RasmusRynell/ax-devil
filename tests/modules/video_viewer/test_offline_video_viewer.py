@@ -1677,6 +1677,80 @@ class TestOfflineVideoViewerWidget:
         confidence, _reset = details(widget._runtime.lanes[0])
         assert confidence.isChecked()
 
+    def test_lanes_start_without_confidence_when_every_score_is_one(self, qtbot: QtBot) -> None:
+        """Ground truth scores every object 1.0, which says nothing, so its lane opens with Confidence off."""
+        original = _SpecFileOverlaySource.scene_history
+
+        def ground_truth(self: _SpecFileOverlaySource, *args: Any, **kwargs: Any) -> SceneHistory:
+            history = original(self, *args, **kwargs)
+            history.only_full_scores = True
+            return history
+
+        content = _make_local_content("truth", with_overlay=True)
+        with patch.object(_SpecFileOverlaySource, "scene_history", ground_truth):
+            widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
+            _attach_offline_widget(qtbot, widget)
+
+        assert widget._runtime is not None
+        tools = widget._runtime.lanes[0].tools_panel
+        assert tools is not None
+        confidence = tools.findChild(QCheckBox, "overlayFeature_confidence")
+        assert confidence is not None and not confidence.isChecked()
+        outlines = tools.findChild(QCheckBox, "overlayFeature_outlines")
+        assert outlines is None or outlines.isChecked()
+
+    def test_ground_truth_default_stays_with_its_entry_while_user_choices_carry_over(self, qtbot: QtBot) -> None:
+        """Confidence off is the ground-truth entry's own default; only what the user changes follows the lane."""
+        original = _SpecFileOverlaySource.scene_history
+
+        def scores(self: _SpecFileOverlaySource, *args: Any, **kwargs: Any) -> SceneHistory:
+            history = original(self, *args, **kwargs)
+            history.only_full_scores = self.name.startswith("truth")
+            return history
+
+        playlist = PlaylistContent(
+            display_name="Playlist",
+            entries=(
+                PlaylistEntry(
+                    lanes=_make_seekable_content(
+                        "truth", overlays=(_make_overlay_content("truth"),)
+                    ).standalone_lanes(),
+                    default_considered=True,
+                ),
+                PlaylistEntry(
+                    lanes=_make_seekable_content(
+                        "model", overlays=(_make_overlay_content("model"),)
+                    ).standalone_lanes(),
+                    default_considered=True,
+                ),
+            ),
+        )
+
+        def checked(feature: str) -> bool:
+            assert widget._runtime is not None
+            tools = widget._runtime.lanes[0].tools_panel
+            assert tools is not None
+            box = tools.findChild(QCheckBox, f"overlayFeature_{feature}")
+            assert box is not None
+            return box.isChecked()
+
+        with patch.object(_SpecFileOverlaySource, "scene_history", scores):
+            widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
+            _attach_offline_widget(qtbot, widget)
+            assert not checked("confidence") and checked("ids")
+            self._render_catalog_manager.refresh_catalogs()
+            assert widget._runtime is not None
+            tools = widget._runtime.lanes[0].tools_panel
+            assert tools is not None
+            ids = tools.findChild(QCheckBox, "overlayFeature_ids")
+            assert ids is not None
+            ids.setChecked(False)
+
+            widget._step_next()
+            assert checked("confidence") and not checked("ids")
+            widget._step_prev()
+            assert not checked("confidence") and not checked("ids")
+
     def test_rapid_playback_speed_transitions_update_source_immediately(self, qtbot: QtBot) -> None:
         source = _stub_frame_source()
         content = _make_seekable_content("Solo", frame_source_opener=lambda: source)

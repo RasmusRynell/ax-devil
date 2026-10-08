@@ -171,7 +171,7 @@ def _label(*texts: str) -> LabelContent:
 def test_labels_are_sized_to_their_runs_and_placed_by_their_background_on_whole_pixels() -> None:
     buffer = DrawingBuffer(_SETTINGS)
     LabelCall(0.2034, 0.5017, "bottom-left", _label("Person", "12")).submit(buffer)
-    LabelCall(0.5, 0.5, "top-left", _label("Person", "3f2a9c1e")).submit(buffer)
+    LabelCall(0.25, 0.5, "top-left", _label("Person", "3f2a9c1e")).submit(buffer)
     LabelCall(0.7, 0.5, "top-left", _label("Person", "12")).submit(buffer)
     short, long, again = buffer.finish().labels
     assert long.sprite.width > short.sprite.width > 0
@@ -179,7 +179,7 @@ def test_labels_are_sized_to_their_runs_and_placed_by_their_background_on_whole_
     assert again.sprite is short.sprite
     assert short.position.x() == round(0.2034 * 200)
     assert short.position.y() == round(0.5017 * 100 - short.sprite.height)
-    assert (long.position.x(), long.position.y()) == (100, 50)
+    assert (long.position.x(), long.position.y()) == (50, 50)
 
 
 def test_label_bars_are_two_and_a_half_font_sizes_long_and_filled_from_the_left() -> None:

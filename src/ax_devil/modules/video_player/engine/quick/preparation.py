@@ -59,6 +59,11 @@ class DrawingSettings:
         return cls(context.width, context.height, context.scale_factor)
 
 
+def _inside(start: float, length: float, limit: float) -> float:
+    """Return *start* moved so ``start..start + length`` lies within ``0..limit``, when it fits."""
+    return start if length > limit else min(max(start, 0.0), limit - length)
+
+
 class MeshData(NamedTuple):
     """Final screen-space vertex bytes for one geometry node."""
 
@@ -264,6 +269,8 @@ class DrawingBuffer:
     ) -> None:
         """Paint each distinct label once and place it on whole device pixels, so its text stays crisp.
 
+        A label never sticks out of the image: one that would is moved just inside it.
+
         Labels are prepared row by row, so unlike the other kinds they gain nothing from being queued.
         """
         s = self.settings
@@ -275,8 +282,9 @@ class DrawingBuffer:
             if sprite is None:
                 continue
             fx, fy = _ANCHORS.get(str(anchor[row]), (0.0, 0.0))
-            left = float(x[row]) * s.width - fx * sprite.width
-            top = float(y[row]) * s.height - fy * sprite.height
+            # Labels that would stick out of the image, as above a box at its top edge, move inside it.
+            left = _inside(float(x[row]) * s.width - fx * sprite.width, sprite.width, s.width)
+            top = _inside(float(y[row]) * s.height - fy * sprite.height, sprite.height, s.height)
             if not self._visible(left, top, sprite.width, sprite.height):
                 continue
             position = QPointF(round(left * s.dpr) / s.dpr, round(top * s.dpr) / s.dpr)

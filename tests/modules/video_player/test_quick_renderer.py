@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 import pytest
-from PySide6.QtCore import QPointF, QRectF
+from PySide6.QtCore import QPointF, QRectF, QSizeF
 from PySide6.QtGui import QColor, QImage, QPalette
 from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
 from PySide6.QtWidgets import QApplication, QWidget
@@ -808,3 +808,15 @@ def test_label_tree_survives_garbage_collection_without_python_references(
         gc.collect()
         assert rendered.pixelColor(round(x * 200) + 1, 12) == QColor("blue")
     assert len(created) == 1
+
+
+def test_labels_stay_inside_the_image(surface: QuickSurface) -> None:
+    """A label placed above a box at the image's top edge, or past its right edge, moves just inside the image."""
+    content = LabelContent((LabelRun("38", (255, 255, 255)),), 0.12, background=(0, 0, 255, 255), padding_y=0.04)
+    _render(
+        surface,
+        [LabelCall(0.2, 0.0, "bottom-left", content), LabelCall(1.0, 0.5, "top-left", content)],
+    )
+    for label in surface._overlays._drawing.labels:
+        rect = QRectF(label.position, QSizeF(label.sprite.width, label.sprite.height))
+        assert _TARGET.contains(rect), rect

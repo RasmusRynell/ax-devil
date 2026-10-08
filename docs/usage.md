@@ -64,10 +64,12 @@ In the media tools panel, open **Details** beside **Catalog** to choose which in
 outlines, IDs, class names, confidence, speed arrows, movement badges, attributes, or relations. Changes also update
 paused video. For example, hide Confidence in a lane showing human annotations and keep it enabled for model
 predictions in another lane. Hidden data remains available in inspection and hover cards.
+An overlay whose every score is 1.0, as ground-truth annotations write, opens with **Confidence** off; turn it on
+in **Details** to show the scores anyway.
 
 Each view or comparison lane keeps its own choices when changing catalogs; unsupported details are disabled.
-**Reset** enables everything. Offline playlists retain choices by lane position across entries. Choices last until
-the viewer closes and are not saved across app restarts. Export uses the choices selected when export starts.
+**Reset** enables everything. Offline playlists carry the details you change by lane position across entries, on top
+of each entry's own defaults. Choices last until the viewer closes and are not saved across app restarts. Export uses the choices selected when export starts.
 
 ## Export
 
