@@ -700,14 +700,15 @@ class EntityListWidget(QWidget):
 def split_id_and_class(room: int, id_width: int, class_width: int, gap: int) -> tuple[int, int]:
     """Return the widths for a row's id and class in *room*; when both do not fit, each keeps a share.
 
-    The class keeps up to a third of the room, so a long tracker id still leaves its class readable.
+    Reserve up to a third for the class beside a long tracker id; a shorter id leaves the rest for the class.
     """
     if class_width <= 0:
         return room, 0
     if id_width + gap + class_width <= room:
         return id_width, class_width
-    class_room = min(class_width, room // 3)
-    return max(0, room - gap - class_room), class_room
+    reserved_class_room = min(class_width, room // 3)
+    id_room = min(id_width, max(0, room - gap - reserved_class_room))
+    return id_room, min(class_width, max(0, room - gap - id_room))
 
 
 def type_color(object_type: str) -> str:
