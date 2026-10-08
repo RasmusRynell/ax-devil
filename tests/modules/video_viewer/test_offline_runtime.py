@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QObject, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QWidget
 
@@ -123,6 +123,7 @@ class _AsyncFrameSource:
     """Async frame source test double that lets tests complete requests out of order."""
 
     def __init__(self) -> None:
+        self.frameReady = _Signal()
         self.requests: list[int] = []
         self.callbacks: dict[int, Callable[[FrameData | None], None]] = {}
 
@@ -147,6 +148,10 @@ class _Signal:
         """Record a callback connection."""
         self._callbacks.append(callback)
 
+    def disconnect(self, callback: Callable[..., None]) -> None:
+        """Remove a source callback during session cleanup."""
+        self._callbacks.remove(callback)
+
     def emit(self, *args: object) -> None:
         """Invoke connected callbacks."""
         for callback in tuple(self._callbacks):
@@ -158,6 +163,7 @@ class _PlaybackSource:
 
     def __init__(self, *, total_frames: int = 1000) -> None:
         self.sourceFinished = _Signal()
+        self.frameReady = _Signal()
         self.current_frame = 0
         self.total_frames = total_frames
         self._position_generation = 0
@@ -252,6 +258,8 @@ def _make_primary_session(
         source_index=0,
     )
     session = OfflineSession([lane], container, media=EntryMedia(), source_pool=[pooled_source])
+    source.frameReady.connect(pooled_source.relay.deliver)
+    pooled_source.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
     return session, display, source
 
 
@@ -332,32 +340,97 @@ def test_offline_lane_displays_frame_before_scheduling_scene_inspection(qtbot: o
     assert inspected_metadata == {"source": "direct"}
 
 
-def test_offline_lane_async_frame_requests_present_latest_desired_frame() -> None:
-    frame_source = _AsyncFrameSource()
-    overlay_source = _OverlaySource(_overlay(9))
-    display = _Display()
-    lane = OfflineLane(
-        content=cast(SeekableVideoContent, object()),
-        name="lane",
-        display=display,  # type: ignore[arg-type]
-        overlay_source=overlay_source,  # type: ignore[arg-type]
-        video_source=frame_source,  # type: ignore[arg-type]
+def test_offline_session_shared_secondary_presents_latest_frame_with_each_lanes_overlay(qtbot: object) -> None:
+    session, primary_display, primary_source = _make_primary_session(qtbot)
+    secondary_source = _AsyncFrameSource()
+    displays = [_Display(), _Display()]
+    overlays = [_OverlaySource(_overlay(90)), _OverlaySource(_overlay(91))]
+    for display, overlay in zip(displays, overlays, strict=True):
+        session.lanes.append(
+            OfflineLane(
+                content=cast(SeekableVideoContent, object()),
+                name="secondary",
+                display=display,  # type: ignore[arg-type]
+                overlay_source=overlay,  # type: ignore[arg-type]
+                video_source=secondary_source,  # type: ignore[arg-type]
+                source_index=1,
+            )
+        )
+    pooled = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
+        source=secondary_source,  # type: ignore[arg-type]
+        relay=offline_viewer_runtime._FrameDeliveryRelay(1, session.container),  # noqa: SLF001
+        source_index=1,
     )
+    session._source_pool.append(pooled)  # noqa: SLF001
 
-    def _complete(requested_frame: int, frame_data: FrameData | None) -> None:
-        lane.complete_frame_request(requested_frame, frame_data, _complete)
+    session._on_frame_ready(0, _source_frame(primary_source, 7))  # noqa: SLF001
+    session._on_frame_ready(0, _source_frame(primary_source, 9))  # noqa: SLF001
+    assert secondary_source.requests == [7]
+    worker = threading.Thread(target=lambda: secondary_source.complete(7))
+    worker.start()
+    worker.join()
+    assert displays[0].frames == displays[1].frames == []
+    qtbot.waitUntil(lambda: secondary_source.requests == [7, 9])  # type: ignore[attr-defined]
+    secondary_source.complete(9)
+    assert [frame.frame.frame_id for frame in primary_display.frames] == [7, 9]
+    for index, display in enumerate(displays):
+        assert [frame.frame.frame_id for frame in display.frames] == [9]
+        assert display.frames[0].overlays is not None
+        assert display.frames[0].overlays.overlay_id == 90 + index
+        assert [frame_id.sequence_id for frame_id in overlays[index].requested_frame_ids] == [9]
 
-    lane.request_frame(7, _complete)
-    lane.request_frame(9, _complete)
-    frame_source.complete(7)
+    # Seeking to the same pending frame must still reject its earlier completion.
+    session._on_frame_ready(0, _source_frame(primary_source, 10))  # noqa: SLF001
+    old_completion = secondary_source.callbacks[10]
+    session.jump_to_frame(10)
+    session._on_frame_ready(0, _source_frame(primary_source, 10))  # noqa: SLF001
+    old_completion(_frame(10))
+    assert len(displays[0].frames) == 1
+    secondary_source.complete(10)
+    assert [frame.frame.frame_id for frame in displays[0].frames] == [9, 10]
 
-    assert frame_source.requests == [7, 9]
-    assert display.frames == []
+    session._on_frame_ready(0, _source_frame(primary_source, 11))  # noqa: SLF001
+    session.pause_playback()
+    secondary_source.complete(11)
+    assert len(displays[0].frames) == 2
+    session.step_frames(2)
+    session._on_frame_ready(0, _source_frame(primary_source, 12))  # noqa: SLF001
+    secondary_source.callbacks[12](None)
+    # A shorter or unavailable secondary keeps its previous displayed frame.
+    assert [frame.frame.frame_id for frame in displays[0].frames] == [9, 10]
+    session._on_frame_ready(0, _source_frame(primary_source, 13))  # noqa: SLF001
+    secondary_source.complete(13)
+    assert [frame.frame.frame_id for frame in displays[0].frames] == [9, 10, 13]
 
-    frame_source.complete(9)
+    session._on_frame_ready(0, _source_frame(primary_source, 14))  # noqa: SLF001
+    late_completion = secondary_source.callbacks[14]
+    # Model the source pool being retired while its callback is still on the worker.
+    session._source_pool.remove(pooled)  # noqa: SLF001
+    replacement = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
+        source=secondary_source,  # type: ignore[arg-type]
+        relay=offline_viewer_runtime._FrameDeliveryRelay(1, session.container),  # noqa: SLF001
+        source_index=1,
+    )
+    session._source_pool.append(replacement)  # noqa: SLF001
+    secondary_source.frameReady.connect(replacement.relay.deliver)
+    replacement.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
+    late_completion(_frame(14))
+    assert len(displays[0].frames) == 3
+    session.cleanup(blocking=True)
+    QCoreApplication.sendPostedEvents(session, QEvent.Type.DeferredDelete)
+    failures: list[Exception] = []
 
-    assert [frame_id.sequence_id for frame_id in overlay_source.requested_frame_ids] == [9]
-    assert len(display.frames) == 1
+    def complete_after_destruction() -> None:
+        try:
+            late_completion(_frame(14))
+        except Exception as exc:
+            failures.append(exc)
+
+    worker = threading.Thread(target=complete_after_destruction)
+    worker.start()
+    worker.join()
+    assert failures == []
+    assert len(displays[0].frames) == 3
 
 
 def test_offline_session_drops_queued_old_primary_frame_until_seek_target_arrives(
@@ -455,6 +528,8 @@ def test_offline_session_updates_current_frame_before_display_callbacks(
         source_index=0,
     )
     session = OfflineSession([lane], container, media=EntryMedia(), source_pool=[pooled_source])
+    source.frameReady.connect(pooled_source.relay.deliver)
+    pooled_source.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
     display.session = session
 
     source.current_frame = 799
