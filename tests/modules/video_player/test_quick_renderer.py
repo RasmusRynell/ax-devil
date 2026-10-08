@@ -626,6 +626,31 @@ def test_label_draws_its_background_above_geometry_and_moves_without_repainting(
     assert surface._overlays._drawing.labels[0].sprite is sprite
 
 
+@pytest.mark.parametrize("origin", [(20, 10), (-20, -10)])
+@pytest.mark.parametrize("opacity", [1.0, 0.5])
+def test_new_and_returning_labels_keep_viewport_transform_and_opacity(
+    surface: QuickSurface, origin: tuple[int, int], opacity: float
+) -> None:
+    """Changing label content after rendering preserves the video origin and overlay opacity."""
+    content = LabelContent(
+        (LabelRun("A", (255, 255, 255)),), 0.12, background=(0, 0, 255, 255), padding_x=0.06, padding_y=0.04
+    )
+    target = _TARGET.translated(*origin)
+    for text in ("A", "B", "A"):
+        calls: DrawCalls = [
+            BoxCall(0.4, 0.4, 0.2, 0.2, _FILL),
+            LabelCall(0.4, 0.4, "top-left", replace(content, runs=(LabelRun(text, (255, 255, 255)),))),
+        ]
+        surface.set_frame_image(_image(), target)
+        surface.set_overlays(prepare_calls(calls, surface.drawing_buffer(target, 100)), opacity, target, 100, None)
+        QApplication.processEvents()
+        rendered = surface.grabFramebuffer()
+        dpr = rendered.devicePixelRatio()
+        color = rendered.pixelColor(round((82 + origin[0]) * dpr), round((42 + origin[1]) * dpr))
+        assert abs(color.blue() - round(255 * opacity)) <= 1
+        assert abs(color.red() - round(255 * opacity * (1 - opacity))) <= 1
+
+
 def test_label_texture_replacement_preserves_neighboring_images(surface: QuickSurface) -> None:
     """Distinct label images keep their own pixels when one changes or releases its atlas allocation.
 
