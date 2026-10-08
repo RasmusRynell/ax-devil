@@ -115,6 +115,9 @@ class EntityRow(Protocol):
     def types(self) -> tuple[str, ...]:
         """Return classification types shown as colored dots."""
 
+    def class_name(self) -> str:
+        """Return the class shown after the id."""
+
     def trailing(self) -> tuple[SummarySpan, ...]:
         """Return the right-aligned summary columns."""
 
@@ -141,6 +144,12 @@ class FrameEntityRow:
         """Return the latest observation's classification types."""
         obs = self.entity.latest_observation
         return tuple(c.type for c in obs.classification) if obs is not None else ()
+
+    def class_name(self) -> str:
+        """Return the latest observation's highest-scoring class."""
+        obs = self.entity.latest_observation
+        primary = obs.primary_classification if obs is not None else None
+        return primary.type if primary is not None else ""
 
     def trailing(self) -> tuple[SummarySpan, ...]:
         """Return movement and confidence columns."""
@@ -171,6 +180,10 @@ class FileObjectRow:
         """Return every classification type the object had."""
         return self.history.types
 
+    def class_name(self) -> str:
+        """Return every class the object had."""
+        return ", ".join(self.history.types)
+
     def trailing(self) -> tuple[SummarySpan, ...]:
         """Return when the object is first and last shown."""
         first = format_short_frame_time(self.history.first_seen.timestamp_monotime_us)
@@ -192,6 +205,7 @@ class EntityListItem:
 
     entity_id: str
     types: tuple[str, ...]
+    class_name: str
     trailing: tuple[SummarySpan, ...]  # Right-aligned columns.
     detail_html: str  # Empty while collapsed.
     expanded: bool
@@ -283,6 +297,7 @@ class EntityListModel(QAbstractListModel):
             item = EntityListItem(
                 entity_id=self._ids[row],
                 types=entity_row.types(),
+                class_name=entity_row.class_name(),
                 trailing=entity_row.trailing(),
                 detail_html=entity_row.detail_html() if expanded else "",
                 expanded=expanded,
@@ -319,7 +334,12 @@ class EntityListDelegate(QStyledItemDelegate):
         follow_appearance(self, self._load_fonts)
 
     def _load_fonts(self) -> None:
-        self._fonts = {"id": TextRole.MONO.font(), "value": TextRole.MONO.font(), "glyph": TextRole.BODY.font()}
+        self._fonts = {
+            "id": TextRole.MONO.font(),
+            "class": TextRole.SMALL.font(),
+            "value": TextRole.MONO_SMALL.font(),
+            "glyph": TextRole.SMALL.font(),
+        }
         self._metrics = {name: QFontMetrics(font) for name, font in self._fonts.items()}
         # Fixed-width confidence column so values line up across rows.
         self._min_widths = {"value": self._metrics["value"].horizontalAdvance("100%")}
@@ -348,9 +368,12 @@ class EntityListDelegate(QStyledItemDelegate):
         style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, style_option, painter, style_option.widget)
         if isinstance(item, EntityListItem):
             palette = QPalette(option.palette)
-            if option.state & QStyle.StateFlag.State_Selected:
+            selected = bool(option.state & QStyle.StateFlag.State_Selected)
+            if selected:
                 palette.setColor(QPalette.ColorRole.Text, palette.color(QPalette.ColorRole.HighlightedText))
-            self._draw_summary(painter, content_left, content_left + content_width, content_top, item, palette)
+            self._draw_summary(
+                painter, content_left, content_left + content_width, content_top, item, palette, selected=selected
+            )
             if item.expanded:
                 detail_top = content_top + self._summary_height + Space.XS
                 detail_rect = QRect(
@@ -371,7 +394,15 @@ class EntityListDelegate(QStyledItemDelegate):
         return QSize(option.rect.width(), height)
 
     def _draw_summary(
-        self, painter: QPainter, left: int, right: int, top: int, item: EntityListItem, palette: QPalette
+        self,
+        painter: QPainter,
+        left: int,
+        right: int,
+        top: int,
+        item: EntityListItem,
+        palette: QPalette,
+        *,
+        selected: bool,
     ) -> None:
         align_right = int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         x = right
@@ -398,6 +429,16 @@ class EntityListDelegate(QStyledItemDelegate):
         self._draw_span(
             painter, QRect(x, top, max(0, limit - x), self._summary_height), id_span, text, alignment, palette
         )
+        x += self._metrics["id"].horizontalAdvance(text) + Space.M
+        if item.class_name and x < limit:
+            muted = QPalette(palette)
+            if not selected:
+                muted.setColor(QPalette.ColorRole.Text, palette.color(QPalette.ColorRole.PlaceholderText))
+            class_text = self._metrics["class"].elidedText(item.class_name, Qt.TextElideMode.ElideRight, limit - x)
+            class_span = SummarySpan(item.class_name, None, "class")
+            self._draw_span(
+                painter, QRect(x, top, limit - x, self._summary_height), class_span, class_text, alignment, muted
+            )
 
     def _draw_span(
         self, painter: QPainter, rect: QRect, span: SummarySpan, text: str, alignment: int, palette: QPalette
@@ -514,9 +555,13 @@ class EntityListWidget(QWidget):
         self._count_label.setStyleSheet("color: palette(placeholder-text);")
         header_layout.addWidget(self._count_label)
 
+        self._scene_debug_title = QLabel("Frame debug", self)
+        TextRole.CAPTION.apply(self._scene_debug_title)
+        header_layout.addWidget(self._scene_debug_title)
         self._scene_debug_label = QLabel("", self)
         self._scene_debug_label.setTextFormat(Qt.TextFormat.RichText)
         self._scene_debug_label.setWordWrap(True)
+        TextRole.SMALL.apply(self._scene_debug_label)
         header_layout.addWidget(self._scene_debug_label)
 
         root_layout.addLayout(header_layout)
@@ -666,8 +711,9 @@ class EntityListWidget(QWidget):
 
     def _set_scene_debug(self, debug: dict[str, Any]) -> None:
         """Show frame-level decoder debug data when present."""
+        self._scene_debug_title.setVisible(bool(debug))
         self._scene_debug_label.setVisible(bool(debug))
-        self._scene_debug_label.setText(f"<b>frame debug:</b><br/>{build_debug_html(debug)}" if debug else "")
+        self._scene_debug_label.setText(build_debug_html(debug) if debug else "")
 
     def _on_index_clicked(self, index: QModelIndex) -> None:
         """Select the clicked row's entity and toggle its detail expansion when it has one."""

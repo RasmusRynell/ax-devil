@@ -302,6 +302,17 @@ def test_entity_summary_omits_absent_motion() -> None:
     assert not _build_trailing(_entity("absent"))
 
 
+def test_entity_rows_show_the_class_after_the_id(qtbot: QtBot) -> None:
+    widget = EntityListWidget(show_title=False)
+    qtbot.addWidget(widget)
+    widget.show()
+
+    widget.update_scene(_scene_with_entities(_entity("a")), FrameIdentifier(0, 0), {})
+
+    item = widget._model.item_at(0)
+    assert item is not None and (item.entity_id, item.class_name) == ("a", "person")
+
+
 def test_entity_detail_items_include_every_populated_field() -> None:
     entity = _entity("a", frame_number=3)
     entity.motion_state = MotionState.Moving

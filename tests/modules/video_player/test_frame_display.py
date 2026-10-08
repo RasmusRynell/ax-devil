@@ -188,3 +188,71 @@ def test_dragging_side_panel_fully_open_and_closed_updates_content_visibility(qt
     finally:
         handle.cleanup()
         panel.cleanup()
+
+
+def test_side_panel_steps_aside_instead_of_squeezing_the_video(qtbot: QtBot) -> None:
+    """An open panel takes at most half the pane, closes when the pane shrinks too far and reopens when it grows."""
+    window = QWidget()
+    qtbot.addWidget(window)
+    layout = QHBoxLayout(window)
+    layout.setContentsMargins(0, 0, 0, 0)
+    display = FrameDisplay()
+    layout.addWidget(display)
+    display.enable_side_panel(QLabel("tools"))
+    window.resize(1200, 400)
+    window.show()
+    panel = display.findChild(DraggablePanel)
+    assert panel is not None
+
+    def resize(width: int) -> None:
+        window.resize(width, 400)
+        QCoreApplication.processEvents()
+        assert display.width() == width
+
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    assert display.viewport.width() >= 1200 // 2
+
+    resize(400)  # A half-pane panel would leave 200 px of video.
+    assert not display.is_side_panel_open()
+    assert display.viewport.width() == 400
+
+    resize(1000)
+    assert display.is_side_panel_open()
+    assert display.viewport.width() >= 1000 // 2
+
+    # A panel the user closed stays closed when room returns.
+    display.set_side_panel_open(False)
+    qtbot.waitUntil(lambda: panel.width() == 0)
+    resize(400)
+    resize(1200)
+    assert not display.is_side_panel_open()
+
+    # Opened by hand without room, it stays open while the pane narrows.
+    resize(450)
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    window.resize(420, 400)
+    QCoreApplication.processEvents()
+    assert display.is_side_panel_open()
+
+
+def test_side_panel_opening_during_a_resize_ends_at_the_new_pane_width(qtbot: QtBot) -> None:
+    window = QWidget()
+    qtbot.addWidget(window)
+    layout = QHBoxLayout(window)
+    layout.setContentsMargins(0, 0, 0, 0)
+    display = FrameDisplay()
+    layout.addWidget(display)
+    display.enable_side_panel(QLabel("tools"))
+    window.resize(1200, 400)
+    window.show()
+    panel = display.findChild(DraggablePanel)
+    assert panel is not None
+
+    display.set_side_panel_open(True)
+    window.resize(560, 400)
+    QCoreApplication.processEvents()
+
+    qtbot.waitUntil(lambda: panel.width() == 280)
+    assert display.viewport.width() == 280
