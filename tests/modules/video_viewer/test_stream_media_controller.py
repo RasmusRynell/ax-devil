@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,7 +21,6 @@ from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverla
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import stream_media_controller
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
-from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
 from ax_devil.modules.workspace import (
     LiveMQTTOverlaySourceSpec,
@@ -32,6 +30,7 @@ from ax_devil.modules.workspace import (
     LiveWebSocketOverlaySourceSpec,
     OverlayContent,
 )
+from tests.helpers.scene_inspector import RecordingSceneInspector
 
 
 class _FrameSource(FrameSource):
@@ -48,28 +47,6 @@ class _FrameSource(FrameSource):
 
     def wait(self, timeout: int = 2000) -> bool:
         return True
-
-
-class _RecordingSceneInspector:
-    """Scene inspector test double recording update order."""
-
-    def __init__(self) -> None:
-        self.cleared = False
-        self.updates: list[tuple[Scene | None, FrameIdentifier | None, dict[str, Any] | None]] = []
-
-    def clear(self) -> None:
-        """Record clear calls."""
-        self.cleared = True
-
-    def update_scene(
-        self,
-        scene: Scene | None,
-        frame_id: FrameIdentifier | None,
-        metadata: dict[str, Any] | None,
-        refilter: SceneRefilter | None = None,
-    ) -> None:
-        """Record a Scene inspector update."""
-        self.updates.append((scene, frame_id, metadata))
 
 
 def _live_content(name: str = "cam-1", stream_url: str = "rtsp://camera.local/axis") -> LiveVideoContent:
@@ -99,85 +76,6 @@ def _build_sync_result() -> SyncResult[FrameData, OverlayData]:
         frame=TimestampedData(data=frame, capture_time=7.0, arrival_time=7.0),
         overlay=TimestampedData(data=overlay, capture_time=7.0, arrival_time=7.0),
     )
-
-
-def _controller_with_sources(*, shared_transport: bool = False) -> Any:
-    with (
-        patch.object(StreamMediaController, "__init__", lambda self, *a, **kw: None),
-        patch.object(StreamMediaController, "_record_metric"),
-    ):
-        controller = StreamMediaController.__new__(StreamMediaController)
-
-    controller._logger = MagicMock()
-    controller._metrics_id = "test-stream-controller"
-    controller._paused = False
-    controller.video_source = MagicMock()
-    controller.overlay_source = controller.video_source if shared_transport else MagicMock()
-    controller._sources = list(dict.fromkeys((controller.video_source, controller.overlay_source)))
-    controller.synchronizer = MagicMock()
-    controller._connection = LiveConnectionStatus.connecting([LiveFeed.VIDEO])
-    controller._connection_changed = None
-    return controller
-
-
-def test_pause_and_resume_playback_controls_sources_and_sync() -> None:
-    controller = _controller_with_sources()
-
-    controller.pause_playback()
-    controller.resume_playback()
-
-    controller.video_source.pause.assert_called_once()
-    controller.overlay_source.pause.assert_called_once()
-    controller.synchronizer.reset.assert_called_once()
-    controller.video_source.play.assert_called_once()
-    controller.overlay_source.play.assert_called_once()
-    assert controller.is_paused is False
-
-
-def test_pause_and_resume_playback_with_shared_transport_controls_video_only() -> None:
-    controller = _controller_with_sources(shared_transport=True)
-
-    controller.pause_playback()
-    controller.resume_playback()
-
-    controller.video_source.pause.assert_called_once()
-    assert controller.overlay_source is controller._sources[0]
-    controller.video_source.play.assert_called_once()
-    controller.overlay_source.play.assert_called_once()
-
-
-def test_pause_and_resume_playback_tolerates_missing_overlay_source() -> None:
-    controller = _controller_with_sources()
-    controller.overlay_source = None
-    controller._sources = [controller.video_source]
-
-    controller.pause_playback()
-    controller.resume_playback()
-
-    controller.video_source.pause.assert_called_once()
-    controller.video_source.play.assert_called_once()
-    assert controller.is_paused is False
-
-
-def test_controller_drops_frames_and_overlays_while_paused() -> None:
-    controller = _controller_with_sources()
-
-    controller.pause_playback()
-    controller._add_frame(MagicMock())
-    controller._add_overlay(MagicMock())
-
-    controller.synchronizer.push_frame.assert_not_called()
-    controller.synchronizer.push_overlay.assert_not_called()
-
-
-def test_controller_pushes_frames_when_playing() -> None:
-    controller = _controller_with_sources()
-    frame_data = MagicMock()
-    frame_data.frame_id.timestamp_monotime_us = 1_000_000
-
-    controller._add_frame(frame_data)
-
-    controller.synchronizer.push_frame.assert_called_once()
 
 
 def test_live_controller_uses_qt_stream_sync_and_displays_presented_frame(
@@ -222,7 +120,7 @@ def test_live_controller_displays_frame_before_scheduling_scene_inspection(
     monkeypatch: pytest.MonkeyPatch,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
-    inspector = _RecordingSceneInspector()
+    inspector = RecordingSceneInspector()
 
     def record_displayed(_frame: VideoFrameWithOverlays) -> None:
         assert inspector.updates == []
@@ -526,9 +424,9 @@ def test_live_input_routing_and_unique_lifecycle(
 
     transport = MagicMock()
     monkeypatch.setattr(rtsp_source, "StreamSession", transport)
-    mqtt = MagicMock(spec=OverlaySource)
+    mqtt = _LiveOverlaySource()
     mqtt_filter = build_default_filter_config()
-    mqtt.get_filter_config.return_value = mqtt_filter
+    monkeypatch.setattr(mqtt, "get_filter_config", lambda: mqtt_filter)
     monkeypatch.setattr("ax_devil.modules.data_sources.MQTTOverlaySource", lambda **_kwargs: mqtt)
     decoder = MagicMock()
     rtsp_filter = build_default_filter_config()
@@ -560,9 +458,16 @@ def test_live_input_routing_and_unique_lifecycle(
         pause = stack.enter_context(patch.object(source, "pause"))
         stop = stack.enter_context(patch.object(source, "stop", wraps=source.stop))
         delete = stack.enter_context(patch.object(source, "deleteLater"))
+        mqtt_pause = stack.enter_context(patch.object(mqtt, "pause", wraps=mqtt.pause))
+        mqtt_stop = stack.enter_context(patch.object(mqtt, "stop", wraps=mqtt.stop))
+        mqtt_delete = stack.enter_context(patch.object(mqtt, "deleteLater", wraps=mqtt.deleteLater))
         log_error = stack.enter_context(patch.object(controller._logger, "error"))
         assert controller.synchronizer is not None
         push_overlay = stack.enter_context(patch.object(controller.synchronizer, "push_overlay"))
+        push_frame = stack.enter_context(patch.object(controller.synchronizer, "push_frame"))
+        reset_sync = stack.enter_context(
+            patch.object(controller.synchronizer, "reset", wraps=controller.synchronizer.reset)
+        )
         packet = OverlayData(
             frame_id=FrameIdentifier(sequence_id=1, timestamp_monotime_us=2_000_000),
             content=Scene(time_slice=TimeSlice(start=0, end=1)),
@@ -573,11 +478,32 @@ def test_live_input_routing_and_unique_lifecycle(
             push_overlay.assert_called_once_with(packet, 2.0)
         else:
             push_overlay.assert_not_called()
+        push_overlay.reset_mock()
+        overlay_source = controller.overlay_source
+        if overlay_source is not None:
+            overlay_source.overlayReady.emit(packet)
+            push_overlay.assert_called_once_with(packet, 2.0)
         source.sourceError.emit("failure")
         log_error.assert_called_once_with("Stream source error: failure")
         controller.start_playback()
+        frame = _build_sync_result().frame.data
+        source.frameReady.emit(frame)
+        push_frame.assert_called_once()
+        push_frame.reset_mock()
+        push_overlay.reset_mock()
         controller.pause_playback()
+        source.frameReady.emit(frame)
+        if overlay_source is not None:
+            overlay_source.overlayReady.emit(packet)
+        push_frame.assert_not_called()
+        push_overlay.assert_not_called()
         controller.resume_playback()
+        reset_sync.assert_called_once()
+        source.frameReady.emit(frame)
+        push_frame.assert_called_once()
+        if overlay_source is not None:
+            overlay_source.overlayReady.emit(packet)
+            push_overlay.assert_called_once_with(packet, 2.0)
         controller.cleanup()
         controller.cleanup()
         assert play.call_count == 2
@@ -585,10 +511,10 @@ def test_live_input_routing_and_unique_lifecycle(
         stop.assert_called_once()
         delete.assert_called_once()
         if mode == "mqtt":
-            assert mqtt.play.call_count == 2
-            mqtt.pause.assert_called_once()
-            mqtt.stop.assert_called_once()
-            mqtt.deleteLater.assert_called_once()
+            assert mqtt.plays == 2
+            mqtt_pause.assert_called_once()
+            mqtt_stop.assert_called_once()
+            mqtt_delete.assert_called_once()
 
 
 def test_same_named_streams_keep_independent_source_diagnostics(

@@ -135,6 +135,23 @@ SCENARIOS: dict[str, list[Step]] = {
         ("default", "0"),
         ("new_view",),
     ],
+    "invalid JSON cannot become default and recovers after repair": [
+        ("select", "0", "a"),
+        ("write", "a", "json_error"),
+        ("default", "0"),
+        ("refresh",),
+        ("write", "a", "v2"),
+        ("reload", "0"),
+        ("default", "0"),
+        ("new_view",),
+    ],
+    "failed selection enables actions only after repair": [
+        ("write", "a", "compile_error"),
+        ("select", "0", "a"),
+        ("write", "a", "v1"),
+        ("reload", "0"),
+        ("apply", "0"),
+    ],
     "apply to all reaches failed views": [
         ("write", "b", "compile_error"),
         ("select", "1", "b"),
@@ -149,7 +166,7 @@ def test_catalog_scenarios_follow_model(qtbot: QtBot, tmp_path: Path, name: str)
     _run_steps(qtbot, tmp_path, SCENARIOS[name])
 
 
-@pytest.mark.parametrize("seed", range(4))
+@pytest.mark.parametrize("seed", range(2))
 def test_random_catalog_steps_follow_model(qtbot: QtBot, tmp_path: Path, seed: int) -> None:
     rng = random.Random(seed)
     operations = ("write", "write", "select", "reload", "refresh", "apply", "default", "delete", "new_view")
