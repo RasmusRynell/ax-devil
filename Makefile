@@ -1,5 +1,7 @@
 .PHONY: sync lock check format test test-integration run run-dev
 
+TEST_WORKERS ?= auto
+
 sync:
 	uv sync
 
@@ -17,7 +19,7 @@ format:
 	uv run ruff format .
 
 test:
-	uv run pytest
+	uv run pytest -n $(TEST_WORKERS) --maxprocesses=8 --dist=loadfile
 
 test-integration:
 	uv run pytest -m integration

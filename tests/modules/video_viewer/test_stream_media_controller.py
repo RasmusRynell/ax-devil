@@ -788,26 +788,26 @@ def test_live_controller_marks_silent_video_stalled_except_while_paused(
     (video,), _overlays = live_transports
     try:
         controller.start_playback()
+        assert controller._stall_timer.isActive()
         silent_s = stream_media_controller.VIDEO_STALL_TIMEOUT_S + 1
         clock.monotonic.return_value = silent_s
         video.sourceConnected.emit()
-        qtbot.wait(1100)
+        controller._stall_timer.timeout.emit()
         assert controller.connection_status.headline.state is LiveConnectionState.LIVE
 
         video.frameReady.emit(_build_sync_result().frame.data)
         controller.pause_playback()
         clock.monotonic.return_value = 2 * silent_s
-        qtbot.wait(1100)
+        controller._stall_timer.timeout.emit()
         assert controller.connection_status.headline.state is LiveConnectionState.LIVE
 
         controller.resume_playback()
-        qtbot.wait(1100)
+        assert controller._stall_timer.isActive()
+        controller._stall_timer.timeout.emit()
         assert controller.connection_status.headline.state is LiveConnectionState.LIVE
 
         clock.monotonic.return_value = 3 * silent_s
-        qtbot.waitUntil(
-            lambda: controller.connection_status.headline.state is LiveConnectionState.STALLED, timeout=2000
-        )
+        controller._stall_timer.timeout.emit()
         stalled = controller.connection_status.headline
         assert stalled.state is LiveConnectionState.STALLED
         assert stalled.reason == "No video received for 6 s."
