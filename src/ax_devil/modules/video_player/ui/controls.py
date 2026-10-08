@@ -286,18 +286,9 @@ class BaseVideoControlPanel(FadingWidget):
         self.play_pause_btn.clicked.connect(self._on_play_pause_clicked)
         self._container_layout.addWidget(self.play_pause_btn)
         self._update_play_button()
-        try:
-            _id = id(self)
-            _cls = self.__class__.__name__
-            self.destroyed.connect(lambda _=None, _id=_id, _cls=_cls: logger.debug(f"{_cls}.destroyed id={_id}"))
-        except Exception:
-            pass
-
-    def __del__(self) -> None:
-        try:
-            logger.debug(f"BaseVideoControlPanel deleted id={id(self)} class={self.__class__.__name__}")
-        except Exception:
-            pass
+        _id = id(self)
+        _cls = self.__class__.__name__
+        self.destroyed.connect(lambda _=None, _id=_id, _cls=_cls: logger.debug(f"{_cls}.destroyed id={_id}"))
 
     def _on_play_pause_clicked(self) -> None:
         if not self._signal_guard:

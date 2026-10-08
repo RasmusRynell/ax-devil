@@ -438,10 +438,7 @@ class StreamMediaController:
 
     def _delete_source_objects(self) -> None:
         for source in self._sources:
-            try:
-                source.deleteLater()
-            except Exception:
-                pass
+            source.deleteLater()
 
     def _cleanup_synchronizer(self) -> None:
         if self.synchronizer is not None:

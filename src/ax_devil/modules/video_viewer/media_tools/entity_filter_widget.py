@@ -205,10 +205,6 @@ class EntityFilterWidget(QWidget):
     def _apply_filter_config(self, filter_config: FilterConfig) -> None:
         """Internal helper to build UI from the supplied filter config."""
         for checkbox in self._checkboxes.values():
-            try:
-                checkbox.toggled.disconnect()
-            except Exception:
-                pass
             self._grid_layout.removeWidget(checkbox)
             checkbox.deleteLater()
 
