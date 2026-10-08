@@ -629,7 +629,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         self.timeline_slider.setMinimum(0)
         self.timeline_slider.setMaximum(max(0, total - 1))
         self.frame_spinbox.setMaximum(max(0, total - 1))
-        self._total_label.setText(f" / {total - 1}")
+        self._total_label.setText(f" / {max(0, total - 1)}")
         self._size_frame_spinbox()
 
     def set_current_frame(self, frame: int, seconds: float | None = None) -> None:

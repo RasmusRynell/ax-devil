@@ -253,8 +253,12 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
             primary_controls.set_playback_speed(self._playback_speed)
 
         primary_source = runtime.get_primary_video_source()
-        if self._has_active_global_controls() and self._global_controls is not None and primary_source is not None:
-            show_video_on_controls(self._global_controls, primary_source)
+        if self._has_active_global_controls() and self._global_controls is not None:
+            if primary_source is not None:
+                show_video_on_controls(self._global_controls, primary_source)
+            else:
+                # An entry without considered lanes has nothing to play; keep only the playlist navigation.
+                self._global_controls.show_video(total_frames=0, frame_rate=0.0)
         # Lanes of different videos have no single size or length to show.
         sources = runtime.iter_video_sources()
         self.set_header_details(video_details(sources[0]) if len(sources) == 1 else "")

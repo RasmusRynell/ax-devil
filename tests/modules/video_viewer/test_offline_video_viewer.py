@@ -999,6 +999,37 @@ class TestOfflineVideoViewerWidget:
         assert label.text() == "No considered lanes in this entry"
         runtime.cleanup()
 
+    def test_entry_without_considered_lanes_clears_the_shared_controls(self, qtbot: QtBot) -> None:
+        """Stepping to an entry whose lanes are all excluded leaves no frames, time or cache from the previous one."""
+        playlist = PlaylistContent(
+            display_name="Playlist",
+            entries=(
+                PlaylistEntry(
+                    lanes=_make_local_content("A", with_overlay=True).standalone_lanes(), default_considered=True
+                ),
+                PlaylistEntry(
+                    lanes=_make_local_content("B", with_overlay=True).standalone_lanes(), default_considered=True
+                ),
+            ),
+        )
+        workspace_manager = WorkspaceManager()
+        workspace_manager.add_content(playlist)
+        workspace_manager.set_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 1, 0), False)
+        widget = OfflineVideoViewerWidget(
+            playlist, consideration_query=workspace_manager, render_catalog_manager=self._render_catalog_manager
+        )
+        _attach_offline_widget(qtbot, widget)
+        controls = widget._global_controls
+        assert controls is not None and controls.timeline_slider.maximum() > 0
+
+        widget._step_next()
+
+        assert widget._runtime is not None and not widget._runtime.lanes
+        assert controls.timeline_slider.maximum() == 0
+        assert controls.timecode_text() == "" or not controls._timecode_label.isVisibleTo(controls)
+        assert controls.timeline_slider.cached_ranges() == ()
+        assert widget.header_details() == ""
+
     def test_multi_video_entry(self, qtbot: QtBot) -> None:
         """PlaylistEntry with multiple videos renders through the lane pipeline."""
         v1 = _make_local_content("A")
