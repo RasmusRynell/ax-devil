@@ -29,13 +29,13 @@ from PySide6.QtWidgets import QApplication, QDialog, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
+from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
+from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.settings.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.settings.settings import GlobalSettings
-from ax_devil.modules.settings.settings_dialog import SettingsDialog
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.viewport import FrameViewport

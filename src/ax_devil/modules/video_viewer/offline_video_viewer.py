@@ -15,16 +15,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.core.playback_speed import (
+    DEFAULT_PLAYBACK_SPEED,
+    clamp_playback_speed,
+    step_playback_speed,
+)
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
-from ax_devil.modules.video_player.engine.playback_speed import (
-    DEFAULT_PLAYBACK_SPEED,
-    clamp_playback_speed,
-    step_playback_speed,
-)
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel

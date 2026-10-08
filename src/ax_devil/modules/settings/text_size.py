@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from enum import Enum
 
-from ax_devil.modules.chrome.tokens import DEFAULT_BODY_PX, system_body_px
+from PySide6.QtGui import QFontDatabase, QFontInfo
+
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+DEFAULT_BODY_PX = 15
+
+
+def system_body_px() -> int:
+    """Return the operating system's interface text size in pixels."""
+    return QFontInfo(QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)).pixelSize()
 
 
 class TextSize(str, Enum):
