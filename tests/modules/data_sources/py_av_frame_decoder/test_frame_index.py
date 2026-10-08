@@ -2,7 +2,6 @@
 
 import shutil
 import struct
-import subprocess
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -22,30 +21,6 @@ from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_index i
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.pyav_abstraction import PyAvAbstraction
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import VideoOpenConfig
 from tests.helpers.video import create_test_video
-
-
-def _create_b_frame_video(path: Path) -> None:
-    """Create a video with B-frames so packet order can differ from display order."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        "testsrc2=duration=4:rate=30:size=320x240",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-bf",
-        "3",
-        "-g",
-        "30",
-        "-keyint_min",
-        "30",
-        str(path),
-    ]
-    subprocess.run(cmd, check=True, capture_output=True)
 
 
 def _packet_pts(video_path: Path) -> list[int]:
@@ -73,7 +48,9 @@ class TestFrameIndex:
 
     def test_build_real_video(self, frame_index: FrameIndex) -> None:
         """Test building a presentation-order frame index from a real video."""
+        assert frame_index.get_total_frames() == 0
         frame_index.build()
+        assert frame_index.get_total_frames() == 60
 
         # Should have indexed frames
         assert len(frame_index.pts_list) > 0
@@ -92,11 +69,13 @@ class TestFrameIndex:
 
         for i, pts in enumerate(frame_index.pts_list):
             assert frame_index.pts_to_index[pts] == i
+            assert frame_index.get_frame_pts(i) == pts
+            assert frame_index.is_keyframe(i) == frame_index.is_key_list[i]
 
     def test_frame_indices_follow_decoded_display_order_for_b_frames(self, temp_dir: Path) -> None:
         """Frame indices must follow decoded display order for B-frame videos."""
         video_path = temp_dir / "b_frames.mp4"
-        _create_b_frame_video(video_path)
+        create_test_video(video_path, duration=4.0, fps=30, gop=30, b_frames=3)
 
         frame_index = FrameIndex(video_path)
         frame_index.build()
@@ -110,32 +89,6 @@ class TestFrameIndex:
         assert len(frame_index.pts_list) == len(decoded_pts)
         for expected_index, pts in enumerate(decoded_pts):
             assert frame_index.pts_to_index[pts] == expected_index
-
-    def test_get_total_frames(self, frame_index: FrameIndex) -> None:
-        """Test getting total frame count."""
-        assert frame_index.get_total_frames() == 0
-
-        frame_index.build()
-        total_frames = frame_index.get_total_frames()
-
-        assert total_frames > 0
-        assert total_frames == len(frame_index.pts_list)
-
-    def test_get_frame_pts(self, frame_index: FrameIndex) -> None:
-        """Test getting PTS for frame indices."""
-        frame_index.build()
-
-        # Test valid indices
-        for i in range(len(frame_index.pts_list)):
-            pts = frame_index.get_frame_pts(i)
-            assert pts == frame_index.pts_list[i]
-
-        # Test invalid indices
-        with pytest.raises(IndexError):
-            frame_index.get_frame_pts(-1)
-
-        with pytest.raises(IndexError):
-            frame_index.get_frame_pts(len(frame_index.pts_list))
 
     def test_frame_times_follow_pts_not_nominal_fps(self, video_path: Path) -> None:
         """Frame times should come from PTS deltas, not a single nominal FPS value."""
@@ -200,19 +153,6 @@ class TestFrameIndex:
         assert frame_index.get_frame_period_after_s(1) is None
         assert frame_index.get_frame_period_after_s(2) is None
 
-    def test_is_keyframe(self, frame_index: FrameIndex) -> None:
-        """Test keyframe detection."""
-        frame_index.build()
-
-        # Test valid indices
-        for i in range(len(frame_index.is_key_list)):
-            is_key = frame_index.is_keyframe(i)
-            assert is_key == frame_index.is_key_list[i]
-
-        # Test invalid indices
-        assert frame_index.is_keyframe(-1) is False
-        assert frame_index.is_keyframe(len(frame_index.is_key_list)) is False
-
     def test_get_nearest_keyframe_before(self, frame_index: FrameIndex) -> None:
         """Test finding nearest keyframe before a given index."""
         frame_index.build()
@@ -226,13 +166,14 @@ class TestFrameIndex:
             keyframe_idx = frame_index.get_nearest_keyframe_before(i)
             assert 0 <= keyframe_idx <= i
             assert frame_index.is_keyframe(keyframe_idx)
+            assert not any(frame_index.is_keyframe(index) for index in range(keyframe_idx + 1, i + 1))
 
-        # Test invalid indices
-        with pytest.raises(IndexError):
-            frame_index.get_nearest_keyframe_before(-1)
-
-        with pytest.raises(IndexError):
-            frame_index.get_nearest_keyframe_before(total_frames)
+        for index in (-1, total_frames):
+            assert frame_index.is_keyframe(index) is False
+            with pytest.raises(IndexError):
+                frame_index.get_frame_pts(index)
+            with pytest.raises(IndexError):
+                frame_index.get_nearest_keyframe_before(index)
 
     def test_save_and_load_from_file(self, frame_index: FrameIndex, temp_dir: Path) -> None:
         """Test saving and loading frame index from cache file."""
@@ -441,64 +382,3 @@ class TestFrameIndex:
 
         cached_index = FrameIndex(pattern_path, cache_path, open_config=open_config)
         assert cached_index.load_from_file() is False
-
-
-class TestFrameIndexRealWorldUsage:
-    """Test real-world usage patterns."""
-
-    def test_video_seeking_workflow(self, temp_dir: Path) -> None:
-        """Test typical video seeking workflow."""
-        # Create video with known characteristics
-        video_path = temp_dir / "seek_test.mp4"
-        create_test_video(video_path, duration=3.0, fps=30)
-
-        frame_index = FrameIndex(video_path)
-        frame_index.build()
-
-        total_frames = frame_index.get_total_frames()
-        assert total_frames > 0
-
-        # Test seeking to various positions
-        for position in [0, total_frames // 4, total_frames // 2, total_frames - 1]:
-            # Get PTS for position
-            pts = frame_index.get_frame_pts(position)
-            assert pts >= 0
-
-            # Find nearest keyframe
-            keyframe_idx = frame_index.get_nearest_keyframe_before(position)
-            assert keyframe_idx <= position
-            assert frame_index.is_keyframe(keyframe_idx)
-
-            # Get keyframe PTS
-            keyframe_pts = frame_index.get_frame_pts(keyframe_idx)
-            assert keyframe_pts <= pts
-
-    def test_binary_search_optimization(self, temp_dir: Path) -> None:
-        """Test that binary search for keyframes works efficiently."""
-        # Create longer video to have more keyframes
-        video_path = temp_dir / "long_video.mp4"
-        create_test_video(video_path, duration=5.0, fps=30)
-
-        frame_index = FrameIndex(video_path)
-        frame_index.build()
-
-        total_frames = frame_index.get_total_frames()
-        assert total_frames >= 10, "Generated five-second video must contain at least ten frames"
-
-        # Test keyframe search at various positions
-        test_positions = [0, 1, total_frames // 4, total_frames // 2, 3 * total_frames // 4, total_frames - 1]
-
-        for pos in test_positions:
-            keyframe_idx = frame_index.get_nearest_keyframe_before(pos)
-
-            # Verify the result is actually a keyframe
-            assert frame_index.is_keyframe(keyframe_idx)
-
-            # Verify it's the nearest one (no closer keyframe exists)
-            assert keyframe_idx <= pos
-
-            # If there are frames between keyframe and target, none should be keyframes
-            for i in range(keyframe_idx + 1, min(pos + 1, total_frames)):
-                if i < total_frames and frame_index.is_keyframe(i):
-                    # Found a closer keyframe, which means our result was wrong
-                    assert False, f"Found closer keyframe at {i} vs {keyframe_idx} for target {pos}"
