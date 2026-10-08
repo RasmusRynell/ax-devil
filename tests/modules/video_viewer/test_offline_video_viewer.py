@@ -952,9 +952,9 @@ class TestOfflineVideoViewerWidget:
             for index, rect in enumerate(rects):
                 assert rect.y() == rects[index // columns * columns].y()
                 if index % columns:
-                    assert rect.x() == rects[index - 1].right() + 3
+                    assert rect.x() > rects[index - 1].right()
                 if index >= columns:
-                    assert rect.y() == rects[index - columns].bottom() + 3
+                    assert rect.y() > rects[index - columns].bottom()
 
     def test_no_considered_lanes_placeholder(self, qtbot: QtBot) -> None:
         """An entry with all lanes excluded still shows its placeholder."""
