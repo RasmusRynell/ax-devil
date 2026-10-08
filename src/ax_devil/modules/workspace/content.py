@@ -112,6 +112,19 @@ class ConsiderationItem:
     default_considered: bool
 
 
+@dataclass(frozen=True, slots=True)
+class OnScreenWorkspaceItem:
+    """One item currently shown by a workspace viewer."""
+
+    kind: Literal["video", "playlist_entry"]
+    content_id: str
+    entry_index: int | None = None
+
+
+InfoFields = tuple[tuple[str, object], ...]
+"""Labeled values shown in the item information dialog, formatted by the dialog's payload builder."""
+
+
 class ConsiderationQuery(Protocol):
     """Read-only consideration state consumed by Workspace viewers."""
 
@@ -126,6 +139,19 @@ class FileVideoSourceSpec:
 
     path: Path
     image_sequence_config: ImageSequenceConfig | None = field(default=None, compare=False, hash=False)
+
+    def info_fields(self) -> InfoFields:
+        """Return the video file path and any image sequence timing."""
+        image_sequence = self.image_sequence_config
+        if image_sequence is None:
+            return (("path", self.path),)
+        return (
+            ("path", self.path),
+            ("fps", image_sequence.fps),
+            ("width", image_sequence.width),
+            ("height", image_sequence.height),
+            ("frames", image_sequence.total_frames),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +169,10 @@ class FileOverlaySourceSpec:
         """Return the overlay file path for source labels and tooltips."""
         return str(self.path)
 
+    def info_fields(self) -> InfoFields:
+        """Return the overlay file path and decoder."""
+        return (("path", self.path), ("handler type", self.handler_type))
+
 
 @dataclass(frozen=True, slots=True)
 class LiveRTSPStreamSpec:
@@ -155,6 +185,16 @@ class LiveRTSPStreamSpec:
     resolution: str = "1280x720"
     stream_url: str | None = field(default=None, repr=False)
 
+    def info_fields(self) -> InfoFields:
+        """Return the device, camera head, and stream settings; never the password."""
+        return (
+            ("host", self.host),
+            ("username", self.username),
+            ("camera head", self.camera_head),
+            ("resolution", self.resolution),
+            ("stream URL", self.stream_url or "(default)"),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class LiveRTSPOverlaySourceSpec:
@@ -163,6 +203,10 @@ class LiveRTSPOverlaySourceSpec:
     handler_type: str
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.RTSP_SOURCE
     source_location: ClassVar[None] = None
+
+    def info_fields(self) -> InfoFields:
+        """Return the decoder."""
+        return (("handler type", self.handler_type),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +223,17 @@ class LiveMQTTOverlaySourceSpec:
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.MQTT_SOURCE
     source_location: ClassVar[None] = None
 
+    def info_fields(self) -> InfoFields:
+        """Return the decoder and broker settings; never the broker password."""
+        return (
+            ("handler type", self.handler_type),
+            ("broker host", self.broker_host),
+            ("broker port", self.broker_port),
+            ("broker username", self.broker_username or "(none)"),
+            ("data source", self.analytics_data_source_key),
+            ("device API protocol", self.device_api_protocol),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class LiveWebSocketOverlaySourceSpec:
@@ -191,10 +246,18 @@ class LiveWebSocketOverlaySourceSpec:
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.WEBSOCKET_SOURCE
     source_location: ClassVar[None] = None
 
+    def info_fields(self) -> InfoFields:
+        """Return the decoder and DataHub subscription."""
+        return (
+            ("handler type", self.handler_type),
+            ("topic", self.topic),
+            ("channel ID", self.channel_id),
+            ("device API protocol", self.device_api_protocol),
+        )
 
-OverlaySourceSpec = (
-    FileOverlaySourceSpec | LiveRTSPOverlaySourceSpec | LiveMQTTOverlaySourceSpec | LiveWebSocketOverlaySourceSpec
-)
+
+LiveOverlaySourceSpec = LiveRTSPOverlaySourceSpec | LiveMQTTOverlaySourceSpec | LiveWebSocketOverlaySourceSpec
+OverlaySourceSpec = FileOverlaySourceSpec | LiveOverlaySourceSpec
 
 
 # ---------------------------------------------------------------------------
@@ -230,13 +293,13 @@ class LiveVideoContent:
     overlays: tuple[OverlayContent, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
     content_id: str = field(default_factory=_new_content_id)
+    is_live: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
         """Reject overlay shapes unsupported by live playback."""
         if len(self.overlays) > 1:
             raise ValueError("Live video content supports at most one overlay.")
-        live_source_types = (LiveRTSPOverlaySourceSpec, LiveMQTTOverlaySourceSpec, LiveWebSocketOverlaySourceSpec)
-        if any(not isinstance(overlay.source_spec, live_source_types) for overlay in self.overlays):
+        if any(not isinstance(overlay.source_spec, LiveOverlaySourceSpec) for overlay in self.overlays):
             raise TypeError(
                 "Live video content requires an RTSP or MQTT overlay source spec; WebSocket overlays are supported too."
             )
@@ -245,6 +308,15 @@ class LiveVideoContent:
     def source_location(self) -> str:
         """Return the device and camera head, shown to tell same-named streams apart."""
         return f"{self.source_spec.host}/camera head {self.source_spec.camera_head}"
+
+    @property
+    def overlay_spec(self) -> LiveOverlaySourceSpec | None:
+        """Return the source spec of the live overlay, or None for plain video."""
+        return cast(LiveOverlaySourceSpec, self.overlays[0].source_spec) if self.overlays else None
+
+    def info_fields(self) -> InfoFields:
+        """Return the content type, overlay count, and stream settings."""
+        return (("type", "live video"), ("overlays", len(self.overlays)), *self.source_spec.info_fields())
 
     def standalone_lanes(self) -> tuple[EntryLane, ...]:
         """Return the visible lanes for this standalone live video item."""
@@ -256,6 +328,10 @@ class LiveVideoContent:
         """Return no items because live overlay consideration is unsupported."""
         return ()
 
+    def on_screen_item(self, entry_index: int = 0) -> OnScreenWorkspaceItem:
+        """Return the workspace item a viewer shows for this video."""
+        return OnScreenWorkspaceItem(kind="video", content_id=self.content_id)
+
 
 @dataclass(frozen=True, slots=True)
 class SeekableVideoContent:
@@ -266,6 +342,7 @@ class SeekableVideoContent:
     overlays: tuple[OverlayContent, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
     content_id: str = field(default_factory=_new_content_id)
+    is_live: ClassVar[bool] = False
 
     def __post_init__(self) -> None:
         """Reject overlay shapes unsupported by seekable playback."""
@@ -276,6 +353,10 @@ class SeekableVideoContent:
     def source_location(self) -> str:
         """Return the video file path, shown to tell same-named items apart."""
         return str(self.source_spec.path)
+
+    def info_fields(self) -> InfoFields:
+        """Return the content type, overlay count, and video file settings."""
+        return (("type", "seekable video"), ("overlays", len(self.overlays)), *self.source_spec.info_fields())
 
     def standalone_lanes(self) -> tuple[EntryLane, ...]:
         """Return the visible lanes for this standalone seekable video item."""
@@ -296,6 +377,23 @@ class SeekableVideoContent:
             if lane.source_kind != OverlaySourceKind.NO_SOURCE
         )
 
+    @property
+    def entries(self) -> tuple[PlaylistEntry, ...]:
+        """Return this video as a one-entry playlist of its standalone lanes."""
+        return (PlaylistEntry(lanes=self.standalone_lanes(), default_considered=True),)
+
+    def entry_consideration_ref(self, entry_index: int) -> None:
+        """Return None because the single entry of a standalone video is always considered."""
+        return None
+
+    def lane_consideration_ref(self, entry_index: int, lane_index: int) -> ConsiderationItemRef:
+        """Return the reference that toggles one standalone overlay lane."""
+        return ConsiderationItemRef.video_lane(self.content_id, lane_index)
+
+    def on_screen_item(self, entry_index: int = 0) -> OnScreenWorkspaceItem:
+        """Return the workspace item a viewer shows for this video."""
+        return OnScreenWorkspaceItem(kind="video", content_id=self.content_id)
+
 
 @dataclass(frozen=True, slots=True)
 class EntryLane:
@@ -315,8 +413,7 @@ class EntryLane:
             self.overlay.source_spec, FileOverlaySourceSpec
         ):
             raise TypeError("Seekable video lanes require file overlay source specs.")
-        live_source_types = (LiveRTSPOverlaySourceSpec, LiveMQTTOverlaySourceSpec, LiveWebSocketOverlaySourceSpec)
-        if isinstance(self.video, LiveVideoContent) and not isinstance(self.overlay.source_spec, live_source_types):
+        if isinstance(self.video, LiveVideoContent) and not isinstance(self.overlay.source_spec, LiveOverlaySourceSpec):
             raise TypeError(
                 "Live video lanes require an RTSP or MQTT overlay source spec; WebSocket overlays are supported too."
             )
@@ -394,6 +491,11 @@ class PlaylistContent:
         """Return None because playlists are resolved from several sources."""
         return None
 
+    def info_fields(self) -> InfoFields:
+        """Return the content type and entry and lane counts."""
+        lane_count = sum(len(entry.lanes) for entry in self.entries)
+        return (("type", "playlist"), ("entries", len(self.entries)), ("lanes", lane_count))
+
     def consideration_items(self) -> tuple[ConsiderationItem, ...]:
         """Return every playlist entry and lane whose participation can be toggled."""
         items: list[ConsiderationItem] = []
@@ -413,6 +515,18 @@ class PlaylistContent:
                     for lane_index, lane in enumerate(entry.lanes)
                 )
         return tuple(items)
+
+    def entry_consideration_ref(self, entry_index: int) -> ConsiderationItemRef:
+        """Return the reference that toggles one playlist entry."""
+        return ConsiderationItemRef.playlist_entry(self.content_id, entry_index)
+
+    def lane_consideration_ref(self, entry_index: int, lane_index: int) -> ConsiderationItemRef:
+        """Return the reference that toggles one lane of a playlist entry."""
+        return ConsiderationItemRef.playlist_lane(self.content_id, entry_index, lane_index)
+
+    def on_screen_item(self, entry_index: int = 0) -> OnScreenWorkspaceItem:
+        """Return the workspace item a viewer shows for one playlist entry."""
+        return OnScreenWorkspaceItem(kind="playlist_entry", content_id=self.content_id, entry_index=entry_index)
 
 
 Content = SeekableVideoContent | LiveVideoContent | PlaylistContent

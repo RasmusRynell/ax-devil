@@ -164,5 +164,4 @@ class FadingWidget(QWidget):
         try:
             self.cleanup()
         except Exception:
-            # Ignore cleanup errors during destruction
-            pass
+            logger.debug(f"Fading widget id={id(self)} failed to clean up on garbage collection", exc_info=True)

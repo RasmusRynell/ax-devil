@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache import (
     FrameCache,
     get_frame_cache_registry,
@@ -17,7 +18,6 @@ from ax_devil.modules.data_sources.video_cache_memory import get_video_cache_poo
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget, detect_available_memory_bytes
 from ax_devil.modules.settings.settings import GlobalSettings
-from ax_devil.modules.settings.settings_dialog import SettingsDialog
 from tests.helpers.video import create_test_video
 
 

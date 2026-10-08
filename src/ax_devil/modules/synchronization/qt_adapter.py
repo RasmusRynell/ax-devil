@@ -46,29 +46,8 @@ class QtStreamSync(QObject):
         self.syncReady.emit(result)
 
     def cleanup(self) -> None:
-        """Clean shutdown."""
-        try:
-            # Break bound-method reference from core back to this Qt object
-            self._sync_core.set_output_callback(lambda _result: None)
-            self._sync_core.cleanup()
-        except Exception:
-            pass
-        try:
-            # Drop strong ref to core to help GC
-            self._sync_core = None  # type: ignore[assignment]
-        except Exception:
-            pass
+        """Detach from the sync core, release its diagnostics, and schedule deletion."""
+        # Break the bound-method reference from the core back to this Qt object.
+        self._sync_core.set_output_callback(lambda _result: None)
+        self._sync_core.cleanup()
         self.deleteLater()
-
-    def __del__(self) -> None:
-        try:
-            core = getattr(self, "_sync_core", None)
-            parent_cls = None
-            try:
-                p = self.parent()
-                parent_cls = type(p).__name__ if p is not None else None
-            except Exception:
-                parent_cls = None
-            logger.debug(f"QtStreamSync deleted id={id(self)} has_core={core is not None} parent={parent_cls}")
-        except Exception:
-            pass

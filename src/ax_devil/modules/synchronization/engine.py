@@ -57,12 +57,6 @@ class StreamSync(Generic[FrameType, OverlayType]):
         # Callback for emitting synchronized results
         self._emit_callback: Optional[Callable[[SyncResult[FrameType, OverlayType]], None]] = None
 
-    def __del__(self) -> None:
-        try:
-            logger.debug(f"StreamSync.__del__ id={id(self)} object_name={getattr(self, 'object_name', '<na>')}")
-        except Exception:
-            pass
-
     def set_output_callback(self, callback: Callable[[SyncResult[FrameType, OverlayType]], None]) -> None:
         """Set callback for synchronized frame output."""
         self._emit_callback = callback

@@ -16,13 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ax_devil.modules.chrome import BaseDialog
-from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
-from ax_devil.modules.chrome.form_layout import FormLayout
-from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
-from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.configuration_editor import ConfigurationEditor
-from ax_devil.modules.settings.configuration_preferences import (
+from ax_devil.modules.application_shell.configuration_editor import ConfigurationEditor
+from ax_devil.modules.application_shell.configuration_preferences import (
     CONNECTION_SECTIONS,
     STORAGE_SECTION,
     ConfigField,
@@ -30,6 +25,11 @@ from ax_devil.modules.settings.configuration_preferences import (
     apply_preferences,
     field_value,
 )
+from ax_devil.modules.chrome import BaseDialog
+from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
+from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
+from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference

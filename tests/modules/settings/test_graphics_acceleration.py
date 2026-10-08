@@ -8,9 +8,9 @@ import pytest
 from PySide6.QtWidgets import QLabel
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.settings import GlobalSettings
-from ax_devil.modules.settings.settings_dialog import SettingsDialog
 
 
 @pytest.mark.parametrize("mode", list(GraphicsAcceleration))

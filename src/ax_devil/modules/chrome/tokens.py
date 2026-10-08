@@ -9,23 +9,17 @@ from __future__ import annotations
 
 from enum import Enum, IntEnum, unique
 
-from PySide6.QtGui import QFont, QFontDatabase, QFontInfo
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
-
-DEFAULT_BODY_PX = 15
+from ax_devil.modules.settings.text_size import DEFAULT_BODY_PX
 
 
 def body_px() -> int:
     """Return the body text size: the application font's pixel size once the text size is applied, else the default."""
     size = QApplication.font().pixelSize() if QApplication.instance() is not None else -1
     return size if size > 0 else DEFAULT_BODY_PX
-
-
-def system_body_px() -> int:
-    """Return the operating system's interface text size in pixels."""
-    return QFontInfo(QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)).pixelSize()
 
 
 class Space(IntEnum):

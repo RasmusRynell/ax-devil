@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
-
-import pytest
 
 from ax_devil.modules.workspace import (
     FileVideoSourceSpec,
@@ -14,12 +11,12 @@ from ax_devil.modules.workspace import (
     ResolvedPlaylistStartup,
     SeekableVideoContent,
     VideoFileStartup,
-    resolve_startup_content,
+    default_workspace_intake,
 )
 
 
 def test_resolve_video_file_startup_returns_seekable_content() -> None:
-    [content] = resolve_startup_content(VideoFileStartup(video_path=Path("/tmp/example.mp4")))
+    [content] = VideoFileStartup(video_path=Path("/tmp/example.mp4")).resolve(default_workspace_intake())
 
     assert isinstance(content, SeekableVideoContent)
     assert content.display_name == "example.mp4"
@@ -28,7 +25,9 @@ def test_resolve_video_file_startup_returns_seekable_content() -> None:
 
 
 def test_resolve_live_stream_startup_returns_live_content() -> None:
-    [content] = resolve_startup_content(LiveStreamStartup(host="camera.local", username="root", password="pass"))
+    [content] = LiveStreamStartup(host="camera.local", username="root", password="pass").resolve(
+        default_workspace_intake()
+    )
 
     assert isinstance(content, LiveVideoContent)
     assert content.display_name == "Live: camera.local"
@@ -43,10 +42,7 @@ def test_resolve_resolved_playlist_startup_returns_playlists() -> None:
         entries=(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),),
     )
 
-    assert resolve_startup_content(ResolvedPlaylistStartup(playlists=(playlist,))) == (playlist,)
-    assert resolve_startup_content(ResolvedPlaylistStartup(playlists=())) == ()
+    intake = default_workspace_intake()
 
-
-def test_resolve_unknown_startup_type_raises() -> None:
-    with pytest.raises(TypeError, match="Unknown startup content type"):
-        resolve_startup_content(cast(Any, object()))
+    assert ResolvedPlaylistStartup(playlists=(playlist,)).resolve(intake) == (playlist,)
+    assert ResolvedPlaylistStartup(playlists=()).resolve(intake) == ()

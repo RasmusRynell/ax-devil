@@ -1,1 +1,1 @@
-"""Application configuration, logging, paths, settings state, and settings UI."""
+"""Application configuration, logging, paths, settings state, and preference values."""

@@ -7,6 +7,9 @@ the active rows that demanded it. Failed rows emit nothing; the others are unaff
 
 Only compiler-owned syntax is emitted. Catalog strings and objects are bound globals, never
 executable source. Runtime executes array operations and branches, not plan nodes.
+
+To learn this package, read ``definitions.py``, ``compiler.py``, this module, then ``kernels.py``;
+docs/architecture/draw-system.md describes what each module owns.
 """
 
 from __future__ import annotations

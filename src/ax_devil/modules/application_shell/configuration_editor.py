@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QWidget
 
+from ax_devil.modules.application_shell.configuration_preferences import ConfigField, is_environment_reference
 from ax_devil.modules.chrome.browse_button import BrowseButton
-from ax_devil.modules.settings.configuration_preferences import ConfigField, is_environment_reference
 from ax_devil.modules.workspace.intake import default_workspace_intake
 
 
