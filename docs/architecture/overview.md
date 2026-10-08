@@ -9,9 +9,9 @@ CLI (`cli.py`)                 -> Click commands and startup requests
 Application (`app.py`)         -> logging, config, settings, plugins, Qt event loop
 Application Shell              -> MainWindow, menus, app-wide dialogs including Settings
 Workspace                      -> content, intake, state, browser rows, split panes, viewer hosting
-Video Viewer                   -> live/offline workflows, media tools, Scene presentation
+Video Viewer                   -> live/offline workflows, media tools, Scene presentation, catalog viewer
 Video Player                   -> reusable frame display, viewport, drawing preparation
-Runtime Modules                -> data sources, synchronization, cache, playback, plugins
+Runtime Modules                -> Scene, filtering, data sources, synchronization, cache, plugins
 Supporting Modules             -> diagnostics, shortcuts, chrome
 Settings                       -> config, settings state, preference values, logging, paths
 Core                           -> small foundational data types and pure policies
@@ -25,8 +25,8 @@ upward imports are deliberate, and none forms an import-time cycle:
   depend on each other.
 - Plugins speak the host's types: playlist resolvers return Workspace content and decoders return data-source
   factories.
-- The diagnostics windows read the runtime modules they report on, while those modules record into the diagnostics
-  metrics store.
+- Diagnostics reads the modules it reports on: dashboard snapshots read the frame cache, the plugin window reads the
+  plugin system, and render metrics name the video player's metrics type as a type-only import.
 - `core.data_types` names the Scene type that `OverlayData` carries, as a type-only import.
 
 For code placement, see [Module Map](module-map.md). For UI framework boundaries, see [UI Framework Structure](ui-framework.md).

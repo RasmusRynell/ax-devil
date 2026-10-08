@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QAbstractScrollArea, QApplication
@@ -17,16 +16,6 @@ from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
-
-
-@pytest.fixture
-def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
-    """Give each test its own writable configuration document."""
-    monkeypatch.setattr(ConfigManager, "_instance", None)
-    config = ConfigManager()
-    config.set_config_path(tmp_path / "config.json")
-    config.set("storage", {key: str(tmp_path / key) for key in config.get_raw("storage")})
-    return config
 
 
 @pytest.fixture(autouse=True)
