@@ -259,7 +259,10 @@ def _open_lanes(
     report: Callable[[str], None],
     abandoned: threading.Event,
 ) -> None:
-    """Open sources into *media* lane by lane, so a failure or abandonment leaves only owned sources behind."""
+    """Open sources into *media* lane by lane, so a failure or abandonment leaves only owned sources behind.
+
+    Abandonment is checked after every blocking open, so a discarded entry never starts its derived analysis.
+    """
     source_index_by_video: dict[str, int] = {}
     for position, lane_index in enumerate(lane_indices):
         if abandoned.is_set():
@@ -272,6 +275,8 @@ def _open_lanes(
             source_index = len(media.video_sources)
             media.video_sources.append(create_frame_source(video))
             source_index_by_video[video.content_id] = source_index
+            if abandoned.is_set():
+                return
             # Timing analysis reads the whole index; do it here so the lane's diagnostics never wait for it.
             media.video_sources[source_index].get_timing_profile()
 
@@ -289,6 +294,8 @@ def _open_lanes(
         opened.overlay_source, opened.overlay_policy = create_overlay_source(
             lane.overlay, frame_timeline=frame_timeline
         )
+        if abandoned.is_set():
+            return
         opened.scene_history = place_scene_history(opened.overlay_source, opened.overlay_policy, frame_timeline)
         opened.alignment_report = opened.overlay_source.analyze_alignment(frame_timeline)
 

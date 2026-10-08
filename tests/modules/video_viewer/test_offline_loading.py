@@ -6,6 +6,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
+from unittest.mock import MagicMock
 
 import pytest
 import shiboken6
@@ -26,7 +27,14 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
 )
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
-from ax_devil.modules.workspace import EntryLane, FileVideoSourceSpec, PlaylistEntry, SeekableVideoContent
+from ax_devil.modules.workspace import (
+    EntryLane,
+    FileOverlaySourceSpec,
+    FileVideoSourceSpec,
+    OverlayContent,
+    PlaylistEntry,
+    SeekableVideoContent,
+)
 
 _T = TypeVar("_T")
 
@@ -204,6 +212,48 @@ def test_abandoned_opening_opens_nothing_more_and_releases_what_it_opened(
     assert len(opened) == 1
     assert opened[0]._frame_delivery is None
     assert delivered == []
+
+
+@pytest.mark.parametrize("abandon_during", ["video", "overlay"])
+def test_abandoned_opening_skips_analysis_after_a_blocking_open(
+    monkeypatch: pytest.MonkeyPatch, abandon_during: str
+) -> None:
+    """Abandoning while a source opens skips the timing and history analysis that would delay the next entry."""
+    abandoned = threading.Event()
+    source = MagicMock()
+    overlay_source = MagicMock()
+
+    def open_video(_video: SeekableVideoContent) -> MagicMock:
+        if abandon_during == "video":
+            abandoned.set()
+        return source
+
+    def open_overlay(_overlay: OverlayContent, *, frame_timeline: object) -> tuple[MagicMock, MagicMock]:
+        if abandon_during == "overlay":
+            abandoned.set()
+        return overlay_source, MagicMock()
+
+    monkeypatch.setattr(offline_entry_media, "create_frame_source", open_video)
+    monkeypatch.setattr(offline_entry_media, "create_overlay_source", open_overlay)
+    overlay = OverlayContent(
+        display_name="overlay",
+        source_spec=FileOverlaySourceSpec(path=Path("/tmp/overlay.txt"), handler_type="TEST_FILE"),
+    )
+    video = SeekableVideoContent(
+        display_name="video", source_spec=FileVideoSourceSpec(path=Path("/tmp/video.mp4")), overlays=(overlay,)
+    )
+    entry = PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True)
+
+    media = open_entry_media(
+        entry, _all_lanes(entry), lambda _message: None, gui_thread=QThread.currentThread(), abandoned=abandoned
+    )
+
+    assert media.video_sources == [source]
+    assert media.overlay_sources() == ([overlay_source] if abandon_during == "overlay" else [])
+    if abandon_during == "video":
+        source.get_timing_profile.assert_not_called()
+    overlay_source.scene_history.assert_not_called()
+    overlay_source.analyze_alignment.assert_not_called()
 
 
 def test_session_cleanup_releases_sources_off_the_gui_thread(
