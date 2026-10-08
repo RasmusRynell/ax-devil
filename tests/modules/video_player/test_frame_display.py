@@ -242,3 +242,19 @@ def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
     content.setMinimumWidth(620)
     qtbot.waitUntil(lambda: panel.width() >= 620)
     assert display.is_side_panel_open()
+
+
+def test_side_panel_enabled_on_a_shown_display_takes_half_its_width(qtbot: QtBot) -> None:
+    """A panel added after the display has its size still takes at most half of it when opened."""
+    display = FrameDisplay()
+    qtbot.addWidget(display)
+    display.resize(640, 400)
+    display.show()
+    QCoreApplication.processEvents()
+
+    display.enable_side_panel(QLabel("tools"))
+    display.set_side_panel_open(True)
+    panel = display.findChild(DraggablePanel)
+    assert panel is not None
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    assert panel.width() == 320

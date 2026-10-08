@@ -111,8 +111,9 @@ class FrameDisplay(QWidget):
             widget.fade_in()
 
     def enable_side_panel(self, initial_widget: QWidget | None = None) -> None:
-        """Enable the generic side-panel mount point and optional initial content."""
+        """Enable the generic side-panel mount point and optional initial content, fitted to the current width."""
         self._side_panel_controller.enable(initial_widget)
+        self._side_panel_controller.fit_to_pane(self.width())
 
     def set_side_panel_widget(self, widget: QWidget | None) -> None:
         """Set caller-owned content in the side-panel mount point."""
