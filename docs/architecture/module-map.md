@@ -18,7 +18,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | CLI commands and maintenance entry points | `src/ax_devil/cli.py` |
 | Main window menus, app-wide dialogs, diagnostics window launch | `src/ax_devil/modules/application_shell/` |
 | Workspace content, startup requests, intake, state, browser rows, add-content dialogs, split-view hosting, viewer factory, session/controller | `src/ax_devil/modules/workspace/` |
-| Live/offline viewer workflows, media tools, `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
+| Live/offline viewer workflows, media tools, offline entry opening (`EntryOpening`, `EntryMedia`), `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation, playback speed policy | `src/ax_devil/modules/video_player/` |
 | Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
 | Render catalog viewer: example sheets, the live viewer window, the `ax-devil catalog` commands and the generated language reference | `src/ax_devil/modules/catalog_viewer/` |

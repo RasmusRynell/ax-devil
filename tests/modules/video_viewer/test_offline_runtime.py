@@ -14,11 +14,13 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.scene.model import Scene, TimeSlice
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
-from ax_devil.modules.video_viewer import offline_viewer_runtime
+from ax_devil.modules.video_viewer import offline_entry_media, offline_viewer_runtime
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
+from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 from ax_devil.modules.workspace import (
@@ -245,12 +247,11 @@ def _make_primary_session(
     container = QWidget()
     qtbot.addWidget(container)  # type: ignore[attr-defined]
     pooled_source = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
-        video=lane.content,
         source=source,  # type: ignore[arg-type]
         relay=offline_viewer_runtime._FrameDeliveryRelay(0, container),  # noqa: SLF001
         source_index=0,
     )
-    session = OfflineSession([lane], container, source_pool=[pooled_source])
+    session = OfflineSession([lane], container, media=EntryMedia(), source_pool=[pooled_source])
     return session, display, source
 
 
@@ -449,12 +450,11 @@ def test_offline_session_updates_current_frame_before_display_callbacks(
     container = QWidget()
     qtbot.addWidget(container)  # type: ignore[attr-defined]
     pooled_source = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
-        video=lane.content,
         source=source,  # type: ignore[arg-type]
         relay=offline_viewer_runtime._FrameDeliveryRelay(0, container),  # noqa: SLF001
         source_index=0,
     )
-    session = OfflineSession([lane], container, source_pool=[pooled_source])
+    session = OfflineSession([lane], container, media=EntryMedia(), source_pool=[pooled_source])
     display.session = session
 
     source.current_frame = 799
@@ -468,26 +468,26 @@ def test_offline_session_updates_current_frame_before_display_callbacks(
     ) == (800, 770)
 
 
-def test_offline_session_opens_file_video_source_from_seekable_spec(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_entry_media_opens_file_video_source_from_seekable_spec(monkeypatch: pytest.MonkeyPatch) -> None:
     opened: list[tuple[str, object]] = []
 
     class _FileFrameSource:
         def __init__(self, file_path: str, **kwargs: object) -> None:
             opened.append((file_path, kwargs["image_sequence_config"]))
 
-    monkeypatch.setattr(offline_viewer_runtime, "FileFrameSource", _FileFrameSource)
+    monkeypatch.setattr(offline_entry_media, "FileFrameSource", _FileFrameSource)
     video = SeekableVideoContent(
         display_name="clip.mp4",
         source_spec=FileVideoSourceSpec(path=Path("/tmp/clip.mp4")),
     )
 
-    source = OfflineSession._create_frame_source(video)  # noqa: SLF001
+    source = offline_entry_media.create_frame_source(video)
 
     assert isinstance(source, _FileFrameSource)
     assert opened == [("/tmp/clip.mp4", None)]
 
 
-def test_offline_session_opens_file_overlay_source_from_decoder_spec(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_entry_media_opens_file_overlay_source_from_decoder_spec(monkeypatch: pytest.MonkeyPatch) -> None:
     class _DecoderFactory:
         def __call__(self, **_kwargs: object) -> object:
             return object()
@@ -504,8 +504,8 @@ def test_offline_session_opens_file_overlay_source_from_decoder_spec(monkeypatch
         lookups.append(handler_type)
         return decoder_factory
 
-    monkeypatch.setattr(offline_viewer_runtime, "FileOverlaySource", _FileOverlaySource)
-    monkeypatch.setattr(offline_viewer_runtime, "get_file_decoder_factory", _get_file_decoder_factory)
+    monkeypatch.setattr(offline_entry_media, "FileOverlaySource", _FileOverlaySource)
+    monkeypatch.setattr(offline_entry_media, "get_file_decoder_factory", _get_file_decoder_factory)
     overlay = OverlayContent(
         display_name="overlay.txt",
         source_spec=FileOverlaySourceSpec(
@@ -520,7 +520,8 @@ def test_offline_session_opens_file_overlay_source_from_decoder_spec(monkeypatch
         metadata={"path": "/tmp/overlay.txt", "handler_type": "MOT_FILE"},
     )
 
-    overlay_source, overlay_policy = OfflineSession._create_overlay_source(overlay)  # noqa: SLF001
+    frame_timeline = FrameTimeline.lazy(count=0, timestamp_loader=tuple)
+    overlay_source, overlay_policy = offline_entry_media.create_overlay_source(overlay, frame_timeline=frame_timeline)
 
     assert overlay.source_spec is not None
     assert isinstance(overlay.source_spec, FileOverlaySourceSpec)
@@ -532,7 +533,7 @@ def test_offline_session_opens_file_overlay_source_from_decoder_spec(monkeypatch
     assert opened_path == Path("/tmp/overlay.txt")
     assert opened_handler == "MOT_FILE"
     assert opened_kwargs == {
-        "frame_timeline": None,
+        "frame_timeline": frame_timeline,
         "timestamp_fallback_policy": TimestampFallbackPolicy(
             mode=TimestampFallbackMode.EXACT_ONLY,
             tolerance_us=12_000,
@@ -543,14 +544,16 @@ def test_offline_session_opens_file_overlay_source_from_decoder_spec(monkeypatch
     assert opened_factory.keywords == {"width": 1920, "height": 1080}
 
 
-def test_offline_session_rejects_non_file_overlay_source_spec() -> None:
+def test_entry_media_rejects_non_file_overlay_source_spec() -> None:
     overlay = OverlayContent(
         display_name="MQTT",
         source_spec=LiveMQTTOverlaySourceSpec(handler_type="LIVE", broker_host="broker.local"),
     )
 
     with pytest.raises(RuntimeError, match="requires a file overlay source spec"):
-        OfflineSession._create_overlay_source(overlay)  # noqa: SLF001
+        offline_entry_media.create_overlay_source(
+            overlay, frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple)
+        )
 
 
 def test_offline_lane_uses_stateless_retention_and_original_sample_time() -> None:

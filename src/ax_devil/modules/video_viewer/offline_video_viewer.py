@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import threading
-from collections.abc import Callable
+from functools import partial
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QApplication,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -19,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
+from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
 from ax_devil.modules.video_player.engine.playback_speed import (
     DEFAULT_PLAYBACK_SPEED,
@@ -29,11 +28,9 @@ from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
+from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia, EntryOpening, release_media
 from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
-from ax_devil.modules.video_viewer.offline_viewer_runtime import (
-    LoadingCancelled,
-    OfflineSession,
-)
+from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.workspace import (
     ConsiderationItemRef,
     ConsiderationQuery,
@@ -43,6 +40,8 @@ from ax_devil.modules.workspace import (
 )
 from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
 from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
+
+logger = get_logger(__name__)
 
 
 class _ViewerOverlayHost(QWidget):
@@ -90,11 +89,9 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         self._global_control_visibility: ControlVisibilityController | None = None
         self._use_global_controls = False
         self._is_cleaned_up = False
-        self._is_loading_entry = False
+        self._opening: EntryOpening | None = None
+        self._loading_indicator: LoadingIndicator | None = None
         self._playback_speed = DEFAULT_PLAYBACK_SPEED
-        self._cancel_loading = threading.Event()
-        self._pending_entry_request_index: int | None = None
-        self._pending_entry_request_force_reload = False
         self._initial_entry_loaded = False
         self._lane_visibility: dict[int, OverlayVisibility] = {}
         super().__init__(parent)
@@ -129,15 +126,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         """Start the initial entry load once the viewer is visible in the workspace."""
         if self._initial_entry_loaded or not self._get_entries():
             return
-        self._is_loading_entry = True
-        self._update_nav_state()
-        try:
-            self._load_entry(self._current_index)
-            self._initial_entry_loaded = True
-        finally:
-            self._is_loading_entry = False
-            self._update_nav_state()
-        self._drain_entry_requests()
+        self._open_entry(self._current_index)
 
     def _build_navigation_controls(self) -> QWidget:
         navigation = QWidget(self)
@@ -163,61 +152,81 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
 
         return navigation
 
-    def _load_entry(self, index: int) -> None:
-        entries = self._get_entries()
-        entry = entries[index]
+    def _open_entry(self, index: int) -> None:
+        """Show entry *index*: drop any entry still opening, release the shown one, and open *index* in the background.
 
-        overlay_parent = self._viewer_host or self
-        indicator = LoadingIndicator(overlay_parent)
-        indicator.setGeometry(overlay_parent.rect())
-        indicator.raise_()
-        indicator.show()
-        indicator.start()
-
-        def on_status(message: str) -> None:
-            indicator.set_message(message)
-            QApplication.processEvents()
-
-        on_status("Releasing resources…")
-        self._teardown_runtime()
-
-        try:
-            runtime = self._build_lanes(entry, index, on_status)
-        except LoadingCancelled:
+        The only way an entry is shown. The viewer stays responsive while sources open, and a newer request simply
+        replaces an older one.
+        """
+        if self._is_cleaned_up:
             return
-        finally:
-            indicator.stop()
-            indicator.deleteLater()
-        self._install_entry(index, runtime)
-
-    def _build_lanes(
-        self,
-        entry: PlaylistEntry,
-        entry_index: int,
-        on_status: Callable[[str], None] = lambda _: None,
-    ) -> OfflineSession:
-        """Build the active runtime for one entry."""
-        return OfflineSession.build(
-            self,
-            entry,
-            lane_included=lambda lane_index: self._is_lane_considered(entry_index, lane_index),
-            cancel_loading=self._cancel_loading,
-            on_status=on_status,
-            render_catalog_manager=self._render_catalog_manager,
-            use_lane_controls=self._entry_count() == 1,
-            lane_visibility=self._lane_visibility,
-        )
-
-    def _install_entry(self, index: int, runtime: OfflineSession) -> None:
+        self._initial_entry_loaded = True
+        if self._opening is not None:
+            self._opening.abandon()
+            self._opening = None
+        self._teardown_runtime()
         self._current_index = index
+        self._update_nav_state()
+        self.current_entry_changed.emit(index)
+        self.on_screen_item_changed.emit(self.current_on_screen_item())
+
+        entry = self._get_entries()[index]
+        lane_indices = tuple(
+            lane_index for lane_index in range(len(entry.lanes)) if self._is_lane_considered(index, lane_index)
+        )
+        indicator = self._show_loading_indicator()
+        opening = EntryOpening(on_status=indicator.set_message, on_opened=partial(self._on_entry_opened, index))
+        self._opening = opening
+        opening.start(entry, lane_indices)
+
+    def _on_entry_opened(self, index: int, media: EntryMedia) -> None:
+        self._opening = None
+        self._hide_loading_indicator()
+        error = media.error
+        runtime: OfflineSession | None = None
+        if error is None:
+            try:
+                runtime = OfflineSession.build(
+                    self,
+                    media,
+                    render_catalog_manager=self._render_catalog_manager,
+                    use_lane_controls=self._entry_count() == 1,
+                    lane_visibility=self._lane_visibility,
+                )
+            except Exception as exc:
+                logger.exception(f"Failed to build displays for entry {index + 1}")
+                error = str(exc)
+        if runtime is None:
+            release_media(media)
+            QMessageBox.warning(self, "Offline Viewer", f"Failed to load entry {index + 1}: {error}")
+            return
+        self._install_entry(runtime)
+
+    def _show_loading_indicator(self) -> LoadingIndicator:
+        if self._loading_indicator is None:
+            overlay_parent = self._viewer_host or self
+            indicator = LoadingIndicator(overlay_parent)
+            indicator.setGeometry(overlay_parent.rect())
+            indicator.raise_()
+            indicator.show()
+            indicator.start()
+            self._loading_indicator = indicator
+        self._loading_indicator.set_message("")
+        return self._loading_indicator
+
+    def _hide_loading_indicator(self) -> None:
+        indicator = self._loading_indicator
+        if indicator is None:
+            return
+        self._loading_indicator = None
+        indicator.stop()
+        indicator.deleteLater()
+
+    def _install_entry(self, runtime: OfflineSession) -> None:
         self._runtime = runtime
         runtime.currentFrameChanged.connect(self._sync_global_current_frame)
         runtime.playbackStateChanged.connect(self._sync_global_playback_state)
         runtime.playbackFinished.connect(lambda: self._sync_global_playback_state(False))
-
-        self._update_nav_state()
-        self.current_entry_changed.emit(index)
-        self.on_screen_item_changed.emit(self.current_on_screen_item())
 
         runtime.set_playback_speed(self._playback_speed)
 
@@ -420,52 +429,19 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         if self._nav_label is not None:
             self._nav_label.setText(f"Entry {self._current_index + 1} / {self._entry_count()}")
         if self._prev_button is not None:
-            self._prev_button.setEnabled(not self._is_loading_entry and self._find_prev_considered_index() is not None)
+            self._prev_button.setEnabled(self._find_prev_considered_index() is not None)
         if self._next_button is not None:
-            self._next_button.setEnabled(not self._is_loading_entry and self._find_next_considered_index() is not None)
+            self._next_button.setEnabled(self._find_next_considered_index() is not None)
 
     def _step_prev(self) -> None:
         previous_index = self._find_prev_considered_index()
         if previous_index is not None:
-            self._request_entry_activation(previous_index)
+            self._open_entry(previous_index)
 
     def _step_next(self) -> None:
         next_index = self._find_next_considered_index()
         if next_index is not None:
-            self._request_entry_activation(next_index)
-
-    def _request_entry_activation(self, index: int, *, force_reload: bool = False) -> None:
-        """Queue one entry activation, replacing any older pending request."""
-        if self._is_cleaned_up:
-            return
-        self._pending_entry_request_index = index
-        self._pending_entry_request_force_reload = self._pending_entry_request_force_reload or force_reload
-        if self._is_loading_entry:
-            return
-        self._drain_entry_requests()
-
-    def _drain_entry_requests(self) -> None:
-        """Process queued entry activations until no newer request remains."""
-        while not self._is_cleaned_up:
-            target_index = self._pending_entry_request_index
-            force_reload = self._pending_entry_request_force_reload
-            self._pending_entry_request_index = None
-            self._pending_entry_request_force_reload = False
-
-            if target_index is None:
-                return
-            if target_index == self._current_index and not force_reload:
-                continue
-
-            self._is_loading_entry = True
-            self._update_nav_state()
-            try:
-                self._load_entry(target_index)
-            except Exception as exc:
-                QMessageBox.warning(self, "Offline Viewer", f"Failed to load entry {target_index + 1}: {exc}")
-            finally:
-                self._is_loading_entry = False
-                self._update_nav_state()
+            self._open_entry(next_index)
 
     def _teardown_runtime(self, *, blocking: bool = False) -> None:
         runtime = self._runtime
@@ -499,9 +475,10 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         if self._is_cleaned_up:
             return
         self._is_cleaned_up = True
-        self._cancel_loading.set()
-        self._pending_entry_request_index = None
-        self._pending_entry_request_force_reload = False
+        if self._opening is not None:
+            self._opening.abandon()
+            self._opening = None
+        self._hide_loading_indicator()
         self._teardown_runtime(blocking=True)
         self._nav_label = None
         self._prev_button = None
@@ -522,7 +499,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
             return
 
         if item_ref.kind == "video_lane":
-            self._request_entry_activation(self._current_index, force_reload=True)
+            self._open_entry(self._current_index)
             return
 
         if not isinstance(self._content, PlaylistContent):
@@ -534,11 +511,11 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
                 return
             replacement_index = self._replacement_index_for_current_entry()
             if replacement_index is not None:
-                self._request_entry_activation(replacement_index)
+                self._open_entry(replacement_index)
             else:
                 self._update_nav_state()
             return
 
         self._update_nav_state()
         if item_ref.kind == "playlist_lane" and item_ref.entry_index == self._current_index:
-            self._request_entry_activation(self._current_index, force_reload=True)
+            self._open_entry(self._current_index)
