@@ -22,6 +22,7 @@ from ax_devil.modules.workspace import (
     PlaylistEntry,
     SeekableVideoContent,
 )
+from ax_devil.modules.workspace.content import LiveOverlaySourceSpec
 from ax_devil.modules.workspace.item_info import build_video_information
 
 
@@ -142,73 +143,42 @@ def test_live_video_rejects_multiple_overlays() -> None:
         LiveVideoContent(display_name="live", source_spec=_live_source_spec(), overlays=overlays)
 
 
-def test_live_video_content_owns_standalone_overlay_lanes() -> None:
-    overlay = OverlayContent(
-        display_name="MQTT",
-        source_spec=LiveMQTTOverlaySourceSpec(
-            handler_type="AXIS_MQTT",
-            broker_host="broker.local",
-            analytics_data_source_key="analytics",
+@pytest.mark.parametrize(
+    ("source_spec", "expected_kind", "expected_name"),
+    [
+        pytest.param(
+            LiveMQTTOverlaySourceSpec(
+                handler_type="AXIS_MQTT", broker_host="broker.local", analytics_data_source_key="analytics"
+            ),
+            OverlaySourceKind.MQTT_SOURCE,
+            "MQTT",
+            id="mqtt",
         ),
-        metadata={"note": "primary analytics"},
-    )
-    content = LiveVideoContent(
-        display_name="cam-1",
-        source_spec=_live_source_spec(),
-        overlays=(overlay,),
-        metadata={"note": "test camera"},
-    )
-
-    lanes = content.standalone_lanes()
-
-    assert len(lanes) == 1
-    assert lanes[0].display_name == "MQTT"
-    assert lanes[0].source_kind == OverlaySourceKind.MQTT_SOURCE
-    assert lanes[0].metadata == {}
-    assert overlay.metadata == {"note": "primary analytics"}
-
-
-def test_live_video_content_owns_embedded_rtsp_standalone_lane() -> None:
-    overlay = OverlayContent(
-        display_name="RTSP",
-        source_spec=LiveRTSPOverlaySourceSpec(handler_type="AXIS_RTSP"),
-        metadata={"note": "embedded analytics"},
-    )
-    content = LiveVideoContent(
-        display_name="cam-1",
-        source_spec=_live_source_spec(),
-        overlays=(overlay,),
-        metadata={"note": "test camera"},
-    )
-
-    lanes = content.standalone_lanes()
-
-    assert len(lanes) == 1
-    assert lanes[0].display_name == "RTSP"
-    assert lanes[0].source_kind == OverlaySourceKind.RTSP_SOURCE
-    assert lanes[0].metadata == {}
-    assert overlay.metadata == {"note": "embedded analytics"}
-
-
-def test_live_video_content_owns_websocket_standalone_lane() -> None:
-    overlay = OverlayContent(
-        display_name="DataHub WebSocket",
-        source_spec=LiveWebSocketOverlaySourceSpec(
-            handler_type="ADF_V1_FRAME",
-            topic="com.axis.scene.frame.v1",
-            channel_id=2,
+        pytest.param(
+            LiveRTSPOverlaySourceSpec(handler_type="AXIS_RTSP"), OverlaySourceKind.RTSP_SOURCE, "RTSP", id="rtsp"
         ),
-    )
-    content = LiveVideoContent(
-        display_name="cam-1",
-        source_spec=_live_source_spec(),
-        overlays=(overlay,),
-    )
+        pytest.param(
+            LiveWebSocketOverlaySourceSpec(handler_type="ADF_V1_FRAME", topic="com.axis.scene.frame.v1", channel_id=2),
+            OverlaySourceKind.WEBSOCKET_SOURCE,
+            "DataHub WebSocket",
+            id="websocket",
+        ),
+    ],
+)
+def test_live_content_projects_overlay_into_standalone_lane(
+    source_spec: LiveOverlaySourceSpec, expected_kind: OverlaySourceKind, expected_name: str
+) -> None:
+    """Live lanes inherit their overlay kind and label while keeping metadata on its owner."""
+    overlay = OverlayContent(display_name=expected_name, source_spec=source_spec, metadata={"note": "analytics"})
+    content = LiveVideoContent(display_name="cam-1", source_spec=_live_source_spec(), overlays=(overlay,))
 
-    lanes = content.standalone_lanes()
+    [lane] = content.standalone_lanes()
 
-    assert lanes[0].source_kind is OverlaySourceKind.WEBSOCKET_SOURCE
-    assert lanes[0].display_name == "DataHub WebSocket"
+    assert lane.display_name == expected_name
+    assert lane.source_kind is expected_kind
+    assert lane.metadata == {}
+    assert lane.overlay is overlay
+    assert overlay.metadata == {"note": "analytics"}
 
 
 def test_default_considered_is_explicit_field_not_metadata() -> None:

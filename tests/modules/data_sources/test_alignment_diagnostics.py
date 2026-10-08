@@ -1,14 +1,14 @@
 """Tests for overlay alignment diagnostics."""
 
-from unittest.mock import Mock
+from pathlib import Path
 
 from ax_devil.modules.data_sources.alignment_diagnostics import (
     analyze_overlay_alignment,
-    analyze_overlay_sequence_alignment,
 )
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
+from ax_devil.plugins.decoders.mot.provider import MOTChallengeSceneDataProvider
 
 
 def test_alignment_report_flags_poor_exact_match_for_sampled_overlay() -> None:
@@ -28,6 +28,7 @@ def test_alignment_report_flags_poor_exact_match_for_sampled_overlay() -> None:
     assert report.has_poor_policy_alignment is True
     assert report.sample_period_modes_us == ((100_000, 2),)
     assert report.max_abs_nearest_offset_us == 20_000
+    assert report.alignment_issue_text == "2 sample(s) up to 20 ms from the nearest frame, beyond 5 ms tolerance."
 
 
 def test_alignment_report_accepts_exact_overlay() -> None:
@@ -42,6 +43,8 @@ def test_alignment_report_accepts_exact_overlay() -> None:
     assert report.exact_matches == 3
     assert report.policy_match_ratio == 1.0
     assert report.has_poor_policy_alignment is False
+    assert report.unmatched_overlay_frames == 0
+    assert report.alignment_issue_text == ""
 
 
 def test_alignment_report_detects_short_overlay_timeline() -> None:
@@ -57,6 +60,9 @@ def test_alignment_report_detects_short_overlay_timeline() -> None:
     assert report.video_end_timestamp_us == 74_433_000
     assert report.overlay_last_timestamp_us == 65_700_000
     assert report.has_suspicious_last_overlay_timestamp is True
+    assert report.has_alignment_warning is True
+    assert "Last overlay sample is 8.733 s before the video timeline end" in report.alignment_issue_text
+    assert "intentional partial coverage" in report.alignment_issue_text
 
 
 def test_alignment_report_counts_tolerated_past_overlay_matches() -> None:
@@ -73,6 +79,8 @@ def test_alignment_report_counts_tolerated_past_overlay_matches() -> None:
     assert report.policy_matches == 1
     assert report.policy_match_ratio == 1.0
     assert report.has_poor_policy_alignment is False
+    assert report.unmatched_overlay_frames == 0
+    assert report.alignment_issue_text == ""
 
 
 def test_alignment_report_rejects_overlay_after_video_for_tolerance() -> None:
@@ -88,16 +96,39 @@ def test_alignment_report_rejects_overlay_after_video_for_tolerance() -> None:
     assert report.tolerated_past_matches == 0
     assert report.policy_matches == 0
     assert report.has_poor_policy_alignment is True
+    assert report.alignment_issue_text == "1 sample(s) have no frame within 5 ms."
 
 
-def test_sequence_alignment_counts_frame_number_coverage() -> None:
-    """Frame-index overlays should be compared by sequence instead of timestamp."""
-    report = analyze_overlay_sequence_alignment(
-        handler_type="mot_csv",
-        total_video_frames=3,
-        overlay_sequences={0, 2, 5},
-        policy=TimestampFallbackPolicy(tolerance_us=5_000),
+def test_small_timeline_end_difference_does_not_warn() -> None:
+    """Normal processing tail differences should not be reported as incompatible clocks."""
+    report = analyze_overlay_alignment(
+        handler_type="partial",
+        video_timeline=FrameTimeline.from_timestamps((0, 74_090_000, 74_433_000)),
+        overlay_timestamps_us={0, 74_090_000},
+        policy=TimestampFallbackPolicy(tolerance_us=100_000),
     )
+
+    assert report.has_suspicious_last_overlay_timestamp is False
+    assert report.has_alignment_warning is False
+    assert report.alignment_issue_text == ""
+
+
+def test_sequence_overlay_alignment_counts_coverage_without_loading_video_timestamps(tmp_path: Path) -> None:
+    """A real sequence provider reports coverage without materializing the video's timestamp index."""
+
+    def load_timestamps() -> tuple[int, ...]:
+        raise AssertionError("Sequence alignment must not load video timestamps")
+
+    path = tmp_path / "detections.txt"
+    path.write_text(
+        "1,7,100,100,50,50,0.9,1,0.8\n3,7,100,100,50,50,0.9,1,0.8\n6,7,100,100,50,50,0.9,1,0.8\n",
+        encoding="utf-8",
+    )
+    source = FileOverlaySource(path, MOTChallengeSceneDataProvider, "MOT_FILE")
+    try:
+        report = source.analyze_alignment(FrameTimeline.lazy(count=3, timestamp_loader=load_timestamps))
+    finally:
+        source.close()
 
     assert report.alignment_basis == "sequence"
     assert report.total_video_frames == 3
@@ -106,28 +137,3 @@ def test_sequence_alignment_counts_frame_number_coverage() -> None:
     assert report.policy_matches == 2
     assert report.unmatched_overlay_frames == 1
     assert report.alignment_issue_text == "1 sample(s) have no matching video frame number."
-
-
-def test_sequence_overlay_analysis_does_not_load_video_timestamps() -> None:
-    """Sequence-based overlay diagnostics should use frame count without materializing timestamps."""
-    timestamps_loaded = False
-
-    def load_timestamps() -> tuple[int, ...]:
-        nonlocal timestamps_loaded
-        timestamps_loaded = True
-        return (0, 40_000, 80_000)
-
-    provider = Mock()
-    provider.get_timestamp_fallback_policy.return_value = TimestampFallbackPolicy(tolerance_us=5_000)
-    provider.uses_sequence_lookup.return_value = True
-    provider.get_available_sequences.return_value = {0, 2, 5}
-
-    source = FileOverlaySource.__new__(FileOverlaySource)
-    source._handler_type = "mot_csv"
-    source.data_provider = provider
-
-    report = source.analyze_alignment(FrameTimeline.lazy(count=3, timestamp_loader=load_timestamps))
-
-    assert timestamps_loaded is False
-    assert report.alignment_basis == "sequence"
-    assert report.sequence_matches == 2
