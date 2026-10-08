@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ax_devil.modules.video_player.engine.playback_speed import (
+from ax_devil.core.playback_speed import (
     DEFAULT_PLAYBACK_SPEED,
     MAX_PLAYBACK_SPEED,
     MIN_PLAYBACK_SPEED,

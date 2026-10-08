@@ -78,17 +78,6 @@ class PyAvAbstraction:
 
         logger.debug(f"PyAvAbstraction created: id={id(self)}, video={self.video_path.name}")
 
-    def __del__(self) -> None:
-        """Destructor with debug logging."""
-        try:
-            video_name = getattr(self.video_path, "name", "unknown") if hasattr(self, "video_path") else "unknown"
-            container_open = hasattr(self, "container") and self.container is not None
-            logger.debug(
-                f"PyAvAbstraction destroyed: id={id(self)}, video={video_name}, container_open={container_open}"
-            )
-        except Exception:
-            pass
-
     @property
     def current_frame_index(self) -> int:
         """Current frame index position."""

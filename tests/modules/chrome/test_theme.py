@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QImage, QPalette
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QWidget
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.theme import StatusColor, apply_text_size, apply_theme, setup_theme
@@ -28,7 +29,6 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.settings.settings import GlobalSettings
-from ax_devil.modules.settings.settings_dialog import SettingsDialog
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.video_player.ui.controls import video_control_icon
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard

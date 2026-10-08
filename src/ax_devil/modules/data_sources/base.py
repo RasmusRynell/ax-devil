@@ -50,14 +50,10 @@ class Worker(QThread):
         self._paused = False
         self._pause_condition = QWaitCondition()
         self._mutex = QMutex()
-        try:
-            _id = id(self)
-            _sid = source_id
-            self.destroyed.connect(
-                lambda _=None, _id=_id, _sid=_sid: logger.debug(f"Worker.destroyed id={_id} source_id={_sid}")
-            )
-        except Exception:
-            pass
+        _id = id(self)
+        self.destroyed.connect(
+            lambda _=None, _id=_id, _sid=source_id: logger.debug(f"Worker.destroyed id={_id} source_id={_sid}")
+        )
 
     def play(self) -> bool:
         """Start the worker."""
@@ -155,14 +151,11 @@ class DataSource(QObject, metaclass=QObjectABCMeta):
         super().__init__(parent)
         self._owned_worker: Worker | None = None
         self._delete_requested = False
-        try:
-            _id = id(self)
-            _cls = self.__class__.__name__
-            self.destroyed.connect(
-                lambda _=None, _id=_id, _cls=_cls: logger.debug(f"{_cls}.destroyed id={_id} class={_cls}")
-            )
-        except Exception:
-            pass
+        _id = id(self)
+        _cls = self.__class__.__name__
+        self.destroyed.connect(
+            lambda _=None, _id=_id, _cls=_cls: logger.debug(f"{_cls}.destroyed id={_id} class={_cls}")
+        )
 
     def _own_worker(self, worker: Worker) -> None:
         worker.setParent(self)
