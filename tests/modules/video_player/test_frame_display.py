@@ -188,3 +188,73 @@ def test_dragging_side_panel_fully_open_and_closed_updates_content_visibility(qt
     finally:
         handle.cleanup()
         panel.cleanup()
+
+
+def _display_in_window(qtbot: QtBot, width: int) -> tuple[QWidget, FrameDisplay, DraggablePanel, QLabel]:
+    window = QWidget()
+    qtbot.addWidget(window)
+    layout = QHBoxLayout(window)
+    layout.setContentsMargins(0, 0, 0, 0)
+    display = FrameDisplay()
+    layout.addWidget(display)
+    content = QLabel("tools")
+    display.enable_side_panel(content)
+    window.resize(width, 400)
+    window.show()
+    panel = display.findChild(DraggablePanel)
+    assert panel is not None
+    return window, display, panel, content
+
+
+def test_side_panel_takes_at_most_half_the_pane_and_stays_open_when_it_narrows(qtbot: QtBot) -> None:
+    """An open panel never closes on its own; it takes at most half its pane unless its content needs more."""
+    window, display, panel, _content = _display_in_window(qtbot, 1200)
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    assert panel.width() == 400
+
+    window.resize(600, 400)
+    qtbot.waitUntil(lambda: panel.width() == 300)
+    assert display.is_side_panel_open()
+
+    window.resize(1200, 400)
+    qtbot.waitUntil(lambda: panel.width() == 400)
+    assert display.is_side_panel_open()
+
+
+def test_side_panel_opening_during_a_resize_ends_at_the_new_pane_width(qtbot: QtBot) -> None:
+    window, display, panel, _content = _display_in_window(qtbot, 1200)
+
+    display.set_side_panel_open(True)
+    window.resize(560, 400)
+    QCoreApplication.processEvents()
+
+    qtbot.waitUntil(lambda: panel.width() == 280)
+    assert display.viewport.width() == 280
+
+
+def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
+    """Content that grows, as after a larger text size, widens the open panel instead of being clipped."""
+    _window, display, panel, content = _display_in_window(qtbot, 1200)
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+
+    content.setMinimumWidth(620)
+    qtbot.waitUntil(lambda: panel.width() >= 620)
+    assert display.is_side_panel_open()
+
+
+def test_side_panel_enabled_on_a_shown_display_takes_half_its_width(qtbot: QtBot) -> None:
+    """A panel added after the display has its size still takes at most half of it when opened."""
+    display = FrameDisplay()
+    qtbot.addWidget(display)
+    display.resize(640, 400)
+    display.show()
+    QCoreApplication.processEvents()
+
+    display.enable_side_panel(QLabel("tools"))
+    display.set_side_panel_open(True)
+    panel = display.findChild(DraggablePanel)
+    assert panel is not None
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    assert panel.width() == 320

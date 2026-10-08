@@ -74,6 +74,11 @@ class SidePanelController:
         widget_name = widget.__class__.__name__ if widget else "None"
         self._logger.debug(f"Side panel widget set: {widget_name}")
 
+    def fit_to_pane(self, pane_width: int) -> None:
+        """Size an open panel for a pane *pane_width* wide."""
+        if self._side_panel is not None:
+            self._side_panel.fit_to_pane(pane_width)
+
     def is_open(self) -> bool:
         """Return whether the side panel is expanded or expanding."""
         return self._side_panel is not None and not self._side_panel.is_collapsed

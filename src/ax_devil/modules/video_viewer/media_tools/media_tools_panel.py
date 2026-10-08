@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTabWidget,
     QToolButton,
@@ -32,7 +33,7 @@ from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.menu_button import MenuButton
-from ax_devil.modules.chrome.tokens import Height, Space, TextRole
+from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Scene
@@ -231,21 +232,7 @@ class MediaToolsPanel(QWidget):
         self._entity_list = EntityListWidget(show_title=False)
         if scene_history is not None:
             self._entity_list.set_history(scene_history, self.filter_model)
-            scope_buttons = QButtonGroup(self)
-            for scope in EntityScope:
-                scope_button = QToolButton(self)
-                scope_button.setObjectName(f"entityScope_{scope.value}")
-                scope_button.setText(scope.title)
-                scope_button.setToolTip(scope.tooltip)
-                scope_button.setCheckable(True)
-                scope_button.setAutoRaise(True)
-                scope_button.setChecked(scope is EntityScope.FRAME)
-                if scope is EntityScope.FILE and not self.filter_model.supports_history_filtering:
-                    scope_button.setEnabled(False)
-                    scope_button.setToolTip("Whole-file scope requires classification filters from the decoder.")
-                scope_button.clicked.connect(partial(self._entity_list.set_scope, scope))
-                scope_buttons.addButton(scope_button)
-                toolbar.addWidget(scope_button)
+            toolbar.addWidget(self._scope_switch())
         toolbar.addWidget(self._id_search, 1)
         toolbar.addWidget(self._filter_button)
         entities_page = QWidget()
@@ -284,6 +271,42 @@ class MediaToolsPanel(QWidget):
         options_page.setObjectName("mediaToolsOptions")
         self._tabs.addTab(options_page, "Options")
         self._on_filter_changed()
+
+    def _scope_switch(self) -> QFrame:
+        """Return the Frame / File switch: one framed control whose chosen half is marked like the current tab."""
+        switch = QFrame(self)
+        switch.setObjectName("entityScope")
+        switch.setStyleSheet(f"""
+            #entityScope {{ border: 1px solid palette(mid); border-radius: {Radius.CONTROL}px; }}
+            #entityScope QToolButton {{
+                border: 0px;
+                border-radius: {Radius.CONTROL - 1}px;
+                padding: 0px {Space.M}px;
+                background: transparent;
+            }}
+            #entityScope QToolButton:hover {{ background: palette(midlight); }}
+            #entityScope QToolButton:checked {{ color: palette(highlight); background: palette(midlight); }}
+        """)
+        layout = QHBoxLayout(switch)
+        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setSpacing(0)
+        scope_buttons = QButtonGroup(switch)
+        for scope in EntityScope:
+            scope_button = QToolButton(switch)
+            scope_button.setObjectName(f"entityScope_{scope.value}")
+            scope_button.setText(scope.title)
+            scope_button.setToolTip(scope.tooltip)
+            scope_button.setCheckable(True)
+            scope_button.setChecked(scope is EntityScope.FRAME)
+            scope_button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+            if scope is EntityScope.FILE and not self.filter_model.supports_history_filtering:
+                scope_button.setEnabled(False)
+                scope_button.setToolTip("Whole-file scope requires classification filters from the decoder.")
+            scope_button.clicked.connect(partial(self._entity_list.set_scope, scope))
+            scope_buttons.addButton(scope_button)
+            layout.addWidget(scope_button)
+        follow_appearance(switch, lambda: switch.setFixedHeight(Height.CONTROL.px))
+        return switch
 
     def cleanup(self) -> None:
         """Disconnect persistent selection observers when the owning view closes."""

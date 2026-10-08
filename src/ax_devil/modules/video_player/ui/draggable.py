@@ -25,6 +25,7 @@ from ..constants import (
     PANEL_ANIMATION_DURATION,
     PANEL_COLLAPSED_WIDTH,
     PANEL_EXPANDED_WIDTH,
+    PANEL_MAX_PANE_SHARE,
 )
 from .fading import FadingWidget
 
@@ -177,6 +178,8 @@ class DraggablePanel(FadingWidget):
         self.collapsed_width: int = collapsed_width
         self._expanded_width = expanded_width
         self.is_collapsed: bool = True
+        self._pane_width: int | None = None
+        self._fitted_width = 0  # The open width the panel was last fitted for.
 
         # Animation components (will be initialized in _setup_animations)
         self.animation: QPropertyAnimation
@@ -204,25 +207,43 @@ class DraggablePanel(FadingWidget):
 
     @property
     def expanded_width(self) -> int:
-        """Return the open width: the configured width, widened when the content needs more, as at large text."""
-        return max(self._expanded_width, self._content_minimum_width())
+        """Return the open width: the configured width, at most half the pane, widened when the content needs more."""
+        preferred = self._expanded_width
+        if self._pane_width is not None:
+            preferred = min(preferred, int(self._pane_width * PANEL_MAX_PANE_SHARE))
+        return max(preferred, self._content_minimum_width())
+
+    def fit_to_pane(self, pane_width: int) -> None:
+        """Follow a pane resize: an open panel takes its width for the new pane."""
+        self._pane_width = pane_width
+        self._refit()
+
+    def _refit(self) -> None:
+        """Give an open panel the open width for the current pane and content; a closed panel stays closed."""
+        self._fitted_width = self.expanded_width
+        if self.is_collapsed:
+            return
+        if self.animation.state() == QAbstractAnimation.State.Running:
+            # An opening panel ends at the width for the new pane.
+            self.animation.setEndValue(self.expanded_width)
+            self.min_animation.setEndValue(self.expanded_width)
+        elif self.width() != self.expanded_width:
+            self.setFixedWidth(self.expanded_width)
 
     def _content_minimum_width(self) -> int:
         content = self._content_widget
         if content is None:
             return 0
         margins = self._content_layout.contentsMargins()
-        return content.minimumSizeHint().width() + margins.left() + margins.right()
+        return content.minimumSizeHint().expandedTo(content.minimumSize()).width() + margins.left() + margins.right()
 
     def event(self, event: QEvent) -> bool:
-        """Widen an open panel whose content grew, as after a live text-size change, instead of clipping it."""
-        if (
-            event.type() == QEvent.Type.LayoutRequest
-            and not self.is_collapsed
-            and self.animation.state() != QAbstractAnimation.State.Running
-            and self.width() < self._content_minimum_width()
-        ):
-            self.setFixedWidth(self._content_minimum_width())
+        """Refit an open panel when its content's size changes, as after a live text-size change.
+
+        A width the user dragged to stays until the content size changes.
+        """
+        if event.type() == QEvent.Type.LayoutRequest and self.expanded_width != self._fitted_width:
+            self._refit()
         return super().event(event)
 
     def _setup_animations(self) -> None:
@@ -312,31 +333,12 @@ class DraggablePanel(FadingWidget):
             self._content_widget.hide()
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        """Custom paint to create themed panel with accent border."""
+        """Paint the panel background with a neutral divider against the video."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
         rect = self.rect()
-
-        # Get theme colors
-        bg_color = self.palette().color(QPalette.ColorRole.Window)
-        highlight_color = self.palette().color(QPalette.ColorRole.Highlight)
-        border_color = self.palette().color(QPalette.ColorRole.Mid)
-
-        # Draw background
-        painter.setBrush(bg_color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRect(rect)
-
-        # Draw accent border on the left
-        painter.setBrush(highlight_color)
-        painter.drawRect(0, 0, 3, rect.height())
-
-        # Draw subtle borders on other sides
-        painter.setPen(border_color)
-        painter.drawLine(rect.topRight(), rect.bottomRight())  # right
-        painter.drawLine(rect.topLeft(), rect.topRight())  # top
-        painter.drawLine(rect.bottomLeft(), rect.bottomRight())  # bottom
+        painter.fillRect(rect, self.palette().color(QPalette.ColorRole.Window))
+        painter.fillRect(0, 0, 1, rect.height(), self.palette().color(QPalette.ColorRole.Mid))
+        painter.end()
 
         super().paintEvent(event)
 
