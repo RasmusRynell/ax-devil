@@ -31,6 +31,7 @@ def test_shortcut_list_uses_window_space_and_preserves_search(qtbot: QtBot, poin
     assert areas
     scroll = min(areas, key=lambda area: area.viewport().height())
     assert scroll.viewport().height() > dialog.height() // 2
+    assert scroll.horizontalScrollBar().maximum() == 0  # Key chips fit beside every action name.
     previous_height = scroll.viewport().height()
     dialog.resize(dialog.width(), dialog.height() + 100)
     QApplication.processEvents()

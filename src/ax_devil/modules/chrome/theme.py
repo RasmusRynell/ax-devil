@@ -125,7 +125,10 @@ def _install_stylesheet(app: QApplication) -> None:
     # QSS minimum heights describe the content box. Allow Qt to grow it for taller fonts or icons.
     # Equal vertical padding aligns adjacent fields/buttons; default buttons have no border in QDarkTheme.
     control_content = Height.CONTROL.px - 2 * Space.XS - 2
+    # The theme draws 18 px check marks; larger text gets larger ones so they keep pace with their labels.
+    indicator = max(18, round(body_px() * 1.2))
     sized_rules = f"""
+        QCheckBox::indicator, QRadioButton::indicator {{ width: {indicator}px; height: {indicator}px; }}
         QGroupBox {{ margin-top: {title_room + Space.XS}px; padding-top: {title_room}px; }}
         QLineEdit, QAbstractSpinBox, QComboBox, QPushButton {{
             min-height: {control_content}px;

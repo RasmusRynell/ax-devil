@@ -44,7 +44,7 @@ def test_invalid_saved_mode_uses_auto(invalid: object) -> None:
     assert GraphicsAcceleration.from_config(invalid) is GraphicsAcceleration.AUTO
 
 
-def test_dialog_cancel_apply_and_reopen(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dialog_cancel_ok_and_reopen(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("QT_WIDGETS_RHI", raising=False)
     GlobalSettings.reset_instance()
     try:
@@ -55,14 +55,17 @@ def test_dialog_cancel_apply_and_reopen(qtbot: QtBot, monkeypatch: pytest.Monkey
         dialog.reject()
         assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.AUTO
 
-        applied = SettingsDialog()
-        qtbot.addWidget(applied)
-        applied._acceleration_combo.setCurrentIndex(applied._acceleration_combo.findData("off"))
-        assert applied._apply(), applied._status_label.text()
-        assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.OFF
+        monkeypatch.setattr(SettingsDialog, "_ask_to_restart", lambda self: False)  # Restart later.
+        saved_dialog = SettingsDialog()
+        qtbot.addWidget(saved_dialog)
+        saved_dialog._acceleration_combo.setCurrentIndex(saved_dialog._acceleration_combo.findData("off"))
+        saved_dialog._on_ok()
+        assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.OFF, saved_dialog._status_label.text()
         assert "QT_WIDGETS_RHI" not in os.environ
-        applied._acceleration_combo.setCurrentIndex(applied._acceleration_combo.findData("auto"))
-        applied.reject()
+        discarded = SettingsDialog()
+        qtbot.addWidget(discarded)
+        discarded._acceleration_combo.setCurrentIndex(discarded._acceleration_combo.findData("auto"))
+        discarded.reject()
         assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.OFF
 
         reopened = SettingsDialog()
@@ -71,6 +74,7 @@ def test_dialog_cancel_apply_and_reopen(qtbot: QtBot, monkeypatch: pytest.Monkey
         reopened._acceleration_combo.setCurrentIndex(reopened._acceleration_combo.findData("auto"))
         reopened._on_ok()
         assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.AUTO
+        assert not reopened.restart_requested
     finally:
         GlobalSettings.reset_instance()
 

@@ -1,4 +1,5 @@
 from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtGui import QKeySequence
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
@@ -315,7 +316,6 @@ def test_welcome_hints_empty_without_manager(qtbot: QtBot) -> None:
 
 def test_welcome_hints_reflect_rebinding(qtbot: QtBot) -> None:
     """Welcome widget reflects rebound shortcuts."""
-    from PySide6.QtGui import QKeySequence
 
     sv = _make_split_view(qtbot)
     sm = ShortcutManager()
@@ -327,7 +327,7 @@ def test_welcome_hints_reflect_rebinding(qtbot: QtBot) -> None:
 
     groups = sv._welcome_widget._resolve_grouped_hints()
     video_hint = next(h for h in groups["Open"] if h.label == "Add Video")
-    assert video_hint.keys == "Ctrl+Shift+O"
+    assert video_hint.keys == QKeySequence("Ctrl+Shift+O")
 
 
 def test_open_to_side_splits_beside_focused_pane_and_keeps_both(qtbot: QtBot) -> None:

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QGroupBox,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -52,9 +53,10 @@ class SettingsDialog(BaseDialog):
     """Dialog for editing global application settings.
 
     Reads a snapshot of ``GlobalSettings`` on open. Changes are applied
-    only when the user clicks **OK** (apply + close) or **Apply** (apply,
-    stay open).  **Cancel** discards uncommitted changes. Settings that
-    only take effect after a restart carry ``RESTART_MARK`` in their label.
+    only when the user clicks **OK**; **Cancel** discards them. Settings that
+    only take effect after a restart carry ``RESTART_MARK`` in their label;
+    saving a change to one asks whether to restart now, and sets
+    ``restart_requested`` when the user agrees.
     The separate shortcut editor applies its changes on its own **OK**.
     """
 
@@ -68,6 +70,8 @@ class SettingsDialog(BaseDialog):
         self._setup_content()
         self._setup_buttons()
         self._load_from_settings()
+        self._restart_values = self._saved_restart_values()
+        self.restart_requested = False  # Set when the user chose to restart after saving.
         self._logger.debug("SettingsDialog initialized")
 
     # ------------------------------------------------------------------
@@ -167,12 +171,6 @@ class SettingsDialog(BaseDialog):
         for page_layout in self._page_layouts:
             page_layout.addStretch(1)
         self.add_content_widget(self._tabs, stretch=1)
-        apply_rule = QLabel(
-            f"Changes in this dialog apply when you click OK or Apply. Settings marked {RESTART_MARK} take effect "
-            "the next time the app starts."
-        )
-        apply_rule.setWordWrap(True)
-        self.add_content_widget(apply_rule)
         self._status_label = QLabel()
         self._status_label.setWordWrap(True)
         self.add_content_widget(self._status_label)
@@ -205,9 +203,8 @@ class SettingsDialog(BaseDialog):
                 dialog.exec()
 
     def _setup_buttons(self) -> None:
-        """Add OK / Apply / Cancel buttons."""
+        """Add OK / Cancel buttons."""
         self.add_button("OK", self._on_ok, is_default=True)
-        self.add_button("Apply", self._on_apply)
         self.add_button("Cancel", self.reject)
 
     # ------------------------------------------------------------------
@@ -277,10 +274,38 @@ class SettingsDialog(BaseDialog):
     # ------------------------------------------------------------------
 
     def _on_ok(self) -> None:
-        """Apply and close."""
-        if self._apply():
-            self.accept()
+        """Save and close; when a saved change needs a restart, ask whether to restart now."""
+        before = self._restart_values
+        if not self._apply():
+            return
+        if self._saved_restart_values() != before:
+            self.restart_requested = self._ask_to_restart()
+        self.accept()
 
-    def _on_apply(self) -> None:
-        """Apply and keep dialog open."""
-        self._apply()
+    def _ask_to_restart(self) -> bool:
+        """Ask whether to restart now for the saved changes that need it; return True for now."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Restart ax-devil?")
+        box.setText("Some changes take effect after a restart.")
+        restart = box.addButton("Restart Now", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(restart)
+        box.exec()
+        return box.clickedButton() is restart
+
+    def _saved_restart_values(self) -> tuple[object, ...]:
+        """Return the saved values of every setting marked as needing a restart, as the next start reads them.
+
+        Comparing saved values, not editor text, ignores edits that save the same value, such as added spaces.
+        """
+        restart_fields = [
+            field
+            for section in (*CONNECTION_SECTIONS, STORAGE_SECTION)
+            if section.requires_restart
+            for field in section.fields
+        ]
+        return (
+            self._settings.custom_frame,
+            self._settings.graphics_acceleration,
+            *(field_value(self._config, field) for field in restart_fields),
+        )

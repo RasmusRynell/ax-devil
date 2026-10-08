@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QEvent, QObject
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QFrame,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
+from ax_devil.modules.chrome.key_chips import KeyChips
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import ShortcutDefinition, ShortcutManager
@@ -44,15 +46,63 @@ class _ShortcutRow(QFrame):
         self._name_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(self._name_label, 1)
 
+        # The keys show as chips; clicking them swaps in the editor until editing finishes.
+        self._chips = KeyChips(current_sequence or QKeySequence(), "Not set", self)
+        self._chips.setToolTip("Click to change")
+        self._chips.clicked.connect(self.start_editing)
+        layout.addWidget(self._chips)
+
         self._editor = QKeySequenceEdit(current_sequence or QKeySequence(), self)
         self._editor.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._editor.setClearButtonEnabled(True)
+        self._editor.hide()
+        self._editor.keySequenceChanged.connect(self._chips.set_key_sequence)
+        self._editor.editingFinished.connect(self.stop_editing)
+        self._editor.installEventFilter(self)
         layout.addWidget(self._editor)
+        # The chips prefer the editor's size, so the row keeps its layout when editing starts.
+        follow_appearance(self._chips, self._match_editor_size)
+        self._update_accessible_name()
+        self._editor.keySequenceChanged.connect(self._update_accessible_name)
 
     @property
     def editor(self) -> QKeySequenceEdit:
         """Return the key sequence editor widget."""
         return self._editor
+
+    @property
+    def chips(self) -> KeyChips:
+        """Return the chips that show the keys while the row is not being edited."""
+        return self._chips
+
+    def start_editing(self) -> None:
+        """Replace the chips with the editor and focus it."""
+        self._chips.hide()
+        self._editor.show()
+        self._editor.setFocus()
+
+    def stop_editing(self) -> None:
+        """Show the entered keys as chips again, keeping keyboard focus on the row."""
+        had_focus = self._editor.hasFocus()
+        self._chips.show()
+        if had_focus:
+            self._chips.setFocus()
+        self._editor.hide()
+
+    def _match_editor_size(self) -> None:
+        hint = self._editor.sizeHint()
+        self._chips.set_preferred_width(hint.width())
+        self._chips.setMinimumHeight(hint.height())
+
+    def _update_accessible_name(self) -> None:
+        keys = self._editor.keySequence().toString(QKeySequence.SequenceFormat.NativeText) or "not set"
+        self._chips.setAccessibleName(f"{self.definition.display_name}: {keys}")
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        """Stop editing when the editor loses focus, as when another row is clicked."""
+        if watched is self._editor and event.type() == QEvent.Type.FocusOut and not self._editor.isHidden():
+            self.stop_editing()
+        return super().eventFilter(watched, event)
 
     @property
     def action_id(self) -> str:
@@ -64,8 +114,9 @@ class _ShortcutRow(QFrame):
         return self._editor.keySequence()
 
     def set_key_sequence(self, seq: QKeySequence) -> None:
-        """Set the key sequence in the editor."""
+        """Set the key sequence in the editor and its chips."""
         self._editor.setKeySequence(seq)
+        self._chips.set_key_sequence(seq)
 
     def matches_filter(self, text: str) -> bool:
         """Return whether this row matches a search filter."""
@@ -260,7 +311,7 @@ class ShortcutsDialog(BaseDialog):
         if conflict is not None:
             row, conflict_id = conflict
             self._show_conflict(row, conflict_id)
-            row.editor.setFocus()
+            row.start_editing()
             return
 
         for row in self._all_rows:

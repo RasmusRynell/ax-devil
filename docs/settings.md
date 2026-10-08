@@ -8,7 +8,8 @@
 - **Storage:** window state, cache, log, and render catalog folders.
 - **Advanced:** the active configuration's location and version.
 
-**Apply** saves all pages, **OK** saves and closes, and **Cancel** discards changes since the last Apply.
+**OK** saves all pages and closes, and **Cancel** discards the changes. When a saved change needs a restart, ax-devil
+asks whether to restart now or later.
 Stream defaults apply to newly opened live-stream dialogs.
 Theme and text size changes apply immediately; storage, title bar, and graphics changes need a restart. Changing storage locations does not move existing files.
 Keyboard shortcuts are confirmed in their own dialog.
@@ -46,7 +47,7 @@ Auto does not detect incompatible drivers or fall back automatically; if startup
 **General → Playback → Memory for video caching** (`settings.playback.video_cache_total_mib`) sets one allowance shared
 equally by all open offline videos; opening or closing a video redistributes it. More memory keeps more frames ready for
 seeking. **Auto** (default) is 25% of the RAM available at startup, or 1 GiB if detection fails; **Manual** takes
-0.25–1024 GiB. Memory is only used as needed, and Apply resizes existing caches immediately. Decoder, display, and other
+0.25–1024 GiB. Memory is only used as needed, and saving resizes existing caches immediately. Decoder, display, and other
 application memory come on top, so this is not a total RAM limit: with 1 GiB of cache, playback uses roughly 1.5–2.5 GiB
 in total, and seeking in long-GOP 4K video can raise process memory by several GiB, which may stay resident. Auto does
 not watch other applications or prevent swapping.

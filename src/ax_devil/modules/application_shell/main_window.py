@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QLabel, QMessageBox
 
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.configuration_preferences import save_overlay_preference
+from ax_devil.modules.application_shell.restart import restart_application
 from ax_devil.modules.catalog_viewer import close_catalog_viewer, show_catalog_viewer
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
@@ -276,6 +277,9 @@ class MainWindow(ChromeWindow):
 
         with SettingsDialog(parent=self, shortcut_manager=self._shortcut_manager) as dialog:
             dialog.exec()
+            restart = dialog.restart_requested
+        if restart:
+            restart_application(self)
 
     def _on_add_video(self) -> None:
         """Handle File -> Add Video action."""

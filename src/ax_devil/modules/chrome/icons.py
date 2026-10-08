@@ -41,6 +41,7 @@ class Icon(Enum):
     PLAYLIST = ("list-video", False)
     OVERLAY = ("layers", False)
     WARNING = ("triangle-alert", False)
+    BROWSE = ("folder", False)
 
     def __init__(self, file_stem: str, filled: bool) -> None:
         self.file_stem = file_stem

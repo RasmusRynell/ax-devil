@@ -23,6 +23,8 @@ choosing its own sizes and colors.
 | Status-colored text | `StatusColor.<NAME>.css(palette)` | `modules/chrome/theme.py` |
 | Icons | `Icon.<NAME>.icon()` follows the theme on its own; pass a color only for status or the video scrim. Add a Lucide SVG to `resources/icons/` for a new one | `modules/chrome/icons.py` |
 | Button that opens a menu (`Filter ⌄`) | `MenuButton(text, menu)` | `modules/chrome/menu_button.py` |
+| Folder button beside a path field | `BrowseButton(what, browse)` | `modules/chrome/browse_button.py` |
+| Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
 | Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
@@ -78,7 +80,8 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
   unavoidable, derive it from `Height` or `TextRole.<ROLE>.px` so it grows with the text.
 - **A new user preference** follows `ThemeMode` and `TextSize` in `modules/settings/`: a `str` enum with
   `label` and `from_config`, a `GlobalSettings` property, a row in the Settings dialog, and a paragraph in
-  `docs/settings.md`. Apply it live when Qt allows; mark it `(requires restart)` only when it cannot.
+  `docs/settings.md`. Apply it live when Qt allows; mark it `(requires restart)` only when it cannot;
+  saving such a change offers to restart ax-devil.
 
 ## Check it
 

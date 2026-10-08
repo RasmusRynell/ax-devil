@@ -30,7 +30,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
 | Config, settings state and preference values, logging, paths | `src/ax_devil/modules/settings/` |
 | Shortcut definitions, routing, persistence, and shortcut settings UI | `src/ax_devil/modules/shortcuts/` |
-| Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons and menu buttons, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
+| Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons, menu buttons, browse buttons and key chips, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
 | Diagnostics windows, metrics, exception reporting | `src/ax_devil/modules/diagnostics/` |
 | Cache services | `src/ax_devil/modules/cache/` |
 

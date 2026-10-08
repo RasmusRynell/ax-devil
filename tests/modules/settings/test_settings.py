@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
+from PySide6.QtCore import QProcess
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -136,8 +140,8 @@ def test_graphics_acceleration_round_trip_does_not_apply_until_startup(
     assert restored.graphics_acceleration is GraphicsAcceleration.OFF
 
 
-def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: ConfigManager) -> None:
-    """Appearance changes commit on Apply/OK and retain unrelated raw UI settings."""
+def test_theme_dialog_cancel_ok_and_config_round_trip(qtbot: QtBot, config: ConfigManager) -> None:
+    """Appearance changes commit on OK, Cancel discards them, and unrelated raw UI settings are kept."""
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     config.set("ui", {"theme": "dark", "window": {"custom_frame": False}, "custom": "$KEEP_RAW"})
@@ -153,15 +157,16 @@ def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: C
     assert settings.snapshot().theme == ThemeMode.DARK
     assert changes == []
 
-    applied = SettingsDialog()
-    qtbot.addWidget(applied)
-    applied._theme_combo.setCurrentIndex(applied._theme_combo.findData("light"))
-    applied._on_apply()
-    applied._on_apply()
+    saved_dialog = SettingsDialog()
+    qtbot.addWidget(saved_dialog)
+    saved_dialog._theme_combo.setCurrentIndex(saved_dialog._theme_combo.findData("light"))
+    saved_dialog._on_ok()
     assert changes == ["light"]
-    applied._theme_combo.setCurrentIndex(applied._theme_combo.findData("dark"))
-    applied.reject()
-    assert settings.theme == ThemeMode.LIGHT
+    discarded = SettingsDialog()
+    qtbot.addWidget(discarded)
+    discarded._theme_combo.setCurrentIndex(discarded._theme_combo.findData("dark"))
+    discarded.reject()
+    assert settings.theme == ThemeMode.LIGHT and changes == ["light"]
     settings.save_to_config(config)
     config.save()
     saved = json.loads(config.config_path.read_text(encoding="utf-8"))
@@ -412,7 +417,7 @@ def test_storage_environment_references_validate_before_saving(
 
 
 def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> None:
-    """Restart-only settings share one marker, and the dialog states its apply rule once."""
+    """Restart-only settings share one marker, and no other text talks about restarting."""
     from PySide6.QtWidgets import QCheckBox, QGroupBox, QLabel
 
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
@@ -427,9 +432,84 @@ def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> No
     marker = "(requires restart)"
     marked = {text.removesuffix(f" {marker}") for text in texts if text.endswith(marker)}
     assert marked == {"Use the app title bar", "Graphics acceleration", "Storage locations"}
-    restart_mentions = [text for text in texts if "restart" in text.lower() and not text.endswith(marker)]
-    assert restart_mentions == [
-        "Changes in this dialog apply when you click OK or Apply. Settings marked (requires restart) take effect "
-        "the next time the app starts."
-    ]
+    assert not [text for text in texts if "restart" in text.lower() and not text.endswith(marker)]
     assert "Shortcut changes apply when you click OK in the shortcut editor, even if you cancel Settings." in texts
+
+
+def test_saving_a_restart_setting_asks_to_restart_now(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a saved change marked (requires restart) asks; the answer is left for the main window to act on."""
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
+
+    GlobalSettings.reset_instance()
+    try:
+        asked: list[bool] = []
+
+        def ask_to_restart(self: SettingsDialog) -> bool:
+            asked.append(True)
+            return True
+
+        monkeypatch.setattr(SettingsDialog, "_ask_to_restart", ask_to_restart)
+
+        dialog = SettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
+        dialog._on_ok()
+        assert asked == [] and not dialog.restart_requested
+
+        dialog = SettingsDialog()
+        qtbot.addWidget(dialog)
+        editor = next(editor for field, editor in dialog._configuration_editors.items() if field.directory)
+        assert editor._text is not None
+        editor._text.setText(f"  {editor.text()}  ")
+        dialog._on_ok()
+        assert asked == []  # The same path with spaces saves the same value.
+
+        dialog = SettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._custom_frame.setChecked(not dialog._custom_frame.isChecked())
+        dialog._on_ok()
+        assert asked == [True] and dialog.restart_requested
+        assert not any(button.text() == "Apply" for button in dialog.findChildren(QPushButton))
+    finally:
+        GlobalSettings.reset_instance()
+
+
+def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(
+    monkeypatch: pytest.MonkeyPatch, qapp: QApplication, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Restart Now only quits; the app relaunches itself after its exit-time saves, once, and reports a failure."""
+    from ax_devil.modules.application_shell import restart
+
+    started: list[tuple[str, list[str]]] = []
+    results = [(True, 42), (False, -1)]
+
+    def start_detached(program: str, arguments: list[str]) -> tuple[bool, int]:
+        started.append((program, arguments))
+        return results.pop(0)
+
+    monkeypatch.setattr(sys, "orig_argv", ["/usr/bin/python3", "-I", "-m", "ax_devil.cli"])
+    monkeypatch.setattr(QProcess, "startDetached", start_detached)
+    monkeypatch.setattr(QApplication, "closeAllWindows", lambda: None)
+    monkeypatch.setattr(QApplication, "quit", lambda: None)
+
+    restart.relaunch_if_requested(qapp)
+    assert started == []  # No restart was asked for.
+
+    closed: list[str] = []
+
+    class _MainWindow(QWidget):
+        def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+            closed.append("main")
+            super().closeEvent(event)
+
+    main_window = _MainWindow()
+    restart.restart_application(main_window)
+    assert closed == ["main"]  # The main window cleans up even if another window refuses to close.
+    assert started == []  # Nothing starts before the app has saved on exit.
+    restart.relaunch_if_requested(qapp)
+    restart.relaunch_if_requested(qapp)
+    assert started == [("/usr/bin/python3", ["-I", "-m", "ax_devil.cli"])]
+
+    restart.restart_application(main_window)
+    restart.relaunch_if_requested(qapp)
+    assert "Could not restart ax-devil" in caplog.text
