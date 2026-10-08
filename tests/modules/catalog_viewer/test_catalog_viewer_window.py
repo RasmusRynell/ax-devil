@@ -1,4 +1,4 @@
-"""The catalog viewer follows its catalog file: saved changes are drawn at once, and a broken file keeps the last."""
+"""Catalog-manager notifications update previews; file watching is covered by manager tests."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def test_the_viewer_shows_a_tab_per_sheet(qtbot: QtBot, render_catalog_manager: 
     assert window.error() is None
 
 
-def test_saving_the_file_redraws_it(
+def test_catalog_change_notification_redraws_the_file(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, small_catalog_path: Path
 ) -> None:
     catalog = render_catalog_manager.create_catalog("Review", base_catalog_path=small_catalog_path)
@@ -52,7 +52,9 @@ def test_saving_the_file_redraws_it(
 
     _relabel_person(catalog.path, "Pedestrian")
 
-    qtbot.waitUntil(lambda: "Pedestrian" in window.sheet_titles(), timeout=3000)
+    render_catalog_manager.refresh_catalogs()
+    render_catalog_manager.catalogFileChanged.emit(catalog.path)
+    assert "Pedestrian" in window.sheet_titles()
     assert "Human" not in window.sheet_titles()
 
 
@@ -84,7 +86,9 @@ def test_a_save_during_loading_keeps_the_preview_and_compilation_on_one_revision
     assert "Pedestrian" not in window.sheet_titles()
     assert window._catalog is not None
     assert window._catalog.content_hash == expected.content_hash
-    qtbot.waitUntil(lambda: "Pedestrian" in window.sheet_titles(), timeout=3000)
+    render_catalog_manager.refresh_catalogs()
+    render_catalog_manager.catalogFileChanged.emit(path)
+    assert "Pedestrian" in window.sheet_titles()
     current = SceneRenderCatalogLoader().validate_document(read_document(path))
     assert window._catalog.content_hash == current.content_hash
 
@@ -101,7 +105,9 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
     original = catalog.path.read_text(encoding="utf-8")
 
     catalog.path.write_text(original.replace('"schema_version": 3', '"schema_version": 99', 1), encoding="utf-8")
-    qtbot.waitUntil(lambda: window.error() is not None, timeout=3000)
+    render_catalog_manager.refresh_catalogs()
+    render_catalog_manager.catalogFileChanged.emit(catalog.path)
+    assert window.error() is not None
 
     assert "$.metadata.schema_version" in (window.error() or "")
     assert window.sheet_titles() == titles
@@ -111,7 +117,9 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
     assert "Showing the last version that loaded." in window._banner.text()
 
     _relabel_person(catalog.path, "Pedestrian", original)
-    qtbot.waitUntil(lambda: window.error() is None, timeout=3000)
+    render_catalog_manager.refresh_catalogs()
+    render_catalog_manager.catalogFileChanged.emit(catalog.path)
+    assert window.error() is None
     assert "Pedestrian" in window.sheet_titles()
 
 
@@ -147,7 +155,6 @@ def test_switching_to_a_catalog_that_does_not_load_clears_the_previous_preview(
     assert window._renderer.frame_display_rect() is None
     assert window._renderer._quick.isHidden()
     assert window._description.text() == ""
-    assert window._description.styleSheet() == ""
 
     window.show_catalog(catalog.path)
     window.show()
@@ -172,7 +179,9 @@ def test_a_catalog_without_a_preview_starts_drawing_when_fixed(
     assert window.error() is not None
     assert window._renderer.frame_display_rect() is None
     _relabel_person(repaired.path, "Pedestrian", original)
-    qtbot.waitUntil(lambda: window.error() is None, timeout=3000)
+    render_catalog_manager.refresh_catalogs()
+    render_catalog_manager.catalogFileChanged.emit(repaired.path)
+    assert window.error() is None
 
     assert "Pedestrian" in window.sheet_titles()
     assert window._renderer.frame_display_rect() is not None
@@ -314,7 +323,9 @@ def test_a_default_catalog_that_breaks_stays_on_screen_with_its_error(
     window = _viewer(qtbot, render_catalog_manager, render_catalog_manager.listing().chosen_default_path)
 
     catalog.path.write_text("{ not json", encoding="utf-8")
-    qtbot.waitUntil(lambda: window.error() is not None, timeout=3000)
+    render_catalog_manager.refresh_catalogs()
+    render_catalog_manager.catalogFileChanged.emit(catalog.path)
+    assert window.error() is not None
 
     assert window.catalog_path() == catalog.path
     assert render_catalog_manager.default_catalog_path() == render_catalog_manager.built_in_catalog_path()

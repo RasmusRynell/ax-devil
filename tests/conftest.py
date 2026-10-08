@@ -14,6 +14,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
 
+from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogManager,
@@ -155,6 +156,15 @@ def video_file_factory(test_temp_root: Path) -> Callable[[float, int], Path]:
         return path
 
     return video_file
+
+
+@pytest.fixture
+def isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Give file-provider tests an independent cache directory."""
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(CacheManager, "get_cache_subdir", lambda *_args, **_kwargs: cache)
+    return cache
 
 
 @pytest.fixture

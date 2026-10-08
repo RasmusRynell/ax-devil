@@ -151,3 +151,55 @@ def test_decode_gt_mark_is_not_display_confidence() -> None:
 def test_decode_mot_frame_handles_invalid_payload() -> None:
     with pytest.raises(ValueError):
         decode_mot_frame("not-json")
+
+
+class TestMOTDecoder10Column:
+    """Verify the MOT decoder handles both 9-column and 10-column formats."""
+
+    @pytest.mark.parametrize(
+        ("rows", "expected_frames", "expected_detections"),
+        [
+            (
+                [
+                    "1,-1,772.68,455.43,41.871,127.61,2.1262,-1,-1,-1",
+                    "1,-1,717.79,451.29,44.948,136.84,1.7969,-1,-1,-1",
+                    "2,-1,772.68,455.43,41.871,127.61,2.1551,-1,-1,-1",
+                ],
+                2,
+                3,
+            ),
+            (
+                [
+                    "1,1,912,484,97,109,0,7,0.2",
+                    "1,2,1338,418,121,166,0,7,0.4",
+                ],
+                1,
+                2,
+            ),
+        ],
+    )
+    def test_supported_det_and_gt_formats(
+        self,
+        rows: list[str],
+        expected_frames: int,
+        expected_detections: int,
+    ) -> None:
+        from ax_devil.plugins.decoders.mot.decoder import prepare_mot_frame_payloads
+
+        payloads, stats = prepare_mot_frame_payloads(rows, width=1920, height=1080)
+        assert payloads
+        assert stats.total_frames == expected_frames
+        assert stats.total_detections == expected_detections
+
+    def test_mixed_formats_skips_unknown(self) -> None:
+        from ax_devil.plugins.decoders.mot.decoder import prepare_mot_frame_payloads
+
+        rows = [
+            "1,-1,100,100,50,50,0.9,-1,-1,-1",  # 10-col
+            "1,1,100,100,50,50,0.9,1,0.8",  # 9-col
+            "1,1,100,100,50,50,0.9",  # 7-col
+            "0,0,0,0,0,0",  # 6-col → skipped
+            "not,a,valid,row",  # invalid → skipped
+        ]
+        payloads, stats = prepare_mot_frame_payloads(rows, width=1920, height=1080)
+        assert stats.total_detections == 3

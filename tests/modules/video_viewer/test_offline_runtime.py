@@ -22,7 +22,6 @@ from ax_devil.modules.video_viewer import offline_entry_media, offline_viewer_ru
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
-from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 from ax_devil.modules.workspace import (
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
@@ -30,6 +29,7 @@ from ax_devil.modules.workspace import (
     OverlayContent,
     SeekableVideoContent,
 )
+from tests.helpers.scene_inspector import RecordingSceneInspector
 
 
 class _Display:
@@ -51,31 +51,10 @@ class _Display:
         """Match FrameDisplay cleanup."""
 
 
-class _RecordingSceneInspector:
-    """Scene inspector test double recording updates."""
-
-    def __init__(self) -> None:
-        self.updates: list[tuple[Scene | None, FrameIdentifier | None, dict[str, object] | None]] = []
-
-    def clear(self) -> None:
-        """Clear recorded updates."""
-        self.updates.clear()
-
-    def update_scene(
-        self,
-        scene: Scene | None,
-        frame_id: FrameIdentifier | None,
-        metadata: dict[str, object] | None,
-        refilter: SceneRefilter | None = None,
-    ) -> None:
-        """Record an inspector update."""
-        self.updates.append((scene, frame_id, metadata))
-
-
 class _DisplayWithInspectorAssertion(_Display):
     """Display test double ensuring inspection is not delivered before display."""
 
-    def __init__(self, inspector: _RecordingSceneInspector) -> None:
+    def __init__(self, inspector: RecordingSceneInspector) -> None:
         super().__init__()
         self._inspector = inspector
 
@@ -317,7 +296,7 @@ def test_offline_lane_uses_direct_overlay_lookup_and_presenter_without_offline_s
 
 
 def test_offline_lane_displays_frame_before_scheduling_scene_inspection(qtbot: object) -> None:
-    inspector = _RecordingSceneInspector()
+    inspector = RecordingSceneInspector()
     overlay_source = _OverlaySource(_overlay(7))
     display = _DisplayWithInspectorAssertion(inspector)
     lane = OfflineLane(
