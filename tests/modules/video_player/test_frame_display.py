@@ -256,3 +256,30 @@ def test_side_panel_opening_during_a_resize_ends_at_the_new_pane_width(qtbot: Qt
 
     qtbot.waitUntil(lambda: panel.width() == 280)
     assert display.viewport.width() == 280
+
+
+def test_side_panel_refits_when_its_content_grows(qtbot: QtBot) -> None:
+    """Content that grows, as after a larger text size, closes a panel that would leave the video too narrow."""
+    window = QWidget()
+    qtbot.addWidget(window)
+    layout = QHBoxLayout(window)
+    layout.setContentsMargins(0, 0, 0, 0)
+    display = FrameDisplay()
+    layout.addWidget(display)
+    content = QLabel("tools")
+    display.enable_side_panel(content)
+    window.resize(800, 400)
+    window.show()
+    panel = display.findChild(DraggablePanel)
+    assert panel is not None
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+
+    content.setMinimumWidth(620)  # The video beside it would be under 240 px.
+    qtbot.waitUntil(lambda: not display.is_side_panel_open())
+    assert display.viewport.width() == 800
+
+    # Once the content fits again, the next pane resize reopens the panel the user opened.
+    content.setMinimumWidth(0)
+    window.resize(820, 400)
+    qtbot.waitUntil(display.is_side_panel_open)

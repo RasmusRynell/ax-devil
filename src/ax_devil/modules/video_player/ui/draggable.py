@@ -182,6 +182,7 @@ class DraggablePanel(FadingWidget):
         self._wants_open = False  # The user's choice, kept while a narrow pane closes the panel.
         self._opened_without_room = False  # Opened by hand in a pane too narrow; stays open until it fits once.
         self._pane_width: int | None = None
+        self._fitted_width = 0  # The open width the panel was last fitted for.
 
         # Animation components (will be initialized in _setup_animations)
         self.animation: QPropertyAnimation
@@ -224,6 +225,11 @@ class DraggablePanel(FadingWidget):
         """
         shrinking = self._pane_width is not None and pane_width < self._pane_width
         self._pane_width = pane_width
+        self._refit(may_close=shrinking)
+
+    def _refit(self, *, may_close: bool) -> None:
+        """Open, close or resize the panel for the current pane and content; close only when *may_close*."""
+        self._fitted_width = self.expanded_width
         if not self._wants_open:
             return
         fits = self._fits()
@@ -232,7 +238,7 @@ class DraggablePanel(FadingWidget):
         animating = self.animation.state() == QAbstractAnimation.State.Running
         if self.is_collapsed and fits:
             self._set_open_now(True)
-        elif not self.is_collapsed and not fits and shrinking and not self._opened_without_room:
+        elif not self.is_collapsed and not fits and may_close and not self._opened_without_room:
             self._set_open_now(False)
         elif not self.is_collapsed and animating:
             # An opening panel ends at the width for the new pane.
@@ -246,17 +252,16 @@ class DraggablePanel(FadingWidget):
         if content is None:
             return 0
         margins = self._content_layout.contentsMargins()
-        return content.minimumSizeHint().width() + margins.left() + margins.right()
+        return content.minimumSizeHint().expandedTo(content.minimumSize()).width() + margins.left() + margins.right()
 
     def event(self, event: QEvent) -> bool:
-        """Widen an open panel whose content grew, as after a live text-size change, instead of clipping it."""
-        if (
-            event.type() == QEvent.Type.LayoutRequest
-            and not self.is_collapsed
-            and self.animation.state() != QAbstractAnimation.State.Running
-            and self.width() < self._content_minimum_width()
-        ):
-            self.setFixedWidth(self._content_minimum_width())
+        """Refit the panel when its content's size changes, as after a live text-size change.
+
+        Content that grows can widen the panel past half the pane or leave the video too narrow, so the panel follows
+        the same rules as for a pane resize. A width the user dragged to stays until the content size changes.
+        """
+        if event.type() == QEvent.Type.LayoutRequest and self.expanded_width != self._fitted_width:
+            self._refit(may_close=True)
         return super().event(event)
 
     def _setup_animations(self) -> None:
