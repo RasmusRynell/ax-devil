@@ -64,6 +64,7 @@ DEFAULT_SHORTCUTS: tuple[ShortcutDefinition, ...] = (
     ShortcutDefinition(
         "view.toggle_media_tools", "Media Tools Panel", "View", QKeySequence("Ctrl+B"), acts_on_viewer=True
     ),
+    ShortcutDefinition("view.toggle_sidebar", "Sidebar", "View", QKeySequence("Ctrl+\\")),
     ShortcutDefinition(
         "view.toggle_lane_fullscreen", "Toggle Lane Fullscreen", "View", QKeySequence("F"), acts_on_viewer=True
     ),

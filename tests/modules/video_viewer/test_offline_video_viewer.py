@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PySide6.QtCore import QCoreApplication, QPoint, QPointF, Qt
 from PySide6.QtGui import QImage, QWheelEvent
-from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton, QTabWidget
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
@@ -915,6 +915,56 @@ class TestOfflineVideoViewerWidget:
         widget._runtime._set_lane_timestamp_fallback_policy(lane, TimestampFallbackPolicy(tolerance_us=0))
 
         assert source.history_selections == [(True, 2_050_000), (False, None), (False, None)]
+
+    @pytest.mark.parametrize("lane_count, columns", [(1, 1), (2, 2), (3, 2), (5, 3)])
+    def test_lane_geometry(self, qtbot: QtBot, lane_count: int, columns: int) -> None:
+        """Lanes fill equal cells, wrap into rows and retain usable widths when the viewer shrinks."""
+        playlist = PlaylistContent(
+            display_name="comparison",
+            entries=(
+                PlaylistEntry(
+                    lanes=tuple(
+                        EntryLane(
+                            display_name=f"Lane {index}",
+                            video=_make_local_content(f"Video {index}"),
+                            default_considered=True,
+                        )
+                        for index in range(lane_count)
+                    ),
+                    default_considered=True,
+                ),
+            ),
+        )
+        widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
+        _attach_offline_widget(qtbot, widget)
+        widget.show()
+        assert widget._runtime is not None
+        container = widget._runtime.container
+        panes = [lane.display.parentWidget() for lane in widget._runtime.lanes]
+        assert all(pane is not None for pane in panes)
+        for width in (1200, 400):
+            widget.resize(width, 700)
+            QApplication.processEvents()
+            rects = [pane.geometry() for pane in panes if pane is not None]
+            assert max(rect.width() for rect in rects) - min(rect.width() for rect in rects) <= 1
+            assert all(container.rect().contains(rect) for rect in rects)
+            assert all(lane.display.width() >= lane.display.minimumSizeHint().width() for lane in widget._runtime.lanes)
+            for index, rect in enumerate(rects):
+                assert rect.y() == rects[index // columns * columns].y()
+                if index % columns:
+                    assert rect.x() > rects[index - 1].right()
+                if index >= columns:
+                    assert rect.y() > rects[index - columns].bottom()
+
+    def test_no_considered_lanes_placeholder(self, qtbot: QtBot) -> None:
+        """An entry with all lanes excluded still shows its placeholder."""
+        parent = QWidget()
+        qtbot.addWidget(parent)
+        runtime = OfflineSession.build(parent, EntryMedia(), render_catalog_manager=self._render_catalog_manager)
+        label = runtime.container.findChild(QLabel)
+        assert label is not None
+        assert label.text() == "No considered lanes in this entry"
+        runtime.cleanup()
 
     def test_multi_video_entry(self, qtbot: QtBot) -> None:
         """PlaylistEntry with multiple videos renders through the lane pipeline."""

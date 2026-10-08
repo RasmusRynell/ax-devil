@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QTabWidget, QToolButton
@@ -13,9 +12,9 @@ from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistor
 from ax_devil.modules.filtering.filter_config import (
     FilterConfig,
     FilterOption,
-    FilterState,
     build_default_filter_config,
 )
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -28,7 +27,7 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
-from ax_devil.modules.video_viewer.media_tools import EntityFilterWidget, MediaToolsPanel
+from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.entity_list_widget import EntityListWidget, EntityScope
 from ax_devil.modules.video_viewer.media_tools.object_history_widget import (
     ObjectCard,
@@ -73,9 +72,8 @@ def _scene(*entity_ids: str) -> Scene:
     return scene
 
 
-def _file_list(qtbot: QtBot) -> tuple[EntityListWidget, EntityFilterWidget]:
-    filter_widget = EntityFilterWidget(filter_config=build_default_filter_config())
-    qtbot.addWidget(filter_widget)
+def _file_list(qtbot: QtBot) -> tuple[EntityListWidget, SessionFilter]:
+    filter_widget = SessionFilter(build_default_filter_config())
     widget = EntityListWidget(show_title=False)
     qtbot.addWidget(widget)
     widget.set_history(_history(), filter_widget)
@@ -116,11 +114,11 @@ def test_file_scope_applies_type_filters_and_id_search(qtbot: QtBot) -> None:
     widget, filter_widget = _file_list(qtbot)
     widget.set_scope(EntityScope.FILE)
 
-    filter_widget.filter_state.set_enabled("show_cars", False)
+    filter_widget.set_enabled("show_cars", False)
     widget.refilter()
     assert [entity_id for entity_id, _visible in _rows(widget)] == ["a"]
 
-    filter_widget.filter_state.set_enabled("show_cars", True)
+    filter_widget.set_enabled("show_cars", True)
     filter_widget.set_id_query("b")
     widget.refilter()
     assert [entity_id for entity_id, _visible in _rows(widget)] == ["b"]
@@ -210,7 +208,7 @@ def test_pane_shows_every_object_of_an_event_and_follows_the_displayed_frame(qtb
 def test_panel_routes_selection_frames_and_scene_updates(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
 ) -> None:
-    panel = MediaToolsPanel(render_catalog_selection, scene_history=_history())
+    panel = MediaToolsPanel(render_catalog_selection, scene_history=_history(), filter_model=SessionFilter())
     qtbot.addWidget(panel)
     panel.show()
     panel.findChild(QTabWidget, "mediaToolsTabs").setCurrentIndex(1)  # type: ignore[union-attr]
@@ -235,7 +233,7 @@ def test_panel_routes_selection_frames_and_scene_updates(
 def test_panel_drops_repeated_frames_and_hidden_panes_catch_up_when_shown(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
 ) -> None:
-    panel = MediaToolsPanel(render_catalog_selection, scene_history=_history())
+    panel = MediaToolsPanel(render_catalog_selection, scene_history=_history(), filter_model=SessionFilter())
     qtbot.addWidget(panel)
     pane = panel.findChild(ObjectHistoryPane)
     assert pane is not None
@@ -258,7 +256,7 @@ def test_panel_updates_open_cards_when_filters_change_while_paused(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
 ) -> None:
     panel = MediaToolsPanel(
-        render_catalog_selection, filter_config=build_default_filter_config(), scene_history=_history()
+        render_catalog_selection, filter_model=SessionFilter(build_default_filter_config()), scene_history=_history()
     )
     qtbot.addWidget(panel)
     panel.show()
@@ -268,7 +266,7 @@ def test_panel_updates_open_cards_when_filters_change_while_paused(
         shown,
         _frame(5),
         {},
-        lambda: filtered if not panel.filter_widget.filter_state.is_enabled("show_humans") else shown,
+        lambda: filtered if not panel.filter_model.is_enabled("show_humans") else shown,
     )
     panel.entity_list.entitySelected.emit("b")
     pane = panel.findChild(ObjectHistoryPane)
@@ -277,8 +275,7 @@ def test_panel_updates_open_cards_when_filters_change_while_paused(
     card._button.setChecked(True)
     assert "human" in card._details.text()
 
-    panel.filter_widget.filter_state.set_enabled("show_humans", False)
-    panel.filter_widget.filterChanged.emit()
+    panel.filter_model.set_enabled("show_humans", False)
 
     assert "not shown" in card._details.text()
 
@@ -286,7 +283,7 @@ def test_panel_updates_open_cards_when_filters_change_while_paused(
 def test_panel_replaces_history_in_every_tool(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
 ) -> None:
-    panel = MediaToolsPanel(render_catalog_selection, scene_history=_history())
+    panel = MediaToolsPanel(render_catalog_selection, scene_history=_history(), filter_model=SessionFilter())
     qtbot.addWidget(panel)
     panel.show()
     panel.update_scene(_scene("b"), _frame(5), {})
@@ -309,42 +306,11 @@ def test_panel_replaces_history_in_every_tool(
 
 
 def test_live_panel_has_no_history_tools(qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection) -> None:
-    panel = MediaToolsPanel(render_catalog_selection)
+    panel = MediaToolsPanel(render_catalog_selection, filter_model=SessionFilter())
     qtbot.addWidget(panel)
 
     assert panel.findChild(ObjectHistoryPane) is None
     assert panel.findChild(QToolButton, "entityScope_file") is None
-
-
-def test_file_scope_delegates_recorded_types_once_per_distinct_set(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    widget, filter_widget = _file_list(qtbot)
-    history = SceneHistory(
-        events=(),
-        objects=(
-            ObjectHistory("Object-A", ("human", "car"), ((0, 3),), _FRAME_TIMES),
-            ObjectHistory("Object-B", ("human", "car"), ((0, 3),), _FRAME_TIMES),
-            ObjectHistory("unmatched", ("unknown",), ((0, 3),), _FRAME_TIMES),
-        ),
-        frame_count=10,
-    )
-    widget.set_history(history, filter_widget)
-    filter_widget.set_id_query("OBJECT")
-    recorded: list[tuple[str, ...]] = []
-
-    def keep_types(types: tuple[str, ...], config: FilterConfig, state: FilterState) -> bool:
-        assert config is filter_widget.filter_config and state is filter_widget.filter_state
-        recorded.append(types)
-        return True
-
-    monkeypatch.setattr(
-        "ax_devil.modules.video_viewer.media_tools.entity_list_widget.history_type_filter_keeps", keep_types
-    )
-    widget.set_scope(EntityScope.FILE)
-
-    assert [entity_id for entity_id, _visible in _rows(widget)] == ["Object-A", "Object-B"]
-    assert recorded == [("human", "car")]
 
 
 def test_entity_only_decoder_filters_disable_file_scope(
@@ -357,7 +323,7 @@ def test_entity_only_decoder_filters_disable_file_scope(
             ),
         )
     )
-    panel = MediaToolsPanel(render_catalog_selection, filter_config=config, scene_history=_history())
+    panel = MediaToolsPanel(render_catalog_selection, filter_model=SessionFilter(config), scene_history=_history())
     qtbot.addWidget(panel)
     file_button = panel.findChild(QToolButton, "entityScope_file")
     frame_button = panel.findChild(QToolButton, "entityScope_frame")

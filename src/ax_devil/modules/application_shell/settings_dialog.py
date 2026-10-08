@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from dataclasses import replace
+from typing import Optional
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -33,7 +34,7 @@ from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget
-from ax_devil.modules.settings.settings import GlobalSettings
+from ax_devil.modules.settings.settings import GlobalSettings, SettingsState
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
@@ -245,21 +246,17 @@ class SettingsDialog(BaseDialog):
         mode = GraphicsAcceleration(self._acceleration_combo.currentData())
         self._acceleration_description.setText(mode.description)
 
-    def _build_snapshot(self) -> dict[str, Any]:
-        """Build a settings snapshot from the widgets; settings this dialog does not show keep their value."""
-        return {
-            **self._settings.snapshot(),
-            "playback": {"video_cache_total_mib": self._selected_cache_budget().config_value},
-            "appearance": {
-                "graphics_acceleration": self._acceleration_combo.currentData(),
-                "theme": self._theme_combo.currentData(),
-                "text_size": self._text_size_combo.currentData(),
-                "custom_frame": self._custom_frame.isChecked(),
-            },
-            "overlay_interaction": OverlayPreference.config_value(
-                {preference: checkbox.isChecked() for preference, checkbox in self._overlay_checkboxes.items()}
-            ),
-        }
+    def _build_snapshot(self) -> SettingsState:
+        """Replace edited typed preferences while retaining fields this dialog does not show."""
+        return replace(
+            self._settings.snapshot(),
+            video_cache_budget=self._selected_cache_budget(),
+            graphics_acceleration=GraphicsAcceleration(self._acceleration_combo.currentData()),
+            theme=ThemeMode(self._theme_combo.currentData()),
+            text_size=TextSize(self._text_size_combo.currentData()),
+            custom_frame=self._custom_frame.isChecked(),
+            enabled_overlays=frozenset(p for p, checkbox in self._overlay_checkboxes.items() if checkbox.isChecked()),
+        )
 
     def _apply(self) -> bool:
         """Validate and save all pages, keeping the dialog open on failure."""

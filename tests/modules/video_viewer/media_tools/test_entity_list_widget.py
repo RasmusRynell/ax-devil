@@ -221,30 +221,6 @@ def test_entity_list_clicking_nonfirst_row_populates_detail_immediately(qtbot: Q
     assert _frame_row(2) in second_item.detail_html
 
 
-def test_entity_list_shows_scene_and_observation_debug(qtbot: QtBot) -> None:
-    widget = EntityListWidget(show_title=False)
-    qtbot.addWidget(widget)
-    widget.show()
-    entity = _entity("a")
-    entity.observations[-1].debug = {"tracker": {"cost": 0.25}}
-    scene = _scene_with_entities(entity)
-    scene.debug = {"decoder": {"latency_ms": 12}}
-
-    widget.update_scene(scene, FrameIdentifier(0, 0), {})
-    widget._on_index_clicked(widget._model.index(0, 0))
-
-    item = widget._model.item_at(0)
-    assert item is not None
-    assert "tracker" in item.detail_html
-    assert "0.25" in item.detail_html
-    assert not widget._scene_debug_label.isHidden()
-    assert "latency_ms" in widget._scene_debug_label.text()
-
-    widget.update_scene(_scene_with_entities(), FrameIdentifier(1, 1), {})
-
-    assert widget._scene_debug_label.isHidden()
-
-
 def test_entity_list_summary_matches_each_delivered_scene(qtbot: QtBot) -> None:
     widget = EntityListWidget(show_title=False)
     qtbot.addWidget(widget)

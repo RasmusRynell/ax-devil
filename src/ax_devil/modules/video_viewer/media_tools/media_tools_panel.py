@@ -35,7 +35,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
-from ax_devil.modules.filtering import FilterConfig
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.synchronization.timestamp_matching import DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US
@@ -148,7 +148,7 @@ class MediaToolsPanel(QWidget):
         render_catalog_selection: SceneRenderCatalogSelection,
         parent: Optional[QWidget] = None,
         *,
-        filter_config: FilterConfig | None = None,
+        filter_model: SessionFilter,
         overlay_settings: OverlayPersistenceSettings | None = None,
         show_export: bool = False,
         scene_history: SceneHistory | None = None,
@@ -161,7 +161,8 @@ class MediaToolsPanel(QWidget):
         self._last_scene: Scene | None = None
         self._last_frame_id: FrameIdentifier | None = None
         self._refilter: SceneRefilter | None = None
-        self._filter_widget = EntityFilterWidget(filter_config=filter_config, show_title=False)
+        self.filter_model = filter_model
+        self._filter_widget = EntityFilterWidget(filter_model=self.filter_model, show_title=False)
         self._overlay_controls = OverlayPersistenceControls(initial_settings=overlay_settings, show_title=False)
         self._overlay_controls.settingsChanged.connect(self.overlayPersistenceChanged.emit)
         self._catalog_selector = SceneRenderCatalogSelector(
@@ -216,20 +217,21 @@ class MediaToolsPanel(QWidget):
         self._tabs.setCornerWidget(corner, Qt.Corner.TopRightCorner)
 
         self._id_search = QLineEdit(self)
+        self._id_search.setText(self.filter_model.id_query)
         self._id_search.setObjectName("entityIdSearch")
         self._id_search.setPlaceholderText("Search id…")
         self._id_search.setClearButtonEnabled(True)
-        self._id_search.textChanged.connect(self._filter_widget.set_id_query)
+        self._id_search.textChanged.connect(self.filter_model.set_id_query)
         self._filter_button = self._popup_button("Filter", MediaToolsSection.FILTERS, self._filter_widget)
         self._filter_button.setObjectName("entityFilterButton")
-        self._filter_widget.filterChanged.connect(self._on_filter_changed)
+        self.filter_model.changed.connect(self._on_filter_changed)
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 0)
 
         # The entity list scrolls itself so only visible rows are built each frame.
         self._entity_list = EntityListWidget(show_title=False)
         if scene_history is not None:
-            self._entity_list.set_history(scene_history, self._filter_widget)
+            self._entity_list.set_history(scene_history, self.filter_model)
             toolbar.addWidget(self._scope_switch())
         toolbar.addWidget(self._id_search, 1)
         toolbar.addWidget(self._filter_button)
@@ -268,6 +270,7 @@ class MediaToolsPanel(QWidget):
         options_page = self._scrollable_page(options)
         options_page.setObjectName("mediaToolsOptions")
         self._tabs.addTab(options_page, "Options")
+        self._on_filter_changed()
 
     def _scope_switch(self) -> QFrame:
         """Return the Frame / File switch: one framed control whose chosen half is marked like the current tab."""
@@ -296,7 +299,7 @@ class MediaToolsPanel(QWidget):
             scope_button.setCheckable(True)
             scope_button.setChecked(scope is EntityScope.FRAME)
             scope_button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-            if scope is EntityScope.FILE and not self._filter_widget.filter_config.supports_history_filtering:
+            if scope is EntityScope.FILE and not self.filter_model.supports_history_filtering:
                 scope_button.setEnabled(False)
                 scope_button.setToolTip("Whole-file scope requires classification filters from the decoder.")
             scope_button.clicked.connect(partial(self._entity_list.set_scope, scope))
@@ -363,7 +366,7 @@ class MediaToolsPanel(QWidget):
     def set_scene_history(self, history: SceneHistory) -> None:
         """Replace the history after a change in how overlay samples are selected."""
         assert self._object_pane is not None, "History tools exist only for panels created with a history"
-        self._entity_list.set_history(history, self._filter_widget)
+        self._entity_list.set_history(history, self.filter_model)
         self._event_log.set_history(history)
         self._object_pane.set_history(history)
 
@@ -391,12 +394,16 @@ class MediaToolsPanel(QWidget):
             self._export_button.setEnabled(enabled)
 
     def _on_filter_changed(self) -> None:
+        if self._id_search.text().strip() != self.filter_model.id_query:
+            previous_block = self._id_search.blockSignals(True)
+            self._id_search.setText(self.filter_model.id_query)
+            self._id_search.blockSignals(previous_block)
         self._entity_list.refilter()
         if self._object_pane is not None and self._refilter is not None and self._last_frame_id is not None:
             self._last_scene = self._refilter()
             self._object_pane.show_frame(self._last_scene, self._last_frame_id.sequence_id)
-        flags = [enabled for _, enabled in self._filter_widget.filter_state.items()]
-        self._filter_button.setText("Filter" if all(flags) else f"Filter {sum(flags)}/{len(flags)}")
+        enabled, total = self.filter_model.enabled_count, len(self.filter_model.options)
+        self._filter_button.setText("Filter" if enabled == total else f"Filter {enabled}/{total}")
 
     def _popup_button(self, text: str, section: MediaToolsSection, content: QWidget) -> QToolButton:
         container = QWidget()
