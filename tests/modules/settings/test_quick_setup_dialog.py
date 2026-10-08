@@ -88,3 +88,29 @@ def test_larger_text_fits_without_resizing_the_window(qtbot: QtBot, settings: Gl
         ]
         assert not any(bar.isVisible() for bar in scrollbars)
         dialog.accept()
+
+
+def test_failed_close_save_retains_preview_without_recording_completion(
+    qtbot: QtBot, config: ConfigManager, settings: GlobalSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed save keeps the live choice but leaves setup pending and the saved document intact."""
+    from PySide6.QtWidgets import QMessageBox
+
+    config.save()
+    previous_document = config.config_path.read_bytes()
+    previous_ui = config.get_raw("ui").copy()
+
+    def fail_save() -> None:
+        raise OSError("Read-only configuration")
+
+    monkeypatch.setattr(config, "save", fail_save)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_args: QMessageBox.StandardButton.Ok)
+    with QuickSetupDialog() as dialog:
+        qtbot.addWidget(dialog)
+        dialog.theme_row.select(ThemeMode.DARK)
+        dialog.reject()
+
+    assert settings.theme is ThemeMode.DARK
+    assert not settings.quick_setup_done
+    assert config.get_raw("ui") == previous_ui
+    assert config.config_path.read_bytes() == previous_document
