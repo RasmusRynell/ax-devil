@@ -435,7 +435,9 @@ class EntityListDelegate(QStyledItemDelegate):
             muted = QPalette(palette)
             if not selected:
                 muted.setColor(QPalette.ColorRole.Text, palette.color(QPalette.ColorRole.PlaceholderText))
-            class_text = self._metrics["class"].elidedText(item.class_name, Qt.TextElideMode.ElideRight, class_room)
+            class_text = item.class_name
+            if class_width > class_room:
+                class_text = self._metrics["class"].elidedText(item.class_name, Qt.TextElideMode.ElideRight, class_room)
             class_span = SummarySpan(item.class_name, None, "class")
             self._draw_span(
                 painter, QRect(x, top, class_room, self._summary_height), class_span, class_text, alignment, muted
