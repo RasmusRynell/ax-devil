@@ -21,6 +21,7 @@ from ax_devil.modules.workspace import (
     SeekableVideoContent,
     WorkspaceBrowserRow,
 )
+from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.content_browser import (
     TREE_CONSIDERATION_COLUMN,
     TREE_INDENTATION_PX,
@@ -28,7 +29,6 @@ from ax_devil.modules.workspace.content_browser import (
 )
 from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.item_info_dialog import WorkspaceItemInfoDialog
-from ax_devil.modules.workspace.workspace_manager import OnScreenWorkspaceItem
 
 
 def _noop() -> NoReturn:

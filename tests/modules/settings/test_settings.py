@@ -128,7 +128,7 @@ def test_graphics_acceleration_round_trip_does_not_apply_until_startup(
 
 def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: ConfigManager) -> None:
     """Appearance changes commit on Apply/OK and retain unrelated raw UI settings."""
-    from ax_devil.modules.settings.settings_dialog import SettingsDialog
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     config.set("ui", {"theme": "dark", "window": {"custom_frame": False}, "custom": "$KEEP_RAW"})
     settings = GlobalSettings()
@@ -186,7 +186,7 @@ def test_invalid_text_size_follows_system(invalid: object) -> None:
 def test_all_preferences_persist_and_storage_waits_for_restart(
     qtbot: QtBot, config: ConfigManager, tmp_path: Path
 ) -> None:
-    from ax_devil.modules.settings.settings_dialog import SettingsDialog
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     settings = GlobalSettings()
     settings.load_from_config(config)
@@ -235,7 +235,7 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
 def test_invalid_transport_and_failed_save_do_not_partially_apply(
     qtbot: QtBot, config: ConfigManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from ax_devil.modules.settings.settings_dialog import SettingsDialog
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     settings = GlobalSettings()
     settings.load_from_config(config)
@@ -288,7 +288,7 @@ def test_password_references_are_visible_and_literal_passwords_masked(
 ) -> None:
     from PySide6.QtWidgets import QLineEdit
 
-    from ax_devil.modules.settings.settings_dialog import SettingsDialog
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     monkeypatch.setenv(reference[1:], "synthetic-resolved-secret")
     settings = GlobalSettings()
@@ -331,7 +331,7 @@ def test_password_references_are_visible_and_literal_passwords_masked(
 def test_numeric_environment_references_validate_before_saving(
     qtbot: QtBot, config: ConfigManager, monkeypatch: pytest.MonkeyPatch, path: str, resolved: str | None
 ) -> None:
-    from ax_devil.modules.settings.settings_dialog import SettingsDialog
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     reference = "$AX_TEST_NUMERIC_DEFAULT"
     monkeypatch.delenv(reference[1:], raising=False)
@@ -365,7 +365,7 @@ def test_storage_environment_references_validate_before_saving(
     tmp_path: Path,
     resolved: str | None,
 ) -> None:
-    from ax_devil.modules.settings.settings_dialog import SettingsDialog
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     reference = "$AX_TEST_STORAGE_DEFAULT"
     monkeypatch.delenv(reference[1:], raising=False)
@@ -402,7 +402,7 @@ def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> No
     """Restart-only settings share one marker, and the dialog states its apply rule once."""
     from PySide6.QtWidgets import QCheckBox, QGroupBox, QLabel
 
-    from ax_devil.modules.settings.settings_dialog import SettingsDialog
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)

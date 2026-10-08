@@ -8,6 +8,7 @@ from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import QLabel, QMessageBox
 
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
+from ax_devil.modules.application_shell.configuration_preferences import save_overlay_preference
 from ax_devil.modules.catalog_viewer import close_catalog_viewer, show_catalog_viewer
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
@@ -17,7 +18,6 @@ from ax_devil.modules.diagnostics.plugin_window import PluginWindow
 from ax_devil.modules.plugin_system import PluginStatus, RuntimePluginRegistry
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.configuration_preferences import save_overlay_preference
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -272,7 +272,7 @@ class MainWindow(ChromeWindow):
 
     def _on_settings(self) -> None:
         """Open the global settings dialog."""
-        from ax_devil.modules.settings.settings_dialog import SettingsDialog
+        from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
         with SettingsDialog(parent=self, shortcut_manager=self._shortcut_manager) as dialog:
             dialog.exec()
@@ -319,7 +319,7 @@ class MainWindow(ChromeWindow):
 
     def show_quick_setup(self) -> None:
         """Show Quick Setup for theme and text size, as on first start and from Help → Quick Setup."""
-        from ax_devil.modules.settings.quick_setup_dialog import QuickSetupDialog
+        from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 
         with QuickSetupDialog(parent=self) as dialog:
             dialog.exec()

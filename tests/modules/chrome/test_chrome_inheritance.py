@@ -6,11 +6,11 @@ from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
+from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.chrome import BaseDialog, ChromeWindow, window_uses_custom_frame
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.diagnostics.plugin_window import PluginWindow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.settings.settings_dialog import SettingsDialog
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
 

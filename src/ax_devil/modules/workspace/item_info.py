@@ -6,15 +6,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ax_devil.modules.workspace.content import (
-    Content,
     EntryLane,
-    FileOverlaySourceSpec,
-    LiveMQTTOverlaySourceSpec,
-    LiveRTSPOverlaySourceSpec,
+    InfoFields,
     LiveVideoContent,
-    LiveWebSocketOverlaySourceSpec,
     OverlaySourceKind,
-    OverlaySourceSpec,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
@@ -46,54 +41,9 @@ def _metadata_fields(metadata: dict[str, Any]) -> list[tuple[str, str]]:
     return [(key, _format_info_value(metadata[key])) for key in sorted(metadata)]
 
 
-def _video_source_fields(content: SeekableVideoContent | LiveVideoContent) -> list[tuple[str, str]]:
-    """Return standard information fields owned by a video's source specification."""
-    if isinstance(content, SeekableVideoContent):
-        source = content.source_spec
-        fields = [("path", str(source.path))]
-        image_sequence = source.image_sequence_config
-        if image_sequence is not None:
-            fields.extend(
-                [
-                    ("fps", _format_info_value(image_sequence.fps)),
-                    ("width", str(image_sequence.width)),
-                    ("height", str(image_sequence.height)),
-                    ("frames", str(image_sequence.total_frames)),
-                ]
-            )
-        return fields
-    live_source = content.source_spec
-    return [
-        ("host", live_source.host),
-        ("username", live_source.username),
-        ("camera head", str(live_source.camera_head)),
-        ("resolution", live_source.resolution),
-        ("stream URL", live_source.stream_url or "(default)"),
-    ]
-
-
-def _overlay_source_fields(source: OverlaySourceSpec) -> list[tuple[str, str]]:
-    """Return standard information fields owned by an overlay source specification."""
-    if isinstance(source, FileOverlaySourceSpec):
-        return [("path", str(source.path)), ("handler type", source.handler_type)]
-    if isinstance(source, LiveRTSPOverlaySourceSpec):
-        return [("handler type", source.handler_type)]
-    if isinstance(source, LiveMQTTOverlaySourceSpec):
-        return [
-            ("handler type", source.handler_type),
-            ("broker host", source.broker_host),
-            ("broker port", str(source.broker_port)),
-            ("broker username", source.broker_username or "(none)"),
-            ("data source", source.analytics_data_source_key),
-            ("device API protocol", source.device_api_protocol),
-        ]
-    assert isinstance(source, LiveWebSocketOverlaySourceSpec)
-    return [
-        ("handler type", source.handler_type),
-        ("topic", source.topic),
-        ("channel ID", str(source.channel_id)),
-        ("device API protocol", source.device_api_protocol),
-    ]
+def _info_fields(fields: InfoFields) -> list[tuple[str, str]]:
+    """Render labeled values owned by content or source specifications."""
+    return [(label, _format_info_value(value)) for label, value in fields]
 
 
 def _build_information(
@@ -109,39 +59,25 @@ def _build_information(
     )
 
 
-def build_content_information(content: Content) -> WorkspaceItemInfo:
-    """Return information payload for a top-level content item."""
-    if isinstance(content, PlaylistContent):
-        lane_count = sum(len(entry.lanes) for entry in content.entries)
-        fields = [
-            ("type", "playlist"),
-            ("entries", str(len(content.entries))),
-            ("lanes", str(lane_count)),
-        ]
-        fields.extend(_metadata_fields(content.metadata))
-        children = [
-            build_playlist_entry_information(content, entry, entry_index)
-            for entry_index, entry in enumerate(content.entries)
-        ]
-        return _build_information(content.display_name, fields, children)
-
-    if isinstance(content, SeekableVideoContent):
-        fields = [
-            ("type", "seekable video"),
-            ("overlays", str(len(content.overlays))),
-        ]
-    else:
-        fields = [
-            ("type", "live video"),
-            ("overlays", str(len(content.overlays))),
-        ]
-    fields.extend(_video_source_fields(content))
-    fields.extend(_metadata_fields(content.metadata))
-    lanes = content.standalone_lanes()
+def build_playlist_information(playlist: PlaylistContent) -> WorkspaceItemInfo:
+    """Return information payload for a top-level playlist and its entries."""
+    fields = [*_info_fields(playlist.info_fields()), *_metadata_fields(playlist.metadata)]
     children = [
-        build_video_lane_information(content, lane) for lane in lanes if lane.source_kind != OverlaySourceKind.NO_SOURCE
+        build_playlist_entry_information(playlist, entry, entry_index)
+        for entry_index, entry in enumerate(playlist.entries)
     ]
-    return _build_information(content.display_name, fields, children)
+    return _build_information(playlist.display_name, fields, children)
+
+
+def build_video_information(video: SeekableVideoContent | LiveVideoContent) -> WorkspaceItemInfo:
+    """Return information payload for a top-level video and its overlay lanes."""
+    fields = [*_info_fields(video.info_fields()), *_metadata_fields(video.metadata)]
+    children = [
+        build_video_lane_information(video, lane)
+        for lane in video.standalone_lanes()
+        if lane.source_kind != OverlaySourceKind.NO_SOURCE
+    ]
+    return _build_information(video.display_name, fields, children)
 
 
 def build_playlist_entry_information(
@@ -177,7 +113,7 @@ def build_video_lane_information(video: SeekableVideoContent | LiveVideoContent,
         ("overlay source", lane.source_kind.display_name),
     ]
     if lane.overlay is not None:
-        fields.extend(_overlay_source_fields(lane.overlay.source_spec))
+        fields.extend(_info_fields(lane.overlay.source_spec.info_fields()))
         fields.extend(_metadata_fields(lane.overlay.metadata))
     fields.extend(_metadata_fields(lane.metadata))
     return _build_information(lane.display_name, fields)
@@ -200,7 +136,7 @@ def build_playlist_lane_information(
         ("overlay source", lane.source_kind.display_name),
     ]
     if lane.overlay is not None:
-        fields.extend(_overlay_source_fields(lane.overlay.source_spec))
+        fields.extend(_info_fields(lane.overlay.source_spec.info_fields()))
         fields.extend(_metadata_fields(lane.overlay.metadata))
     fields.extend(_metadata_fields(lane.metadata))
     return _build_information(lane.display_name, fields)

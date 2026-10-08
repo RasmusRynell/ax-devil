@@ -107,7 +107,7 @@ Real-device checks use configured test devices; the offline suite mocks external
 ```
 tests/
 ├── conftest.py                    Shared fixtures (temp dirs, plugin loading, Qt offscreen)
-├── core/                          Root CLI and package metadata tests
+├── core/                          Root CLI, package metadata, and `ax_devil.core` tests
 ├── modules/                       Concept-owned module tests for workspace, viewer workflow, scene, sources, sync, cache, and playback
 ├── plugins/                       Plugin decoder and playlist resolver tests
 └── helpers/                       Test utility modules

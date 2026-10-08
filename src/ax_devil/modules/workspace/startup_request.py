@@ -41,6 +41,17 @@ class VideoFileStartup:
             lines.append(f"Overlay: {self.overlay_path}")
         return "\n".join(lines)
 
+    def resolve(self, intake: WorkspaceIntake) -> tuple[Content, ...]:
+        """Return the seekable video this request opens."""
+        return (
+            intake.create_seekable_video(
+                video_path=self.video_path,
+                display_name=self.display_name,
+                overlay_path=self.overlay_path,
+                handler_type=self.handler_type,
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class LiveStreamStartup:
@@ -69,6 +80,30 @@ class LiveStreamStartup:
         if isinstance(self.overlay_mode, str) and not isinstance(self.overlay_mode, LiveOverlayMode):
             object.__setattr__(self, "overlay_mode", LiveOverlayMode.from_value(self.overlay_mode))
 
+    def resolve(self, intake: WorkspaceIntake) -> tuple[Content, ...]:
+        """Return the live stream this request opens."""
+        return (
+            intake.create_live_stream(
+                host=self.host,
+                username=self.username,
+                password=self.password,
+                camera_head=self.camera_head,
+                resolution=self.resolution,
+                display_name=self.display_name,
+                stream_url=self.stream_url,
+                overlay_mode=self.overlay_mode,
+                handler_type=self.handler_type,
+                mqtt_host=self.mqtt_host,
+                mqtt_port=self.mqtt_port,
+                mqtt_username=self.mqtt_username,
+                mqtt_password=self.mqtt_password,
+                analytics_data_source_key=self.analytics_data_source_key,
+                device_api_protocol=self.device_api_protocol,
+                websocket_topic=self.websocket_topic,
+                websocket_channel_id=self.websocket_channel_id,
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedPlaylistStartup:
@@ -76,50 +111,13 @@ class ResolvedPlaylistStartup:
 
     playlists: tuple[PlaylistContent, ...]
 
+    def resolve(self, intake: WorkspaceIntake) -> tuple[Content, ...]:
+        """Return the playlists, which are already resolved."""
+        return self.playlists
+
 
 StartupContent = VideoFileStartup | LiveStreamStartup | ResolvedPlaylistStartup
-
-
-def resolve_startup_content(
-    startup: StartupContent,
-    intake: WorkspaceIntake | None = None,
-) -> tuple[Content, ...]:
-    """Return Workspace content described by a startup request."""
-    resolved_intake = intake or default_workspace_intake()
-    if isinstance(startup, VideoFileStartup):
-        return (
-            resolved_intake.create_seekable_video(
-                video_path=startup.video_path,
-                display_name=startup.display_name,
-                overlay_path=startup.overlay_path,
-                handler_type=startup.handler_type,
-            ),
-        )
-    if isinstance(startup, LiveStreamStartup):
-        return (
-            resolved_intake.create_live_stream(
-                host=startup.host,
-                username=startup.username,
-                password=startup.password,
-                camera_head=startup.camera_head,
-                resolution=startup.resolution,
-                display_name=startup.display_name,
-                stream_url=startup.stream_url,
-                overlay_mode=startup.overlay_mode,
-                handler_type=startup.handler_type,
-                mqtt_host=startup.mqtt_host,
-                mqtt_port=startup.mqtt_port,
-                mqtt_username=startup.mqtt_username,
-                mqtt_password=startup.mqtt_password,
-                analytics_data_source_key=startup.analytics_data_source_key,
-                device_api_protocol=startup.device_api_protocol,
-                websocket_topic=startup.websocket_topic,
-                websocket_channel_id=startup.websocket_channel_id,
-            ),
-        )
-    if isinstance(startup, ResolvedPlaylistStartup):
-        return tuple(startup.playlists)
-    raise TypeError(f"Unknown startup content type: {type(startup).__name__}")
+"""A request to open content, resolved with ``startup.resolve(intake)``."""
 
 
 def video_file_requests(paths: Sequence[Path], intake: WorkspaceIntake | None = None) -> tuple[VideoFileStartup, ...]:

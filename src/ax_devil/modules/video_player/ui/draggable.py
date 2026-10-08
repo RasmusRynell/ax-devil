@@ -364,5 +364,4 @@ class DraggablePanel(FadingWidget):
         try:
             self.cleanup()
         except Exception:
-            # Ignore cleanup errors during destruction
-            pass
+            logger.debug(f"Draggable panel id={id(self)} failed to clean up on garbage collection", exc_info=True)

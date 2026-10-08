@@ -24,37 +24,25 @@ class OfflineViewerNavigation:
 
     def get_entries(self) -> tuple[PlaylistEntry, ...]:
         """Return the effective playlist entries for the configured content."""
-        if isinstance(self._content, PlaylistContent):
-            return self._content.entries
-        if isinstance(self._content, SeekableVideoContent):
-            return (PlaylistEntry(lanes=self._content.standalone_lanes(), default_considered=True),)
-        return ()
+        return self._content.entries
 
     def is_entry_considered(self, entry_index: int) -> bool:
         """Return whether a playlist entry participates in stepping."""
-        if not isinstance(self._content, PlaylistContent) or self._consideration_query is None:
-            return True
-        item_ref = ConsiderationItemRef.playlist_entry(self._content.content_id, entry_index)
-        return self._consideration_query.is_item_considered(item_ref)
+        return self._is_considered(self._content.entry_consideration_ref(entry_index))
 
     def is_lane_considered(self, entry_index: int, lane_index: int) -> bool:
         """Return whether a lane should participate in active entry layout."""
-        if self._consideration_query is None:
+        return self._is_considered(self._content.lane_consideration_ref(entry_index, lane_index))
+
+    def _is_considered(self, item_ref: ConsiderationItemRef | None) -> bool:
+        """Return whether *item_ref* is considered; items without a reference always are."""
+        if item_ref is None or self._consideration_query is None:
             return True
-        if isinstance(self._content, PlaylistContent):
-            item_ref = ConsiderationItemRef.playlist_lane(self._content.content_id, entry_index, lane_index)
-            return self._consideration_query.is_item_considered(item_ref)
-        if isinstance(self._content, SeekableVideoContent):
-            item_ref = ConsiderationItemRef.video_lane(self._content.content_id, lane_index)
-            return self._consideration_query.is_item_considered(item_ref)
-        return True
+        return self._consideration_query.is_item_considered(item_ref)
 
     def considered_entry_indices(self) -> list[int]:
         """Return playlist entry indices that should participate in stepping."""
-        entries = self.get_entries()
-        if not isinstance(self._content, PlaylistContent):
-            return list(range(len(entries)))
-        return [index for index in range(len(entries)) if self.is_entry_considered(index)]
+        return [index for index in range(len(self.get_entries())) if self.is_entry_considered(index)]
 
     def normalize_entry_index(self, index: int) -> int:
         """Choose a valid starting index, preferring considered playlist entries."""
