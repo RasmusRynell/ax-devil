@@ -18,6 +18,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
 from ax_devil.modules.filtering import build_default_filter_config
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -63,13 +64,14 @@ def _build_frame_and_overlay(sequence: int, scene: Scene | None) -> tuple[FrameD
 def test_drawing_preparation_responds_to_filter(qtbot: QtBot) -> None:
     """The drawing generator should reflect the current FilterState on each invocation."""
     base_config = build_default_filter_config()
-    widget = EntityFilterWidget(filter_config=base_config)
+    model = SessionFilter(base_config)
+    widget = EntityFilterWidget(filter_model=model)
     qtbot.addWidget(widget)
 
     scene = _build_scene("entity-1")
     frame_and_overlay = _build_frame_and_overlay(1, scene)
 
-    converted = SceneFramePresenter(filter_widget=widget).prepare_frame(*frame_and_overlay).display_frame
+    converted = SceneFramePresenter(scene_filter=model).prepare_frame(*frame_and_overlay).display_frame
     assert converted.overlays is not None
 
     generator = converted.overlays.drawing_generator
@@ -78,12 +80,12 @@ def test_drawing_preparation_responds_to_filter(qtbot: QtBot) -> None:
     drawing_before = generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
     assert len(drawing_before) > 0
 
-    assert widget.filter_state.is_enabled("show_humans")
+    assert model.is_enabled("show_humans")
 
     widget._checkboxes["show_humans"].setChecked(False)
-    qtbot.waitUntil(lambda: not widget.filter_state.is_enabled("show_humans"))
+    qtbot.waitUntil(lambda: not model.is_enabled("show_humans"))
 
-    filtered_scene = widget.process_scene(scene)
+    filtered_scene = model.process_scene(scene)
     assert not filtered_scene.entities
 
     drawing_after = generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
@@ -93,13 +95,14 @@ def test_drawing_preparation_responds_to_filter(qtbot: QtBot) -> None:
 def test_hover_interaction_responds_to_filter(qtbot: QtBot) -> None:
     """Hover provider should track the same filter state used for prepared drawings."""
     base_config = build_default_filter_config()
-    widget = EntityFilterWidget(filter_config=base_config)
+    model = SessionFilter(base_config)
+    widget = EntityFilterWidget(filter_model=model)
     qtbot.addWidget(widget)
 
     scene = _build_scene("entity-1")
     frame_and_overlay = _build_frame_and_overlay(1, scene)
 
-    converted = SceneFramePresenter(filter_widget=widget).prepare_frame(*frame_and_overlay).display_frame
+    converted = SceneFramePresenter(scene_filter=model).prepare_frame(*frame_and_overlay).display_frame
     assert converted.overlays is not None
     assert converted.overlays.interaction_provider is not None
 
@@ -107,7 +110,7 @@ def test_hover_interaction_responds_to_filter(qtbot: QtBot) -> None:
     assert provider.hit_test(0.2, 0.2) is not None
 
     widget._checkboxes["show_humans"].setChecked(False)
-    qtbot.waitUntil(lambda: not widget.filter_state.is_enabled("show_humans"))
+    qtbot.waitUntil(lambda: not model.is_enabled("show_humans"))
 
     assert provider.hit_test(0.2, 0.2) is None
 

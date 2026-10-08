@@ -59,7 +59,7 @@ def _make_display_frame(image: QImage, scene: Scene | None = None) -> VideoFrame
     video_frame = VideoFrame(image=image, timestamp=0.0, frame_id=0)
     overlay = None
     if scene is not None:
-        cached = CachedSceneOverlay(scene=scene, filter_widget=None)
+        cached = CachedSceneOverlay(scene=scene)
         overlay = VideoOverlayData(
             drawing_generator=cached.prepare_drawing,
             timestamp=0.0,

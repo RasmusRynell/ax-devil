@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVB
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space, TextRole
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
@@ -217,13 +218,14 @@ class LiveVideoViewerWidget(WorkspaceWidget):
         controller: StreamMediaController,
     ) -> None:
         """Create and wire a MediaToolsPanel to the display and controller."""
+        filter_model = SessionFilter(controller.get_filter_config())
         tools_panel = MediaToolsPanel(
             self._render_catalog_selection,
-            filter_config=controller.get_filter_config(),
+            filter_model=filter_model,
             overlay_settings=OverlayPersistenceSettings.default_enabled(),
         )
         display.set_side_panel_widget(tools_panel)
-        controller.attach_filter_widget(tools_panel.filter_widget)
+        controller.attach_scene_filter(filter_model)
         controller.attach_scene_inspector(tools_panel)
         tools_panel.catalogViewerRequested.connect(self._open_catalog_viewer)
         tools_panel.overlayPersistenceChanged.connect(controller.set_overlay_persistence)
