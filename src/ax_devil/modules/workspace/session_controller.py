@@ -69,7 +69,6 @@ class WorkspaceController(QObject):
         )
         rows = self._workspace_manager.get_browser_rows(open_items)
         self._content_browser.set_browser_rows(rows)
-        self._content_browser.setVisible(bool(rows))
 
     def _on_content_activated(self, content: object, start_index: int = 0) -> None:
         """Open a double-clicked browser item in the preview pane."""
