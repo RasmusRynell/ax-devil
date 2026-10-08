@@ -29,7 +29,8 @@ from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_player.ui.draggable import DraggablePanel
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
-from ax_devil.modules.video_viewer import offline_viewer_runtime
+from ax_devil.modules.video_viewer import offline_entry_media, offline_video_viewer, offline_viewer_runtime
+from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
@@ -92,6 +93,9 @@ class _TrackedFrameSource(SeekableFrameSource):
 
     def get_current_frame(self) -> int:
         return self._current_frame
+
+    def get_position_generation(self) -> int:
+        return 0
 
     def play(self) -> bool:
         return True
@@ -163,6 +167,9 @@ class _TrackedOverlaySource:
 
     def deleteLater(self) -> None:  # noqa: N802
         self.delete_later_calls += 1
+
+    def moveToThread(self, _thread: object) -> bool:  # noqa: N802
+        return True
 
     def get_total_frames(self) -> int:
         return 100
@@ -331,6 +338,7 @@ def _stub_frame_source() -> MagicMock:
     source.get_total_frames.return_value = 100
     source.get_current_frame.return_value = 0
     source.get_playback_speed.return_value = 1.0
+    source.get_position_generation.return_value = 0
     source.get_timing_profile.return_value = None
     source.get_frame_timestamps_us.return_value = tuple(frame_index * 1000 for frame_index in range(100))
     source.get_frame_timeline.return_value = FrameTimeline.lazy(
@@ -338,6 +346,54 @@ def _stub_frame_source() -> MagicMock:
         timestamp_loader=source.get_frame_timestamps_us,
     )
     return source
+
+
+def _run_now(
+    work: Callable[[Callable[[str], None]], Any],
+    on_done: Callable[[Any], None],
+    *,
+    on_progress: Callable[[str], None] = lambda _message: None,
+    name: str,
+) -> None:
+    """Run background work synchronously so viewer tests see each entry opened when the call returns."""
+    on_done(work(on_progress))
+
+
+class _DeferredBackground:
+    """Hold background work until the test finishes it, as a slow file open would."""
+
+    def __init__(self) -> None:
+        self.pending: list[Callable[[], None]] = []
+
+    def __call__(
+        self,
+        work: Callable[[Callable[[str], None]], Any],
+        on_done: Callable[[Any], None],
+        *,
+        on_progress: Callable[[str], None] = lambda _message: None,
+        name: str,
+    ) -> None:
+        self.pending.append(lambda: on_done(work(on_progress)))
+
+    def finish_next(self) -> None:
+        """Complete the oldest pending work and deliver its result."""
+        self.pending.pop(0)()
+
+
+@pytest.fixture
+def deferred_background(monkeypatch: pytest.MonkeyPatch) -> _DeferredBackground:
+    """Make entry opening wait for the test, with releases still running immediately."""
+    deferred = _DeferredBackground()
+
+    def release_now(media: EntryMedia) -> None:
+        media.close()
+        media.delete_later()
+
+    monkeypatch.setattr(offline_entry_media, "run_in_background", deferred)
+    monkeypatch.setattr(offline_entry_media, "release_media", release_now)
+    monkeypatch.setattr(offline_viewer_runtime, "release_media", release_now)
+    monkeypatch.setattr(offline_video_viewer, "release_media", release_now)
+    return deferred
 
 
 @pytest.fixture(autouse=True)
@@ -360,10 +416,10 @@ def _stub_spec_source_opening(monkeypatch: pytest.MonkeyPatch) -> None:
 
         return _decoder_factory
 
-    monkeypatch.setattr(OfflineSession, "_create_frame_source", staticmethod(_create_frame_source))
-    monkeypatch.setattr(offline_viewer_runtime, "FileOverlaySource", _SpecFileOverlaySource)
-    monkeypatch.setattr(offline_viewer_runtime, "get_file_decoder_factory", _get_file_decoder_factory)
-    monkeypatch.setattr(OfflineSession, "_run_in_background", classmethod(lambda cls, fn, **_kwargs: fn()))
+    monkeypatch.setattr(offline_entry_media, "create_frame_source", _create_frame_source)
+    monkeypatch.setattr(offline_entry_media, "FileOverlaySource", _SpecFileOverlaySource)
+    monkeypatch.setattr(offline_entry_media, "get_file_decoder_factory", _get_file_decoder_factory)
+    monkeypatch.setattr(offline_entry_media, "run_in_background", _run_now)
     yield
     _TEST_FRAME_SOURCE_OPENERS.clear()
 
@@ -495,8 +551,10 @@ class TestOfflineVideoViewerWidget:
         widget._step_next()
         assert widget._current_index == 1
 
-    def test_navigation_controls_position_stays_stable_while_loading(self, qtbot: QtBot) -> None:
-        """Playlist navigation controls should not shift during entry reload."""
+    def test_navigation_controls_position_stays_stable_while_loading(
+        self, qtbot: QtBot, deferred_background: _DeferredBackground
+    ) -> None:
+        """Playlist navigation controls should not shift while an entry opens."""
         v1 = _make_local_content("A")
         v2 = _make_local_content("B")
         playlist = PlaylistContent(
@@ -508,29 +566,19 @@ class TestOfflineVideoViewerWidget:
         )
         widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
+        deferred_background.finish_next()
 
         assert widget._nav_label is not None
         nav_bar = widget._nav_label.parentWidget()
         assert nav_bar is not None
         baseline_y = nav_bar.geometry().y()
 
-        observed_y: list[int] = []
-        original_build_lanes = widget._build_lanes
+        widget._step_next()
+        QCoreApplication.processEvents()
+        assert nav_bar.geometry().y() == baseline_y
 
-        def _capture_nav_pos_during_reload(
-            entry: PlaylistEntry,
-            entry_index: int,
-            on_status: Callable[[str], None],
-        ) -> OfflineSession:
-            QCoreApplication.processEvents()
-            observed_y.append(nav_bar.geometry().y())
-            return original_build_lanes(entry, entry_index, on_status)
-
-        with patch.object(widget, "_build_lanes", side_effect=_capture_nav_pos_during_reload):
-            widget._step_next()
-
-        assert observed_y
-        assert observed_y[0] == baseline_y
+        deferred_background.finish_next()
+        QCoreApplication.processEvents()
         assert nav_bar.geometry().y() == baseline_y
 
     def test_playlist_navigation_skips_disabled_entries(self, qtbot: QtBot) -> None:
@@ -634,99 +682,112 @@ class TestOfflineVideoViewerWidget:
         source.set_playback_speed.assert_any_call(1.1)
 
     @patch("ax_devil.modules.video_viewer.offline_video_viewer.QMessageBox.warning")
-    def test_navigation_failure_keeps_current_index(self, mock_warning: MagicMock, qtbot: QtBot) -> None:
+    def test_navigation_failure_warns_and_stays_on_failed_entry(self, mock_warning: MagicMock, qtbot: QtBot) -> None:
+        """A failed entry leaves the viewer empty on it, with its opened sources released, and stepping still works."""
+        opened: list[_TrackedFrameSource] = []
+
+        def broken_open() -> object:
+            raise RuntimeError("broken entry")
+
         v1 = _make_local_content("A")
-        v2 = _make_local_content("B")
+        v2 = _make_seekable_content(
+            "B", frame_source_opener=_make_tracked_frame_source_opener("B", opened), overlays=()
+        )
+        v3 = _make_seekable_content("C", frame_source_opener=broken_open)
+        entry_with_failure = PlaylistEntry(
+            lanes=(*v2.standalone_lanes(), *v3.standalone_lanes()),
+            default_considered=True,
+        )
         playlist = PlaylistContent(
             display_name="Test",
-            entries=(
-                PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True),
-                PlaylistEntry(lanes=v2.standalone_lanes(), default_considered=True),
-            ),
+            entries=(PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True), entry_with_failure),
         )
         widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
 
-        with patch.object(widget, "_build_lanes", side_effect=RuntimeError("broken entry")):
-            widget._step_next()
+        widget._step_next()
 
-        assert widget._current_index == 0
+        assert widget._current_index == 1
         assert widget._runtime is None
         mock_warning.assert_called_once()
+        assert "broken entry" in mock_warning.call_args.args[2]
+        assert len(opened) == 1
+        _assert_frame_source_disposed(opened[0])
 
-    def test_reentrant_next_navigation_collapses_duplicate_loads(self, qtbot: QtBot) -> None:
-        """Repeated next requests during loading should not start duplicate entry loads."""
-        v1 = _make_local_content("A")
-        v2 = _make_local_content("B")
-        v3 = _make_local_content("C")
+        widget._step_prev()
+
+        assert widget._current_index == 0
+        assert widget._runtime is not None
+
+    def test_navigating_while_loading_opens_the_newest_entry(
+        self, qtbot: QtBot, deferred_background: _DeferredBackground
+    ) -> None:
+        """Stepping again while an entry opens replaces it: the older entry opens nothing more and is never shown."""
+        sources: dict[str, list[_TrackedFrameSource]] = {"A": [], "B": [], "C": []}
+        contents = [
+            _make_seekable_content(name, frame_source_opener=_make_tracked_frame_source_opener(name, registry))
+            for name, registry in sources.items()
+        ]
         playlist = PlaylistContent(
             display_name="Test Playlist",
-            entries=(
-                PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True),
-                PlaylistEntry(lanes=v2.standalone_lanes(), default_considered=True),
-                PlaylistEntry(lanes=v3.standalone_lanes(), default_considered=True),
+            entries=tuple(
+                PlaylistEntry(lanes=content.standalone_lanes(), default_considered=True) for content in contents
             ),
         )
         widget = OfflineVideoViewerWidget(playlist, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
+        deferred_background.finish_next()
+        first_runtime = widget._runtime
+        assert first_runtime is not None
 
-        original_build_lanes = widget._build_lanes
-        loaded_indices: list[int] = []
+        widget._step_next()
+        assert widget._runtime is None
+        _assert_frame_source_disposed(sources["A"][0])
+        widget._step_next()
+        assert widget._current_index == 2
+        assert widget._nav_label is not None
+        assert widget._nav_label.text() == "Entry 3 / 3"
 
-        def _reenter_on_first_load(
-            entry: PlaylistEntry,
-            entry_index: int,
-            on_status: Callable[[str], None],
-        ) -> OfflineSession:
-            loaded_indices.append(entry_index)
-            if len(loaded_indices) == 1:
-                widget._step_next()
-            return original_build_lanes(entry, entry_index, on_status)
+        deferred_background.finish_next()
+        assert widget._runtime is None
+        assert sources["B"] == []
 
-        with patch.object(widget, "_build_lanes", side_effect=_reenter_on_first_load):
-            widget._step_next()
+        deferred_background.finish_next()
+        runtime = widget._runtime
+        assert runtime is not None
+        assert runtime.get_primary_video_source() is sources["C"][0]
+        assert sources["C"][0].stop_calls == 0
 
-        assert loaded_indices == [1]
-        assert widget._current_index == 1
-
-    def test_reentrant_navigation_processes_latest_requested_entry(self, qtbot: QtBot) -> None:
-        """A second navigation request during loading should run after the active load finishes."""
-        v1 = _make_local_content("A")
-        v2 = _make_local_content("B")
-        v3 = _make_local_content("C")
-        playlist = PlaylistContent(
-            display_name="Test Playlist",
-            entries=(
-                PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True),
-                PlaylistEntry(lanes=v2.standalone_lanes(), default_considered=True),
-                PlaylistEntry(lanes=v3.standalone_lanes(), default_considered=True),
-            ),
-        )
-        widget = OfflineVideoViewerWidget(
-            playlist,
-            start_index=1,
-            render_catalog_manager=self._render_catalog_manager,
-        )
+    def test_cleanup_while_loading_never_installs_the_entry(
+        self, qtbot: QtBot, deferred_background: _DeferredBackground
+    ) -> None:
+        """Closing the viewer mid-open does not wait for the open, and the entry is never shown or left open."""
+        opened: list[_TrackedFrameSource] = []
+        content = _make_seekable_content("A", frame_source_opener=_make_tracked_frame_source_opener("A", opened))
+        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
         _attach_offline_widget(qtbot, widget)
 
-        original_build_lanes = widget._build_lanes
-        loaded_indices: list[int] = []
+        widget.cleanup()
+        deferred_background.finish_next()
 
-        def _queue_previous_during_load(
-            entry: PlaylistEntry,
-            entry_index: int,
-            on_status: Callable[[str], None],
-        ) -> OfflineSession:
-            loaded_indices.append(entry_index)
-            if len(loaded_indices) == 1:
-                widget._step_prev()
-            return original_build_lanes(entry, entry_index, on_status)
+        assert widget._runtime is None
+        assert all(source.stop_calls == 1 for source in opened)
 
-        with patch.object(widget, "_build_lanes", side_effect=_queue_previous_during_load):
-            widget._step_next()
+    @patch("ax_devil.modules.video_viewer.offline_video_viewer.QMessageBox.warning")
+    def test_display_build_failure_warns_and_releases_the_entry(self, mock_warning: MagicMock, qtbot: QtBot) -> None:
+        """A failure while building an entry's displays is reported like a failed open, with its sources released."""
+        opened: list[_TrackedFrameSource] = []
+        content = _make_seekable_content("A", frame_source_opener=_make_tracked_frame_source_opener("A", opened))
+        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
+        qtbot.addWidget(widget)
 
-        assert loaded_indices == [2, 0]
-        assert widget._current_index == 0
+        with patch.object(OfflineSession, "build", side_effect=RuntimeError("broken display")):
+            widget.on_workspace_attached()
+
+        assert widget._runtime is None
+        assert "broken display" in mock_warning.call_args.args[2]
+        assert len(opened) == 1
+        _assert_frame_source_disposed(opened[0])
 
     def test_shared_video_multi_overlay(self, qtbot: QtBot) -> None:
         """Single video with multiple overlays creates multiple lanes sharing one video source."""

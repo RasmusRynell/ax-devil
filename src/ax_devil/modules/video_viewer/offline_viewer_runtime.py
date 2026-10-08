@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import threading
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TypeVar
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
@@ -15,9 +13,7 @@ from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QV
 from ax_devil.core.data_types import FrameData
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
-from ax_devil.modules.data_sources.scene_history import SceneHistory
-from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
-from ax_devil.modules.plugin_system import get_file_decoder_factory
+from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.scene.rendering import (
     OverlayVisibility,
     SceneRenderCatalogManager,
@@ -33,6 +29,12 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
 from ax_devil.modules.video_viewer.lane_grid import lane_grid_columns, lane_grid_rows
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
+from ax_devil.modules.video_viewer.offline_entry_media import (
+    EntryMedia,
+    OpenedLane,
+    place_scene_history,
+    release_media,
+)
 from ax_devil.modules.video_viewer.overlay_persistence import (
     OverlayPersistencePolicy,
     OverlayPersistenceSettings,
@@ -43,20 +45,7 @@ from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     OverlayAlignmentIndicator,
     TimingDiagnosticsWidget,
 )
-from ax_devil.modules.workspace import (
-    EntryLane,
-    FileOverlaySourceSpec,
-    LiveVideoContent,
-    OverlayContent,
-    PlaylistEntry,
-    SeekableVideoContent,
-)
-
-_T = TypeVar("_T")
-
-
-class LoadingCancelled(Exception):
-    """Raised when a background loading operation is cancelled during shutdown."""
+from ax_devil.modules.workspace import EntryLane, SeekableVideoContent
 
 
 class _FrameDeliveryRelay(QObject):
@@ -156,12 +145,12 @@ class OfflineLane:
         if self.controls is not None:
             self.controls.set_playback_speed(speed, emit_signals=emit_signals)
 
-    def initialize_timing_diagnostics(self) -> None:
-        """Populate timing controls and alignment status from this lane's sources."""
+    def initialize_timing_diagnostics(self, alignment_report: OverlayAlignmentReport | None) -> None:
+        """Populate timing controls and alignment status from this lane's sources and opening-time report."""
         if self.timing_controls is None or self.video_source is None:
             return
         self.timing_controls.update_timing_profile(self.video_source.get_timing_profile())
-        self.refresh_alignment_report()
+        self._show_alignment_report(alignment_report)
         if self.overlay_source is None:
             self.timing_controls.set_timestamp_fallback_controls_enabled(False)
             return
@@ -188,19 +177,20 @@ class OfflineLane:
         """Place the overlay history again after a change in how lookup selects samples."""
         if self.tools_panel is None or self.video_source is None:
             return
-        history = OfflineSession._scene_history(
-            self.overlay_source, self.overlay_policy, self.video_source.get_frame_timeline()
-        )
+        history = place_scene_history(self.overlay_source, self.overlay_policy, self.video_source.get_frame_timeline())
         if history is not None:
             self.tools_panel.set_scene_history(history)
 
     def refresh_alignment_report(self) -> None:
         """Refresh the visible overlay alignment report."""
-        if self.timing_controls is None or self.alignment_indicator is None:
-            return
         report: OverlayAlignmentReport | None = None
         if self.overlay_source is not None and self.video_source is not None:
             report = self.overlay_source.analyze_alignment(self.video_source.get_frame_timeline())
+        self._show_alignment_report(report)
+
+    def _show_alignment_report(self, report: OverlayAlignmentReport | None) -> None:
+        if self.timing_controls is None or self.alignment_indicator is None:
+            return
         self.timing_controls.update_alignment_report(report)
         self.alignment_indicator.update_alignment_report(report)
 
@@ -261,24 +251,13 @@ class OfflineLane:
 class _PooledVideoSource:
     """One source-pool entry shared by lanes that reference the same seekable video."""
 
-    video: SeekableVideoContent
     source: FileFrameSource
     relay: _FrameDeliveryRelay
     source_index: int
 
 
-def _move_qobjects_to_thread(obj: object, thread: object) -> None:
-    """Move any :class:`QObject` instances in *obj* to *thread*."""
-    if isinstance(obj, QObject):
-        obj.moveToThread(thread)  # type: ignore[arg-type]
-    elif isinstance(obj, tuple):
-        for item in obj:
-            if isinstance(item, QObject):
-                item.moveToThread(thread)  # type: ignore[arg-type]
-
-
 class OfflineSession(QObject):
-    """One active offline entry runtime, including frame displays and media sources."""
+    """One active offline entry runtime: frame displays built over already opened media, which it owns."""
 
     currentFrameChanged = Signal(int)
     playbackStateChanged = Signal(bool)
@@ -289,15 +268,15 @@ class OfflineSession(QObject):
         lanes: list[OfflineLane],
         container: QWidget,
         *,
+        media: EntryMedia,
         source_pool: list[_PooledVideoSource],
-        cancel_loading: threading.Event | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.lanes = lanes
         self.container = container
+        self._media = media
         self._source_pool = source_pool
-        self._cancel_loading = cancel_loading if cancel_loading is not None else threading.Event()
         self._is_playing = False
         self._min_valid_primary_generation: int | None = None
         self._secondary_frame_relay = _SecondaryFrameRelay(self)
@@ -380,53 +359,62 @@ class OfflineSession(QObject):
     def build(
         cls,
         parent_widget: QWidget,
-        entry: PlaylistEntry,
+        media: EntryMedia,
         *,
-        lane_included: Callable[[int], bool],
-        cancel_loading: threading.Event,
-        on_status: Callable[[str], None] = lambda _: None,
         render_catalog_manager: SceneRenderCatalogManager,
         use_lane_controls: bool = True,
         lane_visibility: dict[int, OverlayVisibility] | None = None,
     ) -> "OfflineSession":
-        """Build an offline runtime for one playlist entry.
+        """Build the displays for one entry over its opened *media*; the session then owns the media.
 
-        *lane_visibility* holds overlay visibility by original lane position; each lane starts from its entry and
-        writes its changes back, so choices carry over to the next entry.
+        Only creates widgets, so it never waits for file work. *lane_visibility* holds overlay visibility by original
+        lane position; each lane starts from its entry and writes its changes back, so choices carry over to the next
+        entry. If building fails, the caller keeps the media.
         """
         with ExitStack() as rollback:
             container = QWidget(parent_widget)
-            rollback.callback(cls._delete_later_if_supported, container)
-            lane_indices = tuple(lane_index for lane_index in range(len(entry.lanes)) if lane_included(lane_index))
-            lanes = tuple(entry.lanes[lane_index] for lane_index in lane_indices)
-            lane_layout = cls._create_lane_layout(container, len(lanes))
-            if not lanes:
+            rollback.callback(container.deleteLater)
+            lane_layout = cls._create_lane_layout(container, len(media.lanes))
+            if not media.lanes:
                 lane_layout.addWidget(QLabel("No considered lanes in this entry"))
-                runtime = cls(
-                    [],
-                    container,
-                    source_pool=[],
-                    cancel_loading=cancel_loading,
-                    parent=parent_widget,
+            source_pool = [
+                _PooledVideoSource(
+                    source=source,
+                    relay=_FrameDeliveryRelay(source_index, parent_widget),
+                    source_index=source_index,
                 )
-                rollback.pop_all()
-                return runtime
-            runtime = cls._build_source_pooled_lanes(
-                parent_widget,
-                lanes,
-                lane_indices,
-                container,
-                lane_layout,
-                cancel_loading=cancel_loading,
-                on_status=on_status,
-                render_catalog_manager=render_catalog_manager,
-                use_lane_controls=use_lane_controls,
-                lane_visibility={} if lane_visibility is None else lane_visibility,
-                rollback=rollback,
-            )
-
+                for source_index, source in enumerate(media.video_sources)
+            ]
+            for pooled_source in source_pool:
+                rollback.callback(pooled_source.relay.deleteLater)
+            lanes = [
+                cls._build_lane(
+                    parent_widget,
+                    opened,
+                    position,
+                    len(media.lanes),
+                    container,
+                    lane_layout,
+                    source_pool=source_pool,
+                    render_catalog_manager=render_catalog_manager,
+                    use_lane_controls=use_lane_controls and len(media.lanes) == 1,
+                    lane_visibility={} if lane_visibility is None else lane_visibility,
+                    rollback=rollback,
+                )
+                for position, opened in enumerate(media.lanes)
+            ]
+            runtime = cls(lanes, container, media=media, source_pool=source_pool, parent=parent_widget)
+            rollback.callback(runtime.deleteLater)
+            for pooled_source in source_pool:
+                pooled_source.relay.frameReady.connect(runtime._on_frame_ready)
+                pooled_source.source.frameReady.connect(pooled_source.relay.deliver)
+                rollback.callback(pooled_source.source.frameReady.disconnect, pooled_source.relay.deliver)
+            runtime._connect_viewport_sync()
+            runtime._connect_export_signals()
+            runtime._connect_frame_requests()
+            runtime._connect_timestamp_fallback_controls()
             rollback.pop_all()
-            return runtime
+        return runtime
 
     @staticmethod
     def _create_lane_layout(container: QWidget, lane_count: int) -> QHBoxLayout | QGridLayout:
@@ -488,151 +476,91 @@ class OfflineSession(QObject):
         return alignment_indicator
 
     @classmethod
-    def _build_source_pooled_lanes(
+    def _build_lane(
         cls,
         parent_widget: QWidget,
-        lane_contents: tuple[EntryLane, ...],
-        lane_indices: tuple[int, ...],
+        opened: OpenedLane,
+        position: int,
+        lane_count: int,
         container: QWidget,
         lane_layout: QHBoxLayout | QGridLayout,
         *,
-        cancel_loading: threading.Event,
-        on_status: Callable[[str], None],
+        source_pool: list[_PooledVideoSource],
         render_catalog_manager: SceneRenderCatalogManager,
         use_lane_controls: bool,
         lane_visibility: dict[int, OverlayVisibility],
         rollback: ExitStack,
-    ) -> "OfflineSession":
-        lane_count = len(lane_contents)
-        lanes: list[OfflineLane] = []
-        source_pool: dict[str, _PooledVideoSource] = {}
-        pooled_sources: list[_PooledVideoSource] = []
-
-        def pooled_source_for(video: SeekableVideoContent) -> _PooledVideoSource:
-            pooled_source = source_pool.get(video.content_id)
-            if pooled_source is not None:
-                return pooled_source
-            source_number = len(pooled_sources)
-            on_status(f"Building frame index: {video.display_name}")
-            source: FileFrameSource = cls._run_in_background(
-                lambda: cls._create_frame_source(video),
-                cancel_loading=cancel_loading,
-                dispose=lambda source: cls._dispose_sources([source], []),
-            )
-            rollback.callback(cls._dispose_sources, [source], [])
-            pooled_source = _PooledVideoSource(
-                video=video,
-                source=source,
-                relay=_FrameDeliveryRelay(source_number, parent_widget),
-                source_index=source_number,
-            )
-            rollback.callback(cls._delete_later_if_supported, pooled_source.relay)
-            source_pool[video.content_id] = pooled_source
-            pooled_sources.append(pooled_source)
-            return pooled_source
-
-        for index, lane_content in enumerate(lane_contents):
-            video = cls._require_seekable_video(lane_content.video)
-            display = FrameDisplay()
-            rollback.callback(display.cleanup)
-            display.viewport.set_diagnostics_label(f"{video.display_name} · {lane_content.display_name}")
-            controls = SeekableVideoControlPanel(display.viewport) if lane_count == 1 and use_lane_controls else None
-            if controls is not None:
-                display.mount_overlay(controls, position=OverlayPosition.BOTTOM_FULL_WIDTH)
-            display.enable_side_panel()
-            alignment_indicator = cls._add_lane_display(
-                parent_widget, lane_layout, lane_count, index, lane_content, display
-            )
-
-            pooled_source = pooled_source_for(video)
-            frame_timeline = pooled_source.source.get_frame_timeline()
-            overlay_name = lane_content.overlay.display_name if lane_content.overlay is not None else None
-            if overlay_name is not None:
-                if lane_count == 1:
-                    on_status(f"Parsing overlay data: {overlay_name}")
-                else:
-                    on_status(f"Parsing overlay data ({index + 1}/{lane_count}): {overlay_name}")
-            overlay_source, overlay_policy = cls._run_in_background(
-                lambda ov=lane_content.overlay: cls._create_overlay_source(ov, frame_timeline=frame_timeline),
-                cancel_loading=cancel_loading,
-                dispose=lambda result: cls._dispose_sources([], [result[0]] if result[0] is not None else []),
-            )
-
-            if overlay_source is not None:
-                rollback.callback(cls._dispose_sources, [], [overlay_source])
-
-            display.viewport.set_diagnostics_sources((overlay_source.diagnostics_id,) if overlay_source else ())
-            timing_controls = TimingDiagnosticsWidget()
-            lane_index = lane_indices[index]
-            render_catalog_selection = render_catalog_manager.create_selection(
-                visibility=lane_visibility.get(lane_index, OverlayVisibility()), parent=container
-            )
-
-            def remember_visibility(
-                *, selection: SceneRenderCatalogSelection = render_catalog_selection, lane_index: int = lane_index
-            ) -> None:
-                lane_visibility[lane_index] = selection.visibility
-
-            render_catalog_selection.selectionChanged.connect(remember_visibility)
-            tools_panel = MediaToolsPanel(
-                render_catalog_selection,
-                filter_config=overlay_source.get_filter_config() if overlay_source is not None else None,
-                overlay_settings=OverlayPersistenceSettings.default_enabled(),
-                show_export=True,
-                scene_history=cls._scene_history(overlay_source, overlay_policy, frame_timeline),
-                timing_controls=timing_controls,
-            )
-            presenter = SceneFramePresenter(
-                filter_widget=tools_panel.filter_widget,
-                scene_render_catalog=render_catalog_selection.active_catalog(),
-            )
-
-            def refresh_display_overlays(_catalog: object, *, lane_display: FrameDisplay = display) -> None:
-                lane_display.refresh_overlays()
-
-            display.set_side_panel_widget(tools_panel)
-            tools_panel.filter_widget.filterChanged.connect(display.refresh_overlays)
-            render_catalog_selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)
-            render_catalog_selection.activeCatalogChanged.connect(refresh_display_overlays)
-            tools_panel.catalogViewerRequested.connect(
-                partial(cls._open_catalog_viewer, container, render_catalog_selection)
-            )
-            if overlay_policy is not None:
-                tools_panel.overlayPersistenceChanged.connect(overlay_policy.update_settings)
-
-            lane = OfflineLane(
-                content=video,
-                name=lane_content.display_name,
-                display=display,
-                overlay_source=overlay_source,
-                controls=controls,
-                overlay_policy=overlay_policy,
-                presenter=presenter,
-                tools_panel=tools_panel,
-                timing_controls=timing_controls,
-                alignment_indicator=alignment_indicator,
-                video_source=pooled_source.source,
-                source_index=pooled_source.source_index,
-            )
-            lane.initialize_timing_diagnostics()
-            lanes.append(lane)
-
-        runtime = cls(
-            lanes,
-            container,
-            source_pool=pooled_sources,
-            cancel_loading=cancel_loading,
-            parent=parent_widget,
+    ) -> OfflineLane:
+        lane_content = opened.lane
+        video = opened.video
+        display = FrameDisplay()
+        rollback.callback(display.cleanup)
+        display.viewport.set_diagnostics_label(f"{video.display_name} · {lane_content.display_name}")
+        controls = SeekableVideoControlPanel(display.viewport) if use_lane_controls else None
+        if controls is not None:
+            display.mount_overlay(controls, position=OverlayPosition.BOTTOM_FULL_WIDTH)
+        display.enable_side_panel()
+        alignment_indicator = cls._add_lane_display(
+            parent_widget, lane_layout, lane_count, position, lane_content, display
         )
-        rollback.callback(cls._delete_later_if_supported, runtime)
-        for pooled_source in pooled_sources:
-            pooled_source.relay.frameReady.connect(runtime._on_frame_ready)
-            pooled_source.source.frameReady.connect(pooled_source.relay.deliver)
-        runtime._connect_viewport_sync()
-        runtime._connect_export_signals()
-        runtime._connect_frame_requests()
-        runtime._connect_timestamp_fallback_controls()
-        return runtime
+
+        pooled_source = source_pool[opened.source_index]
+        overlay_source = opened.overlay_source
+        overlay_policy = opened.overlay_policy
+        display.viewport.set_diagnostics_sources((overlay_source.diagnostics_id,) if overlay_source else ())
+        timing_controls = TimingDiagnosticsWidget()
+        render_catalog_selection = render_catalog_manager.create_selection(
+            visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container
+        )
+
+        def remember_visibility(
+            *, selection: SceneRenderCatalogSelection = render_catalog_selection, lane_index: int = opened.lane_index
+        ) -> None:
+            lane_visibility[lane_index] = selection.visibility
+
+        render_catalog_selection.selectionChanged.connect(remember_visibility)
+        tools_panel = MediaToolsPanel(
+            render_catalog_selection,
+            filter_config=overlay_source.get_filter_config() if overlay_source is not None else None,
+            overlay_settings=OverlayPersistenceSettings.default_enabled(),
+            show_export=True,
+            scene_history=opened.scene_history,
+            timing_controls=timing_controls,
+        )
+        presenter = SceneFramePresenter(
+            filter_widget=tools_panel.filter_widget,
+            scene_render_catalog=render_catalog_selection.active_catalog(),
+        )
+
+        def refresh_display_overlays(_catalog: object, *, lane_display: FrameDisplay = display) -> None:
+            lane_display.refresh_overlays()
+
+        display.set_side_panel_widget(tools_panel)
+        tools_panel.filter_widget.filterChanged.connect(display.refresh_overlays)
+        render_catalog_selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)
+        render_catalog_selection.activeCatalogChanged.connect(refresh_display_overlays)
+        tools_panel.catalogViewerRequested.connect(
+            partial(cls._open_catalog_viewer, container, render_catalog_selection)
+        )
+        if overlay_policy is not None:
+            tools_panel.overlayPersistenceChanged.connect(overlay_policy.update_settings)
+
+        lane = OfflineLane(
+            content=video,
+            name=lane_content.display_name,
+            display=display,
+            overlay_source=overlay_source,
+            controls=controls,
+            overlay_policy=overlay_policy,
+            presenter=presenter,
+            tools_panel=tools_panel,
+            timing_controls=timing_controls,
+            alignment_indicator=alignment_indicator,
+            video_source=pooled_source.source,
+            source_index=pooled_source.source_index,
+        )
+        lane.initialize_timing_diagnostics(opened.alignment_report)
+        return lane
 
     def _connect_viewport_sync(self) -> None:
         if len(self.lanes) < 2:
@@ -740,99 +668,6 @@ class OfflineSession(QObject):
             catalog_path=render_catalog_selection.active_catalog_path(),
         )
 
-    @staticmethod
-    def _create_frame_source(video: SeekableVideoContent) -> FileFrameSource:
-        return FileFrameSource(
-            str(video.source_spec.path),
-            image_sequence_config=video.source_spec.image_sequence_config,
-        )
-
-    @staticmethod
-    def _require_seekable_video(video: SeekableVideoContent | LiveVideoContent) -> SeekableVideoContent:
-        if isinstance(video, SeekableVideoContent):
-            return video
-        raise TypeError("Offline viewer requires seekable video content.")
-
-    @staticmethod
-    def _scene_history(
-        overlay_source: FileOverlaySource | None,
-        overlay_policy: OverlayPersistencePolicy | None,
-        frame_timeline: FrameTimeline,
-    ) -> SceneHistory | None:
-        """Place an overlay's history on the video as the lane's lookup and sticky selection show it."""
-        if overlay_source is None or overlay_policy is None:
-            return None
-        allow_previous, max_sample_age_us = overlay_policy.sample_selection()
-        return overlay_source.scene_history(
-            frame_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us
-        )
-
-    @staticmethod
-    def _create_overlay_source(
-        overlay: OverlayContent | None,
-        *,
-        frame_timeline: FrameTimeline | None = None,
-    ) -> tuple[FileOverlaySource | None, OverlayPersistencePolicy | None]:
-        if overlay is None:
-            return None, None
-
-        if not isinstance(overlay.source_spec, FileOverlaySourceSpec):
-            raise RuntimeError(f"Offline overlay '{overlay.display_name}' requires a file overlay source spec.")
-
-        try:
-            source_spec = overlay.source_spec
-            decoder_factory = get_file_decoder_factory(source_spec.handler_type)
-            if source_spec.decoder_kwargs:
-                decoder_factory = partial(decoder_factory, **source_spec.decoder_kwargs)
-            overlay_source = FileOverlaySource(
-                source_spec.path,
-                decoder_factory,
-                source_spec.handler_type,
-                timestamp_fallback_policy=source_spec.timestamp_fallback_policy,
-                frame_timeline=frame_timeline,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Failed to create overlay source for {overlay.display_name}: {exc}") from exc
-
-        overlay_policy = OverlayPersistencePolicy(OverlayPersistenceSettings.default_enabled())
-        return overlay_source, overlay_policy
-
-    @classmethod
-    def _run_in_background(
-        cls,
-        fn: Callable[[], _T],
-        *,
-        cancel_loading: threading.Event,
-        dispose: Callable[[_T], None] | None = None,
-    ) -> _T:
-        if cancel_loading.is_set():
-            raise LoadingCancelled
-        main_thread = QApplication.instance().thread()  # type: ignore[union-attr]
-        result_box: list[_T] = []
-        error_box: list[BaseException] = []
-
-        def _worker() -> None:
-            try:
-                obj = fn()
-                _move_qobjects_to_thread(obj, main_thread)
-                result_box.append(obj)
-            except BaseException as exc:
-                error_box.append(exc)
-
-        thread = threading.Thread(target=_worker, daemon=True)
-        thread.start()
-        while thread.is_alive():
-            # Retain ownership until construction settles, even after cancellation.
-            QApplication.processEvents()
-            thread.join(timeout=0.016)
-        if cancel_loading.is_set():
-            if result_box and dispose is not None:
-                dispose(result_box[0])
-            raise LoadingCancelled
-        if error_box:
-            raise error_box[0]
-        return result_box[0]
-
     def start_playback(self) -> None:
         """Start playback for the active runtime."""
         primary_source = self.get_primary_video_source()
@@ -917,110 +752,39 @@ class OfflineSession(QObject):
             source.set_playback_speed(playback_speed)
 
     def cleanup(self, *, blocking: bool = False) -> None:
-        """Tear down the current runtime and stop all active sources."""
-        self._is_playing = False
-        sources_to_stop: list[FileFrameSource] = []
-        overlays_to_close: list[FileOverlaySource] = []
+        """Tear down the displays and release the media.
 
+        By default the sources close on a worker thread; *blocking* closes them before returning, for a viewer that
+        is going away and must not leave source workers running.
+        """
+        self._is_playing = False
         primary_source = self.get_primary_video_source()
         if primary_source is not None:
-            self._disconnect_signal(getattr(primary_source, "sourceFinished", None), self._on_video_finished)
-
-        self._disconnect_signal(self._secondary_frame_relay.frameReady, self._display_secondary_frame)
+            primary_source.sourceFinished.disconnect(self._on_video_finished)
+        self._secondary_frame_relay.frameReady.disconnect(self._display_secondary_frame)
 
         for pooled_source in self._source_pool:
-            self._disconnect_signal(getattr(pooled_source.source, "frameReady", None), pooled_source.relay.deliver)
-            self._disconnect_signal(pooled_source.relay.frameReady, self._on_frame_ready)
-            sources_to_stop.append(pooled_source.source)
-            self._delete_later_if_supported(pooled_source.relay)
+            pooled_source.source.frameReady.disconnect(pooled_source.relay.deliver)
+            pooled_source.relay.frameReady.disconnect(self._on_frame_ready)
+            pooled_source.relay.deleteLater()
         self._source_pool.clear()
 
         for lane in self.lanes:
-            if lane.overlay_source is not None:
-                overlays_to_close.append(lane.overlay_source)
             lane.cleanup_display()
         self.lanes.clear()
 
         self.container.setParent(None)
         # Offline rebuilds replace the viewer synchronously; flush deferred deletion so
         # old renderer widgets are gone before the next runtime is installed.
-        self._delete_later_if_supported(self.container, flush=True)
+        self.container.deleteLater()
+        QCoreApplication.sendPostedEvents(self.container, QEvent.Type.DeferredDelete)
 
-        if sources_to_stop or overlays_to_close:
-            if blocking:
-                self._shutdown_sources(sources_to_stop, overlays_to_close)
-            else:
-                self._run_in_background(
-                    lambda: self._shutdown_sources(sources_to_stop, overlays_to_close),
-                    cancel_loading=threading.Event(),
-                )
-            self._delete_sources(sources_to_stop, overlays_to_close)
-
+        if blocking:
+            self._media.close()
+            self._media.delete_later()
+        else:
+            release_media(self._media)
         self.deleteLater()
-
-    @classmethod
-    def _dispose_sources(
-        cls,
-        video_sources: list[FileFrameSource],
-        overlay_sources: list[FileOverlaySource],
-    ) -> None:
-        cls._shutdown_sources(video_sources, overlay_sources)
-        cls._delete_sources(video_sources, overlay_sources)
-
-    @staticmethod
-    def _shutdown_sources(
-        video_sources: list[FileFrameSource],
-        overlay_sources: list[FileOverlaySource],
-    ) -> None:
-        for source in video_sources:
-            try:
-                source.stop()
-            except Exception:
-                pass
-            try:
-                source.wait(2000)
-            except Exception:
-                pass
-        for overlay in overlay_sources:
-            try:
-                overlay.close()
-            except Exception:
-                pass
-
-    @staticmethod
-    def _disconnect_signal(signal: object | None, callback: object) -> None:
-        if signal is None or not hasattr(signal, "disconnect"):
-            return
-        try:
-            signal.disconnect(callback)
-        except Exception:
-            pass
-
-    @staticmethod
-    def _delete_later_if_supported(obj: object | None, *, flush: bool = False) -> None:
-        if obj is None or not hasattr(obj, "deleteLater"):
-            return
-        try:
-            obj.deleteLater()
-        except Exception:
-            pass
-            return
-        if flush and isinstance(obj, QObject):
-            try:
-                QCoreApplication.sendPostedEvents(obj, QEvent.Type.DeferredDelete)
-            except Exception:
-                pass
-
-    @classmethod
-    def _delete_sources(
-        cls,
-        video_sources: list[FileFrameSource],
-        overlay_sources: list[FileOverlaySource],
-    ) -> None:
-        for source in video_sources:
-            cls._delete_later_if_supported(source)
-        for overlay in overlay_sources:
-            cls._delete_later_if_supported(overlay)
 
     def _on_frame_ready(self, source_index: int, frame_data: FrameData) -> None:
         if source_index == 0 and self._is_stale_primary_frame(frame_data):
@@ -1073,12 +837,7 @@ class OfflineSession(QObject):
         primary_source = self.get_primary_video_source()
         if primary_source is None:
             return
-        generation_getter = getattr(primary_source, "get_position_generation", None)
-        if not callable(generation_getter):
-            return
-        generation = generation_getter()
-        if isinstance(generation, int):
-            self._min_valid_primary_generation = generation
+        self._min_valid_primary_generation = primary_source.get_position_generation()
 
     def _is_stale_primary_frame(self, frame_data: FrameData) -> bool:
         if self._min_valid_primary_generation is None or frame_data.metadata is None:

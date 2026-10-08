@@ -8,7 +8,8 @@ Read the sections for the area you change. Explanations of how things work live 
 - Workspace-owned content descriptions live under `ax_devil.modules.workspace`.
 - `SeekableVideoContent`, `LiveVideoContent`, `OverlayContent`, `EntryLane`, and `PlaylistContent` are descriptions, not live runtime objects.
 - Content stores source specs and metadata, not instantiated sources or source factories.
-- Offline runtime source construction is owned by `OfflineSession`.
+- Offline runtime source construction is owned by `video_viewer/offline_entry_media.py`; `OfflineSession` builds
+  displays over the opened `EntryMedia`.
 - Live runtime source construction is owned by `StreamMediaController`.
 - Viewer routing depends on the concrete content type: `SeekableVideoContent`, `LiveVideoContent`, or `PlaylistContent`.
 - Each overlay source spec owns its `OverlaySourceKind`; overlay content and lanes derive the kind from that spec.
@@ -190,9 +191,13 @@ Read the sections for the area you change. Explanations of how things work live 
 - Live sources report failures they retry themselves with `sourceReconnecting` and failures needing a manual retry
   with `sourceError`; the live viewer shows both with their reason, never only in logs.
 - Pull-based file overlay lookup has no playback lifecycle; its owning runtime closes it explicitly.
-- Offline loading owns sources until a complete session takes over. Failed construction rolls back acquired resources,
-  including shared video sources exactly once. Cancellation waits for in-flight construction while processing UI events,
-  then disposes its result; source shutdown itself is not cancellable.
+- The GUI thread never waits for offline file work and never spins the event loop to wait. `EntryOpening` opens an
+  entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; `OfflineSession.build` only creates
+  widgets over it. Whoever holds the media owns every source in it, including those opened before a failure, until
+  `release_media` closes them on a worker thread and deletes them on the GUI thread. Openings run one at a time; an
+  abandoned opening opens nothing more and releases what it opened instead of delivering it. A viewer being destroyed
+  closes its installed session's sources before returning and abandons any opening still in progress. Worker threads
+  never hold the last reference to objects they hand to the GUI thread.
 - `Worker.run_loop()` returns `False` to exit the thread loop and `True` to continue.
 - Qt sync adapters must break callback references in `cleanup()` so the core does not retain Qt objects.
 - Automatic cyclic GC is disabled after startup; `app.py` freezes the startup heap and collects on a GUI-thread timer

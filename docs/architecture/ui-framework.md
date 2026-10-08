@@ -146,7 +146,7 @@ It provides:
 Current concrete workspace widgets:
 
 - `LiveVideoViewerWidget`: one `LiveVideoContent`; composes `FrameDisplay`, live status UI, `MediaToolsPanel`, and `StreamMediaController`.
-- `OfflineVideoViewerWidget`: `SeekableVideoContent` or `PlaylistContent`; creates active entry runtimes through `OfflineSession`.
+- `OfflineVideoViewerWidget`: `SeekableVideoContent` or `PlaylistContent`; opens entries in the background through `EntryOpening` and builds active entry runtimes through `OfflineSession`.
 
 ## Display Stack
 

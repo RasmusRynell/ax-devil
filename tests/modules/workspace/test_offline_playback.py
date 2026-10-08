@@ -46,6 +46,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
         session.load_startup_content(VideoFileStartup(video_path=path))
         viewer = session.focused_offline_viewer()
         assert viewer is not None
+        qtbot.waitUntil(lambda: viewer._runtime is not None)
         viewer.pause_playback()
         viewport = viewer.findChild(FrameViewport)
         assert viewport is not None
