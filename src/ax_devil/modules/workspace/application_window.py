@@ -5,13 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QMimeData, Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
-from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics
+from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.intake import is_video_file
 from ax_devil.modules.workspace.split_view import SplitView
+
+_SIDEBAR_CHARS = 22  # Default sidebar width in average characters of body text.
 
 
 class ApplicationWindow(QWidget):
@@ -38,9 +41,57 @@ class ApplicationWindow(QWidget):
         self._logger = get_logger(__name__)
         self._content_browser = content_browser
         self._center_area = center_area
+        self._sidebar_wanted = True  # The user's choice; the sidebar also stays hidden while there is no content.
+        self._sidebar_width: int | None = None  # Until the user drags it, from the text size when it appears.
 
         self._setup_layout()
         self.setAcceptDrops(True)
+        self._content_browser.rows_changed.connect(self._apply_sidebar)
+        self._splitter.splitterMoved.connect(self._on_splitter_moved)
+        self._apply_sidebar()
+        follow_appearance(self, self._follow_text_size)
+
+    def toggle_sidebar(self) -> None:
+        """Show or hide the content browser."""
+        self._sidebar_wanted = not self.is_sidebar_shown()
+        self._apply_sidebar()
+
+    def is_sidebar_shown(self) -> bool:
+        """Return whether the content browser is on screen."""
+        return not self._content_browser.isHidden()
+
+    def _on_splitter_moved(self, _position: int, _index: int) -> None:
+        """Remember the width the user drags the sidebar to; dragging it closed hides it until toggled back."""
+        width = self._splitter.sizes()[0]
+        if width > 0:
+            self._sidebar_width = width
+        else:
+            self._sidebar_wanted = False
+            self._content_browser.hide()
+
+    def _apply_sidebar(self) -> None:
+        """Show the sidebar when the user wants it and there is content, at its remembered width.
+
+        Setting both splitter sizes when the sidebar appears keeps the splitter from first laying it out at another
+        width and then moving the panes again.
+        """
+        show = self._sidebar_wanted and self._content_browser.has_rows()
+        if show == self.is_sidebar_shown():
+            return
+        if not show:
+            self._content_browser.hide()
+            return
+        self._content_browser.show()
+        self._set_sidebar_width(self._sidebar_width or _default_sidebar_width())
+
+    def _follow_text_size(self) -> None:
+        """Keep a sidebar the user never dragged at its default width for the current text size."""
+        if self._sidebar_width is None and self.is_sidebar_shown():
+            self._set_sidebar_width(_default_sidebar_width())
+
+    def _set_sidebar_width(self, width: int) -> None:
+        total = sum(self._splitter.sizes())
+        self._splitter.setSizes([width, max(0, total - width)])
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
         """Accept desktop file drags that contain at least one video file."""
@@ -90,11 +141,14 @@ class ApplicationWindow(QWidget):
         self._splitter.addWidget(self._center_area)
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
-        sidebar_width = self.fontMetrics().averageCharWidth() * 32
-        self._splitter.setSizes([sidebar_width, sidebar_width * 3])
         self._splitter.setChildrenCollapsible(True)
 
         main_layout.addWidget(self._splitter, 1)
+
+
+def _default_sidebar_width() -> int:
+    """Return the sidebar's width before the user drags it: a number of average body-text characters."""
+    return QFontMetrics(QApplication.font()).averageCharWidth() * _SIDEBAR_CHARS
 
 
 def _local_files(mime_data: QMimeData) -> list[Path]:

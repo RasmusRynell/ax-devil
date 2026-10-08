@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -75,8 +76,8 @@ def test_budget_persistence_and_change_signal(
     settings.video_cache_budget = VideoCacheBudget(1024)
     changes: list[tuple[str, object]] = []
     settings.setting_changed.connect(lambda key, value: changes.append((key, value)))
-    settings.apply_snapshot({"playback": {"video_cache_total_mib": value}})
-    settings.apply_snapshot({"playback": {"video_cache_total_mib": value}})
+    settings.apply_snapshot(replace(settings.snapshot(), video_cache_budget=VideoCacheBudget.from_config(value)))
+    settings.apply_snapshot(replace(settings.snapshot(), video_cache_budget=VideoCacheBudget.from_config(value)))
     assert changes == [("playback.video_cache_total_mib", value)]
     settings.save_to_config(config)
     config.save()

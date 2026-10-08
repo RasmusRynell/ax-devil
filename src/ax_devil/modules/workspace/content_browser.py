@@ -95,6 +95,7 @@ class ContentBrowserWidget(QWidget):
     item_consideration_change_requested = Signal(object, bool)
     content_remove_requested = Signal(object)
     export_requested = Signal(object)  # OnScreenWorkspaceItem
+    rows_changed = Signal()  # After set_browser_rows; see has_rows
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -145,6 +146,11 @@ class ContentBrowserWidget(QWidget):
                 if was_open or not row.is_open:
                     item.setExpanded(was_expanded)
         self._apply_visibility_filters()
+        self.rows_changed.emit()
+
+    def has_rows(self) -> bool:
+        """Return whether the browser lists any workspace content."""
+        return self._tree.topLevelItemCount() > 0
 
     def _tree_items(self) -> Iterator[QTreeWidgetItem]:
         """Iterate over all rows, including hidden and collapsed descendants."""

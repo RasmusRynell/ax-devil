@@ -502,3 +502,70 @@ def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_previ
 
     assert shown_names() == ["first.mp4", "first.mp4"]
     assert len(workspace_session._workspace_controller._widget_content_ids) == 2
+
+
+def test_sidebar_appears_with_content_at_its_width_and_toggles(workspace_session: WorkspaceSession) -> None:
+    """The sidebar stays hidden on the welcome screen, appears at its width with content, and the user can hide it."""
+    window = workspace_session.widget()
+    window.resize(1200, 700)
+    QCoreApplication.processEvents()
+    splitter = window._splitter
+    assert not window.is_sidebar_shown()
+
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+        workspace_session.add_content(_make_video("a"))
+    QCoreApplication.processEvents()
+    assert window.is_sidebar_shown()
+    width = splitter.sizes()[0]
+    assert 0 < width < 1200 // 2
+
+    window.toggle_sidebar()
+    QCoreApplication.processEvents()
+    assert not window.is_sidebar_shown()
+
+    # Hidden by the user, it stays hidden when content changes.
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+        workspace_session.add_content(_make_video("b"))
+    QCoreApplication.processEvents()
+    assert not window.is_sidebar_shown()
+
+    window.toggle_sidebar()
+    QCoreApplication.processEvents()
+    assert window.is_sidebar_shown() and splitter.sizes()[0] == width
+
+    # Dragged wider, it remembers the width; dragged closed, it stays closed until toggled back.
+    splitter.moveSplitter(width + 60, 1)
+    assert splitter.sizes()[0] == width + 60
+    splitter.moveSplitter(0, 1)
+    assert not window.is_sidebar_shown()
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+        workspace_session.add_content(_make_video("c"))
+    QCoreApplication.processEvents()
+    assert not window.is_sidebar_shown()
+    window.toggle_sidebar()
+    assert window.is_sidebar_shown() and splitter.sizes()[0] == width + 60
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+def test_sidebar_default_width_follows_text_size_until_dragged(workspace_session: WorkspaceSession) -> None:
+    """An undragged sidebar keeps its default width in characters when the text size changes; a dragged one stays."""
+    from ax_devil.modules.chrome.theme import apply_text_size
+
+    window = workspace_session.widget()
+    window.resize(1200, 700)
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", _DummyViewer):
+        workspace_session.add_content(_make_video("a"))
+    QCoreApplication.processEvents()
+    splitter = window._splitter
+    apply_text_size(13)
+    QCoreApplication.processEvents()
+    small = splitter.sizes()[0]
+    apply_text_size(21)
+    QCoreApplication.processEvents()
+    assert splitter.sizes()[0] > small
+
+    splitter.moveSplitter(300, 1)
+    dragged = splitter.sizes()[0]
+    apply_text_size(13)
+    QCoreApplication.processEvents()
+    assert splitter.sizes()[0] == dragged

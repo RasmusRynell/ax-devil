@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,50 +19,30 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.tokens import Radius, Space
-from ax_devil.modules.filtering import (
-    FilterConfig,
-    FilterOption,
-    FilterState,
-)
-from ax_devil.modules.filtering.predicate_utils import ClassificationFilter
-from ax_devil.modules.scene.filtering import process_scene
-from ax_devil.modules.scene.model import Scene
+from ax_devil.modules.filtering import FilterOption
+from ax_devil.modules.filtering.session_filter import SessionFilter
 
 
 class EntityFilterWidget(QWidget):
     """Filter widget that renders checkboxes from a decoder-supplied config."""
 
-    filterChanged = Signal()
-
     def __init__(
         self,
         parent: QWidget | None = None,
         *,
-        filter_config: FilterConfig | None = None,
+        filter_model: SessionFilter,
         show_title: bool = True,
     ) -> None:
         super().__init__(parent)
 
-        if filter_config is None:
-            filter_config = FilterConfig(
-                options=(
-                    ClassificationFilter(frozenset(), include_empty=True, exclude=True).build_option(
-                        id="all",
-                        label="All Entities",
-                        default_enabled=True,
-                        sort_key=0,
-                    ),
-                ),
-                name="Simple Default Filter",
-            )
-        self._filter_config: FilterConfig = filter_config
-        self._filter_state = FilterState(self._filter_config)
+        self._filter_model = filter_model
         self._show_title = show_title
         self._checkboxes: Dict[str, QCheckBox] = {}
         self._options: Tuple[FilterOption, ...] = ()
 
         self._setup_ui()
-        self._apply_filter_config(self._filter_config)
+        self._build_controls()
+        self._filter_model.changed.connect(self._refresh_controls)
         self._connect_signals()
 
     def _setup_ui(self) -> None:
@@ -78,7 +58,7 @@ class EntityFilterWidget(QWidget):
             filter_layout.setContentsMargins(0, 0, 0, 0)
 
         self._checkboxes = {}
-        self._options = self._filter_config.sorted_options()
+        self._options = self._filter_model.options
 
         controls_layout = QHBoxLayout()
         controls_layout.setContentsMargins(0, 0, 0, 0)
@@ -134,8 +114,7 @@ class EntityFilterWidget(QWidget):
 
     def _on_filter_changed(self, option_id: str, checked: bool) -> None:
         """Handle filter changes."""
-        self._filter_state.set_enabled(option_id, checked)
-        self.filterChanged.emit()
+        self._filter_model.set_enabled(option_id, checked)
 
     def _on_columns_changed(self, index: int) -> None:
         columns = self._columns_selector.itemData(index)
@@ -145,42 +124,13 @@ class EntityFilterWidget(QWidget):
 
     def _on_toggle_all_clicked(self) -> None:
         """Toggle all filters when the outline button is pressed."""
-        all_enabled = all(self._filter_state.is_enabled(option.id) for option in self._options)
-        self._set_all_filters(not all_enabled)
+        self._filter_model.toggle_all()
 
-    def _set_all_filters(self, enabled: bool) -> None:
-        """Set all filter options to the provided enabled state."""
-        for option in self._options:
-            self._filter_state.set_enabled(option.id, enabled)
-            checkbox = self._checkboxes.get(option.id)
-            if checkbox is None:
-                continue
+    def _refresh_controls(self) -> None:
+        for option_id, checkbox in self._checkboxes.items():
             previous_block = checkbox.blockSignals(True)
-            checkbox.setChecked(enabled)
+            checkbox.setChecked(self._filter_model.is_enabled(option_id))
             checkbox.blockSignals(previous_block)
-        self.filterChanged.emit()
-
-    def process_scene(self, scene: Scene) -> Scene:
-        """Filter scene and return filtered scene."""
-        return process_scene(scene, self._filter_config, self._filter_state)
-
-    def set_id_query(self, query: str) -> None:
-        """Keep only entities whose id contains ``query``; an empty query keeps all ids."""
-        query = query.strip()
-        if query == self._filter_state.id_query:
-            return
-        self._filter_state.id_query = query
-        self.filterChanged.emit()
-
-    @property
-    def filter_config(self) -> FilterConfig:
-        """Return the immutable filter configuration for this widget."""
-        return self._filter_config
-
-    @property
-    def filter_state(self) -> FilterState:
-        """Return the mutable filter state for this widget."""
-        return self._filter_state
 
     def _populate_grid(self, columns: int) -> None:
         max_columns = max(1, min(3, len(self._options)))
@@ -202,16 +152,14 @@ class EntityFilterWidget(QWidget):
         for column in range(columns):
             self._grid_layout.setColumnStretch(column, 1)
 
-    def _apply_filter_config(self, filter_config: FilterConfig) -> None:
-        """Internal helper to build UI from the supplied filter config."""
+    def _build_controls(self) -> None:
+        """Build controls from the session filter options."""
         self._checkboxes = {}
-        self._filter_config = filter_config
-        self._filter_state = FilterState(self._filter_config)
-        self._options = self._filter_config.sorted_options()
+        self._options = self._filter_model.options
 
         for option in self._options:
             checkbox = QCheckBox(option.label)
-            checkbox.setChecked(self._filter_state.is_enabled(option.id))
+            checkbox.setChecked(self._filter_model.is_enabled(option.id))
             checkbox.toggled.connect(lambda checked, option_id=option.id: self._on_filter_changed(option_id, checked))
             self._checkboxes[option.id] = checkbox
 

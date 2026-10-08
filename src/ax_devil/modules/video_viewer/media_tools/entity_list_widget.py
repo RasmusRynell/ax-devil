@@ -42,11 +42,9 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
-from ax_devil.modules.filtering.history_filtering import history_type_filter_keeps
-from ax_devil.modules.scene.filtering import matches_id_query
-from ax_devil.modules.scene.inspection import build_debug_html, entity_detail_items
+from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.scene.inspection import entity_detail_items
 from ax_devil.modules.scene.model import Entity, MotionState, Scene
-from ax_devil.modules.scene.rendering.cache import SceneFilter
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 
 from .frame_labels import CURRENT_FRAME_HIGHLIGHT, format_short_frame_time
@@ -464,25 +462,6 @@ def entity_detail_html(entity: Entity) -> str:
     return f'<table cellspacing="0" cellpadding="1">{"".join(rows)}</table>'
 
 
-def _filtered_objects(objects: Sequence[ObjectHistory], scene_filter: SceneFilter) -> list[ObjectHistory]:
-    """Return the objects the id search and the decoder's type filters keep.
-
-    The filtering module judges each distinct set of recorded classification types once.
-    """
-    config, state = scene_filter.filter_config, scene_filter.filter_state
-    kept_by_types: dict[tuple[str, ...], bool] = {}
-    kept: list[ObjectHistory] = []
-    for history in objects:
-        if not matches_id_query(history.entity_id, state):
-            continue
-        keep = kept_by_types.get(history.types)
-        if keep is None:
-            keep = kept_by_types[history.types] = history_type_filter_keeps(history.types, config, state)
-        if keep:
-            kept.append(history)
-    return kept
-
-
 class EntityListWidget(QWidget):
     """Entity list for the side panel.
 
@@ -494,7 +473,6 @@ class EntityListWidget(QWidget):
     def __init__(self, parent: QWidget | None = None, *, show_title: bool = True) -> None:
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._show_title = show_title
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -505,7 +483,7 @@ class EntityListWidget(QWidget):
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(Space.XS)
 
-        if self._show_title:
+        if show_title:
             title = QLabel("Entities", self)
             TextRole.STRONG.apply(title)
             header_layout.addWidget(title)
@@ -513,11 +491,6 @@ class EntityListWidget(QWidget):
         self._count_label = QLabel("", self)
         self._count_label.setStyleSheet("color: palette(placeholder-text);")
         header_layout.addWidget(self._count_label)
-
-        self._scene_debug_label = QLabel("", self)
-        self._scene_debug_label.setTextFormat(Qt.TextFormat.RichText)
-        self._scene_debug_label.setWordWrap(True)
-        header_layout.addWidget(self._scene_debug_label)
 
         root_layout.addLayout(header_layout)
 
@@ -544,11 +517,11 @@ class EntityListWidget(QWidget):
         self._row_scene: Scene | None = None
         self._scope = EntityScope.FRAME
         self._history: SceneHistory | None = None
-        self._scene_filter: SceneFilter | None = None
+        self._scene_filter: SessionFilter | None = None
         self._file_rows_stale = True
         self.clear()
 
-    def set_history(self, history: SceneHistory, scene_filter: SceneFilter) -> None:
+    def set_history(self, history: SceneHistory, scene_filter: SessionFilter) -> None:
         """Enable the whole-file scope, filtered like the overlay."""
         self._history = history
         self._scene_filter = scene_filter
@@ -579,7 +552,6 @@ class EntityListWidget(QWidget):
         self._row_scene = None
         self._model.clear()
         self._count_label.setText("No scene data")
-        self._set_scene_debug({})
 
     def update_scene(
         self,
@@ -629,10 +601,9 @@ class EntityListWidget(QWidget):
     def _apply_file_objects(self) -> None:
         """Show every filtered object of the history, highlighting those on the displayed frame."""
         assert self._history is not None and self._scene_filter is not None
-        self._set_scene_debug({})
         if self._file_rows_stale:
             self._file_rows_stale = False
-            objects = _filtered_objects(self._history.objects, self._scene_filter)
+            objects = self._scene_filter.filter_history(self._history.objects)
             self._model.set_rows([FileObjectRow(history) for history in objects])
             self._sync_uniform_item_sizes()
         if self._model.set_current_frame(self._frame_id.sequence_id if self._frame_id is not None else None):
@@ -643,7 +614,6 @@ class EntityListWidget(QWidget):
     def _apply_frame_entities(self) -> None:
         """Update entity rows from the latest sample."""
         scene, frame_id = self._scene, self._frame_id
-        self._set_scene_debug(scene.debug if scene is not None else {})
         if scene is None or not scene.entities:
             self._row_scene = None
             self._model.clear()
@@ -663,11 +633,6 @@ class EntityListWidget(QWidget):
     def _sync_uniform_item_sizes(self) -> None:
         """Let Qt skip per-row size hints while every row has the same collapsed height."""
         self._list_view.setUniformItemSizes(not self._model.has_expanded())
-
-    def _set_scene_debug(self, debug: dict[str, Any]) -> None:
-        """Show frame-level decoder debug data when present."""
-        self._scene_debug_label.setVisible(bool(debug))
-        self._scene_debug_label.setText(f"<b>frame debug:</b><br/>{build_debug_html(debug)}" if debug else "")
 
     def _on_index_clicked(self, index: QModelIndex) -> None:
         """Select the clicked row's entity and toggle its detail expansion when it has one."""

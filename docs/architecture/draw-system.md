@@ -174,7 +174,7 @@ Responsibilities:
 - Accept indexed overlay selection from offline playback/export, or apply live reuse through `OverlayPersistencePolicy`.
 - Merge overlay metadata and presentation metadata, including overlay opacity.
 - Retain one `CachedSceneOverlay` while source ID, sample frame identity, and Scene identity match.
-  A missing/replaced sample, replaced filter adapter, or cleanup releases it.
+  A missing/replaced sample, replaced session filter, or cleanup releases it.
 - Use that overlay's cached filtered Scene for the entity inspector.
 - Attach the active `SceneRenderCatalog` through both a direct catalog value and a catalog provider callback.
 
@@ -202,7 +202,7 @@ It owns two main caches.
 Filtered scene cache:
 
 ```text
-(id(filter_config) or None, filter_state_snapshot or None)
+scene_filter.cache_identity or None
 ```
 
 Prepared drawing cache:
@@ -483,6 +483,14 @@ lane SceneRenderCatalogSelection.activeCatalogChanged
 ```
 
 ## Filtering, Inspection, And Hover
+
+Viewer assembly creates one `filtering.SessionFilter` per lane and shares it with media tools and the presenter.
+It owns the private `FilterState`, option and id-query edits, one `changed` notification per effective edit,
+an opaque cache identity, and whole-file history filtering. Decoder `FilterConfig` predicates keep their existing
+contract. Entity-only predicates disable whole-file filtering. Widgets project controls and call model operations;
+render caches consume only the identity and Scene processing operation. Export takes a detached `snapshot()` from
+the same owner, so later session edits cannot alter an export in progress.
+
 
 `CachedSceneOverlay` owns the filtered Scene projection used by rendering, hover, and inspection. `SceneFramePresenter`
 asks that cache for the inspector Scene while assembling the frame; later drawing preparation and hover lookup reuse the

@@ -100,8 +100,9 @@ Read the sections for the area you change. Explanations of how things work live 
 - `EntityRelation` stores a directed semantic link between two entity IDs; relations with a missing endpoint are valid
   Scene data but are not rendered.
 - Operations (`Delete`, `Rename`, `Merge`, `Split`) mirror Axis Scene Metadata semantics.
-- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. ax-devil only displays them;
-  filtering, rendering, synchronization, and hit-testing never read them.
+- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. `Scene.debug` is retained for
+  decoder/provider diagnostics without a UI display; `Observation.debug` appears in object details and hover cards.
+  Filtering, rendering, synchronization, and hit-testing never read them.
 
 ## Workspace UI State
 
@@ -363,7 +364,9 @@ Read the sections for the area you change. Explanations of how things work live 
 - Settings validates all editable connection and storage fields before applying any change. Saves replace the
   configuration atomically before emitting runtime change signals; failed saves leave active viewers untouched. Startup storage locations stay
   active until restart, even after new locations have been saved.
-- `GlobalSettings` is a reactive `QObject` singleton between `ConfigManager` and UI consumers.
+- `GlobalSettings` is a reactive `QObject` singleton between `ConfigManager` and UI consumers. Its sole runtime
+  value is a complete immutable `SettingsState`; snapshots and UI edits use typed values, with disk parsing and
+  serialization confined to load/save. Setters replace fields and retain the existing change signals.
 - Runtime-mutable settings should be consumed through `GlobalSettings` signals, not by polling `ConfigManager`.
 - On/off overlay preferences are `OverlayPreference` members, on by default and read through
   `GlobalSettings.is_overlay_enabled`; adding a member adds it to the View menu, Settings and the saved config.

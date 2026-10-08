@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import pickle
-import re
 from datetime import datetime, timezone
 from typing import Any
 
 import pytest
 
-from ax_devil.modules.scene.inspection import build_debug_html, build_entity_hover_html
+from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import (
     RGB,
     Attribute,
@@ -198,18 +197,6 @@ def test_hover_html_surfaces_nested_observation_debug() -> None:
     assert "0.42" in html
     assert "observation_count" in html
     assert "17" in html
-
-
-def test_debug_html_puts_nested_keys_on_their_own_lines() -> None:
-    html = build_debug_html({"outer": {"inner": {"leaf": 0.123456}, "empty": {}}})
-    lines = [re.sub(r"<[^>]+>", "", line) for line in html.split("<br/>")]
-
-    assert lines == [
-        "outer: ",
-        f"{'&nbsp;' * 4}inner: ",
-        f"{'&nbsp;' * 8}leaf: 0.1235",
-        f"{'&nbsp;' * 4}empty: {{}}",
-    ]
 
 
 def test_observation_pickle_preserves_debug() -> None:

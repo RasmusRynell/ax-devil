@@ -626,7 +626,7 @@ class Scene:
     entities: Dict[EntityId, Entity] = field(default_factory=dict)
     events: List[Event] = field(default_factory=list)
     relations: set[EntityRelation] = field(default_factory=set)
-    # Decoder-owned, free-form, picklable; ax-devil only displays it.
+    # Decoder-owned, free-form, picklable; retained for decoder/provider diagnostics, not displayed in the UI.
     debug: Dict[str, Any] = field(default_factory=dict)
 
     def add_entity(self, entity: Entity) -> None:

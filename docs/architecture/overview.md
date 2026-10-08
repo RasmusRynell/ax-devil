@@ -202,7 +202,10 @@ viewer shows a loading indicator, then delivers `EntryMedia` on the GUI thread. 
 displays over that media without touching files. Navigating while an entry opens abandons it and opens the newer one;
 openings run one at a time, so rapid navigation never indexes many files at once.
 
-Offline viewing receives frame events through `OfflineSession`; each `OfflineLane` pulls overlay data through
+Offline viewing receives frame events through `OfflineSession`. Each pooled secondary video source owns one
+pending request and latest desired frame; completion returns to the GUI thread and fans out to lanes referencing
+that source. Explicit playback navigation invalidates outstanding requests, and retired source entries cannot
+present into another runtime. Each `OfflineLane` pulls overlay data through
 `OverlayLookup.get_overlay_at_frame()`, and `SceneFramePresenter` assembles the display frame.
 With sticky overlays enabled, `OverlayPersistencePolicy.select_from_source()` requests the latest sample
 at or before the frame and applies expiry using its original timestamp. This selection is independent of

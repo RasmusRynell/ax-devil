@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.filtering import build_default_filter_config
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Entity, EntityId, Scene, TimeSlice
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import (
@@ -85,7 +86,7 @@ def test_media_tools_panel_reemits_persistence_changes(
 ) -> None:
     initial = OverlayPersistenceSettings(enabled=True, timeout_ms=1800, opacity=0.8)
     panel = MediaToolsPanel(
-        filter_config=None,
+        filter_model=SessionFilter(None),
         overlay_settings=initial,
         render_catalog_selection=render_catalog_selection,
     )
@@ -108,7 +109,7 @@ def test_media_tools_panel_reemits_catalog_management_request(
     qtbot: QtBot,
     render_catalog_selection: SceneRenderCatalogSelection,
 ) -> None:
-    panel = MediaToolsPanel(render_catalog_selection=render_catalog_selection)
+    panel = MediaToolsPanel(render_catalog_selection=render_catalog_selection, filter_model=SessionFilter())
     qtbot.addWidget(panel)
 
     with qtbot.waitSignal(panel.catalogViewerRequested):
@@ -122,7 +123,7 @@ def test_media_tools_popups_allow_changing_filters_and_catalog(
     """The visible toolbar buttons expose working filter and catalog controls."""
     catalog = render_catalog_selection.manager.create_catalog("Review", base_catalog_path=small_catalog_path)
     panel = MediaToolsPanel(
-        render_catalog_selection=render_catalog_selection, filter_config=build_default_filter_config()
+        render_catalog_selection=render_catalog_selection, filter_model=SessionFilter(build_default_filter_config())
     )
     qtbot.addWidget(panel)
     panel.show()
@@ -148,7 +149,7 @@ def test_media_tools_popups_allow_changing_filters_and_catalog(
             menu.close()
 
     signal = (
-        panel.filter_widget.filterChanged
+        panel.filter_model.changed
         if button_name == "entityFilterButton"
         else render_catalog_selection.activeCatalogChanged
     )
@@ -166,7 +167,7 @@ def test_media_tools_panel_id_search_and_filter_button_track_filter_state(
     render_catalog_selection: SceneRenderCatalogSelection,
 ) -> None:
     panel = MediaToolsPanel(
-        render_catalog_selection=render_catalog_selection, filter_config=build_default_filter_config()
+        render_catalog_selection=render_catalog_selection, filter_model=SessionFilter(build_default_filter_config())
     )
     qtbot.addWidget(panel)
     search = panel.findChild(QLineEdit, "entityIdSearch")
@@ -176,11 +177,11 @@ def test_media_tools_panel_id_search_and_filter_button_track_filter_state(
     for entity_id in ("Track-12", "track-34"):
         scene.add_entity(Entity(id=EntityId(entity_id)))
 
-    with qtbot.waitSignal(panel.filter_widget.filterChanged):
+    with qtbot.waitSignal(panel.filter_model.changed):
         search.setText(" K-1 ")
-    assert list(panel.filter_widget.process_scene(scene).entities) == [EntityId("Track-12")]
+    assert list(panel.filter_model.process_scene(scene).entities) == [EntityId("Track-12")]
 
-    total = len(panel.filter_widget.filter_config.options)
+    total = len(panel.filter_model.options)
     checkbox = panel.filter_widget.findChild(QCheckBox)
     assert checkbox is not None
     checkbox.setChecked(False)
@@ -191,7 +192,9 @@ def test_media_tools_panel_export_button_emits_request(
     qtbot: QtBot,
     render_catalog_selection: SceneRenderCatalogSelection,
 ) -> None:
-    panel = MediaToolsPanel(show_export=True, render_catalog_selection=render_catalog_selection)
+    panel = MediaToolsPanel(
+        show_export=True, render_catalog_selection=render_catalog_selection, filter_model=SessionFilter()
+    )
     qtbot.addWidget(panel)
     button = panel.findChild(QToolButton, "exportVideoButton")
     assert button is not None
@@ -207,7 +210,7 @@ def test_section_help_stays_open_on_mouse_move(
     dismiss_key: Qt.Key | None,
 ) -> None:
     """Clicked help survives pointer movement and dismisses with Escape or a click."""
-    panel = MediaToolsPanel(render_catalog_selection=render_catalog_selection)
+    panel = MediaToolsPanel(render_catalog_selection=render_catalog_selection, filter_model=SessionFilter())
     qtbot.addWidget(panel)
     panel.show()
     tabs = panel.findChild(QTabWidget, "mediaToolsTabs")
