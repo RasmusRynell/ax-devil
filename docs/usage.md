@@ -10,6 +10,7 @@ prefix them with `uv run`.
 
 The **media tools panel** holds filtering, object inspection, the event log, the render catalog choice and export.
 Open it with **View → Media Tools Panel** (`Ctrl+B`) or by double-clicking or dragging the handle on the right edge of the video.
+**View → Sidebar** (`Ctrl+\`) hides or shows the list of opened content on the left.
 
 Press **F** on a lane to show it fullscreen; **F** or **Esc** restores it, and **F11** toggles the application
 window. Playback shortcuts can be changed in **Settings → General**.

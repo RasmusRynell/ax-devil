@@ -8,6 +8,7 @@ text size needs, because window managers may ignore a later resize; its content 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import replace
 from functools import partial
 from typing import Generic, Optional, TypeVar
 
@@ -339,7 +340,7 @@ class QuickSetupDialog(BaseDialog):
         if snapshot == self._opened_with and self._settings.quick_setup_done:
             super().done(result)
             return
-        snapshot["quick_setup_done"] = True
+        snapshot = replace(snapshot, quick_setup_done=True)
         try:
             apply_preferences(self._config, self._settings, snapshot, {})
         except (ValueError, OSError) as exc:

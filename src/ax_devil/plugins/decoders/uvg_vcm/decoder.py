@@ -180,7 +180,7 @@ class UVGVCMFrameDecoder(PayloadToSceneDecoder):
         duplicates = sorted(track_id for track_id, count in counts.items() if count > 1)
         scene = Scene(
             time_slice=TimeSlice(frame_index, frame_index),
-            debug={"source_frame": frame_index + 1, "duplicate_track_ids": duplicates},
+            debug={"duplicate_track_ids": duplicates},
         )
         for index, (detection, track_id) in enumerate(zip(detections, track_ids)):
             context = f"Frame {frame_index + 1} detection {index}"

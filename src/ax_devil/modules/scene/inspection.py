@@ -20,11 +20,6 @@ _INDENT = "&nbsp;&nbsp;&nbsp;&nbsp;"
 _MAX_PER_ROW = 4
 
 
-def build_debug_html(debug: Mapping[str, Any]) -> str:
-    """Render free-form decoder debug data as an indented tree."""
-    return _render_mapping(debug)
-
-
 def build_entity_hover_html(entity: Entity) -> str:
     """Build a clean hover-card from available entity data."""
     if entity.latest_observation is None:

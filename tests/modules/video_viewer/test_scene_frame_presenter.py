@@ -14,7 +14,8 @@ from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
-from ax_devil.modules.filtering import FilterConfig, FilterState, build_default_filter_config
+from ax_devil.modules.filtering import build_default_filter_config
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -38,45 +39,20 @@ from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistence
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
 
 
-class _FailingSceneFilter:
+class _FailingSceneFilter(SessionFilter):
     """Filter test double that raises during Scene processing."""
-
-    def __init__(self) -> None:
-        self._filter_config = build_default_filter_config()
-        self._filter_state = FilterState(self._filter_config)
-
-    @property
-    def filter_config(self) -> FilterConfig:
-        """Return filter configuration for drawing preparation."""
-        return self._filter_config
-
-    @property
-    def filter_state(self) -> FilterState:
-        """Return filter state for drawing preparation."""
-        return self._filter_state
 
     def process_scene(self, scene: Scene) -> Scene:
         """Raise to simulate a filter failure."""
         raise RuntimeError("filter exploded")
 
 
-class _CountingSceneFilter:
+class _CountingSceneFilter(SessionFilter):
     """Filter test double that records Scene projection calls."""
 
     def __init__(self) -> None:
-        self._filter_config = build_default_filter_config()
-        self._filter_state = FilterState(self._filter_config)
+        super().__init__()
         self.calls = 0
-
-    @property
-    def filter_config(self) -> FilterConfig:
-        """Return filter configuration for drawing preparation."""
-        return self._filter_config
-
-    @property
-    def filter_state(self) -> FilterState:
-        """Return filter state for drawing preparation."""
-        return self._filter_state
 
     def process_scene(self, scene: Scene) -> Scene:
         """Return the source Scene and record the projection call."""
@@ -166,13 +142,14 @@ def test_presenter_applies_overlay_persistence_and_marks_reused_overlay() -> Non
 
 
 def test_presenter_returns_filtered_inspection_scene_but_keeps_renderer_filter_aware(qtbot: QtBot) -> None:
-    filter_widget = EntityFilterWidget(filter_config=build_default_filter_config())
+    model = SessionFilter(build_default_filter_config())
+    filter_widget = EntityFilterWidget(filter_model=model)
     qtbot.addWidget(filter_widget)
     filter_widget._checkboxes["show_humans"].setChecked(False)
-    qtbot.waitUntil(lambda: not filter_widget.filter_state.is_enabled("show_humans"))
+    qtbot.waitUntil(lambda: not model.is_enabled("show_humans"))
 
     scene = _build_scene("entity-1")
-    presenter = SceneFramePresenter(filter_widget=filter_widget)
+    presenter = SceneFramePresenter(scene_filter=model)
 
     presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene))
 
@@ -203,7 +180,7 @@ def test_presenter_returns_filtered_inspection_scene_but_keeps_renderer_filter_a
 def test_presenter_reuses_one_filtered_scene_for_inspection_rendering_and_hover() -> None:
     scene = _build_scene("entity-1")
     scene_filter = _CountingSceneFilter()
-    presenter = SceneFramePresenter(filter_widget=scene_filter)
+    presenter = SceneFramePresenter(scene_filter=scene_filter)
 
     presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene))
 
@@ -254,7 +231,7 @@ def test_presenter_updates_existing_overlay_catalog_before_next_frame() -> None:
 
 def test_presenter_falls_back_to_unfiltered_inspector_scene_when_filtering_fails() -> None:
     scene = _build_scene("entity-1")
-    presenter = SceneFramePresenter(filter_widget=_FailingSceneFilter())
+    presenter = SceneFramePresenter(scene_filter=_FailingSceneFilter())
 
     presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene))
 
@@ -298,7 +275,7 @@ def _load_catalog_json(filename: str) -> dict[str, Any]:
 def test_presenter_retains_preparation_only_for_the_same_source_sample() -> None:
     scene = _build_scene("entity-1")
     scene_filter = _CountingSceneFilter()
-    presenter = SceneFramePresenter(filter_widget=scene_filter)
+    presenter = SceneFramePresenter(scene_filter=scene_filter)
     context = RenderContext.create(640, 480)
     first = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene)).display_frame.overlays
     second = presenter.prepare_frame(_build_frame(2), _build_overlay(1, scene)).display_frame.overlays
@@ -315,7 +292,7 @@ def test_presenter_retains_preparation_only_for_the_same_source_sample() -> None
     presenter.attach_scene_render_catalog(_catalog_with_disabled_human_recipe())
     assert second.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == PreparedDrawing()
 
-    presenter.attach_filter_widget(_CountingSceneFilter())
+    presenter.attach_scene_filter(_CountingSceneFilter())
     third = presenter.prepare_frame(_build_frame(3), _build_overlay(1, scene)).display_frame.overlays
     assert third is not None and third.interaction_provider is not second.interaction_provider
     # Even the same Scene in a different source sample starts a fresh cache.
@@ -346,7 +323,7 @@ def test_visibility_change_reuses_filtered_scene_and_hover_cards(qtbot: QtBot) -
 
     selection = SceneRenderCatalogManager().create_selection()
     scene_filter = _CountingSceneFilter()
-    presenter = SceneFramePresenter(filter_widget=scene_filter, scene_render_catalog=selection.active_catalog())
+    presenter = SceneFramePresenter(scene_filter=scene_filter, scene_render_catalog=selection.active_catalog())
     selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)
     presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, _build_scene("entity-1")))
     overlay = presentation.display_frame.overlays

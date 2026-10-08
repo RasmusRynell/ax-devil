@@ -133,6 +133,7 @@ class MainWindow(ChromeWindow):
         view_menu.addAction(sm.get_action("view.toggle_fullscreen"))
         view_menu.addAction(sm.get_action("view.toggle_lane_fullscreen"))
         view_menu.addAction(sm.get_action("view.toggle_media_tools"))
+        view_menu.addAction(sm.get_action("view.toggle_sidebar"))
         view_menu.addSeparator()
         view_menu.addAction(sm.get_action("view.zoom_in"))
         view_menu.addAction(sm.get_action("view.zoom_out"))
@@ -232,6 +233,7 @@ class MainWindow(ChromeWindow):
             lambda: self._route_to_focused_widget(lambda widget: widget.toggle_media_tools())
         )
         sm.get_action("view.toggle_fullscreen").triggered.connect(self._toggle_fullscreen)
+        sm.get_action("view.toggle_sidebar").triggered.connect(self._workspace_session.widget().toggle_sidebar)
         for action_id, step in (
             ("view.zoom_in", ZoomStep.IN),
             ("view.zoom_out", ZoomStep.OUT),

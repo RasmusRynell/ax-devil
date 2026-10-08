@@ -30,12 +30,12 @@ class OverlayPreference(str, Enum):
         return descriptions[self]
 
     @classmethod
-    def from_config(cls, value: object) -> dict[OverlayPreference, bool]:
+    def from_config(cls, value: object) -> frozenset[OverlayPreference]:
         """Read preferences from ``{key: bool}``; a missing key leaves its preference on."""
         saved = value if isinstance(value, dict) else {}
-        return {preference: bool(saved.get(preference.value, True)) for preference in cls}
+        return frozenset(preference for preference in cls if bool(saved.get(preference.value, True)))
 
     @classmethod
-    def config_value(cls, enabled: dict[OverlayPreference, bool]) -> dict[str, bool]:
+    def config_value(cls, enabled: frozenset[OverlayPreference]) -> dict[str, bool]:
         """Return the persisted form, listing every preference explicitly."""
-        return {preference.value: enabled[preference] for preference in cls}
+        return {preference.value: preference in enabled for preference in cls}

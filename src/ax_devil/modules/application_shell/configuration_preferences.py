@@ -5,12 +5,12 @@ from __future__ import annotations
 import copy
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
-from ax_devil.modules.settings.settings import GlobalSettings
+from ax_devil.modules.settings.settings import GlobalSettings, SettingsState
 from ax_devil.modules.workspace.content import LiveOverlayMode
 
 
@@ -169,7 +169,7 @@ def configuration_updates(config: ConfigManager, edits: Mapping[ConfigField, str
 def apply_preferences(
     config: ConfigManager,
     settings: GlobalSettings,
-    snapshot: Mapping[str, Any],
+    snapshot: SettingsState,
     edits: Mapping[ConfigField, str],
 ) -> None:
     """Validate and save preferences before publishing any runtime changes."""
@@ -178,13 +178,13 @@ def apply_preferences(
     try:
         for root, value in updates.items():
             config.set(root, value)
-        settings.save_to_config(config, snapshot=dict(snapshot))
+        settings.save_to_config(config, snapshot=snapshot)
         config.save()
     except Exception:
         for root, value in previous.items():
             config.set(root, value)
         raise
-    settings.apply_snapshot(dict(snapshot))
+    settings.apply_snapshot(snapshot)
 
 
 def save_overlay_preference(
@@ -195,5 +195,6 @@ def save_overlay_preference(
 ) -> None:
     """Save one overlay preference, then apply it to open viewers."""
     snapshot = settings.snapshot()
-    snapshot["overlay_interaction"][preference.value] = enabled
+    overlays = snapshot.enabled_overlays
+    snapshot = replace(snapshot, enabled_overlays=overlays | {preference} if enabled else overlays - {preference})
     apply_preferences(config, settings, snapshot, {})

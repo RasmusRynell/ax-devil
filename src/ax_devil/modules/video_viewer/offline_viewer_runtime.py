@@ -8,13 +8,14 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
-from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import (
     OverlayVisibility,
     SceneRenderCatalogManager,
@@ -109,7 +110,15 @@ class _FrameDeliveryRelay(QObject):
 class _SecondaryFrameRelay(QObject):
     """Marshal secondary-frame callbacks back onto the GUI thread."""
 
-    frameReady = Signal(int, int, object)
+    frameReady = Signal(object, int, int, object)
+
+    def deliver(self, source: _PooledVideoSource, generation: int, frame_number: int, frame: FrameData | None) -> None:
+        """Deliver a worker completion, including when teardown has already deleted the relay."""
+        try:
+            self.frameReady.emit(source, generation, frame_number, frame)
+        except RuntimeError:
+            # A source can finish closing after its session's QObject has been deleted.
+            return
 
 
 @dataclass(slots=True)
@@ -127,12 +136,11 @@ class OfflineLane:
     overlay_policy: OverlayPersistencePolicy | None = None
     presenter: SceneFramePresenter | None = None
     tools_panel: MediaToolsPanel | None = None
+    filter_model: SessionFilter | None = None
     timing_controls: TimingDiagnosticsWidget | None = None
     alignment_indicator: OverlayAlignmentIndicator | None = None
     video_source: FileFrameSource | None = None
     source_index: int = 0
-    _pending_frame_index: int | None = field(default=None, init=False, repr=False)
-    _desired_frame_index: int | None = field(default=None, init=False, repr=False)
 
     def display_frame(self, frame: VideoFrameWithOverlays) -> None:
         """Display a synced frame and update lane-owned controls."""
@@ -221,40 +229,6 @@ class OfflineLane:
         self.timing_controls.update_alignment_report(report)
         self.alignment_indicator.update_alignment_report(report)
 
-    def reset_frame_requests(self) -> None:
-        """Clear outstanding async frame request bookkeeping."""
-        self._pending_frame_index = None
-        self._desired_frame_index = None
-
-    def request_frame(
-        self,
-        frame_number: int,
-        callback: Callable[[int, FrameData | None], None],
-    ) -> None:
-        """Request and eventually present a frame from this lane's non-primary source."""
-        if self.video_source is None:
-            return
-        self._desired_frame_index = frame_number
-        if self._pending_frame_index is None:
-            self._request_desired_frame(callback)
-
-    def complete_frame_request(
-        self,
-        requested_frame: int,
-        frame_data: FrameData | None,
-        callback: Callable[[int, FrameData | None], None],
-    ) -> None:
-        """Present an async response if current, or request the latest desired frame."""
-        if self._pending_frame_index != requested_frame:
-            return
-        self._pending_frame_index = None
-        latest_frame = self._desired_frame_index
-        if latest_frame is not None and latest_frame != requested_frame:
-            self._request_desired_frame(callback)
-            return
-        if frame_data is not None:
-            self.present_frame(frame_data)
-
     def cleanup_display(self) -> None:
         """Release display-owned mount widgets before the lane container is deleted."""
         if self.presenter is not None:
@@ -263,24 +237,50 @@ class OfflineLane:
             self.tools_panel.cleanup()
         self.display.cleanup()
 
-    def _request_desired_frame(self, callback: Callable[[int, FrameData | None], None]) -> None:
-        if self.video_source is None or self._desired_frame_index is None:
-            return
-        frame_number = self._desired_frame_index
-        self._pending_frame_index = frame_number
-        self.video_source.request_frame_async(
-            frame_number,
-            lambda frame_data, requested_frame=frame_number: callback(requested_frame, frame_data),
-        )
 
-
-@dataclass(slots=True)
+@dataclass(slots=True, eq=False)
 class _PooledVideoSource:
     """One source-pool entry shared by lanes that reference the same seekable video."""
 
     source: FileFrameSource
     relay: _FrameDeliveryRelay
     source_index: int
+    _pending_frame_index: int | None = field(default=None, init=False, repr=False)
+    _desired_frame_index: int | None = field(default=None, init=False, repr=False)
+    _request_generation: int = field(default=0, init=False, repr=False)
+
+    def reset_frame_requests(self) -> None:
+        """Invalidate outstanding completions and clear the latest desired frame."""
+        self._request_generation += 1
+        self._pending_frame_index = None
+        self._desired_frame_index = None
+
+    def request_frame(self, frame_number: int, relay: _SecondaryFrameRelay) -> None:
+        """Coalesce requests for all lanes sharing this source."""
+        self._desired_frame_index = frame_number
+        if self._pending_frame_index is None:
+            self._request_desired_frame(relay)
+
+    def complete_frame_request(self, generation: int, requested_frame: int, relay: _SecondaryFrameRelay) -> bool:
+        """Accept only the current desire, scheduling a newer desire when necessary."""
+        if generation != self._request_generation or self._pending_frame_index != requested_frame:
+            return False
+        self._pending_frame_index = None
+        if self._desired_frame_index != requested_frame:
+            self._request_desired_frame(relay)
+            return False
+        return True
+
+    def _request_desired_frame(self, relay: _SecondaryFrameRelay) -> None:
+        if self._desired_frame_index is None:
+            return
+        frame_number = self._desired_frame_index
+        generation = self._request_generation
+        self._pending_frame_index = frame_number
+        self.source.request_frame_async(
+            frame_number,
+            lambda frame_data: relay.deliver(self, generation, frame_number, frame_data),
+        )
 
 
 class OfflineSession(QObject):
@@ -410,7 +410,7 @@ class OfflineSession(QObject):
             rollback.callback(container.deleteLater)
             lane_layout = cls._create_lane_layout(container, len(media.lanes))
             if not media.lanes:
-                lane_layout.addWidget(QLabel("No considered lanes in this entry"))
+                lane_layout.addWidget(QLabel("No considered lanes in this entry"), 0, 0)
             source_pool = [
                 _PooledVideoSource(
                     source=source,
@@ -452,17 +452,14 @@ class OfflineSession(QObject):
         return runtime
 
     @staticmethod
-    def _create_lane_layout(container: QWidget, lane_count: int) -> QHBoxLayout | QGridLayout:
-        if lane_count <= 2:
-            h_layout = QHBoxLayout(container)
-            h_layout.setContentsMargins(0, 0, 0, 0)
-            h_layout.setSpacing(Space.XS)
-            return h_layout
-
+    def _create_lane_layout(container: QWidget, lane_count: int) -> QGridLayout:
         grid_layout = QGridLayout(container)
         grid_layout.setContentsMargins(0, 0, 0, 0)
         grid_layout.setHorizontalSpacing(Space.XS)
         grid_layout.setVerticalSpacing(Space.XS)
+
+        if lane_count == 0:
+            return grid_layout
 
         columns = lane_grid_columns(lane_count)
         rows = lane_grid_rows(lane_count)
@@ -475,7 +472,7 @@ class OfflineSession(QObject):
     @staticmethod
     def _add_lane_display(
         parent_widget: QWidget,
-        lane_layout: QHBoxLayout | QGridLayout,
+        lane_layout: QGridLayout,
         lane_count: int,
         lane_index: int,
         lane: EntryLane,
@@ -505,12 +502,9 @@ class OfflineSession(QObject):
         display.mount_overlay(alignment_indicator, position=OverlayPosition.FRAME_TOP_RIGHT)
         pane_layout.addWidget(display, 1)
 
-        if isinstance(lane_layout, QGridLayout):
-            columns = lane_grid_columns(lane_count)
-            row, column = divmod(lane_index, columns)
-            lane_layout.addWidget(pane, row, column)
-            return alignment_indicator
-        lane_layout.addWidget(pane)
+        columns = lane_grid_columns(lane_count)
+        row, column = divmod(lane_index, columns)
+        lane_layout.addWidget(pane, row, column)
         return alignment_indicator
 
     @classmethod
@@ -521,7 +515,7 @@ class OfflineSession(QObject):
         position: int,
         lane_count: int,
         container: QWidget,
-        lane_layout: QHBoxLayout | QGridLayout,
+        lane_layout: QGridLayout,
         *,
         source_pool: list[_PooledVideoSource],
         render_catalog_manager: SceneRenderCatalogManager,
@@ -558,16 +552,17 @@ class OfflineSession(QObject):
             lane_visibility[lane_index] = selection.visibility
 
         render_catalog_selection.selectionChanged.connect(remember_visibility)
+        filter_model = SessionFilter(overlay_source.get_filter_config() if overlay_source is not None else None)
         tools_panel = MediaToolsPanel(
             render_catalog_selection,
-            filter_config=overlay_source.get_filter_config() if overlay_source is not None else None,
+            filter_model=filter_model,
             overlay_settings=OverlayPersistenceSettings.default_enabled(),
             show_export=True,
             scene_history=opened.scene_history,
             timing_controls=timing_controls,
         )
         presenter = SceneFramePresenter(
-            filter_widget=tools_panel.filter_widget,
+            scene_filter=filter_model,
             scene_render_catalog=render_catalog_selection.active_catalog(),
         )
 
@@ -575,7 +570,7 @@ class OfflineSession(QObject):
             lane_display.refresh_overlays()
 
         display.set_side_panel_widget(tools_panel)
-        tools_panel.filter_widget.filterChanged.connect(display.refresh_overlays)
+        filter_model.changed.connect(display.refresh_overlays)
         render_catalog_selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)
         render_catalog_selection.activeCatalogChanged.connect(refresh_display_overlays)
         tools_panel.catalogViewerRequested.connect(
@@ -593,6 +588,7 @@ class OfflineSession(QObject):
             overlay_policy=overlay_policy,
             presenter=presenter,
             tools_panel=tools_panel,
+            filter_model=filter_model,
             timing_controls=timing_controls,
             alignment_indicator=alignment_indicator,
             video_source=pooled_source.source,
@@ -639,7 +635,6 @@ class OfflineSession(QObject):
     def export_lanes(self, lanes: list[OfflineLane] | None = None) -> None:
         """Export the given lanes, or let the user choose among all lanes when none are given."""
         from ax_devil.modules.video_viewer.export import ExportDialog, ExportLane
-        from ax_devil.modules.video_viewer.export.frozen_scene_filter import FrozenSceneFilter
 
         lanes = [lane for lane in (self.lanes if lanes is None else lanes) if lane.video_source is not None]
         if not lanes:
@@ -655,10 +650,7 @@ class OfflineSession(QObject):
         for lane in lanes:
             assert lane.video_source is not None
             # Snapshot filter state so it can't change during export
-            filter_widget = lane.tools_panel.filter_widget if lane.tools_panel is not None else None
-            frozen_filter: FrozenSceneFilter | None = None
-            if filter_widget is not None:
-                frozen_filter = FrozenSceneFilter(filter_widget.filter_config, filter_widget.filter_state)
+            frozen_filter = lane.filter_model.snapshot() if lane.filter_model is not None else None
 
             active_catalog = lane.presenter.scene_render_catalog if lane.presenter is not None else None
             # Export uses the same timestamp selection settings as the viewer.
@@ -666,7 +658,7 @@ class OfflineSession(QObject):
                 ExportLane(
                     name=lane.name or lane.content.display_name,
                     video_source=lane.video_source,
-                    presenter=SceneFramePresenter(filter_widget=frozen_filter, scene_render_catalog=active_catalog),
+                    presenter=SceneFramePresenter(scene_filter=frozen_filter, scene_render_catalog=active_catalog),
                     overlay_source=lane.overlay_source,
                     overlay_policy=(
                         OverlayPersistencePolicy(lane.overlay_policy.settings.copy())
@@ -716,8 +708,8 @@ class OfflineSession(QObject):
         total_frames = self.total_frames
         at_end_of_media = total_frames > 0 and primary_source.get_current_frame() >= total_frames - 1
 
-        for lane in self.lanes:
-            lane.reset_frame_requests()
+        for pooled_source in self._source_pool[1:]:
+            pooled_source.reset_frame_requests()
 
         if at_end_of_media:
             primary_source.reset_to_start()
@@ -738,8 +730,9 @@ class OfflineSession(QObject):
         primary_source.pause()
         self._is_playing = False
         self.playbackStateChanged.emit(False)
+        for pooled_source in self._source_pool[1:]:
+            pooled_source.reset_frame_requests()
         for lane in self.lanes:
-            lane.reset_frame_requests()
             lane.sync_playback_state(False)
 
     def jump_to_frame(self, frame_num: int) -> None:
@@ -748,8 +741,8 @@ class OfflineSession(QObject):
         if primary_source is None:
             return
 
-        for lane in self.lanes:
-            lane.reset_frame_requests()
+        for pooled_source in self._source_pool[1:]:
+            pooled_source.reset_frame_requests()
 
         target = self._bounded_frame(frame_num)
         self._current_frame = target
@@ -762,8 +755,8 @@ class OfflineSession(QObject):
         if primary_source is None:
             return
 
-        for lane in self.lanes:
-            lane.reset_frame_requests()
+        for pooled_source in self._source_pool[1:]:
+            pooled_source.reset_frame_requests()
 
         target = self._bounded_frame(self.current_frame + delta)
         self._current_frame = target
@@ -839,32 +832,21 @@ class OfflineSession(QObject):
         if source_index == 0:
             self._sync_secondary_video_positions(self.current_frame)
 
-    def _display_secondary_frame(self, lane_index: int, requested_frame: int, frame_data: FrameData | None) -> None:
-        if not (0 <= lane_index < len(self.lanes)):
+    def _display_secondary_frame(
+        self, pooled_source: _PooledVideoSource, generation: int, requested_frame: int, frame_data: FrameData | None
+    ) -> None:
+        if pooled_source not in self._source_pool:
             return
-        lane = self.lanes[lane_index]
-        lane.complete_frame_request(
-            requested_frame,
-            frame_data,
-            lambda next_requested_frame, next_frame_data, idx=lane_index: self._secondary_frame_relay.frameReady.emit(
-                idx,
-                next_requested_frame,
-                next_frame_data,
-            ),
-        )
+        if not pooled_source.complete_frame_request(generation, requested_frame, self._secondary_frame_relay):
+            return
+        if frame_data is not None:
+            for lane in self.lanes:
+                if lane.source_index == pooled_source.source_index:
+                    lane.present_frame(frame_data)
 
     def _sync_secondary_video_positions(self, target_frame: int) -> None:
-        for index, lane in enumerate(self.lanes[1:], start=1):
-            if lane.source_index == 0:
-                continue
-            lane.request_frame(
-                target_frame,
-                lambda requested_frame, frame_data, idx=index: self._secondary_frame_relay.frameReady.emit(
-                    idx,
-                    requested_frame,
-                    frame_data,
-                ),
-            )
+        for pooled_source in self._source_pool[1:]:
+            pooled_source.request_frame(target_frame, self._secondary_frame_relay)
 
     def _on_video_finished(self) -> None:
         self._is_playing = False
