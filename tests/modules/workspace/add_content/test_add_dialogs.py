@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any
 
 import pytest
+from PySide6.QtCore import QRunnable, QThreadPool
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 from pytestqt.qtbot import QtBot
@@ -133,10 +135,35 @@ def _stub_live_stream_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
         "_load_defaults",
         lambda self: (raw_defaults, resolved_defaults),
     )
+
+
+@dataclass
+class _Discovery:
+    """Device responses and queued jobs, leaving the dialog's discovery lifecycle intact."""
+
+    sources: tuple[str, ...] = ("other/source", "analytics/source")
+    topics: tuple[str, ...] = ("other.topic", "com.axis.scene.frame.v1")
+    jobs: list[QRunnable] = field(default_factory=list)
+
+    def finish(self) -> None:
+        """Complete the oldest queued request synchronously."""
+        self.jobs.pop(0).run()
+
+
+@pytest.fixture(autouse=True)
+def discovery(monkeypatch: pytest.MonkeyPatch) -> _Discovery:
+    """Fake the device and worker scheduler instead of fabricating the loader's private state."""
+    pending = _Discovery()
+    monkeypatch.setattr(QThreadPool, "start", lambda self, job: pending.jobs.append(job))
     monkeypatch.setattr(
-        "ax_devil.modules.workspace.add_content.analytics_discovery.AnalyticsChoiceLoader.load",
-        lambda self: None,
+        "ax_devil.modules.workspace.add_content.add_live_stream_dialog.list_analytics_data_source_keys",
+        lambda *_args: pending.sources,
     )
+    monkeypatch.setattr(
+        "ax_devil.modules.workspace.add_content.add_live_stream_dialog.list_datahub_topics",
+        lambda *_args: pending.topics,
+    )
+    return pending
 
 
 class _VideoOptionProvider(_DialogOptionProvider):
@@ -378,75 +405,49 @@ def test_add_live_stream_shows_defaults_as_placeholders(qtbot: QtBot) -> None:
     assert dialog._resolution_edit.text() == "1280x720"
 
 
-def test_add_live_stream_selects_data_source_loaded_from_device(qtbot: QtBot) -> None:
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-
-    dialog._data_source_choice.loader._request = dialog._current_device_connection()
-    dialog._data_source_choice.loader._on_loaded(("other/source", "analytics/source"))
-
-    assert dialog._data_source_choice.combo.currentData() == "analytics/source"
-
-    dialog._set_overlay_mode(LiveOverlayMode.RTSP)
-    dialog._set_overlay_mode(LiveOverlayMode.MQTT)
-
-    assert dialog._data_source_choice.combo.currentData() == "analytics/source"
-
-
-def test_add_live_stream_requires_selection_when_configured_data_source_is_unavailable(qtbot: QtBot) -> None:
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-
-    dialog._data_source_choice.loader._request = dialog._current_device_connection()
-    dialog._data_source_choice.loader._on_loaded(("other/source",))
-
-    assert dialog._data_source_choice.combo.currentData() is None
-
-
-def test_add_live_stream_discards_data_sources_from_stale_connection(qtbot: QtBot) -> None:
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-    dialog._data_source_choice.loader._request = dialog._current_device_connection()
-    dialog._host_edit.setText("another-camera.local")
-
-    dialog._data_source_choice.loader._on_loaded(("analytics/source",))
-
-    assert dialog._data_source_choice.combo.currentData() is None
-    assert dialog._data_source_choice.combo.currentText() == "Connection changed — refresh data sources"
-
-
-def test_add_live_stream_reloads_after_connection_changes_and_reverts(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("available", [False, True])
+def test_add_live_stream_selects_configured_data_source_only_when_available(
+    qtbot: QtBot, discovery: _Discovery, available: bool
 ) -> None:
+    """Device discovery preserves an available configured choice across transport switches."""
+    discovery.sources = ("other/source", "analytics/source") if available else ("other/source",)
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
-    dialog._data_source_choice.loader._request = dialog._current_device_connection()
-    dialog._data_source_choice.loader._on_loaded(("analytics/source",))
-    dialog._data_source_choice.combo.setCurrentIndex(1)
+    _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
+    discovery.finish()
 
+    expected = "analytics/source" if available else None
+    assert dialog._data_source_choice.combo.currentData() == expected
+    _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
+    _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
+    assert dialog._data_source_choice.combo.currentData() == expected
+    assert not discovery.jobs
+
+
+@pytest.mark.parametrize("completed", [False, True], ids=["pending", "completed"])
+def test_add_live_stream_discards_stale_discovery_and_reloads_after_connection_reverts(
+    qtbot: QtBot, discovery: _Discovery, completed: bool
+) -> None:
+    """Connection changes invalidate both pending responses and loaded choices, even when the host reverts."""
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
+    if completed:
+        discovery.finish()
+        assert dialog._data_source_choice.combo.currentData() == "analytics/source"
     dialog._host_edit.setText("another-camera.local")
+    if not completed:
+        discovery.finish()
 
     assert dialog._data_source_choice.combo.currentData() is None
     assert dialog._data_source_choice.combo.currentText() == "Connection changed — refresh data sources"
-    assert not dialog._data_source_choice.loader.loaded
 
     dialog._host_edit.clear()
-
-    assert dialog._current_device_connection() == dialog._data_source_choice.loader._request
-    assert not dialog._data_source_choice.loader.loaded
-
-    load_calls = 0
-
-    def load(**kwargs: object) -> bool:
-        nonlocal load_calls
-        load_calls += 1
-        return True
-
-    monkeypatch.setattr(dialog._data_source_choice.loader, "load", load)
-    dialog._set_overlay_mode(LiveOverlayMode.RTSP)
-    dialog._set_overlay_mode(LiveOverlayMode.MQTT)
-
-    assert load_calls == 1
+    _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
+    _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
+    assert len(discovery.jobs) == 1
+    discovery.finish()
+    assert dialog._data_source_choice.combo.currentData() == "analytics/source"
 
 
 def test_live_stream_intake_passes_mqtt_protocol_to_overlay_source() -> None:
@@ -474,6 +475,7 @@ def test_live_stream_intake_passes_mqtt_protocol_to_overlay_source() -> None:
 def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
     qtbot: QtBot,
     monkeypatch: pytest.MonkeyPatch,
+    discovery: _Discovery,
 ) -> None:
     monkeypatch.setattr(
         "ax_devil.modules.workspace.add_content.add_live_stream_dialog.default_workspace_intake",
@@ -488,8 +490,7 @@ def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
     dialog._mqtt_device_protocol_combo.setCurrentText("http")
 
     assert dialog._websocket_channel_id_spin.value() == 2
-    dialog._websocket_topic_choice.loader._request = dialog._current_device_connection()
-    dialog._websocket_topic_choice.loader._on_loaded(("other.topic", "com.axis.scene.frame.v1"))
+    discovery.finish()
 
     assert dialog._websocket_topic_choice.combo.currentData() == "com.axis.scene.frame.v1"
     assert dialog._websocket_topic_choice.isVisibleTo(dialog)
@@ -513,12 +514,13 @@ def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
     assert result.overlays[0].display_name == OverlaySourceKind.WEBSOCKET_SOURCE.display_name
 
 
-def test_add_live_stream_websocket_topics_show_empty_state(qtbot: QtBot) -> None:
+def test_add_live_stream_websocket_topics_show_empty_state(qtbot: QtBot, discovery: _Discovery) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
-    dialog._websocket_topic_choice.loader._request = dialog._current_device_connection()
-    dialog._websocket_topic_choice.loader._on_loaded(())
+    discovery.topics = ()
+    _set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
+    discovery.finish()
 
     assert dialog._websocket_topic_choice.combo.currentData() is None
     assert dialog._websocket_topic_choice.combo.currentText() == "No DataHub topics available"
@@ -533,10 +535,6 @@ def test_add_live_stream_applies_transport_protocol_defaults_when_mode_changes(q
 
     _set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
     assert dialog._mqtt_device_protocol_combo.currentText() == "http"
-
-
-def _noop() -> NoReturn:
-    raise NotImplementedError("stub")
 
 
 def _playlist(name: str) -> PlaylistContent:
