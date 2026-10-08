@@ -119,8 +119,10 @@ def _verify_theme_rendering(cache_dir: Path) -> None:
         hover.show_for("person-1", build_entity_hover_html(entity), 20, 20)
 
         for mode in ("light", "dark", "light"):
-            dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData(mode))
-            dialog._apply()
+            theme_dialog = SettingsDialog()
+            theme_dialog._theme_combo.setCurrentIndex(theme_dialog._theme_combo.findData(mode))
+            theme_dialog._on_ok()
+            theme_dialog.deleteLater()
             app.processEvents()
             app.processEvents()
             dark = mode == "dark"

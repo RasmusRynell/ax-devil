@@ -139,8 +139,8 @@ def test_graphics_acceleration_round_trip_does_not_apply_until_startup(
     assert restored.graphics_acceleration is GraphicsAcceleration.OFF
 
 
-def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: ConfigManager) -> None:
-    """Appearance changes commit on Apply/OK and retain unrelated raw UI settings."""
+def test_theme_dialog_cancel_ok_and_config_round_trip(qtbot: QtBot, config: ConfigManager) -> None:
+    """Appearance changes commit on OK, Cancel discards them, and unrelated raw UI settings are kept."""
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
     config.set("ui", {"theme": "dark", "window": {"custom_frame": False}, "custom": "$KEEP_RAW"})
@@ -156,15 +156,16 @@ def test_theme_dialog_cancel_apply_and_config_round_trip(qtbot: QtBot, config: C
     assert settings.snapshot().theme == ThemeMode.DARK
     assert changes == []
 
-    applied = SettingsDialog()
-    qtbot.addWidget(applied)
-    applied._theme_combo.setCurrentIndex(applied._theme_combo.findData("light"))
-    applied._apply()
-    applied._apply()
+    saved_dialog = SettingsDialog()
+    qtbot.addWidget(saved_dialog)
+    saved_dialog._theme_combo.setCurrentIndex(saved_dialog._theme_combo.findData("light"))
+    saved_dialog._on_ok()
     assert changes == ["light"]
-    applied._theme_combo.setCurrentIndex(applied._theme_combo.findData("dark"))
-    applied.reject()
-    assert settings.theme == ThemeMode.LIGHT
+    discarded = SettingsDialog()
+    qtbot.addWidget(discarded)
+    discarded._theme_combo.setCurrentIndex(discarded._theme_combo.findData("dark"))
+    discarded.reject()
+    assert settings.theme == ThemeMode.LIGHT and changes == ["light"]
     settings.save_to_config(config)
     config.save()
     saved = json.loads(config.config_path.read_text(encoding="utf-8"))
