@@ -11,6 +11,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QPushButton
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
 from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
@@ -64,7 +65,7 @@ class _FakeStreamMediaController:
         self.frame_displayed = frame_displayed
         self.started = False
         self.cleaned = False
-        self.filter_widget: object | None = None
+        self.scene_filter: object | None = None
         self.scene_inspector: object | None = None
         self.scene_render_catalog: object | None = None
         self.overlay_settings: object | None = None
@@ -95,8 +96,8 @@ class _FakeStreamMediaController:
     def get_filter_config(self) -> None:
         return None
 
-    def attach_filter_widget(self, filter_widget: object) -> None:
-        self.filter_widget = filter_widget
+    def attach_scene_filter(self, scene_filter: object) -> None:
+        self.scene_filter = scene_filter
 
     def attach_scene_inspector(self, scene_inspector: object) -> None:
         self.scene_inspector = scene_inspector
@@ -157,7 +158,7 @@ class TestLiveVideoViewerWidget:
             assert side_panel is not None
 
             widget._frame_display.set_side_panel_widget(None)
-            replacement = MediaToolsPanel(render_catalog_manager.create_selection())
+            replacement = MediaToolsPanel(render_catalog_manager.create_selection(), filter_model=SessionFilter())
             widget._frame_display.set_side_panel_widget(replacement)
             QCoreApplication.processEvents()
 
@@ -188,7 +189,7 @@ class TestLiveVideoViewerWidget:
             controller = _FakeStreamMediaController.instances[-1]
             assert controller.started
             assert widget._frame_display is controller.frame_display
-            assert controller.filter_widget is not None
+            assert controller.scene_filter is not None
             assert controller.scene_inspector is not None
 
             frame = _make_display_frame()

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from time import perf_counter
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
 from ax_devil.modules.scene.inspection import build_entity_hover_html
@@ -24,13 +24,9 @@ from ax_devil.modules.video_player.engine.data_types import (
 from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
-if TYPE_CHECKING:
-    from ax_devil.modules.filtering import FilterConfig, FilterState
-
 logger = get_logger(__name__)
 
-FilterStateSnapshot = tuple[tuple[tuple[str, bool], ...], str] | None
-FilteredSceneKey = tuple[int | None, FilterStateSnapshot]
+FilteredSceneKey = Hashable | None
 RenderCacheKey = tuple[
     FilteredSceneKey,
     tuple[int, int, DrawingSettings],
@@ -61,12 +57,8 @@ class SceneFilter(Protocol):
     """Filter adapter used by cached scene overlays."""
 
     @property
-    def filter_config(self) -> "FilterConfig":
-        """Return the filter configuration."""
-
-    @property
-    def filter_state(self) -> "FilterState":
-        """Return the mutable filter state."""
+    def cache_identity(self) -> Hashable:
+        """Return an opaque identity for the current filtering behavior."""
 
     def process_scene(self, scene: Scene) -> Scene:
         """Return a filtered Scene."""
@@ -89,13 +81,13 @@ class CachedSceneOverlay:
         self,
         *,
         scene: Scene,
-        filter_widget: SceneFilter | None = None,
+        scene_filter: SceneFilter | None = None,
         catalog: SceneRenderCatalog | None = None,
         catalog_provider: SceneRenderCatalogProvider | None = None,
         reported_errors: ReportedCatalogErrors | None = None,
     ) -> None:
         self._scene = scene
-        self._filter_widget = filter_widget
+        self._scene_filter = scene_filter
         self._catalog_provider = catalog_provider
         if catalog is not None or catalog_provider is not None:
             self._catalog = catalog
@@ -207,9 +199,9 @@ class CachedSceneOverlay:
         capture = is_metrics_enabled()
         start = perf_counter() if capture else 0.0
         filtered_scene = self._scene
-        if self._filter_widget is not None:
+        if self._scene_filter is not None:
             try:
-                filtered_scene = self._filter_widget.process_scene(self._scene)
+                filtered_scene = self._scene_filter.process_scene(self._scene)
             except RuntimeError:
                 logger.debug("Scene filtering failed during drawing preparation", exc_info=True)
 
@@ -246,13 +238,10 @@ class CachedSceneOverlay:
         return hits
 
     def _filtered_scene_key(self) -> FilteredSceneKey:
-        if self._filter_widget is None:
-            return (None, None)
+        if self._scene_filter is None:
+            return None
 
-        return (
-            id(self._filter_widget.filter_config),
-            (tuple(self._filter_widget.filter_state.items()), self._filter_widget.filter_state.id_query),
-        )
+        return self._scene_filter.cache_identity
 
     def _current_catalog(self) -> SceneRenderCatalog:
         provided_catalog = self._catalog_provider() if self._catalog_provider is not None else None

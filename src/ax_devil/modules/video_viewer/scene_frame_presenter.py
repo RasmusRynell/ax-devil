@@ -40,10 +40,10 @@ class SceneFramePresenter:
     def __init__(
         self,
         *,
-        filter_widget: SceneFilter | None = None,
+        scene_filter: SceneFilter | None = None,
         scene_render_catalog: SceneRenderCatalog | None = None,
     ) -> None:
-        self._filter_widget = filter_widget
+        self._scene_filter = scene_filter
         self._scene_render_catalog = scene_render_catalog
         self._reported_catalog_errors = ReportedCatalogErrors()
         self._cached_source: OverlayData | None = None
@@ -56,9 +56,9 @@ class SceneFramePresenter:
 
         self._catalog_provider = current_catalog
 
-    def attach_filter_widget(self, filter_widget: SceneFilter | None) -> None:
-        """Set the filter widget used for future frame presentation."""
-        self._filter_widget = filter_widget
+    def attach_scene_filter(self, scene_filter: SceneFilter | None) -> None:
+        """Set the session filter used for future frame presentation."""
+        self._scene_filter = scene_filter
         self.clear()
 
     def clear(self) -> None:
@@ -158,7 +158,7 @@ class SceneFramePresenter:
         self._cached_source = overlay
         self._cached_overlay = CachedSceneOverlay(
             scene=overlay.content,
-            filter_widget=self._filter_widget,
+            scene_filter=self._scene_filter,
             catalog=self._scene_render_catalog,
             catalog_provider=self._catalog_provider,
             reported_errors=self._reported_catalog_errors,

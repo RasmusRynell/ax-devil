@@ -15,6 +15,7 @@ from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import (
     OverlayVisibility,
     SceneRenderCatalogManager,
@@ -100,6 +101,7 @@ class OfflineLane:
     overlay_policy: OverlayPersistencePolicy | None = None
     presenter: SceneFramePresenter | None = None
     tools_panel: MediaToolsPanel | None = None
+    filter_model: SessionFilter | None = None
     timing_controls: TimingDiagnosticsWidget | None = None
     alignment_indicator: OverlayAlignmentIndicator | None = None
     video_source: FileFrameSource | None = None
@@ -519,16 +521,17 @@ class OfflineSession(QObject):
             lane_visibility[lane_index] = selection.visibility
 
         render_catalog_selection.selectionChanged.connect(remember_visibility)
+        filter_model = SessionFilter(overlay_source.get_filter_config() if overlay_source is not None else None)
         tools_panel = MediaToolsPanel(
             render_catalog_selection,
-            filter_config=overlay_source.get_filter_config() if overlay_source is not None else None,
+            filter_model=filter_model,
             overlay_settings=OverlayPersistenceSettings.default_enabled(),
             show_export=True,
             scene_history=opened.scene_history,
             timing_controls=timing_controls,
         )
         presenter = SceneFramePresenter(
-            filter_widget=tools_panel.filter_widget,
+            scene_filter=filter_model,
             scene_render_catalog=render_catalog_selection.active_catalog(),
         )
 
@@ -536,7 +539,7 @@ class OfflineSession(QObject):
             lane_display.refresh_overlays()
 
         display.set_side_panel_widget(tools_panel)
-        tools_panel.filter_widget.filterChanged.connect(display.refresh_overlays)
+        filter_model.changed.connect(display.refresh_overlays)
         render_catalog_selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)
         render_catalog_selection.activeCatalogChanged.connect(refresh_display_overlays)
         tools_panel.catalogViewerRequested.connect(
@@ -554,6 +557,7 @@ class OfflineSession(QObject):
             overlay_policy=overlay_policy,
             presenter=presenter,
             tools_panel=tools_panel,
+            filter_model=filter_model,
             timing_controls=timing_controls,
             alignment_indicator=alignment_indicator,
             video_source=pooled_source.source,
@@ -600,7 +604,6 @@ class OfflineSession(QObject):
     def export_lanes(self, lanes: list[OfflineLane] | None = None) -> None:
         """Export the given lanes, or let the user choose among all lanes when none are given."""
         from ax_devil.modules.video_viewer.export import ExportDialog, ExportLane
-        from ax_devil.modules.video_viewer.export.frozen_scene_filter import FrozenSceneFilter
 
         lanes = [lane for lane in (self.lanes if lanes is None else lanes) if lane.video_source is not None]
         if not lanes:
@@ -616,10 +619,7 @@ class OfflineSession(QObject):
         for lane in lanes:
             assert lane.video_source is not None
             # Snapshot filter state so it can't change during export
-            filter_widget = lane.tools_panel.filter_widget if lane.tools_panel is not None else None
-            frozen_filter: FrozenSceneFilter | None = None
-            if filter_widget is not None:
-                frozen_filter = FrozenSceneFilter(filter_widget.filter_config, filter_widget.filter_state)
+            frozen_filter = lane.filter_model.snapshot() if lane.filter_model is not None else None
 
             active_catalog = lane.presenter.scene_render_catalog if lane.presenter is not None else None
             # Export uses the same timestamp selection settings as the viewer.
@@ -627,7 +627,7 @@ class OfflineSession(QObject):
                 ExportLane(
                     name=lane.name or lane.content.display_name,
                     video_source=lane.video_source,
-                    presenter=SceneFramePresenter(filter_widget=frozen_filter, scene_render_catalog=active_catalog),
+                    presenter=SceneFramePresenter(scene_filter=frozen_filter, scene_render_catalog=active_catalog),
                     overlay_source=lane.overlay_source,
                     overlay_policy=(
                         OverlayPersistencePolicy(lane.overlay_policy.settings.copy())
