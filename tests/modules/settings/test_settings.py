@@ -12,7 +12,8 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QProcess
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -491,12 +492,21 @@ def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(
     restart.relaunch_if_requested(qapp)
     assert started == []  # No restart was asked for.
 
-    restart.restart_application()
+    closed: list[str] = []
+
+    class _MainWindow(QWidget):
+        def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+            closed.append("main")
+            super().closeEvent(event)
+
+    main_window = _MainWindow()
+    restart.restart_application(main_window)
+    assert closed == ["main"]  # The main window cleans up even if another window refuses to close.
     assert started == []  # Nothing starts before the app has saved on exit.
     restart.relaunch_if_requested(qapp)
     restart.relaunch_if_requested(qapp)
     assert started == [("/usr/bin/python3", ["-I", "-m", "ax_devil.cli"])]
 
-    restart.restart_application()
+    restart.restart_application(main_window)
     restart.relaunch_if_requested(qapp)
     assert "Could not restart ax-devil" in caplog.text

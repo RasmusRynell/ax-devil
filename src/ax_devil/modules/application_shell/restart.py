@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QCoreApplication, QProcess
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -14,16 +14,18 @@ logger = get_logger(__name__)
 _RESTART_PROPERTY = "axDevilRestartRequested"
 
 
-def restart_application() -> None:
-    """Close every window and quit; the app starts again once it has saved its state on exit.
+def restart_application(main_window: QWidget) -> None:
+    """Close *main_window* and every other window, and quit; the app starts again once it has saved its state.
 
-    The new process is started by `relaunch_if_requested`, which the app calls after its exit-time saves, so the
-    restarted session reads what this one saved.
+    The main window closes first, so its own cleanup (leaving lane fullscreen, stopping viewers and workers) runs even
+    when another window refuses to close. The new process is started by `relaunch_if_requested`, which the app calls
+    after its exit-time saves, so the restarted session reads what this one saved.
     """
     app = QApplication.instance()
     if app is None:
         return
     app.setProperty(_RESTART_PROPERTY, True)
+    main_window.close()
     QApplication.closeAllWindows()
     QApplication.quit()
 

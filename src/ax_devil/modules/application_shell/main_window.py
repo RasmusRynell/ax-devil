@@ -279,7 +279,7 @@ class MainWindow(ChromeWindow):
             dialog.exec()
             restart = dialog.restart_requested
         if restart:
-            restart_application()
+            restart_application(self)
 
     def _on_add_video(self) -> None:
         """Handle File -> Add Video action."""
