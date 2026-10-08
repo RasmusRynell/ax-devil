@@ -92,7 +92,7 @@ handler, for decoded streaming messages; it does not contribute a file handler t
 objects yet. Add entities to the returned Scene to implement your format.
 
 Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame-level) or `Observation.debug`
-(per object). ax-devil only displays it, as a generic tree in the hover card and entity side panel.
+(per object). For display behavior and ownership, see the [Scene Model invariants](../../../docs/domain/invariants.md#scene-model).
 
 ## Packaging requirements
 

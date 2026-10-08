@@ -100,8 +100,9 @@ Read the sections for the area you change. Explanations of how things work live 
 - `EntityRelation` stores a directed semantic link between two entity IDs; relations with a missing endpoint are valid
   Scene data but are not rendered.
 - Operations (`Delete`, `Rename`, `Merge`, `Split`) mirror Axis Scene Metadata semantics.
-- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. ax-devil only displays them;
-  filtering, rendering, synchronization, and hit-testing never read them.
+- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. `Scene.debug` is retained for
+  decoder/provider diagnostics without a UI display; `Observation.debug` appears in object details and hover cards.
+  Filtering, rendering, synchronization, and hit-testing never read them.
 
 ## Workspace UI State
 
