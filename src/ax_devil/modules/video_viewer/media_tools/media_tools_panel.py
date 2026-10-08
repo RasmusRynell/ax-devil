@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from functools import partial
 from html import escape
-from typing import Any, Optional
+from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPalette
@@ -145,7 +145,7 @@ class MediaToolsPanel(QWidget):
     def __init__(
         self,
         render_catalog_selection: SceneRenderCatalogSelection,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         *,
         filter_model: SessionFilter,
         overlay_settings: OverlayPersistenceSettings | None = None,

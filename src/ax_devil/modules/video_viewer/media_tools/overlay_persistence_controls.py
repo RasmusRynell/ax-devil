@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -28,7 +26,7 @@ class OverlayPersistenceControls(QGroupBox):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         *,
         initial_settings: OverlayPersistenceSettings | None = None,
         show_title: bool = True,

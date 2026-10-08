@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Sequence, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from ax_devil.modules.data_sources.file_data_provider.base import FileDataProviderFactory
 from ax_devil.modules.filtering import FilterFactory

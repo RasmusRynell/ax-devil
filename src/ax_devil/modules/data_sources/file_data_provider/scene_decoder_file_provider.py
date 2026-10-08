@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Set
+from typing import Any
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
@@ -74,8 +75,8 @@ class SceneDecoderFileMetadata:
     decoder_name: str
     source_fingerprint: SourceFingerprint
     sequence_lookup_enabled: bool
-    timestamp_to_sequence: Dict[int, int]
-    all_metadata: Dict[str, Any]
+    timestamp_to_sequence: dict[int, int]
+    all_metadata: dict[str, Any]
 
 
 @dataclass(slots=True)
@@ -88,9 +89,9 @@ class _RetrievalStats:
     """
 
     requested: int = 0
-    exact: Set[int] = field(default_factory=set)
-    resolved: Set[int] = field(default_factory=set)
-    misses: Set[int] = field(default_factory=set)
+    exact: set[int] = field(default_factory=set)
+    resolved: set[int] = field(default_factory=set)
+    misses: set[int] = field(default_factory=set)
 
     def record(self, timestamp: int, outcomes: set[int]) -> None:
         """Count a unique timestamp once, even when its outcome changes on a later lookup."""
@@ -152,10 +153,10 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._storage_mode = storage_mode
         self._runtime_cache = RuntimeSceneCache()
         self._metadata: SceneDecoderFileMetadata | None = None
-        self._available_frame_ids: Set[int] = set()
-        self._sorted_frame_ids: List[int] = []
-        self._sequence_to_timestamp: Dict[int, int] = {}
-        self._timestamp_to_sequence: Dict[int, int] = {}
+        self._available_frame_ids: set[int] = set()
+        self._sorted_frame_ids: list[int] = []
+        self._sequence_to_timestamp: dict[int, int] = {}
+        self._timestamp_to_sequence: dict[int, int] = {}
         self._history = SceneHistoryRecords(events=(), tracks=())
         self._stats = _RetrievalStats()
         self._store = self._build_store()
@@ -233,11 +234,11 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             logger.error(f"Failed to stream payloads from {self.file_path}: {exc}")
             raise
 
-    def _collect_additional_cache_metadata(self) -> Dict[str, Any]:
+    def _collect_additional_cache_metadata(self) -> dict[str, Any]:
         """Return extra metadata to persist alongside the default payload."""
         return {}
 
-    def _restore_additional_state_from_cache(self, raw_metadata: Dict[str, Any]) -> None:
+    def _restore_additional_state_from_cache(self, raw_metadata: dict[str, Any]) -> None:
         """Rehydrate subclass-specific state from cached metadata."""
         return
 
@@ -271,9 +272,9 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         total_lines: int,
     ) -> SceneBuildResult:
         """Build timestamp and sequence maps from already-decoded scenes."""
-        scene_map: Dict[int, Scene] = {}
-        timestamp_to_sequence: Dict[int, int] = {}
-        sequence_to_timestamp: Dict[int, int] = {}
+        scene_map: dict[int, Scene] = {}
+        timestamp_to_sequence: dict[int, int] = {}
+        sequence_to_timestamp: dict[int, int] = {}
 
         for line_num, scene in scenes:
             timestamp_key = self._extract_timestamp_key(scene)
@@ -502,7 +503,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         set_metric(instance_id, "Unique fallback matches", len(s.resolved))
         set_metric(instance_id, "Unique missing timestamps", len(s.misses))
 
-    def get_available_frames(self) -> Set[int]:
+    def get_available_frames(self) -> set[int]:
         """Get the set of available frame timestamps (as monotime microseconds)."""
         return set(self._available_frame_ids)
 
@@ -510,7 +511,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         """Return whether sequence identifiers participate in lookup."""
         return self._sequence_lookup_enabled
 
-    def get_available_sequences(self) -> Set[int]:
+    def get_available_sequences(self) -> set[int]:
         """Get the set of available overlay sequence identifiers."""
         return set(self._sequence_to_timestamp)
 

@@ -5,7 +5,7 @@ lifecycle management.
 """
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from ax_devil_device_api import DeviceConfig
 from ax_devil_mqtt import AxisAnalyticsMqttClient, MqttMessage
@@ -56,14 +56,14 @@ class MQTTWorker(Worker):
         self.analytics_data_source_key = analytics_data_source_key
         self.decoder = decoder
 
-        self.analytics_manager: Optional[AxisAnalyticsMqttClient] = None
-        self.device_config: Optional[DeviceConfig] = None
-        self.latest_message: Optional[MqttMessage] = None
+        self.analytics_manager: AxisAnalyticsMqttClient | None = None
+        self.device_config: DeviceConfig | None = None
+        self.latest_message: MqttMessage | None = None
         self.message_count = 0
         self._connected = False
 
         # Signal to parent overlay source
-        self.overlay_ready_signal: Optional[Any] = None
+        self.overlay_ready_signal: Any | None = None
 
     def set_overlay_ready_signal(self, signal: Any) -> None:
         """Set the signal to emit when overlay is ready."""
@@ -235,7 +235,7 @@ class MQTTOverlaySource(OverlaySource):
         decoder: PayloadToSceneDecoder,
         handler_type: str,
         source_id: str = "mqtt_overlay",
-        parent: Optional[QObject] = None,
+        parent: QObject | None = None,
         filter_factory: FilterFactory | None = None,
     ):
         super().__init__(parent)

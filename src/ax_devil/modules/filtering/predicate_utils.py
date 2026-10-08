@@ -6,8 +6,8 @@ declares its own class lists while reusing the common predicate wiring.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Sequence, Tuple
 
 from ax_devil.modules.filtering.filter_config import FilterOption, FilterState
 from ax_devil.modules.scene.model import Entity
@@ -96,7 +96,7 @@ class ClassFilterSpec:
 
     option_id: str
     label: str
-    types: Tuple[str, ...]
+    types: tuple[str, ...]
     include_empty: bool = False
     include_unknown_prefix: bool | None = None
 

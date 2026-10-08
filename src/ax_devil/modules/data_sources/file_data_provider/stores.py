@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Protocol, Set, Tuple
+from typing import Any, Protocol
 
 from ax_devil.modules.cache import CacheManager, IndexedFrameCache
 from ax_devil.modules.data_sources.scene_history import SceneHistoryCollector, SceneHistoryRecords
@@ -37,7 +38,7 @@ class SourceFingerprint:
         stat_result = file_path.stat()
         return cls(mtime_ns=int(stat_result.st_mtime_ns), size=int(stat_result.st_size))
 
-    def to_metadata(self) -> Dict[str, int]:
+    def to_metadata(self) -> dict[str, int]:
         return {
             "mtime_ns": self.mtime_ns,
             "size": self.size,
@@ -51,10 +52,10 @@ class SceneArtifactIdentity:
     source_fingerprint: SourceFingerprint
     decoder_name: str
     artifact_version: int
-    decode_options: Dict[str, Any]
-    scene_model_version: Tuple[int, int] = SCENE_MODEL_VERSION
+    decode_options: dict[str, Any]
+    scene_model_version: tuple[int, int] = SCENE_MODEL_VERSION
 
-    def to_metadata(self) -> Dict[str, Any]:
+    def to_metadata(self) -> dict[str, Any]:
         """Return the JSON-compatible form persisted with the artifact."""
         return {
             "source_fingerprint": self.source_fingerprint.to_metadata(),
@@ -71,9 +72,9 @@ class SceneCatalog:
 
     total_lines: int
     sequence_lookup_enabled: bool
-    timestamp_to_sequence: Dict[int, int]
-    all_metadata: Dict[str, Any]
-    available_frame_ids: Set[int]
+    timestamp_to_sequence: dict[int, int]
+    all_metadata: dict[str, Any]
+    available_frame_ids: set[int]
     artifact_identity: SceneArtifactIdentity
     history: SceneHistoryRecords
 
@@ -82,8 +83,8 @@ class SceneCatalog:
 class SceneBuildResult:
     """Result of building logical frame scenes from a source."""
 
-    scene_map: Dict[int, Scene]
-    timestamp_to_sequence: Dict[int, int]
+    scene_map: dict[int, Scene]
+    timestamp_to_sequence: dict[int, int]
     total_lines: int
 
 
@@ -93,14 +94,14 @@ class SceneStoreContext:
 
     decoder_name: str
     artifact_version: int
-    decode_options: Dict[str, Any]
+    decode_options: dict[str, Any]
     sequence_lookup_enabled: bool
     decoder_factory: PayloadToSceneDecoderFactory
     iter_payloads: Callable[[], Iterable[str]]
     normalize_payload: Callable[[str], str | None]
     build_scene_maps: Callable[[Iterable[str], PayloadToSceneDecoder], SceneBuildResult]
-    collect_additional_cache_metadata: Callable[[], Dict[str, Any]]
-    restore_additional_state_from_cache: Callable[[Dict[str, Any]], None]
+    collect_additional_cache_metadata: Callable[[], dict[str, Any]]
+    restore_additional_state_from_cache: Callable[[dict[str, Any]], None]
     extract_timestamp_key: Callable[[Scene], int | None]
     extract_sequence_key: Callable[[Scene, int], int]
 
@@ -153,9 +154,9 @@ def build_default_metadata_payload(
     *,
     total_lines: int,
     sequence_lookup_enabled: bool,
-    timestamp_to_sequence: Dict[int, int],
+    timestamp_to_sequence: dict[int, int],
     artifact_identity: SceneArtifactIdentity,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build the common metadata payload for persisted store artifacts."""
     return {
         "total_lines": total_lines,
@@ -166,7 +167,7 @@ def build_default_metadata_payload(
     }
 
 
-def _persisted_metadata(metadata: Dict[str, Any], history: SceneHistoryRecords) -> Dict[str, Any]:
+def _persisted_metadata(metadata: dict[str, Any], history: SceneHistoryRecords) -> dict[str, Any]:
     """Return *metadata* with the history records added for persistence.
 
     Catalogs keep the parsed records rather than their JSON form, which would add thousands of live objects.
@@ -190,11 +191,11 @@ def build_scene_artifact_identity(
 
 def parse_scene_catalog(
     *,
-    raw_metadata: Dict[str, Any],
+    raw_metadata: dict[str, Any],
     cached_frames: Iterable[int],
     expected_artifact_identity: SceneArtifactIdentity,
     sequence_lookup_enabled: bool,
-    restore_additional_state: Callable[[Dict[str, Any]], None],
+    restore_additional_state: Callable[[dict[str, Any]], None],
 ) -> SceneCatalog | None:
     """Validate persisted metadata and return a catalog when accepted."""
     if raw_metadata.get("artifact_identity") != expected_artifact_identity.to_metadata():
@@ -340,7 +341,7 @@ class SourceIndexedSceneStore:
             source_path=self._file_path,
             suffix=".scene-index.json",
         )
-        self._line_locations: Dict[int, Tuple[int, int]] = {}
+        self._line_locations: dict[int, tuple[int, int]] = {}
         self._catalog = self._load_or_build()
 
     @property
@@ -359,13 +360,13 @@ class SourceIndexedSceneStore:
                     return catalog
         return self._rebuild()
 
-    def _restore_from_index_payload(self, raw_payload: Dict[str, Any]) -> SceneCatalog | None:
+    def _restore_from_index_payload(self, raw_payload: dict[str, Any]) -> SceneCatalog | None:
         raw_metadata = raw_payload.get("metadata")
         raw_locations = raw_payload.get("line_locations")
         if not isinstance(raw_metadata, dict) or not isinstance(raw_locations, dict):
             return None
 
-        line_locations: Dict[int, Tuple[int, int]] = {}
+        line_locations: dict[int, tuple[int, int]] = {}
         try:
             for key, value in raw_locations.items():
                 if not isinstance(value, (list, tuple)) or len(value) != 2:
@@ -393,9 +394,9 @@ class SourceIndexedSceneStore:
 
     def _rebuild(self) -> SceneCatalog:
         logger.debug(f"Building source index store for {self._file_path.name}")
-        line_locations: Dict[int, Tuple[int, int]] = {}
-        timestamp_to_sequence: Dict[int, int] = {}
-        sequence_to_timestamp: Dict[int, int] = {}
+        line_locations: dict[int, tuple[int, int]] = {}
+        timestamp_to_sequence: dict[int, int] = {}
+        sequence_to_timestamp: dict[int, int] = {}
         collector = SceneHistoryCollector()
         total_lines = 0
 

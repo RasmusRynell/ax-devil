@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
@@ -44,8 +44,8 @@ from ax_devil.plugins.decoders.adf_beta.common import (
 logger = get_logger(__name__)
 
 
-def _parse_class_attributes(cls_type: str, c_raw: Dict[str, Any], obs: Dict[str, Any]) -> List[Attribute]:
-    attrs: List[Attribute] = []
+def _parse_class_attributes(cls_type: str, c_raw: dict[str, Any], obs: dict[str, Any]) -> list[Attribute]:
+    attrs: list[Attribute] = []
     if cls_type in {"Car", "Bus", "Truck", "Vehicle"}:
         if color := parse_colors_webcolors(c_raw.get("colors")):
             attrs.append(Attribute(name="vehicle_colors", value=color))
@@ -62,7 +62,7 @@ def _parse_class_attributes(cls_type: str, c_raw: Dict[str, Any], obs: Dict[str,
     return attrs
 
 
-def _make_observation(obs: Dict[str, Any]) -> tuple[Observation, Optional[Image]]:
+def _make_observation(obs: dict[str, Any]) -> tuple[Observation, Image | None]:
     """Create an Observation (and optional Image) from a single ADF observation."""
     geom = parse_bounding_box(obs.get("bounding_box"))
     if geom is None:
@@ -78,7 +78,7 @@ def _make_observation(obs: Dict[str, Any]) -> tuple[Observation, Optional[Image]
         )
         c_raw = classes[0] if classes else None
 
-    cls: List[Classification] = []
+    cls: list[Classification] = []
     if c_raw is not None:
         c_type = c_raw["type"]
         c_score: Score | None = c_raw.get("score")
@@ -131,11 +131,11 @@ def _make_observation(obs: Dict[str, Any]) -> tuple[Observation, Optional[Image]
     return ob, img
 
 
-def decode_adf_json(data: Dict[str, Any]) -> Scene:  # noqa: C901 - complexity OK
+def decode_adf_json(data: dict[str, Any]) -> Scene:  # noqa: C901 - complexity OK
     """Convert ADF JSON *dict* to a `Scene`."""
     frames = data.get("frames") or [data.get("frame") or data]
 
-    frames_with_ts: List[tuple[Dict[str, Any], datetime]] = []
+    frames_with_ts: list[tuple[dict[str, Any], datetime]] = []
     for frame in frames:
         ts = parse_timestamp(frame.get("timestamp"))
         if ts is None:
@@ -153,7 +153,7 @@ def decode_adf_json(data: Dict[str, Any]) -> Scene:  # noqa: C901 - complexity O
         )
 
     scene = Scene(time_slice=TimeSlice(start=t0, end=t1))
-    entities: Dict[str, Entity] = {}
+    entities: dict[str, Entity] = {}
 
     for frame, frame_ts in frames_with_ts:
         for obs in frame.get("observations", []):

@@ -4,7 +4,7 @@ Generic base class that adds fade in/out functionality to any QWidget.
 Provides smooth opacity animations and auto-hide functionality for video overlays.
 """
 
-from typing import Optional, cast
+from typing import cast
 
 from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QTimer
 from PySide6.QtGui import QEnterEvent
@@ -28,11 +28,11 @@ class FadingWidget(QWidget):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         fade_duration: int = DEFAULT_FADE_DURATION,
         auto_hide_delay: int = DEFAULT_AUTO_HIDE_DELAY,
         initial_opacity: float = 0.0,
-        hover_element_name: Optional[str] = None,
+        hover_element_name: str | None = None,
     ) -> None:
         super().__init__(parent)
 

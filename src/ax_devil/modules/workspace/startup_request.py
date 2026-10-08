@@ -75,11 +75,6 @@ class LiveStreamStartup:
     websocket_topic: str = ""
     websocket_channel_id: int = 1
 
-    def __post_init__(self) -> None:
-        """Normalize legacy string overlay modes at the startup boundary."""
-        if isinstance(self.overlay_mode, str) and not isinstance(self.overlay_mode, LiveOverlayMode):
-            object.__setattr__(self, "overlay_mode", LiveOverlayMode.from_value(self.overlay_mode))
-
     def resolve(self, intake: WorkspaceIntake) -> tuple[Content, ...]:
         """Return the live stream this request opens."""
         return (

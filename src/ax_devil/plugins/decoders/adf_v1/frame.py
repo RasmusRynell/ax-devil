@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
@@ -41,8 +41,8 @@ from .common import build_adf_frame_v1_filter_config, decode_scene_payload
 logger = get_logger(__name__)
 
 
-def _parse_class_attributes(class_type: str, class_data: Dict[str, Any]) -> List[Attribute]:
-    attributes: List[Attribute] = []
+def _parse_class_attributes(class_type: str, class_data: dict[str, Any]) -> list[Attribute]:
+    attributes: list[Attribute] = []
     if class_type in {"human", "person"}:
         if "upper_clothing_colors" in class_data:
             attributes.append(
@@ -73,7 +73,7 @@ def _parse_class_attributes(class_type: str, class_data: Dict[str, Any]) -> List
     return attributes
 
 
-def _create_classification(class_data: Dict[str, Any]) -> List[Classification]:
+def _create_classification(class_data: dict[str, Any]) -> list[Classification]:
     class_type_raw = class_data.get("type")
     if class_type_raw is None:
         raise ValueError("Classification missing type")
@@ -106,7 +106,7 @@ def _create_classification(class_data: Dict[str, Any]) -> List[Classification]:
     return [Classification(type=mapped_type, score=score, attributes=attributes)]
 
 
-def _create_world_velocity(velocity_data: Dict[str, Any] | None) -> Optional[WorldVelocity]:
+def _create_world_velocity(velocity_data: dict[str, Any] | None) -> WorldVelocity | None:
     if velocity_data is None:
         return None
 
@@ -119,7 +119,7 @@ def _create_world_velocity(velocity_data: Dict[str, Any] | None) -> Optional[Wor
     return WorldVelocity(pitch=float(pitch), speed=float(speed), yaw=float(yaw))
 
 
-def _parse_geographical_coordinates(geoposition_data: Dict[str, Any] | None) -> Optional[GeographicCoordinates]:
+def _parse_geographical_coordinates(geoposition_data: dict[str, Any] | None) -> GeographicCoordinates | None:
     if geoposition_data is None:
         return None
     if geoposition_data.get("latitude") is None or geoposition_data.get("longitude") is None:
@@ -133,7 +133,7 @@ def _parse_geographical_coordinates(geoposition_data: Dict[str, Any] | None) -> 
     )
 
 
-def _parse_world_coordinates(world_position_data: Dict[str, Any] | None) -> Optional[SphericalCoordinates]:
+def _parse_world_coordinates(world_position_data: dict[str, Any] | None) -> SphericalCoordinates | None:
     if world_position_data is None:
         return None
 
@@ -146,7 +146,7 @@ def _parse_world_coordinates(world_position_data: Dict[str, Any] | None) -> Opti
     return SphericalCoordinates(distance=float(distance), azimuth=float(azimuth), elevation=float(elevation))
 
 
-def _decode_detection(detection_data: Dict[str, Any], frame_timestamp: datetime) -> Entity:
+def _decode_detection(detection_data: dict[str, Any], frame_timestamp: datetime) -> Entity:
     track_id_raw = detection_data.get("object_track_id")
     if track_id_raw is None:
         raise ValueError("Detection missing object_track_id")
@@ -181,7 +181,7 @@ def _decode_detection(detection_data: Dict[str, Any], frame_timestamp: datetime)
     return entity
 
 
-def _decode_track_event(track_event: Dict[str, Any], frame_timestamp: datetime) -> Delete | Rename:
+def _decode_track_event(track_event: dict[str, Any], frame_timestamp: datetime) -> Delete | Rename:
     event_type = str(track_event.get("type", "")).lower()
     timestamp = TimeSlice(start=frame_timestamp, end=frame_timestamp)
 
@@ -205,7 +205,7 @@ def _decode_track_event(track_event: Dict[str, Any], frame_timestamp: datetime) 
     raise ValueError(f"Unsupported track event type '{track_event.get('type')}'")
 
 
-def decode_adf_frame_v1_data(data: Dict[str, Any]) -> Scene:
+def decode_adf_frame_v1_data(data: dict[str, Any]) -> Scene:
     """Convert ADF Frame v1 payload dict to a Scene."""
     if "frame" in data:
         data = data["frame"]

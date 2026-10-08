@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import RLock
-from typing import Callable, List
 
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 _METRICS_ENABLED = True
 _LOCK = RLock()
-_LISTENERS: List[Callable[[bool], None]] = []
+_LISTENERS: list[Callable[[bool], None]] = []
 
 
 def is_metrics_enabled() -> bool:

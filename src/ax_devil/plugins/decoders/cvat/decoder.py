@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import math
 import xml.etree.ElementTree as ET
-from collections.abc import MutableMapping
+from collections.abc import Iterable, Iterator, MutableMapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.predicate_utils import make_classification_predicate
@@ -41,12 +41,12 @@ class CVATBaseShapePayload(TypedDict, total=False):
     entity_id: str
     frame_index: int
     label: str
-    track_id: Optional[int]
-    attributes: Dict[str, Any]
+    track_id: int | None
+    attributes: dict[str, Any]
     occluded: bool
     keyframe: bool
-    z_order: Optional[int]
-    group: Optional[int]
+    z_order: int | None
+    group: int | None
     source: str
 
 
@@ -60,7 +60,7 @@ class CVATBoxPayload(CVATBaseShapePayload):
 
 class CVATPolygonPayload(CVATBaseShapePayload):
     type: str
-    points: List[CVATPointPayload]
+    points: list[CVATPointPayload]
 
 
 CVATShapePayload = CVATBoxPayload | CVATPolygonPayload
@@ -70,7 +70,7 @@ class CVATFramePayload(TypedDict):
     frame_index: int
     width: int
     height: int
-    shapes: List[CVATShapePayload]
+    shapes: list[CVATShapePayload]
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,15 +83,15 @@ class CVATFileMetadata:
     start_frame: int
     stop_frame: int
     size: int
-    labels: Tuple[str, ...]
-    all_metadata: Dict[str, Any]
+    labels: tuple[str, ...]
+    all_metadata: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class CVATParseResult:
     """Result from parsing a CVAT XML document."""
 
-    payloads: List[CVATDecoderPayload]
+    payloads: list[CVATDecoderPayload]
     metadata: CVATFileMetadata
 
 
@@ -149,7 +149,7 @@ def parse_cvat_document(xml_source: str | Path) -> CVATParseResult:
     return CVATParseResult(payloads=payloads, metadata=metadata)
 
 
-def iter_cvat_frames(xml_source: str | Path) -> Iterator[Tuple[int, CVATFramePayload]]:
+def iter_cvat_frames(xml_source: str | Path) -> Iterator[tuple[int, CVATFramePayload]]:
     """Yield frame payloads directly from a CVAT XML document."""
     parse_result = parse_cvat_document(xml_source)
     for frame_payload in parse_result.payloads:
@@ -199,7 +199,7 @@ def decode_cvat_frame(payload: CVATDecoderPayload) -> Scene:
     if not isinstance(raw_shapes, list):
         raise ValueError("CVAT payload 'shapes' must be a list.")
 
-    entities: Dict[EntityId, Entity] = {}
+    entities: dict[EntityId, Entity] = {}
 
     for raw_shape in raw_shapes:
         if not isinstance(raw_shape, MutableMapping):
@@ -256,7 +256,7 @@ def decode_cvat_frame(payload: CVATDecoderPayload) -> Scene:
 def build_cvat_filter_config(labels: Iterable[str]) -> FilterConfig:
     """Construct a FilterConfig for CVAT annotations from the supplied labels."""
     unique_labels = sorted({label for label in labels if label})
-    options: List[FilterOption] = []
+    options: list[FilterOption] = []
 
     for index, label in enumerate(unique_labels):
         options.append(
@@ -286,14 +286,14 @@ def build_cvat_filter_config(labels: Iterable[str]) -> FilterConfig:
 # ---------------------------------------------------------------------------#
 
 
-def _collect_frame_shapes(xml_path: Path) -> Tuple[Dict[int, List[CVATShapePayload]], set[str]]:
+def _collect_frame_shapes(xml_path: Path) -> tuple[dict[int, list[CVATShapePayload]], set[str]]:
     """Collect CVAT shapes grouped by frame index."""
-    frame_shapes: Dict[int, List[CVATShapePayload]] = {}
+    frame_shapes: dict[int, list[CVATShapePayload]] = {}
     labels: set[str] = set()
-    current_track_id: Optional[int] = None
-    current_track_label: Optional[str] = None
+    current_track_id: int | None = None
+    current_track_label: str | None = None
     shape_counter = 0
-    current_image_frame: Optional[int] = None
+    current_image_frame: int | None = None
 
     for event, element in ET.iterparse(xml_path, events=("start", "end")):
         tag = element.tag
@@ -312,7 +312,7 @@ def _collect_frame_shapes(xml_path: Path) -> Tuple[Dict[int, List[CVATShapePaylo
         elif event == "end":
             if tag in {"box", "polygon"}:
                 frame_str = element.attrib.get("frame")
-                frame_candidate: Optional[int]
+                frame_candidate: int | None
                 if frame_str is None and current_image_frame is not None:
                     frame_candidate = current_image_frame
                 else:
@@ -337,7 +337,7 @@ def _collect_frame_shapes(xml_path: Path) -> Tuple[Dict[int, List[CVATShapePaylo
 
                 labels.add(label.lower())
 
-                track_id_value: Optional[int]
+                track_id_value: int | None
                 if current_track_id is not None:
                     track_id_value = current_track_id
                     entity_id = f"cvat_track_{current_track_id}"
@@ -352,7 +352,7 @@ def _collect_frame_shapes(xml_path: Path) -> Tuple[Dict[int, List[CVATShapePaylo
                 z_order = _safe_int(element.attrib.get("z_order"))
                 group = _safe_int(element.attrib.get("group_id"))
 
-                shape_payload: Optional[CVATShapePayload]
+                shape_payload: CVATShapePayload | None
                 if tag == "box":
                     shape_payload = _build_box_payload(
                         element.attrib,
@@ -404,9 +404,9 @@ def _collect_frame_shapes(xml_path: Path) -> Tuple[Dict[int, List[CVATShapePaylo
     return frame_shapes, labels
 
 
-def _extract_attribute_children(element: ET.Element) -> Dict[str, Any]:
+def _extract_attribute_children(element: ET.Element) -> dict[str, Any]:
     """Extract <attribute> children into a dictionary."""
-    attributes: Dict[str, Any] = {}
+    attributes: dict[str, Any] = {}
     for child in list(element):
         if child.tag != "attribute":
             continue
@@ -420,18 +420,18 @@ def _extract_attribute_children(element: ET.Element) -> Dict[str, Any]:
 
 
 def _build_box_payload(
-    attrib: Dict[str, str],
+    attrib: dict[str, str],
     *,
     entity_id: str,
     frame_index: int,
     label: str,
-    track_id: Optional[int],
-    attributes: Dict[str, Any],
+    track_id: int | None,
+    attributes: dict[str, Any],
     occluded: bool,
     keyframe: bool,
-    z_order: Optional[int],
-    group: Optional[int],
-) -> Optional[CVATBoxPayload]:
+    z_order: int | None,
+    group: int | None,
+) -> CVATBoxPayload | None:
     try:
         xtl = float(attrib["xtl"])
         ytl = float(attrib["ytl"])
@@ -466,24 +466,24 @@ def _build_box_payload(
 
 
 def _build_polygon_payload(
-    attrib: Dict[str, str],
+    attrib: dict[str, str],
     *,
     entity_id: str,
     frame_index: int,
     label: str,
-    track_id: Optional[int],
-    attributes: Dict[str, Any],
+    track_id: int | None,
+    attributes: dict[str, Any],
     occluded: bool,
     keyframe: bool,
-    z_order: Optional[int],
-    group: Optional[int],
-) -> Optional[CVATPolygonPayload]:
+    z_order: int | None,
+    group: int | None,
+) -> CVATPolygonPayload | None:
     points_attr = attrib.get("points")
     if not points_attr:
         logger.debug("Skipping CVAT polygon without points attribute.")
         return None
 
-    points: List[CVATPointPayload] = []
+    points: list[CVATPointPayload] = []
     for raw_point in points_attr.split(";"):
         pair = raw_point.strip()
         if not pair:
@@ -551,7 +551,7 @@ def _decode_geometry(
         points_payload = raw_shape.get("points", [])
         if not isinstance(points_payload, list):
             return None
-        points: List[NormalizedPoint] = []
+        points: list[NormalizedPoint] = []
         for raw_point in points_payload:
             if not isinstance(raw_point, MutableMapping):
                 continue
@@ -569,16 +569,16 @@ def _decode_geometry(
     return None
 
 
-def _extract_all_metadata(meta: ET.Element) -> Dict[str, Any]:
+def _extract_all_metadata(meta: ET.Element) -> dict[str, Any]:
     """Extract all metadata from the meta tag recursively as a nested dict."""
 
-    def extract_element_data(element: ET.Element) -> Dict[str, Any] | Any:
-        data: Dict[str, Any] = {}
+    def extract_element_data(element: ET.Element) -> dict[str, Any] | Any:
+        data: dict[str, Any] = {}
 
         if element.attrib:
             data["@attributes"] = dict(element.attrib)
 
-        children: Dict[str, Any] = {}
+        children: dict[str, Any] = {}
         for child in list(element):
             child_data = extract_element_data(child)
             tag_name = child.tag
@@ -603,7 +603,7 @@ def _extract_all_metadata(meta: ET.Element) -> Dict[str, Any]:
     return result if isinstance(result, dict) else {"text": result}
 
 
-def _extract_essential_fields(all_metadata: Dict[str, Any]) -> Tuple[int, int, str, int, int, int]:
+def _extract_essential_fields(all_metadata: dict[str, Any]) -> tuple[int, int, str, int, int, int]:
     """Extract essential fields from complete metadata."""
     task_data = all_metadata.get("task", {})
     original_size = task_data.get("original_size", {})
@@ -631,7 +631,7 @@ def _extract_essential_fields(all_metadata: Dict[str, Any]) -> Tuple[int, int, s
     return width, height, task_name, start_frame, stop_frame, size
 
 
-def _safe_int(value: Any) -> Optional[int]:
+def _safe_int(value: Any) -> int | None:
     try:
         if value is None:
             return None

@@ -2,9 +2,10 @@
 
 import json
 import tempfile
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from unittest.mock import call, patch
 
 import pytest

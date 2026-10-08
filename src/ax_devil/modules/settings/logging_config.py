@@ -30,8 +30,9 @@ import json as _json
 import logging as _logging
 import logging.handlers as _handlers
 import os as _os
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping
+from typing import Any
 
 from PySide6.QtCore import QLoggingCategory
 

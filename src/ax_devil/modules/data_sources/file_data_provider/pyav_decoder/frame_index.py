@@ -7,7 +7,7 @@ import tempfile
 from collections import Counter
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import av
 
@@ -31,7 +31,7 @@ class FrameIndex:
     def __init__(
         self,
         video_path: Path,
-        cache_path: Optional[Path] = None,
+        cache_path: Path | None = None,
         open_config: VideoOpenConfig | None = None,
     ) -> None:
         self.video_path = video_path
@@ -41,7 +41,7 @@ class FrameIndex:
         self.pts_list: list[int] = []
         self.is_key_list: list[bool] = []
         self.pts_to_index: dict[int, int] = {}
-        self._keyframe_indices: Optional[list[int]] = None
+        self._keyframe_indices: list[int] | None = None
 
     def _fingerprint(self) -> tuple[int, int, int]:
         if self.video_path.exists():

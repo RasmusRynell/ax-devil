@@ -4,8 +4,6 @@ Professional video control panels with semi-transparent styling and advanced UX 
 Enhanced with fading overlay functionality for floating controls.
 """
 
-from typing import Optional
-
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ax_devil.core.playback_speed import (
@@ -143,7 +141,7 @@ class ClickableSlider(QtWidgets.QSlider):
     def __init__(
         self,
         orientation: QtCore.Qt.Orientation,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(orientation, parent)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -214,7 +212,7 @@ class BaseVideoControlPanel(FadingWidget):
     pauseRequested = QtCore.Signal()
     stateChanged = QtCore.Signal(bool)
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         # Initialize FadingWidget with control panel-specific settings
         super().__init__(
             parent=parent,
@@ -329,7 +327,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
     scrubFinished = QtCore.Signal()
     playbackSpeedChanged = QtCore.Signal(float)
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._user_is_scrubbing = False
 

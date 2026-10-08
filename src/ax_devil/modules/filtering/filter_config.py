@@ -8,8 +8,9 @@ layer treats configs as immutable, so callers are expected to construct new
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, Iterator, Mapping, Tuple
+from typing import TYPE_CHECKING
 
 from ax_devil.modules.scene.model import Entity, KnownClassificationType
 
@@ -47,7 +48,7 @@ class FilterOption:
 class FilterConfig:
     """Immutable bundle of filter options provided by a decoder."""
 
-    options: Tuple[FilterOption, ...]
+    options: tuple[FilterOption, ...]
     name: str | None = None
 
     def __post_init__(self) -> None:
@@ -63,13 +64,13 @@ class FilterConfig:
         """Return whether every option declares a policy for recorded classification types."""
         return all(option.classification_filter is not None for option in self.options)
 
-    def sorted_options(self) -> Tuple[FilterOption, ...]:
+    def sorted_options(self) -> tuple[FilterOption, ...]:
         """Return options sorted by provided sort key or definition order."""
         enumerated = list(enumerate(self.options))
         enumerated.sort(key=lambda item: ((item[1].sort_key if item[1].sort_key is not None else item[0]), item[0]))
         return tuple(option for _, option in enumerated)
 
-    def option_ids(self) -> Tuple[str, ...]:
+    def option_ids(self) -> tuple[str, ...]:
         """Return option identifiers preserving definition order."""
         return tuple(option.id for option in self.options)
 
@@ -80,7 +81,7 @@ class FilterState:
     __slots__ = ("_options", "_flags", "id_query")
 
     def __init__(self, config: FilterConfig, initial: Mapping[str, bool] | None = None, *, id_query: str = "") -> None:
-        self._options: Dict[str, FilterOption] = {option.id: option for option in config.options}
+        self._options: dict[str, FilterOption] = {option.id: option for option in config.options}
         flags = {option.id: option.default_enabled for option in config.options}
 
         if initial:
@@ -89,7 +90,7 @@ class FilterState:
                     raise KeyError(f"Unknown filter option '{option_id}'")
                 flags[option_id] = bool(enabled)
 
-        self._flags: Dict[str, bool] = flags
+        self._flags: dict[str, bool] = flags
         self.id_query = id_query
 
     def is_enabled(self, option_id: str) -> bool:
@@ -102,7 +103,7 @@ class FilterState:
             raise KeyError(f"Unknown filter option '{option_id}'")
         self._flags[option_id] = bool(enabled)
 
-    def items(self) -> Iterator[Tuple[str, bool]]:
+    def items(self) -> Iterator[tuple[str, bool]]:
         """Yield (option_id, enabled) pairs in definition order."""
         for option_id in self._options:
             yield option_id, self._flags[option_id]

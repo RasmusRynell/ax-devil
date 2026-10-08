@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, List, Tuple, TypedDict
+from typing import TypedDict
 
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.predicate_utils import make_classification_predicate
@@ -50,7 +51,7 @@ class MOTFramePayload(TypedDict):
     frame_index: int
     width: int
     height: int
-    detections: List[MOTDetectionPayload]
+    detections: list[MOTDetectionPayload]
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +216,7 @@ def prepare_mot_frame_payloads(
     *,
     width: int = DEFAULT_FRAME_WIDTH,
     height: int = DEFAULT_FRAME_HEIGHT,
-) -> Tuple[list[MOTDecoderPayload], MOTFileStats]:
+) -> tuple[list[MOTDecoderPayload], MOTFileStats]:
     """Convert MOT CSV rows into serialised JSON payloads (one per frame)."""
     frames: dict[int, list[MOTDetectionPayload]] = {}
     total_detections = 0

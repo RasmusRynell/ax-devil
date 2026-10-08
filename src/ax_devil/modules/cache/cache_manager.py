@@ -4,7 +4,6 @@ import hashlib
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
@@ -18,7 +17,7 @@ class CacheInfo:
     def __init__(self, path: Path, cache_type: str = "general"):
         self.path = path
         self.cache_type = cache_type
-        self.files: List[Path] = []
+        self.files: list[Path] = []
         self.total_size = 0
         self.file_count = 0
 
@@ -49,8 +48,8 @@ class CacheInfo:
 class CacheStatsSnapshot:
     """Represents a scoped view of cache statistics."""
 
-    all: Dict[str, CacheInfo]
-    scoped: Dict[str, CacheInfo]
+    all: dict[str, CacheInfo]
+    scoped: dict[str, CacheInfo]
 
 
 class CacheManager:
@@ -59,7 +58,7 @@ class CacheManager:
     def __init__(self) -> None:
         self.config_manager = ConfigManager()
 
-    def generate_cache_filename(self, source_path: Path, suffix: str, content_hash: Optional[str] = None) -> str:
+    def generate_cache_filename(self, source_path: Path, suffix: str, content_hash: str | None = None) -> str:
         """Generate unique cache filename for a source file.
 
         Args:
@@ -82,9 +81,7 @@ class CacheManager:
         else:
             return f"{safe_name}-{path_hash}{suffix}"
 
-    def get_cache_path(
-        self, cache_type: str, source_path: Path, suffix: str, content_hash: Optional[str] = None
-    ) -> Path:
+    def get_cache_path(self, cache_type: str, source_path: Path, suffix: str, content_hash: str | None = None) -> Path:
         """Get full cache file path for a source file.
 
         Args:
@@ -107,7 +104,7 @@ class CacheManager:
         subdir.mkdir(parents=True, exist_ok=True)
         return subdir
 
-    def get_cache_directories(self) -> Dict[str, CacheInfo]:
+    def get_cache_directories(self) -> dict[str, CacheInfo]:
         """Discover all cache directories dynamically."""
         cache_dirs = {}
         base_dir = self._get_base_cache_dir()
@@ -123,7 +120,7 @@ class CacheManager:
 
         return cache_dirs
 
-    def get_cache_stats(self, cache_type: Optional[str] = None) -> CacheStatsSnapshot:
+    def get_cache_stats(self, cache_type: str | None = None) -> CacheStatsSnapshot:
         """Get current cache statistics, optionally filtered by cache type."""
 
         cache_dirs = self.get_cache_directories()
@@ -135,7 +132,7 @@ class CacheManager:
 
         return CacheStatsSnapshot(all=cache_dirs, scoped=scoped_dirs)
 
-    def _filter_cache_stats(self, cache_stats: Dict[str, CacheInfo], cache_type: Optional[str]) -> Dict[str, CacheInfo]:
+    def _filter_cache_stats(self, cache_stats: dict[str, CacheInfo], cache_type: str | None) -> dict[str, CacheInfo]:
         """Filter cache statistics by cache type."""
 
         if not cache_type:
@@ -143,17 +140,17 @@ class CacheManager:
 
         return {name: info for name, info in cache_stats.items() if info.cache_type == cache_type}
 
-    def aggregate_cache_stats(self, cache_stats: Dict[str, CacheInfo]) -> Tuple[int, int]:
+    def aggregate_cache_stats(self, cache_stats: dict[str, CacheInfo]) -> tuple[int, int]:
         """Aggregate cache statistics into totals."""
 
         total_files = sum(info.file_count for info in cache_stats.values())
         total_size = sum(info.total_size for info in cache_stats.values())
         return total_files, total_size
 
-    def format_cache_summary(self, cache_stats: Dict[str, CacheInfo], include_total: bool = True) -> str:
+    def format_cache_summary(self, cache_stats: dict[str, CacheInfo], include_total: bool = True) -> str:
         """Create a human readable summary for cache statistics."""
 
-        lines: List[str] = []
+        lines: list[str] = []
         total_files = 0
         total_size = 0
 
@@ -190,7 +187,7 @@ class CacheManager:
         else:
             return f"{size:.1f} {units[unit_index]}"
 
-    def clear_cache(self, cache_type: Optional[str] = None, force: bool = False) -> Tuple[bool, str]:
+    def clear_cache(self, cache_type: str | None = None, force: bool = False) -> tuple[bool, str]:
         """Clear cache directories.
 
         Args:

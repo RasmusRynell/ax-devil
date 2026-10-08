@@ -7,11 +7,12 @@ the ones on the displayed frame highlighted. The list scrolls itself so only vis
 from __future__ import annotations
 
 import enum
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from html import escape
 from math import ceil
-from typing import Any, ClassVar, Protocol, Sequence
+from typing import Any, ClassVar, Protocol
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QPersistentModelIndex, QRect, QSize, Qt, Signal
 from PySide6.QtGui import (

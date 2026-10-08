@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any
 
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
@@ -54,7 +55,7 @@ class MOTChallengeSceneDataProvider(SceneDecoderFileProvider):
     ) -> None:
         self._width = int(width)
         self._height = int(height)
-        self._file_stats: Optional[MOTFileStats] = None
+        self._file_stats: MOTFileStats | None = None
 
         super().__init__(
             file_path=file_path,
@@ -77,12 +78,12 @@ class MOTChallengeSceneDataProvider(SceneDecoderFileProvider):
 
         return super()._build_scene_maps(frame_payloads, decoder)
 
-    def _collect_additional_cache_metadata(self) -> Dict[str, Any]:
+    def _collect_additional_cache_metadata(self) -> dict[str, Any]:
         if self._file_stats is None:
             return {}
         return {"mot_file_stats": asdict(self._file_stats)}
 
-    def _restore_additional_state_from_cache(self, raw_metadata: Dict[str, Any]) -> None:
+    def _restore_additional_state_from_cache(self, raw_metadata: dict[str, Any]) -> None:
         stats_payload = raw_metadata.get("mot_file_stats")
         if not isinstance(stats_payload, dict):
             self._file_stats = None
@@ -97,6 +98,6 @@ class MOTChallengeSceneDataProvider(SceneDecoderFileProvider):
             self._file_stats = None
 
     @property
-    def file_stats(self) -> Optional[MOTFileStats]:
+    def file_stats(self) -> MOTFileStats | None:
         """Return summary statistics collected during the last parse, if available."""
         return self._file_stats

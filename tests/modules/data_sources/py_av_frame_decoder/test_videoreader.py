@@ -12,8 +12,9 @@ Note: Integration tests are in test_integration.py
 import subprocess
 import threading
 import time
+from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import Any, Callable, Generator
+from typing import Any
 
 import numpy as np
 import pytest
