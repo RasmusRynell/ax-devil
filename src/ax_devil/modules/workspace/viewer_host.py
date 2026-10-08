@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtGui import QResizeEvent
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
@@ -72,6 +73,15 @@ class WorkspaceWidget(QFrame):
         # Title label on the left; italic while the pane is a replaceable preview
         self._title_label = QLabel("")
         self._header_layout.addWidget(self._title_label)
+
+        # Muted facts about the shown content; hidden when the header is too narrow for them
+        self._details_label = QLabel("")
+        self._details_label.setStyleSheet("color: palette(placeholder-text);")
+        self._details_label.setContentsMargins(Space.S, 0, 0, 0)
+        # Adds nothing to the pane's minimum width; the details hide instead when the pane gets narrow.
+        self._details_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        TextRole.SMALL.apply(self._details_label)
+        self._header_layout.addWidget(self._details_label)
 
         # Spacer to push buttons to the right
         self._header_layout.addStretch()
@@ -157,6 +167,28 @@ class WorkspaceWidget(QFrame):
             button.setFixedSize(Height.CONTROL.px, Height.CONTROL.px)
         self._update_pin_state()
 
+    def set_header_details(self, text: str) -> None:
+        """Show *text*, such as the video's size, frame rate and length, muted next to the title."""
+        self._details_label.setText(text)
+        self._fit_header_details()
+
+    def header_details(self) -> str:
+        """Return the details shown next to the title, or an empty string when they are hidden or unset."""
+        return self._details_label.text() if not self._details_label.isHidden() else ""
+
+    def _fit_header_details(self) -> None:
+        """Show the details only when they fit beside the title and buttons."""
+        text = self._details_label.text()
+        self._details_label.setVisible(bool(text))
+        # The layout's preferred width leaves out the details, whose size policy ignores their own.
+        if text and self._header_layout.sizeHint().width() + self._details_label.sizeHint().width() > self.width():
+            self._details_label.setVisible(False)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Refit the header details to the new width."""
+        super().resizeEvent(event)
+        self._fit_header_details()
+
     def get_content_layout(self) -> QVBoxLayout:
         """Get the content layout for subclasses to add their widgets.
 
@@ -213,6 +245,7 @@ class WorkspaceWidget(QFrame):
         title_font = (TextRole.STRONG if self._pinned else TextRole.BODY).font()
         title_font.setItalic(not self._pinned)
         self._title_label.setFont(title_font)
+        self._fit_header_details()
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
         """Return the workspace item currently visible in the widget."""

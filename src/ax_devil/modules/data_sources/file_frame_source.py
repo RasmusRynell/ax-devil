@@ -231,6 +231,15 @@ class FileFrameSource(SeekableFrameSource):
         """Get total number of frames in the video."""
         return self.total_frames
 
+    def get_cached_ranges(self) -> tuple[tuple[int, int], ...]:
+        """Return the frames that play without decoding, as inclusive ``(first, last)`` runs."""
+        return self._frame_delivery.get_cached_ranges() if self._frame_delivery is not None else ()
+
+    def get_frame_size(self) -> tuple[int, int] | None:
+        """Return the video's width and height in pixels, or None when the file does not say."""
+        width, height = self._original_size
+        return (width, height) if width > 0 and height > 0 else None
+
     def get_current_frame(self) -> int:
         """Get current frame position."""
         return self._frame_delivery.get_current_frame() if self._frame_delivery is not None else -1

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
+from ax_devil.modules.chrome.theme import VIDEO_CANVAS
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
@@ -186,20 +187,20 @@ def test_texture_replacement_resize_reparent_and_clear(surface: QuickSurface, qt
     assert surface.grabFramebuffer().pixelColor(250, 150) == QColor("green")
     surface.clear()
     QApplication.processEvents()
-    assert surface.grabFramebuffer().pixelColor(100, 50) == surface.palette().color(QPalette.ColorRole.Window)
+    assert surface.grabFramebuffer().pixelColor(100, 50) == VIDEO_CANVAS
     surface.setParent(None)
 
 
-def test_letterbox_follows_host_palette(surface: QuickSurface) -> None:
+def test_letterbox_stays_video_canvas_when_theme_changes(surface: QuickSurface) -> None:
     surface.set_frame_image(_image("green"), QRectF(50, 0, 100, 100))
     QApplication.processEvents()
-    assert surface.grabFramebuffer().pixelColor(10, 50) == surface.palette().color(QPalette.ColorRole.Window)
+    assert surface.grabFramebuffer().pixelColor(10, 50) == VIDEO_CANVAS
     palette = surface.palette()
     palette.setColor(QPalette.ColorRole.Window, QColor("magenta"))
     surface.setPalette(palette)
     surface.set_frame_image(_image("green"), QRectF(50, 0, 100, 100))
     QApplication.processEvents()
-    assert surface.grabFramebuffer().pixelColor(10, 50) == QColor("magenta")
+    assert surface.grabFramebuffer().pixelColor(10, 50) == VIDEO_CANVAS
     assert surface.grabFramebuffer().pixelColor(100, 50) == QColor("green")
 
 
@@ -364,9 +365,7 @@ def test_operation_kind_reordering_reuses_bounded_pools(surface: QuickSurface) -
 
 
 def test_video_texture_handles_alpha_size_changes_and_latest_upload(surface: QuickSurface) -> None:
-    palette = surface.palette()
-    palette.setColor(QPalette.ColorRole.Window, QColor("transparent"))
-    surface.setPalette(palette)
+    surface.setClearColor(QColor("transparent"))  # Read the texture's own alpha, unblended with the canvas.
     for size, alpha in ((200, False), (200, True), (64, True), (200, False)):
         image = QImage(size, size, QImage.Format.Format_RGBA8888 if alpha else QImage.Format.Format_RGB888)
         image.fill(QColor(180, 20, 40, 128 if alpha else 255))

@@ -24,7 +24,7 @@ from ax_devil.modules.synchronization import TimestampFallbackPolicy
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.engine.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.video_player.engine.viewport_state import NormalizedViewport, ZoomStep
-from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
+from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel, format_timecode
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
 from ax_devil.modules.video_viewer.lane_grid import lane_grid_columns, lane_grid_rows
@@ -46,6 +46,32 @@ from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     TimingDiagnosticsWidget,
 )
 from ax_devil.modules.workspace import EntryLane, SeekableVideoContent
+
+
+def show_video_on_controls(controls: SeekableVideoControlPanel, source: FileFrameSource) -> None:
+    """Let *controls* follow *source*'s frame count, frame rate and cached frames."""
+    controls.show_video(
+        source.get_total_frames(),
+        float(source.fps),
+        source.get_cached_ranges,
+        source.get_frame_timestamps_us(),
+    )
+
+
+def video_details(source: FileFrameSource) -> str:
+    """Return *source*'s size, frame rate and length for the pane header, such as ``1920×1080 · 30 fps · 0:20``."""
+    parts = []
+    size = source.get_frame_size()
+    if size is not None:
+        parts.append(f"{size[0]}×{size[1]}")
+    fps = float(source.fps)
+    if fps > 0:
+        parts.append(f"{round(fps, 2):g} fps")
+        # The last frame's time plus one frame, so variable frame rates show their true length.
+        times = source.get_frame_timestamps_us()
+        length = times[-1] / 1_000_000 + 1 / fps if times else source.get_total_frames() / fps
+        parts.append(format_timecode(length, hundredths=False))
+    return " · ".join(parts)
 
 
 class _FrameDeliveryRelay(QObject):
@@ -130,10 +156,10 @@ class OfflineLane:
         self.display_frame(presentation.display_frame)
         schedule_scene_inspection_update(self.tools_panel, presentation.inspection)
 
-    def set_total_frames(self, total: int) -> None:
-        """Update the lane controls with the source frame count."""
+    def show_video_on_controls(self, source: FileFrameSource) -> None:
+        """Let the lane controls follow *source*'s frames, time and cache."""
         if self.controls is not None:
-            self.controls.set_total_frames(total)
+            show_video_on_controls(self.controls, source)
 
     def sync_playback_state(self, playing: bool) -> None:
         """Synchronize caller-owned controls with the runtime playback state."""
@@ -290,7 +316,7 @@ class OfflineSession(QObject):
             primary_source.sourceFinished.connect(self._on_video_finished)
             primary_lane = self.primary_lane
             if primary_lane is not None:
-                primary_lane.set_total_frames(self.total_frames)
+                primary_lane.show_video_on_controls(primary_source)
         self.set_playback_speed(DEFAULT_PLAYBACK_SPEED)
 
     @property
@@ -364,6 +390,7 @@ class OfflineSession(QObject):
         render_catalog_manager: SceneRenderCatalogManager,
         use_lane_controls: bool = True,
         lane_visibility: dict[int, OverlayVisibility] | None = None,
+        pane_title: str = "",
     ) -> "OfflineSession":
         """Build the displays for one entry over its opened *media*; the session then owns the media.
 
@@ -399,6 +426,7 @@ class OfflineSession(QObject):
                     render_catalog_manager=render_catalog_manager,
                     use_lane_controls=use_lane_controls and len(media.lanes) == 1,
                     lane_visibility={} if lane_visibility is None else lane_visibility,
+                    pane_title=pane_title,
                     rollback=rollback,
                 )
                 for position, opened in enumerate(media.lanes)
@@ -445,24 +473,27 @@ class OfflineSession(QObject):
         lane_index: int,
         lane: EntryLane,
         display: FrameDisplay,
+        pane_title: str,
     ) -> OverlayAlignmentIndicator:
         pane = QWidget(parent_widget)
         pane_layout = QVBoxLayout(pane)
         pane_layout.setContentsMargins(0, 0, 0, 0)
         pane_layout.setSpacing(0)
 
-        name_label = QLabel(lane.display_name or lane.video.display_name, display.viewport)
-        name_label.setObjectName("lane-indicator-label")
-        name_label.setStyleSheet(
-            f"background-color: rgba(0, 0, 0, 160); border-radius: {Radius.CONTROL}px; color: white;"
-            f"padding: {Space.XS}px {Space.M}px;"
-        )
-        display.mount_overlay(
-            name_label,
-            position=OverlayPosition.FRAME_TOP_LEFT,
-            hide_while_inspecting=True,
-            preference=OverlayPreference.LANE_NAMES,
-        )
+        lane_name = lane.display_name or lane.video.display_name
+        if lane_count > 1 or lane_name != pane_title:
+            name_label = QLabel(lane_name, display.viewport)
+            name_label.setObjectName("lane-indicator-label")
+            name_label.setStyleSheet(
+                f"background-color: rgba(0, 0, 0, 160); border-radius: {Radius.CONTROL}px; color: white;"
+                f"padding: {Space.XS}px {Space.M}px;"
+            )
+            display.mount_overlay(
+                name_label,
+                position=OverlayPosition.FRAME_TOP_LEFT,
+                hide_while_inspecting=True,
+                preference=OverlayPreference.LANE_NAMES,
+            )
         alignment_indicator = OverlayAlignmentIndicator(display.viewport)
         display.mount_overlay(alignment_indicator, position=OverlayPosition.FRAME_TOP_RIGHT)
         pane_layout.addWidget(display, 1)
@@ -489,6 +520,7 @@ class OfflineSession(QObject):
         render_catalog_manager: SceneRenderCatalogManager,
         use_lane_controls: bool,
         lane_visibility: dict[int, OverlayVisibility],
+        pane_title: str,
         rollback: ExitStack,
     ) -> OfflineLane:
         lane_content = opened.lane
@@ -501,7 +533,7 @@ class OfflineSession(QObject):
             display.mount_overlay(controls, position=OverlayPosition.BOTTOM_FULL_WIDTH)
         display.enable_side_panel()
         alignment_indicator = cls._add_lane_display(
-            parent_widget, lane_layout, lane_count, position, lane_content, display
+            parent_widget, lane_layout, lane_count, position, lane_content, display, pane_title
         )
 
         pooled_source = source_pool[opened.source_index]

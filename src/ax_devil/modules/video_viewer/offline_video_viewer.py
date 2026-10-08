@@ -31,7 +31,11 @@ from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia, EntryOpening, release_media
 from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
-from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
+from ax_devil.modules.video_viewer.offline_viewer_runtime import (
+    OfflineSession,
+    show_video_on_controls,
+    video_details,
+)
 from ax_devil.modules.workspace import (
     ConsiderationItemRef,
     ConsiderationQuery,
@@ -195,6 +199,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
                     render_catalog_manager=self._render_catalog_manager,
                     use_lane_controls=self._entry_count() == 1,
                     lane_visibility=self._lane_visibility,
+                    pane_title=self.get_display_name(),
                 )
             except Exception as exc:
                 logger.exception(f"Failed to build displays for entry {index + 1}")
@@ -247,8 +252,12 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
             primary_controls.playbackSpeedChanged.connect(self.set_playback_speed)
             primary_controls.set_playback_speed(self._playback_speed)
 
-        total_frames = runtime.total_frames
-        self._sync_global_total_frames(total_frames)
+        primary_source = runtime.get_primary_video_source()
+        if self._has_active_global_controls() and self._global_controls is not None and primary_source is not None:
+            show_video_on_controls(self._global_controls, primary_source)
+        # Lanes of different videos have no single size or length to show.
+        sources = runtime.iter_video_sources()
+        self.set_header_details(video_details(sources[0]) if len(sources) == 1 else "")
 
         self._jump_to_frame(0)
         self._start_playback()
@@ -299,10 +308,6 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         for lane in runtime.lanes:
             lane.display.controlsRequested.connect(self._global_control_visibility.on_mouse_move)
             lane.display.controlsHideRequested.connect(self._global_control_visibility.on_mouse_leave)
-
-    def _sync_global_total_frames(self, total: int) -> None:
-        if self._has_active_global_controls() and self._global_controls is not None:
-            self._global_controls.set_total_frames(total)
 
     def _sync_global_current_frame(self, frame: int) -> None:
         if self._has_active_global_controls() and self._global_controls is not None:
@@ -451,6 +456,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         if runtime is None:
             return
         self._runtime = None
+        self.set_header_details("")
         runtime.cleanup(blocking=blocking)
 
     def get_display_name(self) -> str:

@@ -87,9 +87,16 @@ class _TrackedFrameSource(SeekableFrameSource):
         self._playback_speed = 1.0
         self.speed_updates: list[float] = []
         self.async_frame_requests: list[int] = []
+        self.fps = 25.0
 
     def get_total_frames(self) -> int:
         return self._total_frames
+
+    def get_frame_size(self) -> tuple[int, int] | None:
+        return (640, 480)
+
+    def get_cached_ranges(self) -> tuple[tuple[int, int], ...]:
+        return ()
 
     def get_current_frame(self) -> int:
         return self._current_frame
@@ -336,6 +343,9 @@ def _assert_renderer_metrics_match_live_widgets(
 def _stub_frame_source() -> MagicMock:
     source = MagicMock()
     source.get_total_frames.return_value = 100
+    source.fps = 25.0
+    source.get_frame_size.return_value = (640, 480)
+    source.get_cached_ranges.return_value = ((0, 9),)
     source.get_current_frame.return_value = 0
     source.get_playback_speed.return_value = 1.0
     source.get_position_generation.return_value = 0
@@ -662,6 +672,21 @@ class TestOfflineVideoViewerWidget:
         assert len(displays) == 1
         assert len(controls) == 1
 
+    def test_single_video_pane_names_it_once_and_describes_it_in_the_header(self, qtbot: QtBot) -> None:
+        """A lane named like its pane shows no name on the video; the header shows the video's size, rate and length."""
+        source = _stub_frame_source()
+        source.get_frame_timestamps_us.return_value = tuple(frame * 40_000 for frame in range(100))
+        content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
+        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
+        _attach_offline_widget(qtbot, widget)
+        widget.resize(900, 600)
+        widget.show()
+
+        assert widget.findChild(QLabel, "lane-indicator-label") is None
+        assert widget.header_details() == "640×480 · 25 fps · 0:04"
+        controls = widget.findChildren(SeekableVideoControlPanel)[0]
+        assert controls.timeline_slider.cached_ranges() == ((0, 9),)
+
     def test_single_video_seekable_controls_route_to_workflow_actions(self, qtbot: QtBot) -> None:
         source = _stub_frame_source()
         content = _make_seekable_content("Solo", frame_source_opener=lambda: source)
@@ -673,7 +698,7 @@ class TestOfflineVideoViewerWidget:
         controls.jumpToRequested.emit(42)
         controls.playRequested.emit()
         controls.pauseRequested.emit()
-        controls.step_playback_speed(1)
+        controls.set_playback_speed(1.1)
 
         source.jump_to.assert_any_call(10)
         source.jump_to.assert_any_call(42)
@@ -1603,7 +1628,7 @@ class TestOfflineVideoViewerWidget:
         _attach_offline_widget(qtbot, widget)
 
         assert widget._global_controls is not None
-        widget._global_controls.step_playback_speed(1)
+        widget._global_controls.set_playback_speed(1.1)
 
         assert source.set_playback_speed.call_args_list[-1].args == (1.1,)
 

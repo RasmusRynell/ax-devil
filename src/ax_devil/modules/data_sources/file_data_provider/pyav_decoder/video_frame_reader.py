@@ -370,6 +370,10 @@ class FrameReaderWorker(BaseWorker):
         """Return total frame count from the indexed video."""
         return self._total_frames
 
+    def get_cached_ranges(self) -> tuple[tuple[int, int], ...]:
+        """Return the decoded frames held in the cache as inclusive ``(first, last)`` runs."""
+        return self._cache.cached_ranges()
+
     def get_frame_time_us(self, frame_index: int) -> float:
         """Return frame presentation time in microseconds since the first indexed frame."""
         with self._pyav_lock:
