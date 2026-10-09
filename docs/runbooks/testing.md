@@ -78,7 +78,7 @@ For native-window and OpenGL checks, run the existing tests on a private Xvfb di
 
 ```bash
 env -u WAYLAND_DISPLAY -u QT_QPA_PLATFORMTHEME -u QT_QUICK_BACKEND -u QSG_RHI_BACKEND \
-  AX_DEVIL_TESTS_QPA_PLATFORM=xcb QT_WIDGETS_RHI=1 \
+  -u QT_WIDGETS_RHI -u QT_WIDGETS_RHI_BACKEND AX_DEVIL_TESTS_QPA_PLATFORM=xcb \
   __GLX_VENDOR_LIBRARY_NAME=mesa LIBGL_ALWAYS_SOFTWARE=1 \
   xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" uv run pytest \
   tests/modules/catalog_viewer/test_catalog_commands.py \
@@ -90,7 +90,8 @@ env -u WAYLAND_DISPLAY -u QT_QPA_PLATFORMTHEME -u QT_QUICK_BACKEND -u QSG_RHI_BA
 ```
 
 Run these groups together so catalog window teardown is followed by image export and renderer creation in the same
-process. The close/reopen test waits for preview preparation and native destruction and checks that the reopened
+process, without globally forcing widget RHI: this also checks main-window preparation and raster Settings/menu
+windows. The close/reopen test waits for preview preparation and native destruction and checks that the reopened
 viewer can render. This setup uses Mesa software OpenGL, overriding inherited desktop driver selection: an NVIDIA
 GLX override on Xvfb can leave invalid contexts after window teardown. It still exercises Qt's OpenGL scene graph,
 unlike the normal offscreen Qt Quick software backend. It does not verify the physical GPU or its driver.

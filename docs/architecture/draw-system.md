@@ -46,8 +46,12 @@ Live and offline viewers differ only in how they obtain `FrameData` and `Overlay
 (`QQuickWidget`) as the sole video and overlay renderer. Graphics Off selects
 `QT_QUICK_BACKEND=software` at startup.
 `QT_WIDGETS_RHI` controls widget presentation, not the viewer implementation.
-Auto prepares accelerated presentation before the first window opens, so the first
-viewer can be added without recreating it. Off uses software rendering. Explicit
+Auto leaves ordinary dialogs, menus and diagnostic windows on Qt's normal widget path instead of globally forcing
+RHI. The initially empty `MainWindow` owns a hidden, empty `QQuickWidget` before its first show. Qt detects that
+child's graphics requirements when creating the window, so opening, closing and reopening viewers never requires
+a raster-to-accelerated native-window replacement. The child loads no scene and renders no frames; Qt deletes it
+with the main window. Catalog windows and lane-fullscreen windows already contain their real Quick renderer before
+showing, so they need no extra host. Off uses software rendering and needs no accelerated surface. Explicit
 environment overrides take precedence.
 `QSG_RHI_BACKEND` and `QT_QUICK_BACKEND` remain Qt's backend overrides. Quick's software
 backend supports the same paths and text when hardware acceleration is unavailable.
