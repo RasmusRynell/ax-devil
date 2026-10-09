@@ -69,7 +69,7 @@ def test_concurrent_resizing_and_cache_access_finish_without_deadlock() -> None:
         for index in range(150):
             cache.put(index, make_cached_frame(index))
             cache.get(index)
-            cache.can_prefetch(index + 1, 768, index)
+            cache.can_admit(index + 1, 768, range(index, index + 2))
         cache.close()
 
     try:

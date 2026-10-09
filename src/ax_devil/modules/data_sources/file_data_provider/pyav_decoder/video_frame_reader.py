@@ -3,7 +3,6 @@
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from logging import WARNING
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -28,8 +27,10 @@ from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Structured log payload for jump fallback paths.
-JumpLog = tuple[int, str]
+
+def _span(*frame_indices: int) -> range:
+    """Return the frames from the lowest to the highest of *frame_indices*, inclusive."""
+    return range(min(frame_indices), max(frame_indices) + 1)
 
 
 class FrameReaderWorker(BaseWorker):
@@ -117,55 +118,51 @@ class FrameReaderWorker(BaseWorker):
             logger.warning(f"Error closing frame processor: {e}")
 
     def _do_prefetch_step(self) -> bool:
-        """Do one prefetch step if needed. Returns True if work was done."""
+        """Decode toward the missing frame nearest the playhead in the prefetch window.
+
+        The decoder reads on when no keyframe lies between it and that frame, and otherwise jumps to the frame's
+        keyframe; later steps read forward from there. Every decoded frame is cached without evicting the frames
+        between it, the playhead and that missing frame. Returns True if work was done.
+        """
         if not self._prefetch_started:
             return False
 
         # Lock protects PyAV state during sequential frame reading, incase of concurrent cleanup
         with self._pyav_lock:
-            current_pos = self._frame_processor.current_frame_index
-            target_pos = self._current_read_frame + self._prefetch_count
-
-            logger.debug(
-                f"Prefetch check: current_pos={current_pos}, \
-                    target_pos={target_pos}, user_frame={self._current_read_frame}"
-            )
-
-            # Check if we're beyond the video bounds
-            if current_pos >= self._total_frames:
-                logger.debug(f"Prefetch complete: current_pos={current_pos} >= total_frames={self._total_frames}")
+            playhead = self._current_read_frame
+            target = next((index for index in self._prefetch_window() if not self._cache.contains(index)), None)
+            if target is None:
                 return False
 
-            # Check if we need to prefetch more frames
-            if current_pos >= target_pos:
-                logger.debug(f"Prefetch complete: current_pos={current_pos} >= target_pos={target_pos}")
-                return False
-
-            # Check before decoding so a full forward window does not advance past
-            # a frame we cannot retain. Actual admission also checks the decoded size.
-            current_frame = self._cache.get(self._current_read_frame)
-            if current_frame is None or not self._cache.can_prefetch(
-                current_pos, current_frame.reserved_bytes, self._current_read_frame
+            # The playhead frame's size estimates the target's before decoding it.
+            current_frame = self._cache.get(playhead)
+            if current_frame is None or not self._cache.can_admit(
+                target, current_frame.reserved_bytes, _span(playhead, target)
             ):
                 return False
 
-            # Prefetch the next frame
-            video_frame: av.VideoFrame | None = self._frame_processor.read_next()
-            if not self._cache.contains(current_pos):
-                if video_frame is not None:
-                    logger.debug(f"Prefetching frame {current_pos}")
-                    cached_frame = self._create_cached_frame(current_pos, video_frame)
-                    if not self._cache.put(current_pos, cached_frame, current_frame=self._current_read_frame):
-                        return False
-                else:
-                    # End of video reached
-                    logger.debug(f"End of video reached at frame {current_pos}")
-                    return False
+            decoder_pos = self._frame_processor.current_frame_index
+            if self._can_read_on_to(target):
+                video_frame = self._frame_processor.read_next()
+                decoded_frames: DecodedFrames = [] if video_frame is None else [(decoder_pos, video_frame)]
             else:
-                # Frame already cached, but we still need to advance the decoder
-                logger.debug(f"Frame {current_pos} already cached")
+                keyframe = self._frame_processor.get_nearest_keyframe_before(target)
+                logger.debug(f"Prefetch jumping from decoder position {decoder_pos} to keyframe {keyframe}")
+                decoded_frames = self._frame_processor.jump_to(keyframe)
 
-            return True
+            # A seek can return several frames; none may evict a frame nearer the playhead or the target.
+            for frame_index, frame in decoded_frames:
+                if not self._cache.contains(frame_index):
+                    cached_frame = self._create_cached_frame(frame_index, frame)
+                    self._cache.put(frame_index, cached_frame, keep=_span(playhead, target, frame_index))
+            # Stop when nothing was decoded or the target itself did not fit, instead of decoding it again.
+            return bool(decoded_frames) and (self._cache.contains(target) or decoded_frames[-1][0] < target)
+
+    def _prefetch_window(self) -> range:
+        """Return the frames prefetch fills, nearest the playhead first."""
+        return range(
+            self._current_read_frame + 1, min(self._current_read_frame + self._prefetch_count, self._total_frames)
+        )
 
     def _handle_frame_request(self, frame_index: int, callback: Callable[[DecodedFrame | None], None]) -> None:
         """Handle a specific frame request."""
@@ -214,15 +211,10 @@ class FrameReaderWorker(BaseWorker):
                 logger.error(f"Frame index {frame_index} out of bounds (0-{self._total_frames - 1})")
                 return None
 
-            current_decoder_pos = self._frame_processor.current_frame_index
-            if self._should_decode_sequentially(frame_index, current_decoder_pos):
-                decoded_frames = self._read_until(frame_index, current_decoder_pos)
+            if self._can_read_on_to(frame_index):
+                decoded_frames = self._frame_processor.read_until(frame_index)
             else:
-                decoded_frames = self._jump_to(
-                    frame_index,
-                    current_decoder_pos,
-                    log_this=self._maybe_prefetch_jump_log(frame_index, current_decoder_pos),
-                )
+                decoded_frames = self._frame_processor.jump_to(frame_index)
 
         logger.debug(f"Decoded {len(decoded_frames)} frames to reach frame {frame_index}")
 
@@ -231,54 +223,10 @@ class FrameReaderWorker(BaseWorker):
         cached_target = self._cache.get(frame_index)
         return cached_target if cached_target is not None else self._extract_target_frame(decoded_frames, frame_index)
 
-    def _should_decode_sequentially(self, frame_index: int, decoder_pos: int) -> bool:
-        return self._is_within_prefetch_window(frame_index) and decoder_pos <= frame_index
-
-    def _is_within_prefetch_window(self, frame_index: int) -> bool:
-        return self._current_read_frame < frame_index <= self._current_read_frame + self._prefetch_count
-
-    def _maybe_prefetch_jump_log(self, frame_index: int, decoder_pos: int) -> JumpLog | None:
-        if not self._is_within_prefetch_window(frame_index):
-            return None
-        return (
-            WARNING,
-            f"Requested frame {frame_index} is behind decoder position {decoder_pos}. "
-            "Using jump_to() because sequential decoding cannot read backwards "
-            "(normal during rapid scrubbing).",
-        )
-
-    def _read_until(self, frame_index: int, decoder_pos: int) -> DecodedFrames:
-        logger.debug(
-            f"Reading until frame {frame_index} from current_read_frame={self._current_read_frame} "
-            f"(decoder_pos={decoder_pos})"
-        )
-        try:
-            frames = self._frame_processor.read_until(frame_index)
-        except ValueError as exc:
-            warning_log: JumpLog = (
-                WARNING,
-                f"read_until({frame_index}) failed because decoder is ahead (decoder_pos={decoder_pos}): {exc}. "
-                "Falling back to jump_to().",
-            )
-            return self._jump_to(frame_index, decoder_pos, log_this=warning_log)
-        return frames
-
-    def _jump_to(
-        self,
-        frame_index: int,
-        decoder_pos: int,
-        *,
-        log_this: JumpLog | None = None,
-    ) -> DecodedFrames:
-        if log_this:
-            level, message = log_this
-            logger.log(level, message)
-        else:
-            logger.debug(
-                f"Jumping to frame {frame_index} from current_read_frame={self._current_read_frame} "
-                f"(decoder_pos={decoder_pos})"
-            )
-        return self._frame_processor.jump_to(frame_index)
+    def _can_read_on_to(self, frame_index: int) -> bool:
+        """Return whether the decoder can read on to *frame_index* without passing a keyframe it could jump to."""
+        decoder_pos = self._frame_processor.current_frame_index
+        return self._frame_processor.get_nearest_keyframe_before(frame_index) <= decoder_pos <= frame_index
 
     def _cache_decoded_frames(self, decoded_frames: DecodedFrames) -> None:
         """Cache all decoded frames that aren't already cached.
