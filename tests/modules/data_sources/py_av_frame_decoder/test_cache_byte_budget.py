@@ -86,7 +86,7 @@ def test_small_budget_forward_backward_and_prefetch(tmp_path: Path, retained_fra
                     assert worker._cache.contains(index)
                 snapshot = get_frame_cache_registry().snapshot_details()[str(id(worker._cache))]
                 assert snapshot["reserved_bytes"] <= max(1, retained_frames * frame_bytes)
-            assert jump.call_count == 1, "Forward playback should not repeatedly seek when the cache fills"
+            assert jump.call_count <= 1, "Forward playback should not repeatedly seek when the cache fills"
         for index in (5, 4, 3, 25, 0, 29):
             frame = worker.read_decoded_frame(index)
             assert frame is not None
@@ -96,16 +96,89 @@ def test_small_budget_forward_backward_and_prefetch(tmp_path: Path, retained_fra
         worker.cleanup()
 
 
-def test_prefetch_protects_nearer_frames_but_can_evict_history() -> None:
+def test_prefetch_protects_kept_frames_but_can_evict_history() -> None:
     """A full cache can advance without throwing away its next-needed frames."""
     cache = FrameCache(3 * 768)
     for index in range(3):
         assert cache.put(index, make_cached_frame(index))
-    assert not cache.put(3, make_cached_frame(3), current_frame=0)
+    assert not cache.put(3, make_cached_frame(3), keep=range(0, 4))
     assert all(cache.contains(index) for index in range(3))
-    assert cache.put(3, make_cached_frame(3), current_frame=1)
+    assert cache.put(3, make_cached_frame(3), keep=range(1, 4))
     assert not cache.contains(0)
     assert all(cache.contains(index) for index in (1, 2, 3))
+
+
+@pytest.mark.parametrize(
+    ("reads", "playhead"),
+    [((40, 10), 40), ((10, 40), 10)],
+    ids=["decoder-behind-playhead", "decoder-ahead-of-playhead"],
+)
+def test_prefetch_fills_the_window_after_the_playhead_wherever_the_decoder_is(
+    tmp_path: Path, reads: tuple[int, ...], playhead: int
+) -> None:
+    """A cache hit away from the decoder still fills the frames after the playhead, and nothing else."""
+    path = tmp_path / "video.mp4"
+    create_test_video(path, duration=3.0, gop=10)
+    worker = FrameReaderWorker(str(path), 1024**3, prefetch_count=5)
+    try:
+        for index in reads:
+            assert worker.read_decoded_frame(index) is not None
+        assert worker.read_decoded_frame(playhead) is not None  # Cache hit, decoder elsewhere.
+        before = set(_cached_frames(worker))
+        for _ in range(100):
+            if not worker.prefetch_one():
+                break
+        else:
+            pytest.fail("Prefetch did not stop after filling its window")
+        window = set(range(playhead + 1, playhead + 5))
+        assert window <= set(_cached_frames(worker))
+        keyframe_history = set(range(playhead - playhead % 10, playhead))
+        assert set(_cached_frames(worker)) - before <= window | keyframe_history
+    finally:
+        worker.cleanup()
+
+
+def test_a_read_decodes_from_its_keyframe_when_the_decoder_is_in_an_earlier_group(tmp_path: Path) -> None:
+    """A read near the playhead does not decode on from a decoder parked groups earlier."""
+    path = tmp_path / "video.mp4"
+    create_test_video(path, duration=3.0, gop=10)
+    worker = FrameReaderWorker(str(path), 1024**3, prefetch_count=50)
+    try:
+        assert worker.read_decoded_frame(10) is not None  # Decoder parks at 11.
+        with patch.object(worker._frame_processor, "jump_to", wraps=worker._frame_processor.jump_to) as jump:
+            assert worker.read_decoded_frame(45) is not None
+        jump.assert_called_once_with(45)
+        assert not worker._cache.contains(20), "Read decoded on through earlier groups"
+    finally:
+        worker.cleanup()
+
+
+def test_prefetch_under_a_small_budget_decodes_each_keyframe_group_once(tmp_path: Path) -> None:
+    """Frames a seek returns together never evict each other, so the group is not decoded again."""
+    path = tmp_path / "video.mp4"
+    create_test_video(path, duration=6.0, gop=10)
+    with av.open(str(path)) as container:
+        frame_bytes = next(container.decode(video=0)).to_ndarray(format="rgb24").nbytes
+    worker = FrameReaderWorker(str(path), 5 * frame_bytes, prefetch_count=5)
+    try:
+        for index in range(171):
+            assert worker.read_decoded_frame(index) is not None
+        assert worker.read_decoded_frame(20) is not None
+        assert worker.read_decoded_frame(170) is not None  # Cache hit, decoder in an earlier group.
+        with patch.object(worker._frame_processor, "jump_to", wraps=worker._frame_processor.jump_to) as jump:
+            for _ in range(100):
+                if not worker.prefetch_one():
+                    break
+            else:
+                pytest.fail("Prefetch did not stop")
+        assert jump.call_count <= 1
+        assert all(worker._cache.contains(index) for index in range(170, 175))
+    finally:
+        worker.cleanup()
+
+
+def _cached_frames(worker: FrameReaderWorker) -> list[int]:
+    return [index for first, last in worker.get_cached_ranges() for index in range(first, last + 1)]
 
 
 def test_eviction_during_lookup_still_delivers_the_requested_frame(tmp_path: Path) -> None:

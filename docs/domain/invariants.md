@@ -81,7 +81,8 @@ Read the sections for the area you change. Explanations of how things work live 
   entering pool lifecycle methods; the pool may acquire multiple cache locks during rebalancing.
 - Cached frames reserve the larger of source-plane bytes (including padding) and full RGB24 pixels. LRU admission
   keeps the sum within the byte budget, including prefetched frames. Conversion does not change the reservation.
-- Prefetch may evict older history, but must not evict the current or nearer forward frames to retain a farther frame.
+- Prefetch may evict older history, but never a frame between the playhead, the missing frame it is filling and
+  the frame it admits.
 - A frame larger than the budget is delivered without caching. Cache pressure must not change frame identity or timing.
 - This is a cache reservation limit, not an RSS limit. Decoder/intermediate seek frames, conversion temporaries,
   display images, overlay caches and allocator-retained pages are outside it.

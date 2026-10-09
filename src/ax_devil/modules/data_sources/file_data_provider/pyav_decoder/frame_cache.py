@@ -198,28 +198,21 @@ class FrameCache:
             self._misses += 1
             return None
 
-    def can_prefetch(self, frame_index: int, reserved_bytes: int, current_frame: int) -> bool:
-        """Check room without evicting the current or nearer forward frames."""
+    def can_admit(self, frame_index: int, reserved_bytes: int, keep: range) -> bool:
+        """Check that *frame_index* fits without evicting any other frame in *keep*."""
         with self._lock:
-            if current_frame not in self._cache:
-                return False
-            protected_bytes = sum(
-                frame.reserved_bytes for index, frame in self._cache.items() if current_frame <= index < frame_index
-            )
-            return protected_bytes + reserved_bytes <= self.budget_bytes
+            return self._kept_bytes_locked(frame_index, keep) + reserved_bytes <= self.budget_bytes
 
-    def put(self, frame_index: int, frame_data: CachedFrame, *, current_frame: int | None = None) -> bool:
-        """Admit within budget, protecting near-future frames for speculative reads.
+    def put(self, frame_index: int, frame_data: CachedFrame, *, keep: range = range(0)) -> bool:
+        """Admit within budget without evicting any other frame in *keep*.
 
         Oversized frames are delivered by the reader without caching them.
-        A rejected speculative frame leaves existing entries unchanged.
+        A frame that does not fit beside *keep* is rejected and leaves existing entries unchanged.
         """
         with self._lock:
             if self._closed or frame_data.reserved_bytes > self.budget_bytes:
                 return False
-            if current_frame is not None and not self.can_prefetch(
-                frame_index, frame_data.reserved_bytes, current_frame
-            ):
+            if not self.can_admit(frame_index, frame_data.reserved_bytes, keep):
                 return False
             previous = self._cache.pop(frame_index, None)
             if previous is not None:
@@ -228,7 +221,7 @@ class FrameCache:
             for index in list(self._cache):
                 if self._reserved_bytes + frame_data.reserved_bytes <= self.budget_bytes:
                     break
-                if current_frame is not None and current_frame <= index < frame_index:
+                if index in keep:
                     continue
                 evicted = self._cache.pop(index)
                 self._reserved_bytes -= evicted.reserved_bytes
@@ -264,6 +257,11 @@ class FrameCache:
         """Return the cached frame indices as sorted, inclusive ``(first, last)`` runs."""
         with self._lock:
             return tuple((start, end) for start, end in self._ranges)
+
+    def _kept_bytes_locked(self, frame_index: int, keep: range) -> int:
+        return sum(
+            frame.reserved_bytes for index, frame in self._cache.items() if index in keep and index != frame_index
+        )
 
     def _publish_registry_state(self) -> None:
         with self._lock:

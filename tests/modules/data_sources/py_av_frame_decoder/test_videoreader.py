@@ -533,9 +533,8 @@ class TestPrefetchBehavior:
         """
         Regression: ensure backward seeks still resolve frames after prefetch moved far ahead.
 
-        Simulates the rare timeout case by using a stub PyAV abstraction whose read_until() raises
-        when asked to read "backwards". Without the fix this would time out because the worker
-        swallows the exception and never fulfills the request.
+        Uses a stub PyAV abstraction whose read_until() raises when asked to read "backwards": a frame behind the
+        decoder must be reached with jump_to() instead of timing out.
         """
 
         class _DummyFrame:
@@ -565,6 +564,9 @@ class TestPrefetchBehavior:
 
             def get_total_frames(self) -> int:
                 return self._total_frames
+
+            def get_nearest_keyframe_before(self, frame_index: int) -> int:
+                return frame_index
 
             def get_frame_time_us(self, frame_index: int) -> float:
                 return frame_index * 33_333.0
@@ -622,7 +624,7 @@ class TestPrefetchBehavior:
 
             assert frame is not None, "Backward seek should return a frame instead of timing out"
             assert isinstance(frame, DecodedFrame)
-            assert stub.jump_calls, "Expected jump_to() fallback when read_until() cannot rewind"
+            assert stub.jump_calls, "Expected jump_to() for a frame behind the decoder"
         finally:
             reader.close()
 
