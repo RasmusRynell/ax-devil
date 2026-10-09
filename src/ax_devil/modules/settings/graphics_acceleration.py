@@ -25,7 +25,7 @@ class GraphicsAcceleration(str, Enum):
     def description(self) -> str:
         """Describe the presentation policy without promising driver detection."""
         return {
-            self.AUTO: "Prepare accelerated presentation at startup. Qt chooses the graphics backend.",
+            self.AUTO: "Let Qt choose graphics acceleration where needed.",
             self.OFF: "Use Qt Quick software rendering for graphics troubleshooting.",
         }[self]
 
@@ -42,4 +42,4 @@ class GraphicsAcceleration(str, Enum):
         """Configure Qt before creating widget windows, preserving environment overrides."""
         if self is self.OFF:
             os.environ.setdefault("QT_QUICK_BACKEND", "software")
-        os.environ.setdefault("QT_WIDGETS_RHI", "0" if self is self.OFF else "1")
+            os.environ.setdefault("QT_WIDGETS_RHI", "0")

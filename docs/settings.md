@@ -34,11 +34,14 @@ The typeface always follows the operating system. Changes apply to open windows 
 
 **General → Appearance → Graphics acceleration** (`settings.appearance.graphics_acceleration`):
 
-- **Auto** (default): accelerated presentation; Qt chooses the graphics backend.
+- **Auto** (default): acceleration where needed; Qt chooses the graphics backend. Ordinary dialogs and menus use
+  Qt's normal widget presentation.
 - **Off**: software rendering, for troubleshooting graphics problems.
 
-It affects video and overlay rendering and window presentation, not video decoding. A `QT_WIDGETS_RHI`
-environment variable overrides it for window presentation, and the dialog shows when that is set.
+It affects video and overlay rendering and window presentation, not video decoding. An explicit `QT_WIDGETS_RHI`
+environment variable overrides Qt's widget presentation policy, and the dialog shows when that is set. Setting it
+to `1` forces acceleration even for ordinary dialogs and menus. For window preparation, see
+[Display Backends](architecture/draw-system.md#display-backends).
 Auto does not detect incompatible drivers or fall back automatically; if startup fails, follow the
 [software-rendering recovery steps](installation.md#graphics-startup-problems).
 

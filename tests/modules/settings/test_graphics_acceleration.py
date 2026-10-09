@@ -21,7 +21,7 @@ def test_presentation_policy(mode: GraphicsAcceleration, monkeypatch: pytest.Mon
     mode.configure()
     assert os.environ.get("QT_QUICK_BACKEND") == ("software" if mode is GraphicsAcceleration.OFF else None)
     expected = {
-        GraphicsAcceleration.AUTO: "1",
+        GraphicsAcceleration.AUTO: None,
         GraphicsAcceleration.OFF: "0",
     }[mode]
     assert os.environ.get("QT_WIDGETS_RHI") == expected
@@ -97,7 +97,7 @@ def test_app_default_is_not_shown_as_external_override(qtbot: QtBot, monkeypatch
     try:
         settings = GlobalSettings()
         settings.graphics_acceleration.configure()
-        assert os.environ["QT_WIDGETS_RHI"] == "1"
+        assert "QT_WIDGETS_RHI" not in os.environ
         assert settings.graphics_acceleration_override is None
 
         dialog = SettingsDialog()
