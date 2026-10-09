@@ -229,8 +229,8 @@ def test_side_panel_opening_during_a_resize_ends_at_the_new_pane_width(qtbot: Qt
     window.resize(560, 400)
     QCoreApplication.processEvents()
 
-    qtbot.waitUntil(lambda: panel.width() == 280)
-    assert display.viewport.width() == 280
+    # The viewport is laid out after the panel's last animation step, so wait for both.
+    qtbot.waitUntil(lambda: panel.width() == 280 and display.viewport.width() == 280)
 
 
 def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
