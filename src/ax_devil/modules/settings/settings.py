@@ -187,7 +187,7 @@ class GlobalSettings(QObject):
             enabled_overlays=OverlayPreference.from_config(overlay),
             graphics_acceleration=GraphicsAcceleration.from_config(appearance.get("graphics_acceleration", "auto")),
         )
-        logger.info(f"GlobalSettings loaded: overlays={self._state.enabled_overlays}")
+        logger.debug(f"GlobalSettings loaded: overlays={self._state.enabled_overlays}")
 
     def save_to_config(self, config_manager: ConfigManager, *, snapshot: SettingsState | None = None) -> None:
         """Stage a complete supplied or current snapshot without emitting runtime signals."""
