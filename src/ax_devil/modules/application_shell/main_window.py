@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QLabel, QMessageBox
 
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
@@ -38,6 +39,9 @@ class MainWindow(ChromeWindow):
 
     Provides the main application window with File, View, Debug and Help menus. Contains a central widget that fills
     the available space where all future pages, layouts or widgets can be plugged in.
+
+    A hidden, empty Quick child establishes composition before the first show, so adding a viewer never requires
+    replacing the native window. Qt owns its lifetime; it loads no scene and renders no frames.
     """
 
     def __init__(
@@ -48,6 +52,8 @@ class MainWindow(ChromeWindow):
     ) -> None:
         super().__init__(use_custom_frame=use_custom_frame, show_custom_frame_border=False, remember_size=True)
 
+        self._composition_host = QQuickWidget(self)
+        self._composition_host.hide()
         self._logger = get_logger(__name__)
         self._shortcut_manager = shortcut_manager
         self._render_catalog_manager = render_catalog_manager

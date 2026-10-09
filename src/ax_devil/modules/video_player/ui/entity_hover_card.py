@@ -24,7 +24,9 @@ QFrame#EntityHoverCard QTextBrowser {{
 """
 _ANCHOR_OFFSET = 14
 _CARD_PADDING = Space.S
+_MIN_TEXT_CHARACTERS = 24
 _MAX_TEXT_CHARACTERS = 56
+_MIN_TEXT_LINES = 3
 
 
 class EntityHoverCard(QFrame):
@@ -109,10 +111,16 @@ class EntityHoverCard(QFrame):
             self._fitted = fitted
             scroll = self._browser.verticalScrollBar()
             scroll_position = scroll.value() if same_target else 0
-            frame = 2 * self.frameWidth()
-            character_width = QFontMetrics(self._browser.font()).averageCharWidth()
+            self.ensurePolished()
+            self._browser.ensurePolished()
+            frame = 2 * (self.frameWidth() + self._browser.frameWidth())
+            metrics = QFontMetrics(self._browser.font())
+            character_width = metrics.averageCharWidth()
             max_width = max(1, min(parent.width() - 2 * _CARD_PADDING - frame, _MAX_TEXT_CHARACTERS * character_width))
+            document_padding = 2 * Space.M
             max_height = max(1, parent.height() - 2 * _CARD_PADDING - frame)
+            min_width = min(max_width, _MIN_TEXT_CHARACTERS * character_width)
+            min_height = min(max_height, _MIN_TEXT_LINES * metrics.lineSpacing() + document_padding)
             document = self._browser.document()
             # Lay the shown text out once, at its final width, while values change every frame.
             document.setLayoutEnabled(False)
@@ -121,14 +129,16 @@ class EntityHoverCard(QFrame):
                     self._browser.setHtml(self._current_card_html)
                 # QTextEdit pins its document to the viewport width, so measure a copy.
                 measure = document.clone(self)
+                measure.setDocumentMargin(document.documentMargin())
                 measure.setTextWidth(max_width)
-                width = min(max_width, ceil(measure.idealWidth()))
-                if width < max_width:
-                    measure.setTextWidth(width)
-                height = min(max_height, ceil(measure.size().height()))
-                measure.deleteLater()
+                width = min(max_width, max(min_width, ceil(measure.idealWidth())))
                 if same_target:
                     width = min(max_width, max(width, self.width() - frame))
+                if width < max_width:
+                    measure.setTextWidth(width)
+                height = min(max_height, max(min_height, ceil(measure.size().height())))
+                measure.deleteLater()
+                if same_target:
                     height = min(max_height, max(height, self.height() - frame))
                 self.setFixedSize(width + frame, height + frame)
             finally:

@@ -1,14 +1,17 @@
 """Offline playback through the workspace with real decoding and worker teardown."""
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtGui import QColor, QImage, QSurface
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QMenu
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
+from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
@@ -17,11 +20,13 @@ from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
 from ax_devil.modules.workspace import VideoFileStartup
 
 
+@pytest.mark.parametrize("use_custom_frame", [False, True])
 def test_workspace_opens_seeks_and_closes_real_video(
     qtbot: QtBot,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     render_catalog_manager: SceneRenderCatalogManager,
+    use_custom_frame: bool,
 ) -> None:
     """Fullscreen shortcuts reach real playback and workspace clearing stops its worker."""
     monkeypatch.setattr(CacheManager, "_get_base_cache_dir", lambda self: tmp_path / "cache")
@@ -35,13 +40,13 @@ def test_workspace_opens_seeks_and_closes_real_video(
 
     shortcuts = ShortcutManager()
     shortcuts.register_defaults()
-    window = MainWindow(shortcuts, render_catalog_manager)
+    window = MainWindow(shortcuts, render_catalog_manager, use_custom_frame=use_custom_frame)
     qtbot.addWidget(window)
     session = window._workspace_session
     window.show()
     window.activateWindow()
     qtbot.waitUntil(window.isActiveWindow)
-    native_id = window.winId()
+    native_id = window.internalWinId()
     try:
         session.load_startup_content(VideoFileStartup(video_path=path))
         viewer = session.focused_offline_viewer()
@@ -51,7 +56,22 @@ def test_workspace_opens_seeks_and_closes_real_video(
         viewport = viewer.findChild(FrameViewport)
         assert viewport is not None
         qtbot.waitUntil(lambda: viewport._video_frame is not None)
-        assert window.winId() == native_id
+        assert window.internalWinId() == native_id
+        qtbot.waitUntil(window.isActiveWindow)
+
+        with SettingsDialog(window) as dialog:
+            dialog.show()
+            handle = dialog.windowHandle()
+            assert handle is not None
+            assert handle.surfaceType() == QSurface.SurfaceType.RasterSurface
+            dialog.reject()
+        menu = cast(QMenu | None, window.menu_host().actions()[0].menu())
+        assert menu is not None
+        menu.popup(window.mapToGlobal(window.rect().center()))
+        handle = menu.windowHandle()
+        assert handle is not None
+        assert handle.surfaceType() == QSurface.SurfaceType.RasterSurface
+        menu.hide()
 
         assert viewer._runtime is not None
         source = viewer._runtime.get_primary_video_source()
@@ -83,5 +103,16 @@ def test_workspace_opens_seeks_and_closes_real_video(
         assert session.focused_widget() is None
         assert window._lane_fullscreen._host is None
         assert delivery.wait(0)
+        assert window.internalWinId() == native_id
+
+        session.load_startup_content(VideoFileStartup(video_path=path))
+        reopened_viewer = session.focused_offline_viewer()
+        assert reopened_viewer is not None
+        qtbot.waitUntil(lambda: reopened_viewer._runtime is not None)
+        reopened_viewport = reopened_viewer.findChild(FrameViewport)
+        assert reopened_viewport is not None
+        qtbot.waitUntil(lambda: reopened_viewport._video_frame is not None)
+        assert window.internalWinId() == native_id
+        qtbot.waitUntil(window.isActiveWindow)
     finally:
         session.cleanup()

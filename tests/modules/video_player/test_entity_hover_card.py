@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.chrome.theme import apply_text_size
+from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
 from ax_devil.modules.scene.inspection import debug_section_html
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 
@@ -76,6 +76,40 @@ def test_hover_card_avoids_object_rect_when_space_exists(qtbot: QtBot) -> None:
 
 def _long_card(prefix: str = "metric") -> str:
     return "".join(debug_section_html({"group": {f"{prefix}_{'x' * 40}_{index}": index for index in range(80)}}))
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+@pytest.mark.parametrize("theme", ["dark", "light"])
+@pytest.mark.parametrize("text_size", [14, 21])
+def test_card_scrolls_only_when_content_exceeds_viewer(qtbot: QtBot, theme: str, text_size: int) -> None:
+    apply_theme(theme)
+    apply_text_size(text_size)
+    parent = QWidget()
+    parent.resize(1000, 1100)
+    qtbot.addWidget(parent)
+    parent.show()
+    card = EntityHoverCard(parent)
+    html = "".join(debug_section_html({"Object": {f"attribute_{index}": "person" for index in range(30)}}))
+
+    card.show_for("entity", html, 100, 100, interactive=True)
+    QApplication.processEvents()
+    assert parent.rect().contains(card.geometry())
+    assert card._browser.verticalScrollBar().maximum() == 0
+    assert not card._browser.verticalScrollBar().isVisible()
+
+    parent.resize(320, 240)
+    card.show_for("entity", html, 100, 100, interactive=True)
+    QApplication.processEvents()
+    assert parent.rect().contains(card.geometry())
+    assert card._browser.verticalScrollBar().maximum() > 0
+    assert card._browser.verticalScrollBar().isVisible()
+
+    card.hide_card()
+    card.show_for("other", "<b>Person</b><br/>ID: 12<br/>Confidence: 0.98", 100, 100, interactive=True)
+    QApplication.processEvents()
+    assert parent.rect().contains(card.geometry())
+    assert card._browser.verticalScrollBar().maximum() == 0
+    assert not card._browser.verticalScrollBar().isVisible()
 
 
 def test_pinned_card_fits_viewer_wraps_and_keeps_scroll_for_same_object(qtbot: QtBot) -> None:
