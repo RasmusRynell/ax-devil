@@ -110,6 +110,9 @@ def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
     parent.show()
     card = EntityHoverCard(parent)
     card.show_for("entity", _long_card(), 500, 100, interactive=True)
+    cursor = card._browser.document().find("metric")
+    assert cursor.hasSelection()
+    card._browser.setTextCursor(cursor)
     scroll = card._browser.verticalScrollBar()
     scroll.setValue(100)
     original_width = card.width()
@@ -118,5 +121,6 @@ def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
     QApplication.processEvents()
 
     assert card.width() > original_width
+    assert card._browser.textCursor().selectedText() == "metric"
     assert scroll.value() == 100
     assert parent.rect().contains(card.geometry())

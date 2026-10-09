@@ -105,6 +105,7 @@ class EntityHoverCard(QFrame):
             return
         fitted = (parent.size(), self._browser.font(), self._current_card_html)
         if fitted != self._fitted:
+            content_changed = self._fitted is None or self._current_card_html != self._fitted[2]
             self._fitted = fitted
             scroll = self._browser.verticalScrollBar()
             scroll_position = scroll.value() if same_target else 0
@@ -116,7 +117,8 @@ class EntityHoverCard(QFrame):
             # Lay the shown text out once, at its final width, while values change every frame.
             document.setLayoutEnabled(False)
             try:
-                self._browser.setHtml(self._current_card_html)
+                if content_changed:
+                    self._browser.setHtml(self._current_card_html)
                 # QTextEdit pins its document to the viewport width, so measure a copy.
                 measure = document.clone(self)
                 measure.setTextWidth(max_width)

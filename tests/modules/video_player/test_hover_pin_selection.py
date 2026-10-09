@@ -223,12 +223,17 @@ def test_pinned_inspector_takes_wheel_and_clicks_without_changing_the_video(qtbo
 
 def test_paused_pinned_inspector_refits_on_viewer_resize(qtbot: QtBot) -> None:
     renderer = _make_pinned_renderer(qtbot, (1200, 700))
+    browser = renderer._hover_card._browser
+    cursor = browser.document().find("metric_10")
+    assert cursor.hasSelection()
+    browser.setTextCursor(cursor)
 
     renderer.resize(320, 300)
     QApplication.processEvents()
 
     assert renderer._pinned_target_id == "entity-1"
     assert renderer.rect().contains(renderer._hover_card.geometry())
+    assert browser.textCursor().selectedText() == "metric_10"
 
 
 def test_hover_and_click_share_object_anchored_card_position(qtbot: QtBot) -> None:
