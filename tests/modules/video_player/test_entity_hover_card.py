@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QWidget
+import pytest
+from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.theme import apply_text_size
+from ax_devil.modules.scene.inspection import debug_section_html
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 
 
@@ -27,10 +30,10 @@ def test_hover_card_updates_html_for_same_target_id(qtbot: QtBot) -> None:
 
     card = EntityHoverCard(parent)
     card.show_for("entity-1", "<span>first</span>", 100, 100)
-    assert card._label.text() == "<span>first</span>"
+    assert card._browser.toPlainText() == "first"
 
     card.show_for("entity-1", "<span>updated</span>", 100, 100)
-    assert card._label.text() == "<span>updated</span>"
+    assert card._browser.toPlainText() == "updated"
 
 
 def test_hover_card_prefers_left_when_more_room_on_left(qtbot: QtBot) -> None:
@@ -69,3 +72,55 @@ def test_hover_card_avoids_object_rect_when_space_exists(qtbot: QtBot) -> None:
     card.show_for("entity-1", "<span>hover content</span>", 300, 160, avoid_rect=avoid_rect)
 
     assert not _rects_intersect((card.x(), card.y(), card.width(), card.height()), avoid_rect)
+
+
+def _long_card(prefix: str = "metric") -> str:
+    return "".join(debug_section_html({"group": {f"{prefix}_{'x' * 40}_{index}": index for index in range(80)}}))
+
+
+def test_pinned_card_fits_viewer_wraps_and_keeps_scroll_for_same_object(qtbot: QtBot) -> None:
+    parent = QWidget()
+    parent.resize(320, 300)
+    qtbot.addWidget(parent)
+    parent.show()
+    card = EntityHoverCard(parent)
+    target_id = "object_identifier_" * 8
+    card.show_for(target_id, f"{target_id}<br/>{_long_card()}", 100, 100, interactive=True)
+    scroll = card._browser.verticalScrollBar()
+
+    assert parent.rect().contains(card.geometry())
+    assert card._browser.document().size().width() <= card._browser.viewport().width()
+    assert target_id in card._browser.toPlainText()
+    assert scroll.maximum() > 0
+    scroll.setValue(scroll.maximum() // 2)
+    kept = scroll.value()
+
+    card.show_for(target_id, f"{target_id}<br/>{_long_card('value')}", 100, 100, interactive=True)
+    assert scroll.value() == kept
+
+    card.show_for("other", _long_card(), 100, 100, interactive=True)
+    assert scroll.value() == 0
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
+    parent = QWidget()
+    parent.resize(640, 350)
+    qtbot.addWidget(parent)
+    parent.show()
+    card = EntityHoverCard(parent)
+    card.show_for("entity", _long_card(), 500, 100, interactive=True)
+    cursor = card._browser.document().find("metric")
+    assert cursor.hasSelection()
+    card._browser.setTextCursor(cursor)
+    scroll = card._browser.verticalScrollBar()
+    scroll.setValue(100)
+    original_width = card.width()
+
+    apply_text_size(21)
+    QApplication.processEvents()
+
+    assert card.width() > original_width
+    assert card._browser.textCursor().selectedText() == "metric"
+    assert scroll.value() == 100
+    assert parent.rect().contains(card.geometry())

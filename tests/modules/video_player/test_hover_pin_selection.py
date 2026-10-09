@@ -9,6 +9,7 @@ from PySide6.QtGui import QImage, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.scene.inspection import debug_section_html
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.data_types import (
@@ -162,9 +163,11 @@ def test_click_pins_selection_and_empty_click_clears(qtbot: QtBot) -> None:
     renderer = _make_renderer(qtbot)
 
     _mouse_move(renderer, QPoint(100, 80))
+    assert renderer._hover_card.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     _mouse_click(qtbot, renderer, QPoint(100, 80))
 
     assert renderer._hover_card.isVisible()
+    assert not renderer._hover_card.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     assert renderer._hover_hit is not None
     assert renderer._hover_hit.target_id == "entity-1"
 
@@ -178,6 +181,59 @@ def test_click_pins_selection_and_empty_click_clears(qtbot: QtBot) -> None:
     _mouse_click(qtbot, renderer, QPoint(500, 420))
     assert not renderer._hover_card.isVisible()
     assert renderer._hover_hit is None
+    assert renderer._hover_card.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+
+def _make_pinned_renderer(qtbot: QtBot, size: tuple[int, int]) -> VideoFrameRenderer:
+    renderer = VideoFrameRenderer()
+    renderer.resize(*size)
+    qtbot.addWidget(renderer)
+    renderer.show()
+    provider = _MovingProvider()
+    provider.card_html = "".join(debug_section_html({"debug": {f"metric_{index}": index for index in range(100)}}))
+    renderer.display_frame(_make_display_data(provider))
+    target = renderer._hover_target_rect()
+    assert target is not None
+    object_point = target.topLeft() + QPointF(0.2 * target.width(), 0.2 * target.height())
+    _mouse_click(qtbot, renderer, object_point.toPoint())
+    return renderer
+
+
+def test_pinned_inspector_takes_wheel_and_clicks_without_changing_the_video(qtbot: QtBot) -> None:
+    renderer = _make_pinned_renderer(qtbot, (640, 480))
+    card = renderer._hover_card
+    scroll = card._browser.verticalScrollBar()
+    old_bounds = renderer._hover_target_rect()
+    assert scroll.maximum() > 0
+
+    event = _make_wheel_event(QPointF(20, 20), -120)
+    QApplication.sendEvent(card._browser.viewport(), event)
+    assert scroll.value() > 0
+    scroll.setValue(scroll.maximum())
+    at_end = _make_wheel_event(QPointF(20, 20), -120)
+    QApplication.sendEvent(card._browser.viewport(), at_end)
+    assert renderer._hover_target_rect() == old_bounds
+
+    window = renderer.windowHandle()
+    assert window is not None
+    cast(Any, qtbot).mouseClick(window, Qt.MouseButton.LeftButton, pos=card.pos() + QPoint(2, 2))
+    assert renderer._pinned_target_id == "entity-1"
+    assert card.isVisible()
+
+
+def test_paused_pinned_inspector_refits_on_viewer_resize(qtbot: QtBot) -> None:
+    renderer = _make_pinned_renderer(qtbot, (1200, 700))
+    browser = renderer._hover_card._browser
+    cursor = browser.document().find("metric_10")
+    assert cursor.hasSelection()
+    browser.setTextCursor(cursor)
+
+    renderer.resize(320, 300)
+    QApplication.processEvents()
+
+    assert renderer._pinned_target_id == "entity-1"
+    assert renderer.rect().contains(renderer._hover_card.geometry())
+    assert browser.textCursor().selectedText() == "metric_10"
 
 
 def test_hover_and_click_share_object_anchored_card_position(qtbot: QtBot) -> None:
@@ -216,7 +272,7 @@ def test_pinned_selection_tracks_target_across_frames(qtbot: QtBot) -> None:
 
     assert renderer._hover_hit is not None
     assert renderer._hover_hit.bounds == (0.60, 0.50, 0.20, 0.20)
-    assert renderer._hover_card._label.text() == "<span>entity-1 frame-2</span>"
+    assert renderer._hover_card._browser.toPlainText() == "entity-1 frame-2"
     assert renderer._hover_card.pos() != old_pos
 
 

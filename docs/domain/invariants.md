@@ -102,6 +102,7 @@ Read the sections for the area you change. Explanations of how things work live 
 - Operations (`Delete`, `Rename`, `Merge`, `Split`) mirror Axis Scene Metadata semantics.
 - `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. `Scene.debug` is retained for
   decoder/provider diagnostics without a UI display; `Observation.debug` appears in object details and hover cards.
+  Inspection shows every debug field at source precision, including empty values, grouped by key path.
   Filtering, rendering, synchronization, and hit-testing never read them.
 
 ## Workspace UI State
