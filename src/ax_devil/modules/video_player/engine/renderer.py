@@ -477,7 +477,6 @@ class VideoFrameRenderer(QWidget):
             int(anchor.x()),
             int(anchor.y()),
             avoid_rect=avoid_rect,
-            sections=hit.card_sections,
             interactive=self._pinned_target_id is not None,
         )
 

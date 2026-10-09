@@ -8,7 +8,7 @@ from time import perf_counter
 from typing import Protocol
 
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
-from ax_devil.modules.scene.inspection import build_entity_hover_html, debug_section_html
+from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import Entity, Scene
 from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalog,
@@ -263,12 +263,10 @@ class CachedSceneOverlay:
     def _hover_hit_from_indexed(self, indexed: _IndexedHit) -> HoverHit:
         hit = self._hover_cards.get(indexed.target_id)
         if hit is None:
-            observation = indexed.entity.latest_observation
             hit = HoverHit(
                 target_id=indexed.target_id,
                 bounds=indexed.bounds,
-                card_html=build_entity_hover_html(indexed.entity, include_debug=False),
-                card_sections=debug_section_html(observation.debug) if observation is not None else (),
+                card_html=build_entity_hover_html(indexed.entity),
             )
             self._hover_cards[indexed.target_id] = hit
         return hit

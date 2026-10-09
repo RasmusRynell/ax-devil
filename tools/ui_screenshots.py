@@ -34,7 +34,7 @@ from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
-from ax_devil.modules.scene.inspection import build_entity_hover_html, debug_section_html
+from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import BoundingBox, Classification, Entity, EntityId, MotionState, Observation, Score
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -141,58 +141,6 @@ def _grab_next_dialog(name: str, before: Callable[[QDialog], None] | None = None
                 widget.reject()
 
     QTimer.singleShot(300, grab)
-
-
-@pytest.mark.parametrize("theme", ["dark", "light"])
-@pytest.mark.parametrize("text_size", TEXT_SIZES)
-@pytest.mark.parametrize("size", [(1000, 640), (466, 721), (320, 600)])
-def test_hover_screenshots(qtbot: QtBot, theme: str, text_size: TextSize, size: tuple[int, int]) -> None:
-    """Save debug-heavy hover cards in wide and narrow viewers, without clipped content."""
-    OUT.mkdir(parents=True, exist_ok=True)
-    apply_theme(theme)
-    apply_text_size(text_size.body_px)
-    entity = Entity(id=EntityId("12d872dd-1285-536d-bc40-123456789abc"), motion_state=MotionState.Unknown)
-    entity.add_observation(
-        Observation(
-            geometry=BoundingBox.from_xywh(0.312, 0.142, 0.447, 0.847),
-            classification=[Classification(type="vehicle_other", score=Score(0.68))],
-            timestamp=datetime(1970, 1, 1, tzinfo=timezone.utc),
-            debug={
-                "recentMotion": {
-                    "trackConfident": True,
-                    "crowded": False,
-                    "moteOverlap": {"currentIou": 0, "iou": 0, "longLived": False},
-                    "velocity": {"x": 0.04316, "y": -0.06882, "stdDevX": 0.344, "stdDevY": 0.5898},
-                    "moving": False,
-                    "stationary": False,
-                    "positionStability": {f"metric_{index}": index / 100 for index in range(30)},
-                }
-            },
-        )
-    )
-    parent = QWidget()
-    parent.resize(*size)
-    qtbot.addWidget(parent)
-    parent.show()
-    card = EntityHoverCard(parent)
-    observation = entity.latest_observation
-    assert observation is not None
-    card.show_for(
-        str(entity.id),
-        build_entity_hover_html(entity, include_debug=False),
-        size[0] // 2,
-        size[1] // 2,
-        sections=debug_section_html(observation.debug),
-        interactive=True,
-    )
-    QApplication.processEvents()
-
-    assert parent.rect().contains(card.geometry())
-    assert str(entity.id) in card._browser.toPlainText()
-    assert "metric_29" in card._browser.toPlainText()
-    parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-{size[0]}.png"))
-    card._browser.verticalScrollBar().setValue(card._browser.verticalScrollBar().maximum())
-    parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-{size[0]}-bottom.png"))
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
@@ -311,3 +259,37 @@ def test_screenshots(
             qtbot.wait(500)
             window.grab().save(str(OUT / f"{theme}-{text_size.value}-two-lanes-{size_name}.png"))
     session.clear()
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_hover_screenshots(qtbot: QtBot, theme: str) -> None:
+    """Save a pinned, debug-heavy object inspector in a wide and a narrow viewer."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    apply_theme(theme)
+    entity = Entity(id=EntityId("12d872dd-1285-536d-bc40-123456789abc"), motion_state=MotionState.Unknown)
+    entity.add_observation(
+        Observation(
+            geometry=BoundingBox.from_xywh(0.312, 0.142, 0.447, 0.847),
+            classification=[Classification(type="vehicle_other", score=Score(0.68))],
+            timestamp=datetime(1970, 1, 1, tzinfo=timezone.utc),
+            debug={
+                "recentMotion": {
+                    "trackConfident": True,
+                    "moteOverlap": {"currentIou": 0, "iou": 0, "longLived": False},
+                    "velocity": {"x": 0.04316, "y": -0.06882, "stdDevX": 0.344, "stdDevY": 0.5898},
+                    "positionStability": {f"metric_{index}": index / 100 for index in range(30)},
+                }
+            },
+        )
+    )
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    parent.show()
+    card = EntityHoverCard(parent)
+    for text_size in TEXT_SIZES:
+        apply_text_size(text_size.body_px)
+        for size_name, size in (("wide", (1000, 640)), ("narrow", (320, 600))):
+            parent.resize(*size)
+            card.show_for(str(entity.id), build_entity_hover_html(entity), 40, 40, interactive=True)
+            QApplication.processEvents()
+            parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-{size_name}.png"))

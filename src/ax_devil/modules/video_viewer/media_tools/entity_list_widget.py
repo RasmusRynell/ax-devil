@@ -504,7 +504,7 @@ def _detail_row(key: str, value_html: str) -> str:
 def entity_detail_html(entity: Entity) -> str:
     """Build object-specific details followed by complete path-titled debug sections."""
     rows = [_detail_row("id", f'<span style="font-family:monospace;">{escape(str(entity.id))}</span>')]
-    rows.extend(_detail_row(name, html) for name, html in entity_detail_items(entity, include_debug=False))
+    rows.extend(_detail_row(name, html) for name, html in entity_detail_items(entity))
     observation = entity.latest_observation
     sections = debug_section_html(observation.debug) if observation is not None else ()
     return f'<table cellspacing="0" cellpadding="1">{"".join(rows)}</table>{"".join(sections)}'

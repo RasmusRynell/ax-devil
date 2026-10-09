@@ -48,22 +48,17 @@ class _MovingProvider:
     def __init__(self) -> None:
         self.bounds = (0.10, 0.10, 0.20, 0.20)
         self.card_html = "<span>entity-1 frame-1</span>"
-        self.card_sections: tuple[str, ...] = ()
 
     def hit_test(self, nx: float, ny: float) -> HoverHit | None:
         x, y, w, h = self.bounds
         if x <= nx <= x + w and y <= ny <= y + h:
-            return HoverHit(
-                target_id="entity-1", bounds=self.bounds, card_html=self.card_html, card_sections=self.card_sections
-            )
+            return HoverHit(target_id="entity-1", bounds=self.bounds, card_html=self.card_html)
         return None
 
     def get_hit_by_id(self, target_id: str) -> HoverHit | None:
         if target_id != "entity-1":
             return None
-        return HoverHit(
-            target_id="entity-1", bounds=self.bounds, card_html=self.card_html, card_sections=self.card_sections
-        )
+        return HoverHit(target_id="entity-1", bounds=self.bounds, card_html=self.card_html)
 
 
 class _ToggleProvider:
@@ -189,15 +184,23 @@ def test_click_pins_selection_and_empty_click_clears(qtbot: QtBot) -> None:
     assert renderer._hover_card.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
 
-def test_pinned_inspector_wheel_scrolls_without_zooming_video(qtbot: QtBot) -> None:
+def _make_pinned_renderer(qtbot: QtBot, size: tuple[int, int]) -> VideoFrameRenderer:
     renderer = VideoFrameRenderer()
-    renderer.resize(640, 480)
+    renderer.resize(*size)
     qtbot.addWidget(renderer)
     renderer.show()
     provider = _MovingProvider()
-    provider.card_sections = debug_section_html({"debug": {f"metric_{index}": index for index in range(100)}})
+    provider.card_html = "".join(debug_section_html({"debug": {f"metric_{index}": index for index in range(100)}}))
     renderer.display_frame(_make_display_data(provider))
-    _mouse_click(qtbot, renderer, QPoint(100, 80))
+    target = renderer._hover_target_rect()
+    assert target is not None
+    object_point = target.topLeft() + QPointF(0.2 * target.width(), 0.2 * target.height())
+    _mouse_click(qtbot, renderer, object_point.toPoint())
+    return renderer
+
+
+def test_pinned_inspector_takes_wheel_and_clicks_without_changing_the_video(qtbot: QtBot) -> None:
+    renderer = _make_pinned_renderer(qtbot, (640, 480))
     card = renderer._hover_card
     scroll = card._browser.verticalScrollBar()
     old_bounds = renderer._hover_target_rect()
@@ -205,35 +208,27 @@ def test_pinned_inspector_wheel_scrolls_without_zooming_video(qtbot: QtBot) -> N
 
     event = _make_wheel_event(QPointF(20, 20), -120)
     QApplication.sendEvent(card._browser.viewport(), event)
-
-    assert event.isAccepted()
     assert scroll.value() > 0
-    assert renderer._hover_target_rect() == old_bounds
     scroll.setValue(scroll.maximum())
-    padding_event = _make_wheel_event(QPointF(1, 1), -120)
-    QApplication.sendEvent(card, padding_event)
-    assert padding_event.isAccepted()
+    at_end = _make_wheel_event(QPointF(20, 20), -120)
+    QApplication.sendEvent(card._browser.viewport(), at_end)
     assert renderer._hover_target_rect() == old_bounds
 
+    window = renderer.windowHandle()
+    assert window is not None
+    cast(Any, qtbot).mouseClick(window, Qt.MouseButton.LeftButton, pos=card.pos() + QPoint(2, 2))
+    assert renderer._pinned_target_id == "entity-1"
+    assert card.isVisible()
 
-def test_paused_pinned_inspector_reflows_on_viewer_resize(qtbot: QtBot) -> None:
-    renderer = VideoFrameRenderer()
-    renderer.resize(1200, 700)
-    qtbot.addWidget(renderer)
-    renderer.show()
-    provider = _MovingProvider()
-    provider.card_sections = debug_section_html({f"group_{index}": {"value": index} for index in range(6)})
-    renderer.display_frame(_make_display_data(provider))
-    _mouse_click(qtbot, renderer, QPoint(300, 150))
-    card = renderer._hover_card
-    assert card._column_count == 2
+
+def test_paused_pinned_inspector_refits_on_viewer_resize(qtbot: QtBot) -> None:
+    renderer = _make_pinned_renderer(qtbot, (1200, 700))
 
     renderer.resize(320, 300)
     QApplication.processEvents()
 
     assert renderer._pinned_target_id == "entity-1"
-    assert card._column_count == 1
-    assert renderer.rect().contains(card.geometry())
+    assert renderer.rect().contains(renderer._hover_card.geometry())
 
 
 def test_hover_and_click_share_object_anchored_card_position(qtbot: QtBot) -> None:

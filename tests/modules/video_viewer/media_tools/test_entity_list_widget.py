@@ -23,6 +23,7 @@ from ax_devil.modules.video_viewer.media_tools.entity_list_widget import (
     _build_trailing,
     _detail_row,
     _movement_span,
+    entity_detail_html,
     split_id_and_class,
 )
 
@@ -290,7 +291,7 @@ def test_entity_rows_show_the_class_after_the_id(qtbot: QtBot) -> None:
     assert item is not None and (item.entity_id, item.class_name) == ("a", "person")
 
 
-def test_entity_detail_items_include_object_specific_fields_and_complete_debug() -> None:
+def test_entity_details_show_object_fields_then_debug() -> None:
     entity = _entity("a", frame_number=3)
     entity.motion_state = MotionState.Moving
     entity.end_reason = "lost"
@@ -306,8 +307,8 @@ def test_entity_detail_items_include_object_specific_fields_and_complete_debug()
         "classification",
         "frame_number",
         "confidence",
-        "debug",
     ]
+    assert "cost" in entity_detail_html(entity)
 
 
 def test_movement_span_shows_moving_indicator() -> None:

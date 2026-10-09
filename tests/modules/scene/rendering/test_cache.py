@@ -359,7 +359,7 @@ def test_hover_formats_only_selected_entity_and_reuses_its_card(monkeypatch: pyt
 
     calls: list[EntityId] = []
 
-    def format_card(entity: Entity, *, include_debug: bool = True) -> str:
+    def format_card(entity: Entity) -> str:
         calls.append(entity.id)
         return f"card:{entity.id}"
 

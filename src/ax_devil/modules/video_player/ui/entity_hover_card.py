@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from math import ceil
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics, QTextOption, QWheelEvent
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QFont, QFontMetrics, QTextOption
 from PySide6.QtWidgets import QFrame, QTextBrowser, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -24,12 +24,7 @@ QFrame#EntityHoverCard QTextBrowser {{
 """
 _ANCHOR_OFFSET = 14
 _CARD_PADDING = Space.S
-
-
-class _InspectionBrowser(QTextBrowser):
-    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
-        super().wheelEvent(event)
-        event.accept()
+_MAX_TEXT_CHARACTERS = 56
 
 
 class EntityHoverCard(QFrame):
@@ -40,26 +35,26 @@ class EntityHoverCard(QFrame):
         self.setObjectName("EntityHoverCard")
         self.setStyleSheet(_CARD_STYLE)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        # Clicks, selection drags and wheel on a pinned card must not unpin, re-pin or zoom the video beneath it.
+        self.setAttribute(Qt.WidgetAttribute.WA_NoMousePropagation, True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
-        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        self._browser = _InspectionBrowser(self)
+        # The document margin pads the card, so the whole card scrolls and selects text.
+        self._browser = QTextBrowser(self)
         self._browser.setFrameShape(QFrame.Shape.NoFrame)
         self._browser.setOpenLinks(False)
         self._browser.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self._browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._browser.document().setDocumentMargin(0)
+        self._browser.document().setDocumentMargin(Space.M)
         layout.addWidget(self._browser)
 
         self._current_target_id: str | None = None
         self._current_card_html: str | None = None
-        self._sections: tuple[str, ...] = ()
-        self._layout_key: tuple[int, int, str, tuple[str, ...]] | None = None
-        self._column_count = 1
         self._placement: tuple[int, int, tuple[int, int, int, int] | None] | None = None
-        follow_appearance(self, self._apply_appearance)
+        self._fitted: tuple[QSize, QFont, str] | None = None
+        follow_appearance(self._browser, self._apply_appearance)
         self.hide()
 
     # ------------------------------------------------------------------
@@ -74,20 +69,15 @@ class EntityHoverCard(QFrame):
         anchor_y: int,
         *,
         avoid_rect: tuple[int, int, int, int] | None = None,
-        sections: tuple[str, ...] = (),
         interactive: bool = False,
     ) -> None:
         """Show complete inspection data; only pinned cards capture input."""
-        new_target = target_id != self._current_target_id
+        same_target = target_id == self._current_target_id
         self._current_target_id = target_id
         self._current_card_html = card_html
-        self._sections = sections
         self._placement = (anchor_x, anchor_y, avoid_rect)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not interactive)
-        if new_target:
-            self._layout_key = None
-        self._update_layout(new_target=new_target)
-        self._reposition(anchor_x, anchor_y, avoid_rect)
+        self._fit(same_target=same_target)
         self.show()
         self.raise_()
 
@@ -95,9 +85,8 @@ class EntityHoverCard(QFrame):
         """Hide the card."""
         self._current_target_id = None
         self._current_card_html = None
-        self._sections = ()
-        self._layout_key = None
         self._placement = None
+        self._fitted = None
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.hide()
 
@@ -105,64 +94,45 @@ class EntityHoverCard(QFrame):
     # Internals
     # ------------------------------------------------------------------
 
-    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
-        """Scroll from the card padding as well as the text, without zooming the video."""
-        self._browser.wheelEvent(event)
-
     def _apply_appearance(self) -> None:
-        TextRole.SMALL.apply(self._browser)
-        self._browser.document().setDefaultFont(self._browser.font())
-        self._layout_key = None
-        if self._current_card_html is not None:
-            self._update_layout()
-            if self._placement is not None:
-                self._reposition(*self._placement)
+        self._browser.setFont(TextRole.SMALL.font())
+        self._fit(same_target=True)
 
-    def _update_layout(self, *, new_target: bool = False) -> None:
+    def _fit(self, *, same_target: bool) -> None:
+        """Size the card to its text within the viewer, keeping scroll and size steady for the same object."""
         parent = self.parentWidget()
-        if parent is None or self._current_card_html is None:
+        if parent is None or self._current_card_html is None or self._placement is None:
             return
-        key = (parent.width(), parent.height(), self._current_card_html, self._sections)
-        if key == self._layout_key:
-            return
-        self._layout_key = key
-
-        margins = 2 * (Space.M + self.frameWidth())
-        available_width = max(1, parent.width() - 2 * _CARD_PADDING - margins)
-        available_height = max(1, parent.height() - 2 * _CARD_PADDING - margins)
-        character_width = QFontMetrics(self._browser.font()).averageCharWidth()
-        self._column_count = 2 if len(self._sections) > 1 and available_width >= 100 * character_width else 1
-        width = min(available_width, (104 if self._column_count == 2 else 56) * character_width)
-        scroll = self._browser.verticalScrollBar()
-        scroll_position = 0 if new_target else scroll.value()
-        html = self._current_card_html
-        if self._sections:
-            split = (len(self._sections) + self._column_count - 1) // self._column_count
-            columns = [self._sections[index : index + split] for index in range(0, len(self._sections), split)]
-            cells = "".join(
-                f'<td width="{100 // self._column_count}%" valign="top">{"<br/>".join(column)}</td>'
-                for column in columns
-            )
-            html = f'{html}<br/><table width="100%" cellspacing="{Space.M}" cellpadding="0"><tr>{cells}</tr></table>'
-        document = self._browser.document()
-        document.setLayoutEnabled(False)
-        try:
-            self._browser.setHtml(html)
-            self._browser.setFixedWidth(width)
-            document.setTextWidth(self._browser.viewport().width())
-        finally:
-            document.setLayoutEnabled(True)
-        if not self._sections:
-            document.setTextWidth(-1)
-            width = min(width, ceil(document.idealWidth()) + Space.XS)
-            self._browser.setFixedWidth(width)
-            document.setTextWidth(self._browser.viewport().width())
-        height = min(available_height, ceil(document.size().height()) + 2 * self._browser.frameWidth())
-        if not new_target:
-            height = min(available_height, max(height, self._browser.height()))
-        self._browser.setFixedHeight(height)
-        self.setFixedSize(width + margins, height + margins)
-        scroll.setValue(scroll_position)
+        fitted = (parent.size(), self._browser.font(), self._current_card_html)
+        if fitted != self._fitted:
+            self._fitted = fitted
+            scroll = self._browser.verticalScrollBar()
+            scroll_position = scroll.value() if same_target else 0
+            frame = 2 * self.frameWidth()
+            character_width = QFontMetrics(self._browser.font()).averageCharWidth()
+            max_width = max(1, min(parent.width() - 2 * _CARD_PADDING - frame, _MAX_TEXT_CHARACTERS * character_width))
+            max_height = max(1, parent.height() - 2 * _CARD_PADDING - frame)
+            document = self._browser.document()
+            # Lay the shown text out once, at its final width, while values change every frame.
+            document.setLayoutEnabled(False)
+            try:
+                self._browser.setHtml(self._current_card_html)
+                # QTextEdit pins its document to the viewport width, so measure a copy.
+                measure = document.clone(self)
+                measure.setTextWidth(max_width)
+                width = min(max_width, ceil(measure.idealWidth()))
+                if width < max_width:
+                    measure.setTextWidth(width)
+                height = min(max_height, ceil(measure.size().height()))
+                measure.deleteLater()
+                if same_target:
+                    width = min(max_width, max(width, self.width() - frame))
+                    height = min(max_height, max(height, self.height() - frame))
+                self.setFixedSize(width + frame, height + frame)
+            finally:
+                document.setLayoutEnabled(True)
+            scroll.setValue(scroll_position)
+        self._reposition(*self._placement)
 
     def _reposition(
         self,

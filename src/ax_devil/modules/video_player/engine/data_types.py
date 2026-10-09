@@ -36,7 +36,6 @@ class HoverHit:
     target_id: str
     bounds: tuple[float, float, float, float]  # (x, y, width, height) normalized [0,1]
     card_html: str
-    card_sections: tuple[str, ...] = ()
 
 
 class HoverInteractionProvider(Protocol):

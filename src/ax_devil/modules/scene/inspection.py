@@ -20,18 +20,17 @@ _INDENT = "&nbsp;&nbsp;&nbsp;&nbsp;"
 _MAX_PER_ROW = 4
 
 
-def build_entity_hover_html(entity: Entity, *, include_debug: bool = True) -> str:
-    """Build object inspection HTML, optionally leaving debug sections to the display."""
+def build_entity_hover_html(entity: Entity) -> str:
+    """Build object inspection HTML: full ID, object-specific fields, then every debug field."""
     if entity.latest_observation is None:
         return ""
 
     lines = [f'<span style="{_MONO}">{escape(str(entity.id))}</span>']
     lines.extend(
         f'<span style="{_BOLD}">{escape(name)}: </span>{html}'
-        for name, html in entity_detail_items(entity, continuation_indent=1, include_debug=False)
+        for name, html in entity_detail_items(entity, continuation_indent=1)
     )
-    if include_debug:
-        lines.extend(debug_section_html(entity.latest_observation.debug))
+    lines.extend(debug_section_html(entity.latest_observation.debug))
     return "<br/>".join(lines)
 
 
@@ -87,20 +86,15 @@ def _debug_value(value: Any) -> str:
     return str(value)
 
 
-def entity_detail_items(
-    entity: Entity, *, continuation_indent: int = 0, include_debug: bool = True
-) -> list[tuple[str, str]]:
-    """Return object-specific fields; debug sections retain all values and source precision."""
+def entity_detail_items(entity: Entity, *, continuation_indent: int = 0) -> list[tuple[str, str]]:
+    """Return (name, value HTML) for populated object fields; debug is left to ``debug_section_html``."""
     obs = entity.latest_observation
     items = [
         *_entity_hover_items(entity),
         *(_dataclass_items(obs, skip={"debug", "timestamp"}) if obs is not None else ()),
     ]
     rendered = ((name, _render_value(value, continuation_indent=continuation_indent)) for name, value in items)
-    result = [(name, html) for name, html in rendered if html]
-    if include_debug and obs is not None and obs.debug:
-        result.append(("debug", "".join(debug_section_html(obs.debug))))
-    return result
+    return [(name, html) for name, html in rendered if html]
 
 
 def _entity_hover_items(entity: Entity) -> Iterable[tuple[str, Any]]:

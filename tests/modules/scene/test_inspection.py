@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ax_devil.modules.scene.inspection import build_entity_hover_html, debug_section_html, entity_detail_items
+from ax_devil.modules.scene.inspection import build_entity_hover_html, debug_section_html
 from ax_devil.modules.scene.model import (
     RGB,
     Attribute,
@@ -159,20 +159,16 @@ def test_hover_html_surfaces_image_metadata_without_dumping_bytes() -> None:
     assert "abc" not in html
 
 
-def test_hover_and_inspector_retain_every_debug_field() -> None:
+def test_hover_retains_every_debug_field() -> None:
     entity = _make_entity()
     observation = entity.latest_observation
     assert observation is not None
     observation.debug = {"recentMotion": {f"metric_{index:02d}": index for index in range(50)}}
 
     html = build_entity_hover_html(entity)
-    details = dict(entity_detail_items(entity))["debug"]
 
     assert "recentMotion" in html
-    assert "metric_00" in html
-    assert "metric_49" in html
-    assert "more" not in html
-    assert all(f"metric_{index:02d}" in details for index in range(50))
+    assert all(f"metric_{index:02d}" in html for index in range(50))
 
 
 def test_hover_shows_full_id_without_redundant_frame_fields() -> None:
