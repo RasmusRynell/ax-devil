@@ -77,8 +77,6 @@ def _debug_value(value: Any) -> str:
         return str(value).lower()
     if isinstance(value, str):
         return value or '""'
-    if isinstance(value, bytes):
-        return f"{len(value)} bytes"
     if isinstance(value, list | tuple):
         return f"[{', '.join(_debug_value(item) for item in value)}]"
     if isinstance(value, Enum):

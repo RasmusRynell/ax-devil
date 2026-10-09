@@ -193,6 +193,9 @@ def test_debug_sections_preserve_paths_empty_values_precision_and_escaping() -> 
                 "empty_text": "",
                 "empty_map": {},
                 "empty_list": [],
+                "binary_ids": [b"\x00\xff", b"\x01\xfe"],
+                "binary_markup": b"<&>",
+                "empty_bytes": b"",
                 "samples": [0, False, None],
                 "trail": [{"<key>": "<value>"}, {"x": 0}],
             }
@@ -214,3 +217,6 @@ def test_debug_sections_preserve_paths_empty_values_precision_and_escaping() -> 
     assert str(1 / 3) in html
     assert "&lt;key&gt;" in html
     assert "&lt;value&gt;" in html
+    assert r"[b&#x27;\x00\xff&#x27;, b&#x27;\x01\xfe&#x27;]" in html
+    assert "b&#x27;&lt;&amp;&gt;&#x27;" in html
+    assert "b&#x27;&#x27;" in html
