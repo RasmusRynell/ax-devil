@@ -33,6 +33,10 @@ def _span(*frame_indices: int) -> range:
     return range(min(frame_indices), max(frame_indices) + 1)
 
 
+# Consecutive short backward steps after which prefetch fills the frames before the playhead instead of after it.
+_BACKWARD_STEPS_TO_PREFETCH_BEHIND = 3
+
+
 class FrameReaderWorker(BaseWorker):
     """Work executor for frame reading operations."""
 
@@ -63,6 +67,7 @@ class FrameReaderWorker(BaseWorker):
         self._pyav_lock = threading.RLock()  # RLock allows nested locking from same thread
 
         self._current_read_frame = 0
+        self._backward_steps = 0
         self._prefetch_started = False
         self._worker: "FrameWorker" | None = None
 
@@ -147,22 +152,35 @@ class FrameReaderWorker(BaseWorker):
                 decoded_frames: DecodedFrames = [] if video_frame is None else [(decoder_pos, video_frame)]
             else:
                 keyframe = self._frame_processor.get_nearest_keyframe_before(target)
+                # A backward walk the cache cannot keep would decode this group again for every step back.
+                if (
+                    target < playhead
+                    and current_frame.reserved_bytes * len(_span(keyframe, playhead)) > self._cache.budget_bytes
+                ):
+                    return False
                 logger.debug(f"Prefetch jumping from decoder position {decoder_pos} to keyframe {keyframe}")
                 decoded_frames = self._frame_processor.jump_to(keyframe)
 
-            # A seek can return several frames; none may evict a frame nearer the playhead or the target.
+            # A seek can return several frames; none may evict a frame nearer the playhead or the target. Frames on
+            # the far side of the playhead are not what this window fills.
+            ahead = target > playhead
             for frame_index, frame in decoded_frames:
-                if not self._cache.contains(frame_index):
+                if (frame_index > playhead) == ahead and not self._cache.contains(frame_index):
                     cached_frame = self._create_cached_frame(frame_index, frame)
                     self._cache.put(frame_index, cached_frame, keep=_span(playhead, target, frame_index))
             # Stop when nothing was decoded or the target itself did not fit, instead of decoding it again.
             return bool(decoded_frames) and (self._cache.contains(target) or decoded_frames[-1][0] < target)
 
     def _prefetch_window(self) -> range:
-        """Return the frames prefetch fills, nearest the playhead first."""
-        return range(
-            self._current_read_frame + 1, min(self._current_read_frame + self._prefetch_count, self._total_frames)
-        )
+        """Return the frames prefetch fills, nearest the playhead first.
+
+        Stepping back repeatedly turns the window behind the playhead, so the frames ahead of a backward walk are
+        decoded before they are requested.
+        """
+        playhead = self._current_read_frame
+        if self._backward_steps >= _BACKWARD_STEPS_TO_PREFETCH_BEHIND:
+            return range(playhead - 1, max(playhead - self._prefetch_count, -1), -1)
+        return range(playhead + 1, min(playhead + self._prefetch_count, self._total_frames))
 
     def _handle_frame_request(self, frame_index: int, callback: Callable[[DecodedFrame | None], None]) -> None:
         """Handle a specific frame request."""
@@ -266,12 +284,17 @@ class FrameReaderWorker(BaseWorker):
         return None
 
     def _update_current_read_frame(self, frame_index: int) -> None:
-        """Update current read frame for prefetch logic.
+        """Update current read frame and the run of short backward steps for prefetch logic.
 
         Args:
             frame_index: New current frame index
         """
         old_frame = self._current_read_frame
+        step_back = old_frame - frame_index
+        if 0 < step_back < self._prefetch_count:
+            self._backward_steps += 1
+        elif step_back != 0:
+            self._backward_steps = 0
         self._current_read_frame = frame_index
         self._prefetch_started = True
         if self._worker is not None:

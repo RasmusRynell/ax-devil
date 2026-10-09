@@ -1,5 +1,6 @@
 """Byte reservations preserve frame delivery and useful prefetch under small budgets."""
 
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import patch
 
@@ -175,6 +176,104 @@ def test_prefetch_under_a_small_budget_decodes_each_keyframe_group_once(tmp_path
         assert all(worker._cache.contains(index) for index in range(170, 175))
     finally:
         worker.cleanup()
+
+
+@pytest.mark.parametrize(
+    ("reads", "filled", "untouched"),
+    [
+        ((60, 59, 58, 52), range(43, 52), range(61, 70)),
+        ((60, 52), range(53, 62), range(43, 50)),
+        ((60, 59, 58, 52, 53), range(54, 63), range(43, 50)),
+    ],
+    ids=["three-steps-back-fill-behind", "one-step-back-fills-ahead", "forward-step-fills-ahead-again"],
+)
+def test_repeated_backward_steps_prefetch_behind_the_playhead(
+    tmp_path: Path, reads: tuple[int, ...], filled: range, untouched: range
+) -> None:
+    """Three short steps back fill the frames behind the playhead by keyframe group; a forward step stops it."""
+    path = tmp_path / "video.mp4"
+    create_test_video(path, duration=3.0, gop=10)
+    worker = FrameReaderWorker(str(path), 1024**3, prefetch_count=10)
+    try:
+        for index in reads:
+            assert worker.read_decoded_frame(index) is not None
+        for _ in range(100):
+            if not worker.prefetch_one():
+                break
+        else:
+            pytest.fail("Prefetch did not stop after filling its window")
+        cached = set(_cached_frames(worker))
+        assert set(filled) <= cached
+        assert not set(untouched) & cached
+    finally:
+        worker.cleanup()
+
+
+def test_a_read_during_a_backward_fill_reads_on_from_where_the_fill_stopped(tmp_path: Path) -> None:
+    """Stepping back before the fill reaches the frame keeps the fill's progress instead of seeking again."""
+    path = tmp_path / "video.mp4"
+    create_test_video(path, duration=3.0, gop=30)
+    worker = FrameReaderWorker(str(path), 1024**3, prefetch_count=10)
+    try:
+        for index in (89, 80, 72, 64):
+            assert worker.read_decoded_frame(index) is not None
+        for _ in range(15):
+            assert worker.prefetch_one()  # Interrupted partway through the 30..59 group.
+        with patch.object(worker._frame_processor, "jump_to", wraps=worker._frame_processor.jump_to) as jump:
+            assert worker.read_decoded_frame(59) is not None
+        jump.assert_not_called()
+    finally:
+        worker.cleanup()
+
+
+@pytest.mark.parametrize(
+    ("duration", "gop", "budget_frames", "reads"),
+    [(4.0, 60, 12, range(110, 80, -1)), (6.0, 10, 8, (179, 178, 177, 176))],
+    ids=["group-longer-than-budget", "seek-returns-frames-past-playhead"],
+)
+def test_backward_prefetch_decodes_each_keyframe_group_once(
+    tmp_path: Path, duration: float, gop: int, budget_frames: int, reads: Sequence[int]
+) -> None:
+    """Walking back under a small budget never decodes a keyframe group again to keep one more frame."""
+    path = tmp_path / "video.mp4"
+    create_test_video(path, duration=duration, gop=gop)
+    worker = FrameReaderWorker(str(path), budget_frames * _frame_bytes(path), prefetch_count=10)
+    prefetch_jumps: list[int] = []
+    try:
+        for index in reads:
+            assert worker.read_decoded_frame(index) is not None
+            with patch.object(worker._frame_processor, "jump_to", wraps=worker._frame_processor.jump_to) as jump:
+                _drain_prefetch(worker)
+            prefetch_jumps.extend(call.args[0] for call in jump.call_args_list)
+        assert len(prefetch_jumps) == len(set(prefetch_jumps)), f"Repeated keyframe jumps: {prefetch_jumps}"
+    finally:
+        worker.cleanup()
+
+
+def test_forward_prefetch_jumps_into_a_group_longer_than_the_budget(tmp_path: Path) -> None:
+    """Resuming from a cached frame fills the frames after it even when their keyframe group exceeds the budget."""
+    path = tmp_path / "video.mp4"
+    create_test_video(path, duration=4.0, gop=60)
+    worker = FrameReaderWorker(str(path), 35 * _frame_bytes(path), prefetch_count=10)
+    try:
+        for index in (100, 10, 100):  # The last read is a cache hit with the decoder parked at 11.
+            assert worker.read_decoded_frame(index) is not None
+        _drain_prefetch(worker)
+        assert all(worker._cache.contains(index) for index in range(101, 110))
+    finally:
+        worker.cleanup()
+
+
+def _frame_bytes(path: Path) -> int:
+    with av.open(str(path)) as container:
+        return int(next(container.decode(video=0)).to_ndarray(format="rgb24").nbytes)
+
+
+def _drain_prefetch(worker: FrameReaderWorker) -> None:
+    for _ in range(100):
+        if not worker.prefetch_one():
+            return
+    pytest.fail("Prefetch did not stop")
 
 
 def _cached_frames(worker: FrameReaderWorker) -> list[int]:

@@ -83,6 +83,9 @@ Read the sections for the area you change. Explanations of how things work live 
   keeps the sum within the byte budget, including prefetched frames. Conversion does not change the reservation.
 - Prefetch may evict older history, but never a frame between the playhead, the missing frame it is filling and
   the frame it admits.
+- The prefetch window follows the read direction: repeated short backward reads turn it behind the playhead.
+  Prefetch jumps back to a keyframe only when the frames from it to the playhead fit the budget, so a keyframe
+  group is never decoded repeatedly to keep one more frame.
 - A frame larger than the budget is delivered without caching. Cache pressure must not change frame identity or timing.
 - This is a cache reservation limit, not an RSS limit. Decoder/intermediate seek frames, conversion temporaries,
   display images, overlay caches and allocator-retained pages are outside it.
