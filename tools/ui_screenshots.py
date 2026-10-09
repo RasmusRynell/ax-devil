@@ -263,7 +263,7 @@ def test_screenshots(
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_hover_screenshots(qtbot: QtBot, theme: str) -> None:
-    """Save a pinned, debug-heavy object inspector in a wide and a narrow viewer."""
+    """Save compact and scrolling object inspectors in wide and narrow viewers."""
     OUT.mkdir(parents=True, exist_ok=True)
     apply_theme(theme)
     entity = Entity(id=EntityId("12d872dd-1285-536d-bc40-123456789abc"), motion_state=MotionState.Unknown)
@@ -293,3 +293,8 @@ def test_hover_screenshots(qtbot: QtBot, theme: str) -> None:
             card.show_for(str(entity.id), build_entity_hover_html(entity), 40, 40, interactive=True)
             QApplication.processEvents()
             parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-{size_name}.png"))
+            card.hide_card()
+            card.show_for("compact", "<b>Person</b><br/>ID: 12<br/>Confidence: 0.98", 40, 40, interactive=True)
+            QApplication.processEvents()
+            parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-compact-{size_name}.png"))
+            card.hide_card()
