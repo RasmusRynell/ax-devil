@@ -222,15 +222,28 @@ def test_side_panel_takes_at_most_half_the_pane_and_stays_open_when_it_narrows(q
     assert display.is_side_panel_open()
 
 
-def test_side_panel_opening_during_a_resize_ends_at_the_new_pane_width(qtbot: QtBot) -> None:
-    window, display, panel, _content = _display_in_window(qtbot, 1200)
+def test_side_panel_opening_during_resize_keeps_content_and_video_visible(qtbot: QtBot) -> None:
+    window, display, panel, content = _display_in_window(qtbot, 1200)
 
-    display.set_side_panel_open(True)
-    window.resize(560, 400)
-    QCoreApplication.processEvents()
+    with qtbot.waitSignals([panel.animation.finished, panel.min_animation.finished]):
+        display.set_side_panel_open(True)
+        window.resize(300, 400)
+        resized_size = window.size()
 
-    qtbot.waitUntil(lambda: panel.width() == 280)
-    assert display.viewport.width() == 280
+    qtbot.waitUntil(
+        lambda: (
+            display.rect().contains(panel.geometry())
+            and display.rect().contains(display.viewport.geometry())
+            and not panel.geometry().intersects(display.viewport.geometry())
+        )
+    )
+    assert window.size() == resized_size
+    assert display.is_side_panel_open()
+    assert content.isVisible()
+    assert panel.rect().contains(content.geometry())
+    assert content.width() >= content.minimumSizeHint().width()
+    assert display.viewport.isVisible()
+    assert not display.viewport.size().isEmpty()
 
 
 def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
