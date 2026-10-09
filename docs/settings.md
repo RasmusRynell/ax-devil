@@ -14,8 +14,10 @@ Stream defaults apply to newly opened live-stream dialogs.
 Theme and text size changes apply immediately; storage, title bar, and graphics changes need a restart. Changing storage locations does not move existing files.
 Keyboard shortcuts are confirmed in their own dialog.
 
-Connection and storage fields keep `$VARIABLE_NAME` references as written. Password references stay visible
-while literal passwords are masked. Numeric and storage references must resolve to valid values to save.
+Connection and storage fields keep `$VARIABLE_NAME` references as written and read the variable when the value is
+used; any other text is literal, even when it starts with `$` or `~`. Password references stay visible while literal
+passwords are masked. Numeric and storage references must resolve to valid values to save. Storage folders may start
+with `~` for the home folder.
 
 ## Quick Setup
 

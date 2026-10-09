@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
@@ -81,9 +82,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 MAX_UNSUPPORTED_CONFIG_PATHS_TO_LOG = 8
 
+# Top-level config roots whose string values are folders, where ``~`` means the home directory.
+PATH_ROOTS: frozenset[str] = frozenset({"storage"})
 
-def _resolve_runtime_value(value: Any) -> Any:
-    """Return a runtime projection with ``~`` and ``$VAR`` values expanded."""
+_ENVIRONMENT_REFERENCE = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*")
+
+
+def is_environment_reference(value: str) -> bool:
+    """Return whether a raw config value names an environment variable; any other text is literal."""
+    return _ENVIRONMENT_REFERENCE.fullmatch(value) is not None
+
+
+def _resolve_runtime_value(value: Any, *, expand_user_paths: bool) -> Any:
+    """Return a runtime projection with ``$VARIABLE_NAME`` references, and ``~`` folders when asked, expanded."""
     missing_env_vars: set[str] = set()
 
     def _resolve_nested(current: Any) -> Any:
@@ -92,18 +103,16 @@ def _resolve_runtime_value(value: Any) -> Any:
         if isinstance(current, list):
             return [_resolve_nested(item) for item in current]
         if isinstance(current, str):
-            if current.startswith("~"):
-                expanded_path = Path(current).expanduser().resolve(strict=False)
-                logger.debug("Resolved user directory in config value")
-                return str(expanded_path)
-            if current.startswith("$"):
+            if is_environment_reference(current):
                 env_var = current[1:]
-                resolved_value = os.getenv(env_var, "")
-                if resolved_value:
-                    logger.debug(f"Resolved env var ${env_var}")
-                    return resolved_value
-                missing_env_vars.add(env_var)
-                return ""
+                current = os.getenv(env_var, "")
+                if not current:
+                    missing_env_vars.add(env_var)
+                    return ""
+                logger.debug(f"Resolved env var ${env_var}")
+            if expand_user_paths and current.startswith("~"):
+                logger.debug("Resolved user directory in config value")
+                return str(Path(current).expanduser().resolve(strict=False))
         return current
 
     resolved_value = _resolve_nested(value)
@@ -276,7 +285,7 @@ class ConfigManager:
         if key not in self._raw_config:
             result = default
         else:
-            result = _resolve_runtime_value(copy.deepcopy(self._raw_config[key]))
+            result = _resolve_runtime_value(copy.deepcopy(self._raw_config[key]), expand_user_paths=key in PATH_ROOTS)
         logger.debug(f"ConfigManager getting config key: {key}")
         return result
 
