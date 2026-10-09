@@ -112,9 +112,11 @@ def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
     card.show_for("entity", _long_card(), 500, 100, interactive=True)
     scroll = card._browser.verticalScrollBar()
     scroll.setValue(100)
+    original_width = card.width()
 
     apply_text_size(21)
     QApplication.processEvents()
 
+    assert card.width() > original_width
     assert scroll.value() == 100
     assert parent.rect().contains(card.geometry())
