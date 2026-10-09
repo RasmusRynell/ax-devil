@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 
@@ -101,6 +102,7 @@ def test_pinned_card_fits_viewer_wraps_and_keeps_scroll_for_same_object(qtbot: Q
     assert scroll.value() == 0
 
 
+@pytest.mark.usefixtures("restore_app_appearance")
 def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
     parent = QWidget()
     parent.resize(640, 350)
@@ -110,11 +112,9 @@ def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
     card.show_for("entity", _long_card(), 500, 100, interactive=True)
     scroll = card._browser.verticalScrollBar()
     scroll.setValue(100)
-    original_font_size = QApplication.font().pixelSize()
-    try:
-        apply_text_size(21)
-        QApplication.processEvents()
-        assert scroll.value() == 100
-        assert parent.rect().contains(card.geometry())
-    finally:
-        apply_text_size(original_font_size)
+
+    apply_text_size(21)
+    QApplication.processEvents()
+
+    assert scroll.value() == 100
+    assert parent.rect().contains(card.geometry())
