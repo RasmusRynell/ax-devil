@@ -65,7 +65,9 @@ def test_workspace_opens_seeks_and_closes_real_video(
             assert handle is not None
             assert handle.surfaceType() == QSurface.SurfaceType.RasterSurface
             dialog.reject()
-        menu = cast(QMenu | None, window.menu_host().actions()[0].menu())
+        # PySide6 before 6.11.2 invalidates the menu wrapper once its QAction wrapper is collected.
+        file_action = window.menu_host().actions()[0]
+        menu = cast(QMenu | None, file_action.menu())
         assert menu is not None
         menu.popup(window.mapToGlobal(window.rect().center()))
         handle = menu.windowHandle()

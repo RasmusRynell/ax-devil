@@ -46,11 +46,11 @@ outside the checkout with isolated storage, then checks launching, decoding, upg
 removal. It may download and build packages, needs the same system libraries as a normal installation, and publishes
 nothing.
 
-CI uses two jobs for pull requests: `quality` shares one Python 3.12 environment for application checks,
-trace-viewer checks, the regular suite, installation smoke tests, and package builds; `test` runs the regular
-suite on the minimum supported Python 3.10. Pushes to `main` and release tags also run `lowest`, which tests
-Python 3.10 with the oldest allowed dependencies (`uv pip install --resolution lowest-direct -e . --group dev`).
-Superseded runs on the same branch or PR are canceled; release runs are not interrupted.
+CI runs three jobs on pull requests, `main`, and release tags: `quality` shares one Python 3.12 environment for
+application checks, trace-viewer checks, the regular suite, installation smoke tests, and package builds; `test` runs
+the regular suite on the minimum supported Python 3.10; `lowest` runs it on Python 3.10 with the oldest allowed
+dependencies (`uv pip install --resolution lowest-direct -e . --group dev`). A newer push to a PR cancels its
+superseded run; runs for `main` commits and releases always finish.
 Pytest excludes the `integration` marker by default; `-m integration` selects it explicitly.
 
 ## Package artifacts
