@@ -61,6 +61,10 @@ see the [render-catalog skill](../.agents/skills/render-catalog/SKILL.md#how-a-c
 
 ## Overlay details
 
+Hover an object for its full ID, object-specific details, and debug data grouped by source path. Click the object
+to pin the inspector, scroll through all its fields, or select and copy text. Click empty video to unpin it.
+Pinned values follow the displayed frame; pause playback when copying text.
+
 In the media tools panel, open **Details** beside **Catalog** to choose which information this view draws: object
 outlines, IDs, class names, confidence, speed arrows, movement badges, attributes, or relations. Changes also update
 paused video. For example, hide Confidence in a lane showing human annotations and keep it enabled for model

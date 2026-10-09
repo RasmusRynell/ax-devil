@@ -1,14 +1,14 @@
-"""Hover card that displays entity data overlaid on the video widget.
-
-Uses a single HTML QLabel for content — no dynamic widget creation/deletion,
-which avoids all deleteLater / layout-residue bugs on rapid entity transitions.
-"""
+"""Object inspection over video: complete grouped data, scrollable and selectable when pinned."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from math import ceil
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics, QTextOption, QWheelEvent
+from PySide6.QtWidgets import QFrame, QTextBrowser, QVBoxLayout, QWidget
+
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 
 _CARD_STYLE = f"""
@@ -17,12 +17,19 @@ QFrame#EntityHoverCard {{
     border: 1px solid palette(mid);
     border-radius: {Radius.POPUP}px;
 }}
-QFrame#EntityHoverCard QLabel {{
+QFrame#EntityHoverCard QTextBrowser {{
     background: transparent;
+    border: none;
 }}
 """
 _ANCHOR_OFFSET = 14
 _CARD_PADDING = Space.S
+
+
+class _InspectionBrowser(QTextBrowser):
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+        super().wheelEvent(event)
+        event.accept()
 
 
 class EntityHoverCard(QFrame):
@@ -38,14 +45,21 @@ class EntityHoverCard(QFrame):
         layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
         layout.setSpacing(0)
 
-        self._label = QLabel()
-        self._label.setTextFormat(Qt.TextFormat.RichText)
-        self._label.setWordWrap(False)
-        TextRole.SMALL.apply(self._label)
-        layout.addWidget(self._label)
+        self._browser = _InspectionBrowser(self)
+        self._browser.setFrameShape(QFrame.Shape.NoFrame)
+        self._browser.setOpenLinks(False)
+        self._browser.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self._browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._browser.document().setDocumentMargin(0)
+        layout.addWidget(self._browser)
 
         self._current_target_id: str | None = None
         self._current_card_html: str | None = None
+        self._sections: tuple[str, ...] = ()
+        self._layout_key: tuple[int, int, str, tuple[str, ...]] | None = None
+        self._column_count = 1
+        self._placement: tuple[int, int, tuple[int, int, int, int] | None] | None = None
+        follow_appearance(self, self._apply_appearance)
         self.hide()
 
     # ------------------------------------------------------------------
@@ -60,13 +74,19 @@ class EntityHoverCard(QFrame):
         anchor_y: int,
         *,
         avoid_rect: tuple[int, int, int, int] | None = None,
+        sections: tuple[str, ...] = (),
+        interactive: bool = False,
     ) -> None:
-        """Show card for target id with preformatted html payload."""
-        if self._should_update_content(target_id, card_html):
-            self._current_target_id = target_id
-            self._current_card_html = card_html
-            self._label.setText(card_html)
-            self.adjustSize()
+        """Show complete inspection data; only pinned cards capture input."""
+        new_target = target_id != self._current_target_id
+        self._current_target_id = target_id
+        self._current_card_html = card_html
+        self._sections = sections
+        self._placement = (anchor_x, anchor_y, avoid_rect)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not interactive)
+        if new_target:
+            self._layout_key = None
+        self._update_layout(new_target=new_target)
         self._reposition(anchor_x, anchor_y, avoid_rect)
         self.show()
         self.raise_()
@@ -75,14 +95,74 @@ class EntityHoverCard(QFrame):
         """Hide the card."""
         self._current_target_id = None
         self._current_card_html = None
+        self._sections = ()
+        self._layout_key = None
+        self._placement = None
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.hide()
 
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
 
-    def _should_update_content(self, target_id: str, card_html: str) -> bool:
-        return target_id != self._current_target_id or card_html != self._current_card_html
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+        """Scroll from the card padding as well as the text, without zooming the video."""
+        self._browser.wheelEvent(event)
+
+    def _apply_appearance(self) -> None:
+        TextRole.SMALL.apply(self._browser)
+        self._browser.document().setDefaultFont(self._browser.font())
+        self._layout_key = None
+        if self._current_card_html is not None:
+            self._update_layout()
+            if self._placement is not None:
+                self._reposition(*self._placement)
+
+    def _update_layout(self, *, new_target: bool = False) -> None:
+        parent = self.parentWidget()
+        if parent is None or self._current_card_html is None:
+            return
+        key = (parent.width(), parent.height(), self._current_card_html, self._sections)
+        if key == self._layout_key:
+            return
+        self._layout_key = key
+
+        margins = 2 * (Space.M + self.frameWidth())
+        available_width = max(1, parent.width() - 2 * _CARD_PADDING - margins)
+        available_height = max(1, parent.height() - 2 * _CARD_PADDING - margins)
+        character_width = QFontMetrics(self._browser.font()).averageCharWidth()
+        self._column_count = 2 if len(self._sections) > 1 and available_width >= 100 * character_width else 1
+        width = min(available_width, (104 if self._column_count == 2 else 56) * character_width)
+        scroll = self._browser.verticalScrollBar()
+        scroll_position = 0 if new_target else scroll.value()
+        html = self._current_card_html
+        if self._sections:
+            split = (len(self._sections) + self._column_count - 1) // self._column_count
+            columns = [self._sections[index : index + split] for index in range(0, len(self._sections), split)]
+            cells = "".join(
+                f'<td width="{100 // self._column_count}%" valign="top">{"<br/>".join(column)}</td>'
+                for column in columns
+            )
+            html = f'{html}<br/><table width="100%" cellspacing="{Space.M}" cellpadding="0"><tr>{cells}</tr></table>'
+        document = self._browser.document()
+        document.setLayoutEnabled(False)
+        try:
+            self._browser.setHtml(html)
+            self._browser.setFixedWidth(width)
+            document.setTextWidth(self._browser.viewport().width())
+        finally:
+            document.setLayoutEnabled(True)
+        if not self._sections:
+            document.setTextWidth(-1)
+            width = min(width, ceil(document.idealWidth()) + Space.XS)
+            self._browser.setFixedWidth(width)
+            document.setTextWidth(self._browser.viewport().width())
+        height = min(available_height, ceil(document.size().height()) + 2 * self._browser.frameWidth())
+        if not new_target:
+            height = min(available_height, max(height, self._browser.height()))
+        self._browser.setFixedHeight(height)
+        self.setFixedSize(width + margins, height + margins)
+        scroll.setValue(scroll_position)
 
     def _reposition(
         self,

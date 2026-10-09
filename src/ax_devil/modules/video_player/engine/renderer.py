@@ -222,6 +222,10 @@ class VideoFrameRenderer(QWidget):
         self._preserve_viewport_on_resize(event)
         super().resizeEvent(event)
         self._quick.setGeometry(self.rect())
+        if self._pinned_target_id is not None:
+            self._refresh_pinned_selection()
+        else:
+            self._clear_hover()
         self._request_repaint()
 
     def _aspect_respected_rect(self, img_size: QtCore.QSize) -> QtCore.QRectF:
@@ -473,6 +477,8 @@ class VideoFrameRenderer(QWidget):
             int(anchor.x()),
             int(anchor.y()),
             avoid_rect=avoid_rect,
+            sections=hit.card_sections,
+            interactive=self._pinned_target_id is not None,
         )
 
     def _hover_card_anchor_point(self, hit: HoverHit, target: QtCore.QRectF) -> QtCore.QPointF:

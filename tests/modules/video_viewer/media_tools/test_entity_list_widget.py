@@ -290,7 +290,7 @@ def test_entity_rows_show_the_class_after_the_id(qtbot: QtBot) -> None:
     assert item is not None and (item.entity_id, item.class_name) == ("a", "person")
 
 
-def test_entity_detail_items_include_every_populated_field() -> None:
+def test_entity_detail_items_include_object_specific_fields_and_complete_debug() -> None:
     entity = _entity("a", frame_number=3)
     entity.motion_state = MotionState.Moving
     entity.end_reason = "lost"
@@ -302,7 +302,6 @@ def test_entity_detail_items_include_every_populated_field() -> None:
     assert names == [
         "end_reason",
         "motion_state",
-        "observations",
         "geometry",
         "classification",
         "frame_number",

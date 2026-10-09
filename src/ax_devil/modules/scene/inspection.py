@@ -20,31 +20,91 @@ _INDENT = "&nbsp;&nbsp;&nbsp;&nbsp;"
 _MAX_PER_ROW = 4
 
 
-def build_entity_hover_html(entity: Entity) -> str:
-    """Build a clean hover-card from available entity data."""
+def build_entity_hover_html(entity: Entity, *, include_debug: bool = True) -> str:
+    """Build object inspection HTML, optionally leaving debug sections to the display."""
     if entity.latest_observation is None:
         return ""
 
-    lines = [f'<span style="{_MONO}">{escape(str(entity.id)[:24])}</span>']
+    lines = [f'<span style="{_MONO}">{escape(str(entity.id))}</span>']
     lines.extend(
         f'<span style="{_BOLD}">{escape(name)}: </span>{html}'
-        for name, html in entity_detail_items(entity, continuation_indent=1)
+        for name, html in entity_detail_items(entity, continuation_indent=1, include_debug=False)
     )
+    if include_debug:
+        lines.extend(debug_section_html(entity.latest_observation.debug))
     return "<br/>".join(lines)
 
 
-def entity_detail_items(entity: Entity, *, continuation_indent: int = 0) -> list[tuple[str, str]]:
-    """Return (name, value HTML) for every populated entity and latest-observation field, debug included."""
+def debug_section_html(values: Mapping[Any, Any]) -> tuple[str, ...]:
+    """Render every debug field as path-titled key/value sections, without interpreting values."""
+    return tuple(
+        f'<table width="100%" cellspacing="0" cellpadding="1">'
+        f'<tr><td colspan="2"><span style="{_BOLD}">{escape(" / ".join(path) if path else "debug")}</span>'
+        f"</td></tr>{''.join(_debug_row(name, value) for name, value in rows)}</table>"
+        for path, rows in _debug_sections(values)
+    )
+
+
+def _debug_sections(
+    values: Mapping[Any, Any] | Sequence[Any], path: tuple[str, ...] = ()
+) -> Iterable[tuple[tuple[str, ...], list[tuple[str, Any]]]]:
+    items = values.items() if isinstance(values, Mapping) else enumerate(values)
+    rows: list[tuple[str, Any]] = []
+    children: list[tuple[str, Mapping[Any, Any] | Sequence[Any]]] = []
+    for name, value in items:
+        if (isinstance(value, Mapping) and value) or (
+            isinstance(value, list | tuple) and any(isinstance(item, Mapping | list | tuple) for item in value)
+        ):
+            children.append((str(name), value))
+        else:
+            rows.append((str(name), value))
+    if rows:
+        yield path, rows
+    for name, child in children:
+        yield from _debug_sections(child, (*path, name))
+
+
+def _debug_row(name: str, value: Any) -> str:
+    return (
+        f'<tr><td width="62%" valign="top">{escape(name)}</td>'
+        f'<td valign="top"><span style="{_MONO}">{escape(_debug_value(value))}</span></td></tr>'
+    )
+
+
+def _debug_value(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, str):
+        return value or '""'
+    if isinstance(value, bytes):
+        return f"{len(value)} bytes"
+    if isinstance(value, list | tuple):
+        return f"[{', '.join(_debug_value(item) for item in value)}]"
+    if isinstance(value, Enum):
+        return _debug_value(value.value)
+    return str(value)
+
+
+def entity_detail_items(
+    entity: Entity, *, continuation_indent: int = 0, include_debug: bool = True
+) -> list[tuple[str, str]]:
+    """Return object-specific fields; debug sections retain all values and source precision."""
     obs = entity.latest_observation
-    items = [*_entity_hover_items(entity), *(_dataclass_items(obs) if obs is not None else ())]
+    items = [
+        *_entity_hover_items(entity),
+        *(_dataclass_items(obs, skip={"debug", "timestamp"}) if obs is not None else ()),
+    ]
     rendered = ((name, _render_value(value, continuation_indent=continuation_indent)) for name, value in items)
-    return [(name, html) for name, html in rendered if html]
+    result = [(name, html) for name, html in rendered if html]
+    if include_debug and obs is not None and obs.debug:
+        result.append(("debug", "".join(debug_section_html(obs.debug))))
+    return result
 
 
 def _entity_hover_items(entity: Entity) -> Iterable[tuple[str, Any]]:
     yield from _dataclass_items(entity, skip={"id", "observations", "images"})
-    if entity.observations:
-        yield "observations", len(entity.observations)
     if entity.images:
         yield "images", entity.images
 

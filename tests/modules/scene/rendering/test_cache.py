@@ -359,7 +359,7 @@ def test_hover_formats_only_selected_entity_and_reuses_its_card(monkeypatch: pyt
 
     calls: list[EntityId] = []
 
-    def format_card(entity: Entity) -> str:
+    def format_card(entity: Entity, *, include_debug: bool = True) -> str:
         calls.append(entity.id)
         return f"card:{entity.id}"
 
@@ -372,7 +372,7 @@ def test_hover_formats_only_selected_entity_and_reuses_its_card(monkeypatch: pyt
     first = overlay.get_hit_by_id(str(entity_id))
     assert first is not None
     assert first.card_html == f"card:{entity_id}"
-    assert overlay.get_hit_by_id(str(entity_id)) == first
+    assert overlay.get_hit_by_id(str(entity_id)) is first
     assert calls == [entity_id]
 
 
