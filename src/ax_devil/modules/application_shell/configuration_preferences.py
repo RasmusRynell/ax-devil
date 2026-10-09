@@ -9,15 +9,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings, SettingsState
 from ax_devil.modules.workspace.content import LiveOverlayMode
-
-
-def is_environment_reference(value: str) -> bool:
-    """Return whether a raw preference names an environment variable."""
-    return re.fullmatch(r"\$[A-Za-z_][A-Za-z0-9_]*", value) is not None
 
 
 @dataclass(frozen=True)
@@ -37,10 +32,8 @@ class ConfigField:
         """Validate edited values and numeric references, preserving their raw bindings."""
         value = text if self.secret else text.strip()
         numeric_value = value
-        reference = value.startswith("$")
+        reference = is_environment_reference(value)
         if reference:
-            if not is_environment_reference(value):
-                raise ValueError(f"{self.label}: use an environment reference such as $VARIABLE_NAME.")
             if self.directory and not os.getenv(value[1:], "").strip():
                 raise ValueError(f"{self.label}: the environment reference must resolve to a non-empty folder path.")
             if self.minimum is None:

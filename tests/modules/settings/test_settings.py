@@ -321,8 +321,14 @@ def test_password_references_are_visible_and_literal_passwords_masked(
     assert edit.displayText() != edit.text()
     assert editor.text() == "synthetic-literal-secret"
 
-    edit.setText("$not a reference")
+    edit.setText("~$not a reference")
     assert edit.echoMode() == QLineEdit.EchoMode.Password
+    assert dialog._apply()
+    root, *keys = path.split(".")
+    saved: Any = config.get(root)
+    for key in keys:
+        saved = saved[key]
+    assert saved == "~$not a reference"
     edit.setText("$REPLACEMENT_SECRET")
     assert edit.echoMode() == QLineEdit.EchoMode.Normal
     assert edit.displayText() == "$REPLACEMENT_SECRET"

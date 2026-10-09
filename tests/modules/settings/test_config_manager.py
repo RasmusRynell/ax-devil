@@ -136,8 +136,9 @@ def test_load_config_preserves_scalar_type_mismatches_for_known_fields(tmp_path:
     assert resolved_ui["theme"] is False
 
 
-def test_config_manager_resolves_paths_in_runtime_reads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_config_manager_expands_home_only_in_storage_folders(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("AX_TEST_LOGS_DIR", "~/env-logs")
 
     absolute_entry = str((tmp_path / "absolute").resolve())
 
@@ -145,7 +146,8 @@ def test_config_manager_resolves_paths_in_runtime_reads(monkeypatch: pytest.Monk
         "version": CONFIG_VERSION,
         "storage": {
             "base_dir": "~/configs",
-            "nested": {"logs_dir": "~/logs"},
+            "logs_dir": "$AX_TEST_LOGS_DIR",
+            "nested": {"cache_dir": "~/caches"},
             "non_path_value": "not-a-path",
         },
         "list_paths": ["~/data", absolute_entry, 42],
@@ -159,11 +161,29 @@ def test_config_manager_resolves_paths_in_runtime_reads(monkeypatch: pytest.Monk
     resolved_list_paths = cast(list[Any], cfg.get("list_paths", []))
 
     assert resolved_storage["base_dir"] == str((tmp_path / "configs").resolve())
-    assert resolved_storage["nested"]["logs_dir"] == str((tmp_path / "logs").resolve())
+    assert resolved_storage["logs_dir"] == str((tmp_path / "env-logs").resolve())
+    assert resolved_storage["nested"]["cache_dir"] == str((tmp_path / "caches").resolve())
     assert resolved_storage["non_path_value"] == "not-a-path"
-    assert resolved_list_paths[0] == str((tmp_path / "data").resolve())
-    assert resolved_list_paths[1] == absolute_entry
-    assert resolved_list_paths[2] == 42
+    assert resolved_list_paths == ["~/data", absolute_entry, 42]
+
+
+@pytest.mark.parametrize("literal", ["~pass123", "~", "$5admin", "$ pw", "$", "pa$$word"])
+def test_literal_credentials_are_never_expanded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, literal: str) -> None:
+    """A password or username that happens to start with ``~`` or ``$`` is used exactly as typed."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    config = json.loads(json.dumps(DEFAULT_CONFIG))
+    config["defaults"]["device"]["password"] = literal
+    config["defaults"]["device"]["username"] = literal
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    cfg = ConfigManager()
+    cfg.set_config_path(config_path, create_if_missing=False)
+    device = cast(dict[str, Any], cfg.get("defaults", {})["device"])
+
+    assert device["password"] == literal
+    assert device["username"] == literal
 
 
 def test_config_manager_ensures_render_catalog_storage_directory(tmp_path: Path) -> None:

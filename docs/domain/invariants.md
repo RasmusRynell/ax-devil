@@ -367,7 +367,9 @@ Read the sections for the area you change. Explanations of how things work live 
   [Quick Setup](../settings.md#quick-setup) is the exception: its choices apply as they are clicked and are saved
   however it closes, because the running app is its preview.
 - `ConfigManager` owns config file I/O, version validation, default merging, unsupported-key warnings, raw
-  document preservation, runtime path/env expansion, and storage directory creation.
+  document preservation, runtime resolution, and storage directory creation. Only a value that is exactly
+  `$VARIABLE_NAME` is an environment reference; `~` expands to the home folder only in storage folders. Every
+  other string, including credentials starting with `$` or `~`, is literal.
 - Settings validates all editable connection and storage fields before applying any change. Saves replace the
   configuration atomically before emitting runtime change signals; failed saves leave active viewers untouched. Startup storage locations stay
   active until restart, even after new locations have been saved.

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
-from ax_devil.modules.settings.config_manager import ConfigManager, integer_default
+from ax_devil.modules.settings.config_manager import ConfigManager, integer_default, is_environment_reference
 from ax_devil.modules.workspace.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.add_content.analytics_discovery import (
     AnalyticsChoiceLoader,
@@ -42,7 +42,7 @@ def _apply_env_hint(edit: QLineEdit, raw_value: str, resolved_value: str, *, mas
     if not resolved_value:
         return
     display = "*" * len(resolved_value) if mask else resolved_value
-    if raw_value.startswith("$"):
+    if is_environment_reference(raw_value):
         edit.setPlaceholderText(f"{display}  (via {raw_value})")
     else:
         edit.setPlaceholderText(display)
