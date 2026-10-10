@@ -11,6 +11,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QPushButton
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
@@ -118,6 +119,22 @@ class TestLiveVideoViewerWidget:
             widget = LiveVideoViewerWidget(content, render_catalog_manager=render_catalog_manager)
             qtbot.addWidget(widget)
             assert widget.get_display_name() == "Camera 1"
+
+    def test_set_display_name_updates_the_name_header_and_render_diagnostics(
+        self, qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+    ) -> None:
+        content = _make_live_content("Gate cam")
+        with patch("ax_devil.modules.video_viewer.live_video_viewer.StreamMediaController"):
+            widget = LiveVideoViewerWidget(content, render_catalog_manager=render_catalog_manager)
+            qtbot.addWidget(widget)
+
+            widget.set_display_name("North gate cam")
+
+            assert widget.get_display_name() == "North gate cam"
+            assert widget._title_label.text() == "North gate cam"
+            labels = {viewer.label for viewer in get_render_metrics_store().snapshot()}
+            assert "North gate cam" in labels
+            assert "Gate cam" not in labels
 
     def test_cleanup_calls_controller_cleanup(
         self,

@@ -19,6 +19,9 @@ First public release, planned as 0.1.0.
 - Render catalogs controlling overlay appearance, with built-in Standard, Minimal, Chunky, Glass, Tracking,
   and Classic styles, and a catalog viewer for previewing, copying, and applying them.
 - Decoder and playlist resolver plugins, installed into isolated environments with `ax-devil plugins`.
+- Workspaces: save what you opened as a `.ax-devil.workspace` file and reopen it from the File menu, the welcome
+  screen's recent list, or `ax-devil open`. The current workspace, unsaved changes included, is reopened on the next
+  launch.
 
 ### Known limitations
 

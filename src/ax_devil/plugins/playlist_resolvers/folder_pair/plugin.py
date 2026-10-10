@@ -41,14 +41,10 @@ class FolderPairResolverPlugin(PlaylistResolverPlugin):
                 "overlays_dir": str(overlays_dir.resolve()),
                 "handler_type": handler_type,
             }
-            try:
-                cls().resolve(settings)
-            except (ValueError, OSError) as exc:
-                raise click.ClickException(str(exc)) from exc
             runner = ctx.obj.get("run_with_items") if isinstance(ctx.obj, dict) else None
             if runner is None:
                 raise click.ClickException("CLI runtime is not available.")
-            runner([PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)])
+            runner([PlaylistItem(resolver=cls.plugin_id(), settings=settings)])
 
         return command
 

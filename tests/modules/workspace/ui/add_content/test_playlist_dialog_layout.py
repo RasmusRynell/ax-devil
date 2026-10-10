@@ -6,6 +6,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverWidget, RuntimePluginRegistry
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
+from tests.helpers.workspace import inline_resolver
 
 
 def test_every_resolver_form_fits_the_opening_size(qtbot: QtBot) -> None:
@@ -14,7 +15,7 @@ def test_every_resolver_form_fits_the_opening_size(qtbot: QtBot) -> None:
     qtbot.addWidget(parent)
     parent.resize(800, 600)
     parent.show()
-    dialog = AddPlaylistDialog(parent)
+    dialog = AddPlaylistDialog(inline_resolver(), parent)
     qtbot.addWidget(dialog)
     dialog.show()
     QApplication.processEvents()
@@ -40,7 +41,7 @@ def test_broken_resolver_leaves_other_resolvers_available(qtbot: QtBot, monkeypa
         raise RuntimeError("broken resolver")
 
     monkeypatch.setattr(broken.plugin_class, "create_settings_widget", fail)
-    dialog = AddPlaylistDialog()
+    dialog = AddPlaylistDialog(inline_resolver())
     qtbot.addWidget(dialog)
     combo = dialog._settings._resolver_combo
     names = [combo.itemText(index) for index in range(combo.count())]
@@ -62,7 +63,7 @@ def _page_labels(dialog: AddPlaylistDialog) -> list[QLabel]:
 
 def test_opening_page_explains_every_source(qtbot: QtBot) -> None:
     """Before a source is chosen, the dialog explains itself and describes each available source."""
-    dialog = AddPlaylistDialog()
+    dialog = AddPlaylistDialog(inline_resolver())
     qtbot.addWidget(dialog)
     settings = dialog._settings
     opening_text = " ".join(label.text() for label in _page_labels(dialog))

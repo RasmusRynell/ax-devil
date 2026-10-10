@@ -62,6 +62,9 @@ ax-devil live --host 192.168.1.100 --overlay rtsp --handler-type ONVIF_XML
 ax-devil playlist folder_pair /path/to/videos /path/to/annotations --handler-type CVAT
 ```
 
+**File → Save Workspace** saves what you opened as a `.ax-devil.workspace` file; `ax-devil open` reopens it, and a
+plain `ax-devil` picks up where you left off. [Workspaces →](https://github.com/RasmusRynell/ax-devil/blob/main/docs/usage.md#workspaces)
+
 Built-in formats: CVAT, MOT, UVG-VCM, Axis ADF, and ONVIF XML (`ax-devil list-handlers`). Live analytics can
 arrive over RTSP, MQTT, or Axis DataHub WebSocket.
 [Live connection options →](https://github.com/RasmusRynell/ax-devil/blob/main/docs/usage.md#live-cameras)

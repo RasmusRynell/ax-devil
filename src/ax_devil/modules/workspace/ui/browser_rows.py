@@ -1,4 +1,4 @@
-"""Content-browser row projection over Workspace contents, consideration state, and open items."""
+"""Content-browser row projection over Workspace items, their Content, consideration state, and open items."""
 
 from __future__ import annotations
 
@@ -24,11 +24,13 @@ from ax_devil.modules.workspace.core.item_info import (
     build_playlist_entry_information,
     build_playlist_information,
     build_playlist_lane_information,
+    build_unavailable_information,
     build_video_information,
     build_video_lane_information,
 )
+from ax_devil.modules.workspace.core.items import ItemResolution, WorkspaceItem
 
-WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay"]
+WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay", "unavailable", "pending"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +42,10 @@ class WorkspaceBrowserRow:
     icon_kind: WorkspaceBrowserIconKind
     activation_target: tuple[Content, int] | None = None
     consideration_ref: ConsiderationItemRef | None = None
-    removable_content: Content | None = None
+    item: WorkspaceItem | None = None
+    """The item a top-level row stands for, which the row can remove or rename; None for nested rows."""
+    unavailable_reason: str | None = None
+    """Why the row's item could not open; such a row shows the reason instead of opening."""
     information_factory: Callable[[], WorkspaceItemInfo] | None = None
     export_target: OnScreenWorkspaceItem | None = None
     is_considered: bool = True
@@ -56,8 +61,12 @@ class WorkspaceBrowserRow:
 
     @property
     def tooltip(self) -> str:
-        """Return the full location and open state shown when hovering the row."""
-        lines = [self.location or "", "Open in at least one viewer" if self.is_open else ""]
+        """Return why the row is unavailable, its full location, and its open state, shown when hovering the row."""
+        lines = [
+            self.unavailable_reason or "",
+            self.location or "",
+            "Open in at least one viewer" if self.is_open else "",
+        ]
         return "\n".join(line for line in lines if line)
 
 
@@ -117,13 +126,42 @@ class _RowProjection:
         self._is_considered = is_considered
 
     def rows(
-        self, contents: Sequence[Content], open_items: Set[OnScreenWorkspaceItem]
+        self, resolutions: Sequence[ItemResolution], open_items: Set[OnScreenWorkspaceItem]
     ) -> tuple[WorkspaceBrowserRow, ...]:
-        """Return one top-level row per content item, with location hints for look-alike siblings."""
-        return _with_location_hints(tuple(self._content_row(content, open_items) for content in contents))
+        """Return a row per Content, or per unavailable or pending item, with hints for look-alike siblings."""
+        return _with_location_hints(
+            tuple(
+                row
+                for resolution in resolutions
+                for row in (
+                    [self._unavailable_row(resolution.item, str(resolution.error))]
+                    if resolution.error is not None
+                    else [self._pending_row(resolution.item)]
+                    if resolution.is_pending
+                    else [self._content_row(resolution.item, content, open_items) for content in resolution.contents]
+                )
+            )
+        )
 
-    def _content_row(self, content: Content, open_items: Set[OnScreenWorkspaceItem]) -> WorkspaceBrowserRow:
-        """Build a top-level row for one content item."""
+    def _pending_row(self, item: WorkspaceItem) -> WorkspaceBrowserRow:
+        """Build the single row of an item that is still resolving; it opens nothing until its Content arrives."""
+        return WorkspaceBrowserRow(row_id=item.id, label=item.display_name, icon_kind="pending", item=item)
+
+    def _unavailable_row(self, item: WorkspaceItem, reason: str) -> WorkspaceBrowserRow:
+        """Build the single row of an item that could not resolve."""
+        return WorkspaceBrowserRow(
+            row_id=item.id,
+            label=item.display_name,
+            icon_kind="unavailable",
+            item=item,
+            unavailable_reason=reason,
+            information_factory=partial(build_unavailable_information, item.display_name, reason),
+        )
+
+    def _content_row(
+        self, item: WorkspaceItem, content: Content, open_items: Set[OnScreenWorkspaceItem]
+    ) -> WorkspaceBrowserRow:
+        """Build a top-level row for one Content of *item*."""
         if isinstance(content, PlaylistContent):
             children = tuple(
                 self._playlist_entry_row(content, entry, entry_index, open_items)
@@ -134,7 +172,7 @@ class _RowProjection:
                 label=content.display_name,
                 icon_kind="playlist",
                 activation_target=(content, 0),
-                removable_content=content,
+                item=item,
                 information_factory=partial(build_playlist_information, content),
                 is_open=self._is_content_open(content.content_id, open_items),
                 children=children,
@@ -146,7 +184,7 @@ class _RowProjection:
             label=content.display_name,
             icon_kind=self._icon_kind_for_video(content),
             activation_target=(content, 0),
-            removable_content=content,
+            item=item,
             information_factory=partial(build_video_information, content),
             export_target=None if content.is_live else content.on_screen_item(),
             is_open=self._is_content_open(content.content_id, open_items),
@@ -253,13 +291,13 @@ class _RowProjection:
 
 
 def build_browser_rows(
-    contents: Sequence[Content],
+    resolutions: Sequence[ItemResolution],
     is_considered: Callable[[ConsiderationItemRef], bool],
     open_items: Set[OnScreenWorkspaceItem] = frozenset(),
 ) -> tuple[WorkspaceBrowserRow, ...]:
-    """Return the content-browser rows for *contents*.
+    """Return the content-browser rows for the items' *resolutions*; an item that failed to resolve gets one row.
 
     *is_considered* answers whether a consideration item participates in navigation and layout; *open_items* are the
     items currently shown in a viewer.
     """
-    return _RowProjection(is_considered).rows(contents, open_items)
+    return _RowProjection(is_considered).rows(resolutions, open_items)

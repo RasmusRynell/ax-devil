@@ -25,7 +25,9 @@ from ax_devil.modules.workspace.core import (
     WorkspaceItem,
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
+from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 ContentT = TypeVar("ContentT", SeekableVideoContent, LiveVideoContent, PlaylistContent)
@@ -38,20 +40,24 @@ class ContentItem(WorkspaceItem):
     kind: ClassVar[str] = "test_content"
     contents: tuple[Content, ...]
 
+    @property
+    def default_name(self) -> str:
+        return self.contents[0].display_name
+
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
         return self.contents
 
-    def _fields_to_json(self, base_dir: Path) -> dict[str, Any]:
+    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         raise NotImplementedError("Test Content is never saved.")
 
     @classmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path) -> dict[str, Any]:
+    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         raise NotImplementedError("Test Content is never saved.")
 
 
 def content_item(*contents: Content, label: str = "") -> ContentItem:
-    """Return an item resolving to *contents*, labeled after the first unless *label* is given."""
-    return ContentItem(label=label or contents[0].display_name, contents=contents)
+    """Return an item resolving to *contents*, named after the first unless *label* is given."""
+    return ContentItem(label=label, contents=contents)
 
 
 class StaticDecoderOptions:
@@ -93,9 +99,52 @@ class FakeResolutionContext:
         return self._resolvers[resolver_id]
 
 
+class FakePrompts:
+    """Workspace prompts answered by the test instead of dialogs; records what was asked."""
+
+    def __init__(
+        self,
+        save_choice: SaveChoice = SaveChoice.CANCEL,
+        open_path: Path | None = None,
+        save_path: Path | None = None,
+        replace: bool = False,
+    ) -> None:
+        self.save_choice = save_choice
+        self.replace = replace
+        self.asked_to_replace: list[Path] = []
+        self.open_path = open_path
+        self.save_path = save_path
+        self.asked_to_save: list[str] = []
+        self.suggested_save_paths: list[Path] = []
+        self.errors: list[str] = []
+
+    def ask_save_changes(self, workspace_name: str) -> SaveChoice:
+        self.asked_to_save.append(workspace_name)
+        return self.save_choice
+
+    def choose_workspace_to_open(self) -> Path | None:
+        return self.open_path
+
+    def choose_save_path(self, suggested: Path) -> Path | None:
+        self.suggested_save_paths.append(suggested)
+        return self.save_path
+
+    def confirm_replace(self, path: Path) -> bool:
+        self.asked_to_replace.append(path)
+        return self.replace
+
+    def show_error(self, message: str) -> None:
+        self.errors.append(message)
+
+
+def inline_resolver(context: ResolutionContext | None = None) -> ItemResolver:
+    """Return a resolver that resolves at once on the calling thread, with *context* or a fake one."""
+    return ItemResolver(context or FakeResolutionContext(), in_background=False)
+
+
 def store_with(content: ContentT) -> tuple[WorkspaceStore, ContentT]:
     """Return a store holding an item for *content*, and the content as resolved, with its identity."""
-    store = WorkspaceStore(FakeResolutionContext())
+    store = WorkspaceStore(inline_resolver())
     store.add_items([content_item(content)])
     return store, cast(ContentT, store.contents()[0])
 

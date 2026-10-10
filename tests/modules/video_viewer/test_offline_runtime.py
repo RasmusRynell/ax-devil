@@ -642,3 +642,24 @@ def test_offline_lane_uses_stateless_retention_and_original_sample_time() -> Non
         assert shown.metadata["overlay_opacity"] == 0.4
     assert display.frames[1].overlays is None
     assert display.frames[3].overlays is None
+
+
+class _LabelRecordingViewport:
+    """Viewport test double recording the render diagnostics labels it is given."""
+
+    def __init__(self) -> None:
+        self.labels: list[str] = []
+
+    def set_diagnostics_label(self, label: str) -> None:
+        """Record the label."""
+        self.labels.append(label)
+
+
+def test_renamed_item_relabels_existing_lane_diagnostics(qtbot: object) -> None:
+    session, display, _source = _make_primary_session(qtbot)
+    viewport = _LabelRecordingViewport()
+    display.viewport = viewport  # type: ignore[attr-defined]
+
+    session.set_display_name("Renamed item")
+
+    assert viewport.labels == ["Renamed item · primary"]

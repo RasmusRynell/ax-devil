@@ -35,14 +35,17 @@ class Application:
         log_level: str = "INFO",
         config_path: Path | None = None,
         debug: bool = False,
-        startup_items: Sequence[WorkspaceItem] = (),
+        items: Sequence[WorkspaceItem] = (),
+        workspace_file: Path | None = None,
         open_catalog_viewer: bool = False,
     ):
-        """Store startup parameters: the Workspace Items to add, and whether to show the catalog viewer on start."""
+        """Store launch parameters: the Workspace Items to start a new workspace with, or the workspace file to open,
+        and whether to show the catalog viewer on start. Without either, the kept workspace is restored."""
         self.log_level = log_level
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self.debug = debug
-        self.startup_items = tuple(startup_items)
+        self.items = tuple(items)
+        self.workspace_file = workspace_file
         self.open_catalog_viewer = open_catalog_viewer
         self.app: QApplication | None = None
         self.main_window: MainWindow | None = None
@@ -93,7 +96,7 @@ class Application:
                 render_catalog_manager=render_catalog_manager,
             )
             self.main_window.show()
-            self.main_window.add_items(self.startup_items)
+            self.main_window.launch(self.items, self.workspace_file)
             QTimer.singleShot(0, self._show_startup_windows)
 
             _collect_garbage_on_gui_thread(self.app, self.logger)
@@ -109,7 +112,7 @@ class Application:
                 config_manager.save()
 
             if self.app is not None:
-                relaunch_if_requested(self.app)
+                relaunch_if_requested(self.app, self._global_options())
             return exit_code
         except Exception as exc:
             logger = self.logger or get_logger(__name__)
@@ -117,6 +120,11 @@ class Application:
             if self.debug:
                 raise exc
             raise exc
+
+    def _global_options(self) -> list[str]:
+        """Return the command line options that apply to every launch, for a restarted process to keep."""
+        options = ["--log-level", self.log_level, "--config", str(self.config_path)]
+        return [*options, "--debug"] if self.debug else options
 
     def _show_startup_windows(self) -> None:
         """Open start-up windows in order; a modal dialog returns only when closed, so they never stack."""
@@ -159,7 +167,8 @@ def create_app(
     log_level: str = "INFO",
     config_path: Path | None = None,
     debug: bool = False,
-    startup_items: Sequence[WorkspaceItem] = (),
+    items: Sequence[WorkspaceItem] = (),
+    workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
 ) -> Application:
     """Create application instance."""
@@ -167,6 +176,7 @@ def create_app(
         log_level=log_level,
         config_path=config_path,
         debug=debug,
-        startup_items=startup_items,
+        items=items,
+        workspace_file=workspace_file,
         open_catalog_viewer=open_catalog_viewer,
     )

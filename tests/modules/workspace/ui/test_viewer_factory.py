@@ -16,7 +16,7 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.workspace import DummyViewer, FakeResolutionContext, store_with
+from tests.helpers.workspace import DummyViewer, FakeResolutionContext, inline_resolver, store_with
 
 
 def _make_seekable(name: str) -> SeekableVideoContent:
@@ -76,7 +76,7 @@ def test_viewer_factory_opens_playlist_at_the_requested_entry(
             PlaylistEntry(lanes=second.standalone_lanes(), default_considered=True),
         ),
     )
-    store = WorkspaceStore(FakeResolutionContext())
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext()))
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         opened = viewer_factory.open(playlist, start_index=2, consideration_query=store)

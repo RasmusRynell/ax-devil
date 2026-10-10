@@ -13,6 +13,8 @@ flowchart TD
     MainWindow --> DebugWindows["DebugWindow / PluginWindow"]
 
     WorkspaceSession --> WorkspaceStore["WorkspaceStore<br/>items, resolved Content, signals"]
+    WorkspaceSession --> WorkspaceLifecycle["WorkspaceLifecycle<br/>launch, quit, new, open, save"]
+    WorkspaceLifecycle --> WorkspaceStore
     WorkspaceSession --> ApplicationWindow["ApplicationWindow<br/>central widget"]
     WorkspaceSession --> WorkspaceController["WorkspaceController<br/>UI coordinator"]
     WorkspaceSession --> ContentBrowser["ContentBrowserWidget<br/>workspace tree"]
@@ -48,23 +50,25 @@ flowchart TD
 
 `WorkspaceSession` is the public Workspace facade and creates and wires the framework-level Workspace objects:
 
-- `WorkspaceStore`
+- `ItemResolver` and `WorkspaceStore`
+- `WorkspaceLifecycle`
 - `ContentBrowserWidget`
 - `SplitView`
 - `ApplicationWindow`
 - `WorkspaceController`
 
-Callers use the session to add Workspace Items (`add_items`), open videos (`open_video`, `open_files`), route to the
-focused widget, configure welcome shortcuts, and tear down. Every Video Item that opens through `open_video` is recorded
-in `RecentVideos`, a small JSON list in the storage directory that the welcome screen shows under **Recent**; opening an
-entry adds a new item. Stored paths are absolute so reopening a selection is independent of the next launch's working
-directory. The store, browser, split view, and controller are composed implementation details rather than separate
-session APIs.
+Callers use the session to add Workspace Items (`add_items`, `add_resolved`, `open_files`), reach the workspace
+lifecycle (`session.lifecycle`), route to the focused widget, configure welcome shortcuts, and tear down. The lifecycle
+— the kept workspace, the Save / Discard / Cancel question, and recent workspaces — is described in
+[Workspace](workspace.md#lifecycle). The session re-emits the store's
+`state_changed`, and `MainWindow` sets its title from `workspace_name` and `is_modified`; the custom `TitleBar` follows
+the window title. The store, browser, split view, and controller are composed implementation details rather than
+separate session APIs.
 
 `ApplicationWindow` is the static central shell. It lays out `ContentBrowserWidget` in the left sidebar and `SplitView` in the center area. It owns only whether the sidebar shows and how wide it is, not workspace state, teardown, or viewer behavior. The sidebar shows while the workspace has content and the user has not hidden it with **View → Sidebar** (`Ctrl+\`) or dragged it closed; it always appears at the width the user last dragged it to. It accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
 
-`WelcomeWidget`, shown by `SplitView` while no widgets are open, paints clickable rows. Shortcut rows come from `ShortcutManager` definitions marked `show_on_welcome` and trigger the same `QAction` as the menu and key binding; recent rows show the Video Item label and overlay file names and emit `recent_video_requested`.
-The welcome screen scrolls when its rows cannot fit, keeping actions and recent videos reachable in small windows.
+`WelcomeWidget`, shown by `SplitView` while no widgets are open, paints clickable rows. Shortcut rows come from `ShortcutManager` definitions marked `show_on_welcome` and trigger the same `QAction` as the menu and key binding; recent rows show a workspace file's name, with its path as tooltip, and emit `recent_workspace_requested`.
+The welcome screen scrolls when its rows cannot fit, keeping actions and recent workspaces reachable in small windows.
 
 ## Workspace Controller
 
@@ -75,13 +79,17 @@ It owns browser synchronization: Workspace mutations refresh the browser rows pr
 Opening from the browser has two placements: replace the preview pane (`SplitView.replace_or_open`) or split the
 focused pane and open pinned (`SplitView.open_to_side`).
 
+Top-level browser rows are one per Content, or one unavailable row for an item that failed to resolve. **Rename** and
+**Remove** act on the whole item, and a rename calls `ViewerWidget.set_display_name` on open viewers showing that Content, and offline viewers relabel
+their render diagnostics with it.
+
 Responsibilities:
 
 - Open `SeekableVideoContent`, `LiveVideoContent`, or `PlaylistContent` through `WorkspaceViewerFactory`, placing the
   viewer in the preview pane or in a new split as the browser intent requests.
 - Register which item each viewer widget's Content came from.
 - Project each widget's current on-screen item into browser rows.
-- Remove the owning item when the browser asks to remove Content, and close every widget of a removed item.
+- Remove or rename the item a browser row asks for, and close every widget of a removed item.
 - Tell the user which newly added items could not resolve, and why.
 - Notify open viewers when consideration state changes.
 
@@ -170,6 +178,7 @@ info, respectively.
 
 - `MainWindow` owns application-wide actions, menus, shortcuts, dialogs, diagnostics windows, and the `WorkspaceSession`.
 - `WorkspaceSession` owns Workspace composition, adding items, focused-viewer lookup, and teardown.
+- `WorkspaceLifecycle` owns the workspace file lifecycle; it builds no widgets.
 - `ApplicationWindow` owns the static central layout.
 - `WorkspaceController` owns browser synchronization, UI coordination, viewer-to-item tracking, and lifecycle side effects.
 - `SplitView` owns pane layout, focused viewer widget tracking, drag/drop splitting, and widget removal mechanics.

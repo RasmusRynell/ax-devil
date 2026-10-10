@@ -12,6 +12,16 @@ UNTITLED_NAME = "Untitled"
 WORKSPACE_FILE_SUFFIX = ".ax-devil.workspace"
 
 
+def workspace_file_path(path: Path) -> Path:
+    """Return *path* with the workspace file extension appended when it does not end with it already."""
+    return path if path.name.endswith(WORKSPACE_FILE_SUFFIX) else path.with_name(f"{path.name}{WORKSPACE_FILE_SUFFIX}")
+
+
+def workspace_name(path: Path | None) -> str:
+    """Return the name of the workspace saved at *path*: the file name without its extension, or "Untitled"."""
+    return path.name.removesuffix(WORKSPACE_FILE_SUFFIX) if path is not None else UNTITLED_NAME
+
+
 @dataclass(frozen=True)
 class Workspace:
     """The items a user works with, and the file they are saved in; ``path`` is None until the first save.
@@ -32,7 +42,7 @@ class Workspace:
     @property
     def name(self) -> str:
         """Return the file name without the workspace extension, or "Untitled" before the first save."""
-        return self.path.name.removesuffix(WORKSPACE_FILE_SUFFIX) if self.path is not None else UNTITLED_NAME
+        return workspace_name(self.path)
 
     def has_item(self, item_id: str) -> bool:
         """Return whether an item with *item_id* is in this workspace."""

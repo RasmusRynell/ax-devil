@@ -1,10 +1,9 @@
-"""Getting content in: welcome actions, recent videos, desktop file drops, and overlay handler matching."""
+"""Getting content in: welcome actions, recent workspaces, desktop file drops, and overlay handler matching."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QTest
@@ -15,13 +14,11 @@ from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import (
     OverlayFile,
     VideoFileSelection,
-    VideoItem,
     video_file_selections,
 )
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
-from ax_devil.modules.workspace.ui.recent_videos import RecentVideos
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeWidget
@@ -50,15 +47,6 @@ class _PaneWidget(ViewerWidget):
 def _touch(path: Path) -> Path:
     path.write_bytes(b"")
     return path
-
-
-def _video_item(video: Path, overlay: Path | None = None, label: str = "") -> VideoItem:
-    return VideoFileSelection(video, overlay, "TXT" if overlay else None).to_item(label)
-
-
-def _recipes(items: tuple[VideoItem, ...]) -> list[tuple[str, Path, tuple[OverlayFile, ...]]]:
-    """Return what recent entries open, leaving out item ids, which every reading creates afresh."""
-    return [(item.label, item.video, item.overlays) for item in items]
 
 
 def test_overlay_decoder_matching_uses_declared_extensions_and_keeps_undeclared_decoders() -> None:
@@ -94,82 +82,12 @@ def test_video_selection_becomes_an_item_named_after_the_video_unless_named() ->
     selection = VideoFileSelection(Path("/clips/cam.mp4"), Path("/clips/gt.txt"), "TXT")
 
     item = selection.to_item()
-    assert (item.label, item.video, item.overlays) == (
+    assert (item.display_name, item.video, item.overlays) == (
         "cam.mp4",
         Path("/clips/cam.mp4"),
         (OverlayFile(Path("/clips/gt.txt"), "TXT"),),
     )
     assert selection.to_item("Gate").label == "Gate"
-
-
-def test_recent_videos_keep_newest_first_without_duplicates_or_missing_files(tmp_path: Path) -> None:
-    """The list survives reopening, replaces an earlier entry for the same video, and hides deleted videos."""
-    videos = [_touch(tmp_path / f"clip{index}.mp4") for index in range(4)]
-    overlay = tmp_path / "gt.txt"
-    store_path = tmp_path / "state" / "recent-videos.json"
-    recent = RecentVideos(store_path, limit=3)
-    for video in videos:
-        recent.record(_video_item(video))
-    recent.record(_video_item(videos[2], overlay, label="Gate"))
-    videos[1].unlink()
-
-    assert _recipes(RecentVideos(store_path, limit=3).entries()) == _recipes(
-        (_video_item(videos[2], overlay, label="Gate"), _video_item(videos[3]))
-    )
-
-
-def test_deleted_recent_videos_do_not_take_slots_from_existing_ones(tmp_path: Path) -> None:
-    """Recording a video drops deleted entries before the limit, so older existing videos stay listed."""
-    kept = _touch(tmp_path / "kept.mp4")
-    gone = [_touch(tmp_path / f"gone{index}.mp4") for index in range(2)]
-    recent = RecentVideos(tmp_path / "recent-videos.json", limit=3)
-    for video in (kept, *gone):
-        recent.record(_video_item(video))
-    for video in gone:
-        video.unlink()
-    new = _touch(tmp_path / "new.mp4")
-    recent.record(_video_item(new))
-
-    assert _recipes(recent.entries()) == _recipes((_video_item(new), _video_item(kept)))
-
-
-def test_recent_videos_reopen_relative_selections_after_the_working_directory_changes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Recent selections keep their original files and deduplicate relative and absolute paths."""
-    video = _touch(tmp_path / "clip.mp4")
-    overlay = _touch(tmp_path / "gt.txt")
-    recent = RecentVideos(tmp_path / "recent-videos.json")
-    monkeypatch.chdir(tmp_path)
-    recent.record(_video_item(video))
-    recent.record(_video_item(Path("clip.mp4"), Path("gt.txt")))
-    other_directory = tmp_path / "other"
-    other_directory.mkdir()
-    monkeypatch.chdir(other_directory)
-
-    assert _recipes(recent.entries()) == _recipes((_video_item(video, overlay),))
-
-
-@pytest.mark.parametrize("content", ["{not json", "[null]", '["bad"]', '{"video": "x"}', "[{}]", "BAD_FIELD"])
-def test_unreadable_recent_videos_file_is_ignored(tmp_path: Path, content: str) -> None:
-    """Broken or wrongly shaped recent-video files never stop the workspace from starting."""
-    store_path = tmp_path / "recent-videos.json"
-    video = _touch(tmp_path / "clip.mp4")
-    bad_field = f'[{{"video": "{video}", "label": [], "overlays": []}}]'
-    store_path.write_text(bad_field if content == "BAD_FIELD" else content)
-
-    assert RecentVideos(store_path).entries() == ()
-
-
-def test_unreadable_recent_entries_are_skipped_and_readable_ones_kept(tmp_path: Path) -> None:
-    """An entry from an older format is skipped without hiding the entries that can still be opened."""
-    store_path = tmp_path / "recent-videos.json"
-    video = _touch(tmp_path / "clip.mp4")
-    store_path.write_text(
-        f'[{{"video_path": "{video}"}}, {{"label": "Clip", "video": "{video}", "overlays": []}}]', encoding="utf-8"
-    )
-
-    assert _recipes(RecentVideos(store_path).entries()) == [("Clip", video, ())]
 
 
 def _row_center(welcome: WelcomeWidget, label: str) -> QPointF:
@@ -182,8 +100,8 @@ def _row_center(welcome: WelcomeWidget, label: str) -> QPointF:
     raise AssertionError(f"Welcome row not found: {label}")
 
 
-def test_clicking_welcome_rows_triggers_shortcut_actions_and_recent_videos(qtbot: QtBot, tmp_path: Path) -> None:
-    """Welcome rows are buttons: shortcut rows trigger their action, recent rows request their video."""
+def test_clicking_welcome_rows_triggers_shortcut_actions_and_recent_workspaces(qtbot: QtBot, tmp_path: Path) -> None:
+    """Welcome rows are buttons: shortcut rows trigger their action, recent rows request their workspace file."""
     host = QWidget()
     qtbot.addWidget(host)
     manager = ShortcutManager()
@@ -192,17 +110,17 @@ def test_clicking_welcome_rows_triggers_shortcut_actions_and_recent_videos(qtbot
     welcome = WelcomeWidget(host)
     welcome.resize(900, 700)
     welcome.set_shortcut_manager(manager)
-    recent = _video_item(tmp_path / "gate.mp4", tmp_path / "gt.txt")
-    welcome.set_recent_videos([recent])
+    recent = tmp_path / "Parking lot.ax-devil.workspace"
+    welcome.set_recent_workspaces([recent])
     host.show()
 
     triggered: list[bool] = []
     manager.get_action("app.add_video").triggered.connect(lambda: triggered.append(True))
     requested: list[object] = []
-    welcome.recent_video_requested.connect(requested.append)
+    welcome.recent_workspace_requested.connect(requested.append)
 
     QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=_row_center(welcome, "Add Video").toPoint())
-    QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=_row_center(welcome, "gate.mp4  +  gt.txt").toPoint())
+    QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=_row_center(welcome, "Parking lot").toPoint())
     QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=QPoint(2, 2))
 
     assert triggered == [True]
@@ -217,9 +135,9 @@ def test_welcome_actions_and_recents_remain_clickable_in_a_small_workspace(qtbot
     manager.register_defaults()
     manager.install(center)
     center.set_welcome_shortcut_manager(manager)
-    recent = [_video_item(tmp_path / f"clip{index}.mp4") for index in range(5)]
+    recent = [tmp_path / f"run{index}.ax-devil.workspace" for index in range(8)]
     welcome = center.welcome_widget()
-    welcome.set_recent_videos(recent)
+    welcome.set_recent_workspaces(recent)
     center.resize(480, 280)
     center.show()
     QApplication.processEvents()
@@ -228,9 +146,9 @@ def test_welcome_actions_and_recents_remain_clickable_in_a_small_workspace(qtbot
     triggered: list[bool] = []
     manager.get_action("app.add_video").triggered.connect(lambda: triggered.append(True))
     requested: list[object] = []
-    welcome.recent_video_requested.connect(requested.append)
+    welcome.recent_workspace_requested.connect(requested.append)
 
-    for label in ("Add Video", recent[-1].label):
+    for label in ("Add Video", "run7"):
         point = _row_center(welcome, label).toPoint()
         scroll.ensureVisible(point.x(), point.y(), 10, 10)
         QApplication.processEvents()

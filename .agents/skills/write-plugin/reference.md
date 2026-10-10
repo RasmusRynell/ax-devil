@@ -118,11 +118,12 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   `PlaylistResolverPlugin`. A workspace saves a resolver's id and settings and runs it again on every open, so:
   - `resolve(settings)` is required and headless: it turns a JSON-serializable settings dict (strings, numbers,
     lists, dicts; absolute paths) into `PlaylistContent`, and raises `ValueError` or `OSError` with a message for the
-    user when settings are missing, invalid, or point at nothing. Keep it in a module without Qt imports.
+    user when settings are missing, invalid, or point at nothing. It runs on a background thread, so keep it in a
+    module without Qt imports and free of shared mutable state.
   - `create_settings_widget()` is required: a `PlaylistResolverWidget` that edits settings and calls
     `submit_settings(settings)` when the user is ready.
   - `create_cli_command()` is optional: it builds the same settings from CLI arguments and passes
-    `[PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)]` to
+    `[PlaylistItem(resolver=cls.plugin_id(), settings=settings)]` to
     `ctx.obj["run_with_items"]`.
 
   The model is `src/ax_devil/plugins/playlist_resolvers/folder_pair/` (`plugin.py`, `resolver.py`).

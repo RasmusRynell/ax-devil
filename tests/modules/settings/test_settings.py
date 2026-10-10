@@ -494,11 +494,12 @@ def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(
         return results.pop(0)
 
     monkeypatch.setattr(sys, "orig_argv", ["/usr/bin/python3", "-I", "-m", "ax_devil.cli"])
+    monkeypatch.setattr(sys, "argv", ["/path/ax_devil/cli.py"])
     monkeypatch.setattr(QProcess, "startDetached", start_detached)
     monkeypatch.setattr(QApplication, "closeAllWindows", lambda: None)
     monkeypatch.setattr(QApplication, "quit", lambda: None)
 
-    restart.relaunch_if_requested(qapp)
+    restart.relaunch_if_requested(qapp, [])
     assert started == []  # No restart was asked for.
 
     closed: list[str] = []
@@ -512,10 +513,10 @@ def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(
     restart.restart_application(main_window)
     assert closed == ["main"]  # The main window cleans up even if another window refuses to close.
     assert started == []  # Nothing starts before the app has saved on exit.
-    restart.relaunch_if_requested(qapp)
-    restart.relaunch_if_requested(qapp)
+    restart.relaunch_if_requested(qapp, [])
+    restart.relaunch_if_requested(qapp, [])
     assert started == [("/usr/bin/python3", ["-I", "-m", "ax_devil.cli"])]
 
     restart.restart_application(main_window)
-    restart.relaunch_if_requested(qapp)
+    restart.relaunch_if_requested(qapp, [])
     assert "Could not restart ax-devil" in caplog.text

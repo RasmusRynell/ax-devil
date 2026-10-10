@@ -74,6 +74,17 @@ DEFAULT_SHORTCUTS: tuple[ShortcutDefinition, ...] = (
     ShortcutDefinition("view.reset_zoom", "Reset Zoom", "View", QKeySequence("Ctrl+0"), acts_on_viewer=True),
     ShortcutDefinition("view.render_catalogs", "Render Catalogs", "View", QKeySequence("Ctrl+R")),
     # Application
+    ShortcutDefinition("app.new_workspace", "New Workspace", "Application"),
+    ShortcutDefinition(
+        "app.open_workspace",
+        "Open Workspace",
+        "Application",
+        QKeySequence("Ctrl+O"),
+        show_on_welcome=True,
+        welcome_group="Open",
+    ),
+    ShortcutDefinition("app.save_workspace", "Save Workspace", "Application", QKeySequence("Ctrl+S")),
+    ShortcutDefinition("app.save_workspace_as", "Save Workspace As", "Application", QKeySequence("Ctrl+Shift+S")),
     ShortcutDefinition(
         "app.add_video",
         "Add Video",

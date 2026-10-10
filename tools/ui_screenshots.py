@@ -44,6 +44,7 @@ from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.workspace.core import OverlayFile, VideoItem, new_item_id
+from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))
@@ -100,6 +101,14 @@ def _write_tracks(path: Path) -> Path:
         lines.append(f'<tt:Frame xmlns:tt="{namespace}" UtcTime="{time}">{"".join(objects)}{tree}</tt:Frame>')
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _add_and_open(qtbot: QtBot, session: WorkspaceSession, item: VideoItem) -> OfflineVideoViewerWidget | None:
+    """Add *item* and return the viewer it opens once it has resolved in the background."""
+    previous = session.focused_offline_viewer()
+    session.add_items([item])
+    qtbot.waitUntil(lambda: session.focused_offline_viewer() not in (None, previous), timeout=10000)
+    return session.focused_offline_viewer()
 
 
 def _show_tracked_frame(qtbot: QtBot, viewer: OfflineVideoViewerWidget | None) -> OfflineVideoViewerWidget:
@@ -173,6 +182,9 @@ def test_screenshots(
     qtbot.addWidget(window)
     window.show()
     qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
+    window._workspace_session._welcome.set_recent_workspaces(
+        [Path("/data/reviews") / f"{name}.ax-devil.workspace" for name in ("Parking lot", "Entrance cameras", "Exp 3")]
+    )
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         window.resize(*WINDOW_SIZES["wide"])
@@ -194,12 +206,10 @@ def test_screenshots(
     session = window._workspace_session
     clip_path = video_file_factory(CLIP_FRAMES / CLIP_FPS, CLIP_FPS)
     tracked_clip = VideoItem(
-        label=clip_path.name,
         video=clip_path,
         overlays=(OverlayFile(_write_tracks(tmp_path / "tracks.xml"), ONVIF_XML),),
     )
-    session.add_items([tracked_clip])
-    viewer = _show_tracked_frame(qtbot, session.focused_offline_viewer())
+    viewer = _show_tracked_frame(qtbot, _add_and_open(qtbot, session, tracked_clip))
     shortcuts.get_action("view.toggle_media_tools").trigger()
     media_tools_tabs = viewer.findChild(QTabWidget, "mediaToolsTabs")
     entities_page = viewer.findChild(QWidget, "mediaToolsEntities")
@@ -251,8 +261,9 @@ def test_screenshots(
     viewer.set_pinned(True)  # An unpinned lane is a preview that the next video replaces.
     second_clip = tmp_path / "second-lane.mp4"
     shutil.copyfile(tracked_clip.video, second_clip)
-    session.open_video(replace(tracked_clip, id=new_item_id(), label=second_clip.name, video=second_clip))
-    _show_tracked_frame(qtbot, session.focused_offline_viewer())
+    _show_tracked_frame(
+        qtbot, _add_and_open(qtbot, session, replace(tracked_clip, id=new_item_id(), label="", video=second_clip))
+    )
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         for size_name, size in WINDOW_SIZES.items():

@@ -54,8 +54,9 @@ Content also declares its supported consideration items. Playlist entries, visib
 
 ## Workspace Items And Intake
 
-Bare `ax-devil` launch opens an empty workspace. Everything that adds content — `ax-devil local`, `ax-devil live`,
-resolver commands, the Add dialogs, desktop file drops, and the welcome screen's recent list — creates Workspace Items
+Bare `ax-devil` launch reopens the workspace kept at the last close; `ax-devil open` opens a saved one. Everything
+that adds content — `ax-devil local`, `ax-devil live`, resolver commands, the Add dialogs, and desktop file drops —
+creates Workspace Items
 (`VideoItem`, `LiveStreamItem`, `PlaylistItem` in `workspace/core/items.py`); the store resolves them into Content. The
 item model, Content identity, and the playlist resolver contract are described in [Workspace](workspace.md).
 
@@ -83,14 +84,15 @@ The factory returns the constructed widget and a status message. Offline viewers
 
 - the current Workspace and the last saved one, with `open_workspace` and `save_workspace` reading and writing files
   (see [Workspace](workspace.md#file-format))
-- what each item resolved to: its Content, or the reason it could not resolve
+- what each item resolved to: its Content, the reason it could not resolve, or that it is still resolving in the
+  background (see [Workspace](workspace.md#resolution))
 - consideration refs (exclusions)
 
-It signals item changes, `workspace_replaced` when a file is opened, and `state_changed` when the modified flag, name, or
-path changes.
+It signals item changes, `workspace_replaced` when another Workspace is opened, created, or restored, and
+`state_changed` when the modified flag, name, or path changes.
 
 `build_browser_rows` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query, and the open
-items into `WorkspaceBrowserRow` values. Open-row identity is supplied from the current items reported by hosted viewer widgets. The package split and the planned redesign are described in [Workspace](workspace.md). `ContentBrowserWidget` renders explicit browser rows and emits activation, removal, and consideration intents. It does not decide playlist expansion, lane expansion, open-row identity, or information payloads.
+items into `WorkspaceBrowserRow` values. Open-row identity is supplied from the current items reported by hosted viewer widgets. The package split is described in [Workspace](workspace.md). `ContentBrowserWidget` renders explicit browser rows and emits activation, removal, and consideration intents. It does not decide playlist expansion, lane expansion, open-row identity, or information payloads.
 
 ## Data Sources
 

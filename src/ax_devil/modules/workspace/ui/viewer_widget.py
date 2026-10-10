@@ -166,6 +166,15 @@ class ViewerWidget(QFrame):
             button.setFixedSize(Height.CONTROL.px, Height.CONTROL.px)
         self._update_pin_state()
 
+    def set_display_name(self, name: str) -> None:
+        """Show *name* as the new display name, such as after the item is renamed.
+
+        Subclasses that store the name extend this to update their own copy and anything else showing it.
+        ``get_display_name()`` must return *name* afterwards.
+        """
+        self._title_label.setText(name)
+        self._fit_header_details()
+
     def set_header_details(self, text: str) -> None:
         """Show *text*, such as the video's size, frame rate and length, muted next to the title."""
         self._details_label.setText(text)

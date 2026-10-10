@@ -33,6 +33,7 @@ from ax_devil.modules.workspace.core.intake import (
 )
 from ax_devil.modules.workspace.core.items import (
     ITEM_KINDS,
+    ItemResolution,
     LiveStreamItem,
     PlaylistItem,
     UnreadableItem,
@@ -43,13 +44,20 @@ from ax_devil.modules.workspace.core.items import (
     new_item_id,
     video_file_selections,
 )
+from ax_devil.modules.workspace.core.recent_workspaces import RecentWorkspaces
 from ax_devil.modules.workspace.core.resolution import (
     ItemResolutionError,
     PlaylistResolver,
     PlaylistSettings,
     ResolutionContext,
 )
-from ax_devil.modules.workspace.core.workspace import WORKSPACE_FILE_SUFFIX, Workspace
+from ax_devil.modules.workspace.core.workspace import (
+    WORKSPACE_FILE_SUFFIX,
+    Workspace,
+    workspace_file_path,
+    workspace_name,
+)
+from ax_devil.modules.workspace.core.workspace_backup import WorkspaceBackup
 
 __all__ = [
     "ConsiderationItem",
@@ -60,6 +68,7 @@ __all__ = [
     "FileOverlaySourceSpec",
     "FileVideoSourceSpec",
     "ITEM_KINDS",
+    "ItemResolution",
     "ItemResolutionError",
     "LiveMQTTOverlaySourceSpec",
     "LiveOverlayMode",
@@ -79,6 +88,7 @@ __all__ = [
     "PlaylistItem",
     "PlaylistResolver",
     "PlaylistSettings",
+    "RecentWorkspaces",
     "ResolutionContext",
     "SeekableVideoContent",
     "UnreadableItem",
@@ -86,6 +96,7 @@ __all__ = [
     "VideoItem",
     "WORKSPACE_FILE_SUFFIX",
     "Workspace",
+    "WorkspaceBackup",
     "WorkspaceFileError",
     "WorkspaceDecoderOption",
     "WorkspaceDecoderOptionProvider",
@@ -97,4 +108,6 @@ __all__ = [
     "new_item_id",
     "save_workspace",
     "video_file_selections",
+    "workspace_file_path",
+    "workspace_name",
 ]

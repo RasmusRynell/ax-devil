@@ -155,6 +155,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         parent: QWidget | None = None,
     ) -> None:
         self._content = content
+        self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
         self._render_catalog_selection = self._render_catalog_manager.create_selection()
         self._controller: StreamMediaController | None = None
@@ -168,7 +169,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         layout = self.get_content_layout()
 
         display = FrameDisplay()
-        display.viewport.set_diagnostics_label(self._content.display_name)
+        display.viewport.set_diagnostics_label(self.get_display_name())
         status_panel = LiveStatusPanel(display)
         status_panel.pauseToggled.connect(self.toggle_playback)
         status_panel.retryRequested.connect(self.retry_connection)
@@ -241,8 +242,15 @@ class LiveVideoViewerWidget(ViewerWidget):
         )
 
     def get_display_name(self) -> str:
-        """Return the display name from the content item."""
-        return self._content.display_name
+        """Return the name shown in the header and in the render diagnostics."""
+        return self._display_name
+
+    def set_display_name(self, name: str) -> None:
+        """Show *name* in the header and in the render diagnostics, after the item is renamed."""
+        self._display_name = name
+        if self._frame_display is not None:
+            self._frame_display.viewport.set_diagnostics_label(name)
+        super().set_display_name(name)
 
     def pause_playback(self) -> None:
         """Pause the live stream. No-op if already paused."""

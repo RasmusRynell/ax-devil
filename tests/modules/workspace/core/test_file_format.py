@@ -251,13 +251,14 @@ def test_items_that_cannot_be_read_stay_unresolvable_and_are_saved_back_unchange
     assert _written(resaved)["items"] == [raw, good]
 
 
-def test_an_unreadable_item_without_id_or_label_gets_an_id_and_its_kind_as_label(tmp_path: Path) -> None:
+def test_an_unreadable_item_without_id_or_label_gets_an_id_and_is_shown_by_its_kind(tmp_path: Path) -> None:
     path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "items": [{"kind": "hologram"}, "junk"]})
 
     first, second = load_workspace(path).items
 
-    assert first.label == "hologram" and first.id
+    assert first.display_name == "hologram" and first.id
     assert isinstance(second, UnreadableItem) and second.id != first.id
+    assert second.display_name == "Unreadable item"
 
 
 def test_an_unknown_kind_explains_itself_when_resolved(tmp_path: Path) -> None:

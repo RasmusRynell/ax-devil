@@ -26,19 +26,19 @@ from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow, build_browser_rows
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_live_video, make_playlist, make_video
-from tests.helpers.workspace import FakeResolutionContext, content_item, store_with
+from tests.helpers.workspace import FakeResolutionContext, content_item, inline_resolver, store_with
 
 
 def browser_rows(
     store: WorkspaceStore, open_items: Set[OnScreenWorkspaceItem] = frozenset()
 ) -> tuple[WorkspaceBrowserRow, ...]:
-    """Project the store's contents the way the workspace controller does."""
-    return build_browser_rows(store.contents(), store.is_item_considered, open_items)
+    """Project the store's items the way the workspace controller does."""
+    return build_browser_rows(store.resolutions(), store.is_item_considered, open_items)
 
 
 def _store(*contents: Content) -> WorkspaceStore:
     """Return a store with one item per content."""
-    store = WorkspaceStore(FakeResolutionContext())
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext()))
     store.add_items([content_item(content) for content in contents])
     return store
 
@@ -77,7 +77,7 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert row.label == "test.mp4"
     assert row.icon_kind == "video"
     assert row.activation_target == (video, 0)
-    assert row.removable_content == video
+    assert row.item == state.workspace.items[0]
     assert row.is_open
     assert row.information_factory is not None
     information = row.information_factory()
@@ -147,7 +147,7 @@ def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads
     assert row.label == "Suite"
     assert row.icon_kind == "playlist"
     assert row.activation_target == (playlist, 0)
-    assert row.removable_content == playlist
+    assert row.item == state.workspace.items[0]
     assert row.is_open
     assert row.information_factory is not None
     assert ("resolver", "Synthetic") in row.information_factory().fields

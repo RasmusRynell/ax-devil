@@ -263,7 +263,7 @@ def test_cli_playlist_command_launches_a_playlist_item(monkeypatch: pytest.Monke
     )
 
     assert result.exit_code == 0
-    [item] = captured["startup_items"]
+    [item] = captured["items"]
     assert (item.resolver, item.settings) == ("mot_challenge", {"root": str(tmp_path)})
 
 
@@ -531,8 +531,8 @@ def test_cli_live_keeps_configured_credential_references_in_the_item(
     result = runner.invoke(cli, ["--config", str(config_path), "live", "--overlay", "mqtt"])
 
     assert result.exit_code == 0
-    [item] = captured["startup_items"]
-    assert item.label == "Live: $AX_DEVIL_TARGET_ADDR"
+    [item] = captured["items"]
+    assert (item.label, item.display_name) == ("", "camera.example"), "the shown host is expanded, never stored"
     assert (item.host, item.username, item.password) == (
         "$AX_DEVIL_TARGET_ADDR",
         "$AX_DEVIL_TARGET_USER",
@@ -579,7 +579,7 @@ def test_cli_live_takes_command_line_credentials_literally(monkeypatch: pytest.M
     )
 
     assert result.exit_code == 0, result.output
-    [item] = captured["startup_items"]
+    [item] = captured["items"]
     assert (item.host, item.password) == ("camera.local", "pa$$word")
     assert item.expanded().password == "pa$$word"
 
@@ -637,16 +637,16 @@ def test_cli_live_selects_handler_and_transport_settings(
     result = CliRunner().invoke(cli_module.cli, ["--config", str(config_path), "live", *arguments])
 
     assert result.exit_code == 0, result.output
-    [startup] = captured["startup_items"]
-    assert startup.overlay_mode.value == expected_mode
+    [item] = captured["items"]
+    assert item.overlay_mode.value == expected_mode
     if expected_mode == "mqtt":
-        assert startup.handler_type == "ADF_BETA_FRAME"
-        assert startup.mqtt_host == "mqtt.example"
-        assert startup.analytics_data_source_key == "analytics/source"
+        assert item.handler_type == "ADF_BETA_FRAME"
+        assert item.mqtt_host == "mqtt.example"
+        assert item.analytics_data_source_key == "analytics/source"
     else:
-        assert startup.handler_type == "ADF_V1_FRAME"
+        assert item.handler_type == "ADF_V1_FRAME"
         expected = ("override.topic", 4, "https") if arguments else ("configured.topic", 2, "http")
-        assert (startup.websocket_topic, startup.websocket_channel_id, startup.device_api_protocol) == expected
+        assert (item.websocket_topic, item.websocket_channel_id, item.device_api_protocol) == expected
 
 
 @pytest.mark.parametrize(
@@ -695,8 +695,8 @@ def test_cli_live_resolves_numeric_references(
     result = CliRunner().invoke(cli_module.cli, args)
 
     assert result.exit_code == 0, result.output
-    [startup] = captured["startup_items"]
-    assert (startup.camera_head, startup.mqtt_port, startup.websocket_channel_id) == expected
+    [item] = captured["items"]
+    assert (item.camera_head, item.mqtt_port, item.websocket_channel_id) == expected
 
 
 def test_cli_live_reports_invalid_config_overlay_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -747,8 +747,8 @@ def test_cli_local_launches_a_video_item(monkeypatch: pytest.MonkeyPatch, tmp_pa
     result = runner.invoke(cli, ["local", "--video", str(video_file)])
 
     assert result.exit_code == 0
-    [item] = captured["startup_items"]
-    assert (item.label, item.video, item.overlays) == ("test.mp4", video_file, ())
+    [item] = captured["items"]
+    assert (item.display_name, item.video, item.overlays) == ("test.mp4", video_file, ())
 
 
 def test_cli_local_with_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -786,7 +786,7 @@ def test_cli_local_with_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     )
 
     assert result.exit_code == 0
-    [item] = captured["startup_items"]
+    [item] = captured["items"]
     assert item.video == video_file
     assert item.overlays == (OverlayFile(overlay_file, "ADF_BETA_FRAME"),)
 
@@ -834,3 +834,37 @@ def test_cli_local_requires_video(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result.exit_code != 0
     assert "--video" in result.output
+
+
+@pytest.mark.parametrize("damaged", [False, True])
+def test_cli_open_launches_a_saved_workspace_and_rejects_a_damaged_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, damaged: bool
+) -> None:
+    monkeypatch.syspath_prepend(str(_repo_root() / "src"))
+    captured: dict[str, Any] = {}
+    app_module = ModuleType("ax_devil.app")
+
+    class DummyApp:
+        def run(self) -> int:
+            return 0
+
+    def _create_app(*args: Any, **kwargs: Any) -> DummyApp:
+        captured.update(kwargs)
+        return DummyApp()
+
+    setattr(app_module, "create_app", _create_app)
+    monkeypatch.setitem(sys.modules, "ax_devil.app", app_module)
+    workspace_file = tmp_path / "Lot.ax-devil.workspace"
+    workspace_file.write_text("{not json" if damaged else '{"version": 1, "items": []}', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(_import_cli_module(monkeypatch).cli, ["open", workspace_file.name])
+
+    if damaged:
+        assert result.exit_code != 0
+        assert "Lot.ax-devil.workspace is not valid JSON" in result.output
+        assert captured == {}
+    else:
+        assert result.exit_code == 0
+        assert captured["workspace_file"] == workspace_file
+        assert captured.get("items", ()) == ()
