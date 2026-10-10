@@ -42,8 +42,8 @@ remain in `data_sources/base.py`; file sources and providers remain outside `liv
 
 `workspace/ui/add_content/` groups the three add-content dialogs and their analytics discovery and playlist-selection
 helpers. Shared content descriptions, intake validation, and startup requests live in `workspace/core/` because they
-also serve CLI and startup workflows. `workspace/core` imports no PySide6, directly or through other modules, and a
-test enforces it; `workspace/ui` is the Qt interface on top. The split and its planned direction are described in
+also serve CLI and startup workflows. `workspace/ui` is the Qt interface on top; the Qt-free rule for `core/` is in
+[invariants](../domain/invariants.md#content-model), and the split and its planned direction are described in
 [Workspace](workspace.md). Tests mirror `core/`, `ui/`, and `ui/add_content/`.
 
 ## Outside `modules/`
