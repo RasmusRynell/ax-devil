@@ -13,6 +13,8 @@ flowchart TD
     MainWindow --> DebugWindows["DebugWindow / PluginWindow"]
 
     WorkspaceSession --> WorkspaceStore["WorkspaceStore<br/>items, resolved Content, signals"]
+    WorkspaceSession --> WorkspaceLifecycle["WorkspaceLifecycle<br/>launch, quit, new, open, save"]
+    WorkspaceLifecycle --> WorkspaceStore
     WorkspaceSession --> ApplicationWindow["ApplicationWindow<br/>central widget"]
     WorkspaceSession --> WorkspaceController["WorkspaceController<br/>UI coordinator"]
     WorkspaceSession --> ContentBrowser["ContentBrowserWidget<br/>workspace tree"]
@@ -48,16 +50,17 @@ flowchart TD
 
 `WorkspaceSession` is the public Workspace facade and creates and wires the framework-level Workspace objects:
 
-- `WorkspaceStore`
+- `ItemResolver` and `WorkspaceStore`
+- `WorkspaceLifecycle`
 - `ContentBrowserWidget`
 - `SplitView`
 - `ApplicationWindow`
 - `WorkspaceController`
 
-Callers use the session to add Workspace Items (`add_items`, `open_files`), run the workspace lifecycle (`launch`,
-`new_workspace`, `open_workspace`, `save_workspace`, `save_workspace_as`, `keep_workspace`), route to the focused
-widget, configure welcome shortcuts, and tear down. The lifecycle — the kept workspace, the Save / Discard / Cancel
-question, and recent workspaces — is described in [Workspace](workspace.md#lifecycle). The session re-emits the store's
+Callers use the session to add Workspace Items (`add_items`, `add_resolved`, `open_files`), reach the workspace
+lifecycle (`session.lifecycle`), route to the focused widget, configure welcome shortcuts, and tear down. The lifecycle
+— the kept workspace, the Save / Discard / Cancel question, and recent workspaces — is described in
+[Workspace](workspace.md#lifecycle). The session re-emits the store's
 `state_changed`, and `MainWindow` sets its title from `workspace_name` and `is_modified`; the custom `TitleBar` follows
 the window title. The store, browser, split view, and controller are composed implementation details rather than
 separate session APIs.
@@ -174,8 +177,8 @@ info, respectively.
 ## Ownership Boundaries
 
 - `MainWindow` owns application-wide actions, menus, shortcuts, dialogs, diagnostics windows, and the `WorkspaceSession`.
-- `WorkspaceSession` owns Workspace composition, adding items, the workspace file lifecycle, focused-viewer lookup,
-  and teardown.
+- `WorkspaceSession` owns Workspace composition, adding items, focused-viewer lookup, and teardown.
+- `WorkspaceLifecycle` owns the workspace file lifecycle; it builds no widgets.
 - `ApplicationWindow` owns the static central layout.
 - `WorkspaceController` owns browser synchronization, UI coordination, viewer-to-item tracking, and lifecycle side effects.
 - `SplitView` owns pane layout, focused viewer widget tracking, drag/drop splitting, and widget removal mechanics.

@@ -103,7 +103,10 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   ignored.
 - Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content. Opening a Workspace file closes every viewer widget, even when item ids are kept.
   `SplitView` exclusively owns hosted widget removal and deletion; callers use its removal API.
-- Every item is listed: an item that failed to resolve is one unavailable row that shows its reason and never opens.
+- Every item is listed: an item that failed to resolve is one unavailable row that shows its reason and never opens;
+  an item still resolving is one pending row that opens nothing.
+- Workspace items resolve off the GUI thread through `ItemResolver`; `WorkspaceStore` commits a result only while its
+  item and Workspace are still current.
 - Only adding items opens a viewer. Opening, creating, or restoring a Workspace lists its items and opens and connects
   nothing.
 - Closing never prompts and keeps the current Workspace for the next launch. Replacing a modified Workspace asks
