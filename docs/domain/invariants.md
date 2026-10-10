@@ -93,7 +93,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Work that discovers files, reads disk, validates, compiles, builds indexes, opens sources, or creates shared caches
   belongs behind the owning runtime boundary, never in a widget constructor.
 - Text sizes, spacing, radii and chrome heights come from `modules/chrome/tokens.py`, never literals, and anything
-  sized from text or colored from the palette reruns through `chrome.appearance.follow_appearance`, so the theme and
+  sized from text or materializing a fixed palette color reruns through `chrome.appearance.follow_appearance`, so the theme and
   **Text size** apply live. Pixels inside rendered frames (catalogs, sheets, export burn-ins) follow the frame instead.
   The rest of the chrome rules are in the [chrome README](../../src/ax_devil/modules/chrome/README.md).
 - The video surface and its letterbox stay near-black (`chrome.theme.VIDEO_CANVAS`) in both themes: the Quick clear
@@ -133,7 +133,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   Plugin dependencies live in a separate locked uv project constrained to the app's exact dependency closure; plugin
   upgrades never upgrade the app, and installation activates a prepared project only after validation.
 - App, Python, installed-dependency, or editable-project metadata changes trigger a refresh on the next launch; a
-  failed refresh starts the base app without external plugins and is retried only by an explicit plugin change.
+  failed refresh starts the base app without external plugins and is not retried for the same fingerprint; a
+  later metadata change or an explicit plugin change retries it.
 
 ## Data Pipeline
 
@@ -143,7 +144,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   `~/.ax_devil/caches/`) can always be rebuilt.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
   history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
-  sequence frame; an object is present on exactly the frames whose looked-up sample contains it, under the same
+  sequence frame, and omits events outside the video; an object is present on exactly the frames whose looked-up sample contains it, under the same
   matching and sticky selection as the lane's lookup.
 - Whole-file entity filtering judges each distinct set of recorded classification types through the same
   classification policy as Scene entities; it is unavailable unless every filter option declares one, and history
