@@ -80,7 +80,7 @@ discards its temporary storage. Saved files remain on disk. Source paths and fun
 collected; source contents, local variables, arguments, and return values are not.
 
 The version-1 `ax-devil-stack-samples` JSON format stores millisecond timestamps relative to recording
-start, nominal interval, stop duration, frame/stack dictionaries, thread labels, and ordered snapshots
+start, nominal interval, stop duration, frame/stack lists, thread labels, and ordered snapshots
 of `[time_ms, [[thread_id, stack_id], ...]]`. Thread identifiers are recording-local strings. A changed Python `Thread` object or an observed
 absence starts a new identity, preserving prior labels when native identifiers are recycled.
 For Qt/native threads without a distinct Python `Thread` object, reuse entirely between samples

@@ -96,7 +96,7 @@ The data pipeline has three delivery capabilities:
 |-----------|-------|-----------|
 | `FrameSource` | `FrameData` | `play()`, `pause()`, `stop()`, `wait()` |
 | `OverlaySource` | `OverlayData` | `play()`, `pause()`, `stop()`, `wait()` |
-| `OverlayLookup` | Returns `OverlayData` by `FrameIdentifier` | Borrowers perform lookups; the concrete owner closes resources |
+| `OverlayLookup` | Returns `OverlayData` by `FrameIdentifier` | No playback lifecycle; the owning `FileOverlaySource` is closed explicitly |
 
 Current source implementations:
 

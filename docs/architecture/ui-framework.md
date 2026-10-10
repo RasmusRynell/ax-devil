@@ -107,7 +107,7 @@ flowchart LR
     WorkspaceWidget --> ContentLayout["content layout<br/>owned by subclass"]
 ```
 
-Each `LeafContainer` hosts at most one `WorkspaceWidget`. Dragging starts from `WorkspaceWidget.get_header_widget()`. Dropping onto a leaf asks `SplitView` to split that leaf and move or insert the widget.
+Each `LeafContainer` hosts at most one `WorkspaceWidget`. Dragging starts from `WorkspaceWidget.get_header_widget()`. Dropping onto a leaf asks `SplitView` to move the widget there, splitting the leaf when it is occupied.
 
 Unpinned panes are previews: their header title is italic, and `replace_or_open` replaces the first one with newly
 opened content. Pinned panes keep a regular title and are never replaced; when every pane is pinned, new content opens
@@ -124,12 +124,12 @@ Framework-level signals:
 It provides:
 
 - header with display name
-- pin and close icon buttons with 24 px click targets; an italic title marks an unpinned preview pane
+- pin and close icon buttons; an italic title marks an unpinned preview pane
 - content layout for subclasses
 - close routing through `close_requested`
 - current item reporting through `current_on_screen_item()`
 - consideration refresh hook through `refresh_item_consideration()`
-- required `cleanup()` hook
+- `cleanup()` hook, overridden by widgets that own runtime resources
 
 Current concrete workspace widgets:
 
@@ -165,7 +165,8 @@ route to the focused viewer through `WorkspaceWidget` methods; shortcuts marked 
 [viewer rule](../../src/ax_devil/modules/video_viewer/README.md#rules).
 
 An overlay mounted on `FrameDisplay` with `preference` or `hide_while_inspecting` hands its visibility to
-`FrameViewport`, which hides it while that `OverlayPreference` is off, or while the frame is zoomed in or showing info.
+`FrameViewport`, which hides it while that `OverlayPreference` is off, or while the frame is zoomed in or showing
+info, respectively.
 
 ## Ownership Boundaries
 
@@ -181,5 +182,5 @@ An overlay mounted on `FrameDisplay` with `preference` or `hide_while_inspecting
 
 ## Extension Points
 
-- New center-pane tools should inherit from `WorkspaceWidget`, implement `get_display_name()` and `_setup_widget_ui()`, emit `on_screen_item_changed` when visible Workspace content changes, and implement `cleanup()`.
+- New center-pane tools should inherit from `WorkspaceWidget`, implement `get_display_name()` and `_setup_widget_ui()`, emit `on_screen_item_changed` when visible Workspace content changes, and override `cleanup()` if they own resources.
 - New viewer widgets should be opened through `WorkspaceController`.

@@ -8,16 +8,19 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
 - `offline_video_viewer.py`: offline and playlist Workspace viewer widget.
 - `stream_media_controller.py`: live source lifecycle, connection status, retry, and `QtStreamSync` orchestration.
 - `live_connection.py`: `LiveConnectionStatus` model; per-feed (video, overlay) state, reason, and display text.
+- `offline_entry_media.py`: `EntryOpening` opens an entry's sources on a worker thread and delivers `EntryMedia`.
 - `offline_viewer_runtime.py`: `OfflineSession` and `OfflineLane`; owns offline source pooling,
   direct overlay lookup, timeline commands, viewport sync, cleanup, and player composition.
 - `offline_viewer_navigation.py`: playlist entry and consideration navigation policy.
-- `scene_frame_presenter.py`: side-effect-free frame plus Scene overlay presentation assembly for live and offline display.
+- `scene_frame_presenter.py`: frame plus Scene overlay presentation assembly for live and offline display.
 - `scene_inspection.py`: Scene inspection update payloads and queued side-panel delivery helpers.
 - `overlay_persistence.py`: sample-age selection for indexed offline overlays and cached live overlays.
 - `lane_grid.py`: shared lane-grid dimensions for offline display and export.
 - `export/export_job.py`: synchronous decode, presentation, tiling, encoding, cancellation, and atomic output replacement;
   borrows frozen lane inputs and owns rendering/output resources on the GUI thread.
 - `export/export_dialog.py`: lane and quality options, destination prompt, progress, and cancellation intents.
+- `export/encoder.py`: the video encoder and its compression presets.
+- `timing_diagnostics_widget.py`: per-viewer timing readout shown by the diagnostics window.
 - `loading_indicator.py`: loading overlay used by offline entry changes.
 - `media_tools/`: viewer-owned side-panel widgets for filtering, Scene inspection, the Scene event log, object
   history, and overlay persistence controls. `MediaToolsPanel` is the Scene inspector sink of its viewer.

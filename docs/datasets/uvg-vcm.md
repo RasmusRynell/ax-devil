@@ -36,7 +36,7 @@ uv run ax-devil playlist folder_pair \
   downloads/uvg-vcm/videos downloads/uvg-vcm/overlays --handler-type UVG_VCM
 ```
 
-Alternatively, use **File → Add playlist**, choose **Folder Pair**, select the two folders, and choose **UVG-VCM**
+Alternatively, use **File → Add Playlist**, choose **Folder Pair**, select the two folders, and choose **UVG-VCM**
 as the decoder. Entries are sorted by file name. For one sequence:
 
 ```bash

@@ -67,9 +67,7 @@ it claims to protect. Strengthen an existing meaningful case before adding redun
 
 Apply the placement rule in [AGENTS.md](../../../AGENTS.md#where-a-fact-belongs). For every added or changed doc
 line, name the second module that must know it; if there is none, it belongs in the module README, a docstring, or
-nowhere. Doc additions are rejected by default and deletions accepted by default: a fact that restates code, a
-test, or a type, describes behavior the user sees, records a measurement, or explains why the change was correct
-does not belong in `docs/`. Point the author at the commit message for the why.
+nowhere. Doc additions are rejected by default and deletions accepted by default.
 
 Treat `README.md` as the human entry point and review additions there especially carefully. For misplaced or
 duplicated content, name the appropriate home or recommend deletion.

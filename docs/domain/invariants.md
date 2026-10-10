@@ -32,7 +32,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   latest pair. Offline delivery presents only the newest frame queued for the GUI thread; seeks and frame steps still
   present the requested frame.
 - Offline playback follows the clock: a delivery worker that falls behind skips to the frame due now instead of
-  slowing down, and still delivers the last frame.
+  slowing down; the video's final frame is always delivered.
 - Scene and catalog interpretation stay on the GUI side of the renderer boundary; scene graph callbacks consume
   prepared data only. GPU resources are created and retired only in Qt's scene graph phase.
 - Display and export use the same Quick renderer, without Scene semantics.
@@ -68,8 +68,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   Recipe routing is catalog policy: UI code never switches on classification strings.
 - `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
   not rendered.
-- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows them; filtering,
-  rendering, synchronization, and hit-testing never read them.
+- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows
+  `Observation.debug`; `Scene.debug` is kept for diagnostics only. Filtering, rendering, synchronization, and
+  hit-testing never read either.
 - Changing Scene model dataclass fields requires bumping `SCENE_MODEL_VERSION`: major when breaking, minor when
   additive. Decoder plugins declaring another major, or a newer minor, fail to load and are reported at startup.
 
@@ -107,37 +108,37 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 
 ## Synchronization
 
-- `StreamSync` syncs live data by capture time, not arrival time, and is event-driven: each arrival emits the queued
-  frames whose delay has elapsed, with an overlay or with `None`. An idle tail frame stays buffered until another
-  input arrives. Sharing an RTSP connection does not pair frame and overlay arrivals.
+- `StreamSync` syncs live data by capture time, not arrival time, and is event-driven with no wall-clock timer, so an
+  idle tail frame stays buffered until another input arrives. Sharing an RTSP connection does not pair frame and
+  overlay arrivals; both inputs keep their capture timestamps.
 - Offline lanes pull overlay data from an `OverlayLookup` by `FrameIdentifier`; file overlays have no playback
   lifecycle and their owning runtime closes them explicitly. Live overlays are push-based through `overlayReady`.
 
 ## Plugin System
 
 - External plugins are installed distributions discovered only through the supported entry-point groups, and must
-  declare the host's plugin API version. The base runtime never imports a plugin merely because its source directory
-  exists.
+  declare the host's plugin API version. The base runtime never imports an external plugin merely because its source
+  directory exists.
 - Plugin IDs are unique within each plugin type; decoder `handler_type` strings are unique across loaded decoders for
   each capability.
-- Plugin load failures must not stop the application. Failures that reach validation or registration are recorded in
-  `RuntimePluginRegistry`; import failures may only be logged.
+- Plugin load failures must not stop the application. External load, validation and registration failures are
+  recorded in `RuntimePluginRegistry`; a built-in import failure may only be logged.
 - `ax-devil` selects the prepared plugin interpreter before importing application code; management stays in base.
   Plugin dependencies live in a separate locked uv project constrained to the app's exact dependency closure; plugin
   upgrades never upgrade the app, and installation activates a prepared project only after validation.
 - App, Python, installed-dependency, or editable-project metadata changes trigger a refresh on the next launch; a
   failed refresh starts the base app without external plugins and is retried only by an explicit plugin change.
-- Plugin selections belong to the checkout or base-environment location and survive app upgrades there.
 
 ## Data Pipeline
 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file provider artifacts invalidate unless their complete identity matches: source fingerprint, decoder name,
-  explicit artifact version, Scene model version, and provider-owned decode options. Cache files under
-  `~/.ax_devil/caches/` can always be rebuilt.
+  explicit artifact version, Scene model version, and provider-owned decode options. Cache files (by default under
+  `~/.ax_devil/caches/`) can always be rebuilt.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
-  history places events on the first video frame at or after their sample, and an object is present on exactly the
-  frames whose looked-up sample contains it, under the same matching and sticky selection as the lane's lookup.
+  history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
+  sequence frame; an object is present on exactly the frames whose looked-up sample contains it, under the same
+  matching and sticky selection as the lane's lookup.
 - Whole-file entity filtering judges each distinct set of recorded classification types through the same
   classification policy as Scene entities; it is unavailable unless every filter option declares one, and history
   never fabricates Entity data.
@@ -149,7 +150,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Export writes to an owned temporary sibling file and replaces the destination only after success. Source/output
   aliases are rejected; cancellation and failure cleanup never delete the destination.
 - Exports preserve relative source frame timestamps and frame durations; unreadable frames fail the export. Export
-  takes detached filter and visibility snapshots, so later edits cannot alter an export in progress.
+  borrows a frozen filter snapshot and the catalog variant active when it starts, so later edits cannot alter an
+  export in progress.
 
 ## Rendering
 
@@ -174,10 +176,10 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   the running app is its preview.
 - Saves validate every editable field, replace the configuration atomically, and only then emit runtime change
   signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart.
-- Only a config value that is exactly `$VARIABLE_NAME` is an environment reference, and `~` expands only in storage
-  folders. Every other string, including credentials starting with `$` or `~`, is literal.
-- Runtime-mutable settings are consumed through `GlobalSettings` signals, not by polling `ConfigManager`. Its sole
-  runtime value is a complete immutable `SettingsState`.
+- Only a config value that is exactly `$VARIABLE_NAME` is an environment reference, and `~` expands only under the
+  `storage` section. Every other string, including credentials starting with `$` or `~`, is literal.
+- Runtime-mutable settings are consumed through `GlobalSettings` signals, not by polling `ConfigManager`. Settings
+  live in one immutable `SettingsState` that setters replace whole.
 - On/off overlay preferences are `OverlayPreference` members; adding a member adds it to the View menu, Settings and
   the saved config.
 - All shortcuts are defined in `DEFAULT_SHORTCUTS`; persistence is override-only, so an empty `"shortcuts"` means all

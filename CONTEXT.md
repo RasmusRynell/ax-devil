@@ -14,7 +14,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Playlist Content | An ordered inspection sequence made from entries and lanes. | Playlist source, playlist viewer |
 | Entry Lane | One visible comparison panel inside a playlist entry or standalone video expansion. | Overlay row, panel config |
 | Workspace | The active session state: content, consideration flags, open viewers, pinned state, and browser rows. | Window, shell, content list |
-| Startup Request | CLI or bootstrap input that resolves into Workspace content before it is added. | Startup content, initial content |
+| Startup Request | CLI or bootstrap input (`StartupContent` and its subtypes) that resolves into Workspace content before it is added. | Initial content |
 | Viewer | An open inspection surface hosted by the Workspace. | Player, pane, runtime bucket |
 | Video Viewer | The application workflow that composes media sources, sync, Scene tools, and frame display. | Player, pane |
 | Frame Display | A reusable shell that presents frames and overlays and exposes generic mount points. | Video player, playback widget, viewer |
@@ -22,12 +22,12 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Timestamp Matching | Synchronization policy for choosing the overlay timestamp that corresponds to a video frame timestamp. | Provider lookup, sync result |
 | Overlay Lookup | File overlay provider behavior that loads a Scene for a FrameIdentifier and records whether timestamp, sequence, tolerance, or miss was used. | Timestamp matching, offline sync |
 | Scene | The world-model exchange format produced by decoders and consumed by filtering, inspection, and rendering. | Raw overlay payload |
-| Scene Render Catalog | A selected rendering setup that owns reusable templates and catalog-defined recipes for Scene entities. | Template file, renderer config |
+| Scene Render Catalog | A compiled catalog of reusable templates and recipes for Scene entities and relations; a view's choice of one is a Selection. | Template file, renderer config |
 | Built-in Catalog | The packaged, app-owned, read-only Scene Render Catalog. | Default catalog, packaged default |
 | Default Catalog | The Scene Render Catalog new views start from; the Built-in Catalog until the user picks another. | Active catalog, remembered selection |
-| Drawing Instruction | A catalog operation (box, text, line, point, polygon or circle) emitted directly to the drawing target. JSON still calls these `primitive` steps. | Intermediate drawable object |
+| Drawing Instruction | A catalog operation (box, circle, line, point, polygon, polyline, text or label) emitted directly to the drawing target. JSON still calls these `primitive` steps. | Intermediate drawable object |
 | Prepared Drawing | Final vertex bytes, resolved path properties and shaped text ready for retained Qt item binding. | Primitive list |
-| Draw Recipe | Catalog-owned entity rendering logic that emits Drawing Instructions. | Object renderer, type switch |
+| Draw Recipe | Catalog-owned entity or relation rendering logic that emits Drawing Instructions. | Object renderer, type switch |
 | Cached Scene Overlay | The adapter that keeps one Scene and provides prepared drawings, hover hits, and preparation metrics to the video player. | Render cache, Scene renderer |
 
 ## Relationships

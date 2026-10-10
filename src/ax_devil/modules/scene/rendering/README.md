@@ -25,8 +25,9 @@ documented by `ax-devil catalog reference`, generated from the runtime definitio
 
 ## How it runs
 
-Routing is latest-observation based: an entity with no observations is skipped; its primary classification selects a
-classification recipe, else the `classified` fallback, else `unclassified`. A relation recipe is selected by relation
+Routing is latest-observation based: an entity with no observations is skipped; one without a classification uses
+the `unclassified` fallback; a classification with its own recipe uses it, and any other uses `classified`. A
+relation recipe is selected by relation
 type and skipped unless both endpoints have observations in the filtered Scene, so entity filtering applies to
 relations without a separate policy. Each recipe then evaluates once per frame for all its rows; only demanded Scene
 fields are read, once per column.
@@ -40,11 +41,11 @@ filtered Scene; hit testing picks the smallest box containing the cursor.
 ## Rules
 
 - Keep Scene semantics here; the video player receives only prepared drawings, hover hits and metrics.
-- Prefer adding or replacing draw recipes in catalog JSON over adding render-wrapper layers. The built-in catalog
-  keeps presentation choices such as motion symbols in JSON (`lookup_text`), not in Python.
-- Validation and compilation never run on the frame-drawing path, and selectors and lane widgets never read,
-  validate or compile catalog files during construction. Listing is metadata discovery only; full validation happens
-  on select, reload, create, apply to all and use as default.
+- Prefer adding or replacing draw recipes in catalog JSON over adding render-wrapper layers. Presentation choices
+  such as motion symbols belong in JSON (`lookup_text`), not in Python.
+- Validation and compilation never run on the frame-drawing path, and widgets never read, validate or compile
+  catalog files themselves; they go through a `SceneRenderCatalogSelection`. Listing is metadata discovery only;
+  full validation happens on select, reload, create, apply to all and use as default.
 - Visibility is applied by compiling a variant from the already validated source, never per frame. The whole document
   is validated first, so hidden components still have to be valid.
 - `pick_color` hashes with CRC-32, not `hash()`, so an id keeps its color across runs.
@@ -70,7 +71,8 @@ A selection's active path is what the user chose; its active catalog is the last
 failure may be an older revision, another file, or the built-in default with the reason in its status. Every load
 attempt of the active path records a failure, and only a successful compile clears it, so `active_catalog_loaded()`
 is true exactly when the latest attempt compiled and the selector can enable **Apply to all** and **Use as default**.
-The manager watches every listed file and its directory and, after 150 ms of quiet, reloads each selection whose
+The manager watches every listed file, invalid ones included, and their directories and, after 150 ms of quiet,
+reloads each selection whose
 active path changed; other selections are untouched. Live viewers share one selection between controller and media
 tools; offline lanes each own one.
 

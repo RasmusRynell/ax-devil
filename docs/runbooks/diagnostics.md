@@ -27,7 +27,7 @@ aggregated into 100 ms buckets, plus a lifetime total. They are not decoder drop
 
 **Freeze view** holds the displayed snapshot while playback and capture continue. Selection, graph mode,
 and workload comparison remain usable on the frozen data. Export saves the frozen snapshot when frozen,
-and current data otherwise. Reset resumes the live view and clears rendering measurements only.
+and current data otherwise. **Reset history** resumes the live view and clears rendering measurements only.
 Turning Collect Debug Metrics off or on resets the rendering observation interval; source links survive reset.
 
 **Sources & caches** shows independently timestamped source observations. Expand a source and optionally

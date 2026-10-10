@@ -59,7 +59,7 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 
 ### Code Rules
 
-- Ruff enforces `E`, `F`, and `I` rules, a 120-character line limit, and double quotes.
+- Ruff enforces `E`, `F`, `I` and a few pyupgrade (`UP`) rules, a 120-character line limit, and double quotes.
 - mypy strict mode applies: add type hints throughout and avoid `disallow_untyped_defs` violations.
 - Use `from ax_devil.modules.settings.logging_config import get_logger` and `logger = get_logger(__name__)`. Do not use `print()`.
 - Use f-strings only. Do not use string concatenation or `%` formatting.
@@ -134,3 +134,4 @@ Each fact has one home; link to it instead of repeating it. When a fact moves la
 - Architecture and data flows: `docs/architecture/overview.md`, `docs/architecture/ui-framework.md`
 - Rendering and render catalogs: `docs/architecture/draw-system.md`, `docs/architecture/catalog-viewer.md`
 - Testing workflow and patterns: `docs/runbooks/testing.md`
+- Diagnosing playback and rendering problems: `docs/runbooks/diagnostics.md`

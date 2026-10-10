@@ -14,7 +14,7 @@ are in [Frame Identity](../../../../docs/domain/invariants.md#frame-identity) an
 `video_cache_memory.py` binds the Playback cache preference to the process-wide `FrameCachePool`, which splits one
 allowance equally across open sources (lanes sharing a source count once) and resizes immediately on open, close or
 preference change. Rebalancing shrinks before growing, so the sum of shares never exceeds the allowance. Auto is 25%
-of RAM at startup; neither mode preallocates. This limits cache reservations, not RSS.
+of the memory available at startup; neither mode preallocates.
 
 - A cached frame reserves the larger of its source planes and full RGB24; conversion does not change the reservation.
 - Prefetch may evict older history, but never a frame between the playhead, the gap it is filling, and the frame it
@@ -25,10 +25,8 @@ of RAM at startup; neither mode preallocates. This limits cache reservations, no
 
 ### File overlay providers
 
-- Providers retain only the two most recently used decoded scenes, keyed by resolved source timestamp. Larger decoded
-  histories cause garbage-collection pauses on the shared GUI thread.
-- Scene history is stored as parsed records with plain tuples of frame indices, never JSON, for the same reason.
-- An opened frame cache keeps reading through its retained file handle until closed, even if the file is removed.
+- Providers retain only the two most recently used decoded scenes; larger decoded histories cause
+  garbage-collection pauses on the shared GUI thread, so keep in-memory history records small and plain.
 
 ### Live transports
 

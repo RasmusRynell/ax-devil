@@ -32,12 +32,13 @@ does not load clears the previous file's preview and description.
   default as `built-in:<file name>`. **Delete…** removes a user catalog file, including one that does not load; a
   catalog that does not load cannot be copied. Deleting the default user catalog makes Standard the default.
 - **The viewer follows the chosen default.** After `ax-devil catalog use`, the viewer switches to the new default.
-  When that file stops loading, views fall back to the built-in catalog, but the viewer and `catalog check` keep
-  showing the broken file and its error.
+  When that file stops loading, open views keep their last good catalog and new views fall back to the built-in one,
+  while the viewer and `catalog check` keep showing the broken file and its error.
 - **The main window closes the viewer** (`close_catalog_viewer()` in `MainWindow.closeEvent`), so the viewer releases
   its renderer before its owner is destroyed.
 
 ## Not yet verified
 
-File watching on Windows, macOS and network file systems (the **Reload** button in each view is the fallback);
+File watching on Windows, macOS and network file systems (the catalog selector's **Reload** button in each video
+view is the fallback);
 **New copy…** and **Delete…** clicked by hand in the running app; an agent session driven only by the skill.

@@ -26,12 +26,13 @@ data; there is no intermediate primitive list.
 FrameData + OverlayData(Scene)
   -> SceneFramePresenter.prepare_frame(...)            video_viewer: retains one CachedSceneOverlay per Scene identity
   -> VideoFrameWithOverlays + VideoOverlayData
-  -> FrameDisplay.display_frame(...)                    video_player: GUI-thread preparation, coalesced to latest frame
+  -> FrameDisplay.display_frame(...)
+  -> VideoFrameRenderer                                 video_player: GUI-thread preparation, coalesced to latest frame
   -> CachedSceneOverlay.prepare_drawing(RenderContext, DrawingBuffer)
        -> optional filter -> SceneRenderCatalog.render_scene(...)
        -> one generated update function per recipe evaluates all its rows at once
        -> batches of primitives for rows that completed without failures
-  -> DrawingBuffer prepares each primitive kind once at finish()
+  -> DrawingBuffer prepares each queued primitive kind once at finish() (labels as they arrive)
   -> PreparedDrawing (vertex bytes, resolved paths, shaped glyphs, label sprites)
   -> QuickOverlay binds changed items to the retained Qt Quick scene graph
 ```

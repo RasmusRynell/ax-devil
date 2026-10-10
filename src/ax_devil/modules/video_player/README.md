@@ -18,6 +18,7 @@ orchestration.
 	- `frame_display.py`: public reusable display shell with viewport forwarding and generic mount points.
 	- `viewport.py`: lower-level viewing area around the renderer (background/info HUD, interaction, widget overlays).
 	- `hud_painter.py`: HUD drawing helpers used by `viewport.py`.
+	- `entity_hover_card.py`: the hover card widget shown over the video for a hit entity.
 	- `overlay_layout.py`: pure overlay placement policy for widget overlays.
 	- `controls.py`: seekable control panel widgets, including the caller-labelled side panel toggle button.
 	- `fading.py`: generic fading widget behavior and hover notification bridge.
@@ -27,6 +28,7 @@ orchestration.
 	- `side_panel_controller.py`: side panel + drag handle orchestration; `FrameDisplay` exposes its open state
 	  (`is_side_panel_open()`, `set_side_panel_open()`, `sidePanelToggled`).
 	- `interaction_types.py`: lightweight interaction protocols (for typed wiring).
+	- `fullscreen.py`: `LaneFullscreenController` (see Lane fullscreen below).
 - `constants.py`: shared timing/layout/style constants.
 
 ## Runtime flow
