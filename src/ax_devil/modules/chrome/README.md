@@ -9,9 +9,8 @@ How to build UI with it is in the [write-ui skill](../../../../.agents/skills/wr
 - Sizes are never computed at import. Code that sizes something from the text or picks a fixed palette color runs
   through `appearance.follow_appearance`, which reruns it when the theme or text size changes; widgets that only
   inherit the application font and palette, and icons drawn without a fixed color, follow on their own.
-- The video surface and its letterbox stay near-black (`theme.VIDEO_CANVAS`) in both themes, so they do not follow
-  the palette and no Python event filter sees every frame they repaint. White playback controls belong on that
-  scrim, not on a theme-dependent panel.
+- `theme.VIDEO_CANVAS` is the near-black the [video surface keeps in both themes](../../../../docs/domain/invariants.md#ui-lifecycle);
+  because it does not follow the palette, no Python event filter has to watch the frames it repaints.
 - Vertical content layouts keep rows at the top with a trailing `addStretch`, not `setAlignment(AlignTop)`: an
   aligned layout is sized by its size hint, ignores wrapped-text height, and overlaps rows when space is short.
 - Do not give a dialog its own fixed or minimum opening size. `BaseDialog` opens at its content's preferred size,

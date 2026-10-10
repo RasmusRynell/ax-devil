@@ -175,12 +175,14 @@ Other pixel-coordinate tests assume scale 1. Linux/OpenGL results do not certify
 
 ## Rendering benchmarks
 
-The GUI thread is the limit; video decoding costs little. With 250 moving objects per lane on a 1080p25 recording,
-two lanes play at full rate and four lanes saturate one core, where playback stays in real time by showing fewer
-frames. On an RTX 5080 with Qt 6.10.2, one round of `tools/benchmark_catalog_lanes.py --lanes 4 --entities 250`
-costs about 24 ms of catalog evaluation and drawing preparation, 4.1 ms of item binding, 0.8 ms of scene graph sync
-and 3.6 ms of render submission, for 36 ms of process CPU. On Xvfb, OpenGL composition adds about 24 ms per round
-because each frame is copied back to the X server; a real display differs.
+Baseline, measured in the full app playing a 45 s 1080p25 H.264 clip (8 Mbit/s) in a playlist of 1, 2 or 4 lanes,
+each with an ADF overlay of 250 moving objects, on Qt 6.10.2 with an RTX 5080 and a cgroup CPU quota standing in for
+a slower machine: the GUI thread is the limit and decoding that clip costs about 0.09 cores; two lanes play at full
+rate and four lanes saturate one core, where playback stays in real time by showing fewer frames. On the same
+machine, one round of `tools/benchmark_catalog_lanes.py --lanes 4 --entities 250` (which generates its images and
+does not decode video) costs about 24 ms of catalog evaluation and drawing preparation, 4.1 ms of item binding,
+0.8 ms of scene graph sync and 3.6 ms of render submission, for 36 ms of process CPU. On Xvfb, OpenGL composition
+adds about 24 ms per round because each frame is copied back to the X server; a real display differs.
 `--gpu-sync` adds about 0 ms there, and software-backend rounds spike near 170 ms regardless of the change under
 test. `tools/benchmark_quick_renderer.py` measures the Quick renderer with synthetic shapes. For a native-window
 comparison on a private display, run each backend separately. These results do not certify physical GPU performance:

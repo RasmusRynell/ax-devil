@@ -175,7 +175,8 @@ openings run one at a time, so rapid navigation never indexes many files at once
 Offline viewing receives frame events through `OfflineSession`; secondary video sources are pooled and fan each
 completed frame out to the lanes that reference them. Each `OfflineLane` pulls overlay data through
 `OverlayLookup.get_overlay_at_frame()`, applies sticky selection through `OverlayPersistencePolicy`, and
-`SceneFramePresenter` assembles the display frame. Only live persistence keeps a last-sample cache.
+`SceneFramePresenter` assembles the display frame. Offline selection (`select_from_source`) is independent of
+what was shown before; only the live path (`select_overlay`) keeps a last-sample cache.
 
 While indexing, file overlay providers record each Scene event and each entity's runs of samples as
 `SceneHistoryRecords`; `FileOverlaySource.scene_history()` places them on the bound video under the lane's matching

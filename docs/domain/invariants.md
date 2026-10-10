@@ -96,6 +96,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   sized from text or colored from the palette reruns through `chrome.appearance.follow_appearance`, so the theme and
   **Text size** apply live. Pixels inside rendered frames (catalogs, sheets, export burn-ins) follow the frame instead.
   The rest of the chrome rules are in the [chrome README](../../src/ax_devil/modules/chrome/README.md).
+- The video surface and its letterbox stay near-black (`chrome.theme.VIDEO_CANVAS`) in both themes: the Quick clear
+  color, the HUD and the letterbox in `video_player` do not follow the palette, and white playback controls belong on
+  that scrim, not on a theme-dependent panel.
 - Widgets that own runtime resources implement and call `cleanup()`.
 - The GUI thread never waits for offline file work and never spins the event loop to wait. `EntryOpening` opens an
   entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; whoever holds the media owns every
@@ -165,9 +168,10 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Each recipe evaluates once per frame for all its routed entities or relations. A row that fails a demanded check
   emits none of its recipe's output, and a recipe whose evaluation raises emits nothing for that frame; other rows
   and recipes are unaffected.
-- Built-in catalogs are read in place from the installed package and never copied, written or deleted. Every JSON file
-  in the user catalog directory is a user catalog, and the app never writes catalog contents; they are edited outside
-  it. Catalog writes (copies) validate before atomically replacing the destination.
+- Built-in catalogs are read in place from the installed package and never copied into the store, written or
+  deleted. Every JSON file in the user catalog directory is a user catalog, and startup and listing never overwrite
+  one; catalog contents are edited outside the app. The one write the app makes is an explicit copy (**New copy…**,
+  `catalog new`), which validates before atomically replacing its destination.
 - The default catalog is the only catalog choice remembered across restarts. Overlay visibility belongs to each view or
   lane, independently of filters and catalog authoring; hiding a feature keeps its inspection and hover data.
 - A failed catalog load or reload keeps the last compiled catalog in use and reports the error; it never leaves a view

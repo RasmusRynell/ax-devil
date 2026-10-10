@@ -50,7 +50,7 @@ filtered Scene; hit testing picks the smallest box containing the cursor.
 - Visibility is applied by compiling a variant from the already validated source, never per frame. The whole document
   is validated first, so hidden components still have to be valid.
 - `pick_color` hashes with CRC-32, not `hash()`, so an id keeps its color across runs.
-- Catalog execution stays compiled Python. A C++ extension measured about three times faster, but is not worth
+- Catalog execution stays compiled Python. A C++ extension was measured faster, but not by enough to justify
   maintaining the semantics twice and shipping binary wheels; revisit only with new measurements.
 
 ## Catalog files and selection
