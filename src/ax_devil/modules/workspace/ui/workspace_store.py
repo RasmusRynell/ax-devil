@@ -183,9 +183,15 @@ class WorkspaceStore(QObject):
         self._announce_state()
 
     def _resolve(self, items: Sequence[WorkspaceItem], *, added: bool) -> None:
-        """Resolve *items* in the background and commit the results to the Workspace they belong to."""
-        if items:
-            self._resolver.resolve(items, partial(self._commit, self._generation, added=added))
+        """Resolve *items* in the background and commit the results to the Workspace they belong to.
+
+        Added items resolve together, so the first of them is the one that opens; a replacing Workspace's items resolve
+        one by one, so a slow item never holds back the others.
+        """
+        batches = [items] if added else [[item] for item in items]
+        for batch in batches:
+            if batch:
+                self._resolver.resolve(batch, partial(self._commit, self._generation, added=added))
 
     def _commit(self, generation: int, resolutions: tuple[ItemResolution, ...], *, added: bool) -> None:
         """Record the results of items still waiting for them, and exclude Content whose default is not considered."""

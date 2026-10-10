@@ -431,3 +431,13 @@ def test_a_replacing_workspace_resolves_without_waiting_for_the_one_it_replaced(
     qtbot.waitUntil(lambda: not store.resolution(requested.id).is_pending, timeout=2000)
     assert not blocking.release.is_set()
     assert [content.display_name for content in store.contents()] == ["Requested / train", "Requested / test"]
+
+
+def test_items_of_an_opened_workspace_do_not_wait_for_a_slow_one(qtbot: QtBot, blocking: _BlockingResolver) -> None:
+    store = _background_store(blocking)
+    slow, quick = PlaylistItem(resolver="runs"), PlaylistItem(label="Quick", resolver="quick")
+
+    store.replace_workspace(Workspace(items=(slow, quick)))
+
+    qtbot.waitUntil(lambda: not store.resolution(quick.id).is_pending, timeout=2000)
+    assert store.resolution(slow.id).is_pending
