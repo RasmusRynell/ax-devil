@@ -53,7 +53,8 @@ class WorkspaceController(QObject):
         self._content_browser.content_remove_requested.connect(self._on_content_remove_requested)
         self._content_browser.export_requested.connect(self._on_export_requested)
         self._workspace_store.items_added.connect(self._on_items_added)
-        self._workspace_store.item_removed.connect(self._on_item_removed)
+        self._workspace_store.item_removed.connect(self._close_orphaned_viewers)
+        self._workspace_store.workspace_replaced.connect(self._close_all_viewers)
         self._workspace_store.item_renamed.connect(self._sync_content_browser)
         self._workspace_store.item_consideration_changed.connect(self._on_item_consideration_changed)
         self._center_area.widget_removed.connect(self._on_widget_removed)
@@ -111,11 +112,16 @@ class WorkspaceController(QObject):
             self._logger.debug(f"New content added: {contents[0].display_name}")
             self._open_content(contents[0])
 
-    def _on_item_removed(self, item: WorkspaceItem) -> None:
-        """Close any viewer showing the removed item's Content."""
+    def _close_orphaned_viewers(self, *_args: object) -> None:
+        """Close every viewer whose item is no longer in the Workspace, and refresh the rows."""
         for widget, item_id in tuple(self._widget_item_ids.items()):
-            if item_id == item.id:
+            if not self._workspace_store.workspace.has_item(item_id):
                 self._center_area.remove_viewer_widget(widget)
+        self._sync_content_browser()
+
+    def _close_all_viewers(self, *_args: object) -> None:
+        """Close every viewer: a replaced Workspace can keep an item id while its recipe changed."""
+        self._center_area.clear_all_widgets()
         self._sync_content_browser()
 
     def _pause_all_viewers(self) -> None:

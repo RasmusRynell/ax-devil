@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
@@ -15,6 +16,8 @@ from ax_devil.modules.workspace.core import (
     ResolutionContext,
     Workspace,
     WorkspaceItem,
+    load_workspace,
+    save_workspace,
 )
 
 logger = get_logger(__name__)
@@ -33,13 +36,16 @@ class WorkspaceStore(QObject):
     """Own the current and last saved Workspace, each item's resolution, and exclusions.
 
     Items are the truth; their Content is resolved when they are added or renamed. Exclusions are session state and
-    are never part of the Workspace. Every successful mutation emits exactly one signal.
+    are never part of the Workspace. Every successful mutation emits exactly one signal about the items,
+    plus ``state_changed`` when it changes whether the Workspace is modified or what it is called.
     """
 
     items_added = Signal(list)  # list[WorkspaceItem]
     item_removed = Signal(object)  # WorkspaceItem
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
+    workspace_replaced = Signal()  # another Workspace was opened; every item may be new
+    state_changed = Signal()  # is_modified, the name, or the path changed
 
     def __init__(self, context: ResolutionContext, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -48,6 +54,7 @@ class WorkspaceStore(QObject):
         self._saved_workspace = self._workspace
         self._resolutions: dict[str, ItemResolution] = {}
         self._not_considered: set[ConsiderationItemRef] = set()
+        self._announced_state = self._state()
 
     @property
     def workspace(self) -> Workspace:
@@ -59,6 +66,31 @@ class WorkspaceStore(QObject):
         """Return whether the current Workspace differs from the last saved one."""
         return self._workspace != self._saved_workspace
 
+    def open_workspace(self, path: Path) -> None:
+        """Replace the Workspace with the one saved in *path* and resolve its items.
+
+        A ``WorkspaceFileError`` from reading the file propagates and leaves the store as it was.
+        """
+        opened = load_workspace(path)
+        self._workspace = self._saved_workspace = opened
+        self._resolutions = {}
+        self._not_considered = set()
+        for item in opened.items:
+            self._resolve(item)
+        self.workspace_replaced.emit()
+        self._announce_state()
+
+    def save_workspace(self, path: Path | None = None) -> None:
+        """Save the Workspace to *path*, or to its own file when None, and mark it as saved.
+
+        Raises ``ValueError`` for an Untitled Workspace without a *path*, and ``WorkspaceFileError`` when writing fails.
+        """
+        target = path or self._workspace.path
+        if target is None:
+            raise ValueError("An Untitled workspace needs a path to be saved.")
+        self._workspace = self._saved_workspace = save_workspace(self._workspace, target)
+        self._announce_state()
+
     def add_items(self, items: Sequence[WorkspaceItem]) -> None:
         """Append and resolve *items*; an item that fails to resolve stays, with its error recorded."""
         if not items:
@@ -67,6 +99,7 @@ class WorkspaceStore(QObject):
         for item in items:
             self._resolve(item)
         self.items_added.emit(list(items))
+        self._announce_state()
 
     def remove_item(self, item_id: str) -> None:
         """Remove the item with *item_id*, its Content, and its exclusions."""
@@ -79,6 +112,7 @@ class WorkspaceStore(QObject):
         self._not_considered = {ref for ref in self._not_considered if ref.content_id not in removed_ids}
         logger.debug(f"Item removed: {item.label} ({item_id})")
         self.item_removed.emit(item)
+        self._announce_state()
 
     def rename_item(self, item_id: str, label: str) -> None:
         """Relabel the item with *item_id* and name its kept Content again; nothing is resolved.
@@ -95,6 +129,7 @@ class WorkspaceStore(QObject):
             contents=item.name_contents(previous.base), error=previous.error, base=previous.base
         )
         self.item_renamed.emit(item)
+        self._announce_state()
 
     def contents(self) -> tuple[Content, ...]:
         """Return the Content of every resolved item, in item order."""
@@ -121,6 +156,17 @@ class WorkspaceStore(QObject):
             self._not_considered.add(item_ref)
         logger.debug(f"Item consideration changed: {item_ref} considered={considered}")
         self.item_consideration_changed.emit(item_ref, considered)
+
+    def _state(self) -> tuple[bool, str, Path | None]:
+        """Return what a title bar shows: whether the Workspace is modified, its name, and its file."""
+        return self.is_modified, self._workspace.name, self._workspace.path
+
+    def _announce_state(self) -> None:
+        """Emit ``state_changed`` when the modified flag, name, or path differ from the last announcement."""
+        state = self._state()
+        if state != self._announced_state:
+            self._announced_state = state
+            self.state_changed.emit()
 
     def _resolve(self, item: WorkspaceItem) -> None:
         """Resolve *item*, record the result, and exclude the Content whose default is not considered."""

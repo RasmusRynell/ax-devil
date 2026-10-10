@@ -14,11 +14,13 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   factories.
   Runtime sources are created when a viewer opens content: offline by `EntryOpening`, live by `StreamMediaController`.
 - Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
-  only from `WorkspaceItem.resolve`. The Workspace, the store, and (later) the file format never branch on item kind.
+  only from `WorkspaceItem.resolve`. The Workspace, the store, and the file format never branch on item kind.
 - Content ids derive from the owning item's id and the Content's position, and Content records its item's id, so ids
   are the same on every resolution. Content built outside resolution has empty ids and is never top-level Content.
 - Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
-- An item that fails to resolve stays in the Workspace with its `ItemResolutionError` recorded.
+- An item that fails to resolve stays in the Workspace with its `ItemResolutionError` recorded. An item the file format
+  cannot read is an `UnreadableItem` that always fails to resolve and is saved back unchanged; see
+  [Workspace](../architecture/workspace.md#file-format).
 - Each overlay source spec owns its `OverlaySourceKind`; overlay content and lanes derive the kind from the spec.
 - Seekable video accepts file overlays. Live video accepts at most one RTSP, MQTT, or DataHub WebSocket overlay, chosen
   explicitly as `LiveOverlayMode`; config and CLI strings are converted at their boundaries.
@@ -93,10 +95,11 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   `WorkspaceStore`.
 - `WorkspaceStore` owns the current and last saved Workspace, each item's resolution, consideration refs, and mutation
   signals, and emits one notification per successful mutation; "modified" is `current != saved`.
-  `build_browser_rows` projects the resolved Content, with the open items, into browser rows.
+  `build_browser_rows` projects the resolved Content, with the open items, into browser rows. `state_changed` additionally
+  reports when the modified flag, name, or path changed; a failed `open_workspace` changes nothing.
 - Consideration refs identify current Workspace content, playlist entries, or lanes; orphan and out-of-range refs are
   ignored.
-- Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content.
+- Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content. Opening a Workspace file closes every viewer widget, even when item ids are kept.
   `SplitView` exclusively owns hosted widget removal and deletion; callers use its removal API.
 
 ## UI Lifecycle

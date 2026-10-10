@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import ClassVar, TypeVar, cast
+from pathlib import Path
+from typing import Any, ClassVar, TypeVar, cast
 
 from PySide6.QtWidgets import QWidget
 
@@ -39,6 +40,13 @@ class ContentItem(WorkspaceItem):
 
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
         return self.contents
+
+    def _fields_to_json(self, base_dir: Path) -> dict[str, Any]:
+        raise NotImplementedError("Test Content is never saved.")
+
+    @classmethod
+    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path) -> dict[str, Any]:
+        raise NotImplementedError("Test Content is never saved.")
 
 
 def content_item(*contents: Content, label: str = "") -> ContentItem:
