@@ -18,7 +18,7 @@ orchestration.
 	- `frame_display.py`: public reusable display shell with viewport forwarding and generic mount points.
 	- `viewport.py`: lower-level viewing area around the renderer (background/info HUD, interaction, widget overlays).
 	- `hud_painter.py`: HUD drawing helpers used by `viewport.py`.
-	- `entity_hover_card.py`: the hover card widget shown over the video for a hit entity.
+	- `entity_hover_card.py`: object inspection over the video; grouped data, scrollable and selectable when pinned.
 	- `overlay_layout.py`: pure overlay placement policy for widget overlays.
 	- `controls.py`: seekable control panel widgets, including the caller-labelled side panel toggle button.
 	- `fading.py`: generic fading widget behavior and hover notification bridge.

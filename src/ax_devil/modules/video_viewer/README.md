@@ -20,7 +20,8 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
   borrows frozen lane inputs and owns rendering/output resources on the GUI thread.
 - `export/export_dialog.py`: lane and quality options, destination prompt, progress, and cancellation intents.
 - `export/encoder.py`: the video encoder and its compression presets.
-- `timing_diagnostics_widget.py`: per-viewer timing readout shown by the diagnostics window.
+- `timing_diagnostics_widget.py`: each offline lane's timing and overlay-alignment status, mounted in the media
+  tools panel's Overlay sync section.
 - `loading_indicator.py`: loading overlay used by offline entry changes.
 - `media_tools/`: viewer-owned side-panel widgets for filtering, Scene inspection, the Scene event log, object
   history, and overlay persistence controls. `MediaToolsPanel` is the Scene inspector sink of its viewer.
