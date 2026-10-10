@@ -30,7 +30,7 @@ from ax_devil.modules.chrome.key_chips import (
     key_chips_width,
 )
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
-from ax_devil.modules.workspace.core.startup_request import VideoFileStartup
+from ax_devil.modules.workspace.core import VideoItem
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QEvent
@@ -101,7 +101,7 @@ class WelcomeWidget(QWidget):
         super().__init__(parent)
         self.setMouseTracking(True)
         self._shortcut_manager: ShortcutManager | None = None
-        self._recent_videos: tuple[VideoFileStartup, ...] = ()
+        self._recent_videos: tuple[VideoItem, ...] = ()
         self._hovered: int | None = None
 
     def set_shortcut_manager(self, manager: ShortcutManager) -> None:
@@ -110,7 +110,7 @@ class WelcomeWidget(QWidget):
         self.updateGeometry()
         self.update()
 
-    def set_recent_videos(self, entries: Sequence[VideoFileStartup]) -> None:
+    def set_recent_videos(self, entries: Sequence[VideoItem]) -> None:
         """Show *entries* as a Recent group; clicking one emits ``recent_video_requested``."""
         self._recent_videos = tuple(entries)
         self._hovered = None
@@ -183,7 +183,7 @@ class WelcomeWidget(QWidget):
         if self._recent_videos:
             groups[_RECENT_GROUP] = [
                 WelcomeItem(
-                    label=entry.label,
+                    label="  +  ".join([entry.label, *(overlay.path.name for overlay in entry.overlays)]),
                     keys=QKeySequence(),
                     tooltip=entry.description,
                     activate=lambda entry=entry: self.recent_video_requested.emit(entry),

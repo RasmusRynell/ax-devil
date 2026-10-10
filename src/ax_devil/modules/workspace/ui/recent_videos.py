@@ -9,7 +9,7 @@ from typing import Any
 
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core.startup_request import VideoFileStartup
+from ax_devil.modules.workspace.core import OverlayFile, VideoItem
 
 logger = get_logger(__name__)
 
@@ -17,40 +17,49 @@ RECENT_VIDEOS_LIMIT = 5
 
 
 class RecentVideos:
-    """Persist the most recently opened video requests, newest first, in one JSON file."""
+    """Persist the most recently opened Video Items, newest first, in one JSON file.
+
+    Entries keep the item's files and label, not its id; each entry read back is a new item.
+    """
 
     def __init__(self, path: Path, limit: int = RECENT_VIDEOS_LIMIT) -> None:
         self._path = path
         self._limit = limit
 
-    def entries(self) -> tuple[VideoFileStartup, ...]:
-        """Return remembered requests whose video file still exists, newest first."""
-        return tuple(entry for entry in self._load() if entry.video_path.is_file())
+    def entries(self) -> tuple[VideoItem, ...]:
+        """Return remembered items whose video file still exists, newest first."""
+        return tuple(entry for entry in self._load() if entry.video.is_file())
 
-    def record(self, request: VideoFileStartup) -> None:
-        """Put *request* first, drop entries for this or deleted videos, and keep at most the limit."""
-        request = replace(
-            request,
-            video_path=request.video_path.resolve(),
-            overlay_path=request.overlay_path.resolve() if request.overlay_path is not None else None,
+    def record(self, item: VideoItem) -> None:
+        """Put *item* first, drop entries for this or deleted videos, and keep at most the limit."""
+        item = replace(
+            item,
+            video=item.video.resolve(),
+            overlays=tuple(OverlayFile(overlay.path.resolve(), overlay.decoder) for overlay in item.overlays),
         )
-        older = (entry for entry in self.entries() if entry.video_path != request.video_path)
-        entries = [request, *older][: self._limit]
+        older = (entry for entry in self.entries() if entry.video != item.video)
+        entries = [item, *older][: self._limit]
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             self._path.write_text(json.dumps([_to_json(entry) for entry in entries], indent=2), encoding="utf-8")
         except OSError as exc:
             logger.warning(f"Could not save recent videos to {self._path}: {exc}")
 
-    def _load(self) -> list[VideoFileStartup]:
+    def _load(self) -> list[VideoItem]:
         if not self._path.is_file():
             return []
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
-            return [_from_json(item) for item in raw]
-        except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        except (OSError, ValueError) as exc:
             logger.warning(f"Ignoring unreadable recent videos file {self._path}: {exc}")
             return []
+        entries = []
+        for item in raw if isinstance(raw, list) else []:
+            try:
+                entries.append(_from_json(item))
+            except (TypeError, KeyError, AttributeError) as exc:
+                logger.warning(f"Skipping unreadable recent video entry in {self._path}: {exc}")
+        return entries
 
 
 def default_recent_videos() -> RecentVideos:
@@ -59,28 +68,27 @@ def default_recent_videos() -> RecentVideos:
     return RecentVideos(Path(storage["base_dir"]) / "recent-videos.json")
 
 
-def _to_json(entry: VideoFileStartup) -> dict[str, Any]:
+def _to_json(item: VideoItem) -> dict[str, Any]:
     return {
-        "video_path": str(entry.video_path),
-        "overlay_path": str(entry.overlay_path) if entry.overlay_path is not None else None,
-        "handler_type": entry.handler_type,
-        "display_name": entry.display_name,
+        "label": item.label,
+        "video": str(item.video),
+        "overlays": [{"path": str(overlay.path), "decoder": overlay.decoder} for overlay in item.overlays],
     }
 
 
-def _from_json(item: dict[str, Any]) -> VideoFileStartup:
-    overlay = _optional_text(item, "overlay_path")
-    return VideoFileStartup(
-        video_path=Path(item["video_path"]),
-        overlay_path=Path(overlay) if overlay else None,
-        handler_type=_optional_text(item, "handler_type"),
-        display_name=_optional_text(item, "display_name"),
+def _from_json(entry: dict[str, Any]) -> VideoItem:
+    return VideoItem(
+        label=_text(entry, "label"),
+        video=Path(_text(entry, "video")),
+        overlays=tuple(
+            OverlayFile(Path(_text(overlay, "path")), _text(overlay, "decoder")) for overlay in entry["overlays"]
+        ),
     )
 
 
-def _optional_text(item: dict[str, Any], key: str) -> str | None:
+def _text(entry: dict[str, Any], key: str) -> str:
     """Return the text stored under *key*, rejecting any other stored type."""
-    value = item.get(key)
-    if value is not None and not isinstance(value, str):
+    value = entry[key]
+    if not isinstance(value, str):
         raise TypeError(f"Recent video field {key} must be text, got {type(value).__name__}")
     return value

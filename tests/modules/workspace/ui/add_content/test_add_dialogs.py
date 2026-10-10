@@ -15,17 +15,23 @@ from ax_devil.modules.workspace.core import (
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
     LiveOverlayMode,
+    LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
+    OverlayFile,
     OverlaySourceKind,
     PlaylistContent,
     PlaylistEntry,
+    PlaylistResolver,
+    PlaylistSettings,
     SeekableVideoContent,
-    VideoFileStartup,
+    VideoFileSelection,
+    VideoItem,
 )
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
+from tests.helpers.workspace import FakeResolutionContext
 
 
 class _DialogOptionProvider:
@@ -34,6 +40,14 @@ class _DialogOptionProvider:
 
     def live_overlay_decoder_options(self) -> tuple[WorkspaceDecoderOption, ...]:
         return (WorkspaceDecoderOption(handler_type="TEST_HANDLER", display_name="Test Handler"),)
+
+
+def _dialog_context() -> FakeResolutionContext:
+    return FakeResolutionContext(WorkspaceIntake(_DialogOptionProvider()))
+
+
+def _recipe(item: VideoItem | None) -> tuple[str, Path, tuple[OverlayFile, ...]] | None:
+    return None if item is None else (item.label, item.video, item.overlays)
 
 
 def _set_overlay_mode(dialog: AddLiveStreamDialog, mode: LiveOverlayMode) -> None:
@@ -130,6 +144,16 @@ def _stub_live_stream_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     raw_defaults["live_stream"]["analytics-mqtt"]["broker_host"] = "$AX_DEVIL_MQTT_BROKER_ADDR"
     raw_defaults["live_stream"]["analytics-mqtt"]["broker_username"] = "$AX_DEVIL_MQTT_BROKER_USER"
     raw_defaults["live_stream"]["analytics-mqtt"]["broker_password"] = "$AX_DEVIL_MQTT_BROKER_PASS"
+    # The environment the references name holds the resolved defaults.
+    for variable, value in (
+        ("AX_DEVIL_TARGET_ADDR", "camera.local"),
+        ("AX_DEVIL_TARGET_USER", "root"),
+        ("AX_DEVIL_MQTT_BROKER_ADDR", "broker.local"),
+        ("AX_DEVIL_MQTT_BROKER_USER", "mqtt-user"),
+    ):
+        monkeypatch.setenv(variable, value)
+    for variable in ("AX_DEVIL_TARGET_PASS", "AX_DEVIL_MQTT_BROKER_PASS"):
+        monkeypatch.delenv(variable, raising=False)
     monkeypatch.setattr(
         AddLiveStreamDialog,
         "_load_defaults",
@@ -213,9 +237,7 @@ def test_add_video_keeps_ok_disabled_and_says_why_until_selection_is_complete(
     assert video_dialog._ok_button.isEnabled()
     video_dialog.accept()
 
-    assert video_dialog.get_result() == VideoFileStartup(
-        video_path=video, overlay_path=overlay, handler_type="TRACKS", display_name=None
-    )
+    assert _recipe(video_dialog.get_result()) == ("video.mp4", video, (OverlayFile(overlay, "TRACKS"),))
 
 
 def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
@@ -247,9 +269,7 @@ def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
     video_dialog._name_edit.setText("Gate camera")
     video_dialog.accept()
 
-    assert video_dialog.get_result() == VideoFileStartup(
-        video_path=video, overlay_path=overlay, handler_type="TXT", display_name="Gate camera"
-    )
+    assert _recipe(video_dialog.get_result()) == ("Gate camera", video, (OverlayFile(overlay, "TXT"),))
 
 
 def test_add_video_prefills_a_dropped_selection(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -263,7 +283,7 @@ def test_add_video_prefills_a_dropped_selection(qtbot: QtBot, monkeypatch: pytes
     overlay = tmp_path / "scene.jsonl"
     overlay.write_text("{}\n")
 
-    dialog = AddVideoDialog(initial=VideoFileStartup(video_path=video, overlay_path=overlay))
+    dialog = AddVideoDialog(initial=VideoFileSelection(video, overlay))
     qtbot.addWidget(dialog)
 
     assert dialog._video_path_edit.text() == str(video)
@@ -306,8 +326,8 @@ def test_add_live_stream_without_overlay_ignores_the_disabled_handler(
 ) -> None:
     """Switching back to no overlay keeps OK available even though the handler combo still shows a choice."""
     monkeypatch.setattr(
-        "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.default_workspace_intake",
-        lambda: WorkspaceIntake(_DialogOptionProvider()),
+        "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.default_resolution_context",
+        _dialog_context,
     )
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
@@ -319,7 +339,32 @@ def test_add_live_stream_without_overlay_ignores_the_disabled_handler(
     dialog.accept()
     result = dialog.get_result()
     assert result is not None
-    assert result.overlays == ()
+    assert (result.overlay_mode, result.handler_type) == (LiveOverlayMode.NONE, None)
+
+
+def test_add_live_stream_keeps_configured_references_for_fields_left_empty(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Empty fields take the configured default as written; typed values are kept literally."""
+    monkeypatch.setattr(
+        "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.default_resolution_context",
+        _dialog_context,
+    )
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    _set_overlay_mode(dialog, LiveOverlayMode.NONE)
+    dialog._password_edit.setText("pa$$word")
+
+    dialog.accept()
+
+    result = dialog.get_result()
+    assert result is not None
+    assert (result.host, result.username, result.password) == (
+        "$AX_DEVIL_TARGET_ADDR",
+        "$AX_DEVIL_TARGET_USER",
+        "pa$$word",
+    )
+    assert result.label == "Live: $AX_DEVIL_TARGET_ADDR"
 
 
 def test_add_live_stream_requires_handler_when_overlay_mode_is_enabled(qtbot: QtBot) -> None:
@@ -453,6 +498,7 @@ def test_add_live_stream_discards_stale_discovery_and_reloads_after_connection_r
 def test_live_stream_intake_passes_mqtt_protocol_to_overlay_source() -> None:
     result = WorkspaceIntake(_DialogOptionProvider()).create_live_stream(
         host="camera.local",
+        display_name="Camera",
         username="root",
         password="",
         overlay_mode=LiveOverlayMode.MQTT,
@@ -478,8 +524,8 @@ def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
     discovery: _Discovery,
 ) -> None:
     monkeypatch.setattr(
-        "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.default_workspace_intake",
-        lambda: WorkspaceIntake(_DialogOptionProvider()),
+        "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.default_resolution_context",
+        _dialog_context,
     )
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
@@ -505,13 +551,15 @@ def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
 
     result = dialog.get_result()
     assert result is not None
-    assert result.overlays[0].source_spec == LiveWebSocketOverlaySourceSpec(
+    [content] = result.resolve(_dialog_context())
+    assert isinstance(content, LiveVideoContent)
+    assert content.overlays[0].source_spec == LiveWebSocketOverlaySourceSpec(
         handler_type="TEST_HANDLER",
         topic="com.axis.scene.frame.v1",
         channel_id=2,
         device_api_protocol="http",
     )
-    assert result.overlays[0].display_name == OverlaySourceKind.WEBSOCKET_SOURCE.display_name
+    assert content.overlays[0].display_name == OverlaySourceKind.WEBSOCKET_SOURCE.display_name
 
 
 def test_add_live_stream_websocket_topics_show_empty_state(qtbot: QtBot, discovery: _Discovery) -> None:
@@ -537,43 +585,68 @@ def test_add_live_stream_applies_transport_protocol_defaults_when_mode_changes(q
     assert dialog._mqtt_device_protocol_combo.currentText() == "http"
 
 
-def _playlist(name: str) -> PlaylistContent:
-    return PlaylistContent(
-        display_name=name,
-        entries=(
-            PlaylistEntry(
-                lanes=SeekableVideoContent(
-                    display_name="clip",
-                    source_spec=FileVideoSourceSpec(path=Path("/tmp/clip.mp4")),
-                    overlays=(),
-                ).standalone_lanes(),
-                default_considered=True,
-            ),
-        ),
+class _Resolver:
+    """Resolve settings naming an existing root into one playlist, and fail for any other root."""
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        if settings.get("root") != "/selected":
+            raise ValueError(f"Folder not found: {settings.get('root')}")
+        video = SeekableVideoContent(display_name="clip", source_spec=FileVideoSourceSpec(path=Path("/clip.mp4")))
+        return [PlaylistContent(display_name="Playlist", entries=(PlaylistEntry(video.standalone_lanes(), True),))]
+
+
+class _AnyResolverContext(FakeResolutionContext):
+    """Resolve every resolver id with the test resolver."""
+
+    def playlist_resolver(self, resolver_id: str) -> PlaylistResolver:
+        return _Resolver()
+
+
+@pytest.fixture
+def playlist_dialog(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> AddPlaylistDialog:
+    """Return the dialog with every installed resolver's form, resolving through a test resolver."""
+    monkeypatch.setattr(
+        "ax_devil.modules.workspace.ui.add_content.add_playlist_dialog.default_resolution_context",
+        _AnyResolverContext,
     )
-
-
-def test_add_playlist_dialog_returns_playlists_from_the_selected_resolver(qtbot: QtBot) -> None:
-    """A resolver finishing after the user switched away cannot close the dialog with its playlist."""
     dialog = AddPlaylistDialog()
     qtbot.addWidget(dialog)
-    settings = dialog._settings
-    first, second = settings._resolver_widgets[:2]
+    return dialog
+
+
+def test_add_playlist_dialog_returns_an_item_from_the_selected_resolver(playlist_dialog: AddPlaylistDialog) -> None:
+    """A resolver submitting after the user switched away cannot close the dialog with its settings."""
+    settings = playlist_dialog._settings
+    first, second = list(settings._resolver_by_widget)[:2]
+    second_id, second_name = settings._resolver_by_widget[second]
     settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(first))
     settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(second))
-    stale = _playlist("Stale")
-    selected = _playlist("Imported")
 
-    first.emit_playlists([stale])
-    assert dialog.result() == AddPlaylistDialog.DialogCode.Rejected
-    assert dialog.get_result() == []
+    first.submit_settings({"root": "/selected"})
+    assert playlist_dialog.result() == AddPlaylistDialog.DialogCode.Rejected
+    assert playlist_dialog.get_result() is None
 
-    second.emit_playlists([selected])
-    assert dialog.result() == AddPlaylistDialog.DialogCode.Accepted
-    assert dialog.get_result() == [selected]
-    first.emit_playlists([stale])
-    second.emit_playlists([stale])
-    assert dialog.get_result() == [selected]
+    second.submit_settings({"root": "/selected"})
+    assert playlist_dialog.result() == AddPlaylistDialog.DialogCode.Accepted
+    result = playlist_dialog.get_result()
+    assert result is not None
+    assert (result.label, result.resolver, result.settings) == (second_name, second_id, {"root": "/selected"})
+    first.submit_settings({"root": "/selected"})
+    assert playlist_dialog.get_result() is result
+
+
+def test_add_playlist_dialog_stays_open_with_the_reason_when_settings_do_not_resolve(
+    playlist_dialog: AddPlaylistDialog,
+) -> None:
+    settings = playlist_dialog._settings
+    form = next(iter(settings._resolver_by_widget))
+    settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(form))
+
+    form.submit_settings({"root": "/gone"})
+
+    assert playlist_dialog.result() != AddPlaylistDialog.DialogCode.Accepted
+    assert playlist_dialog.get_result() is None
+    assert "Folder not found: /gone" in playlist_dialog._message_label.text()
 
 
 @pytest.mark.parametrize("resolved", ["", "not-a-number", None, "8883"])

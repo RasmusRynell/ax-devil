@@ -1,14 +1,16 @@
 """Playlist resolver plugin contract and definitions.
 
-A playlist resolver plugin is responsible for taking user-provided configuration
-and resolving it into canonical ``PlaylistContent`` objects that the workspace
-and UI can consume directly.
+A playlist resolver turns JSON-serializable settings into ``PlaylistContent``. Settings are what a Playlist Item saves,
+so the resolver runs again, without any widget, every time the item resolves.
 
-Plugin authors implement one runtime integration surface:
+Plugin authors implement:
 
-* ``create_settings_widget()`` — returns a PySide6 widget for GUI-driven input.
-  The widget must emit ``playlist_resolved(list[PlaylistContent])`` when the
-  user is ready.
+* ``resolve(settings)`` — headless; returns the playlists the settings describe and raises ``ValueError`` or
+  ``OSError`` with a user-facing message when the settings are missing, invalid, or point at nothing.
+* ``create_settings_widget()`` — returns a widget that edits settings and calls ``submit_settings(settings)`` when
+  the user is ready.
+* ``create_cli_command()`` — optional; builds settings from CLI arguments and passes a ``PlaylistItem`` to the runner
+  in ``ctx.obj["run_with_items"]``.
 """
 
 from __future__ import annotations
@@ -23,27 +25,26 @@ from PySide6.QtWidgets import QWidget
 from .base import PluginBase, PluginDefinitionBase
 
 if TYPE_CHECKING:
-    from ax_devil.modules.workspace.core import PlaylistContent
+    from ax_devil.modules.workspace.core import PlaylistContent, PlaylistSettings
 
 PLAYLIST_RESOLVER_PLUGIN_TYPE = "playlist_resolver"
 
 
 class PlaylistResolverWidget(QWidget):
-    """Base widget contract for playlist resolver plugins."""
+    """Base widget contract for playlist resolver plugins: it edits settings and submits them."""
 
-    playlist_resolved = Signal(object)
+    settings_submitted = Signal(object)
 
-    def emit_playlists(self, playlists: list[PlaylistContent]) -> None:
-        """Emit resolved playlists to the host dialog."""
-        self.playlist_resolved.emit(playlists)
+    def submit_settings(self, settings: PlaylistSettings) -> None:
+        """Hand the edited settings to the host dialog."""
+        self.settings_submitted.emit(settings)
 
 
 class PlaylistResolverPlugin(PluginBase):
     """Abstract base class for playlist resolver plugins.
 
-    Discovery and registration use classmethods (matching the generic plugin
-    framework). Runtime behaviour uses an instance method because the UI widget
-    is inherently stateful.
+    Discovery and registration use classmethods (matching the generic plugin framework). Resolving and the settings
+    widget are instance methods; the host creates an instance for each use.
     """
 
     @classmethod
@@ -64,8 +65,12 @@ class PlaylistResolverPlugin(PluginBase):
     # -- Instance methods for runtime integration ---------------------------
 
     @abstractmethod
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
+
+    @abstractmethod
     def create_settings_widget(self) -> PlaylistResolverWidget:
-        """Return the UI used to collect input and emit resolved playlists."""
+        """Return the UI that edits settings and submits them."""
 
     @classmethod
     def create_cli_command(cls) -> click.Command | None:

@@ -12,7 +12,7 @@ flowchart TD
     MainWindow --> Dialogs["BaseDialog subclasses<br/>add video, live stream, playlist, settings, shortcuts, about"]
     MainWindow --> DebugWindows["DebugWindow / PluginWindow"]
 
-    WorkspaceSession --> WorkspaceManager["WorkspaceManager<br/>facts + signals"]
+    WorkspaceSession --> WorkspaceStore["WorkspaceStore<br/>items, resolved Content, signals"]
     WorkspaceSession --> ApplicationWindow["ApplicationWindow<br/>central widget"]
     WorkspaceSession --> WorkspaceController["WorkspaceController<br/>UI coordinator"]
     WorkspaceSession --> ContentBrowser["ContentBrowserWidget<br/>workspace tree"]
@@ -22,7 +22,7 @@ flowchart TD
     HorizontalSplitter --> SplitView["SplitView<br/>viewer widget host"]
 
     WorkspaceController --> SplitView
-    WorkspaceController --> WorkspaceManager
+    WorkspaceController --> WorkspaceStore
     WorkspaceController --> ContentBrowser
 
     SplitView --> LeafContainer["LeafContainer<br/>one viewer widget per leaf"]
@@ -48,25 +48,27 @@ flowchart TD
 
 `WorkspaceSession` is the public Workspace facade and creates and wires the framework-level Workspace objects:
 
-- `WorkspaceManager`
+- `WorkspaceStore`
 - `ContentBrowserWidget`
 - `SplitView`
 - `ApplicationWindow`
 - `WorkspaceController`
 
-Callers use the session for content mutation, startup loading, opening video requests (`open_video`, `open_files`),
-focused-widget routing, welcome-shortcut configuration, and teardown. Every video opened through `open_video` is recorded
-in `RecentVideos`, a small JSON list in the storage directory that the welcome screen shows under **Recent**. Stored paths
-are absolute so reopening a selection is independent of the next launch's working directory. The manager, browser,
-split view, and controller are composed implementation details rather than separate session APIs.
+Callers use the session to add Workspace Items (`add_items`), open videos (`open_video`, `open_files`), route to the
+focused widget, configure welcome shortcuts, and tear down. Every Video Item that opens through `open_video` is recorded
+in `RecentVideos`, a small JSON list in the storage directory that the welcome screen shows under **Recent**; opening an
+entry adds a new item. Stored paths are absolute so reopening a selection is independent of the next launch's working
+directory. The store, browser, split view, and controller are composed implementation details rather than separate
+session APIs.
 
-`ApplicationWindow` is the static central shell. It lays out `ContentBrowserWidget` in the left sidebar and `SplitView` in the center area. It owns only whether the sidebar shows and how wide it is, not workspace state, teardown, or viewer behavior. It accepts desktop file drags that contain a video and emits `files_dropped`; the session turns them into `VideoFileStartup` requests. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
+`ApplicationWindow` is the static central shell. It lays out `ContentBrowserWidget` in the left sidebar and `SplitView` in the center area. It owns only whether the sidebar shows and how wide it is, not workspace state, teardown, or viewer behavior. The sidebar shows while the workspace has content and the user has not hidden it with **View → Sidebar** (`Ctrl+\`) or dragged it closed; it always appears at the width the user last dragged it to. It accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
 
-`WelcomeWidget`, shown by `SplitView` while no widgets are open, paints clickable rows. Shortcut rows come from `ShortcutManager` definitions marked `show_on_welcome` and trigger the same `QAction` as the menu and key binding; recent rows come from `RecentVideos`.
+`WelcomeWidget`, shown by `SplitView` while no widgets are open, paints clickable rows. Shortcut rows come from `ShortcutManager` definitions marked `show_on_welcome` and trigger the same `QAction` as the menu and key binding; recent rows show the Video Item label and overlay file names and emit `recent_video_requested`.
+The welcome screen scrolls when its rows cannot fit, keeping actions and recent videos reachable in small windows.
 
 ## Workspace Controller
 
-`WorkspaceController` coordinates UI behavior between `ContentBrowserWidget`, `WorkspaceManager`, `SplitView`, and open `ViewerWidget` instances.
+`WorkspaceController` coordinates UI behavior between `ContentBrowserWidget`, `WorkspaceStore`, `SplitView`, and open `ViewerWidget` instances.
 
 It owns browser synchronization: Workspace mutations refresh the browser rows projected by `build_browser_rows` (`workspace/ui/browser_rows.py`), and browser intents are routed back to Workspace state or viewer behavior.
 
@@ -77,12 +79,13 @@ Responsibilities:
 
 - Open `SeekableVideoContent`, `LiveVideoContent`, or `PlaylistContent` through `WorkspaceViewerFactory`, placing the
   viewer in the preview pane or in a new split as the browser intent requests.
-- Register which viewer widgets depend on which content.
+- Register which item each viewer widget's Content came from.
 - Project each widget's current on-screen item into browser rows.
-- Close affected widgets when backing content is removed.
+- Remove the owning item when the browser asks to remove Content, and close every widget of a removed item.
+- Tell the user which newly added items could not resolve, and why.
 - Notify open viewers when consideration state changes.
 
-Workspace content defines which entries and lanes support consideration. Offline viewer navigation reads that state through the narrow `ConsiderationQuery` contract; it does not depend on the mutable `WorkspaceManager` implementation.
+Workspace content defines which entries and lanes support consideration. Offline viewer navigation reads that state through the narrow `ConsiderationQuery` contract; it does not depend on the mutable `WorkspaceStore` implementation.
 
 `SplitView` is the visual container. `WorkspaceController` owns viewer selection, registration, and state coordination.
 
@@ -166,9 +169,9 @@ info, respectively.
 ## Ownership Boundaries
 
 - `MainWindow` owns application-wide actions, menus, shortcuts, dialogs, diagnostics windows, and the `WorkspaceSession`.
-- `WorkspaceSession` owns Workspace composition, startup loading, focused-viewer lookup, and teardown.
+- `WorkspaceSession` owns Workspace composition, adding items, focused-viewer lookup, and teardown.
 - `ApplicationWindow` owns the static central layout.
-- `WorkspaceController` owns browser synchronization, UI coordination, viewer dependency tracking, and lifecycle side effects.
+- `WorkspaceController` owns browser synchronization, UI coordination, viewer-to-item tracking, and lifecycle side effects.
 - `SplitView` owns pane layout, focused viewer widget tracking, drag/drop splitting, and widget removal mechanics.
 - `ViewerWidget` owns the common pane frame and lifecycle contract.
 - Video Viewer workflows own media orchestration, playlist navigation, comparison layout, filtering tools, and workflow actions.

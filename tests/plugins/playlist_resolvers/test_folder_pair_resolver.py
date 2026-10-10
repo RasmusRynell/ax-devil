@@ -12,7 +12,7 @@ from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, Playli
 from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     OverlaySourceKind,
-    ResolvedPlaylistStartup,
+    PlaylistItem,
     SeekableVideoContent,
 )
 from ax_devil.plugins.playlist_resolvers.folder_pair.plugin import FolderPairResolverPlugin
@@ -43,33 +43,89 @@ class TestFolderPairResolverPluginMetadata:
         qtbot.addWidget(widget)
         assert isinstance(widget, PlaylistResolverWidget)
 
-    def test_cli_resolves_folder_pair(self, tmp_path: Path) -> None:
-        """The contributed command produces startup content through its public runtime callback."""
+    def test_cli_opens_a_playlist_item_with_absolute_folders(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The command hands the runner a Playlist Item whose settings do not depend on the working directory."""
         videos_dir = tmp_path / "videos"
         overlays_dir = tmp_path / "annotations"
         _write_file(videos_dir / "sample.mp4")
         _write_file(overlays_dir / "sample.json")
-        startups: list[ResolvedPlaylistStartup] = []
+        launched: list[list[PlaylistItem]] = []
+        command = FolderPairResolverPlugin.create_cli_command()
+        assert command is not None
+        monkeypatch.chdir(tmp_path)
+
+        result = CliRunner().invoke(
+            command,
+            ["videos", "annotations", "--handler-type", "ADF_BETA_FRAME"],
+            obj={"run_with_items": launched.append},
+        )
+
+        assert result.exit_code == 0, result.output
+        [[item]] = launched
+        assert (item.label, item.resolver) == ("Folder Pair", "folder_pair")
+        assert item.settings == {
+            "videos_dir": str(videos_dir),
+            "overlays_dir": str(overlays_dir),
+            "handler_type": "ADF_BETA_FRAME",
+        }
+
+    def test_cli_reports_folders_without_pairs_before_launching(self, tmp_path: Path) -> None:
+        (tmp_path / "videos").mkdir()
+        (tmp_path / "annotations").mkdir()
+        launched: list[object] = []
         command = FolderPairResolverPlugin.create_cli_command()
         assert command is not None
 
         result = CliRunner().invoke(
             command,
-            [str(videos_dir), str(overlays_dir), "--handler-type", "ADF_BETA_FRAME"],
-            obj={"run_with_startup_content": startups.append},
+            [str(tmp_path / "videos"), str(tmp_path / "annotations"), "--handler-type", "ADF_BETA_FRAME"],
+            obj={"run_with_items": launched.append},
         )
 
-        assert result.exit_code == 0, result.output
-        [startup] = startups
-        [playlist] = startup.playlists
-        assert playlist.display_name == "Folder Pair"
+        assert result.exit_code != 0
+        assert "No matched video/overlay pairs" in result.output
+        assert launched == []
+
+
+class TestResolveFromSettings:
+    def test_resolves_matched_pairs_without_a_widget(self, tmp_path: Path) -> None:
+        _write_file(tmp_path / "videos" / "sample.mp4")
+        _write_file(tmp_path / "annotations" / "sample.json")
+        settings = {
+            "videos_dir": str(tmp_path / "videos"),
+            "overlays_dir": str(tmp_path / "annotations"),
+            "handler_type": "ADF_BETA_FRAME",
+        }
+
+        [playlist] = FolderPairResolverPlugin().resolve(settings)
+
         lane = playlist.entries[0].lanes[0]
         assert isinstance(lane.video, SeekableVideoContent)
-        assert lane.video.source_spec.path == videos_dir / "sample.mp4"
+        assert lane.video.source_spec.path == tmp_path / "videos" / "sample.mp4"
         assert lane.overlay is not None
         assert lane.overlay.source_spec == FileOverlaySourceSpec(
-            path=overlays_dir / "sample.json", handler_type="ADF_BETA_FRAME"
+            path=tmp_path / "annotations" / "sample.json", handler_type="ADF_BETA_FRAME"
         )
+
+    @pytest.mark.parametrize("missing", ["videos_dir", "overlays_dir", "handler_type"])
+    def test_missing_settings_name_the_setting(self, tmp_path: Path, missing: str) -> None:
+        settings = {"videos_dir": str(tmp_path), "overlays_dir": str(tmp_path), "handler_type": "ADF_BETA_FRAME"}
+        del settings[missing]
+
+        with pytest.raises(ValueError, match=missing):
+            FolderPairResolverPlugin().resolve(settings)
+
+    def test_missing_folder_raises(self, tmp_path: Path) -> None:
+        settings = {
+            "videos_dir": str(tmp_path / "gone"),
+            "overlays_dir": str(tmp_path),
+            "handler_type": "ADF_BETA_FRAME",
+        }
+
+        with pytest.raises(FileNotFoundError):
+            FolderPairResolverPlugin().resolve(settings)
 
 
 class TestDiscoverFolderPairs:
@@ -180,3 +236,27 @@ class TestFolderPairSettingsWidget:
         assert widget._matches == []
         assert not widget._load_btn.isEnabled()
         assert widget._status_label.text() == ""
+
+    def test_load_submits_the_scanned_folders_and_chosen_decoder(self, tmp_path: Path, qtbot: QtBot) -> None:
+        _write_file(tmp_path / "videos" / "sample.mp4")
+        _write_file(tmp_path / "annotations" / "sample.json")
+        widget = FolderPairSettingsWidget()
+        qtbot.addWidget(widget)
+        submitted: list[object] = []
+        widget.settings_submitted.connect(submitted.append)
+        widget._videos_input.setText(str(tmp_path / "videos"))
+        widget._overlays_input.setText(str(tmp_path / "annotations"))
+        widget._decoder_combo.addItem("Test decoder", "TEST_DECODER")
+        widget._decoder_combo.setCurrentIndex(widget._decoder_combo.count() - 1)
+
+        widget._load_btn.click()  # Disabled until scanned, so this submits nothing.
+        widget._scan_btn.click()
+        widget._load_btn.click()
+
+        assert submitted == [
+            {
+                "videos_dir": str(tmp_path / "videos"),
+                "overlays_dir": str(tmp_path / "annotations"),
+                "handler_type": "TEST_DECODER",
+            }
+        ]

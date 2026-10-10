@@ -12,9 +12,13 @@ from PySide6.QtWidgets import QApplication, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
-from ax_devil.modules.workspace.core import VideoFileStartup
+from ax_devil.modules.workspace.core import (
+    OverlayFile,
+    VideoFileSelection,
+    VideoItem,
+    video_file_selections,
+)
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
-from ax_devil.modules.workspace.core.startup_request import video_file_requests
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.recent_videos import RecentVideos
@@ -48,6 +52,15 @@ def _touch(path: Path) -> Path:
     return path
 
 
+def _video_item(video: Path, overlay: Path | None = None, label: str = "") -> VideoItem:
+    return VideoFileSelection(video, overlay, "TXT" if overlay else None).to_item(label)
+
+
+def _recipes(items: tuple[VideoItem, ...]) -> list[tuple[str, Path, tuple[OverlayFile, ...]]]:
+    """Return what recent entries open, leaving out item ids, which every reading creates afresh."""
+    return [(item.label, item.video, item.overlays) for item in items]
+
+
 def test_overlay_decoder_matching_uses_declared_extensions_and_keeps_undeclared_decoders() -> None:
     """Only decoders declaring the suffix match, while decoders declaring none stay possible for any file."""
     intake = WorkspaceIntake(_OptionProvider())
@@ -59,22 +72,34 @@ def test_overlay_decoder_matching_uses_declared_extensions_and_keeps_undeclared_
 
 
 def test_dropped_files_pair_one_video_with_one_overlay_and_open_other_videos_alone() -> None:
-    """One video plus one overlay pairs up; ambiguous overlays wait for a handler; other drops open each video."""
+    """One video plus one overlay pairs up; ambiguous overlays wait for a decoder; other drops open each video."""
     intake = WorkspaceIntake(_OptionProvider())
     video = Path("/clips/cam.MP4")
 
-    assert video_file_requests([video, Path("/clips/gt.txt")], intake) == (
-        VideoFileStartup(video_path=video, overlay_path=Path("/clips/gt.txt"), handler_type="TXT"),
+    assert video_file_selections([video, Path("/clips/gt.txt")], intake) == (
+        VideoFileSelection(video, Path("/clips/gt.txt"), "TXT"),
     )
-    [ambiguous] = video_file_requests([Path("/clips/scene.jsonl"), video], intake)
-    assert ambiguous == VideoFileStartup(video_path=video, overlay_path=Path("/clips/scene.jsonl"))
-    assert ambiguous.needs_handler
-    assert video_file_requests([video, Path("/clips/notes.pdf")], intake) == (VideoFileStartup(video_path=video),)
-    assert video_file_requests([video, Path("/clips/b.mkv"), Path("/clips/gt.txt")], intake) == (
-        VideoFileStartup(video_path=video),
-        VideoFileStartup(video_path=Path("/clips/b.mkv")),
+    [ambiguous] = video_file_selections([Path("/clips/scene.jsonl"), video], intake)
+    assert ambiguous == VideoFileSelection(video, Path("/clips/scene.jsonl"))
+    assert ambiguous.needs_decoder
+    assert video_file_selections([video, Path("/clips/notes.pdf")], intake) == (VideoFileSelection(video),)
+    assert video_file_selections([video, Path("/clips/b.mkv"), Path("/clips/gt.txt")], intake) == (
+        VideoFileSelection(video),
+        VideoFileSelection(Path("/clips/b.mkv")),
     )
-    assert video_file_requests([Path("/clips/gt.txt")], intake) == ()
+    assert video_file_selections([Path("/clips/gt.txt")], intake) == ()
+
+
+def test_video_selection_becomes_an_item_named_after_the_video_unless_named() -> None:
+    selection = VideoFileSelection(Path("/clips/cam.mp4"), Path("/clips/gt.txt"), "TXT")
+
+    item = selection.to_item()
+    assert (item.label, item.video, item.overlays) == (
+        "cam.mp4",
+        Path("/clips/cam.mp4"),
+        (OverlayFile(Path("/clips/gt.txt"), "TXT"),),
+    )
+    assert selection.to_item("Gate").label == "Gate"
 
 
 def test_recent_videos_keep_newest_first_without_duplicates_or_missing_files(tmp_path: Path) -> None:
@@ -84,13 +109,12 @@ def test_recent_videos_keep_newest_first_without_duplicates_or_missing_files(tmp
     store_path = tmp_path / "state" / "recent-videos.json"
     recent = RecentVideos(store_path, limit=3)
     for video in videos:
-        recent.record(VideoFileStartup(video_path=video))
-    recent.record(VideoFileStartup(video_path=videos[2], overlay_path=overlay, handler_type="TXT", display_name="Gate"))
+        recent.record(_video_item(video))
+    recent.record(_video_item(videos[2], overlay, label="Gate"))
     videos[1].unlink()
 
-    assert RecentVideos(store_path, limit=3).entries() == (
-        VideoFileStartup(video_path=videos[2], overlay_path=overlay, handler_type="TXT", display_name="Gate"),
-        VideoFileStartup(video_path=videos[3]),
+    assert _recipes(RecentVideos(store_path, limit=3).entries()) == _recipes(
+        (_video_item(videos[2], overlay, label="Gate"), _video_item(videos[3]))
     )
 
 
@@ -100,13 +124,13 @@ def test_deleted_recent_videos_do_not_take_slots_from_existing_ones(tmp_path: Pa
     gone = [_touch(tmp_path / f"gone{index}.mp4") for index in range(2)]
     recent = RecentVideos(tmp_path / "recent-videos.json", limit=3)
     for video in (kept, *gone):
-        recent.record(VideoFileStartup(video_path=video))
+        recent.record(_video_item(video))
     for video in gone:
         video.unlink()
     new = _touch(tmp_path / "new.mp4")
-    recent.record(VideoFileStartup(video_path=new))
+    recent.record(_video_item(new))
 
-    assert recent.entries() == (VideoFileStartup(video_path=new), VideoFileStartup(video_path=kept))
+    assert _recipes(recent.entries()) == _recipes((_video_item(new), _video_item(kept)))
 
 
 def test_recent_videos_reopen_relative_selections_after_the_working_directory_changes(
@@ -117,24 +141,35 @@ def test_recent_videos_reopen_relative_selections_after_the_working_directory_ch
     overlay = _touch(tmp_path / "gt.txt")
     recent = RecentVideos(tmp_path / "recent-videos.json")
     monkeypatch.chdir(tmp_path)
-    recent.record(VideoFileStartup(video_path=video))
-    recent.record(VideoFileStartup(video_path=Path("clip.mp4"), overlay_path=Path("gt.txt"), handler_type="TXT"))
+    recent.record(_video_item(video))
+    recent.record(_video_item(Path("clip.mp4"), Path("gt.txt")))
     other_directory = tmp_path / "other"
     other_directory.mkdir()
     monkeypatch.chdir(other_directory)
 
-    assert recent.entries() == (VideoFileStartup(video_path=video, overlay_path=overlay, handler_type="TXT"),)
+    assert _recipes(recent.entries()) == _recipes((_video_item(video, overlay),))
 
 
-@pytest.mark.parametrize("content", ["{not json", "[null]", '["bad"]', '{"video_path": "x"}', "[{}]", "BAD_FIELD"])
+@pytest.mark.parametrize("content", ["{not json", "[null]", '["bad"]', '{"video": "x"}', "[{}]", "BAD_FIELD"])
 def test_unreadable_recent_videos_file_is_ignored(tmp_path: Path, content: str) -> None:
     """Broken or wrongly shaped recent-video files never stop the workspace from starting."""
     store_path = tmp_path / "recent-videos.json"
     video = _touch(tmp_path / "clip.mp4")
-    bad_field = f'[{{"video_path": "{video}", "display_name": []}}]'
+    bad_field = f'[{{"video": "{video}", "label": [], "overlays": []}}]'
     store_path.write_text(bad_field if content == "BAD_FIELD" else content)
 
     assert RecentVideos(store_path).entries() == ()
+
+
+def test_unreadable_recent_entries_are_skipped_and_readable_ones_kept(tmp_path: Path) -> None:
+    """An entry from an older format is skipped without hiding the entries that can still be opened."""
+    store_path = tmp_path / "recent-videos.json"
+    video = _touch(tmp_path / "clip.mp4")
+    store_path.write_text(
+        f'[{{"video_path": "{video}"}}, {{"label": "Clip", "video": "{video}", "overlays": []}}]', encoding="utf-8"
+    )
+
+    assert _recipes(RecentVideos(store_path).entries()) == [("Clip", video, ())]
 
 
 def _row_center(welcome: WelcomeWidget, label: str) -> QPointF:
@@ -157,7 +192,7 @@ def test_clicking_welcome_rows_triggers_shortcut_actions_and_recent_videos(qtbot
     welcome = WelcomeWidget(host)
     welcome.resize(900, 700)
     welcome.set_shortcut_manager(manager)
-    recent = VideoFileStartup(video_path=tmp_path / "gate.mp4", overlay_path=tmp_path / "gt.txt", handler_type="TXT")
+    recent = _video_item(tmp_path / "gate.mp4", tmp_path / "gt.txt")
     welcome.set_recent_videos([recent])
     host.show()
 
@@ -167,7 +202,7 @@ def test_clicking_welcome_rows_triggers_shortcut_actions_and_recent_videos(qtbot
     welcome.recent_video_requested.connect(requested.append)
 
     QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=_row_center(welcome, "Add Video").toPoint())
-    QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=_row_center(welcome, recent.label).toPoint())
+    QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=_row_center(welcome, "gate.mp4  +  gt.txt").toPoint())
     QTest.mouseClick(welcome, Qt.MouseButton.LeftButton, pos=QPoint(2, 2))
 
     assert triggered == [True]
@@ -182,7 +217,7 @@ def test_welcome_actions_and_recents_remain_clickable_in_a_small_workspace(qtbot
     manager.register_defaults()
     manager.install(center)
     center.set_welcome_shortcut_manager(manager)
-    recent = [VideoFileStartup(video_path=tmp_path / f"clip{index}.mp4") for index in range(5)]
+    recent = [_video_item(tmp_path / f"clip{index}.mp4") for index in range(5)]
     welcome = center.welcome_widget()
     welcome.set_recent_videos(recent)
     center.resize(480, 280)

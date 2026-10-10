@@ -6,10 +6,17 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
+from PySide6.QtCore import Qt
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverWidget
-from ax_devil.modules.workspace.core import FileOverlaySourceSpec, OverlaySourceKind, SeekableVideoContent
+from ax_devil.modules.workspace.core import (
+    FileOverlaySourceSpec,
+    OverlaySourceKind,
+    PlaylistItem,
+    SeekableVideoContent,
+)
 from ax_devil.plugins.playlist_resolvers.mot_challenge.plugin import (
     MOTChallengeResolverPlugin,
 )
@@ -18,6 +25,7 @@ from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import (
     discover_sequences,
     parse_seqinfo,
 )
+from ax_devil.plugins.playlist_resolvers.mot_challenge.settings_widget import MOTChallengeSettingsWidget
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -232,3 +240,89 @@ class TestBuildPlaylistContents:
         assert lanes[0].video.display_name == "MOT17-01"
         assert len(lanes) == 4
         assert [lane.display_name for lane in lanes] == ["DPM", "GT", "FRCNN", "SDP"]
+
+
+# ---------------------------------------------------------------------------
+# Resolving from settings, the CLI, and the settings widget
+# ---------------------------------------------------------------------------
+
+
+def _entry_names(settings: dict[str, object]) -> list[str]:
+    [playlist] = MOTChallengeResolverPlugin().resolve(settings)
+    return [entry.lanes[0].video.display_name for entry in playlist.entries]
+
+
+class TestResolveFromSettings:
+    def test_resolves_every_sequence_without_a_sequence_list(self, tmp_path: Path) -> None:
+        _make_sequence(tmp_path, "SEQ-01")
+        _make_sequence(tmp_path, "SEQ-02")
+
+        assert _entry_names({"root": str(tmp_path)}) == ["SEQ-01", "SEQ-02"]
+
+    def test_resolves_only_the_listed_sequences(self, tmp_path: Path) -> None:
+        _make_sequence(tmp_path, "SEQ-01")
+        _make_sequence(tmp_path, "SEQ-02")
+
+        assert _entry_names({"root": str(tmp_path), "sequences": ["SEQ-02", "GONE"]}) == ["SEQ-02"]
+
+    @pytest.mark.parametrize(
+        ("settings", "message"),
+        [
+            ({}, "'root'"),
+            ({"root": ""}, "'root'"),
+            ({"root": "ROOT", "sequences": "SEQ-01"}, "'sequences'"),
+            ({"root": "ROOT", "sequences": ["GONE"]}, "No MOT sequences"),
+        ],
+    )
+    def test_invalid_settings_raise_a_clear_error(
+        self, tmp_path: Path, settings: dict[str, object], message: str
+    ) -> None:
+        _make_sequence(tmp_path, "SEQ-01")
+        settings = {key: str(tmp_path) if value == "ROOT" else value for key, value in settings.items()}
+
+        with pytest.raises(ValueError, match=message):
+            MOTChallengeResolverPlugin().resolve(settings)
+
+
+class TestCliCommand:
+    def test_cli_opens_a_playlist_item_for_every_sequence(self, tmp_path: Path) -> None:
+        _make_sequence(tmp_path, "SEQ-01")
+        launched: list[list[PlaylistItem]] = []
+        command = MOTChallengeResolverPlugin.create_cli_command()
+        assert command is not None
+
+        result = CliRunner().invoke(command, [str(tmp_path)], obj={"run_with_items": launched.append})
+
+        assert result.exit_code == 0, result.output
+        [[item]] = launched
+        assert (item.label, item.resolver, item.settings) == ("MOT Challenge", "mot_challenge", {"root": str(tmp_path)})
+
+    def test_cli_reports_a_folder_without_sequences_before_launching(self, tmp_path: Path) -> None:
+        launched: list[object] = []
+        command = MOTChallengeResolverPlugin.create_cli_command()
+        assert command is not None
+
+        result = CliRunner().invoke(command, [str(tmp_path)], obj={"run_with_items": launched.append})
+
+        assert result.exit_code != 0
+        assert "No MOT sequences found" in result.output
+        assert launched == []
+
+
+class TestSettingsWidget:
+    def test_load_submits_the_scanned_root_and_checked_sequences(self, tmp_path: Path, qtbot: QtBot) -> None:
+        _make_sequence(tmp_path, "SEQ-01")
+        _make_sequence(tmp_path, "SEQ-02")
+        widget = MOTChallengeSettingsWidget()
+        qtbot.addWidget(widget)
+        submitted: list[object] = []
+        widget.settings_submitted.connect(submitted.append)
+        widget._root_input.setText(str(tmp_path))
+        widget._scan_btn.click()
+        first = widget._seq_list.item(0)
+        assert first is not None
+        first.setCheckState(Qt.CheckState.Unchecked)
+
+        widget._load_btn.click()
+
+        assert submitted == [{"root": str(tmp_path), "sequences": ["SEQ-02"]}]

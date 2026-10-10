@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Qt
@@ -26,7 +26,7 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.fullscreen import LaneFullscreenController
-from ax_devil.modules.workspace.core import StartupContent
+from ax_devil.modules.workspace.core import WorkspaceItem
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 
 if TYPE_CHECKING:
@@ -306,8 +306,8 @@ class MainWindow(ChromeWindow):
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
-                    self._workspace_session.add_content(result)
-                    self._logger.info(f"Added live stream: {result.display_name}")
+                    self._workspace_session.add_items([result])
+                    self._logger.info(f"Added live stream: {result.label}")
 
     def _on_add_playlist(self) -> None:
         """Handle File -> Add Playlist action."""
@@ -315,18 +315,18 @@ class MainWindow(ChromeWindow):
 
         with AddPlaylistDialog(self) as dialog:
             if dialog.exec() == AddPlaylistDialog.DialogCode.Accepted:
-                results = dialog.get_result()
-                if results:
-                    self._workspace_session.add_contents(results)
-                    self._logger.info(f"Added {len(results)} playlist(s)")
+                result = dialog.get_result()
+                if result is not None:
+                    self._workspace_session.add_items([result])
+                    self._logger.info(f"Added playlist: {result.label}")
 
     def show_catalog_viewer(self) -> None:
         """Show the render catalog viewer, as View → Render Catalogs does."""
         show_catalog_viewer(self._render_catalog_manager, parent=self)
 
-    def load_startup_content(self, startup: StartupContent) -> None:
-        """Load resolved startup content into the workspace."""
-        self._workspace_session.load_startup_content(startup)
+    def add_items(self, items: Sequence[WorkspaceItem]) -> None:
+        """Add Workspace Items, such as those a CLI launch asks for, to the workspace."""
+        self._workspace_session.add_items(items)
 
     def show_quick_setup(self) -> None:
         """Show Quick Setup for theme and text size, as on first start and from Help → Quick Setup."""

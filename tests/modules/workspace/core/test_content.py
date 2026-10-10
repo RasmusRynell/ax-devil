@@ -38,23 +38,6 @@ def _make_video(name: str = "clip.mp4") -> SeekableVideoContent:
     )
 
 
-def test_content_instances_have_unique_ids_and_identity_equality() -> None:
-    a = _make_video("a")
-    b = _make_video("a")
-    assert a.content_id != b.content_id
-    assert a != b
-
-    p1 = PlaylistContent(
-        display_name="p",
-        entries=(PlaylistEntry(lanes=_make_video().standalone_lanes(), default_considered=True),),
-    )
-    p2 = PlaylistContent(
-        display_name="p",
-        entries=(PlaylistEntry(lanes=_make_video().standalone_lanes(), default_considered=True),),
-    )
-    assert p1.content_id != p2.content_id
-
-
 def test_entry_lane_rejects_overlay_incompatible_with_video() -> None:
     overlay = OverlayContent(
         display_name="MQTT",

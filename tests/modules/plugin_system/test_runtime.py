@@ -14,6 +14,7 @@ import pytest
 
 from ax_devil.modules.plugin_system import (
     DECODER_PLUGIN_TYPE,
+    PLAYLIST_RESOLVER_PLUGIN_TYPE,
     ApplicationPluginLoader,
     DecoderPlugin,
     PlaylistResolverPlugin,
@@ -475,8 +476,40 @@ def test_runtime_registry_stores_plugin_class(tmp_path: Path) -> None:
         def display_name(cls) -> str:
             return "Example Resolver"
 
+        def resolve(self, settings: Any) -> Any:
+            raise NotImplementedError
+
         def create_settings_widget(self) -> Any:
             raise NotImplementedError
 
     record = RuntimePluginRegistry.register_plugin(ExampleResolver, tmp_path / "plugin.py", "test")
     assert record.plugin_class is ExampleResolver
+
+
+def test_resolver_without_headless_resolve_fails_to_load_and_says_why(tmp_path: Path) -> None:
+    """A resolver written for the widget-only contract is reported at startup instead of failing when used."""
+
+    class WidgetOnlyResolver(PlaylistResolverPlugin):
+        @classmethod
+        def required_api_version(cls) -> int:
+            return 1
+
+        @classmethod
+        def plugin_id(cls) -> str:
+            return "widget-only"
+
+        @classmethod
+        def display_name(cls) -> str:
+            return "Widget Only"
+
+        def create_settings_widget(self) -> Any:
+            raise NotImplementedError
+
+    family = PluginFamily(PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverPlugin, tmp_path, "test.resolvers")
+    ApplicationPluginLoader._register_plugin_class(
+        family, WidgetOnlyResolver, tmp_path / "plugin.py", "package:widget-only", plugin_id_hint="widget-only"
+    )
+
+    record = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "widget-only")
+    assert record.status.value == "failed"
+    assert record.error == "does not implement resolve"

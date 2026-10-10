@@ -11,8 +11,8 @@ from pathlib import Path
 import click
 
 from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
-from ax_devil.modules.workspace.core import PlaylistContent, ResolvedPlaylistStartup
-from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import build_playlist_contents, discover_sequences
+from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
+from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import resolve_settings
 
 
 class MOTChallengeResolverPlugin(PlaylistResolverPlugin):
@@ -32,26 +32,27 @@ class MOTChallengeResolverPlugin(PlaylistResolverPlugin):
 
     @classmethod
     def create_cli_command(cls) -> click.Command | None:
-        """Return the MOT Challenge CLI command."""
+        """Return the MOT Challenge CLI command, which opens every sequence of the dataset."""
 
         @click.command(name=cls.plugin_id(), help=cls.description() or None)
         @click.argument("dataset_dir", type=click.Path(exists=True, path_type=Path, file_okay=False, dir_okay=True))
         @click.pass_context
         def command(ctx: click.Context, dataset_dir: Path) -> None:
-            playlists = cls._resolve_cli_dataset(dataset_dir)
-            if not playlists:
-                raise click.ClickException(f"No playlists were resolved from '{dataset_dir}'.")
-            runner = ctx.obj.get("run_with_startup_content") if isinstance(ctx.obj, dict) else None
+            settings = {"root": str(dataset_dir.resolve())}
+            try:
+                cls().resolve(settings)
+            except (ValueError, OSError) as exc:
+                raise click.ClickException(str(exc)) from exc
+            runner = ctx.obj.get("run_with_items") if isinstance(ctx.obj, dict) else None
             if runner is None:
                 raise click.ClickException("CLI runtime is not available.")
-            runner(ResolvedPlaylistStartup(playlists=tuple(playlists)))
+            runner([PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)])
 
         return command
 
-    @classmethod
-    def _resolve_cli_dataset(cls, dataset_dir: Path) -> list[PlaylistContent]:
-        """Resolve a MOT Challenge dataset root for CLI startup."""
-        return build_playlist_contents(discover_sequences(dataset_dir))
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        """Return the playlist of the MOT sequences the settings describe."""
+        return resolve_settings(settings)
 
     def create_settings_widget(self) -> PlaylistResolverWidget:
         from .settings_widget import MOTChallengeSettingsWidget

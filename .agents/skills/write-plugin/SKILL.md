@@ -37,8 +37,8 @@ supported format only needs a resolver; a new format with a folder layout may ne
    shows them and render catalogs can use them. Set `file_extensions` on file handlers.
 5. **Prove it on their data before installing.** Run a short script with `uv run python` from this repository, with
    the package directory on `PYTHONPATH`, that decodes the user's sample and prints the frame count, objects on a
-   few frames and one decoded object with its attributes. Compare against the raw file. A resolver prints its
-   resolved recordings and overlay pairings instead.
+   few frames and one decoded object with its attributes. Compare against the raw file. A resolver calls
+   `resolve(settings)` on the user's folders and prints the resolved recordings and overlay pairings instead.
 6. **Install it with the command the user launches ax-devil with:** `ax-devil` for an installed app,
    `uv run ax-devil` for this checkout. Each keeps its own plugins, so ask if unclear. Run
    `<launch command> plugins install /absolute/path/to/package`; installation validates the entry point. Confirm with

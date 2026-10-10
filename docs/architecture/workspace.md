@@ -1,6 +1,7 @@
 # Workspace
 
-> Status: **proposed design**. Delivery step 1 (the `core`/`ui` split) is implemented; the rest is not; see [Delivery](#delivery).
+> Status: **partly implemented**. Delivery steps 1 (the `core`/`ui` split) and 2 (items) are implemented; saving and
+> the lifecycle UI are not; see [Delivery](#delivery).
 
 A Workspace is the collection of things a user is working with — videos, live streams, playlists — that can be saved
 to a file and reopened to get back the same set of work. It plays the role a `.code-workspace` file plays in VS Code:
@@ -55,20 +56,41 @@ Every item kind provides:
 
 - `kind` — the stable string written to the file, e.g. `"video"`, `"live_stream"`, `"playlist"`
 - `id` — a stable item id, created once and saved
-- `label` — display name
-- serialization to and from a JSON object, given the workspace folder for relative paths
-- `resolve(context) -> tuple[Content, ...]` — rebuild the Content, or raise a resolution error with a user-facing
+- `label` — display name; it names the item's Content
+- serialization to and from a JSON object, given the workspace folder for relative paths (step 3)
+- `resolve(context) -> tuple[Content, ...]` — rebuild the Content, or raise `ItemResolutionError` with a user-facing
   reason. Video and Live Stream Items resolve to one Content; a Playlist Item resolves to whatever its resolver
-  returns.
+  returns. A Video Item whose files are missing fails to resolve.
 
-The registry is a `dict[str, type]` keyed by `kind`. Content records the id of the item it came from, so the UI can
-group an item's Content and remove the item as a whole.
+Items are frozen dataclasses deriving from `WorkspaceItem` (`workspace/core/items.py`). A kind implements one hook,
+`_build_contents(context)`; the shared `resolve` turns `ValueError` and `OSError` into `ItemResolutionError`, rejects an
+empty result, and gives every Content its identity. The registry, `ITEM_KINDS`, is a `dict[str, type]` keyed by `kind`.
+
+Content identity is derived, never random: the Content at position *i* of item *x* has `content_id` `x/i` and
+`item_id` `x`, so resolving the same item again yields the same ids, and the UI can group an item's Content and remove
+the item as a whole. Resolvers build Content without ids; resolution assigns them.
+
+The `ResolutionContext` protocol (`workspace/core/resolution.py`) gives `resolve` what it needs: the `WorkspaceIntake`
+and `playlist_resolver(resolver_id)`. Core never imports the plugin system; the plugin-backed context lives in
+`workspace/ui/plugin_intake.py`.
+
+A Live Stream Item keeps the device and MQTT broker hosts, usernames, and passwords as entered. A `$VARIABLE` reference
+stays a reference in the item and is expanded with the config's rule only while resolving; the CLI reads those config
+defaults raw, and the Add Live Stream dialog fills empty fields with the raw defaults. Default labels use the host as
+entered too, so an item never stores an expanded value. A Playlist Item that resolves to
+one playlist names it after the item; several are named `label / playlist name`.
 
 ## Workspace
 
-The Workspace is an immutable value: a name source (file path or none) and the ordered items.
-Edits produce a new value. The UI store keeps the current Workspace and the last saved one, so "modified" is simply
-`current != saved` — no dirty flag to keep in sync.
+The Workspace is an immutable value (`workspace/core/workspace.py`): a name source (file path or none) and the ordered
+items. Edits — add items, remove or rename an item by id — produce a new value. The UI store, `WorkspaceStore`
+(`workspace/ui/workspace_store.py`), keeps the current Workspace and the last saved one, so "modified" is simply
+`current != saved` — no dirty flag to keep in sync. Items may hold settings mappings, so workspaces are compared, never
+hashed. Until saving exists, the saved Workspace is the empty one the store starts with.
+
+The store resolves items as they are added or renamed and keeps each result: the Content, or the error. An item that
+fails to resolve stays in the Workspace and the user is told why; showing it in the sidebar is step 4. The Add Live
+Stream and Add Playlist dialogs resolve their item before accepting, so their errors keep the dialog open instead.
 
 Exclusions — playlist entries and lanes the user hid from playback with the eye toggle — are session state, like the
 current frame. They are not saved, so the file stays a pure list of recipes and nothing needs keys that survive a
@@ -116,17 +138,27 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
 
 Recipes need resolvers that run without a widget. The contract becomes:
 
-- `resolve(settings) -> list[PlaylistContent]` — headless; `settings` is a JSON-serializable dict
-- `create_settings_widget()` — edits and returns settings; it no longer emits Content
-- `create_cli_command()` — builds settings from CLI arguments
+- `resolve(settings) -> list[PlaylistContent]` — headless; `settings` is a JSON-serializable mapping. Missing or
+  invalid settings, or settings that point at nothing, raise `ValueError` or `OSError` with a user-facing message.
+- `create_settings_widget()` — edits settings and calls `submit_settings(settings)`; it no longer emits Content
+- `create_cli_command()` — builds settings from CLI arguments and passes a `PlaylistItem` to `ctx.obj["run_with_items"]`
 
-The headless part lives in a Qt-free module that `workspace/core` imports; the widget part stays with the UI.
-This changes the plugin API for external resolvers; `docs/plugins.md` and the `write-plugin` skill change with it.
+The headless part is the `PlaylistResolver` protocol in `workspace/core/resolution.py`, which `PlaylistResolverPlugin`
+satisfies; the widget part stays with the UI. This changes the plugin API for external resolvers; the `write-plugin`
+skill's reference describes it.
+
+The built-in resolvers' settings:
+
+| Resolver | Settings |
+|----------|----------|
+| `folder_pair` | `{"videos_dir": str, "overlays_dir": str, "handler_type": str}` |
+| `mot_challenge` | `{"root": str, "sequences": [str, ...]}`; without `sequences`, every sequence under `root` (the CLI's choice) |
 
 ## Removed By This Design
 
 - `StartupContent`, `VideoFileStartup`, `LiveStreamStartup`, `ResolvedPlaylistStartup` — replaced by Workspace Items.
   The CLI, dialogs, file drops, and recents all create items.
+- `PlaylistResolverWidget.playlist_resolved` and `emit_playlists` — resolver widgets submit settings instead.
 - `WorkspaceManager` — replaced by the core Workspace value and the UI store.
 - `WorkspaceBrowserRow` projection inside the state owner — moves to `workspace/ui`.
 - Random `content_id` as the only identity — Content records the id of the item it came from.
@@ -144,7 +176,9 @@ tests outright rather than carrying both.
    importing `QLoggingCategory`; each is now Qt-free. The plugin-backed decoder options (`plugin_intake`) moved to `ui`
    because the plugin system still imports Qt; the headless resolver contract in step 2 removes that dependency.
 2. **Items** — Workspace Items, the Workspace value, stable ids, the headless resolver contract; startup types and
-   `WorkspaceManager` removed; tests rewritten around items.
+   `WorkspaceManager` removed; tests rewritten around items. Done. Offline lanes now share a frame source by video
+   value rather than by id, since lane videos inside a playlist carry no identity of their own, and viewers are
+   tracked by the item their Content came from.
 3. **File format** — JSON v1 load/save, relative paths, credential references, unavailable items.
 4. **UI** — File → New / Open / Save / Save As, Untitled and modified state, `ax-devil open <file>`, recent
    workspaces on the welcome screen, unavailable items in the sidebar. Built into today's UI with minimal changes; a

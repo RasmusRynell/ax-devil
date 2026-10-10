@@ -17,7 +17,7 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
-from ax_devil.modules.workspace.core import VideoFileStartup
+from ax_devil.modules.workspace.core import VideoItem
 
 
 @pytest.mark.parametrize("use_custom_frame", [False, True])
@@ -48,7 +48,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
     qtbot.waitUntil(window.isActiveWindow)
     native_id = window.internalWinId()
     try:
-        session.load_startup_content(VideoFileStartup(video_path=path))
+        window.add_items([VideoItem(label="clip.mp4", video=path)])
         viewer = session.focused_offline_viewer()
         assert viewer is not None
         qtbot.waitUntil(lambda: viewer._runtime is not None)
@@ -100,15 +100,15 @@ def test_workspace_opens_seeks_and_closes_real_video(
         assert pixel.red() < 15
         assert pixel.green() < 15
 
-        (content,) = session._workspace_manager.get_contents()
-        session.remove_content(content)
+        (item,) = session._workspace_store.workspace.items
+        session._workspace_store.remove_item(item.id)
 
         assert session.focused_widget() is None
         assert window._lane_fullscreen._host is None
         assert delivery.wait(0)
         assert window.internalWinId() == native_id
 
-        session.load_startup_content(VideoFileStartup(video_path=path))
+        window.add_items([VideoItem(label="clip.mp4", video=path)])
         reopened_viewer = session.focused_offline_viewer()
         assert reopened_viewer is not None
         qtbot.waitUntil(lambda: reopened_viewer._runtime is not None)

@@ -18,15 +18,20 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
-from ax_devil.modules.settings.config_manager import ConfigManager, integer_default, is_environment_reference
-from ax_devil.modules.workspace.core.content import LiveOverlayMode, LiveVideoContent
+from ax_devil.modules.settings.config_manager import (
+    ConfigManager,
+    expand_environment_reference,
+    integer_default,
+    is_environment_reference,
+)
+from ax_devil.modules.workspace.core import ItemResolutionError, LiveOverlayMode, LiveStreamItem
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.ui.add_content.analytics_discovery import (
     AnalyticsChoiceLoader,
     list_analytics_data_source_keys,
     list_datahub_topics,
 )
-from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
+from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 
 
 def _apply_env_hint(edit: QLineEdit, raw_value: str, resolved_value: str, *, mask: bool = False) -> None:
@@ -49,12 +54,17 @@ def _apply_env_hint(edit: QLineEdit, raw_value: str, resolved_value: str, *, mas
 
 
 class AddLiveStreamDialog(BaseDialog):
-    """Dialog for adding a live RTSP stream with optional overlay metadata."""
+    """Dialog for adding a live RTSP stream with optional overlay metadata.
+
+    Empty connection fields take the configured default as written, so a ``$VARIABLE`` default stays a reference in the
+    resulting Live Stream Item.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, title="Add Live Stream")
-        self._result: LiveVideoContent | None = None
-        self._intake = default_workspace_intake()
+        self._result: LiveStreamItem | None = None
+        self._context = default_resolution_context()
+        self._intake = self._context.intake
         self._config = ConfigManager()
         self._raw_defaults, self._defaults = self._load_defaults()
         self._setup_form()
@@ -302,7 +312,7 @@ class AddLiveStreamDialog(BaseDialog):
         return text if text else default
 
     def _on_host_changed(self, text: str) -> None:
-        host = text.strip() or self._defaults["device"].get("host", "")
+        host = text.strip() or str(self._raw_defaults["device"].get("host") or "")
         if not self._name_edit.text().strip():
             self._name_edit.setPlaceholderText(f"Live: {host}" if host else "")
 
@@ -362,19 +372,15 @@ class AddLiveStreamDialog(BaseDialog):
         self._validation_label.setText(message)
         self._ok_button.setEnabled(not message)
 
-    def _build_result(self) -> LiveVideoContent:
-        """Return the stream the form describes, or raise ``ValueError`` naming what to fix."""
-        device_defaults = self._defaults["device"]
-        live_defaults = self._defaults["live_stream"]
-        mqtt_defaults = live_defaults.get("analytics-mqtt", {}) or {}
+    def _build_result(self) -> LiveStreamItem:
+        """Return the stream item the form describes, or raise ``ValueError`` naming what to fix."""
+        raw_device_defaults = self._raw_defaults["device"]
+        raw_mqtt_defaults = self._raw_defaults["live_stream"].get("analytics-mqtt", {}) or {}
 
-        host = self._text_or_default(self._host_edit, device_defaults.get("host", ""))
-        if not host:
+        host = self._text_or_default(self._host_edit, str(raw_device_defaults.get("host") or ""))
+        if not expand_environment_reference(host):
             raise ValueError("Enter the device host.")
 
-        display_name = self._name_edit.text().strip() or f"Live: {host}"
-        username = self._text_or_default(self._username_edit, device_defaults.get("username", ""))
-        password = self._text_or_default(self._password_edit, device_defaults.get("password", ""))
         mode = LiveOverlayMode.from_value(str(self._overlay_mode_combo.currentData()))
         # The handler combo keeps its selection while disabled; only modes that decode overlays use it.
         handler_type: str | None = self._handler_combo.currentData() if mode.requires_handler else None
@@ -386,30 +392,38 @@ class AddLiveStreamDialog(BaseDialog):
         if not camera_head.isdigit():
             raise ValueError("Camera Head must be a positive integer.")
 
-        mqtt_host = self._text_or_default(self._mqtt_host_edit, mqtt_defaults.get("broker_host", ""))
         analytics_data_source_key = self._data_source_choice.combo.currentData()
         websocket_topic_value = self._websocket_topic_choice.combo.currentData()
         websocket_topic = str(websocket_topic_value) if isinstance(websocket_topic_value, str) else ""
 
-        return self._intake.create_live_stream(
+        item = LiveStreamItem(
+            label=self._name_edit.text().strip() or f"Live: {host}",
             host=host,
-            username=username,
-            password=password,
+            username=self._text_or_default(self._username_edit, str(raw_device_defaults.get("username") or "")),
+            password=self._text_or_default(self._password_edit, str(raw_device_defaults.get("password") or "")),
             camera_head=int(camera_head),
             resolution=self._resolution_edit.text().strip() or "1280x720",
-            display_name=display_name,
             stream_url=self._stream_url_edit.text().strip() or None,
             overlay_mode=mode,
             handler_type=handler_type,
-            mqtt_host=mqtt_host,
+            mqtt_host=self._text_or_default(self._mqtt_host_edit, str(raw_mqtt_defaults.get("broker_host") or "")),
             mqtt_port=self._mqtt_port_spin.value(),
-            mqtt_username=self._text_or_default(self._mqtt_username_edit, mqtt_defaults.get("broker_username", "")),
-            mqtt_password=self._text_or_default(self._mqtt_password_edit, mqtt_defaults.get("broker_password", "")),
+            mqtt_username=self._text_or_default(
+                self._mqtt_username_edit, str(raw_mqtt_defaults.get("broker_username") or "")
+            ),
+            mqtt_password=self._text_or_default(
+                self._mqtt_password_edit, str(raw_mqtt_defaults.get("broker_password") or "")
+            ),
             analytics_data_source_key=(str(analytics_data_source_key) if analytics_data_source_key is not None else ""),
             device_api_protocol=self._mqtt_device_protocol_combo.currentText(),
             websocket_topic=websocket_topic,
             websocket_channel_id=self._websocket_channel_id_spin.value(),
         )
+        try:
+            item.resolve(self._context)
+        except ItemResolutionError as exc:
+            raise ValueError(str(exc)) from exc
+        return item
 
     def accept(self) -> None:
         """Add the stream when the form is complete; otherwise keep the dialog open with the reason shown."""
@@ -420,8 +434,8 @@ class AddLiveStreamDialog(BaseDialog):
             return
         super().accept()
 
-    def get_result(self) -> LiveVideoContent | None:
-        """Return the created ``LiveVideoContent``, or None if the dialog was cancelled."""
+    def get_result(self) -> LiveStreamItem | None:
+        """Return the Live Stream Item, or None if the dialog was cancelled."""
         return self._result
 
     def cleanup(self) -> None:

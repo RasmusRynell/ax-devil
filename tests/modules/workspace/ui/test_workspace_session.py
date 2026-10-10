@@ -16,19 +16,24 @@ from ax_devil.modules.workspace.core import (
     FileVideoSourceSpec,
     LiveOverlayMode,
     LiveRTSPStreamSpec,
-    LiveStreamStartup,
+    LiveStreamItem,
     LiveVideoContent,
+    OverlayFile,
     PlaylistContent,
     PlaylistEntry,
+    PlaylistItem,
+    PlaylistSettings,
     SeekableVideoContent,
-    VideoFileStartup,
+    VideoItem,
+    WorkspaceItem,
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE
 from ax_devil.modules.workspace.ui.recent_videos import RecentVideos
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
-from tests.helpers.workspace import DummyViewer
+from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
+from tests.helpers.workspace import DummyViewer, FakeResolutionContext, content_item
 
 
 def _required_top_item(workspace_session: WorkspaceSession, index: int = 0) -> QTreeWidgetItem:
@@ -95,27 +100,54 @@ def workspace_session(
     return session
 
 
-def test_removing_content_closes_all_open_viewers_for_same_content(
+def _store(workspace_session: WorkspaceSession) -> WorkspaceStore:
+    return workspace_session._workspace_store
+
+
+def test_removing_content_in_the_sidebar_closes_every_viewer_of_its_item(
     workspace_session: WorkspaceSession,
 ) -> None:
-    content = _make_video("duplicate")
+    browser = workspace_session._content_browser
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(content)
-        first_viewer = workspace_session._center_area.get_focused_widget()
-        assert first_viewer is not None
-        first_viewer.set_pinned(True)
-
-        workspace_session.add_content(content)
+        workspace_session.add_items([content_item(_make_video("duplicate"))])
+        [content] = _store(workspace_session).contents()
+        browser.content_open_to_side_requested.emit(content, 0)
         assert workspace_session._center_area.get_widget_count() == 2
-        assert first_viewer.is_pinned()
 
-        workspace_session.remove_content(content)
+        browser.content_remove_requested.emit(content)
 
-        assert workspace_session._center_area.get_widget_count() == 0
+    assert workspace_session._center_area.get_widget_count() == 0
+    assert _store(workspace_session).workspace.items == ()
+    assert workspace_session._content_browser._tree.topLevelItemCount() == 0
 
 
-def test_removing_video_closes_standalone_and_playlist_viewers_that_depend_on_it(
+class _TwoPlaylists:
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        return [_make_playlist("train"), _make_playlist("test")]
+
+
+def test_removing_one_content_of_an_item_removes_the_whole_item(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    session = WorkspaceSession(
+        render_catalog_manager=render_catalog_manager,
+        context=FakeResolutionContext(resolvers={"runs": _TwoPlaylists()}),
+        recent_videos=RecentVideos(tmp_path / "recent-videos.json"),
+    )
+    qtbot.addWidget(session.widget())
+    kept = content_item(_make_video("kept.mp4"))
+
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([PlaylistItem(label="Runs", resolver="runs"), kept])
+        assert session._content_browser._tree.topLevelItemCount() == 3
+        session._content_browser.content_remove_requested.emit(_store(session).contents()[1])
+
+    assert _store(session).workspace.items == (kept,)
+    assert session._content_browser._tree.topLevelItemCount() == 1
+
+
+def test_removing_a_video_item_leaves_a_playlist_of_the_same_video_open(
     workspace_session: WorkspaceSession,
 ) -> None:
     video = _make_video("shared.mp4")
@@ -123,38 +155,42 @@ def test_removing_video_closes_standalone_and_playlist_viewers_that_depend_on_it
         display_name="Playlist",
         entries=(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),),
     )
+    video_item = content_item(video)
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(playlist)
+        workspace_session.add_items([content_item(playlist)])
         playlist_viewer = workspace_session._center_area.get_focused_widget()
         assert playlist_viewer is not None
         playlist_viewer.set_pinned(True)
-        workspace_session.add_content(video)
+        workspace_session.add_items([video_item])
 
         assert workspace_session._center_area.get_widget_count() == 2
-        workspace_session.remove_content(video)
+        _store(workspace_session).remove_item(video_item.id)
 
-    assert workspace_session._center_area.get_widget_count() == 0
+    assert workspace_session._center_area.get_widget_count() == 1
+    assert workspace_session._center_area.get_focused_widget() is playlist_viewer
 
 
 def test_removing_playlist_leaves_standalone_underlying_video_viewer_open(
     workspace_session: WorkspaceSession,
 ) -> None:
     video = _make_video("shared.mp4")
-    playlist = PlaylistContent(
-        display_name="Playlist",
-        entries=(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),),
+    playlist_item = content_item(
+        PlaylistContent(
+            display_name="Playlist",
+            entries=(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),),
+        )
     )
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(video)
+        workspace_session.add_items([content_item(video)])
         video_viewer = workspace_session._center_area.get_focused_widget()
         assert video_viewer is not None
         video_viewer.set_pinned(True)
-        workspace_session.add_content(playlist)
+        workspace_session.add_items([playlist_item])
 
         assert workspace_session._center_area.get_widget_count() == 2
-        workspace_session.remove_content(playlist)
+        _store(workspace_session).remove_item(playlist_item.id)
 
     assert workspace_session._center_area.get_widget_count() == 1
     assert workspace_session._center_area.get_focused_widget() is video_viewer
@@ -166,20 +202,21 @@ def test_adding_content_auto_opens_viewers(
     content = _make_video("existing")
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(content)
+        workspace_session.add_items([content_item(content)])
 
     assert workspace_session._center_area.get_widget_count() == 1
     viewer = workspace_session._center_area.get_focused_widget()
     assert isinstance(viewer, DummyViewer)
-    assert viewer.consideration_query is workspace_session._workspace_manager
+    assert viewer.consideration_query is _store(workspace_session)
     assert _is_open(_required_top_item(workspace_session))
 
 
-def test_loading_video_file_startup_opens_offline_viewer_through_workspace_path(
-    workspace_session: WorkspaceSession,
-) -> None:
+def test_adding_a_video_item_opens_an_offline_viewer(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
+    video = tmp_path / "startup.mp4"
+    video.write_bytes(b"")
+
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.load_startup_content(VideoFileStartup(video_path=Path("/tmp/startup.mp4")))
+        workspace_session.add_items([VideoItem(label="startup.mp4", video=video)])
 
         viewer = workspace_session.focused_offline_viewer()
 
@@ -201,12 +238,12 @@ def test_dropped_video_and_overlay_open_with_matching_handler_and_join_recent_vi
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         workspace_session.open_files([overlay, video])
 
-    [content] = workspace_session._workspace_manager.get_contents()
+    [content] = _store(workspace_session).contents()
     assert isinstance(content, SeekableVideoContent)
     assert content.source_spec.path == video
     assert [o.source_spec for o in content.overlays] == [FileOverlaySourceSpec(path=overlay, handler_type="MOT_FILE")]
-    expected = VideoFileStartup(video_path=video, overlay_path=overlay, handler_type="MOT_FILE")
-    assert workspace_session._welcome._recent_videos == (expected,)
+    [recent] = workspace_session._welcome._recent_videos
+    assert (recent.video, recent.overlays) == (video, (OverlayFile(overlay, "MOT_FILE"),))
 
 
 def test_dropped_overlay_read_by_several_decoders_asks_for_the_handler(
@@ -235,15 +272,13 @@ def test_dropped_overlay_read_by_several_decoders_asks_for_the_handler(
     assert asked == [(str(video), str(overlay))] * 3
     assert destroyed == [True] * 3
     assert workspace_session.widget().findChildren(AddVideoDialog) == []
-    assert workspace_session._workspace_manager.get_contents() == []
+    assert _store(workspace_session).workspace.items == ()
     assert workspace_session._welcome._recent_videos == ()
 
 
-def test_loading_live_stream_startup_opens_live_viewer_through_workspace_path(
-    workspace_session: WorkspaceSession,
-) -> None:
+def test_adding_a_live_stream_item_opens_a_live_viewer(workspace_session: WorkspaceSession) -> None:
     with patch("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", DummyViewer):
-        workspace_session.load_startup_content(LiveStreamStartup(host="camera.local", username="root", password="pass"))
+        workspace_session.add_items([LiveStreamItem(label="Camera", host="camera.local", username="root")])
 
         viewer = workspace_session._center_area.get_focused_widget()
 
@@ -253,31 +288,28 @@ def test_loading_live_stream_startup_opens_live_viewer_through_workspace_path(
     assert _is_open(_required_top_item(workspace_session))
 
 
-def test_loading_video_file_startup_with_overlay_without_handler_leaves_workspace_unchanged(
-    workspace_session: WorkspaceSession,
+@pytest.mark.parametrize("kind", ["video", "live_stream"])
+def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
+    workspace_session: WorkspaceSession, tmp_path: Path, kind: str
 ) -> None:
-    workspace_session.load_startup_content(
-        VideoFileStartup(video_path=Path("/tmp/startup.mp4"), overlay_path=Path("/tmp/startup.json")),
-    )
+    video = tmp_path / "startup.mp4"
+    overlay = tmp_path / "startup.json"
+    video.write_bytes(b"")
+    overlay.write_text("{}")
+    items: dict[str, WorkspaceItem] = {
+        "video": VideoItem(label="Startup", video=video, overlays=(OverlayFile(overlay, "MISSING"),)),
+        "live_stream": LiveStreamItem(label="Startup", host="camera.local", overlay_mode=LiveOverlayMode.RTSP),
+    }
 
+    with patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
+        workspace_session.add_items([items[kind]])
+
+    assert _store(workspace_session).workspace.items == (items[kind],)
     assert workspace_session._center_area.get_widget_count() == 0
     assert workspace_session._content_browser._tree.topLevelItemCount() == 0
-
-
-def test_loading_live_stream_startup_with_rtsp_overlay_without_handler_leaves_workspace_unchanged(
-    workspace_session: WorkspaceSession,
-) -> None:
-    workspace_session.load_startup_content(
-        LiveStreamStartup(
-            host="camera.local",
-            username="root",
-            password="pass",
-            overlay_mode=LiveOverlayMode.RTSP,
-        ),
-    )
-
-    assert workspace_session._center_area.get_widget_count() == 0
-    assert workspace_session._content_browser._tree.topLevelItemCount() == 0
+    [(parent, title, message)] = [call.args for call in warning.call_args_list]
+    assert (parent, title) == (workspace_session.widget(), "Open Content")
+    assert message.startswith("Startup: ")
 
 
 def test_adding_live_content_auto_opens_live_viewer(
@@ -286,7 +318,7 @@ def test_adding_live_content_auto_opens_live_viewer(
     content = _make_live_video("live")
 
     with patch("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(content)
+        workspace_session.add_items([content_item(content)])
 
     assert workspace_session._center_area.get_widget_count() == 1
     assert _is_open(_required_top_item(workspace_session))
@@ -298,7 +330,7 @@ def test_adding_playlist_auto_expands_and_marks_open_entry(
     playlist = _make_playlist()
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(playlist)
+        workspace_session.add_items([content_item(playlist)])
 
     top_item = _required_top_item(workspace_session)
     assert top_item.isExpanded()
@@ -311,7 +343,7 @@ def test_viewer_current_item_change_updates_browser_open_indicator(
     playlist = _make_playlist()
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(playlist)
+        workspace_session.add_items([content_item(playlist)])
 
     viewer = cast(DummyViewer, workspace_session._center_area.get_focused_widget())
     top_item = _required_top_item(workspace_session)
@@ -333,12 +365,12 @@ def test_focusing_open_viewer_preserves_open_indicators(
     second = _make_video("second.mp4")
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(first)
+        workspace_session.add_items([content_item(first)])
         first_widget = workspace_session._center_area.get_focused_widget()
         assert first_widget is not None
         first_widget.set_pinned(True)
 
-        workspace_session.add_content(second)
+        workspace_session.add_items([content_item(second)])
 
     assert _is_open(_required_top_item(workspace_session, 0))
     assert _is_open(_required_top_item(workspace_session, 1))
@@ -356,7 +388,7 @@ def test_open_content_failure_shows_error_and_keeps_existing_viewer(
     broken = _make_video("broken")
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(existing)
+        workspace_session.add_items([content_item(existing)])
 
     assert workspace_session._center_area.get_widget_count() == 1
 
@@ -380,7 +412,7 @@ def test_deferred_open_failure_restores_existing_viewer(
     broken = _make_video("broken")
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(existing)
+        workspace_session.add_items([content_item(existing)])
 
     existing_widget = cast(DummyViewer, workspace_session._center_area.get_focused_widget())
     assert existing_widget is not None
@@ -405,10 +437,10 @@ def test_replaced_viewer_is_unregistered_before_deferred_deletion(
     second = _make_video("second.mp4")
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(first)
+        workspace_session.add_items([content_item(first)])
         first_widget = cast(DummyViewer, workspace_session._center_area.get_focused_widget())
 
-        workspace_session.add_content(second)
+        workspace_session.add_items([content_item(second)])
         second_widget = cast(DummyViewer, workspace_session._center_area.get_focused_widget())
 
     item_ref = ConsiderationItemRef.playlist_entry(second.content_id, 0)
@@ -434,8 +466,8 @@ def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_previ
         ]
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(first)
-        workspace_session.add_content(second)
+        workspace_session.add_items([content_item(first)])
+        workspace_session.add_items([content_item(second)])
         assert shown_names() == ["second.mp4"]
 
         browser.content_open_to_side_requested.emit(first, 0)
@@ -444,7 +476,7 @@ def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_previ
         browser.content_activated.emit(first, 0)
 
     assert shown_names() == ["first.mp4", "first.mp4"]
-    assert len(workspace_session._workspace_controller._widget_content_ids) == 2
+    assert len(workspace_session._workspace_controller._widget_item_ids) == 2
 
 
 def test_sidebar_appears_with_content_at_its_width_and_toggles(workspace_session: WorkspaceSession) -> None:
@@ -456,7 +488,7 @@ def test_sidebar_appears_with_content_at_its_width_and_toggles(workspace_session
     assert not window.is_sidebar_shown()
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(_make_video("a"))
+        workspace_session.add_items([content_item(_make_video("a"))])
     QCoreApplication.processEvents()
     assert window.is_sidebar_shown()
     width = splitter.sizes()[0]
@@ -468,7 +500,7 @@ def test_sidebar_appears_with_content_at_its_width_and_toggles(workspace_session
 
     # Hidden by the user, it stays hidden when content changes.
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(_make_video("b"))
+        workspace_session.add_items([content_item(_make_video("b"))])
     QCoreApplication.processEvents()
     assert not window.is_sidebar_shown()
 
@@ -482,7 +514,7 @@ def test_sidebar_appears_with_content_at_its_width_and_toggles(workspace_session
     splitter.moveSplitter(0, 1)
     assert not window.is_sidebar_shown()
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(_make_video("c"))
+        workspace_session.add_items([content_item(_make_video("c"))])
     QCoreApplication.processEvents()
     assert not window.is_sidebar_shown()
     window.toggle_sidebar()
@@ -497,7 +529,7 @@ def test_sidebar_default_width_follows_text_size_until_dragged(workspace_session
     window = workspace_session.widget()
     window.resize(1200, 700)
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(_make_video("a"))
+        workspace_session.add_items([content_item(_make_video("a"))])
     QCoreApplication.processEvents()
     splitter = window._splitter
     apply_text_size(13)

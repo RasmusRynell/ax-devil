@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, cast
-from uuid import uuid4
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
@@ -70,10 +69,6 @@ class LiveOverlayMode(str, Enum):
 # ---------------------------------------------------------------------------
 # Content model plumbing
 # ---------------------------------------------------------------------------
-
-
-def _new_content_id() -> str:
-    return uuid4().hex
 
 
 ConsiderationKind = Literal["playlist_entry", "playlist_lane", "video_lane"]
@@ -292,7 +287,8 @@ class LiveVideoContent:
     source_spec: LiveRTSPStreamSpec
     overlays: tuple[OverlayContent, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
-    content_id: str = field(default_factory=_new_content_id)
+    content_id: str = ""
+    item_id: str = ""
     is_live: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
@@ -341,7 +337,8 @@ class SeekableVideoContent:
     source_spec: FileVideoSourceSpec
     overlays: tuple[OverlayContent, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
-    content_id: str = field(default_factory=_new_content_id)
+    content_id: str = ""
+    item_id: str = ""
     is_live: ClassVar[bool] = False
 
     def __post_init__(self) -> None:
@@ -479,7 +476,8 @@ class PlaylistContent:
     display_name: str
     entries: tuple[PlaylistEntry, ...]
     metadata: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
-    content_id: str = field(default_factory=_new_content_id)
+    content_id: str = ""
+    item_id: str = ""
 
     def __post_init__(self) -> None:
         """Reject empty playlists before they enter the Workspace."""
@@ -530,6 +528,11 @@ class PlaylistContent:
 
 
 Content = SeekableVideoContent | LiveVideoContent | PlaylistContent
+"""What a Workspace Item resolves to.
+
+Resolution sets ``item_id`` to the owning item's id and ``content_id`` to an id derived from it, so both stay the same
+every time the item resolves. Content built outside resolution, such as a playlist lane's video, leaves them empty.
+"""
 
 
 def create_entry_lane(

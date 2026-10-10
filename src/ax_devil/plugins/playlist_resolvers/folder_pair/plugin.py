@@ -7,8 +7,8 @@ from pathlib import Path
 import click
 
 from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
-from ax_devil.modules.workspace.core import PlaylistContent, ResolvedPlaylistStartup
-from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import build_playlist_contents, discover_folder_pairs
+from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
+from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import resolve_settings
 
 
 class FolderPairResolverPlugin(PlaylistResolverPlugin):
@@ -36,22 +36,25 @@ class FolderPairResolverPlugin(PlaylistResolverPlugin):
         @click.option("--handler-type", required=True, help="File decoder handler type for matched overlay files.")
         @click.pass_context
         def command(ctx: click.Context, videos_dir: Path, overlays_dir: Path, handler_type: str) -> None:
-            playlists = cls._resolve_cli_dataset(videos_dir, overlays_dir, handler_type)
-            if not playlists:
-                raise click.ClickException(
-                    f"No matched video/overlay pairs were resolved from '{videos_dir}' and '{overlays_dir}'."
-                )
-            runner = ctx.obj.get("run_with_startup_content") if isinstance(ctx.obj, dict) else None
+            settings = {
+                "videos_dir": str(videos_dir.resolve()),
+                "overlays_dir": str(overlays_dir.resolve()),
+                "handler_type": handler_type,
+            }
+            try:
+                cls().resolve(settings)
+            except (ValueError, OSError) as exc:
+                raise click.ClickException(str(exc)) from exc
+            runner = ctx.obj.get("run_with_items") if isinstance(ctx.obj, dict) else None
             if runner is None:
                 raise click.ClickException("CLI runtime is not available.")
-            runner(ResolvedPlaylistStartup(playlists=tuple(playlists)))
+            runner([PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)])
 
         return command
 
-    @classmethod
-    def _resolve_cli_dataset(cls, videos_dir: Path, overlays_dir: Path, handler_type: str) -> list[PlaylistContent]:
-        """Resolve folder-pair inputs for CLI startup."""
-        return build_playlist_contents(discover_folder_pairs(videos_dir, overlays_dir), handler_type)
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        """Return the playlist of matched video and overlay files the settings describe."""
+        return resolve_settings(settings)
 
     def create_settings_widget(self) -> PlaylistResolverWidget:
         from .settings_widget import FolderPairSettingsWidget

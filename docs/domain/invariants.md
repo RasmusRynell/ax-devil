@@ -10,8 +10,15 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 ## Content Model
 
 - Workspace content (`SeekableVideoContent`, `LiveVideoContent`, `OverlayContent`, `EntryLane`, `PlaylistContent`)
-  describes what the user added. It stores source specs and metadata, never instantiated sources or factories.
+  describes what a Workspace Item resolves to. It stores source specs and metadata, never instantiated sources or
+  factories.
   Runtime sources are created when a viewer opens content: offline by `EntryOpening`, live by `StreamMediaController`.
+- Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
+  only from `WorkspaceItem.resolve`. The Workspace, the store, and (later) the file format never branch on item kind.
+- Content ids derive from the owning item's id and the Content's position, and Content records its item's id, so ids
+  are the same on every resolution. Content built outside resolution has empty ids and is never top-level Content.
+- Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
+- An item that fails to resolve stays in the Workspace with its `ItemResolutionError` recorded.
 - Each overlay source spec owns its `OverlaySourceKind`; overlay content and lanes derive the kind from the spec.
 - Seekable video accepts file overlays. Live video accepts at most one RTSP, MQTT, or DataHub WebSocket overlay, chosen
   explicitly as `LiveOverlayMode`; config and CLI strings are converted at their boundaries.
@@ -83,9 +90,14 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Open, focused, pinned, and current on-screen viewer facts come from the hosted `ViewerWidget` instances; they are
   not copied into parallel state records.
 - Video Viewer navigation reads consideration through the read-only `ConsiderationQuery` contract, not the mutable
-  `WorkspaceManager`.
-- Content removal closes every viewer widget that tracks the removed content. `SplitView` exclusively owns hosted
-  widget removal and deletion; callers use its removal API.
+  `WorkspaceStore`.
+- `WorkspaceStore` owns the current and last saved Workspace, each item's resolution, consideration refs, and mutation
+  signals, and emits one notification per successful mutation; "modified" is `current != saved`.
+  `build_browser_rows` projects the resolved Content, with the open items, into browser rows.
+- Consideration refs identify current Workspace content, playlist entries, or lanes; orphan and out-of-range refs are
+  ignored.
+- Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content.
+  `SplitView` exclusively owns hosted widget removal and deletion; callers use its removal API.
 
 ## UI Lifecycle
 
