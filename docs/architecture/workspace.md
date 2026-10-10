@@ -138,10 +138,7 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
 - `version` is required. There is one supported version; older files are not migrated before a stable release. A
   missing or other version, invalid JSON, a top level that is not an object, or `items` that is not a list makes
   loading raise one `WorkspaceFileError` with a user-facing message, as does a repeated item id.
-- `workspace/core/file_format.py` has `load_workspace(path)` and `save_workspace(workspace, path)`; both return the
-  Workspace with `path` set. Saving writes a temporary file in the same folder and replaces the target, with two-space
-  indentation and a trailing newline. The temporary file takes the target's permission bits when the target exists;
-  a new file is private to its owner (0600 on POSIX). Item kinds own their JSON, so the file format never branches on kind.
+- A failed save leaves the existing file unchanged.
 - Paths a Video Item holds are written relative to the workspace file's folder (with `/` separators) when they are
   inside it, absolute otherwise; relative paths are read against that folder. If the workspace file is a symlink,
   that folder is the one holding the file it points to, and saving replaces that file, not the link. Both sides are
@@ -153,10 +150,9 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
   credentials must be shared with care. Fields missing from the file take their defaults.
 - An item that cannot be read — an unknown kind, or a known kind with malformed JSON — never fails the load. It
   becomes an `UnreadableItem`: it keeps the raw `id` (or gets a new one) and a label from the raw `label` (or the
-  kind), resolves to an `ItemResolutionError` giving the reason, and is written back unchanged on save. It is not in
-  `ITEM_KINDS`, so the Workspace, the store, and the UI treat it as any item that failed to resolve. An item that reads
-  fine but fails to resolve on open — missing folder, offline camera, missing plugin — is an ordinary item with a
-  recorded error.
+  kind), resolves to an `ItemResolutionError` giving the reason, and is written back unchanged on save. The
+  Workspace, the store, and the UI treat it as any item that failed to resolve. An item that reads fine but fails to
+  resolve on open — missing folder, offline camera, missing plugin — is an ordinary item with a recorded error.
 
 ## Playlist Resolver Contract
 

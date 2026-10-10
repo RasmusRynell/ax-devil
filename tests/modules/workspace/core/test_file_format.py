@@ -307,6 +307,19 @@ def test_a_non_finite_number_fails_the_save_and_keeps_the_old_file(tmp_path: Pat
     assert list(tmp_path.iterdir()) == [path]
 
 
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+def test_a_non_finite_number_in_a_file_fails_the_load(tmp_path: Path, token: str) -> None:
+    path = tmp_path / "w.ax-devil.workspace"
+    path.write_text(
+        '{"version": 1, "items": [{"kind": "playlist", "id": "p", "label": "P", "resolver": "r", '
+        f'"settings": {{"threshold": {token}}}}}]}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(WorkspaceFileError, match="not valid JSON"):
+        load_workspace(path)
+
+
 def test_invalid_json_and_missing_files_raise_the_same_error(tmp_path: Path) -> None:
     broken = tmp_path / "broken.ax-devil.workspace"
     broken.write_text("{not json", encoding="utf-8")

@@ -8,7 +8,7 @@ import stat
 import tempfile
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.items import item_from_json
@@ -32,6 +32,11 @@ def _backing_file(path: Path) -> Path:
     return path.resolve() if path.is_symlink() else path.absolute()
 
 
+def _reject_constant(token: str) -> NoReturn:
+    """Refuse ``NaN``, ``Infinity`` and ``-Infinity``: Python accepts them when reading, but they cannot be saved."""
+    raise ValueError(f"{token} is not allowed in JSON")
+
+
 def load_workspace(path: Path) -> Workspace:
     """Return the Workspace saved in *path*, with its ``path`` set.
 
@@ -40,7 +45,7 @@ def load_workspace(path: Path) -> Workspace:
     path = path.absolute()
     backing = _backing_file(path)
     try:
-        document = json.loads(backing.read_text(encoding="utf-8"))
+        document = json.loads(backing.read_text(encoding="utf-8"), parse_constant=_reject_constant)
     except OSError as exc:
         raise WorkspaceFileError(f"Could not read {path.name}: {exc.strerror or exc}") from exc
     except ValueError as exc:
