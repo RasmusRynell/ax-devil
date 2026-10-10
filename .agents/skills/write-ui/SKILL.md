@@ -21,7 +21,7 @@ choosing its own sizes and colors.
 | Colors | `palette(...)` in stylesheets, `QPalette` roles when painting, `StatusColor` for success/warning/error | `modules/chrome/theme.py` |
 | Palette color with alpha in a stylesheet | `palette_color_css` | `modules/chrome/palette_css.py` |
 | Status-colored text | `StatusColor.<NAME>.css(palette)` | `modules/chrome/theme.py` |
-| Icons | `Icon.<NAME>.icon()` follows the theme on its own; pass a color only for status or the video scrim. Add a Lucide SVG to `resources/icons/` for a new one | `modules/chrome/icons.py` |
+| Icons | `Icon.<NAME>.icon()` follows the theme on its own; pass a color only for status or the video scrim. Add a Lucide SVG to `src/ax_devil/resources/icons/` for a new one | `modules/chrome/icons.py` |
 | Button that opens a menu (`Filter ⌄`) | `MenuButton(text, menu)` | `modules/chrome/menu_button.py` |
 | Folder button beside a path field | `BrowseButton(what, browse)` | `modules/chrome/browse_button.py` |
 | Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
@@ -30,8 +30,9 @@ choosing its own sizes and colors.
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 
-Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invariants.md#ui-lifecycle): they say when
-sizes may be computed, how to top-align content, which colors belong on the video scrim, and which pixels are exempt.
+Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invariants.md#ui-lifecycle) and the
+[chrome README](../../../src/ax_devil/modules/chrome/README.md): they say when sizes may be computed, how to top-align
+content, how dialogs get their size, and which pixels are exempt.
 
 ## Common patterns
 

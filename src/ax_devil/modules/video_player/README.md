@@ -18,6 +18,7 @@ orchestration.
 	- `frame_display.py`: public reusable display shell with viewport forwarding and generic mount points.
 	- `viewport.py`: lower-level viewing area around the renderer (background/info HUD, interaction, widget overlays).
 	- `hud_painter.py`: HUD drawing helpers used by `viewport.py`.
+	- `entity_hover_card.py`: object inspection over the video; grouped data, scrollable and selectable when pinned.
 	- `overlay_layout.py`: pure overlay placement policy for widget overlays.
 	- `controls.py`: seekable control panel widgets, including the caller-labelled side panel toggle button.
 	- `fading.py`: generic fading widget behavior and hover notification bridge.
@@ -27,6 +28,7 @@ orchestration.
 	- `side_panel_controller.py`: side panel + drag handle orchestration; `FrameDisplay` exposes its open state
 	  (`is_side_panel_open()`, `set_side_panel_open()`, `sidePanelToggled`).
 	- `interaction_types.py`: lightweight interaction protocols (for typed wiring).
+	- `fullscreen.py`: `LaneFullscreenController` (see Lane fullscreen below).
 - `constants.py`: shared timing/layout/style constants.
 
 ## Runtime flow
@@ -37,6 +39,27 @@ orchestration.
    Graphics Off uses Qt Quick software rendering; file export uses the same surface through `FrameImageRenderer`.
 4. `RenderContext` is built (cached by target size) and passed with the surface-owned `DrawingBuffer` (carrying exact `DrawingSettings`) to drawing generators.
 5. Widget overlays (controls, drag handle) are laid out by `overlay_layout.py` policy.
+
+## Quick surface
+
+`VideoFrameRenderer` is a QWidget shell around one `QQuickWidget` that draws the video texture and every overlay;
+Graphics Off selects Quick's software backend at startup. QQuickWidget keeps widget stacking at the cost of an extra
+composition pass and no threaded render loop, so all preparation stays on the GUI thread and the scene graph only
+consumes prepared data. Rules worth knowing before changing `engine/quick/`:
+
+- Geometry, paths, text and labels are separate pools and layers. The
+  [draw-order invariant](../../../../docs/domain/invariants.md#rendering) is what lets geometry batch into a few
+  nodes (split at 60,000 vertices).
+- Geometry items are matched by ordinal; path and text items by content, independent of position, so moving an
+  overlay updates transforms instead of rebuilding glyphs and tessellation.
+- Labels are painted into a sprite once per distinct content, scale, DPI and DPR, and submitted through one
+  `LabelLayer` whose node tree shares textures by sprite, so returning content such as a repeated score is not
+  rasterized or uploaded again while its sprite and texture are still cached. Cache limits are in the code; visible
+  groups are never evicted, and scene-graph recreation releases everything.
+- Culling uses the surface viewport in overlay-local coordinates, not the image bounds, so overlays stay visible in
+  letterboxing; pan and viewport-size changes therefore invalidate preparation.
+- Cleanup submits an empty frame and synchronizes the scene graph before hiding, so Qt deletes native image nodes
+  while their Python texture adapters are still alive. The export renderer is destroyed explicitly after cleanup, on failure too.
 
 ## Design rules
 
@@ -71,11 +94,9 @@ orchestration.
 - Transform sizing math: `tests/modules/video_player/test_video_transforms.py`.
 - Keep renderer tests focused on behavior contracts, not internal private fields.
 
-Quick GPU rendering and texture upload are asynchronous to the measured GUI preparation.
-Rendering diagnostics use `modules/diagnostics/render_metrics.py`. Viewer owners set a
-content/lane label through `display.viewport.set_diagnostics_label(...)`. See
-[measurement definitions](../diagnostics/README.md#measurement-definitions)
-for timing boundaries, cache hits, and submission versus paint semantics.
+Rendering diagnostics use `modules/diagnostics/render_metrics.py`; viewer owners set a content/lane label through
+`display.viewport.set_diagnostics_label(...)`. Timing boundaries are in the
+[measurement definitions](../diagnostics/README.md#measurement-definitions).
 
 ## Lane fullscreen
 

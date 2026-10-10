@@ -63,13 +63,10 @@ Startup request types live in `ax_devil.modules.workspace.startup_request`:
 - `LiveStreamStartup` for `ax-devil live ...`
 - `ResolvedPlaylistStartup` for resolver-provided playlists
 
-`WorkspaceIntake` validates decoder selections and constructs Workspace content. Startup requests own the dispatch from each
-request shape into that intake boundary. `WorkspaceSession` keeps one intake instance for startup loading. Intake adapts plugin
-decoder definitions into `WorkspaceDecoderOption` records before UI or CLI startup paths consume them. File decoders may
-declare `file_extensions`; `WorkspaceIntake.file_decoder_options_for(path)` returns the decoders that may read an overlay
-file, and the Add Video dialog and file drops pick the handler when exactly one matches.
-Live startup paths convert persisted overlay strings into `LiveOverlayMode` at their boundaries. Intake also validates
-camera-head and MQTT connection settings so dialog, CLI, and programmatic startup share the same content requirements.
+Video and live startup requests construct their content through `WorkspaceIntake`; resolver playlists arrive
+already built. What intake guarantees is in the [Content Model invariants](../domain/invariants.md#content-model).
+Intake adapts plugin decoder definitions into `WorkspaceDecoderOption` records; a file decoder's `file_extensions`
+let the Add Video dialog and file drops pick the handler when exactly one matches.
 
 ## Opening Content
 
@@ -99,7 +96,7 @@ The data pipeline has three delivery capabilities:
 |-----------|-------|-----------|
 | `FrameSource` | `FrameData` | `play()`, `pause()`, `stop()`, `wait()` |
 | `OverlaySource` | `OverlayData` | `play()`, `pause()`, `stop()`, `wait()` |
-| `OverlayLookup` | Returns `OverlayData` by `FrameIdentifier` | Borrowers perform lookups; the concrete owner closes resources |
+| `OverlayLookup` | Returns `OverlayData` by `FrameIdentifier` | No playback lifecycle; the owning `FileOverlaySource` is closed explicitly |
 
 Current source implementations:
 
@@ -117,9 +114,9 @@ requests, PyAV serialization, lazy prefetch, callback delivery, and shutdown. `S
 `get_total_frames()`, `get_current_frame()`, and `step_delta()`.
 
 Offline sources join the process-wide `FrameCachePool` through `data_sources/video_cache_memory.py`, which binds
-`GlobalSettings.video_cache_budget_changed` to the pool. The pool splits one allowance equally across open sources;
-see [Offline Video Cache Memory](../domain/invariants.md#offline-video-cache-memory) for its rules and
-[Settings](../settings.md#video-cache-memory) for the user-facing setting.
+`GlobalSettings.video_cache_budget_changed` to the pool; its rules are in the
+[data_sources README](../../src/ax_devil/modules/data_sources/README.md#offline-frame-cache) and the user-facing
+setting in [Settings](../settings.md#video-cache-memory).
 
 File overlays do not produce data or maintain playback position. `FileOverlaySource` owns its decoder-backed provider,
 serves synchronous `OverlayLookup` requests, and closes that provider explicitly and idempotently. Push-based live
@@ -143,45 +140,18 @@ Its optional `RTSPOverlayDecoder` groups the payload decoder, handler identity, 
 Without that definition, it requests no scene metadata stream. Source selection follows the content specification;
 implementing `OverlaySource` does not mean embedded overlays are enabled.
 
-The DataHub client's transport rules are in [Data Pipeline invariants](../domain/invariants.md#data-pipeline). Its session-token request starts without
-credentials, then answers the advertised scheme, preferring Digest over Basic; a rejected Digest attempt does not fall
-back to Basic. Basic over HTTP exposes credentials to anyone observing the connection.
+The controller keeps frame/overlay inputs separate from its collection of owned sources, so it manages each transport
+once per lifecycle operation even when one object supplies both inputs. Transport rules are in the
+[data_sources README](../../src/ax_devil/modules/data_sources/README.md).
 
-The controller keeps frame/overlay inputs separate from its collection of owned sources. This lets it manage each
-transport once per lifecycle operation and connect each source's errors once, even when one object supplies both inputs.
-Live sources register their Qt workers with `DataSource`, which owns worker disposal and retains sources only while
-requested deletion is waiting for a running worker. The controller uses source lifecycle methods without knowing
-worker attributes. DataHub streaming awaits samples directly and uses task cancellation for shutdown; only connection
-setup and complete protocol requests have deadlines.
-See [Data Pipeline invariants](../domain/invariants.md#data-pipeline) for the lifecycle requirements.
+Each owned transport is one feed of a `LiveConnectionStatus` (`video_viewer/live_connection.py`): the RTSP source is
+the video feed and a separate MQTT or DataHub source is the overlay feed. Sources report `sourceConnected`,
+`sourceReconnecting(reason)` for retries they handle themselves, and `sourceError(reason)` for failures that need the
+user's Retry, which reopens every transport from the same content. A video feed without frames while playing is
+stalled and also needs Retry.
 
-### Live connection status
-
-Each owned live transport is one feed of a `LiveConnectionStatus` (`video_viewer/live_connection.py`): the RTSP source
-is the video feed, and a separate MQTT or DataHub source is the overlay feed. Embedded RTSP overlays share the video
-feed. Sources report their connection through `DataSource` signals:
-
-| Signal | Meaning | Feed state |
-|--------|---------|------------|
-| `sourceConnected` | The transport reached its peer | Live |
-| `sourceReconnecting(reason)` | An attempt failed and the source retries on its own (MQTT) | Reconnecting (n) |
-| `sourceError(reason)` | The source failed without an automatic retry | Failed |
-
-A video frame also marks the video feed live, and a live video feed with no frames for `VIDEO_STALL_TIMEOUT_S` while
-playing is stalled. Failed and stalled feeds need a manual retry: `StreamMediaController.retry()` releases every
-transport and opens new ones from the same content. The controller publishes each status change to
-`LiveVideoViewerWidget`, which shows the video state, every problem feed's reason, and a Retry button in
-`LiveStatusPanel`, and the video state as the empty-pane text. State labels, descriptions, and colors live on
-`LiveConnectionState`.
-
-`data_sources/live/datahub_client.py` owns DataHub authentication, protocol messages, and topic discovery. Both the Workspace
-discovery adapter and the Qt worker in `websocket_overlay_source.py` use this client. `data_sources/live/mqtt_discovery.py`
-owns the MQTT source query shared by Workspace discovery and runtime source validation.
-
-MQTT data-source and DataHub topic discovery share `AnalyticsChoiceLoader` in `workspace/add_content/analytics_discovery.py`.
-Each instance owns its connection identity,
-loading state, and stale-result rejection. `AnalyticsChoice` displays that state and preserves the selected choice;
-the live-stream dialog supplies the transport-specific fetch function and defaults.
+`data_sources/live/datahub_client.py` and `data_sources/live/mqtt_discovery.py` own the DataHub and MQTT protocol
+clients shared by Workspace discovery (`workspace/add_content/analytics_discovery.py`) and the runtime sources.
 
 ## Synchronization
 
@@ -202,29 +172,16 @@ viewer shows a loading indicator, then delivers `EntryMedia` on the GUI thread. 
 displays over that media without touching files. Navigating while an entry opens abandons it and opens the newer one;
 openings run one at a time, so rapid navigation never indexes many files at once.
 
-Offline viewing receives frame events through `OfflineSession`. Each pooled secondary video source owns one
-pending request and latest desired frame; completion returns to the GUI thread and fans out to lanes referencing
-that source. Explicit playback navigation invalidates outstanding requests, and retired source entries cannot
-present into another runtime. Each `OfflineLane` pulls overlay data through
-`OverlayLookup.get_overlay_at_frame()`, and `SceneFramePresenter` assembles the display frame.
-With sticky overlays enabled, `OverlayPersistencePolicy.select_from_source()` requests the latest sample
-at or before the frame and applies expiry using its original timestamp. This selection is independent of
-seek history and is shared with export; only live persistence keeps a last-sample cache. Frame-keyed
-providers resolve annotation sequence IDs against the bound video `FrameTimeline`, so retained samples
-use actual frame timestamps for expiry, including variable frame rates.
-
-### Scene history
+Offline viewing receives frame events through `OfflineSession`; secondary video sources are pooled and fan each
+completed frame out to the lanes that reference them. Each `OfflineLane` pulls overlay data through
+`OverlayLookup.get_overlay_at_frame()`, applies sticky selection through `OverlayPersistencePolicy`, and
+`SceneFramePresenter` assembles the display frame. Offline selection (`select_from_source`) is independent of
+what was shown before; only the live path (`select_overlay`) keeps a last-sample cache.
 
 While indexing, file overlay providers record each Scene event and each entity's runs of samples as
-`SceneHistoryRecords`, stored with the index. `FileOverlaySource.scene_history()` places them on the bound video, using
-the lane's lookup matching and sticky selection, and lanes place them again when either changes. The placement rules
-are in [Data Pipeline invariants](../domain/invariants.md#data-pipeline).
-
-`MediaToolsPanel` is the viewer's Scene inspector sink. It forwards each per-frame update to the entity list, the event
-log and the object history pane, which defer work while hidden. With a history, the entity list can show every object
-in the file, the **Events** tab lists every event, and selecting one shows an `ObjectCard` per involved object with a
-presence strip; frame links route to `OfflineSession.jump_to_frame()`. Live viewers have no history: their event log
-appends the events of newly shown overlays and keeps the newest 1000.
+`SceneHistoryRecords`; `FileOverlaySource.scene_history()` places them on the bound video under the lane's matching
+rules, and `MediaToolsPanel` shows them in the entity list, event log and object history. Live viewers have no
+history.
 
 ## Scene Model And Rendering
 
@@ -241,11 +198,9 @@ appends the events of newly shown overlays and keeps the newest 1000.
 
 Payload-to-Scene decoder contracts and helper utilities live under `ax_devil.modules.scene.decoding`. Plugin discovery and handler registration live under `ax_devil.modules.plugin_system`.
 
-Rendering turns a filtered `Scene` into prepared drawings through the active Scene Render Catalog: each
-catalog-owned recipe evaluates once per frame for all entities or relations routed to it, and the video player binds
-the result to a Qt Quick surface used for both display and export. `CachedSceneOverlay` owns the filtered Scene,
-prepared-drawing cache, hover index and preparation metrics. The pipeline, built-in recipes, catalog language, backend
-and open work are documented in [Draw System Architecture](draw-system.md).
+Rendering turns a filtered `Scene` into prepared drawings through the active Scene Render Catalog, and the video
+player binds the result to a Qt Quick surface used for both display and export. The boundary between the two is
+[Draw System Architecture](draw-system.md).
 
 ## Plugin System
 
@@ -336,12 +291,8 @@ FileFrameSource -> FileFrameDelivery -> PyAV frame decoder/cache
 - `GlobalSettings`: reactive runtime settings singleton backed by config on load/save.
 - `ShortcutManager`: default shortcut registration, `QAction` installation, override-only persistence, conflict detection, and rebinding.
 - `CacheManager`: hash-based cache path generation and cache clearing.
-- `IndexedFrameCache`: persisted decoded frame artifacts for providers that need derived caches, readable one frame at
-  a time.
-- Scene stores: `SourceIndexedSceneStore` for source-record indexes and `IndexedFrameSceneStore` for decoded frame
-  artifacts. Both accept persisted data only when its complete artifact identity matches the source fingerprint, decoder
-  name, explicit artifact version, Scene model version, and provider-owned decode options.
-- `MetricsStore`: latest application-wide source observations, off while Collect Debug Metrics is unchecked.
-- `RenderMetricsStore`: viewer lifetimes, atomic paint samples, and bounded recent timing history.
-- `DebugWindow`: viewer-focused rendering diagnostics, separate source/cache details, and stack recording; see [Diagnostics](../../src/ax_devil/modules/diagnostics/README.md).
+- Scene stores: `SourceIndexedSceneStore` keeps a cache index of record offsets into the source file;
+  `IndexedFrameSceneStore` persists decoded frame artifacts. Their invalidation rule is in [Data Pipeline](../domain/invariants.md#data-pipeline).
+- Diagnostics: metrics stores, the debug window and stack recording; see the
+  [diagnostics README](../../src/ax_devil/modules/diagnostics/README.md).
 - `ExceptionHandler`: global exception hook with optional dialog.

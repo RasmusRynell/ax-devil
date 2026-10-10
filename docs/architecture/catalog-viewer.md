@@ -1,13 +1,14 @@
 # Catalog Viewer
 
-Render catalogs (see [Draw System](draw-system.md)) decide how every overlay is drawn. The app does not edit them:
+Render catalogs (see [Draw System](draw-system.md)) decide how every overlay is drawn. There is no in-app editor
+([invariant](../domain/invariants.md#rendering)):
 an agent edits the catalog JSON following `.agents/skills/render-catalog/SKILL.md`, and the **catalog viewer** shows
 the result the moment the file is saved. Open it with `ax-devil catalog` or **View → Render Catalogs** (`Ctrl+R`).
 
 ## Pieces
 
 Code lives in `src/ax_devil/modules/catalog_viewer/`. File watching belongs to `SceneRenderCatalogManager`; see
-[Render Catalog Storage And UI](draw-system.md#render-catalog-storage-and-ui).
+[Catalog files and selection](../../src/ax_devil/modules/scene/rendering/README.md#catalog-files-and-selection).
 
 | Piece | What it does |
 |---|---|
@@ -27,17 +28,17 @@ does not load clears the previous file's preview and description.
 - **Sheets look like real footage and data.** Bright and busy backgrounds, UUID ids and uneven attribute values make
   weak designs visible. Situation sheets are captioned; captions are drawn as overlay text at a fixed screen size, so
   they stay sharp at any zoom and in `render` output.
-- **Built-in catalogs are read-only.** Standard (the default), Minimal, Chunky, Glass, Tracking and Classic are listed
-  first and cannot be deleted; users copy one with **New copy…**. A built-in other than Standard is remembered as the
-  default as `built-in:<file name>`. **Delete…** removes a user catalog file, including one that does not load; a
-  catalog that does not load cannot be copied. Deleting the default user catalog makes Standard the default.
+- **Built-in catalogs are read-only** ([invariant](../domain/invariants.md#rendering)), so the viewer lists them
+  first without **Delete…** and users copy one with **New copy…**. **Delete…** removes a user catalog file, including
+  one that does not load; a catalog that does not load cannot be copied.
 - **The viewer follows the chosen default.** After `ax-devil catalog use`, the viewer switches to the new default.
-  When that file stops loading, views fall back to the built-in catalog, but the viewer and `catalog check` keep
-  showing the broken file and its error.
+  When that file stops loading, open views keep their last good catalog and new views fall back to the built-in one,
+  while the viewer and `catalog check` keep showing the broken file and its error.
 - **The main window closes the viewer** (`close_catalog_viewer()` in `MainWindow.closeEvent`), so the viewer releases
   its renderer before its owner is destroyed.
 
 ## Not yet verified
 
-File watching on Windows, macOS and network file systems (the **Reload** button in each view is the fallback);
+File watching on Windows, macOS and network file systems (the catalog selector's **Reload** button in each video
+view is the fallback);
 **New copy…** and **Delete…** clicked by hand in the running app; an agent session driven only by the skill.

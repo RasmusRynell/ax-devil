@@ -19,7 +19,7 @@ them in plain words what changed.
 3. **Read the parts that matter** and decide *where* the change belongs (see "Writing it well").
 4. **Edit the JSON** with a minimal diff. The viewer and every open video view pick it up on save.
 5. **Check it:** `uv run ax-devil catalog check` loads the file and draws every example sheet. Fix anything it reports;
-   errors name their place in the file, such as `$.templates.object_label.parameters.id_font_size.default`.
+   errors name their place in the file, such as `$.templates.id_tab.parameters.font_size.default`.
 6. **Look at it:** `uv run ax-devil catalog render --out /tmp/catalog-after` and open the PNGs (use `--sheet` for one:
    `overview`, `street`, `crowd`, or an object type or relation id). Compare with the before images. Does it do what was
    asked, and nothing else? Is anything now unreadable, clipped or clashing?
@@ -56,7 +56,7 @@ level of detail are the house style.
 ```jsonc
 {
   "metadata": {"id": "user.my_overlays", "name": "My overlays", "schema_version": 3, "description": "..."},
-  "templates": {            // components: reusable drawings with typed parameters, e.g. "object_label"
+  "templates": {            // components: reusable drawings with typed parameters, e.g. "id_tab"
     "<component id>": {"label": "...", "description": "...", "parameters": {...}, "values": {...}, "steps": [...]}
   },
   "recipes": {
@@ -77,7 +77,7 @@ Within a layer the renderer may draw in any order, so a shape never reliably cov
 outline in one primitive, keep shapes that must stay visible from overlapping, and put anything that sits on a
 background in a label. A step is either
 
-- a component: `{"label": "Label", "template": "object_label", "inputs": {"geometry": ..., "object_id": ...}}`, or
+- a component: `{"label": "Label", "template": "id_tab", "inputs": {"geometry": ..., "object_id": ...}}`, or
 - a primitive: `{"label": "Outline", "primitive": "box", "fields": {"geometry": ...}, "style": {...}}`,
 
 and may have `"feature": "confidence"` (the view's Details control gates this component),
@@ -136,7 +136,7 @@ The user never sees the JSON, so its quality is on you. Aim for the change a car
 
 - **Change it where it belongs.**
   - "Everywhere" or "all objects": change the component parameter's `default` (for example
-    `templates.object_label.parameters.id_font_size.default`). Do not paste the same input into every recipe.
+    `templates.id_tab.parameters.font_size.default`). Do not paste the same input into every recipe.
   - One type only: set that input on that recipe's step. Before a global change, check which recipes already pass
     their own input for it; those do not follow the default, so decide with the user's intent whether to remove them.
   - Something that should vary but is hard-coded inside a component: make it a parameter whose default is today's

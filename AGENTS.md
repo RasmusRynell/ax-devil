@@ -59,7 +59,7 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 
 ### Code Rules
 
-- Ruff enforces `E`, `F`, and `I` rules, a 120-character line limit, and double quotes.
+- Ruff enforces `E`, `F`, `I` and a few pyupgrade (`UP`) rules, a 120-character line limit, and double quotes.
 - mypy strict mode applies: add type hints throughout and avoid `disallow_untyped_defs` violations.
 - Use `from ax_devil.modules.settings.logging_config import get_logger` and `logger = get_logger(__name__)`. Do not use `print()`.
 - Use f-strings only. Do not use string concatenation or `%` formatting.
@@ -84,6 +84,7 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 - For prose-only documentation or agent-instruction changes, validate affected links, examples, and consistency,
   instead of running the application checks.
 - Update tests when behavior changes.
+- Before adding to a doc, apply the placement rule under Project Rules; most changes need no doc edit.
 
 ## Project Guidance
 
@@ -105,7 +106,25 @@ uv run ax-devil --help  # Every command; each has its own --help
 - Tests must never read or write the user's real files. The suite runs in its own home folder and fails if `~/.ax_devil` changes; a test that needs files uses `tmp_path` (see `docs/runbooks/testing.md`).
 - Agent verification runs offscreen or on a private display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
 - When changing names, structure, or shared terminology, carry the change through the affected code, tests, comments, and docs, or explicitly note what is intentionally left unchanged. Unless the user says otherwise.
-- Update docs when architecture or invariants change. Each fact has one home; link to it instead of repeating it.
+- Documentation follows the placement rule below. The default for a feature or fix is no documentation change.
+
+### Where A Fact Belongs
+
+Write down only what reading the code would not tell you: a rule, a boundary, a decision and its reason, or a
+one-sentence summary of a large piece. Do not restate what a type, a test, or a docstring already says. The why of a
+change goes in the commit message, not a doc.
+
+A fact lives at the narrowest layer that covers every reader who needs it:
+
+| Who must know it | Home |
+|------------------|------|
+| Code in two or more modules | `docs/architecture/` for how things fit together, `docs/domain/invariants.md` for rules that must stay true |
+| One module | That module's `README.md` under `src/ax_devil/modules/` (create a short one if needed) |
+| One class or function | Its docstring or a comment at the surprising line |
+| Already enforced by a type, validation, or test | Nowhere |
+| Someone using the app | `README.md`, `docs/usage.md`, `docs/settings.md`, `docs/plugins.md`, `docs/datasets/` |
+
+Each fact has one home; link to it instead of repeating it. When a fact moves layers, delete it from the old home.
 
 ### Read Next
 
@@ -115,3 +134,4 @@ uv run ax-devil --help  # Every command; each has its own --help
 - Architecture and data flows: `docs/architecture/overview.md`, `docs/architecture/ui-framework.md`
 - Rendering and render catalogs: `docs/architecture/draw-system.md`, `docs/architecture/catalog-viewer.md`
 - Testing workflow and patterns: `docs/runbooks/testing.md`
+- Diagnosing playback and rendering problems: `docs/runbooks/diagnostics.md`

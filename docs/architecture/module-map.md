@@ -24,12 +24,12 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Render catalog viewer: example sheets, the live viewer window, the `ax-devil catalog` commands and the generated language reference | `src/ax_devil/modules/catalog_viewer/` |
 | Frame sources, overlay sources, file providers, transport/runtime source plumbing | `src/ax_devil/modules/data_sources/` |
 | Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
-| Session filtering, shared configs, state, predicates, and filter factories | `src/ax_devil/modules/filtering/` |
+| Session filtering, shared filter configs, state, predicates, and whole-file history filtering | `src/ax_devil/modules/filtering/` |
 | Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |
 | Locked plugin installation projects and install/update/remove commands | `src/ax_devil/modules/plugin_installation/` |
 | Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
 | Config, settings state and preference values, logging, paths | `src/ax_devil/modules/settings/` |
-| Shortcut definitions, routing, persistence, and shortcut settings UI | `src/ax_devil/modules/shortcuts/` |
+| Shortcut definitions, the manager that installs them, override persistence, and the shortcuts dialog | `src/ax_devil/modules/shortcuts/` |
 | Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons, menu buttons, browse buttons and key chips, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
 | Diagnostics windows, metrics, exception reporting | `src/ax_devil/modules/diagnostics/` |
 | Cache services | `src/ax_devil/modules/cache/` |

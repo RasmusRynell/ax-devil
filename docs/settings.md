@@ -42,8 +42,7 @@ The typeface always follows the operating system. Changes apply to open windows 
 
 It affects video and overlay rendering and window presentation, not video decoding. An explicit `QT_WIDGETS_RHI`
 environment variable overrides Qt's widget presentation policy, and the dialog shows when that is set. Setting it
-to `1` forces acceleration even for ordinary dialogs and menus. For window preparation, see
-[Display Backends](architecture/draw-system.md#display-backends).
+to `1` forces acceleration even for ordinary dialogs and menus.
 Auto does not detect incompatible drivers or fall back automatically; if startup fails, follow the
 [software-rendering recovery steps](installation.md#graphics-startup-problems).
 

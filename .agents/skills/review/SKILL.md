@@ -37,7 +37,7 @@ they create, rather than demanding abstractions merely to satisfy a design prefe
 When a change adds a workaround, trace the problem to its owner. Prefer correcting that boundary or data model over
 another conditional, duplicated state record, fallback, or widget-specific patch. Existing bad structure is not a
 reason to extend it. Recommend the smallest complete correction, including affected callers, even if it touches
-more files than a symptom fix. Favor removing unsupported behavior over preserving speculative compatibility.
+more files than a symptom fix.
 
 Keep this tied to the task: identify how the existing design obstructs the requested behavior or creates concrete
 maintenance costs in this change. Unrelated architectural cleanup belongs outside the review's required fixes.
@@ -63,22 +63,16 @@ Tests tied to incidental implementation details can help during development but 
 before merging. Keep expectations independent of the implementation and verify that the test exercises the behavior
 it claims to protect. Strengthen an existing meaningful case before adding redundant coverage.
 
-### 5. Write documentation for its audience and layer
+### 5. Keep documentation at its layer
 
-Treat `README.md` as the human entry point: explain what the app does, how to get started, and where to go next.
-Review additions especially carefully; keep internal architecture, agent instructions, and detailed behavior in
-focused docs. Most other docs primarily support agents, but still need a concrete reader task to justify content.
+Apply the placement rule in [AGENTS.md](../../../AGENTS.md#where-a-fact-belongs). For every added or changed line
+in `docs/architecture/` or `docs/domain/`, name the second module that must know it; if there is none, it belongs
+in the module README, a docstring, or nowhere. User-facing docs (`README.md`, usage, settings, plugins, datasets) follow the
+user instead: a fact belongs there when someone using the app needs it. Doc additions are rejected by default and
+deletions accepted by default.
 
-Before accepting new text, ask who needs it, what decision or task it supports, and where its authoritative home is.
-Prefer updating that home and linking to it over repeating the same guidance across files. Remove redundant or
-incidental detail instead of documenting everything discovered during implementation.
-
-Layer documentation from broad orientation to architecture and ownership, then focused contracts, references, and
-runbooks. Each layer should expose only the detail its reader needs and link to deeper material when relevant.
-Prefer stable concepts, responsibilities, and invariants over inventories of implementation details that drift with
-routine refactors. Keep exact commands, formats, and constraints where they are needed to act correctly; use code,
-schemas, or generated references as the source of truth when practical. For misplaced or duplicated content, name
-the appropriate home or recommend deletion.
+Treat `README.md` as the human entry point and review additions there especially carefully. For misplaced or
+duplicated content, name the appropriate home or recommend deletion.
 
 ## Deliver the review
 
