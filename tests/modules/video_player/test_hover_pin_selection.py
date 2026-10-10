@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QImage, QMouseEvent, QWheelEvent
+from PySide6.QtGui import QImage, QMouseEvent
 from PySide6.QtWidgets import QApplication, QTextBrowser
 from pytestqt.qtbot import QtBot
 
@@ -23,6 +23,7 @@ from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawi
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
+from tests.helpers.qt_events import make_wheel_event
 
 
 class _MovingProvider:
@@ -89,23 +90,6 @@ def _make_renderer(qtbot: QtBot, provider: HoverInteractionProvider | None = Non
     qtbot.addWidget(renderer)
     renderer.display_frame(_make_display_data(provider or _MovingProvider()))
     return renderer
-
-
-def _make_wheel_event(position: QPointF, delta_y: int) -> QWheelEvent:
-    local_pos = QPointF(position)
-    global_pos = QPointF(position)
-    pixel_delta = QPoint(0, 0)
-    angle_delta = QPoint(0, delta_y)
-    return QWheelEvent(
-        local_pos,
-        global_pos,
-        pixel_delta,
-        angle_delta,
-        Qt.MouseButton.NoButton,
-        Qt.KeyboardModifier.NoModifier,
-        Qt.ScrollPhase.NoScrollPhase,
-        False,
-    )
 
 
 def _mouse_move(renderer: VideoFrameRenderer, pos: QPoint) -> None:
@@ -187,11 +171,11 @@ def test_pinned_inspector_takes_wheel_and_clicks_without_changing_the_video(qtbo
     scroll = browser.verticalScrollBar()
     assert scroll.maximum() > 0
 
-    event = _make_wheel_event(QPointF(20, 20), -120)
+    event = make_wheel_event(QPointF(20, 20), -120)
     QApplication.sendEvent(browser.viewport(), event)
     assert scroll.value() > 0
     scroll.setValue(scroll.maximum())
-    at_end = _make_wheel_event(QPointF(20, 20), -120)
+    at_end = make_wheel_event(QPointF(20, 20), -120)
     QApplication.sendEvent(browser.viewport(), at_end)
     assert renderer.viewport_state.zoom_level == renderer.viewport_state.zoom_min
 
@@ -274,7 +258,7 @@ def test_pinned_selection_repositions_card_when_zoom_changes_viewport(qtbot: QtB
 
     old_pos = _card(renderer).pos()
 
-    renderer.wheelEvent(_make_wheel_event(QPointF(100.0, 80.0), 120))
+    renderer.wheelEvent(make_wheel_event(QPointF(100.0, 80.0), 120))
 
     assert _is_pinned(renderer)
     assert _card(renderer).pos() != old_pos

@@ -10,17 +10,10 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
-from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.window_geometry import fit_window
 from ax_devil.modules.workspace.add_content.add_video_dialog import AddVideoDialog
-
-
-def _content_scroll(dialog: BaseDialog) -> ContentScrollArea:
-    """Return the area that scrolls a dialog's content while its actions stay put."""
-    area = dialog.findChild(ContentScrollArea)
-    assert area is not None
-    return area
+from tests.helpers.dialogs import content_scroll
 
 
 class _OpeningDialog(BaseDialog):
@@ -64,7 +57,7 @@ def test_dialog_opens_without_scrolling_when_content_fits_the_screen(qtbot: QtBo
     assert dialog.sizeHint().height() < screen.availableGeometry().height() - 2 * dialog.fontMetrics().height()
     dialog.show()
     QApplication.processEvents()
-    assert _content_scroll(dialog).verticalScrollBar().maximum() == 0
+    assert content_scroll(dialog).verticalScrollBar().maximum() == 0
     assert screen.availableGeometry().contains(dialog.frameGeometry())
 
 
@@ -86,7 +79,7 @@ def test_stretching_content_fills_the_opening_dialog(qtbot: QtBot) -> None:
     dialog.add_content_widget(note)
     dialog.show()
     QApplication.processEvents()
-    assert list_area.height() > _content_scroll(dialog).viewport().height() * 2 // 3
+    assert list_area.height() > content_scroll(dialog).viewport().height() * 2 // 3
 
 
 @pytest.mark.parametrize("custom_frame", [False, True])
@@ -110,10 +103,10 @@ def test_long_dialog_scrolls_with_actions_visible(qtbot: QtBot, custom_frame: bo
     assert screen.availableGeometry().contains(dialog.frameGeometry())
     dialog.resize(420, 300)
     QApplication.processEvents()
-    assert _content_scroll(dialog).verticalScrollBar().maximum() > 0
+    assert content_scroll(dialog).verticalScrollBar().maximum() > 0
     assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
-    _content_scroll(dialog).ensureWidgetVisible(form.findChildren(QLineEdit)[-1])
-    assert _content_scroll(dialog).verticalScrollBar().value() > 0
+    content_scroll(dialog).ensureWidgetVisible(form.findChildren(QLineEdit)[-1])
+    assert content_scroll(dialog).verticalScrollBar().value() > 0
 
 
 def test_video_form_stays_compact_when_dialog_grows(qtbot: QtBot) -> None:
@@ -141,8 +134,8 @@ def test_themed_frame_does_not_force_scrollbars(qtbot: QtBot) -> None:
     dialog.setStyleSheet("QScrollArea { border: 2px solid gray; }")
     dialog.show()
     QApplication.processEvents()
-    assert _content_scroll(dialog).horizontalScrollBar().maximum() == 0
-    assert _content_scroll(dialog).verticalScrollBar().maximum() == 0
+    assert content_scroll(dialog).horizontalScrollBar().maximum() == 0
+    assert content_scroll(dialog).verticalScrollBar().maximum() == 0
 
 
 def test_window_geometry_round_trip(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -214,7 +207,7 @@ def test_added_content_becomes_scrollable(qtbot: QtBot) -> None:
     opening_size = dialog.size()
     for index in range(30):
         layout.addRow(f"Extra field {index}", QLineEdit())
-    qtbot.waitUntil(lambda: _content_scroll(dialog).verticalScrollBar().maximum() > 0)
+    qtbot.waitUntil(lambda: content_scroll(dialog).verticalScrollBar().maximum() > 0)
     assert dialog.size() == opening_size
     assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
 
@@ -398,7 +391,7 @@ def test_large_dialog_opens_bounded_but_user_can_enlarge_it(qtbot: QtBot) -> Non
     assert screen is not None
     assert screen.availableGeometry().contains(dialog.frameGeometry())
     assert dialog.height() < dialog.sizeHint().height()
-    assert _content_scroll(dialog).verticalScrollBar().maximum() > 0
+    assert content_scroll(dialog).verticalScrollBar().maximum() > 0
     assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
     height = dialog.height()
     dialog.resize(dialog.width(), height + 100)

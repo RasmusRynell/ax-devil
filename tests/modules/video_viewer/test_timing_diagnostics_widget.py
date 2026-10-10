@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QPushButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 from ax_devil.modules.video_viewer.timing_diagnostics_widget import OverlayAlignmentIndicator, TimingDiagnosticsWidget
+from tests.helpers.widgets import button
 
 
 def _alignment_report(*, total_overlay_frames: int, exact_matches: int) -> OverlayAlignmentReport:
@@ -28,11 +28,6 @@ def _shown_indicator(qtbot: QtBot) -> OverlayAlignmentIndicator:
     qtbot.addWidget(indicator)
     indicator.show()
     return indicator
-
-
-def _button(widget: TimingDiagnosticsWidget, text: str) -> QPushButton:
-    button: QPushButton = next(button for button in widget.findChildren(QPushButton) if button.text() == text)
-    return button
 
 
 def test_alignment_indicator_hides_when_report_is_fully_matched_or_absent(qtbot: QtBot) -> None:
@@ -86,10 +81,10 @@ def test_timestamp_fallback_buttons_emit_selected_policy(qtbot: QtBot) -> None:
     emitted_policies: list[TimestampFallbackPolicy] = []
     widget.timestampFallbackPolicyChanged.connect(emitted_policies.append)
 
-    _button(widget, "Exact").click()
+    button(widget, "Exact").click()
     assert widget.timestamp_fallback_policy().mode is TimestampFallbackMode.EXACT_ONLY
 
-    _button(widget, "Previous").click()
+    button(widget, "Previous").click()
     assert widget.timestamp_fallback_policy().mode is TimestampFallbackMode.PREVIOUS_WITH_TOLERANCE
     assert [policy.mode for policy in emitted_policies] == [
         TimestampFallbackMode.EXACT_ONLY,
@@ -108,6 +103,6 @@ def test_set_timestamp_fallback_policy_updates_buttons_without_emitting(qtbot: Q
     widget.set_timestamp_fallback_policy(policy)
 
     assert widget.timestamp_fallback_policy() == policy
-    assert _button(widget, "Exact").isChecked()
-    assert not _button(widget, "Previous").isChecked()
+    assert button(widget, "Exact").isChecked()
+    assert not button(widget, "Previous").isChecked()
     assert emitted_policies == []

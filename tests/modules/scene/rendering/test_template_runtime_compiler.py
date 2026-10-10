@@ -10,17 +10,9 @@ from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderPro
 from ax_devil.modules.scene.rendering.template_runtime.program import RenderCatalog
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.drawing_helpers import BoxCall, LabelCall, PointCall, TextCall, record_template
-
-CONTEXT = RenderContext.create(800, 400)
-
-
-def _ref(*parts: str) -> dict[str, object]:
-    return {"ref": list(parts)}
-
-
-def _call(name: str, **args: object) -> dict[str, object]:
-    return {"call": name, "args": args}
+from tests.catalog_helpers import call_expr as _call
+from tests.catalog_helpers import ref_expr as _ref
+from tests.drawing_helpers import CONTEXT, BoxCall, LabelCall, PointCall, TextCall, record_template
 
 
 def _point(x: object = 0, *, enabled: object = True) -> dict[str, object]:
@@ -45,7 +37,10 @@ def _x(catalog: RenderCatalog, inputs: dict[str, object] | None = None) -> float
 def test_reordered_calculations_use_dependencies_and_separate_parameters() -> None:
     program: dict[str, Any] = {
         "parameters": {"x": {"type": "number", "default": 0.25}},
-        "values": {"result": _call("add", values=[_ref("values", "x"), 0.25]), "x": _ref("parameters", "x")},
+        "values": {
+            "result": _call("add", values=[_ref("values", "x"), 0.25]),
+            "x": _ref("parameters", "x"),
+        },
         "steps": [_point(_ref("values", "result"))],
     }
     assert _x(_compile(program)) == 0.5
@@ -252,7 +247,12 @@ def test_lookup_text_maps_matches_defaults_unmatched_and_keeps_absent_text_absen
     ],
 )
 def test_trim_text_elides_at_the_end_by_default_or_in_the_middle(text: str, elide: str | None, expected: str) -> None:
-    args: dict[str, object] = {"text": _ref("parameters", "text"), "max_length": 10, "delimiter": None, "suffix": "…"}
+    args: dict[str, object] = {
+        "text": _ref("parameters", "text"),
+        "max_length": 10,
+        "delimiter": None,
+        "suffix": "…",
+    }
     if elide is not None:
         args["elide"] = elide
     catalog = _compile(
@@ -261,7 +261,11 @@ def test_trim_text_elides_at_the_end_by_default_or_in_the_middle(text: str, elid
             "steps": [
                 {
                     "primitive": "text",
-                    "fields": {"position": {"x": 0, "y": 0}, "text": _call("trim_text", **args), "anchor": "baseline"},
+                    "fields": {
+                        "position": {"x": 0, "y": 0},
+                        "text": _call("trim_text", **args),
+                        "anchor": "baseline",
+                    },
                     "style": {"text": {"color": [255, 255, 255], "size": {"value": 12, "unit": "px"}}},
                 }
             ],

@@ -25,6 +25,7 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
+from tests.helpers.jsonl import write_jsonl
 
 pytestmark = pytest.mark.usefixtures("isolated_cache")
 
@@ -87,21 +88,13 @@ def _record(second: int, *entity_ids: str) -> dict[str, Any]:
     }
 
 
-def _write_jsonl(path: Path, lines: list[dict[str, Any] | str]) -> Path:
-    """Write records as JSON lines; strings are written verbatim."""
-    path.write_text(
-        "".join(f"{line if isinstance(line, str) else json.dumps(line)}\n" for line in lines), encoding="utf-8"
-    )
-    return path
-
-
 def _frame(timestamp_us: int, sequence_id: int = 0) -> FrameIdentifier:
     return FrameIdentifier(sequence_id=sequence_id, timestamp_monotime_us=float(timestamp_us))
 
 
 def test_records_are_indexed_by_timestamp_and_load_their_scenes(tmp_path: Path) -> None:
     """Each record is reachable at its own timestamp and decodes to its own objects."""
-    path = _write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "person_1"), _record(1, "car_1")])
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "person_1"), _record(1, "car_1")])
     provider = _build_provider(path)
     try:
         first, second = sorted(provider.get_available_frames())
@@ -116,7 +109,7 @@ def test_records_are_indexed_by_timestamp_and_load_their_scenes(tmp_path: Path) 
 
 def test_blank_and_invalid_lines_are_skipped(tmp_path: Path) -> None:
     """Blank, whitespace-only, and malformed lines do not hide the valid records around them."""
-    path = _write_jsonl(
+    path = write_jsonl(
         tmp_path / "messy.jsonl",
         [_record(0), "", "invalid json line", _record(1), "   ", "{incomplete json", _record(2)],
     )
@@ -131,7 +124,7 @@ def test_blank_and_invalid_lines_are_skipped(tmp_path: Path) -> None:
 
 def test_sequence_lookup_recovers_a_mismatched_timestamp_only_when_enabled(tmp_path: Path) -> None:
     """Exact-only timestamp matching still allows the opt-in, non-future sequence lookup."""
-    path = _write_jsonl(tmp_path / "scenes.jsonl", [_record(0), _record(1)])
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0), _record(1)])
     exact_only = TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY, tolerance_us=5_000)
     disabled = _build_provider(path, timestamp_fallback_policy=exact_only)
     enabled = _build_provider(path, supports_sequence_lookup=True, timestamp_fallback_policy=exact_only)
@@ -159,7 +152,7 @@ def test_earlier_overlay_is_used_only_when_the_policy_allows_it(
     tmp_path: Path, policy: TimestampFallbackPolicy, expected_match: str
 ) -> None:
     """A request 1 ms after the only overlay matches it within tolerance, but never under exact-only."""
-    path = _write_jsonl(tmp_path / "scenes.jsonl", [_record(0)])
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0)])
     provider = _build_provider(path, timestamp_fallback_policy=policy)
     try:
         overlay_timestamp = max(provider.get_available_frames())
@@ -178,7 +171,7 @@ def test_earlier_overlay_is_used_only_when_the_policy_allows_it(
 @pytest.mark.parametrize("supports_sequence_lookup", [False, True], ids=["timestamp", "sequence"])
 def test_overlay_is_never_shown_before_its_timestamp(tmp_path: Path, supports_sequence_lookup: bool) -> None:
     """Neither tolerance nor a matching sequence id shows an overlay 1 ms before it is due."""
-    path = _write_jsonl(tmp_path / "scenes.jsonl", [_record(0)])
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0)])
     provider = _build_provider(
         path,
         supports_sequence_lookup=supports_sequence_lookup,
@@ -192,7 +185,7 @@ def test_overlay_is_never_shown_before_its_timestamp(tmp_path: Path, supports_se
 
 def test_source_index_decode_failure_returns_missing_scene(tmp_path: Path) -> None:
     """A corrupt indexed source record should not crash frame presentation."""
-    path = _write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a")])
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a")])
     provider = _build_provider(path)
     try:
         timestamp_key = next(iter(provider.get_available_frames()))
@@ -207,7 +200,7 @@ def test_persisted_scenes_are_reused_only_for_an_unchanged_source_and_identity(
     tmp_path: Path, storage_mode: StorageMode
 ) -> None:
     """Reopening reuses the persisted artifact; changed options, version, or source contents rebuild it."""
-    path = _write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
     options = {"profile": "initial"}
 
     def open_provider(decoded: list[str], **kwargs: Any) -> SceneDecoderFileProvider:

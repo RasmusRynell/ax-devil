@@ -31,6 +31,7 @@ from ax_devil.modules.workspace.recent_videos import RecentVideos
 from ax_devil.modules.workspace.session import WorkspaceSession
 from ax_devil.modules.workspace.split_view import LeafContainer, SplitView
 from ax_devil.modules.workspace.workspace_manager import WorkspaceBrowserRow
+from tests.helpers.widgets import required_child
 from tests.helpers.workspace import DummyViewer
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
@@ -63,12 +64,6 @@ def _required_top_item(session: WorkspaceSession, index: int = 0) -> QTreeWidget
 
 def _is_open(item: QTreeWidgetItem) -> bool:
     return cast(WorkspaceBrowserRow, item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE)).is_open is True
-
-
-def _required_child(item: QTreeWidgetItem, index: int) -> QTreeWidgetItem:
-    child = item.child(index)
-    assert child is not None
-    return child
 
 
 def _focused(session: WorkspaceSession) -> DummyViewer:
@@ -308,15 +303,15 @@ def test_viewer_current_item_change_updates_browser_open_indicator(
     viewer = _focused(workspace_session)
     top_item = _required_top_item(workspace_session)
     assert top_item.isExpanded()
-    assert _is_open(_required_child(top_item, 0))
-    assert not _is_open(_required_child(top_item, 1))
+    assert _is_open(required_child(top_item, 0))
+    assert not _is_open(required_child(top_item, 1))
 
     viewer.start_index = 1
     viewer.on_screen_item_changed.emit(viewer.current_on_screen_item())
 
     top_item = _required_top_item(workspace_session)
-    assert not _is_open(_required_child(top_item, 0))
-    assert _is_open(_required_child(top_item, 1))
+    assert not _is_open(required_child(top_item, 0))
+    assert _is_open(required_child(top_item, 1))
 
 
 def test_focusing_open_viewer_preserves_open_indicators(

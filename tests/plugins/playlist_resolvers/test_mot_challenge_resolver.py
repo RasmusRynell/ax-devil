@@ -7,12 +7,13 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLineEdit, QListWidget, QPushButton, QWidget
+from PySide6.QtWidgets import QLineEdit, QListWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace import FileOverlaySourceSpec, SeekableVideoContent
 from ax_devil.plugins.playlist_resolvers.mot_challenge.plugin import MOTChallengeResolverPlugin
 from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import build_playlist_contents, discover_sequences
+from tests.helpers.widgets import button
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,22 +65,18 @@ def _make_sequence(
 # ---------------------------------------------------------------------------
 
 
-def _button(widget: QWidget, text: str) -> QPushButton:
-    return next(button for button in widget.findChildren(QPushButton) if button.text() == text)
-
-
 def test_settings_widget_loads_only_checked_sequences(tmp_path: Path, qtbot: QtBot) -> None:
     _make_sequence(tmp_path, "SEQ-01")
     _make_sequence(tmp_path, "SEQ-02")
     widget = MOTChallengeResolverPlugin().create_settings_widget()
     qtbot.addWidget(widget)
-    load = _button(widget, "Load Playlist")
+    load = button(widget, "Load Playlist")
     assert not load.isEnabled()
 
     root = widget.findChild(QLineEdit)
     assert root is not None
     root.setText(str(tmp_path))
-    _button(widget, "Scan").click()
+    button(widget, "Scan").click()
     sequences = widget.findChild(QListWidget)
     assert sequences is not None
     assert sequences.count() == 2

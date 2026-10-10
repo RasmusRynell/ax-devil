@@ -14,10 +14,10 @@ from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
 from ax_devil.modules.workspace import VideoFileStartup
+from tests.helpers.shortcuts import make_shortcut_manager
 
 
 @pytest.mark.parametrize("use_custom_frame", [False, True])
@@ -38,8 +38,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
         encoder.write_frame(image, timestamp_us=index * 1_000_000)
     encoder.finish()
 
-    shortcuts = ShortcutManager()
-    shortcuts.register_defaults()
+    shortcuts = make_shortcut_manager()
     window = MainWindow(shortcuts, render_catalog_manager, use_custom_frame=use_custom_frame)
     qtbot.addWidget(window)
     session = window._workspace_session

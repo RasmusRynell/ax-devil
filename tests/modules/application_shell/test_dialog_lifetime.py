@@ -8,14 +8,13 @@ from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
+from tests.helpers.shortcuts import make_shortcut_manager
 
 
 @pytest.fixture
 def window(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> MainWindow:
     """Build a real main window using isolated configuration and catalogs."""
-    shortcuts = ShortcutManager()
-    shortcuts.register_defaults()
+    shortcuts = make_shortcut_manager()
     window = MainWindow(shortcut_manager=shortcuts, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     return window

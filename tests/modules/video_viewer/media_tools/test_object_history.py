@@ -16,14 +16,8 @@ from ax_devil.modules.filtering.filter_config import (
 )
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
-    BoundingBox,
-    Classification,
-    Entity,
-    EntityId,
     MotionState,
-    Observation,
     Scene,
-    Score,
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
@@ -34,19 +28,11 @@ from ax_devil.modules.video_viewer.media_tools.object_history_widget import (
     ObjectHistoryPane,
     PresenceStrip,
 )
+from tests.helpers.entities import entity_with_classes
 
 
 def _frame(index: int) -> FrameIdentifier:
     return FrameIdentifier(sequence_id=index, timestamp_monotime_us=index * 1_000_000.0)
-
-
-def _entity(entity_id: str, object_type: str = "human") -> Entity:
-    observation = Observation(
-        geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2),
-        classification=[Classification(object_type, Score(0.9))],
-        frame_number=0,
-    )
-    return Entity(id=EntityId(entity_id), observations=[observation])
 
 
 _FRAME_TIMES = tuple(index * 1_000_000 for index in range(10))
@@ -68,7 +54,7 @@ def _history() -> SceneHistory:
 def _scene(*entity_ids: str) -> Scene:
     scene = Scene(time_slice=TimeSlice(start=0, end=0))
     for entity_id in entity_ids:
-        scene.add_entity(_entity(entity_id))
+        scene.add_entity(entity_with_classes("human", entity_id=entity_id))
     return scene
 
 

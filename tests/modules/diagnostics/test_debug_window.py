@@ -5,23 +5,20 @@ from time import perf_counter
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QPushButton, QTabWidget, QTreeWidgetItem
+from PySide6.QtWidgets import QTabWidget, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.diagnostics.metrics_store import get_metrics_store, set_metrics_enabled
 from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
-from tests.modules.diagnostics.test_render_metrics import sample
+from tests.helpers.render_metrics import sample
+from tests.helpers.widgets import button
 
 
 def _cell(window: DebugWindow, row: int) -> str:
     item = window.timings_table.item(row, 1)
     assert item is not None
     return item.text()
-
-
-def _button(window: DebugWindow, text: str) -> QPushButton:
-    return next(button for button in window.findChildren(QPushButton) if button.text() == text)
 
 
 def _source_roots(window: DebugWindow) -> dict[str, QTreeWidgetItem]:
@@ -56,7 +53,7 @@ def test_debug_window_selection_filter_refresh_and_reset(qtbot: QtBot) -> None:
         window.filter_input.setText("missing")
         assert window.title_label.text() == "No matching viewers"
         window.filter_input.clear()
-        _button(window, "Reset history").click()
+        button(window, "Reset history").click()
         assert _cell(window, 0) == "—"
         store.remove("ui-a")
         store.remove("ui-b")
@@ -120,7 +117,6 @@ def test_viewer_refresh_preserves_selection_and_relabels_sorted_items(qtbot: QtB
         assert "Collect Debug Metrics" in window.empty_label.text()
         window.close()
     finally:
-        set_metrics_enabled(True)
         store.remove("polish-a")
         store.remove("polish-b")
 
@@ -238,7 +234,7 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(
         assert "Prepare overlays" in QApplication.clipboard().text()
         export = tmp_path / "diagnostics.json"
         monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_args: (str(export), ""))
-        _button(window, "Export…").click()
+        button(window, "Export…").click()
         serialized = json.loads(export.read_text(encoding="utf-8"))
         assert serialized["inspection"] == {"viewer_id": "spike", "sample_index": 1, "metric_key": "paint"}
         viewer = next(item for item in serialized["viewers"] if item["viewer_id"] == "spike")

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QPoint, QPointF, Qt
-from PySide6.QtGui import QImage, QWheelEvent
+from PySide6.QtCore import QCoreApplication, QPointF
+from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
 from ax_devil.modules.video_player.engine.viewport_state import NormalizedViewport, ZoomStep
+from tests.helpers.qt_events import make_wheel_event
 
 
 @pytest.fixture
@@ -38,23 +39,6 @@ def _show_resizable_renderer(renderer: VideoFrameRenderer) -> None:
     QCoreApplication.processEvents()
 
 
-def _make_wheel_event(position: QPointF, delta_y: int) -> QWheelEvent:
-    local_pos = QPointF(position)
-    global_pos = QPointF(position)
-    pixel_delta = QPoint(0, 0)
-    angle_delta = QPoint(0, delta_y)
-    return QWheelEvent(
-        local_pos,
-        global_pos,
-        pixel_delta,
-        angle_delta,
-        Qt.MouseButton.NoButton,
-        Qt.KeyboardModifier.NoModifier,
-        Qt.ScrollPhase.NoScrollPhase,
-        False,
-    )
-
-
 def _image_point_under(renderer: VideoFrameRenderer, position: QPointF) -> tuple[float, float]:
     base = renderer.frame_display_rect()
     assert base is not None
@@ -75,7 +59,7 @@ def test_wheel_zoom_keeps_the_image_point_under_the_cursor(renderer: VideoFrameR
     before = _image_point_under(renderer, cursor)
     zoom_before = renderer.viewport_state.zoom_level
 
-    renderer.wheelEvent(_make_wheel_event(cursor, 120))
+    renderer.wheelEvent(make_wheel_event(cursor, 120))
 
     assert renderer.viewport_state.zoom_level > zoom_before
     assert _image_point_under(renderer, cursor) == pytest.approx(before)
@@ -83,12 +67,12 @@ def test_wheel_zoom_keeps_the_image_point_under_the_cursor(renderer: VideoFrameR
 
 def test_zooming_back_to_minimum_resets_pan(renderer: VideoFrameRenderer) -> None:
     for _ in range(3):
-        renderer.wheelEvent(_make_wheel_event(QPointF(80.0, 140.0), 120))
+        renderer.wheelEvent(make_wheel_event(QPointF(80.0, 140.0), 120))
     assert renderer.viewport_state.pan_offset != QPointF(0.0, 0.0)
 
     # Repeated zoom-out steps should eventually hit minimum and reset pan.
     for _ in range(16):
-        renderer.wheelEvent(_make_wheel_event(QPointF(500.0, 300.0), -120))
+        renderer.wheelEvent(make_wheel_event(QPointF(500.0, 300.0), -120))
 
     assert renderer.viewport_state.zoom_level == 1.0
     assert renderer.viewport_state.pan_offset == QPointF(0.0, 0.0)
@@ -135,7 +119,7 @@ def test_keyboard_zoom_steps_around_center_and_resets_peers(renderer: VideoFrame
     renderer.zoom(ZoomStep.OUT)
     assert renderer.viewport_state.zoom_level == pytest.approx(one_step)
 
-    renderer.wheelEvent(_make_wheel_event(QPointF(80.0, 140.0), 120))
+    renderer.wheelEvent(make_wheel_event(QPointF(80.0, 140.0), 120))
     assert renderer.viewport_state.pan_offset != QPointF(0.0, 0.0)
     renderer.zoom(ZoomStep.RESET)
     assert renderer.viewport_state.zoom_level == 1.0

@@ -16,6 +16,7 @@ from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_r
     FrameReaderWorker,
     VideoFrameReader,
 )
+from tests.helpers.video import drain_prefetch
 
 
 @pytest.fixture
@@ -209,10 +210,6 @@ def test_frames_match_ffmpeg(video_and_references: tuple[Path, Path], indices: t
             assert reference is not None, f"Failed to load reference frame {index}"
             np.testing.assert_array_equal(decoded.pixels, cv2.cvtColor(reference, cv2.COLOR_BGR2RGB))
             # Fill the prefetch window between reads, as playback does, so later reads hit prefetched frames.
-            for _ in range(20):
-                if not worker.prefetch_one():
-                    break
-            else:
-                pytest.fail("Prefetch did not stop")
+            drain_prefetch(worker, limit=20)
     finally:
         worker.cleanup()

@@ -1,21 +1,8 @@
 from __future__ import annotations
 
 from ax_devil.modules.filtering import FilterState
-from ax_devil.modules.scene.model import BoundingBox, Classification, Entity, EntityId, Observation, Score
 from ax_devil.plugins.decoders.cvat.decoder import build_cvat_filter_config
-
-
-def _make_entity(classification_type: str | None = None) -> Entity:
-    entity = Entity(EntityId("cvat-1"))
-    classification = [] if classification_type is None else [Classification(classification_type, Score(1.0))]
-    observation = Observation(
-        frame_number=0,
-        geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2, allow_outside=True),
-        confidence=Score(1.0),
-        classification=classification,
-    )
-    entity.add_observation(observation)
-    return entity
+from tests.helpers.entities import entity_with_classes
 
 
 def test_cvat_filter_config_builds_sorted_unique_options() -> None:
@@ -34,9 +21,9 @@ def test_cvat_filter_predicates_match_entities() -> None:
     car_option = next(option for option in config.options if option.id == "show_car")
     person_option = next(option for option in config.options if option.id == "show_person")
 
-    assert car_option.predicate(_make_entity("car"), state)
-    assert person_option.predicate(_make_entity("person"), state)
-    assert not car_option.predicate(_make_entity("person"), state)
+    assert car_option.predicate(entity_with_classes("car"), state)
+    assert person_option.predicate(entity_with_classes("person"), state)
+    assert not car_option.predicate(entity_with_classes("person"), state)
 
 
 def test_cvat_filter_config_handles_unlabeled_data() -> None:
@@ -44,7 +31,7 @@ def test_cvat_filter_config_handles_unlabeled_data() -> None:
     state = FilterState(config)
 
     unlabeled_option = config.options[0]
-    unlabeled_entity = _make_entity(None)
+    unlabeled_entity = entity_with_classes()
 
     assert unlabeled_option.id == "show_unlabeled"
     assert unlabeled_option.predicate(unlabeled_entity, state)

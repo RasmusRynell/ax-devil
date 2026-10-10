@@ -23,6 +23,7 @@ from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.content_browser import TREE_CONSIDERATION_COLUMN, ContentBrowserWidget
 from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.item_info_dialog import WorkspaceItemInfoDialog
+from tests.helpers.widgets import required_child
 
 
 def _make_video(name: str = "test.mp4") -> SeekableVideoContent:
@@ -65,12 +66,6 @@ def _required_top_item(browser: ContentBrowserWidget, index: int = 0) -> QTreeWi
     item = _tree(browser).topLevelItem(index)
     assert item is not None
     return item
-
-
-def _required_child(item: QTreeWidgetItem, index: int) -> QTreeWidgetItem:
-    child = item.child(index)
-    assert child is not None
-    return child
 
 
 def _context_menu(
@@ -118,7 +113,7 @@ def test_renders_explicit_rows(qtbot: QtBot) -> None:
 
     top_item = _required_top_item(browser)
     assert top_item.text(0) == "Suite"
-    assert [_required_child(top_item, index).text(0) for index in range(top_item.childCount())] == [
+    assert [required_child(top_item, index).text(0) for index in range(top_item.childCount())] == [
         "Entry 1",
         "Entry 2",
     ]
@@ -274,8 +269,8 @@ def test_search_keeps_matching_playlist_children_reachable(qtbot: QtBot) -> None
 
     top_item = _required_top_item(browser)
     assert not top_item.isHidden()
-    assert _required_child(top_item, 0).isHidden()
-    assert not _required_child(top_item, 1).isHidden()
+    assert required_child(top_item, 0).isHidden()
+    assert not required_child(top_item, 1).isHidden()
     assert top_item.isExpanded()
 
 
@@ -372,7 +367,7 @@ def test_context_menu_shows_information_on_request_and_removes_only_top_level_co
     top_item.setExpanded(True)
 
     assert list(_context_menu(browser, top_item)) == ["Information", "Remove"]
-    assert list(_context_menu(browser, _required_child(top_item, 0))) == ["Information"]
+    assert list(_context_menu(browser, required_child(top_item, 0))) == ["Information"]
     information_factory.assert_not_called()
 
     shown: list[str] = []
@@ -475,4 +470,4 @@ def test_workspace_item_info_dialog_fits_screen_and_is_resizable(qtbot: QtBot) -
     top = tree.topLevelItem(0)
     assert tree.topLevelItemCount() == 1 and top is not None
     assert top.text(0) == "Item"
-    assert _required_child(top, 2).text(0) == "Overlay 1"
+    assert required_child(top, 2).text(0) == "Overlay 1"

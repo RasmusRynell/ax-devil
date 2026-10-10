@@ -63,3 +63,13 @@ def catalog_document() -> dict[str, Any]:
             "relations": [recipe("has_part", "relation", ["has_part"])],
         },
     }
+
+
+def ref_expr(*parts: str) -> dict[str, object]:
+    """Return a catalog expression that reads the value at the path *parts*."""
+    return {"ref": list(parts)}
+
+
+def call_expr(name: str, **args: object) -> dict[str, object]:
+    """Return a catalog expression that calls the function *name* with *args*."""
+    return {"call": name, "args": args}

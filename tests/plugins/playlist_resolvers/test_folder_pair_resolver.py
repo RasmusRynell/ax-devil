@@ -6,21 +6,18 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from PySide6.QtWidgets import QComboBox, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QComboBox, QLineEdit
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace import FileOverlaySourceSpec, ResolvedPlaylistStartup, SeekableVideoContent
 from ax_devil.plugins.playlist_resolvers.folder_pair.plugin import FolderPairResolverPlugin
 from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import build_playlist_contents, discover_folder_pairs
+from tests.helpers.widgets import button
 
 
 def _write_file(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("data")
-
-
-def _button(widget: QWidget, text: str) -> QPushButton:
-    return next(button for button in widget.findChildren(QPushButton) if button.text() == text)
 
 
 def test_cli_resolves_folder_pair(tmp_path: Path) -> None:
@@ -66,7 +63,7 @@ def test_settings_widget_loads_scanned_pairs_and_needs_a_new_scan_after_path_cha
     videos_input, overlays_input = widget.findChildren(QLineEdit)
     decoder = widget.findChild(QComboBox)
     assert decoder is not None
-    scan, load = _button(widget, "Scan"), _button(widget, "Load Playlist")
+    scan, load = button(widget, "Scan"), button(widget, "Load Playlist")
 
     scan.click()
     assert not load.isEnabled()

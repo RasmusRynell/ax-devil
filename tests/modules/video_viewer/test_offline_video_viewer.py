@@ -8,8 +8,8 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QPoint, QPointF, Qt
-from PySide6.QtGui import QImage, QWheelEvent
+from PySide6.QtCore import QCoreApplication, QPoint, QPointF
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QListView, QPushButton, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
 
@@ -48,6 +48,7 @@ from ax_devil.modules.workspace import (
     SeekableVideoContent,
     WorkspaceManager,
 )
+from tests.helpers.qt_events import make_wheel_event
 
 
 class _TrackedSignal:
@@ -381,21 +382,6 @@ def _lane_entry(*videos: SeekableVideoContent) -> PlaylistEntry:
             EntryLane(display_name=video.display_name, video=video, default_considered=True) for video in videos
         ),
         default_considered=True,
-    )
-
-
-def _wheel_up(position: QPointF) -> QWheelEvent:
-    """Build one notch of mouse-wheel zoom-in at *position*."""
-
-    return QWheelEvent(
-        position,
-        position,
-        QPoint(),
-        QPoint(0, 120),
-        Qt.MouseButton.NoButton,
-        Qt.KeyboardModifier.NoModifier,
-        Qt.ScrollPhase.NoScrollPhase,
-        False,
     )
 
 
@@ -1053,7 +1039,7 @@ class TestOfflineVideoViewerWidget:
         try:
             anchor = QPointF(second.viewport.width() / 2, 80)
             for _ in range(6):
-                second.viewport.wheelEvent(_wheel_up(anchor))
+                second.viewport.wheelEvent(make_wheel_event(anchor, 120))
             base = second.viewport.frame_display_rect()
             assert base is not None
             before = second.viewport.viewport_state.to_normalized(base)
@@ -1098,7 +1084,7 @@ class TestOfflineVideoViewerWidget:
         image = QImage(640, 480, QImage.Format.Format_RGB32)
         image.fill(0)
         first_viewport.display_frame(VideoFrameWithOverlays(VideoFrame(image=image, timestamp=0.0), overlays=None))
-        first_viewport.wheelEvent(_wheel_up(QPointF(100, 80)))
+        first_viewport.wheelEvent(make_wheel_event(QPointF(100, 80), 120))
         assert shown() == [False, False]
 
         for display in displays:

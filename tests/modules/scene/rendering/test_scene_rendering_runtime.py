@@ -35,6 +35,8 @@ from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiag
 from ax_devil.modules.scene.rendering.visibility import OverlayFeature, OverlayVisibility
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from tests.catalog_helpers import CLASSIC_CATALOG_PATH, catalog_document, classic_catalog, classic_variant
+from tests.catalog_helpers import call_expr as _call
+from tests.catalog_helpers import ref_expr as _ref
 from tests.drawing_helpers import (
     BoxCall,
     CircleCall,
@@ -45,14 +47,6 @@ from tests.drawing_helpers import (
     TextCall,
     record_scene,
 )
-
-
-def _ref(*parts: str) -> dict[str, object]:
-    return {"ref": list(parts)}
-
-
-def _call(name: str, **args: object) -> dict[str, object]:
-    return {"call": name, "args": args}
 
 
 @lru_cache(maxsize=None)
@@ -216,7 +210,10 @@ _RED_COLORS = [
 @pytest.mark.parametrize(
     "colors,color",
     [
-        ([[255, 0, 0]], lambda palette: _call("pick_color", text=_ref("scene", "entity", "id"), colors=palette)),
+        (
+            [[255, 0, 0]],
+            lambda palette: _call("pick_color", text=_ref("scene", "entity", "id"), colors=palette),
+        ),
         ([{"at": 0, "color": [255, 0, 0]}], lambda stops: _call("color_ramp", value=0, stops=stops)),
     ],
     ids=["pick_color", "color_ramp"],

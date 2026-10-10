@@ -4,23 +4,14 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QAbstractButton
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.split_view import SplitDirection, SplitView
 from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
 from ax_devil.modules.workspace.welcome_widget import WelcomeItem
+from tests.helpers.shortcuts import make_shortcut_manager
+from tests.helpers.workspace import PlainWorkspaceWidget
 
 
-class _DummyWidget(WorkspaceWidget):
-    """Minimal workspace widget for testing."""
-
-    def _setup_widget_ui(self) -> None:
-        pass
-
-    def get_display_name(self) -> str:
-        return "Dummy"
-
-
-class _AttachAwareWidget(_DummyWidget):
+class _AttachAwareWidget(PlainWorkspaceWidget):
     """Workspace widget that records split-view attachment notifications."""
 
     def __init__(self, split_view: SplitView | None = None) -> None:
@@ -36,7 +27,7 @@ class _AttachAwareWidget(_DummyWidget):
             self.welcome_visible_during_attach = self._split_view.welcome_widget().isVisible()
 
 
-class _FailingAttachWidget(_DummyWidget):
+class _FailingAttachWidget(PlainWorkspaceWidget):
     """Workspace widget that fails during post-attach startup."""
 
     def on_workspace_attached(self) -> None:
@@ -77,8 +68,8 @@ def _make_split_view(qtbot: QtBot) -> SplitView:
     return sv
 
 
-def _make_dummy(qtbot: QtBot) -> _DummyWidget:
-    w = _DummyWidget()
+def _make_dummy(qtbot: QtBot) -> PlainWorkspaceWidget:
+    w = PlainWorkspaceWidget()
     qtbot.addWidget(w)
     return w
 
@@ -235,7 +226,7 @@ def test_parent_destruction_does_not_reenter_split_view_layout(qtbot: QtBot) -> 
     """Destroying the pane host must not treat child destruction as an external removal."""
     sv = SplitView()
     sv.show()
-    sv.add_workspace_widget(_DummyWidget())
+    sv.add_workspace_widget(PlainWorkspaceWidget())
 
     sv.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -259,8 +250,7 @@ def test_welcome_rows_follow_shortcut_manager_bindings(qtbot: QtBot) -> None:
     sv.resize(900, 700)
     assert _welcome_rows(sv) == {}
 
-    sm = ShortcutManager()
-    sm.register_defaults()
+    sm = make_shortcut_manager()
     sm.install(sv)
     sv.set_welcome_shortcut_manager(sm)
     sm.set_binding("app.add_video", QKeySequence("Ctrl+Shift+O"))
