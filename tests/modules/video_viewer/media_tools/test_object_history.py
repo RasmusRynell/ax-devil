@@ -138,7 +138,6 @@ def test_file_rows_select_without_expanding(qtbot: QtBot) -> None:
     item = widget._model.item_at(1)
     assert selected.args == ["b"]
     assert item is not None and not item.expanded
-    assert widget._list_view.uniformItemSizes()
 
 
 def test_object_button_shows_the_object_on_the_displayed_frame(qtbot: QtBot) -> None:

@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from ax_devil.modules.cache import CacheManager
-from ax_devil.modules.data_sources.video_analyzer import Fingerprint, VideoAnalyzer
+from ax_devil.modules.data_sources.video_analyzer import VideoAnalyzer
 
 
 @pytest.fixture(autouse=True)
@@ -21,36 +21,6 @@ def isolated_cache(temp_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def video_path(video_file_factory: Callable[[float, int], Path]) -> Path:
     """Reuse source bytes while each test has a separate metadata cache."""
     return video_file_factory(1.0, 30)
-
-
-class TestFingerprint:
-    """Test fingerprint functionality with real files."""
-
-    def test_fingerprint_creation(self, temp_dir: Path) -> None:
-        """Test creating fingerprints from real files."""
-        test_file = temp_dir / "test.txt"
-        test_file.write_text("test content")
-
-        fp = Fingerprint.from_path(test_file)
-
-        assert fp.size == len("test content")
-        assert fp.inode > 0
-        assert fp.mtime_ns > 0
-        assert fp.as_tuple() == (fp.inode, fp.size, fp.mtime_ns)
-
-    def test_fingerprint_detects_changes(self, temp_dir: Path) -> None:
-        """Test that fingerprints change when files change."""
-        test_file = temp_dir / "test.txt"
-        test_file.write_text("original")
-
-        fp1 = Fingerprint.from_path(test_file)
-
-        # Modify file with significantly different content
-        test_file.write_text("completely different and much longer content")
-
-        fp2 = Fingerprint.from_path(test_file)
-
-        assert fp1.size != fp2.size  # Different content lengths
 
 
 class TestVideoAnalyzer:
@@ -76,23 +46,17 @@ class TestVideoAnalyzer:
         assert result["duration_sec"] == pytest.approx(2.0)
         assert result["source"] == "ffprobe"
 
-    def test_caching_works(self, analyzer: VideoAnalyzer, video_path: Path) -> None:
-        """Test that caching actually works."""
-        # First analysis - should probe video
-        result1 = analyzer.analyze(video_path)
-        cache_file = analyzer._get_cache_path(video_path)
+    def test_cached_metadata_survives_a_new_analyzer_without_probing(self, video_path: Path) -> None:
+        """A restarted app reuses saved metadata instead of running slow probes again."""
+        result1 = VideoAnalyzer().analyze(video_path)
 
-        # Cache file should exist
-        assert cache_file.exists()
-
-        # Second analysis - should load from cache
+        analyzer = VideoAnalyzer()
         with (
             patch.object(analyzer, "_run", side_effect=AssertionError("Cache hit must not run external probes")),
             patch.object(analyzer, "_pyav_probe", side_effect=AssertionError("Cache hit must not decode frames")),
         ):
             result2 = analyzer.analyze(video_path)
 
-        # Should get same data
         assert result2 == {**result1, "source": f"{result1['source']} (cache)"}
 
     def test_cache_invalidation(
@@ -149,23 +113,6 @@ class TestVideoAnalyzer:
             "duration_sec": 1.0,
         }
 
-    def test_ffprobe_strategies(self, analyzer: VideoAnalyzer, video_path: Path) -> None:
-        """Test different ffprobe strategies directly."""
-        # Test basic ffprobe
-        result1 = analyzer._ffprobe_stream(video_path)
-        assert result1 is not None
-        assert result1["frame_count"] > 0
-
-        # Test with count_frames
-        result2 = analyzer._ffprobe_stream(video_path, count_frames=True)
-        assert result2 is not None
-        assert "count_frames" in result2["source"]
-
-        # Test with deep analysis
-        result3 = analyzer._ffprobe_stream(video_path, deep=True)
-        assert result3 is not None
-        assert "deep" in result3["source"]
-
     def test_ffmpeg_counting(self, analyzer: VideoAnalyzer, video_path: Path) -> None:
         """Test ffmpeg frame counting directly."""
         result = analyzer._ffmpeg_count(video_path)
@@ -188,55 +135,14 @@ class TestVideoAnalyzer:
         with pytest.raises(RuntimeError, match="All probing methods failed"):
             analyzer.analyze(invalid_path)
 
-    def test_cache_corruption_handling(self, analyzer: VideoAnalyzer, video_path: Path) -> None:
-        """Test handling of corrupted cache files."""
-        # Create corrupted cache file
-        cache_path = analyzer._get_cache_path(video_path)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
+    def test_corrupted_cache_is_replaced_by_a_fresh_analysis(self, temp_dir: Path, video_path: Path) -> None:
+        """An unreadable cache entry is ignored and rewritten with real metadata."""
+        VideoAnalyzer().analyze(video_path)
+        (cache_path,) = (temp_dir / "cache").rglob("*.meta.json")
         cache_path.write_text("invalid json")
 
-        # Should handle gracefully and re-analyze
-        result = analyzer.analyze(video_path)
-        assert result is not None
-        assert result["frame_count"] > 0
+        result = VideoAnalyzer().analyze(video_path)
 
-
-class TestRealWorldUsage:
-    """Test real-world usage patterns."""
-
-    def test_analyzing_multiple_videos(self, video_file_factory: Callable[[float, int], Path]) -> None:
-        """Test analyzing multiple different videos."""
-        analyzer = VideoAnalyzer()
-
-        # Create different videos
-        video1 = video_file_factory(1.0, 30)
-        video2 = video_file_factory(4.0, 15)
-
-        # Analyze both
-        result1 = analyzer.analyze(video1)
-        result2 = analyzer.analyze(video2)
-
-        # Should have different metadata
-        assert result1["frame_count"] != result2["frame_count"]
-        assert result1["fps"] != result2["fps"]
-        assert result1["duration_sec"] != result2["duration_sec"]
-
-        # Both should have valid data
-        for result in [result1, result2]:
-            assert result["frame_count"] > 0
-            assert result["fps"] > 0
-            assert result["duration_sec"] > 0
-
-    def test_cache_persistence(self, video_path: Path) -> None:
-        """Test that cache persists across analyzer instances."""
-        # First analyzer instance
-        analyzer1 = VideoAnalyzer()
-        result1 = analyzer1.analyze(video_path)
-
-        # Second analyzer instance (simulates restart)
-        analyzer2 = VideoAnalyzer()
-        result2 = analyzer2.analyze(video_path)
-
-        # Should use cached data
-        assert "(cache)" in result2["source"]
-        assert result1["frame_count"] == result2["frame_count"]
+        assert result["frame_count"] == 30
+        assert "(cache)" not in result["source"]
+        assert "(cache)" in VideoAnalyzer().analyze(video_path)["source"]

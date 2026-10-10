@@ -71,8 +71,15 @@ def _overlay_data(*, metrics_provider: _StaticMetricsProvider | None) -> VideoOv
     )
 
 
-def _snapshot_metrics(widget: FrameViewport) -> ViewerSnapshot:
-    return next(item for item in get_render_metrics_store().snapshot() if item.viewer_id == widget._metrics_instance_id)
+def _viewport(qtbot: QtBot, label: str) -> FrameViewport:
+    widget = FrameViewport()
+    qtbot.addWidget(widget)
+    widget.set_diagnostics_label(label)
+    return widget
+
+
+def _snapshot_metrics(label: str) -> ViewerSnapshot:
+    return next(item for item in get_render_metrics_store().snapshot() if item.label == label)
 
 
 def _paint(widget: FrameViewport) -> None:
@@ -80,13 +87,16 @@ def _paint(widget: FrameViewport) -> None:
     QApplication.processEvents()
 
 
-def test_frame_viewports_have_unique_metrics_ids(qtbot: QtBot) -> None:
-    first = FrameViewport()
-    second = FrameViewport()
-    qtbot.addWidget(first)
-    qtbot.addWidget(second)
+def test_each_viewport_reports_its_own_paints(qtbot: QtBot) -> None:
+    first = _viewport(qtbot, "Camera A")
+    _viewport(qtbot, "Camera B")
 
-    assert first._metrics_instance_id != second._metrics_instance_id
+    first.display_frame(_frame(overlays=None))
+    _paint(first)
+
+    assert _snapshot_metrics("Camera A").last is not None
+    assert _snapshot_metrics("Camera B").last is None
+    assert _snapshot_metrics("Camera A").viewer_id != _snapshot_metrics("Camera B").viewer_id
 
 
 def test_frame_viewport_info_overlay_stats_use_exact_source_timestamps(qtbot: QtBot) -> None:
@@ -95,35 +105,17 @@ def test_frame_viewport_info_overlay_stats_use_exact_source_timestamps(qtbot: Qt
 
     widget.display_frame(_frame(overlays=_overlay_data(metrics_provider=None)))
 
-    assert widget._stats == {
-        "Timing": None,
-        "Unit": "microseconds",
+    # The info overlay paints these private stats; reading them avoids parsing painted text.
+    expected = {
         "Status": "OK overlay is before frame",
         "Frame - overlay": "5000",
-        "Frame": None,
         "Frame id": "1",
         "Frame timestamp": "1000000",
-        "Timestamp source": "pts_time_base_minus_first_pts",
-        "PTS": 3000,
-        "First PTS": 0,
-        "PTS delta": 3000,
-        "Time base": "1/3000",
-        "Period after": "33333.333333333336",
-        "Period source": "pts_delta",
-        "Overlay": None,
         "Overlay id": "9",
         "Overlay timestamp": "995000",
-        "Requested timestamp": 1_000_000,
-        "Matched timestamp": 995_000,
         "Match type": "tolerated_past",
-        "Fallback mode": "previous_with_tolerance",
-        "Tolerance": 10_000,
-        "Effective tolerance": 10_000,
-        "Alignment basis": "timestamp",
-        "Lookup offset": -5_000,
-        "Requested sequence": 1,
-        "Matched sequence": 9,
     }
+    assert {key: widget._stats.get(key) for key in expected} == expected
 
 
 def test_frame_viewport_info_overlay_flags_future_overlay_violation(qtbot: QtBot) -> None:
@@ -144,8 +136,7 @@ def test_frame_viewport_info_overlay_flags_future_overlay_violation(qtbot: QtBot
 
 def test_paint_samples_keep_frame_identity_and_clear_missing_preparation(qtbot: QtBot) -> None:
     set_metrics_enabled(True)
-    widget = FrameViewport()
-    qtbot.addWidget(widget)
+    widget = _viewport(qtbot, "Camera A")
     widget.resize(320, 240)
     provider = _StaticMetricsProvider(
         DrawingPreparationMetrics(
@@ -158,7 +149,7 @@ def test_paint_samples_keep_frame_identity_and_clear_missing_preparation(qtbot: 
     )
     widget.display_frame(_frame(overlays=_overlay_data(metrics_provider=provider)))
     _paint(widget)
-    first = _snapshot_metrics(widget)
+    first = _snapshot_metrics("Camera A")
     assert first.last is not None
     sample = first.last.sample
     assert sample.generation == provider.latest_drawing_preparation_metrics()
@@ -170,7 +161,7 @@ def test_paint_samples_keep_frame_identity_and_clear_missing_preparation(qtbot: 
     assert first.last.submission_delay_ms is not None
 
     _paint(widget)
-    repeated = _snapshot_metrics(widget)
+    repeated = _snapshot_metrics("Camera A")
     assert repeated.last is not None
     assert not repeated.last.new_frame
     assert repeated.last.submission_delay_ms is None
@@ -178,7 +169,7 @@ def test_paint_samples_keep_frame_identity_and_clear_missing_preparation(qtbot: 
     for overlay in (None, _overlay_data(metrics_provider=None)):
         widget.display_frame(_frame(overlays=overlay))
         _paint(widget)
-        cleared = _snapshot_metrics(widget)
+        cleared = _snapshot_metrics("Camera A")
         assert cleared.last is not None
         assert cleared.last.sample.generation is None
         assert cleared.last.sample.timings["filter"] is None
@@ -186,23 +177,21 @@ def test_paint_samples_keep_frame_identity_and_clear_missing_preparation(qtbot: 
 
 
 def test_renderer_reset_cleanup_and_disabled_capture(qtbot: QtBot) -> None:
-    widget = FrameViewport()
-    qtbot.addWidget(widget)
-    widget.set_diagnostics_label("Camera A")
+    widget = _viewport(qtbot, "Camera A")
     widget.display_frame(_frame(overlays=None))
     _paint(widget)
-    assert _snapshot_metrics(widget).last is not None
+    assert _snapshot_metrics("Camera A").last is not None
     widget.clear()
-    assert _snapshot_metrics(widget).last is None
-    assert _snapshot_metrics(widget).submitted is None
+    assert _snapshot_metrics("Camera A").last is None
+    assert _snapshot_metrics("Camera A").submitted is None
     set_metrics_enabled(False)
     try:
         widget.display_frame(_frame(overlays=None))
         _paint(widget)
-        assert _snapshot_metrics(widget).last is None
+        assert _snapshot_metrics("Camera A").last is None
     finally:
         set_metrics_enabled(True)
     _paint(widget)
-    assert _snapshot_metrics(widget).last is not None
+    assert _snapshot_metrics("Camera A").last is not None
     widget.cleanup()
-    assert widget._metrics_instance_id not in {item.viewer_id for item in get_render_metrics_store().snapshot()}
+    assert "Camera A" not in {item.label for item in get_render_metrics_store().snapshot()}

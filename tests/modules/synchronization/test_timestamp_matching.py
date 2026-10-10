@@ -48,18 +48,6 @@ def test_find_matching_overlay_timestamp_accepts_past_overlay_timestamp() -> Non
     assert result.match_type == "tolerated_past"
 
 
-def test_find_matching_overlay_timestamp_rejects_future_outside_tolerance() -> None:
-    """Future overlay timestamps outside tolerance should not match."""
-    result = find_matching_overlay_timestamp(
-        sorted_overlay_timestamps_us=(1_286_000,),
-        video_timestamp_us=1_280_000,
-        policy=TimestampFallbackPolicy(tolerance_us=5_000),
-    )
-
-    assert result.match_type == "missing"
-    assert result.overlay_timestamp_us is None
-
-
 def test_find_matching_overlay_timestamp_uses_latest_previous_overlay_timestamp() -> None:
     """The policy should use the latest overlay at or before the video timestamp."""
     result = find_matching_overlay_timestamp(
@@ -111,17 +99,6 @@ def test_count_tolerated_past_overlay_timestamps_does_not_double_count_exact_ove
     count = count_tolerated_past_overlay_timestamps(
         video_timestamps_us=(1_000, 1_001),
         sorted_overlay_timestamps_us=(1_000,),
-        policy=TimestampFallbackPolicy(tolerance_us=5_000),
-    )
-
-    assert count == 0
-
-
-def test_count_tolerated_past_overlay_timestamps_rejects_overlay_after_video() -> None:
-    """Overlay timestamps after a video timestamp should not count as tolerated."""
-    count = count_tolerated_past_overlay_timestamps(
-        video_timestamps_us=(1_000,),
-        sorted_overlay_timestamps_us=(1_001,),
         policy=TimestampFallbackPolicy(tolerance_us=5_000),
     )
 

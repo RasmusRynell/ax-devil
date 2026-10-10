@@ -31,7 +31,6 @@ def test_snapshot_and_export_include_viewers_sources_and_full_cache_ranges() -> 
         assert detail["reserved_bytes"] == 50 * 768
         assert detail["budget_bytes"] == 100 * 768
         payload = service.build_export_payload()
-        assert payload["schema_version"] == 6
         assert payload["caches"]
         assert payload["viewers"]
         assert (

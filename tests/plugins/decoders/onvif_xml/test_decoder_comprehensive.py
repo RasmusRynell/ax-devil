@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ax_devil.modules.scene.model import RGB, BoundingBox, ColorClassification, Delete, EntityId, Rename, Scene
+from ax_devil.modules.scene.model import BoundingBox, ColorClassification, Delete, EntityId, Rename, Scene
 from ax_devil.plugins.decoders.onvif_xml.decoder import decode_onvif_xml
 
 _EXPECTED_TIME = datetime(2025, 3, 11, 8, 11, 54, 8178, tzinfo=timezone.utc)
@@ -22,7 +22,7 @@ _EXPECTED_CLASSIFICATIONS = {
     "107": ("truck", 0.45),
     "108": ("vehicle", 0.40),
 }
-_EXPECTED_VEHICLE_COLORS = {
+_EXPECTED_COLORS = {
     (255, 255, 255, 0.8),
     (128, 128, 128, 0.8),
     (0, 0, 0, 0.8),
@@ -83,32 +83,21 @@ def test_sample_frame_decodes_events(sample_scene: Scene) -> None:
     assert delete_events[0].entity_id == "1"
 
 
-def test_sample_frame_decodes_vehicle_colors(sample_scene: Scene) -> None:
-    for entity_id in ("101", "102"):
-        actual_colors = {
-            (color.rgb.r, color.rgb.g, color.rgb.b, color.score.value)
-            for color in _vehicle_colors(sample_scene, entity_id)
-        }
-        assert _EXPECTED_VEHICLE_COLORS <= actual_colors
-
-
-def test_sample_frame_decodes_human_clothing_colors(sample_scene: Scene) -> None:
-    observation = sample_scene.entities[EntityId("103")].observations[0]
-    clothing_attrs = {
-        attr.name: attr.value
-        for classification in observation.classification
-        for attr in classification.attributes
-        if attr.name in {"upper_clothing_colors", "lower_clothing_colors"}
-    }
-
-    assert set(clothing_attrs) == {"upper_clothing_colors", "lower_clothing_colors"}
-    for colors in clothing_attrs.values():
-        assert isinstance(colors, list)
-        assert colors
-        for color in colors:
-            assert isinstance(color, ColorClassification)
-            assert isinstance(color.rgb, RGB)
-            assert 0 <= color.score.value <= 1
+def test_sample_frame_decodes_vehicle_and_clothing_colors(sample_scene: Scene) -> None:
+    for entity_id, attribute_names in (
+        ("101", ("vehicle_colors",)),
+        ("102", ("vehicle_colors",)),
+        ("103", ("upper_clothing_colors", "lower_clothing_colors")),
+    ):
+        observation = sample_scene.entities[EntityId(entity_id)].observations[0]
+        for name in attribute_names:
+            colors = [
+                color
+                for classification in observation.classification
+                for color in classification.attribute_items(name, ColorClassification)
+            ]
+            actual = {(color.rgb.r, color.rgb.g, color.rgb.b, color.score.value) for color in colors}
+            assert _EXPECTED_COLORS <= actual, (entity_id, name)
 
 
 def test_malformed_xml_errors() -> None:
@@ -122,7 +111,7 @@ def test_malformed_xml_errors() -> None:
         decode_onvif_xml("<root><no_frames/></root>")
 
 
-def test_minimal_timestamped_frame_without_detections_decodes() -> None:
+def test_object_without_appearance_keeps_the_frame_time() -> None:
     xml = (
         '<tt:Frame xmlns:tt="http://www.onvif.org/ver10/schema" '
         'UtcTime="2025-01-01T00:00:00.000Z">'
@@ -130,14 +119,4 @@ def test_minimal_timestamped_frame_without_detections_decodes() -> None:
     )
     scene = decode_onvif_xml(xml)
 
-    assert isinstance(scene, Scene)
-
-
-def _vehicle_colors(scene: Scene, entity_id: str) -> list[ColorClassification]:
-    observation = scene.entities[EntityId(entity_id)].observations[0]
-    colors: list[ColorClassification] = []
-    for classification in observation.classification:
-        for attr in classification.attributes:
-            if "vehicle_colors" in attr.name and isinstance(attr.value, list):
-                colors.extend(color for color in attr.value if isinstance(color, ColorClassification))
-    return colors
+    assert scene.time_slice.start == datetime(2025, 1, 1, tzinfo=timezone.utc)

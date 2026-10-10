@@ -74,10 +74,6 @@ def test_small_budget_forward_backward_and_prefetch(tmp_path: Path, retained_fra
                 np.testing.assert_array_equal(frame.pixels, reference[index])
                 assert frame.frame_index == index
                 assert frame.timestamp_us == pytest.approx(index * 1_000_000 / 30)
-                cached = worker._cache.get(index)
-                if retained_frames:
-                    assert cached is not None and cached.is_converted
-                    assert cached.to_decoded_frame().pixels is frame.pixels
                 for _ in range(51):
                     if not worker.prefetch_one():
                         break

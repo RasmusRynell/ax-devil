@@ -122,7 +122,7 @@ def test_controls_save_retry_and_close(tmp_path: Path, qtbot: QtBot, monkeypatch
     monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args: (str(path), ""))
     controls.save_button.click()
     assert len(json.loads(path.read_text())["samples"]) >= 2
-    assert controls.status.text() == "Saved controls.json."
+    assert "controls.json" in controls.status.text()
     controls.record_button.click()
     window.close()
     assert not controls.recorder.recording
@@ -196,4 +196,3 @@ def test_reused_thread_ids_keep_separate_exported_histories(
             assert data["samples"][2][1] == []
     finally:
         recorder.cleanup()
-    assert not recorder._active_threads

@@ -1,8 +1,11 @@
 """Qt interaction checks for rendering diagnostics."""
 
+from pathlib import Path
 from time import perf_counter
 
-from PySide6.QtWidgets import QTabWidget
+import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QPushButton, QTabWidget, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
@@ -15,6 +18,17 @@ def _cell(window: DebugWindow, row: int) -> str:
     item = window.timings_table.item(row, 1)
     assert item is not None
     return item.text()
+
+
+def _button(window: DebugWindow, text: str) -> QPushButton:
+    return next(button for button in window.findChildren(QPushButton) if button.text() == text)
+
+
+def _source_roots(window: DebugWindow) -> dict[str, QTreeWidgetItem]:
+    """Return the top-level source rows keyed by source id."""
+    tree = window.source_tree
+    roots = (tree.topLevelItem(index) for index in range(tree.topLevelItemCount()))
+    return {root.toolTip(0): root for root in roots if root is not None}
 
 
 def test_debug_window_selection_filter_refresh_and_reset(qtbot: QtBot) -> None:
@@ -37,16 +51,16 @@ def test_debug_window_selection_filter_refresh_and_reset(qtbot: QtBot) -> None:
         window.filter_input.setText("Camera B")
         assert window.title_label.text() == "Camera B"
         assert _cell(window, 0) == "—"
-        window._update_display()
+        window.timer.timeout.emit()
         assert window.title_label.text() == "Camera B"
         window.filter_input.setText("missing")
         assert window.title_label.text() == "No matching viewers"
         window.filter_input.clear()
-        window._reset()
+        _button(window, "Reset history").click()
         assert _cell(window, 0) == "—"
         store.remove("ui-a")
         store.remove("ui-b")
-        window._update_display()
+        window.timer.timeout.emit()
         assert window.viewer_list.count() == len(store.snapshot())
         window.close()
         assert not window.timer.isActive()
@@ -66,11 +80,11 @@ def test_sources_update_in_place_and_tabs_work_at_small_size(qtbot: QtBot) -> No
         tabs = window.findChild(QTabWidget)
         assert tabs is not None
         tabs.setCurrentIndex(1)
-        root = window._source_items["test source"]
+        root = _source_roots(window)["test source"]
         root.setExpanded(False)
         metrics.set_metric("test source", "Overlay offset (ms)", None)
-        window._update_display()
-        assert window._source_items["test source"] is root
+        window.timer.timeout.emit()
+        assert _source_roots(window)["test source"] is root
         assert not root.isExpanded()
         child = root.child(0)
         assert child is not None and child.text(1) == "—"
@@ -88,21 +102,21 @@ def test_viewer_refresh_preserves_selection_and_relabels_sorted_items(qtbot: QtB
     try:
         window = DebugWindow()
         qtbot.addWidget(window)
-        window.viewer_list.setCurrentItem(window._viewer_items["polish-b"])
+        window.viewer_list.setCurrentItem(window.viewer_list.findItems("B viewer", Qt.MatchFlag.MatchExactly)[0])
         selected = window.viewer_list.currentItem()
         store.register("polish-b", "0 renamed viewer")
-        window._update_display()
+        window.timer.timeout.emit()
         assert window.viewer_list.currentItem() is selected
         assert window.title_label.text() == "0 renamed viewer"
         assert selected is not None and "0 renamed viewer" in selected.toolTip()
         assert window.viewer_list.row(selected) == 0
         store.remove("polish-b")
-        window._update_display()
+        window.timer.timeout.emit()
         assert window.title_label.text() == "A viewer"
         assert window.measurements.isHidden()
         assert "first paint" in window.empty_label.text()
         set_metrics_enabled(False)
-        window._update_display()
+        window.timer.timeout.emit()
         assert "Collect Debug Metrics" in window.empty_label.text()
         window.close()
     finally:
@@ -158,13 +172,13 @@ def test_freeze_workload_selection_disclosures_and_source_ownership(qtbot: QtBot
         window.paint_selection.setCurrentText(PaintSelection.REPAINTS.value)
         assert _cell(window, 0) == "1.000"
         window.source_scope.setChecked(True)
-        assert set(window._source_items) == {"owned"}
+        assert set(_source_roots(window)) == {"owned"}
         disclosure = next(button for button in window.findChildren(QToolButton) if button.text() == "Build costs")
         disclosure.click()
         assert window.build_table.isVisible()
         window.freeze_button.click()
         render.record("inspect", replace(sample(now), paint_ms=9), paint_started_at=now - 0.009)
-        window._update_display()
+        window.timer.timeout.emit()
         assert _cell(window, 0) == "1.000"
         window.chart_mode.setCurrentIndex(1)
         assert _cell(window, 0) == "1.000"
@@ -178,14 +192,15 @@ def test_freeze_workload_selection_disclosures_and_source_ownership(qtbot: QtBot
         sources.remove_instance("unrelated")
 
 
-def test_graph_selection_freezes_exact_paint_and_exports_inspection(qtbot: QtBot) -> None:
+def test_graph_selection_freezes_exact_paint_and_exports_inspection(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Select a dense spike by its height, keep historical context and navigate retained neighbors."""
     import json
     from dataclasses import replace
 
-    from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QFileDialog
 
     set_metrics_enabled(True)
     render = get_render_metrics_store()
@@ -208,13 +223,12 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(qtbot: QtBot
         point = window.chart._position(1, 40)
         QTest.mouseClick(window.chart, Qt.MouseButton.LeftButton, pos=point.toPoint())
         assert window.freeze_button.isChecked()
-        assert window._inspection_selection is not None and window._inspection_selection.sample_index == 1
         assert "Paint 2 / 3" in window.inspector.identity.text()
         assert "Prepare overlays" in window.inspector.findings.text()
         qtbot.waitUntil(lambda: window.inspector.workload.y() > window.inspector.timings.geometry().bottom())
         sources.set_metric("spike-source", "Frame queue", 0)
         render.record("spike", sample(now + 100, 30), paint_started_at=now + 99.996)
-        window._update_display()
+        window.timer.timeout.emit()
         assert "Paint 2 / 3" in window.inspector.identity.text()
         source_root = window.inspector.sources.topLevelItem(0)
         assert source_root is not None
@@ -222,11 +236,10 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(qtbot: QtBot
         assert source_row is not None and source_row.text(1) == "12"
         window.inspector.copy.click()
         assert "Prepare overlays" in QApplication.clipboard().text()
-        payload = window._snapshot_service.build_export_payload(
-            snapshot=window._snapshot,
-            inspection=window._inspection_selection,
-        )
-        serialized = json.loads(json.dumps(payload))
+        export = tmp_path / "diagnostics.json"
+        monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_args: (str(export), ""))
+        _button(window, "Export…").click()
+        serialized = json.loads(export.read_text(encoding="utf-8"))
         assert serialized["inspection"] == {"viewer_id": "spike", "sample_index": 1, "metric_key": "paint"}
         viewer = next(item for item in serialized["viewers"] if item["viewer_id"] == "spike")
         assert viewer["history"][1]["sources"]["spike-source"]["observations"]["Frame queue"]["value"] == 12
@@ -238,7 +251,6 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(qtbot: QtBot
         QTest.keyClick(window.chart, Qt.Key.Key_Right)
         assert "Paint 3 / 3" in window.inspector.identity.text()
         window.freeze_button.click()
-        assert window._inspection_selection is None
         assert window.detail_tabs.currentIndex() == 0
         window.close()
     finally:
@@ -248,7 +260,6 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(qtbot: QtBot
 
 def test_chart_arrows_skip_unmeasured_paints_without_jumping_to_start(qtbot: QtBot) -> None:
     """Changing metrics preserves chronological navigation through measured points."""
-    from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
 
     from ax_devil.modules.diagnostics.history_chart import PaintHistoryChart

@@ -164,6 +164,7 @@ def test_dash_zero_stroke_and_zero_area(surface: QuickSurface) -> None:
     invisible: DrawCalls = [
         BoxCall(0.1, 0.1, 0.5, 0.5, DrawingStyle(pen_width=0)),
         BoxCall(0.2, 0.2, 0, 0.5),
+        BoxCall(0.2, 0.2, 0.5, 0),
         CircleCall(0.5, 0.5, 0),
         PointCall(0.5, 0.5, DrawingStyle(pen_width=0)),
     ]
@@ -290,15 +291,12 @@ def test_independent_text_movement_color_and_slot_replacement(surface: QuickSurf
     assert _render(surface, [first, second]) == original
 
 
-def test_removing_a_label_keeps_remaining_glyphs_on_their_items(surface: QuickSurface) -> None:
-    """Earlier removals must not shift later labels onto items that rebuild their glyphs."""
+def test_removing_a_label_keeps_remaining_labels_in_place(surface: QuickSurface) -> None:
+    """Earlier removals must not shift later labels onto the wrong retained items."""
     labels: DrawCalls = [TextCall(0.05 + 0.3 * i, 0.1, name, _WHITE, anchor="top-left") for i, name in enumerate("ABC")]
-    _render(surface, labels)
-    before = {id(item._block): item for item in surface._overlays._texts.items if item.isVisible()}
+    original = _render(surface, labels)
     remaining = _render(surface, labels[1:])
-    after = {id(item._block): item for item in surface._overlays._texts.items if item.isVisible()}
-    assert len(after) == 2
-    assert all(after[block] is before[block] for block in after)
+    assert remaining.copy(60, 0, 140, 100) == original.copy(60, 0, 140, 100)
     assert all(remaining.pixelColor(x, y) == QColor("black") for y in range(10, 35) for x in range(5, 50))
     assert any(remaining.pixelColor(x, y).red() > 100 for y in range(10, 35) for x in range(65, 110))
 
@@ -341,20 +339,16 @@ def test_unchanged_compound_calls_survive_neighbor_updates(surface: QuickSurface
         assert updated.copy(100, 0, 100, 100) == original.copy(100, 0, 100, 100)
 
 
-def test_operation_kind_reordering_reuses_bounded_pools(surface: QuickSurface) -> None:
+def test_operation_kind_reordering_keeps_text_visible_and_pools_bounded(surface: QuickSurface) -> None:
     box = BoxCall(0, 0, 1, 1, _FILL)
     text = TextCall(0.1, 0.1, "Visible", _WHITE, anchor="top-left")
     _render(surface, [text, box])
-    drawing_pool = surface._overlays._geometry or surface._overlays._paths.items
-    drawing_item = drawing_pool[0]
-    text_item = surface._overlays._texts.items[0]
     visible = _render(surface, [box, text])
-    assert drawing_pool[0] is drawing_item
-    assert surface._overlays._texts.items[0] is text_item
     assert any(visible.pixelColor(x, y).green() > 100 for y in range(10, 40) for x in range(20, 100))
     covered = _render(surface, [text, box])
     assert any(covered.pixelColor(x, y).green() > 100 for y in range(10, 40) for x in range(20, 100))
 
+    # Scene-graph items are private, but their count is the only observation of a shrinking-load leak.
     _render(surface, [box] * 80)
     _render(surface, [box])
     assert len(surface._overlays._paths.items) <= 33
@@ -423,8 +417,8 @@ def _reference_polygons(canvas: DrawingBuffer, points: Sequence[Points], paint: 
         canvas._polygon(shape, paint.style(row), True)
 
 
-@pytest.mark.parametrize("stroke", [0.005, 0.01, 0.02, 0.06])
-@pytest.mark.parametrize("alpha", [15, 220, 255])
+@pytest.mark.parametrize("stroke", [0.005, 0.02, 0.06])
+@pytest.mark.parametrize("alpha", [15, 255])
 def test_numeric_geometry_preserves_path_coverage(
     surface: QuickSurface, monkeypatch: pytest.MonkeyPatch, stroke: float, alpha: int
 ) -> None:

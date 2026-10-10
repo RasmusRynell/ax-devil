@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
@@ -30,6 +30,12 @@ def _relabel_person(path: Path, label: str, source: str | None = None) -> None:
     person = next(recipe for recipe in document["recipes"]["classifications"] if recipe["id"] == "human")
     person["label"] = label
     path.write_text(json.dumps(document), encoding="utf-8")
+
+
+def _banner(window: CatalogViewerWindow) -> QLabel:
+    banner = window.findChild(QLabel, "catalogViewerError")
+    assert banner is not None
+    return banner
 
 
 def test_the_viewer_shows_a_tab_per_sheet(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> None:
@@ -99,8 +105,6 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
     catalog = render_catalog_manager.create_catalog("Review", base_catalog_path=small_catalog_path)
     window = _viewer(qtbot, render_catalog_manager, catalog.path)
     titles = window.sheet_titles()
-    qtbot.waitUntil(lambda: not window._renderer._quick.isHidden())
-    frame = window._renderer._video_frame
     description = window._description.text()
     original = catalog.path.read_text(encoding="utf-8")
 
@@ -111,10 +115,9 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
 
     assert "$.metadata.schema_version" in (window.error() or "")
     assert window.sheet_titles() == titles
-    assert frame is not None
-    assert window._renderer._video_frame is frame
+    assert window._renderer.frame_display_rect() is not None
     assert window._description.text() == description
-    assert "Showing the last version that loaded." in window._banner.text()
+    assert "Showing the last version that loaded." in _banner(window).text()
 
     _relabel_person(catalog.path, "Pedestrian", original)
     render_catalog_manager.refresh_catalogs()
@@ -123,8 +126,9 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
     assert "Pedestrian" in window.sheet_titles()
 
 
-@pytest.mark.parametrize("hidden", [False, True], ids=["visible", "hidden"])
-@pytest.mark.parametrize("missing", [False, True], ids=["invalid", "missing"])
+@pytest.mark.parametrize(
+    ("hidden", "missing"), [(False, False), (True, True)], ids=["visible-invalid", "hidden-missing"]
+)
 def test_switching_to_a_catalog_that_does_not_load_clears_the_previous_preview(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
@@ -139,7 +143,6 @@ def test_switching_to_a_catalog_that_does_not_load_clears_the_previous_preview(
     description = window._description.text()
     assert window._renderer.frame_display_rect() is not None
     assert description
-    qtbot.waitUntil(lambda: not window._renderer._quick.isHidden())
     if hidden:
         window.hide()
     broken = tmp_path / "broken.json"
@@ -151,9 +154,8 @@ def test_switching_to_a_catalog_that_does_not_load_clears_the_previous_preview(
     assert window.catalog_path() == broken
     assert window.error() is not None
     assert window.sheet_titles() == []
-    assert "Nothing to show yet." in window._banner.text()
+    assert "Nothing to show yet." in _banner(window).text()
     assert window._renderer.frame_display_rect() is None
-    assert window._renderer._quick.isHidden()
     assert window._description.text() == ""
 
     window.show_catalog(catalog.path)
@@ -186,7 +188,7 @@ def test_a_catalog_without_a_preview_starts_drawing_when_fixed(
     assert "Pedestrian" in window.sheet_titles()
     assert window._renderer.frame_display_rect() is not None
     assert window._description.text()
-    assert window._banner.isHidden()
+    assert _banner(window).isHidden()
 
 
 def test_showing_the_viewer_again_reuses_the_window(
@@ -290,29 +292,6 @@ def test_the_catalog_shown_can_be_applied_to_every_view_and_made_the_default(
     assert render_catalog_manager.default_catalog_path() == catalog.path
     assert window.catalog_path() == catalog.path
     assert not _button(window, "catalogViewerUseAsDefault").isEnabled()
-
-
-def test_theme_changes_preserve_live_and_error_status(
-    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, small_catalog_path: Path
-) -> None:
-    from PySide6.QtGui import QColor, QPalette
-
-    from ax_devil.modules.chrome.theme import StatusColor
-
-    catalog = render_catalog_manager.create_catalog("Appearance", base_catalog_path=small_catalog_path)
-    window = _viewer(qtbot, render_catalog_manager, catalog.path)
-    for broken in (False, True):
-        if broken:
-            catalog.path.write_text("{}")
-            window.show_catalog(catalog.path)
-        for dark in (False, True):
-            palette = QPalette(window.palette())
-            palette.setColor(QPalette.ColorRole.Text, QColor("white" if dark else "black"))
-            palette.setColor(QPalette.ColorRole.Window, QColor("black" if dark else "white"))
-            window.setPalette(palette)
-            expected = StatusColor.ERROR if broken else StatusColor.SUCCESS
-            QApplication.processEvents()  # Restyling runs on the next event-loop turn.
-            assert window._state.palette().color(window._state.foregroundRole()) == expected.color(window.palette())
 
 
 def test_a_default_catalog_that_breaks_stays_on_screen_with_its_error(

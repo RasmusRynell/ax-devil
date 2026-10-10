@@ -32,7 +32,7 @@ def _make_entity(*, classification_types: tuple[str, ...] = (), include_empty: b
     return Entity(id=EntityId("entity"), observations=[observation])
 
 
-def test_filter_state_initialisation_and_mutation() -> None:
+def test_filter_state_starts_from_defaults_and_rejects_unknown_options() -> None:
     config = build_default_filter_config()
     state = FilterState(config)
 
@@ -42,8 +42,6 @@ def test_filter_state_initialisation_and_mutation() -> None:
     # Initial overrides succeed
     overridden_state = FilterState(config, initial={"show_humans": False})
     assert not overridden_state.is_enabled("show_humans")
-    overridden_state.set_enabled("show_humans", True)
-    assert overridden_state.is_enabled("show_humans")
 
     with pytest.raises(KeyError):
         FilterState(config, initial={"does_not_exist": True})

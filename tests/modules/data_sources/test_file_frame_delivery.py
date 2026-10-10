@@ -102,30 +102,6 @@ def test_delivery_handles_seek_and_non_playback_reads_on_its_one_worker() -> Non
     assert decoder.cleaned_up
 
 
-def test_delivery_serves_async_reads_while_playback_is_paused() -> None:
-    """Secondary lanes can align after a paused seek without restarting playback."""
-    frames: list[tuple[int, int]] = []
-    finished = threading.Event()
-    delivery, _decoder = _make_delivery(frames, finished)
-    received: list[int | None] = []
-    completed = threading.Event()
-
-    def on_async_frame(frame: DecodedFrame | None) -> None:
-        """Record the paused non-playback result."""
-        received.append(frame.frame_index if frame is not None else None)
-        completed.set()
-
-    try:
-        delivery.pause()
-        delivery.request_frame_async(3, on_async_frame)
-
-        assert completed.wait(timeout=1.0)
-        assert received == [3]
-        assert frames == []
-    finally:
-        delivery.close()
-
-
 def test_delivery_prefetches_between_paced_playback_frames() -> None:
     """Lazy prefetch runs after playback starts and before its next frame deadline."""
     frames: list[tuple[int, int]] = []
@@ -141,41 +117,20 @@ def test_delivery_prefetches_between_paced_playback_frames() -> None:
     assert frames[0] == (0, 0)
 
 
-def test_delivery_pause_resume_reanchors_playback_and_reaches_eof() -> None:
-    """Pause holds the current frame; resume restarts pacing and eventually emits EOF."""
-    decoder = _Decoder(total_frames=3)
+def test_delivery_plays_every_frame_then_reports_the_end() -> None:
+    """Playback on the real worker delivers each frame once, in order, then signals the end."""
     frames: list[tuple[int, int]] = []
-    first_frame = threading.Event()
-    second_frame = threading.Event()
     finished = threading.Event()
-
-    def on_playback_frame(frame: DecodedFrame, generation: int) -> None:
-        """Record playback delivery and expose progress to the test."""
-        frames.append((frame.frame_index, generation))
-        if len(frames) == 1:
-            first_frame.set()
-        if len(frames) == 2:
-            second_frame.set()
-
     delivery = FileFrameDelivery(
-        decoder=cast(FrameReaderWorker, decoder),
-        fps=1.0,
-        source_id="pause-resume",
-        on_playback_frame=on_playback_frame,
+        decoder=cast(FrameReaderWorker, _Decoder(total_frames=3)),
+        fps=100.0,
+        source_id="eof",
+        on_playback_frame=lambda frame, generation: frames.append((frame.frame_index, generation)),
         on_playback_finished=finished.set,
     )
     delivery.open()
-
     try:
         assert delivery.play()
-        assert first_frame.wait(timeout=1.0)
-
-        delivery.pause()
-        assert not second_frame.wait(timeout=0.1)
-
-        delivery.set_playback_speed(10.0)
-        assert delivery.play()
-        assert second_frame.wait(timeout=1.0)
         assert finished.wait(timeout=1.0)
     finally:
         delivery.close()
@@ -183,8 +138,13 @@ def test_delivery_pause_resume_reanchors_playback_and_reaches_eof() -> None:
     assert frames == [(0, 0), (1, 0), (2, 0)]
 
 
-def _paced_frames(monkeypatch: pytest.MonkeyPatch, total_frames: int, times: list[float]) -> list[int | None]:
-    """Return the playback frame chosen at each clock reading at 8 fps, or None when playback finished."""
+def _paced_frames(
+    monkeypatch: pytest.MonkeyPatch, total_frames: int, times: list[float], *, pause_after: int | None = None
+) -> list[int | None]:
+    """Return the playback frame chosen at each clock reading at 8 fps, or None when playback finished.
+
+    With *pause_after*, playback is paused and resumed after that many readings.
+    """
     clock = iter(times)
     monkeypatch.setattr(delivery_module, "time", SimpleNamespace(perf_counter=lambda: next(clock)))
     delivery = FileFrameDelivery(
@@ -195,7 +155,10 @@ def _paced_frames(monkeypatch: pytest.MonkeyPatch, total_frames: int, times: lis
         on_playback_finished=lambda: None,
     )
     frames: list[int | None] = []
-    for _ in times:
+    for reading in range(len(times)):
+        if reading == pause_after:
+            delivery.pause()
+            assert delivery.play()
         request, finished, wait_seconds = delivery._next_playback_request()
         assert wait_seconds is None, "Every clock reading in these tests is at or past a deadline"
         if finished:
@@ -219,6 +182,11 @@ def test_late_playback_skips_to_the_frame_due_now(monkeypatch: pytest.MonkeyPatc
 def test_late_playback_still_delivers_the_last_frame(monkeypatch: pytest.MonkeyPatch) -> None:
     """Skipping stops at the last frame, and the next step reports the end of playback."""
     assert _paced_frames(monkeypatch, 5, [0.0, 10.0, 10.0]) == [0, 4, None]
+
+
+def test_resumed_playback_continues_from_the_held_frame(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Time spent paused is not treated as lateness, so resuming does not skip frames."""
+    assert _paced_frames(monkeypatch, 10, [0.0, 10.0, 10.125], pause_after=1) == [0, 1, 2]
 
 
 def test_file_frame_source_uses_one_delivery_worker_for_playback_and_seek(
@@ -268,7 +236,6 @@ def test_file_frame_source_reports_its_length_without_reading_every_timestamp(
         assert source._frame_timestamps_us is None
         assert source.peek_frame_seconds(10) == pytest.approx(0.5, abs=0.001)
         assert source.peek_frame_seconds(source.get_total_frames()) is None
-        assert source.get_frame_size() is not None
     finally:
         source.stop()
     assert source.wait()

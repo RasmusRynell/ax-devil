@@ -55,56 +55,62 @@ def _make_wheel_event(position: QPointF, delta_y: int) -> QWheelEvent:
     )
 
 
-def test_wheel_zoom_adjusts_pan_toward_cursor(renderer: VideoFrameRenderer) -> None:
-    # Zoom with cursor away from center — pan should shift toward cursor.
-    renderer.wheelEvent(_make_wheel_event(QPointF(80.0, 70.0), 120))
+def _image_point_under(renderer: VideoFrameRenderer, position: QPointF) -> tuple[float, float]:
+    base = renderer.frame_display_rect()
+    assert base is not None
+    shown = renderer.viewport_state.compute_target_rect(base)
+    return ((position.x() - shown.x()) / shown.width(), (position.y() - shown.y()) / shown.height())
 
-    assert renderer.viewport_state.zoom_level > 1.0
-    assert renderer.viewport_state.pan_offset != QPointF(0.0, 0.0)
+
+def _normalized_view(renderer: VideoFrameRenderer) -> NormalizedViewport:
+    base = renderer.frame_display_rect()
+    assert base is not None
+    return renderer.viewport_state.to_normalized(base)
+
+
+def test_wheel_zoom_keeps_the_image_point_under_the_cursor(renderer: VideoFrameRenderer) -> None:
+    for _ in range(3):  # Fill the view first so clamping the pan to the image edges does not apply.
+        renderer.zoom(ZoomStep.IN)
+    cursor = QPointF(80.0, 140.0)
+    before = _image_point_under(renderer, cursor)
+    zoom_before = renderer.viewport_state.zoom_level
+
+    renderer.wheelEvent(_make_wheel_event(cursor, 120))
+
+    assert renderer.viewport_state.zoom_level > zoom_before
+    assert _image_point_under(renderer, cursor) == pytest.approx(before)
 
 
 def test_zooming_back_to_minimum_resets_pan(renderer: VideoFrameRenderer) -> None:
-    renderer.viewport_state.zoom_level = 2.0
-    renderer.viewport_state.pan_offset = QPointF(30.0, -20.0)
+    for _ in range(3):
+        renderer.wheelEvent(_make_wheel_event(QPointF(80.0, 140.0), 120))
+    assert renderer.viewport_state.pan_offset != QPointF(0.0, 0.0)
 
     # Repeated zoom-out steps should eventually hit minimum and reset pan.
     for _ in range(16):
-        renderer.wheelEvent(_make_wheel_event(QPointF(100.0, 100.0), -120))
+        renderer.wheelEvent(_make_wheel_event(QPointF(500.0, 300.0), -120))
 
     assert renderer.viewport_state.zoom_level == 1.0
     assert renderer.viewport_state.pan_offset == QPointF(0.0, 0.0)
 
 
 def test_resize_preserves_relative_zoom_and_normalized_pan(renderer: VideoFrameRenderer) -> None:
-    assert renderer._video_frame is not None
-
     _show_resizable_renderer(renderer)
-    renderer.viewport_state.zoom_level = 2.5
-    renderer.viewport_state.pan_offset = QPointF(100.0, -50.0)
-    base_before = renderer._base_rect(renderer._video_frame.frame.image.size())
-    renderer._clamp_pan(base_before)
-    normalized_before = renderer.viewport_state.normalized_pan(base_before)
-    zoom_before = renderer.viewport_state.zoom_level
+    renderer.set_viewport(NormalizedViewport(zoom=2.5, pan_x=0.15, pan_y=-0.1))
+    before = _normalized_view(renderer)
+    assert before.pan_x != 0.0 and before.pan_y != 0.0
 
     renderer.resize(560, 420)
     QCoreApplication.processEvents()
-    base_after = renderer._base_rect(renderer._video_frame.frame.image.size())
-    normalized_after = renderer.viewport_state.normalized_pan(base_after)
 
-    assert normalized_after == pytest.approx(normalized_before)
-    assert renderer.viewport_state.zoom_level == pytest.approx(zoom_before)
+    assert tuple(_normalized_view(renderer)) == pytest.approx(tuple(before))
 
 
 def test_resize_round_trip_restores_view_after_temporary_pan_clamp(renderer: VideoFrameRenderer) -> None:
-    assert renderer._video_frame is not None
-
     _show_resizable_renderer(renderer)
-    renderer.viewport_state.zoom_level = 2.5
-    renderer.viewport_state.pan_offset = QPointF(120.0, -40.0)
-    base_before = renderer._base_rect(renderer._video_frame.frame.image.size())
-    renderer._clamp_pan(base_before)
-    zoom_before = renderer.viewport_state.zoom_level
-    pan_before = QPointF(renderer.viewport_state.pan_offset)
+    renderer.set_viewport(NormalizedViewport(zoom=2.5, pan_x=0.15, pan_y=-0.1))
+    before = _normalized_view(renderer)
+    assert before.pan_y != 0.0
 
     renderer.resize(640, 1200)
     QCoreApplication.processEvents()
@@ -113,9 +119,7 @@ def test_resize_round_trip_restores_view_after_temporary_pan_clamp(renderer: Vid
     renderer.resize(640, 480)
     QCoreApplication.processEvents()
 
-    assert renderer.viewport_state.zoom_level == pytest.approx(zoom_before)
-    assert renderer.viewport_state.pan_offset.x() == pytest.approx(pan_before.x())
-    assert renderer.viewport_state.pan_offset.y() == pytest.approx(pan_before.y())
+    assert tuple(_normalized_view(renderer)) == pytest.approx(tuple(before))
 
 
 def test_keyboard_zoom_steps_around_center_and_resets_peers(renderer: VideoFrameRenderer) -> None:
@@ -131,7 +135,8 @@ def test_keyboard_zoom_steps_around_center_and_resets_peers(renderer: VideoFrame
     renderer.zoom(ZoomStep.OUT)
     assert renderer.viewport_state.zoom_level == pytest.approx(one_step)
 
-    renderer.viewport_state.pan_offset = QPointF(10.0, 5.0)
+    renderer.wheelEvent(_make_wheel_event(QPointF(80.0, 140.0), 120))
+    assert renderer.viewport_state.pan_offset != QPointF(0.0, 0.0)
     renderer.zoom(ZoomStep.RESET)
     assert renderer.viewport_state.zoom_level == 1.0
     assert renderer.viewport_state.pan_offset == QPointF(0.0, 0.0)

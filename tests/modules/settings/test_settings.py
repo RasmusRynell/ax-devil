@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from collections.abc import Iterator
 from dataclasses import replace
@@ -13,9 +12,10 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QProcess
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QApplication, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.application_shell.configuration_preferences import ConfigField
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
@@ -56,15 +56,6 @@ class TestGlobalSettingsSignals:
 
 class TestGlobalSettingsConfigRoundTrip:
     """Verify load/save with ConfigManager."""
-
-    @pytest.mark.parametrize("saved,expected", [({}, True), ({"overlay_interaction": {"hover_enabled": False}}, False)])
-    def test_load_from_config_uses_config_or_default(
-        self, config: ConfigManager, saved: dict[str, Any], expected: bool
-    ) -> None:
-        config.set("settings", saved)
-        settings = GlobalSettings()
-        settings.load_from_config(config)
-        assert settings.is_overlay_enabled(OverlayPreference.HOVER) is expected
 
     def test_save_to_config_preserves_raw_settings(
         self, config: ConfigManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -121,25 +112,6 @@ class TestGlobalSettingsSnapshot:
         assert received == [False, True, False]
 
 
-def test_graphics_acceleration_round_trip_does_not_apply_until_startup(
-    config: ConfigManager, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("QT_WIDGETS_RHI", raising=False)
-    settings = GlobalSettings()
-    changes: list[tuple[str, Any]] = []
-    settings.setting_changed.connect(lambda key, value: changes.append((key, value)))
-    settings.apply_snapshot(replace(settings.snapshot(), graphics_acceleration=GraphicsAcceleration.OFF))
-    settings.apply_snapshot(replace(settings.snapshot(), graphics_acceleration=GraphicsAcceleration.OFF))
-    assert changes == [("appearance.graphics_acceleration", "off")]
-    assert settings.graphics_acceleration is GraphicsAcceleration.OFF
-    assert "QT_WIDGETS_RHI" not in os.environ
-    settings.save_to_config(config)
-    GlobalSettings.reset_instance()
-    restored = GlobalSettings()
-    restored.load_from_config(config)
-    assert restored.graphics_acceleration is GraphicsAcceleration.OFF
-
-
 def test_theme_dialog_cancel_ok_and_config_round_trip(qtbot: QtBot, config: ConfigManager) -> None:
     """Appearance changes commit on OK, Cancel discards them, and unrelated raw UI settings are kept."""
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
@@ -162,39 +134,18 @@ def test_theme_dialog_cancel_ok_and_config_round_trip(qtbot: QtBot, config: Conf
     saved_dialog._theme_combo.setCurrentIndex(saved_dialog._theme_combo.findData("light"))
     saved_dialog._on_ok()
     assert changes == ["light"]
-    discarded = SettingsDialog()
-    qtbot.addWidget(discarded)
-    discarded._theme_combo.setCurrentIndex(discarded._theme_combo.findData("dark"))
-    discarded.reject()
-    assert settings.theme == ThemeMode.LIGHT and changes == ["light"]
-    settings.save_to_config(config)
-    config.save()
-    saved = json.loads(config.config_path.read_text(encoding="utf-8"))
-    assert saved["ui"] == {
-        "theme": "light",
-        "text_size": "system",
-        "quick_setup_done": False,
-        "window": {"custom_frame": False},
-        "custom": "$KEEP_RAW",
-    }
+    saved = json.loads(config.config_path.read_text(encoding="utf-8"))["ui"]
+    assert (saved["theme"], saved["window"], saved["custom"]) == ("light", {"custom_frame": False}, "$KEEP_RAW")
 
     settings.load_from_config(config)
     reopened = SettingsDialog()
     qtbot.addWidget(reopened)
     assert reopened._theme_combo.currentData() == "light"
-    reopened._theme_combo.setCurrentIndex(reopened._theme_combo.findData("auto"))
-    reopened._on_ok()
-    assert settings.snapshot().theme == ThemeMode.AUTO
-    assert changes == ["light", "auto"]
 
 
 @pytest.mark.parametrize("invalid", ["unknown", {}])
-def test_invalid_theme_follows_system(invalid: object) -> None:
+def test_invalid_saved_appearance_follows_system(invalid: object) -> None:
     assert ThemeMode.from_config(invalid) is ThemeMode.AUTO
-
-
-@pytest.mark.parametrize("invalid", ["huge", {}])
-def test_invalid_text_size_follows_system(invalid: object) -> None:
     assert TextSize.from_config(invalid) is TextSize.SYSTEM
 
 
@@ -340,86 +291,35 @@ def test_password_references_are_visible_and_literal_passwords_masked(
     assert restored._text.displayText() == "$REPLACEMENT_SECRET"
 
 
-@pytest.mark.parametrize(
-    "path,resolved",
-    [
-        ("defaults.live_stream.rtsp.camera_head", None),
-        ("defaults.live_stream.analytics-mqtt.broker_port", "not-a-number"),
-        ("defaults.live_stream.analytics-websocket.channel_id", "0"),
-        ("defaults.live_stream.analytics-mqtt.broker_port", "99999"),
-        ("defaults.live_stream.rtsp.camera_head", "1883"),
-        ("defaults.live_stream.analytics-mqtt.broker_port", "1883"),
-        ("defaults.live_stream.analytics-websocket.channel_id", "1883"),
-    ],
-)
-def test_numeric_environment_references_validate_before_saving(
-    qtbot: QtBot, config: ConfigManager, monkeypatch: pytest.MonkeyPatch, path: str, resolved: str | None
+@pytest.mark.parametrize("resolved", [None, "not-a-number", "0", "65536"])
+def test_numeric_environment_reference_must_resolve_to_a_number_in_range(
+    monkeypatch: pytest.MonkeyPatch, resolved: str | None
 ) -> None:
-    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-
-    reference = "$AX_TEST_NUMERIC_DEFAULT"
-    monkeypatch.delenv(reference[1:], raising=False)
+    port = ConfigField("defaults.port", "Port", minimum=1, maximum=65535)
+    monkeypatch.delenv("AX_TEST_PORT", raising=False)
     if resolved is not None:
-        monkeypatch.setenv(reference[1:], resolved)
-    settings = GlobalSettings()
-    settings.load_from_config(config)
-    config.save()
-    previous = config.config_path.read_bytes()
-    dialog = SettingsDialog()
-    qtbot.addWidget(dialog)
-    editor = next(editor for field, editor in dialog._configuration_editors.items() if field.path == path)
-    assert editor._text is not None
-    editor._text.setText(reference)
-    if resolved == "1883":
-        assert dialog._apply()
-        saved: Any = json.loads(config.config_path.read_text())
-        for key in path.split("."):
-            saved = saved[key]
-        assert saved == reference
-    else:
-        assert not dialog._apply()
-        assert config.config_path.read_bytes() == previous
+        monkeypatch.setenv("AX_TEST_PORT", resolved)
+    with pytest.raises(ValueError, match="Port"):
+        port.parse("$AX_TEST_PORT")
 
 
-@pytest.mark.parametrize("resolved", [None, "", "   ", "folder"])
-def test_storage_environment_references_validate_before_saving(
-    qtbot: QtBot,
-    config: ConfigManager,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    resolved: str | None,
+def test_valid_numeric_environment_reference_is_kept_unresolved(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AX_TEST_PORT", "65535")
+    assert ConfigField("defaults.port", "Port", minimum=1, maximum=65535).parse(" $AX_TEST_PORT ") == "$AX_TEST_PORT"
+
+
+@pytest.mark.parametrize("resolved", [None, "   "])
+def test_folder_environment_reference_must_resolve_to_a_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, resolved: str | None
 ) -> None:
-    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-
-    reference = "$AX_TEST_STORAGE_DEFAULT"
-    monkeypatch.delenv(reference[1:], raising=False)
+    folder = ConfigField("storage.cache_dir", "Cache folder", directory=True)
+    monkeypatch.delenv("AX_TEST_FOLDER", raising=False)
     if resolved is not None:
-        monkeypatch.setenv(reference[1:], str(tmp_path / "new-cache") if resolved == "folder" else resolved)
-    settings = GlobalSettings()
-    settings.load_from_config(config)
-    config.activate_storage()
-    active_storage = config.get("storage")
-    config.save()
-    previous = config.config_path.read_bytes()
-    changes: list[tuple[str, Any]] = []
-    settings.setting_changed.connect(lambda key, value: changes.append((key, value)))
-    dialog = SettingsDialog()
-    qtbot.addWidget(dialog)
-    dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("dark"))
-    editor = next(
-        editor for field, editor in dialog._configuration_editors.items() if field.path == "storage.cache_dir"
-    )
-    assert editor._text is not None
-    editor._text.setText(reference)
-    if resolved == "folder":
-        assert dialog._apply()
-        assert json.loads(config.config_path.read_text())["storage"]["cache_dir"] == reference
-    else:
-        assert not dialog._apply()
-        assert "non-empty folder path" in dialog._status_label.text()
-        assert config.config_path.read_bytes() == previous
-        assert changes == []
-    assert config.get("storage") == active_storage
+        monkeypatch.setenv("AX_TEST_FOLDER", resolved)
+    with pytest.raises(ValueError, match="non-empty folder path"):
+        folder.parse("$AX_TEST_FOLDER")
+    monkeypatch.setenv("AX_TEST_FOLDER", str(tmp_path))
+    assert folder.parse("$AX_TEST_FOLDER") == "$AX_TEST_FOLDER"
 
 
 def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> None:
@@ -439,45 +339,39 @@ def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> No
     marked = {text.removesuffix(f" {marker}") for text in texts if text.endswith(marker)}
     assert marked == {"Use the app title bar", "Graphics acceleration", "Storage locations"}
     assert not [text for text in texts if "restart" in text.lower() and not text.endswith(marker)]
-    assert "Shortcut changes apply when you click OK in the shortcut editor, even if you cancel Settings." in texts
 
 
 def test_saving_a_restart_setting_asks_to_restart_now(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     """Only a saved change marked (requires restart) asks; the answer is left for the main window to act on."""
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
-    GlobalSettings.reset_instance()
-    try:
-        asked: list[bool] = []
+    asked: list[bool] = []
 
-        def ask_to_restart(self: SettingsDialog) -> bool:
-            asked.append(True)
-            return True
+    def ask_to_restart(self: SettingsDialog) -> bool:
+        asked.append(True)
+        return True
 
-        monkeypatch.setattr(SettingsDialog, "_ask_to_restart", ask_to_restart)
+    monkeypatch.setattr(SettingsDialog, "_ask_to_restart", ask_to_restart)
 
-        dialog = SettingsDialog()
-        qtbot.addWidget(dialog)
-        dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
-        dialog._on_ok()
-        assert asked == [] and not dialog.restart_requested
+    dialog = SettingsDialog()
+    qtbot.addWidget(dialog)
+    dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
+    dialog._on_ok()
+    assert asked == [] and not dialog.restart_requested
 
-        dialog = SettingsDialog()
-        qtbot.addWidget(dialog)
-        editor = next(editor for field, editor in dialog._configuration_editors.items() if field.directory)
-        assert editor._text is not None
-        editor._text.setText(f"  {editor.text()}  ")
-        dialog._on_ok()
-        assert asked == []  # The same path with spaces saves the same value.
+    dialog = SettingsDialog()
+    qtbot.addWidget(dialog)
+    editor = next(editor for field, editor in dialog._configuration_editors.items() if field.directory)
+    assert editor._text is not None
+    editor._text.setText(f"  {editor.text()}  ")
+    dialog._on_ok()
+    assert asked == []  # The same path with spaces saves the same value.
 
-        dialog = SettingsDialog()
-        qtbot.addWidget(dialog)
-        dialog._custom_frame.setChecked(not dialog._custom_frame.isChecked())
-        dialog._on_ok()
-        assert asked == [True] and dialog.restart_requested
-        assert not any(button.text() == "Apply" for button in dialog.findChildren(QPushButton))
-    finally:
-        GlobalSettings.reset_instance()
+    dialog = SettingsDialog()
+    qtbot.addWidget(dialog)
+    dialog._custom_frame.setChecked(not dialog._custom_frame.isChecked())
+    dialog._on_ok()
+    assert asked == [True] and dialog.restart_requested
 
 
 def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(

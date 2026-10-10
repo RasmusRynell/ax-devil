@@ -1,4 +1,4 @@
-"""Tests for the generic runtime registry and decoder contracts."""
+"""Installed plugins load through their entry points, and a broken one is recorded without stopping the rest."""
 
 from __future__ import annotations
 
@@ -14,469 +14,231 @@ import pytest
 
 from ax_devil.modules.plugin_system import (
     DECODER_PLUGIN_TYPE,
+    PLAYLIST_RESOLVER_PLUGIN_TYPE,
     ApplicationPluginLoader,
     DecoderPlugin,
     PlaylistResolverPlugin,
-    PluginBase,
     PluginDefinitionBase,
-    PluginFamily,
+    PluginStatus,
     RuntimePluginRegistry,
 )
 from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
 
-DECODER_FAMILY = PluginFamily(
-    plugin_type=DECODER_PLUGIN_TYPE,
-    plugin_base_class=DecoderPlugin,
-    builtin_root=Path("/nonexistent"),
-    entrypoint_group="test.decoder_plugins",
-)
+DECODER_GROUP = "ax_devil.decoder_plugins"
+RESOLVER_GROUP = "ax_devil.playlist_resolver_plugins"
+PLUGIN_ID = "external-plugin"
 
 
 @pytest.fixture(autouse=True)
 def _restore_plugins() -> Generator[None, None, None]:
-    """Isolate each registry test and restore built-ins afterward."""
-    RuntimePluginRegistry.reset()
+    """Restore the built-in plugins after each test."""
     yield
     with patch("ax_devil.modules.plugin_system.loader.importlib.metadata.entry_points", return_value=[]):
         ApplicationPluginLoader.reload_plugins()
 
 
-class ExampleFamilyPlugin(PluginBase):
-    """Plugin fixture for a non-built-in family."""
+def _entry_point(plugin: Any, *, name: str = PLUGIN_ID, distribution: str = "example-distribution") -> SimpleNamespace:
+    """Describe an installed entry point; ``plugin`` is what loading it returns, or an exception it raises."""
+
+    def load() -> Any:
+        if isinstance(plugin, Exception):
+            raise plugin
+        return plugin
+
+    dist = SimpleNamespace(name=distribution, locate_file=lambda _: Path(f"/site-packages/{distribution}"))
+    return SimpleNamespace(name=name, value=f"{name}:PLUGIN_CLASS", dist=dist, load=load)
+
+
+def _load_installed(monkeypatch: pytest.MonkeyPatch, **groups: list[SimpleNamespace]) -> None:
+    """Reload all plugins with these entry points installed, keyed by ``decoders`` and ``resolvers``."""
+    by_group = {DECODER_GROUP: groups.get("decoders", []), RESOLVER_GROUP: groups.get("resolvers", [])}
+    monkeypatch.setattr(metadata, "entry_points", lambda *, group: by_group.get(group, []))
+    ApplicationPluginLoader.reload_plugins()
+
+
+class ExternalDecoder(DecoderPlugin):
+    """A valid external decoder."""
 
     @classmethod
     def required_api_version(cls) -> int:
         return 1
 
     @classmethod
-    def plugin_type(cls) -> str:
-        return "example"
+    def scene_model_version(cls) -> tuple[int, int] | None:
+        return SCENE_MODEL_VERSION
 
     @classmethod
     def plugin_id(cls) -> str:
-        return "example-plugin"
+        return PLUGIN_ID
 
     @classmethod
     def display_name(cls) -> str:
-        return "Example Plugin"
+        return "External Decoder"
 
 
-class WrongTypePlugin(DecoderPlugin):
-    """Decoder fixture that declares an incompatible family."""
+class ExternalResolver(PlaylistResolverPlugin):
+    """A valid external playlist resolver."""
 
     @classmethod
     def required_api_version(cls) -> int:
         return 1
 
     @classmethod
-    def plugin_type(cls) -> str:
-        return "wrong-type"
-
-    @classmethod
     def plugin_id(cls) -> str:
-        return "wrong-type-plugin"
+        return "external-resolver"
 
     @classmethod
     def display_name(cls) -> str:
-        return "Wrong Type Plugin"
+        return "External Resolver"
+
+    def create_settings_widget(self) -> Any:
+        raise NotImplementedError
 
 
-class IncompatiblePlugin(DecoderPlugin):
-    """Decoder fixture requiring a future plugin API."""
+class BrokenApiDeclaration(ExternalDecoder):
+    @classmethod
+    def required_api_version(cls) -> int:
+        raise RuntimeError("broken API declaration")
 
+
+class FutureApi(ExternalDecoder):
     @classmethod
     def required_api_version(cls) -> int:
         return 999
 
+
+class WrongType(ExternalDecoder):
+    @classmethod
+    def plugin_type(cls) -> str:
+        return "wrong-type"
+
+
+class UndeclaredSceneModel(ExternalDecoder):
+    @classmethod
+    def scene_model_version(cls) -> tuple[int, int] | None:
+        return None
+
+
+class NewerSceneMajor(ExternalDecoder):
+    @classmethod
+    def scene_model_version(cls) -> tuple[int, int] | None:
+        return (SCENE_MODEL_VERSION[0] + 1, 0)
+
+
+class NewerSceneMinor(ExternalDecoder):
+    @classmethod
+    def scene_model_version(cls) -> tuple[int, int] | None:
+        return (SCENE_MODEL_VERSION[0], SCENE_MODEL_VERSION[1] + 1)
+
+
+class UndeclaredApi(DecoderPlugin):
     @classmethod
     def plugin_id(cls) -> str:
-        return "incompatible-plugin"
+        return PLUGIN_ID
 
     @classmethod
     def display_name(cls) -> str:
-        return "Incompatible Plugin"
+        return "Undeclared"
 
 
-def test_application_loader_loads_installed_entry_point(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Installed package entry points should register plugin classes automatically."""
+def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.MonkeyPatch) -> None:
+    _load_installed(monkeypatch, decoders=[_entry_point(ExternalDecoder)], resolvers=[_entry_point(ExternalResolver)])
 
-    class ExamplePlugin(DecoderPlugin):
-        @classmethod
-        def required_api_version(cls) -> int:
-            return 1
-
-        @classmethod
-        def scene_model_version(cls) -> tuple[int, int]:
-            return SCENE_MODEL_VERSION
-
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "installed-example"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "Installed Example"
-
-    distribution = SimpleNamespace(name="example-distribution", locate_file=lambda _: tmp_path)
-    entrypoint = SimpleNamespace(
-        name="installed-example",
-        value="example_plugin:PLUGIN_CLASS",
-        dist=distribution,
-        load=lambda: ExamplePlugin,
+    decoder = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID)
+    resolver = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "external-resolver")
+    assert (decoder.status, decoder.plugin_class) == (PluginStatus.LOADED, ExternalDecoder)
+    assert (resolver.status, resolver.plugin_class) == (PluginStatus.LOADED, ExternalResolver)
+    assert decoder.origin == "package:example-distribution"
+    assert decoder.entrypoint == Path("/site-packages/example-distribution")
+    assert (
+        RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "mot_challenge").status is PluginStatus.LOADED
     )
-    monkeypatch.setattr(metadata, "entry_points", lambda **_: [entrypoint])
-
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._load_family_from_entrypoints(family)
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "installed-example")
-    assert record.definition.display_name == "Installed Example"
-    assert record.entrypoint == tmp_path
-    assert record.origin == "package:example-distribution"
-
-
-def test_application_loader_records_entrypoint_metadata_failure(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A broken distribution metadata lookup should not abort plugin discovery."""
-
-    entrypoint = SimpleNamespace(name="metadata-error", load=lambda: object)
-    monkeypatch.setattr(metadata, "entry_points", lambda **_: [entrypoint])
-
-    def fail_path(_: Any) -> Path:
-        raise RuntimeError("broken distribution metadata")
-
-    monkeypatch.setattr(ApplicationPluginLoader, "_entrypoint_path", staticmethod(fail_path))
-    family = DECODER_FAMILY
-
-    ApplicationPluginLoader._load_family_from_entrypoints(family)
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "metadata-error")
-    assert record.status.value == "failed"
-    assert record.error == "entry-point discovery failed: broken distribution metadata"
-
-
-def test_runtime_registry_rejects_duplicate_plugin_ids(tmp_path: Path) -> None:
-    """The generic runtime registry should reject duplicate plugin identifiers."""
-
-    definition = PluginDefinitionBase(plugin_type="example", plugin_id="duplicate", display_name="Duplicate")
-    RuntimePluginRegistry.register_definition(definition, tmp_path / "one.py", "test")
-
-    with pytest.raises(ValueError, match="Duplicate plugin id registered: duplicate"):
-        RuntimePluginRegistry.register_definition(definition, tmp_path / "two.py", "test")
-
-
-def test_runtime_registry_allows_same_plugin_id_for_different_plugin_types(tmp_path: Path) -> None:
-    """The generic registry should scope plugin ids by plugin_type."""
-
-    definition_a = PluginDefinitionBase(plugin_type="type-a", plugin_id="shared", display_name="Shared A")
-    definition_b = PluginDefinitionBase(plugin_type="type-b", plugin_id="shared", display_name="Shared B")
-
-    RuntimePluginRegistry.register_definition(definition_a, tmp_path / "a.py", "test")
-    RuntimePluginRegistry.register_definition(definition_b, tmp_path / "b.py", "test")
-
-    assert RuntimePluginRegistry.get_plugin_ids("type-a") == ["shared"]
-    assert RuntimePluginRegistry.get_plugin_ids("type-b") == ["shared"]
-    assert RuntimePluginRegistry.get_plugin("type-a", "shared").definition.display_name == "Shared A"
-    assert RuntimePluginRegistry.get_plugin("type-b", "shared").definition.display_name == "Shared B"
-
-
-def test_application_loader_marks_invalid_plugin_class_as_failed(tmp_path: Path) -> None:
-    """Invalid PLUGIN_CLASS exports should be recorded as failed."""
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        object,
-        tmp_path,
-        "package:broken",
-        plugin_id_hint="broken",
-    )
-
-    records = RuntimePluginRegistry.list_plugins()
-    assert len(records) == 1
-    assert records[0].definition.plugin_id == "broken"
-    assert records[0].definition.plugin_type == DECODER_PLUGIN_TYPE
-    assert records[0].status.value == "failed"
-    assert records[0].error == "PLUGIN_CLASS missing or invalid"
-
-
-def test_application_loader_marks_plugin_validation_exception_as_failed(tmp_path: Path) -> None:
-    """A plugin validation exception should not abort application startup."""
-
-    class BrokenPlugin(DecoderPlugin):
-        @classmethod
-        def required_api_version(cls) -> int:
-            raise RuntimeError("broken API declaration")
-
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "broken-plugin"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "Broken Plugin"
-
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        BrokenPlugin,
-        tmp_path,
-        "package:broken",
-        plugin_id_hint="broken-plugin",
-    )
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "broken-plugin")
-    assert record.status.value == "failed"
-    assert record.error == "plugin validation failed: broken API declaration"
-
-
-def test_external_plugin_must_declare_api_version(tmp_path: Path) -> None:
-    """External plugins must opt into the host API explicitly."""
-
-    class UndeclaredPlugin(DecoderPlugin):
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "undeclared-plugin"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "Undeclared Plugin"
-
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        UndeclaredPlugin,
-        tmp_path,
-        "package:undeclared",
-        plugin_id_hint="undeclared-plugin",
-    )
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "undeclared-plugin")
-    assert record.status.value == "failed"
-    assert record.error == "must explicitly declare required_api_version"
 
 
 @pytest.mark.parametrize(
-    ("version", "error"),
+    ("plugin", "reason"),
     [
-        (None, "must explicitly declare scene_model_version"),
-        (
-            (SCENE_MODEL_VERSION[0] + 1, 0),
-            f"built for Scene model {SCENE_MODEL_VERSION[0] + 1}.0, this ax-devil uses Scene model "
-            f"{SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1]}; update the plugin",
-        ),
-        (
-            (SCENE_MODEL_VERSION[0], SCENE_MODEL_VERSION[1] + 1),
-            f"built for Scene model {SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1] + 1}, this ax-devil uses "
-            f"Scene model {SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1]}; update the plugin",
+        pytest.param(ImportError("No module named 'missing'"), "entry-point discovery failed", id="import-error"),
+        pytest.param(object, "PLUGIN_CLASS missing or invalid", id="not-a-plugin"),
+        pytest.param(UndeclaredApi, "must explicitly declare required_api_version", id="undeclared-api"),
+        pytest.param(BrokenApiDeclaration, "plugin validation failed: broken API declaration", id="raising-api"),
+        pytest.param(FutureApi, "requires plugin API 999, host provides 1", id="future-api"),
+        pytest.param(WrongType, "expected 'decoder'", id="wrong-family"),
+        pytest.param(UndeclaredSceneModel, "must explicitly declare scene_model_version", id="no-scene-model"),
+        pytest.param(NewerSceneMajor, f"built for Scene model {SCENE_MODEL_VERSION[0] + 1}.0", id="scene-major"),
+        pytest.param(
+            NewerSceneMinor, f"built for Scene model {SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1] + 1}", id="minor"
         ),
     ],
 )
-def test_decoder_plugin_rejects_incompatible_scene_model(
-    tmp_path: Path, version: tuple[int, int] | None, error: str
-) -> None:
-    """Decoder plugins must declare a Scene model version the host can read."""
+def test_rejected_plugin_is_recorded_with_its_reason(monkeypatch: pytest.MonkeyPatch, plugin: Any, reason: str) -> None:
+    """The plugin list explains why an installed plugin is unavailable, and every other plugin still loads."""
+    _load_installed(monkeypatch, decoders=[_entry_point(plugin)], resolvers=[_entry_point(ExternalResolver)])
 
-    class ScenePlugin(DecoderPlugin):
+    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID)
+    assert record.status is PluginStatus.FAILED
+    assert record.error is not None and reason in record.error
+    resolver = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "external-resolver")
+    assert resolver.status is PluginStatus.LOADED
+    decoders = RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE)
+    assert any(other.origin == "builtin" and other.status is PluginStatus.LOADED for other in decoders)
+
+
+def test_registration_failure_is_recorded_under_the_plugin_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A plugin is listed by its own ID, even when its entry point has another name."""
+
+    class BrokenDescription(ExternalResolver):
         @classmethod
-        def required_api_version(cls) -> int:
-            return 1
+        def description(cls) -> str | None:
+            raise RuntimeError("registration failed")
 
-        @classmethod
-        def scene_model_version(cls) -> tuple[int, int] | None:
-            return version
+    _load_installed(monkeypatch, resolvers=[_entry_point(BrokenDescription, name="different-entry-point")])
 
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "scene-plugin"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "Scene Plugin"
-
-    ApplicationPluginLoader._register_plugin_class(
-        DECODER_FAMILY, ScenePlugin, tmp_path, "package:scene", plugin_id_hint="scene-plugin"
-    )
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "scene-plugin")
-    assert record.status.value == "failed"
-    assert record.error == error
-
-
-def test_registration_failure_keeps_the_plugin_id(tmp_path: Path) -> None:
-    """Registry failures retain the plugin ID even when the entry point has a different name."""
-    family = PluginFamily("example", PluginBase, tmp_path, "test.example_plugins")
-    with patch.object(RuntimePluginRegistry, "register_plugin", side_effect=RuntimeError("registration failed")):
-        ApplicationPluginLoader._register_plugin_class(
-            family, ExampleFamilyPlugin, tmp_path, "package:example", plugin_id_hint="different-entry-point"
-        )
-    record = RuntimePluginRegistry.get_plugin("example", "example-plugin")
-    assert record.status.value == "failed"
+    record = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "external-resolver")
+    assert record.status is PluginStatus.FAILED
     assert record.error == "registration failed"
 
 
-def test_decoder_plugin_uses_decoder_plugin_type() -> None:
-    """Decoder plugins should register under the shared decoder plugin type."""
-
-    class ExampleDecoderPlugin(DecoderPlugin):
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "example-decoder"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "Example Decoder"
-
-    assert ExampleDecoderPlugin.definition().plugin_type == DECODER_PLUGIN_TYPE
-
-
-def test_application_loader_supports_another_plugin_family(tmp_path: Path) -> None:
-    """A second plugin family should load without runtime changes."""
-    family = PluginFamily(
-        plugin_type="example",
-        plugin_base_class=PluginBase,
-        builtin_root=Path("/nonexistent"),
-        entrypoint_group="test.example_plugins",
-    )
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        ExampleFamilyPlugin,
-        tmp_path,
-        "package:example",
-        plugin_id_hint="example-plugin",
+def test_valid_plugin_replaces_failed_same_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    _load_installed(
+        monkeypatch,
+        decoders=[_entry_point(FutureApi, distribution="broken"), _entry_point(ExternalDecoder, distribution="valid")],
     )
 
-    record = RuntimePluginRegistry.get_plugin("example", "example-plugin")
-    assert record.definition.display_name == "Example Plugin"
+    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID)
+    assert record.status is PluginStatus.LOADED
+    assert record.origin == "package:valid"
 
 
-def test_application_loader_rejects_plugin_type_mismatch(tmp_path: Path) -> None:
-    """A family loader should reject plugins declaring the wrong plugin_type."""
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        WrongTypePlugin,
-        tmp_path,
-        "package:wrong-type",
-        plugin_id_hint="wrong-type-plugin",
-    )
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "wrong-type-plugin")
-    assert record.status.value == "failed"
-    assert record.error == "PLUGIN_CLASS declared plugin_type='wrong-type', expected 'decoder'"
-
-
-def test_application_loader_rejects_incompatible_plugin_api(tmp_path: Path) -> None:
-    """Plugins requiring another API version should fail before registration."""
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        IncompatiblePlugin,
-        tmp_path,
-        "package:incompatible",
-        plugin_id_hint="incompatible-plugin",
-    )
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "incompatible-plugin")
-    assert record.status.value == "failed"
-    assert record.error == "requires plugin API 999, host provides 1"
-
-
-def test_valid_plugin_replaces_failed_same_id(tmp_path: Path) -> None:
-    """A later valid plugin should recover an earlier failed record with the same ID."""
-
-    class ValidPlugin(DecoderPlugin):
-        @classmethod
-        def required_api_version(cls) -> int:
-            return 1
-
-        @classmethod
-        def scene_model_version(cls) -> tuple[int, int]:
-            return SCENE_MODEL_VERSION
-
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "incompatible-plugin"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "Valid Plugin"
-
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        IncompatiblePlugin,
-        tmp_path / "broken",
-        "package:broken",
-        plugin_id_hint="incompatible-plugin",
-    )
-    ApplicationPluginLoader._register_plugin_class(
-        family,
-        ValidPlugin,
-        tmp_path / "valid",
-        "package:valid",
-        plugin_id_hint="incompatible-plugin",
-    )
-
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "incompatible-plugin")
-    assert record.status.value == "loaded"
-    assert record.definition.display_name == "Valid Plugin"
-
-
-def test_duplicate_plugin_id_does_not_replace_loaded_plugin(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    """A duplicate plugin id must not hide an already loaded plugin."""
+def test_duplicate_plugin_id_does_not_replace_loaded_plugin(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     caplog.set_level(WARNING, logger="ax_devil.ax_devil.modules.plugin_system.loader")
 
-    class FirstPlugin(DecoderPlugin):
-        @classmethod
-        def required_api_version(cls) -> int:
-            return 1
+    class SecondDecoder(ExternalDecoder):
+        pass
 
-        @classmethod
-        def scene_model_version(cls) -> tuple[int, int]:
-            return SCENE_MODEL_VERSION
-
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "shared-plugin"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "First Plugin"
-
-    class SecondPlugin(FirstPlugin):
-        @classmethod
-        def display_name(cls) -> str:
-            return "Second Plugin"
-
-    family = DECODER_FAMILY
-    ApplicationPluginLoader._register_plugin_class(
-        family, FirstPlugin, tmp_path / "first", "package:first", plugin_id_hint="shared-plugin"
-    )
-    ApplicationPluginLoader._register_plugin_class(
-        family, SecondPlugin, tmp_path / "second", "package:second", plugin_id_hint="shared-plugin"
+    _load_installed(
+        monkeypatch,
+        decoders=[
+            _entry_point(ExternalDecoder, distribution="first"),
+            _entry_point(SecondDecoder, distribution="second"),
+        ],
     )
 
-    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "shared-plugin")
-    assert record.status.value == "loaded"
-    assert record.definition.display_name == "First Plugin"
+    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID)
+    assert (record.status, record.plugin_class) == (PluginStatus.LOADED, ExternalDecoder)
     assert any("Duplicate plugin id" in message for message in caplog.messages)
 
 
-def test_runtime_registry_stores_plugin_class(tmp_path: Path) -> None:
-    """Loaded plugin records should retain the plugin class."""
+def test_registry_scopes_unique_plugin_ids_by_plugin_type(tmp_path: Path) -> None:
+    RuntimePluginRegistry.reset()
+    for plugin_type in ("type-a", "type-b"):
+        definition = PluginDefinitionBase(plugin_type=plugin_type, plugin_id="shared", display_name=plugin_type)
+        RuntimePluginRegistry.register_definition(definition, tmp_path / f"{plugin_type}.py", "test")
 
-    class ExampleResolver(PlaylistResolverPlugin):
-        @classmethod
-        def plugin_id(cls) -> str:
-            return "example-resolver"
-
-        @classmethod
-        def display_name(cls) -> str:
-            return "Example Resolver"
-
-        def create_settings_widget(self) -> Any:
-            raise NotImplementedError
-
-    record = RuntimePluginRegistry.register_plugin(ExampleResolver, tmp_path / "plugin.py", "test")
-    assert record.plugin_class is ExampleResolver
+    assert RuntimePluginRegistry.get_plugin("type-a", "shared").definition.display_name == "type-a"
+    assert RuntimePluginRegistry.get_plugin("type-b", "shared").definition.display_name == "type-b"
+    duplicate = PluginDefinitionBase(plugin_type="type-a", plugin_id="shared", display_name="again")
+    with pytest.raises(ValueError, match="Duplicate plugin id registered: shared"):
+        RuntimePluginRegistry.register_definition(duplicate, tmp_path / "again.py", "test")

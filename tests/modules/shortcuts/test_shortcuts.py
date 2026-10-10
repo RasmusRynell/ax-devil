@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QRect, Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
@@ -34,22 +34,17 @@ def _make_definition(action_id: str = "test.action", key: str = "Ctrl+T") -> Sho
 
 class TestRegistration:
     def test_register_and_install(self, manager: ShortcutManager, window: QWidget) -> None:
-        defn = _make_definition()
-        manager.register(defn)
+        manager.register(_make_definition())
         manager.install(window)
-        action = manager.get_action("test.action")
-        assert isinstance(action, QAction)
-        assert action.shortcut().toString() == "Ctrl+T"
+        assert manager.get_action("test.action").shortcut().toString() == "Ctrl+T"
+        assert manager.current_key_sequence("test.action") == QKeySequence("Ctrl+T")
 
-    def test_defaults_include_playback_speed_shortcuts(self, manager: ShortcutManager, window: QWidget) -> None:
+    def test_default_shortcuts_do_not_share_keys(self, manager: ShortcutManager, window: QWidget) -> None:
         manager.register_defaults()
         manager.install(window)
-
-        speed_down = manager.get_action("playback.speed_down")
-        speed_up = manager.get_action("playback.speed_up")
-
-        assert speed_down.shortcut().toString() == "["
-        assert speed_up.shortcut().toString() == "]"
+        keys = [manager.get_action(d.action_id).shortcut().toString() for d in manager.definitions()]
+        bound = [key for key in keys if key]
+        assert bound and len(set(bound)) == len(bound)
 
     def test_duplicate_register_skipped(self, manager: ShortcutManager) -> None:
         defn = _make_definition()
@@ -103,17 +98,11 @@ class TestOverrides:
 
 
 class TestRebinding:
-    def test_set_binding(self, manager: ShortcutManager, window: QWidget) -> None:
+    def test_set_binding_saves_only_differences_from_default(self, manager: ShortcutManager, window: QWidget) -> None:
         manager.register(_make_definition())
         manager.install(window)
         manager.set_binding("test.action", QKeySequence("Ctrl+Y"))
         assert manager.get_action("test.action").shortcut().toString() == "Ctrl+Y"
-        assert "test.action" in manager.get_config_overrides()
-
-    def test_set_binding_to_default_clears_override(self, manager: ShortcutManager, window: QWidget) -> None:
-        manager.register(_make_definition())
-        manager.install(window)
-        manager.set_binding("test.action", QKeySequence("Ctrl+Y"))
         assert "test.action" in manager.get_config_overrides()
         manager.set_binding("test.action", QKeySequence("Ctrl+T"))
         assert "test.action" not in manager.get_config_overrides()
@@ -123,6 +112,7 @@ class TestRebinding:
         manager.install(window)
         manager.set_binding("test.action", None)
         assert manager.get_action("test.action").shortcut().isEmpty()
+        assert manager.current_key_sequence("test.action") is None
 
     def test_set_binding_unknown_action_raises(self, manager: ShortcutManager, window: QWidget) -> None:
         manager.register(_make_definition())
@@ -131,49 +121,24 @@ class TestRebinding:
             manager.set_binding("unknown.action", QKeySequence("Ctrl+Z"))
 
 
-class TestConflictDetection:
-    def test_has_conflict(self, manager: ShortcutManager, window: QWidget) -> None:
-        manager.register(_make_definition("action.a", "Ctrl+A"))
-        manager.register(_make_definition("action.b", "Ctrl+B"))
-        manager.install(window)
-        assert manager.has_conflict(QKeySequence("Ctrl+A")) == "action.a"
-        assert manager.has_conflict(QKeySequence("Ctrl+A"), exclude_action_id="action.a") is None
-
-    def test_no_conflict_for_unbound(self, manager: ShortcutManager, window: QWidget) -> None:
-        manager.register(_make_definition())
-        manager.install(window)
-        assert manager.has_conflict(QKeySequence("F12")) is None
-
-    def test_empty_sequence_no_conflict(self, manager: ShortcutManager, window: QWidget) -> None:
-        manager.register(_make_definition())
-        manager.install(window)
-        assert manager.has_conflict(QKeySequence()) is None
+def test_has_conflict_reports_the_bound_action(manager: ShortcutManager, window: QWidget) -> None:
+    manager.register(_make_definition("action.a", "Ctrl+A"))
+    manager.register(_make_definition("action.b", "Ctrl+B"))
+    manager.install(window)
+    assert manager.has_conflict(QKeySequence("Ctrl+A")) == "action.a"
+    assert manager.has_conflict(QKeySequence("Ctrl+A"), exclude_action_id="action.a") is None
+    assert manager.has_conflict(QKeySequence("F12")) is None
+    assert manager.has_conflict(QKeySequence()) is None
 
 
-class TestResetToDefaults:
-    def test_reset_clears_overrides(self, manager: ShortcutManager, window: QWidget) -> None:
-        manager.register(_make_definition())
-        manager.install(window)
-        manager.set_binding("test.action", QKeySequence("Ctrl+Y"))
-        assert manager.get_config_overrides() != {}
-        manager.reset_to_defaults()
-        assert manager.get_config_overrides() == {}
-        assert manager.get_action("test.action").shortcut().toString() == "Ctrl+T"
-
-
-class TestCurrentKeySequence:
-    def test_returns_active_binding(self, manager: ShortcutManager, window: QWidget) -> None:
-        manager.register(_make_definition())
-        manager.install(window)
-        seq = manager.current_key_sequence("test.action")
-        assert seq is not None
-        assert seq.toString() == "Ctrl+T"
-
-    def test_returns_none_for_cleared(self, manager: ShortcutManager, window: QWidget) -> None:
-        manager.register(_make_definition())
-        manager.install(window)
-        manager.set_binding("test.action", None)
-        assert manager.current_key_sequence("test.action") is None
+def test_reset_clears_overrides(manager: ShortcutManager, window: QWidget) -> None:
+    manager.register(_make_definition())
+    manager.install(window)
+    manager.set_binding("test.action", QKeySequence("Ctrl+Y"))
+    assert manager.get_config_overrides() != {}
+    manager.reset_to_defaults()
+    assert manager.get_config_overrides() == {}
+    assert manager.get_action("test.action").shortcut().toString() == "Ctrl+T"
 
 
 def _shortcut_dialog_row(dialog: ShortcutsDialog, action_id: str) -> _ShortcutRow:

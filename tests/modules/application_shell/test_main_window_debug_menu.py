@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from PySide6.QtGui import QAction
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
@@ -22,8 +23,7 @@ def test_collect_debug_metrics_action_is_checked_while_metrics_are_collected(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     try:
-        action = window._metrics_action
-        assert action.text() == "Collect Debug Metrics"
+        action = next(action for action in window.findChildren(QAction) if action.text() == "Collect Debug Metrics")
         assert action.isChecked() == initially_enabled
 
         action.trigger()

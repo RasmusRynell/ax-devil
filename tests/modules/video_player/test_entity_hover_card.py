@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
+from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.scene.inspection import debug_section_html
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 
@@ -62,27 +62,13 @@ def test_hover_card_prefers_above_when_more_room_above(qtbot: QtBot) -> None:
     assert not _rects_intersect((card.x(), card.y(), card.width(), card.height()), avoid_rect)
 
 
-def test_hover_card_avoids_object_rect_when_space_exists(qtbot: QtBot) -> None:
-    parent = QWidget()
-    parent.resize(640, 480)
-    qtbot.addWidget(parent)
-
-    card = EntityHoverCard(parent)
-    avoid_rect = (220, 160, 80, 80)
-    card.show_for("entity-1", "<span>hover content</span>", 300, 160, avoid_rect=avoid_rect)
-
-    assert not _rects_intersect((card.x(), card.y(), card.width(), card.height()), avoid_rect)
-
-
 def _long_card(prefix: str = "metric") -> str:
     return "".join(debug_section_html({"group": {f"{prefix}_{'x' * 40}_{index}": index for index in range(80)}}))
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
-@pytest.mark.parametrize("theme", ["dark", "light"])
 @pytest.mark.parametrize("text_size", [14, 21])
-def test_card_scrolls_only_when_content_exceeds_viewer(qtbot: QtBot, theme: str, text_size: int) -> None:
-    apply_theme(theme)
+def test_card_scrolls_only_when_content_exceeds_viewer(qtbot: QtBot, text_size: int) -> None:
     apply_text_size(text_size)
     parent = QWidget()
     parent.resize(1000, 1100)

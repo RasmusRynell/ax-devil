@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from PySide6.QtWidgets import QCheckBox, QPushButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.filtering import FilterConfig, FilterOption
@@ -30,37 +31,40 @@ def sample_filter_config() -> FilterConfig:
     )
 
 
-def test_entity_filter_widget_uses_supplied_config(qtbot: QtBot, sample_filter_config: FilterConfig) -> None:
+def _checkboxes(widget: EntityFilterWidget) -> dict[str, QCheckBox]:
+    return {checkbox.text(): checkbox for checkbox in widget.findChildren(QCheckBox)}
+
+
+def test_checkboxes_and_filter_model_stay_in_sync(qtbot: QtBot, sample_filter_config: FilterConfig) -> None:
     model = SessionFilter(sample_filter_config)
     widget = EntityFilterWidget(filter_model=model)
     qtbot.addWidget(widget)
+    checkboxes = _checkboxes(widget)
 
-    assert set(widget._checkboxes.keys()) == {"keep_all", "keep_none"}
-    assert model.is_enabled("keep_all")
-    assert not model.is_enabled("keep_none")
-
-    widget._checkboxes["keep_all"].setChecked(False)
+    assert {label: box.isChecked() for label, box in checkboxes.items()} == {"Keep All": True, "Keep None": False}
+    checkboxes["Keep All"].setChecked(False)
     assert not model.is_enabled("keep_all")
+    model.set_enabled("keep_none", True)
+    assert checkboxes["Keep None"].isChecked()
 
 
-def test_shared_model_updates_controls_and_toggle_all_notifies_once(
-    qtbot: QtBot, sample_filter_config: FilterConfig
-) -> None:
+def test_toggle_all_flips_every_option_with_one_notification(qtbot: QtBot, sample_filter_config: FilterConfig) -> None:
     model = SessionFilter(sample_filter_config)
     widget = EntityFilterWidget(filter_model=model)
     qtbot.addWidget(widget)
+    toggle_all = widget.findChild(QPushButton, "toggleAllButton")
+    assert toggle_all is not None
     notifications: list[tuple[bool, bool]] = []
     model.changed.connect(lambda: notifications.append((model.is_enabled("keep_all"), model.is_enabled("keep_none"))))
 
-    widget._toggle_all_button.click()
+    toggle_all.click()
     assert notifications == [(True, True)]
-    assert all(checkbox.isChecked() for checkbox in widget._checkboxes.values())
+    assert all(checkbox.isChecked() for checkbox in _checkboxes(widget).values())
 
-    widget._toggle_all_button.click()
+    toggle_all.click()
     assert notifications == [(True, True), (False, False)]
-    assert not any(checkbox.isChecked() for checkbox in widget._checkboxes.values())
+    assert not any(checkbox.isChecked() for checkbox in _checkboxes(widget).values())
 
     model.set_enabled("keep_none", True)
-    assert widget._checkboxes["keep_none"].isChecked()
     model.set_enabled("keep_none", True)
     assert len(notifications) == 3

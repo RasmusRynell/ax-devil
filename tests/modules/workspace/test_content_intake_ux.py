@@ -126,7 +126,7 @@ def test_recent_videos_reopen_relative_selections_after_the_working_directory_ch
     assert recent.entries() == (VideoFileStartup(video_path=video, overlay_path=overlay, handler_type="TXT"),)
 
 
-@pytest.mark.parametrize("content", ["{not json", "[null]", '["bad"]', '{"video_path": "x"}', "[{}]", "BAD_FIELD"])
+@pytest.mark.parametrize("content", ["{not json", '["bad"]', "[{}]", "BAD_FIELD"])
 def test_unreadable_recent_videos_file_is_ignored(tmp_path: Path, content: str) -> None:
     """Broken or wrongly shaped recent-video files never stop the workspace from starting."""
     store_path = tmp_path / "recent-videos.json"

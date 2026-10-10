@@ -116,21 +116,25 @@ def test_retained_preparation_reuses_unchanged_output_and_invalidates_culling() 
     assert [mesh.operation_count for mesh in third.meshes] == [2]
 
 
-def test_bulk_geometry_batches_across_labels() -> None:
-    """Geometry is one layer below text, so labels never split a batch; only capacity does."""
+def test_labels_between_geometry_do_not_split_its_batch() -> None:
+    """Geometry is one layer below text, so emitting text between boxes keeps them in one batch."""
     buffer = DrawingBuffer(_SETTINGS)
-    count = 1001
-    x = np.arange(count) / 10000
-    buffer.boxes(x, np.full(count, 0.1), np.full(count, 0.1), np.full(count, 0.1), Paint.of(_STYLE))
+    BoxCall(0.1, 0.1, 0.1, 0.1, _STYLE).submit(buffer)
     TextCall(0.5, 0.5, "keep", _STYLE).submit(buffer)
     BoxCall(0.2, 0.2, 0.1, 0.1, _STYLE).submit(buffer)
     drawing = buffer.finish()
-    assert len(drawing) == 1003
-    assert sum(mesh.operation_count for mesh in drawing.meshes) == 1002
-    per_box = len(drawing.meshes[0].payload) // 12 // drawing.meshes[0].operation_count
-    assert len(drawing.meshes) == -(-1002 // (60000 // per_box))
-    assert all(len(mesh.payload) // 12 <= 60000 for mesh in drawing.meshes)
+    assert [mesh.operation_count for mesh in drawing.meshes] == [2]
     assert [layout.text() for text in drawing.texts for layout in text.block.layouts] == ["keep"]
+
+
+def test_bulk_geometry_beyond_one_batch_keeps_every_row() -> None:
+    buffer = DrawingBuffer(_SETTINGS)
+    count = 10_000
+    x = np.arange(count) / count
+    buffer.boxes(x, np.full(count, 0.1), np.full(count, 0.1), np.full(count, 0.1), Paint.of(_STYLE))
+    drawing = buffer.finish()
+    assert len(drawing.meshes) > 1
+    assert sum(mesh.operation_count for mesh in drawing.meshes) == count
 
 
 def test_moving_labels_keep_live_layouts_beyond_the_inactive_cache_capacity() -> None:
@@ -182,19 +186,20 @@ def test_labels_are_sized_to_their_runs_and_placed_by_their_background_on_whole_
     assert (long.position.x(), long.position.y()) == (100, 50)
 
 
-def test_label_bars_are_two_and_a_half_font_sizes_long_and_filled_from_the_left() -> None:
+def test_label_bars_follow_the_text_and_fill_from_the_left() -> None:
     buffer = DrawingBuffer(_SETTINGS)
     red = (255, 0, 0)
     for runs in ((LabelRun("12", red),), (LabelRun("12", red), LabelRun("", red, bar=0.5))):
         LabelCall(0.1, 0.1, "top-left", LabelContent(runs, 0.12, gap=0.05)).submit(buffer)
     text, both = buffer.finish().labels
-    assert both.sprite.width == pytest.approx(text.sprite.width + 5 + 2.5 * 12)
+    start = text.sprite.width + 0.05 * 100
+    length = both.sprite.width - start
+    assert length > 0
     image, ratio = both.sprite.image, both.sprite.image.devicePixelRatio()
     row = round(both.sprite.height / 2 * ratio)
-    start = text.sprite.width + 5
 
     def alpha(at: float) -> int:
-        return image.pixelColor(round((start + at * 2.5 * 12) * ratio), row).alpha()
+        return image.pixelColor(round((start + at * length) * ratio), row).alpha()
 
     assert alpha(0.25) == 255
     assert 0 < alpha(0.75) < 255

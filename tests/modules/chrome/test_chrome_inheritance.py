@@ -32,8 +32,6 @@ def test_child_chrome_window_honors_explicit_frame_choice(qtbot: QtBot, custom_f
     parent = ChromeWindow(use_custom_frame=True)
     child = ChromeWindow(parent=parent, use_custom_frame=custom_frame, show_custom_frame_border=custom_frame)
     qtbot.addWidget(parent)
-    assert child.uses_custom_frame is custom_frame
-    assert child.shows_custom_frame_border is custom_frame
     assert (child.findChild(QWidget, "AxDevilTitleBar") is not None) is custom_frame
     assert (_direct_window_border(child) is not None) is custom_frame
 

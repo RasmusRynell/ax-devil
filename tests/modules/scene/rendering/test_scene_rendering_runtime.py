@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Callable
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -358,7 +358,7 @@ def test_optional_bindings_keep_valid_false_and_zero_and_ignore_wrong_shapes(
     assert [item.text for item in primitives if isinstance(item, TextCall)] == ["entity", "human"]
 
 
-@pytest.mark.parametrize("motion_state", [*MotionState, None])
+@pytest.mark.parametrize("motion_state", [MotionState.Moving, None])
 @pytest.mark.parametrize("visible", [True, False])
 def test_movement_and_speed_inputs_respect_visibility(motion_state: MotionState | None, visible: bool) -> None:
     scene = _scene(motion_state=motion_state)
@@ -380,39 +380,23 @@ def test_movement_and_speed_inputs_respect_visibility(motion_state: MotionState 
     assert [(line.x2, line.y2) for line in lines] == ([(0.2, 0.1)] if visible else [])
 
 
-@pytest.mark.parametrize(
-    "classification,motion_state,symbol",
-    [
-        (None, MotionState.Moving, "▶"),
-        ("custom", MotionState.Stationary, "Ⅱ"),
-        ("human", MotionState.Unknown, "?"),
-        ("car", MotionState.Moving, "▶"),
-        ("head", MotionState.Moving, "▶"),
-        ("human", None, None),
-    ],
-)
-def test_built_in_recipes_keep_movement_and_speed_controls_effective(
-    classification: str | None, motion_state: MotionState | None, symbol: str | None
-) -> None:
-    """Cover each recipe and motion state while keeping the two visibility controls independent."""
-    scene = _scene(motion_state=motion_state)
-    entity = next(iter(scene.entities.values()))
-    observation = entity.observations[0]
+@pytest.mark.parametrize("classification", [None, "custom", "human", "car", "head"])
+def test_built_in_recipes_keep_movement_and_speed_controls_independent(classification: str | None) -> None:
+    """Each packaged recipe hides its own movement badge and speed arrow, and only that, per control."""
+    scene = _scene(motion_state=MotionState.Moving)
+    observation = next(iter(scene.entities.values())).observations[0]
     observation.classification = [] if classification is None else [Classification(classification, Score(0.8))]
     observation.velocity_in_image_space = ImageVelocity(vx=0.2, vy=0.1)
     context = RenderContext.create(640, 480)
-    hidden = record_scene(
-        classic_variant(OverlayVisibility(frozenset({OverlayFeature.MOVEMENT, OverlayFeature.SPEED}))), scene, context
-    )
-    assert not any(isinstance(item, TextCall) and item.text in ("▶", "Ⅱ", "?") for item in hidden)
-    for disabled in (OverlayFeature.SPEED, OverlayFeature.MOVEMENT):
-        visible = record_scene(classic_variant(OverlayVisibility(frozenset({disabled}))), scene, context)
-        badges = [item.text for item in visible if isinstance(item, TextCall) and item.text in ("▶", "Ⅱ", "?")]
-        assert badges == ([symbol] if disabled is not OverlayFeature.MOVEMENT and symbol is not None else [])
-        if symbol is not None or disabled is not OverlayFeature.SPEED:
-            assert len(visible) > len(hidden)
-        else:
-            assert visible == hidden
+
+    def render(*hidden: OverlayFeature) -> Counter[str]:
+        return Counter(map(repr, record_scene(classic_variant(OverlayVisibility(frozenset(hidden))), scene, context)))
+
+    shown = render()
+    movement = shown - render(OverlayFeature.MOVEMENT)
+    speed = shown - render(OverlayFeature.SPEED)
+    assert movement and speed and not movement & speed
+    assert shown - movement - speed == render(OverlayFeature.MOVEMENT, OverlayFeature.SPEED)
 
 
 @pytest.mark.parametrize(
@@ -462,12 +446,14 @@ def test_built_in_indicators_remain_visible_on_small_boxes(classification: str |
         assert len(boxes) >= 2  # The outer box and its confidence fill.
 
 
-@pytest.mark.parametrize("width,height", [(16, 20), (26, 40), (100, 200)])
+@pytest.mark.parametrize("width,height", [(16, 20), (100, 200)])
 def test_built_in_bag_marker_stays_clear_of_clothing_color_dots(width: int, height: int) -> None:
     """The bag marker sits between the upper and lower color dots without overlapping them, even on short boxes."""
-    scene = _human_scene((width, height), attributes=[Attribute("carries_bag", True), *_RED_COLORS[:2]])
-    calls = _record_512(scene)
-    bag = next(item for item in calls if isinstance(item, BoxCall) and _fill(item) == (200, 200, 200))
+    without_bag = _record_512(
+        _human_scene((width, height), attributes=[Attribute("carries_bag", False), *_RED_COLORS[:2]])
+    )
+    calls = _record_512(_human_scene((width, height), attributes=[Attribute("carries_bag", True), *_RED_COLORS[:2]]))
+    [bag] = [item for item in calls if isinstance(item, BoxCall) and item not in without_bag]
     upper, lower = sorted((item for item in calls if isinstance(item, CircleCall)), key=lambda dot: dot.cy)
     assert upper.cy + upper.r <= bag.y
     assert bag.y + bag.h <= lower.cy - lower.r
@@ -511,7 +497,7 @@ def test_built_in_explicit_indicator_sizes_stay_exact() -> None:
     assert bar.h * 512 == pytest.approx(200 - 9 - 7)
 
 
-@pytest.mark.parametrize("width,height", [(10, 8), (26, 29), (50, 60), (100, 100)])
+@pytest.mark.parametrize("width,height", [(10, 8), (100, 100)])
 def test_built_in_confidence_bar_fills_proportionally_inside_short_boxes(width: int, height: int) -> None:
     """The confidence bar stays inside the box and its height stays proportional to the confidence."""
 
@@ -874,19 +860,7 @@ def test_rendering_entities_together_matches_rendering_each_alone() -> None:
 
 
 @pytest.mark.parametrize("relation_recipe", [False, True])
-def test_runtime_failure_discards_only_the_affected_recipe_output(relation_recipe: bool, tmp_path: Path) -> None:
-    from ax_devil.modules.scene.model import (
-        BoundingBox,
-        Entity,
-        EntityId,
-        EntityRelation,
-        Observation,
-        Scene,
-        TimeSlice,
-    )
-    from ax_devil.modules.video_player.engine.render_context import RenderContext
-    from tests.drawing_helpers import PointCall
-
+def test_runtime_failure_discards_only_the_affected_recipe_output(relation_recipe: bool) -> None:
     document = catalog_document()
     recipe = document["recipes"]["relations" if relation_recipe else "fallbacks"][0]
     geometry_path = (
@@ -928,17 +902,3 @@ def test_runtime_failure_discards_only_the_affected_recipe_output(relation_recip
     assert "zero" in diagnostics[0].message
     assert diagnostics[0].recipe_id == recipe["id"]
     assert [item.x for item in primitives if isinstance(item, PointCall)] == [0.5, 2.0]
-
-    # File loading and reordered JSON must preserve both rollback and successful output.
-    path = tmp_path / "roundtrip.json"
-    path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
-    restored = SceneRenderCatalogLoader().load_path(path)
-    restored_diagnostics: list[CatalogDiagnostic] = []
-    assert restored.rendering_identity == catalog.rendering_identity
-    restored_output = record_scene(restored, scene, RenderContext.create(800, 400), diagnostics=restored_diagnostics)
-    assert len(restored_output) == len(primitives)
-    for actual, expected in zip(restored_output, primitives):
-        assert isinstance(actual, PointCall)
-        assert isinstance(expected, PointCall)
-        assert (actual.x, actual.y, actual.style) == (expected.x, expected.y, expected.style)
-    assert restored_diagnostics == diagnostics

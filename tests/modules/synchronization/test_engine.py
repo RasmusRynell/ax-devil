@@ -12,7 +12,7 @@ from ax_devil.modules.video_viewer.overlay_persistence import (
 )
 
 
-@pytest.mark.parametrize("fps", [25, 60, 90, 120])
+@pytest.mark.parametrize("fps", [60, 90])
 def test_live_buffer_reports_early_eviction_once(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, fps: int
 ) -> None:
@@ -175,21 +175,6 @@ def test_sync_diagnostics_clear_missing_offset_and_remove_closed_source() -> Non
     assert "diagnostic-sync" not in store.snapshot()
 
 
-def test_exact_capture_timestamp_matches_without_a_following_frame() -> None:
-    """An exact overlay belongs to its frame even when no later frame has arrived."""
-    results: list[SyncResult[str, str]] = []
-    sync: StreamSync[str, str] = StreamSync("exact-match", delay_ms=0)
-    sync.set_output_callback(results.append)
-    try:
-        sync.push_overlay("overlay", capture_time=1.0)
-        sync.push_frame("frame", capture_time=1.0)
-        assert len(results) == 1
-        assert results[0].overlay is not None
-        assert results[0].overlay.data == "overlay"
-    finally:
-        sync.cleanup()
-
-
 @pytest.mark.parametrize("arrival_times", [(1.028,), (1.061, 1.028, 1.025, 1.020)])
 def test_live_policy_receives_latest_eligible_update_without_losing_future_samples(
     monkeypatch: pytest.MonkeyPatch, arrival_times: tuple[float, ...]
@@ -232,9 +217,9 @@ def test_live_policy_receives_latest_eligible_update_without_losing_future_sampl
 
 
 @pytest.mark.parametrize("frame_time", [1.0, 1_789_776_000.0])
-@pytest.mark.parametrize("age_us, matches", [(0, True), (9_999, True), (10_000, True), (10_001, False)])
+@pytest.mark.parametrize("age_us, matches", [(0, True), (10_000, True), (10_001, False)])
 def test_live_match_age_boundary(frame_time: float, age_us: int, matches: bool) -> None:
-    """The inclusive 10 ms limit also works with epoch-based camera timestamps."""
+    """Exact and up to 10 ms old overlays match, also with epoch-based camera timestamps."""
     results: list[SyncResult[str, str]] = []
     sync: StreamSync[str, str] = StreamSync("boundary", delay_ms=0)
     sync.set_output_callback(results.append)

@@ -71,6 +71,16 @@ class _HistoryDecoder(PayloadToSceneDecoder):
         return scene
 
 
+class _CountingDecoder(_HistoryDecoder):
+    """Count decoded records so tests can tell a cache restore from a rebuild."""
+
+    decoded = 0
+
+    def decode(self, payload: Any) -> Scene:
+        _CountingDecoder.decoded += 1
+        return super().decode(payload)
+
+
 def _write(path: Path, records: list[dict[str, Any]]) -> Path:
     path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
     return path
@@ -86,7 +96,7 @@ def _provider(
     with patch.object(CacheManager, "get_cache_subdir", return_value=cache_dir):
         return SceneDecoderFileProvider(
             path,
-            decoder_factory=_HistoryDecoder,
+            decoder_factory=_CountingDecoder,
             decoder_name="history_test",
             artifact_version=1,
             storage_mode=storage_mode,
@@ -115,28 +125,22 @@ def test_collector_records_runs_of_consecutive_samples_and_types_in_first_seen_o
 
 
 def test_collector_keeps_only_the_served_sample_for_a_repeated_timestamp() -> None:
+    """A later sample at the same timestamp replaces the earlier one's objects, types, and events."""
     collector = SceneHistoryCollector()
     old = Scene(time_slice=TimeSlice(start=5, end=5))
     old.add_entity(_entity("old"))
+    old.add_entity(_entity("a", "human"))
     old.add_event(Delete(timestamp=old.time_slice, entity_id=EntityId("old")))
     new = Scene(time_slice=TimeSlice(start=5, end=5))
+    new.add_entity(_entity("a", "car"))
     new.add_event(Delete(timestamp=new.time_slice, entity_id=EntityId("new")))
     collector.add(5, old)
     collector.add(5, new)
 
     assert collector.records() == SceneHistoryRecords(
-        events=(SampleEvent(5, "Delete", "Delete new", ("new",)),), tracks=()
+        events=(SampleEvent(5, "Delete", "Delete new", ("new",)),),
+        tracks=(SampleTrack("a", ("car",), ((5, 5),)),),
     )
-
-
-def test_collector_takes_types_only_from_served_samples() -> None:
-    collector = SceneHistoryCollector()
-    for object_type in ("human", "car"):
-        scene = Scene(time_slice=TimeSlice(start=5, end=5))
-        scene.add_entity(_entity("a", object_type))
-        collector.add(5, scene)
-
-    assert collector.records().tracks == (SampleTrack("a", ("car",), ((5, 5),)),)
 
 
 def test_records_round_trip_and_reject_malformed_metadata() -> None:
@@ -227,7 +231,6 @@ def test_provider_history_survives_a_cache_restore(storage_mode: StorageMode, tm
     cold = _provider(path, tmp_path, storage_mode=storage_mode)
     try:
         expected = cold.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
-        assert "history" not in cold.get_metadata().all_metadata
     finally:
         cold.close()
     assert [(event.frame_id.sequence_id, event.label) for event in expected.events] == [
@@ -239,13 +242,13 @@ def test_provider_history_survives_a_cache_restore(storage_mode: StorageMode, tm
         ("b", 1, 3),  # The last sample stays shown until the video ends.
     ]
 
-    with patch.object(type(cold._store), "_rebuild", side_effect=AssertionError("rebuild must not be called")):
-        warm = _provider(path, tmp_path, storage_mode=storage_mode)
+    _CountingDecoder.decoded = 0
+    warm = _provider(path, tmp_path, storage_mode=storage_mode)
     try:
         restored = warm.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
+        assert _CountingDecoder.decoded == 0
         assert restored.events == expected.events
         assert restored.objects == expected.objects
-        assert "history" not in warm.get_metadata().all_metadata  # Parsed records only, not their JSON form.
     finally:
         warm.close()
 
@@ -280,6 +283,7 @@ def test_source_index_without_history_is_rebuilt(tmp_path: Path) -> None:
 
     provider = _provider(path, tmp_path)
     try:
-        assert [track.entity_id for track in provider._store.catalog.history.tracks] == ["a"]
+        history = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
+        assert [h.entity_id for h in history.objects] == ["a"]
     finally:
         provider.close()

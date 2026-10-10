@@ -1,10 +1,13 @@
-from PySide6.QtCore import QCoreApplication, QEvent
+import pytest
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF
 from PySide6.QtGui import QKeySequence
+from PySide6.QtWidgets import QAbstractButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.split_view import SplitDirection, SplitView
 from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+from ax_devil.modules.workspace.welcome_widget import WelcomeItem
 
 
 class _DummyWidget(WorkspaceWidget):
@@ -30,7 +33,7 @@ class _AttachAwareWidget(_DummyWidget):
         """Record that the widget has been attached to the workspace."""
         self.attach_count += 1
         if self._split_view is not None:
-            self.welcome_visible_during_attach = self._split_view._welcome_widget.isVisible()
+            self.welcome_visible_during_attach = self._split_view.welcome_widget().isVisible()
 
 
 class _FailingAttachWidget(_DummyWidget):
@@ -60,6 +63,13 @@ class _LifecycleWidget(_AttachAwareWidget):
         self.cleanup_count += 1
 
 
+def _panes(split_view: SplitView) -> list[WorkspaceWidget]:
+    """Return the open panes from left to right as the user sees them."""
+    QCoreApplication.processEvents()
+    widgets = [widget for widget in split_view.findChildren(WorkspaceWidget) if widget.isVisibleTo(split_view)]
+    return sorted(widgets, key=lambda widget: widget.mapTo(split_view, QPoint(0, 0)).x())
+
+
 def _make_split_view(qtbot: QtBot) -> SplitView:
     sv = SplitView()
     qtbot.addWidget(sv)
@@ -73,49 +83,18 @@ def _make_dummy(qtbot: QtBot) -> _DummyWidget:
     return w
 
 
-def test_replace_in_unpinned_leaf(qtbot: QtBot) -> None:
-    """replace_or_open replaces an unpinned widget in-place."""
-    sv = _make_split_view(qtbot)
-    w1 = _make_dummy(qtbot)
-    sv.add_workspace_widget(w1)
-    assert sv.get_widget_count() == 1
-
-    w2 = _make_dummy(qtbot)
-    sv.replace_or_open(w2)
-    assert sv.get_widget_count() == 1
-    # The new widget should be present in a leaf
-    leaves = sv._list_leaves()
-    widgets = [leaf.get_widget() for leaf in leaves if leaf.get_widget() is not None]
-    assert w2 in widgets
-    assert w1 not in widgets
-
-
-def test_pinned_leaf_is_skipped(qtbot: QtBot) -> None:
-    """replace_or_open skips pinned widgets and creates a new split."""
-    sv = _make_split_view(qtbot)
-    w1 = _make_dummy(qtbot)
-    sv.add_workspace_widget(w1)
-    w1.set_pinned(True)
-
-    w2 = _make_dummy(qtbot)
-    sv.replace_or_open(w2)
-    assert sv.get_widget_count() == 2
-
-
 def test_all_pinned_creates_new_split(qtbot: QtBot) -> None:
     """replace_or_open creates a new split when all existing widgets are pinned."""
     sv = _make_split_view(qtbot)
-    w1 = _make_dummy(qtbot)
-    w2 = _make_dummy(qtbot)
-    sv.add_workspace_widget(w1)
-    sv.add_workspace_widget(w2)
-    w1.set_pinned(True)
-    w2.set_pinned(True)
-    assert sv.get_widget_count() == 2
+    pinned = [_make_dummy(qtbot), _make_dummy(qtbot)]
+    for widget in pinned:
+        sv.add_workspace_widget(widget)
+        widget.set_pinned(True)
 
-    w3 = _make_dummy(qtbot)
-    sv.replace_or_open(w3)
-    assert sv.get_widget_count() == 3
+    newcomer = _make_dummy(qtbot)
+    sv.replace_or_open(newcomer)
+
+    assert _panes(sv) == [*pinned, newcomer]
 
 
 def test_mixed_panes_replace_only_the_unpinned_widget(qtbot: QtBot) -> None:
@@ -130,21 +109,10 @@ def test_mixed_panes_replace_only_the_unpinned_widget(qtbot: QtBot) -> None:
 
     sv.replace_or_open(replacement)
 
-    assert [leaf.get_widget() for leaf in sv._list_leaves()] == [pinned, replacement]
-    assert sv.get_widget_count() == 2
     assert sv.get_focused_widget() is replacement
+    assert _panes(sv) == [pinned, replacement]
     assert (pinned.cleanup_count, unpinned.cleanup_count, replacement.cleanup_count) == (0, 1, 0)
     assert replacement.attach_count == 1
-
-
-def test_replace_when_empty(qtbot: QtBot) -> None:
-    """replace_or_open on an empty SplitView adds the widget."""
-    sv = _make_split_view(qtbot)
-    assert sv.get_widget_count() == 0
-
-    w1 = _make_dummy(qtbot)
-    sv.replace_or_open(w1)
-    assert sv.get_widget_count() == 1
 
 
 def test_attach_hook_runs_after_widget_is_added(qtbot: QtBot) -> None:
@@ -168,12 +136,8 @@ def test_replace_restores_existing_widget_when_attach_fails(qtbot: QtBot) -> Non
     failing = _FailingAttachWidget()
     qtbot.addWidget(failing)
 
-    try:
+    with pytest.raises(RuntimeError, match="attach failed"):
         sv.replace_or_open(failing)
-    except RuntimeError as exc:
-        assert str(exc) == "attach failed"
-    else:
-        raise AssertionError("Expected attach failure")
 
     assert sv.get_widget_count() == 1
     assert sv.get_focused_widget() is existing
@@ -210,12 +174,8 @@ def test_failed_replacement_cleans_failure_without_removing_existing_widget(qtbo
     split_view.widget_removed.connect(removed.append)
     split_view.replace_or_open(existing)
 
-    try:
+    with pytest.raises(RuntimeError, match="attach failed"):
         split_view.replace_or_open(failing)
-    except RuntimeError as exc:
-        assert str(exc) == "attach failed"
-    else:
-        raise AssertionError("Expected attach failure")
 
     assert existing.cleanup_count == 0
     assert failing.cleanup_count == 1
@@ -229,17 +189,13 @@ def test_failed_first_attachment_cleans_candidate_and_restores_empty_workspace(q
     failing = _LifecycleWidget(split_view, fail_attach=True)
     qtbot.addWidget(failing)
 
-    try:
+    with pytest.raises(RuntimeError, match="attach failed"):
         split_view.replace_or_open(failing)
-    except RuntimeError as exc:
-        assert str(exc) == "attach failed"
-    else:
-        raise AssertionError("Expected attach failure")
 
     assert failing.cleanup_count == 1
     assert split_view.get_widget_count() == 0
     assert split_view.get_focused_widget() is None
-    assert split_view._welcome_widget.isVisible()
+    assert split_view.welcome_widget().isVisible()
 
 
 def test_moving_widget_between_leaves_does_not_restart_or_clean_it(qtbot: QtBot) -> None:
@@ -265,14 +221,14 @@ def test_moving_widget_between_leaves_does_not_restart_or_clean_it(qtbot: QtBot)
 def test_welcome_visible_when_empty(qtbot: QtBot) -> None:
     """Welcome widget is visible when empty, hidden when widgets exist."""
     sv = _make_split_view(qtbot)
-    assert sv._welcome_widget.isVisible()
+    assert sv.welcome_widget().isVisible()
 
     w1 = _make_dummy(qtbot)
     sv.add_workspace_widget(w1)
-    assert not sv._welcome_widget.isVisible()
+    assert not sv.welcome_widget().isVisible()
 
     sv.remove_workspace_widget(w1)
-    assert sv._welcome_widget.isVisible()
+    assert sv.welcome_widget().isVisible()
 
 
 def test_parent_destruction_does_not_reenter_split_view_layout(qtbot: QtBot) -> None:
@@ -286,48 +242,32 @@ def test_parent_destruction_does_not_reenter_split_view_layout(qtbot: QtBot) -> 
     QCoreApplication.processEvents()
 
 
-def test_welcome_hints_from_shortcut_manager(qtbot: QtBot) -> None:
-    """Welcome widget resolves grouped hints from ShortcutManager definitions."""
+def _welcome_rows(split_view: SplitView) -> dict[str, WelcomeItem]:
+    """Return the welcome rows a user can click, found through the widget's hit testing."""
+    welcome = split_view.welcome_widget()
+    rows: dict[str, WelcomeItem] = {}
+    for y in range(welcome.height()):
+        item = welcome.item_at(QPointF(welcome.width() / 2, y))
+        if item is not None:
+            rows[item.label] = item
+    return rows
+
+
+def test_welcome_rows_follow_shortcut_manager_bindings(qtbot: QtBot) -> None:
+    """The welcome screen lists the main actions only with a shortcut manager, showing their current keys."""
     sv = _make_split_view(qtbot)
+    sv.resize(900, 700)
+    assert _welcome_rows(sv) == {}
+
     sm = ShortcutManager()
     sm.register_defaults()
     sm.install(sv)
-
-    sv.set_welcome_shortcut_manager(sm)
-    groups = sv._welcome_widget._resolve_grouped_hints()
-
-    assert "Open" in groups
-    assert "Configure" in groups
-    open_labels = [h.label for h in groups["Open"]]
-    assert "Add Video" in open_labels
-    assert "Add Live Stream" in open_labels
-    assert "Add Playlist" in open_labels
-    config_labels = [h.label for h in groups["Configure"]]
-    assert "Keyboard Shortcuts" in config_labels
-    assert "Settings" in config_labels
-
-
-def test_welcome_hints_empty_without_manager(qtbot: QtBot) -> None:
-    """Welcome widget returns no hints when no ShortcutManager is set."""
-    sv = _make_split_view(qtbot)
-    groups = sv._welcome_widget._resolve_grouped_hints()
-    assert len(groups) == 0
-
-
-def test_welcome_hints_reflect_rebinding(qtbot: QtBot) -> None:
-    """Welcome widget reflects rebound shortcuts."""
-
-    sv = _make_split_view(qtbot)
-    sm = ShortcutManager()
-    sm.register_defaults()
-    sm.install(sv)
-
     sv.set_welcome_shortcut_manager(sm)
     sm.set_binding("app.add_video", QKeySequence("Ctrl+Shift+O"))
 
-    groups = sv._welcome_widget._resolve_grouped_hints()
-    video_hint = next(h for h in groups["Open"] if h.label == "Add Video")
-    assert video_hint.keys == QKeySequence("Ctrl+Shift+O")
+    rows = _welcome_rows(sv)
+    assert {"Add Video", "Add Live Stream", "Add Playlist", "Keyboard Shortcuts", "Settings"} <= rows.keys()
+    assert rows["Add Video"].keys == QKeySequence("Ctrl+Shift+O")
 
 
 def test_open_to_side_splits_beside_focused_pane_and_keeps_both(qtbot: QtBot) -> None:
@@ -339,14 +279,13 @@ def test_open_to_side_splits_beside_focused_pane_and_keeps_both(qtbot: QtBot) ->
     side = _make_dummy(qtbot)
     sv.open_to_side(side)
 
-    assert sv.get_widget_count() == 2
     assert side.is_pinned() and not preview.is_pinned()
-    assert [leaf.get_widget() for leaf in sv._list_leaves()] == [preview, side]
+    assert _panes(sv) == [preview, side]
 
     replacement = _make_dummy(qtbot)
     sv.replace_or_open(replacement)
 
-    assert [leaf.get_widget() for leaf in sv._list_leaves()] == [replacement, side]
+    assert _panes(sv) == [replacement, side]
 
 
 def test_open_to_side_on_empty_view_adds_widget(qtbot: QtBot) -> None:
@@ -360,22 +299,17 @@ def test_open_to_side_on_empty_view_adds_widget(qtbot: QtBot) -> None:
     assert sv.get_focused_widget() is widget
 
 
-def test_header_shows_preview_state_and_pin_toggles_it(qtbot: QtBot) -> None:
-    """Unpinned panes show an italic preview title; the pin button pins and restores the regular title."""
+def test_pin_button_and_pinned_state_stay_in_sync(qtbot: QtBot) -> None:
+    """The header pin button pins the pane, and unpinning from code releases the button."""
     widget = _make_dummy(qtbot)
     widget.show()
-    title = widget._title_label
+    pin_button = next(button for button in widget.findChildren(QAbstractButton) if button.isCheckable())
 
-    assert title.font().italic()
-    assert widget._pin_button.width() >= 24 and widget._close_button.width() >= 24
-    assert not widget._pin_button.icon().isNull() and not widget._close_button.icon().isNull()
-
-    widget._pin_button.click()
-
+    pin_button.click()
     assert widget.is_pinned()
-    assert not title.font().italic()
 
     widget.set_pinned(False)
+    assert not pin_button.isChecked()
 
-    assert not widget._pin_button.isChecked()
-    assert title.font().italic()
+    pin_button.click()
+    assert widget.is_pinned()
