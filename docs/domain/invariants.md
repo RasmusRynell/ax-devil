@@ -93,8 +93,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Work that discovers files, reads disk, validates, compiles, builds indexes, opens sources, or creates shared caches
   belongs behind the owning runtime boundary, never in a widget constructor.
 - Text sizes, spacing, radii and chrome heights come from `modules/chrome/tokens.py`, never literals, and anything
-  sized from text or materializing a fixed palette color reruns through `chrome.appearance.follow_appearance`, so the theme and
-  **Text size** apply live. Pixels inside rendered frames (catalogs, sheets, export burn-ins) follow the frame instead.
+  sized from text or materializing a fixed palette color reruns through `chrome.appearance.follow_appearance`, so
+  the theme and **Text size** apply live. Pixels inside rendered frames (catalogs, sheets, export burn-ins) follow the frame instead.
   The rest of the chrome rules are in the [chrome README](../../src/ax_devil/modules/chrome/README.md).
 - The video surface and its letterbox stay near-black (`chrome.theme.VIDEO_CANVAS`) in both themes: the Quick clear
   color, the HUD and the letterbox in `video_player` do not follow the palette, and white playback controls belong on
