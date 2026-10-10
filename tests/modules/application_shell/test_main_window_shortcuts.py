@@ -10,6 +10,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
@@ -226,24 +227,29 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
         assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["File"]
         assert action.shortcut().toString() == key
 
-    def shown_title() -> str:
-        if not use_custom_frame:
-            return window.windowTitle()
-        label = window.findChild(QLabel, "AxDevilTitleLabel")
-        assert label is not None
-        return label.text()
+    def assert_titles(name: str, modified: bool) -> None:
+        assert window.windowTitle() == f"{'● ' if modified else ''}{name} — ax-devil"
+        if use_custom_frame:
+            title_label = window.findChild(QLabel, "AxDevilTitleLabel")
+            assert title_label is not None
+            assert title_label.text() == "ax-devil"
+        sidebar_name = window.findChild(ElidedLabel, "AxDevilWorkspaceName")
+        modified_marker = window.findChild(QLabel, "AxDevilWorkspaceModified")
+        assert sidebar_name is not None and modified_marker is not None
+        assert sidebar_name.full_text() == name
+        assert (not modified_marker.isHidden()) == modified
 
-    assert shown_title() == "Untitled — ax-devil"
+    assert_titles("Untitled", modified=False)
     video = tmp_path / "lot.mp4"
     video.write_bytes(b"")
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         session.add_items([VideoItem(video=video)])
         qtbot.waitUntil(lambda: session.focused_widget() is not None)  # Items resolve in the background.
-    assert shown_title() == "● Untitled — ax-devil"
+    assert_titles("Untitled", modified=True)
 
     manager.get_action("app.save_workspace").trigger()
 
-    assert shown_title() == "Parking lot — ax-devil"
+    assert_titles("Parking lot", modified=False)
 
 
 def test_quitting_keeps_the_workspace_even_without_closing_the_window(

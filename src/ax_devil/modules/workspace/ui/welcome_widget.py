@@ -263,8 +263,7 @@ def _draw_layout(painter: QPainter, widget: QWidget, layout: _WelcomeLayout, hov
     fonts = _fonts()
     palette = widget.palette()
     label_color = palette.color(QPalette.ColorRole.Text)
-    muted_color = QColor(label_color)
-    muted_color.setAlphaF(0.6)
+    muted_color = palette.color(QPalette.ColorRole.PlaceholderText)
 
     chip_colors = KeyChipColors.for_palette(palette)
     hover_color = QColor(palette.color(QPalette.ColorRole.Highlight))

@@ -64,8 +64,9 @@ Callers use the session to add Workspace Items (`add_items`, `add_resolved`, `op
 lifecycle (`session.lifecycle`), route to the focused widget, configure shortcuts, and tear down. The lifecycle
 — the kept workspace, the Save / Discard / Cancel question, and recent workspaces — is described in
 [Workspace](workspace.md#lifecycle). The session re-emits the store's
-`state_changed`, and `MainWindow` sets its title from `workspace_name` and `is_modified`; the custom `TitleBar` follows
-the window title. The store, browser, split view, and controller are composed implementation details rather than
+`state_changed`, and `MainWindow` sets its window title from `workspace_name` and `is_modified` for the desktop's task
+switcher; the session shows the same in the `SidebarPanel` header, and the main window's custom `TitleBar` shows only
+the app name. The store, browser, split view, and controller are composed implementation details rather than
 separate session APIs.
 
 `ApplicationWindow` is the static central shell. It lays out the `ActivityBar`, the `SidebarPanel`, and `SplitView` in the center area. It owns only whether the sidebar shows and how wide it is, not workspace state, teardown, or viewer behavior. The sidebar shows unless the user hid it with **View → Sidebar** (`Ctrl+\`), the activity bar's Workspace button, or by dragging it closed; it always appears at the width the user last dragged it to. `SidebarPanel` shows the `StartPanel` while the content browser lists nothing, and the content browser otherwise. `ApplicationWindow` accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.

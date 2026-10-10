@@ -99,6 +99,8 @@ class WorkspaceSession(QObject):
         self._start_panel.recent_workspace_requested.connect(self._lifecycle.open_workspace)
         self._window.files_dropped.connect(self.open_files)
         self._workspace_store.state_changed.connect(self.state_changed)
+        self._workspace_store.state_changed.connect(self._show_workspace)
+        self._show_workspace()
 
     def widget(self) -> ApplicationWindow:
         """Return the composed viewer widget tree."""
@@ -131,6 +133,11 @@ class WorkspaceSession(QObject):
     def add_resolved(self, resolutions: Sequence[ItemResolution]) -> None:
         """Add items a dialog already resolved, without resolving them again, and open the first."""
         self._workspace_store.add_resolved(resolutions)
+
+    def _show_workspace(self) -> None:
+        """Show the Workspace's name, file, and whether it has unsaved changes at the top of the sidebar."""
+        workspace = self._workspace_store.workspace
+        self._sidebar.set_workspace(workspace.name, workspace.path, self._workspace_store.is_modified)
 
     def _show_recent_workspaces(self) -> None:
         """Show the recent workspace files on the start panel."""

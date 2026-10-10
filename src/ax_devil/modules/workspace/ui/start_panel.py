@@ -7,8 +7,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QSize, Qt, Signal
-from PySide6.QtGui import QGuiApplication, QMouseEvent, QResizeEvent
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -21,8 +21,9 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.palette_css import palette_color_css, qcolor_to_css
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import DEFAULT_SHORTCUTS
 from ax_devil.modules.workspace.core import workspace_name
@@ -54,38 +55,6 @@ def _home_relative(folder: Path) -> str:
         return str(folder)
 
 
-class _ElidedLabel(QLabel):
-    """A one-line label that elides its text instead of widening its container."""
-
-    def __init__(self, text: str, elide: Qt.TextElideMode, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._full_text = text
-        self._elide = elide
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.setToolTip(text)
-        self._update_text()
-
-    def full_text(self) -> str:
-        """Return the text before eliding."""
-        return self._full_text
-
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        """Elide again at the new width."""
-        super().resizeEvent(event)
-        self._update_text()
-
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        """Elide again when the font changes."""
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.FontChange:
-            self._update_text()
-
-    def _update_text(self) -> None:
-        text = self.fontMetrics().elidedText(self._full_text, self._elide, max(0, self.width()))
-        if text != self.text():
-            self.setText(text)
-
-
 class _RecentRow(QFrame):
     """One recent workspace: its name and folder, and when it was last saved; clicking it opens it."""
 
@@ -109,8 +78,8 @@ class _RecentRow(QFrame):
         text = QVBoxLayout()
         text.setContentsMargins(0, 0, 0, 0)
         text.setSpacing(0)
-        self.name_label = _ElidedLabel(workspace_name(path), Qt.TextElideMode.ElideRight, self)
-        self.folder_label = _ElidedLabel(_home_relative(path.parent), Qt.TextElideMode.ElideMiddle, self)
+        self.name_label = ElidedLabel(workspace_name(path), Qt.TextElideMode.ElideRight, self)
+        self.folder_label = ElidedLabel(_home_relative(path.parent), Qt.TextElideMode.ElideMiddle, self)
         TextRole.MONO_SMALL.apply(self.folder_label)
         text.addWidget(self.name_label)
         text.addWidget(self.folder_label)
@@ -136,7 +105,7 @@ class _RecentRow(QFrame):
         side = TextRole.BODY.px
         self._icon.setPixmap(Icon.BROWSE.icon().pixmap(side, side))
         palette = self.palette()
-        muted = palette_color_css(palette, palette.ColorRole.Text, alpha=0.6)
+        muted = palette_color_css(palette, palette.ColorRole.PlaceholderText)
         self.setStyleSheet(
             f"""
             #AxDevilRecentRow {{ border-radius: {Radius.CONTROL}px; background: transparent; }}
@@ -252,12 +221,41 @@ class StartPanel(QWidget):
         # resolves its own palette from the theme's partial one, whose highlighted text is wrong.
         app_palette = QGuiApplication.palette()
         side = TextRole.BODY.px
+        # A wider icon box centers the icon in it, which spaces the icon from the label.
+        icon_size = QSize(side + Space.S, side)
         for index, (action_id, icon) in enumerate(self._OPEN_ACTIONS):
-            role = app_palette.ColorRole.HighlightedText if index == 0 else app_palette.ColorRole.ButtonText
+            role = app_palette.ColorRole.HighlightedText if index == 0 else app_palette.ColorRole.WindowText
             button = self._open_buttons[action_id]
             button.setIcon(icon.icon(app_palette.color(role)))
-            button.setIconSize(QSize(side, side))
+            button.setIconSize(icon_size)
         palette = self.palette()
-        muted = palette_color_css(palette, palette.ColorRole.Text, alpha=0.6)
-        self.setStyleSheet("#AxDevilStartBody { background: transparent; }")
+        text = palette.ColorRole.WindowText
+        muted = palette_color_css(palette, palette.ColorRole.PlaceholderText)
+        # The secondary buttons use the body text color on a light fill instead of the theme's accent-colored text
+        # on a near-invisible border, so they read clearly and leave the accent to the primary button. The primary
+        # button gets a border in its fill color, so its icon and label line up with theirs.
+        self.setStyleSheet(
+            f"""
+            #AxDevilStartBody {{ background: transparent; }}
+            #AxDevilStartBody QPushButton {{ text-align: left; padding-left: {Space.M}px; padding-right: {Space.M}px; }}
+            #AxDevilStartBody QPushButton:default {{
+                border: 1px solid {qcolor_to_css(app_palette.color(app_palette.ColorRole.Highlight))};
+                padding-top: {Space.XS}px;
+                padding-bottom: {Space.XS}px;
+            }}
+            #AxDevilStartBody QPushButton:!default {{
+                color: palette(window-text);
+                background: {palette_color_css(palette, text, alpha=0.06)};
+                border: 1px solid {palette_color_css(palette, text, alpha=0.22)};
+                border-radius: {Radius.CONTROL}px;
+            }}
+            #AxDevilStartBody QPushButton:!default:hover {{
+                background: {palette_color_css(palette, text, alpha=0.12)};
+                border-color: {palette_color_css(palette, text, alpha=0.32)};
+            }}
+            #AxDevilStartBody QPushButton:!default:pressed {{
+                background: {palette_color_css(palette, text, alpha=0.18)};
+            }}
+            """
+        )
         self._recent_heading.setStyleSheet(f"color: {muted}; padding-top: {Space.S}px;")

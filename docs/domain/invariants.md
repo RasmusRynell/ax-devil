@@ -197,7 +197,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   and recipes are unaffected.
 - Built-in catalogs are read in place from the installed package and never copied into the store, written or
   deleted. Every JSON file in the user catalog directory is a user catalog, and startup and listing never overwrite
-  one; catalog contents are edited outside the app. The one write the app makes is an explicit copy (**New copy…**,
+  one; catalog contents are edited outside the app. The one write the app makes is an explicit copy (**New copy**,
   `catalog new`), which validates before atomically replacing its destination.
 - The default catalog is the only catalog choice remembered across restarts. Overlay visibility belongs to each view or
   lane, independently of filters and catalog authoring; hiding a feature keeps its inspection and hover data.

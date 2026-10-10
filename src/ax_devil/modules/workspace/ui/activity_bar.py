@@ -10,7 +10,9 @@ from PySide6.QtWidgets import QToolButton, QVBoxLayout, QWidget
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
-from ax_devil.modules.chrome.tokens import Height, Radius, Space
+from ax_devil.modules.chrome.tokens import Height, Space
+
+_ICON_STROKE = 1.75  # A little heavier than the default, so the small icons stay crisp on the bar.
 
 
 class ActivityBar(QWidget):
@@ -26,7 +28,7 @@ class ActivityBar(QWidget):
         self._buttons: list[QToolButton] = []
         self._view_button: QToolButton | None = None
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(Space.XS, Space.S, Space.XS, Space.S)
+        self._layout.setContentsMargins(0, Space.XS, 0, Space.XS)
         self._layout.setSpacing(Space.XS)
         self._layout.addStretch(1)
         follow_appearance(self, self._apply_appearance)
@@ -50,28 +52,29 @@ class ActivityBar(QWidget):
     def _add_button(self, icon: Icon, tooltip: str, activate: Callable[[], None], *, at: int) -> QToolButton:
         button = QToolButton(self)
         button.setAutoRaise(True)
-        button.setIcon(icon.icon())
+        button.setIcon(icon.icon(stroke=_ICON_STROKE))
         button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(lambda _checked=False: activate())
-        self._layout.insertWidget(at, button, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._layout.insertWidget(at, button)
         self._buttons.append(button)
         self._size_button(button)
         return button
 
     def _size_button(self, button: QToolButton) -> None:
+        # Buttons span the bar, so the checked button's accent edge sits on the window edge.
         side = Height.TITLE_BAR.px
-        button.setFixedSize(side, side)
-        icon_side = round(side * 0.55)
+        button.setFixedSize(side + 2 * Space.XS, side)
+        icon_side = round(side * 0.6)
         button.setIconSize(QSize(icon_side, icon_side))
 
     def _apply_appearance(self) -> None:
         for button in self._buttons:
             self._size_button(button)
         palette = self.palette()
+        text = palette.ColorRole.WindowText
         border = palette_color_css(palette, palette.ColorRole.Mid, alpha=0.5)
         accent = palette_color_css(palette, palette.ColorRole.Highlight)
-        checked = palette_color_css(palette, palette.ColorRole.Highlight, alpha=0.16)
         self.setStyleSheet(
             f"""
             #AxDevilActivityBar {{
@@ -81,13 +84,15 @@ class ActivityBar(QWidget):
             #AxDevilActivityBar QToolButton {{
                 border: none;
                 border-left: 2px solid transparent;
-                border-radius: {Radius.CONTROL}px;
                 background: transparent;
             }}
-            #AxDevilActivityBar QToolButton:hover {{ background: palette(midlight); }}
+            #AxDevilActivityBar QToolButton:hover {{ background: {palette_color_css(palette, text, alpha=0.08)}; }}
             #AxDevilActivityBar QToolButton:checked {{
-                background: {checked};
+                background: {palette_color_css(palette, text, alpha=0.1)};
                 border-left: 2px solid {accent};
+            }}
+            #AxDevilActivityBar QToolButton:checked:hover {{
+                background: {palette_color_css(palette, text, alpha=0.16)};
             }}
             """
         )

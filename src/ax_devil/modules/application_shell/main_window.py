@@ -60,7 +60,13 @@ class MainWindow(ChromeWindow):
         render_catalog_manager: SceneRenderCatalogManager,
         use_custom_frame: bool = False,
     ) -> None:
-        super().__init__(use_custom_frame=use_custom_frame, show_custom_frame_border=False, remember_size=True)
+        # The sidebar shows the workspace name; the desktop's task switcher still gets it from the window title.
+        super().__init__(
+            use_custom_frame=use_custom_frame,
+            show_custom_frame_border=False,
+            remember_size=True,
+            title_bar_title=APP_NAME,
+        )
 
         self._composition_host = QQuickWidget(self)  # see the class docstring
         self._composition_host.hide()

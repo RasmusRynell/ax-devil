@@ -74,6 +74,10 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
   and so do icons from `Icon.<NAME>.icon()` without a color (`pin.setIcon(Icon.PIN.icon())`).
 - **Icons, not glyphs.** Use an `Icon` for buttons and markers instead of text characters such as `×`, `⋯` or `«`.
 - **React through `follow_appearance`,** not a `changeEvent` override for `PaletteChange`.
+- **Muted text uses `PlaceholderText`.** Dates, paths and section captions take that palette color, which stays readable
+  in both themes; `Text` at a reduced alpha falls below readable contrast on the light theme.
+- **An ellipsis means work in progress.** Write it as the one character `…`, as in `Loading…`; commands, buttons,
+  tooltips and placeholders get none.
 - **Pick the role by purpose.** Body text for content, `SMALL` for secondary labels, `CAPTION` for section headings
   (`.apply` adds its uppercase), `MONO` for frame numbers, IDs and times, `STRONG` for titles.
   `HEADING`/`DISPLAY` are rare.

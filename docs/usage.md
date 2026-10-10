@@ -8,8 +8,8 @@ prefix them with `uv run`.
 The sidebar lists the workspace: the videos, live streams, and playlists you added. While the workspace is empty it
 shows buttons to open content and your recent workspaces instead. **File → Save Workspace**
 (`Ctrl+S`) saves it as a `.ax-devil.workspace` file. **File → Open Workspace** (`Ctrl+O`), **File → Open Recent**, the
-sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The window title shows the workspace name, with
-`●` while it has unsaved changes.
+sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The top of the sidebar shows the workspace
+name, with `●` while it has unsaved changes.
 
 Closing never asks. The workspace, unsaved changes included, is kept in the storage folder and reopened by the next
 plain `ax-devil` launch, with its items listed and nothing opened or connected. Opening or creating another workspace
