@@ -35,7 +35,7 @@ from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_viewer.media_tools.entity_list_widget import EntityListWidget
 from ax_devil.modules.video_viewer.media_tools.event_log_widget import EventLogWidget
 from ax_devil.modules.video_viewer.media_tools.object_history_widget import ObjectCard
-from ax_devil.modules.workspace.content_browser import ContentBrowserWidget
+from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 
 
 def test_open_widgets_remain_readable_through_theme_switches(tmp_path: Path) -> None:

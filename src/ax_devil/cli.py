@@ -21,13 +21,13 @@ from ax_devil.modules.plugin_system import (
 from ax_devil.modules.settings.config_manager import ConfigManager, integer_default
 from ax_devil.modules.settings.logging_config import setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
-from ax_devil.modules.workspace import LiveOverlayMode, LiveStreamStartup
+from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamStartup
 
 from .app import create_app
 from .cli_options import CONFIG_OPTION, DEBUG_OPTION, LOG_LEVEL_OPTION, apply_run_options
 
 if TYPE_CHECKING:
-    from ax_devil.modules.workspace import StartupContent
+    from ax_devil.modules.workspace.core import StartupContent
 
 
 def _require_existing_config_path(config: Path | None) -> None:
@@ -395,7 +395,7 @@ def local(
       ax-devil local --video recording.mp4
       ax-devil local --video recording.mp4 --overlay data.jsonl --handler-type ADF_BETA_FRAME
     """
-    from ax_devil.modules.workspace import VideoFileStartup
+    from ax_devil.modules.workspace.core import VideoFileStartup
 
     effective_config = config or (ctx.obj.get("config") if isinstance(ctx.obj, dict) else None)
 

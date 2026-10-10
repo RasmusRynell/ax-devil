@@ -11,8 +11,8 @@ from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
-from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
-from ax_devil.modules.workspace.item_info_dialog import WorkspaceItemInfoDialog
+from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
+from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 
 
 @pytest.mark.parametrize("point_size", [9, 18])

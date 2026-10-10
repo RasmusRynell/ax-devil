@@ -63,7 +63,7 @@ from pathlib import Path
 
 import click
 
-from ax_devil.modules.workspace import ResolvedPlaylistStartup
+from ax_devil.modules.workspace.core import ResolvedPlaylistStartup
 from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
 
 

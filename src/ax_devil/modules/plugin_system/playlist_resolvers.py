@@ -23,7 +23,7 @@ from PySide6.QtWidgets import QWidget
 from .base import PluginBase, PluginDefinitionBase
 
 if TYPE_CHECKING:
-    from ax_devil.modules.workspace import PlaylistContent
+    from ax_devil.modules.workspace.core import PlaylistContent
 
 PLAYLIST_RESOLVER_PLUGIN_TYPE = "playlist_resolver"
 

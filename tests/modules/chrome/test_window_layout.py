@@ -12,7 +12,7 @@ from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.window_geometry import fit_window
-from ax_devil.modules.workspace.add_content.add_video_dialog import AddVideoDialog
+from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 
 
 class _OpeningDialog(BaseDialog):

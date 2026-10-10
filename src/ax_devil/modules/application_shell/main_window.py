@@ -26,12 +26,12 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.fullscreen import LaneFullscreenController
-from ax_devil.modules.workspace import StartupContent
-from ax_devil.modules.workspace.session import WorkspaceSession
+from ax_devil.modules.workspace.core import StartupContent
+from ax_devil.modules.workspace.ui.session import WorkspaceSession
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
-    from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+    from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 
 class MainWindow(ChromeWindow):
@@ -259,8 +259,8 @@ class MainWindow(ChromeWindow):
         else:
             self.showFullScreen()
 
-    def _route_to_focused_widget(self, action: Callable[["WorkspaceWidget"], None]) -> None:
-        """Run *action* against the focused workspace widget when one exists."""
+    def _route_to_focused_widget(self, action: Callable[["ViewerWidget"], None]) -> None:
+        """Run *action* against the focused viewer widget when one exists."""
         widget = self._workspace_session.focused_widget()
         if widget is not None:
             action(widget)
@@ -290,7 +290,7 @@ class MainWindow(ChromeWindow):
 
     def _on_add_video(self) -> None:
         """Handle File -> Add Video action."""
-        from ax_devil.modules.workspace.add_content.add_video_dialog import AddVideoDialog
+        from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 
         with AddVideoDialog(self) as dialog:
             if dialog.exec() == AddVideoDialog.DialogCode.Accepted:
@@ -300,7 +300,7 @@ class MainWindow(ChromeWindow):
 
     def _on_add_live_stream(self) -> None:
         """Handle File -> Add Live Stream action."""
-        from ax_devil.modules.workspace.add_content.add_live_stream_dialog import AddLiveStreamDialog
+        from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 
         with AddLiveStreamDialog(self) as dialog:
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
@@ -311,7 +311,7 @@ class MainWindow(ChromeWindow):
 
     def _on_add_playlist(self) -> None:
         """Handle File -> Add Playlist action."""
-        from ax_devil.modules.workspace.add_content.add_playlist_dialog import AddPlaylistDialog
+        from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 
         with AddPlaylistDialog(self) as dialog:
             if dialog.exec() == AddPlaylistDialog.DialogCode.Accepted:

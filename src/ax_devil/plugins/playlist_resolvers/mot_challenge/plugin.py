@@ -11,7 +11,7 @@ from pathlib import Path
 import click
 
 from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
-from ax_devil.modules.workspace import PlaylistContent, ResolvedPlaylistStartup
+from ax_devil.modules.workspace.core import PlaylistContent, ResolvedPlaylistStartup
 from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import build_playlist_contents, discover_sequences
 
 

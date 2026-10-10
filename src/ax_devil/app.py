@@ -17,11 +17,12 @@ from ax_devil.modules.diagnostics.exception_handler import install_exception_han
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import create_scene_render_catalog_manager
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.logging_config import get_logger, setup_logging, setup_qt_logging
+from ax_devil.modules.settings.logging_config import get_logger, setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
+from ax_devil.modules.settings.qt_logging import setup_qt_logging
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
-from ax_devil.modules.workspace import StartupContent
+from ax_devil.modules.workspace.core import StartupContent
 from ax_devil.version import APP_VERSION
 
 

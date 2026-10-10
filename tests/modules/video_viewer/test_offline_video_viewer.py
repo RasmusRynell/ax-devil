@@ -34,7 +34,7 @@ from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     EntryLane,
     FileOverlaySourceSpec,
@@ -43,8 +43,8 @@ from ax_devil.modules.workspace import (
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
-    WorkspaceManager,
 )
+from ax_devil.modules.workspace.ui.workspace_manager import WorkspaceManager
 
 
 class _TrackedSignal:

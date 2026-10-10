@@ -13,11 +13,11 @@ from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-from ax_devil.modules.workspace.session import WorkspaceSession
+from ax_devil.modules.workspace.ui.session import WorkspaceSession
 
 
 class _FocusedWidget:
-    """Focused workspace widget test double."""
+    """Focused viewer widget test double."""
 
     def __init__(self) -> None:
         self.toggle_count = 0
@@ -61,7 +61,7 @@ class _RoutingSession:
         self._offline_viewer = offline_viewer
 
     def focused_widget(self) -> _FocusedWidget | None:
-        """Return the focused workspace widget."""
+        """Return the focused viewer widget."""
         return self._focused_widget
 
     def focused_offline_viewer(self) -> _OfflineViewer | None:
@@ -79,7 +79,7 @@ def _make_shortcut_manager() -> ShortcutManager:
     return manager
 
 
-def test_play_pause_shortcut_routes_to_focused_workspace_widget(
+def test_play_pause_shortcut_routes_to_focused_viewer_widget(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:

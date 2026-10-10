@@ -15,7 +15,8 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Entry Lane | One visible comparison panel inside a playlist entry or standalone video expansion. | Overlay row, panel config |
 | Workspace | The active session state: its Content and which items are not considered. Open, focused, and pinned viewers live in the hosted widgets; browser rows are derived. | Window, shell, content list |
 | Startup Request | CLI or bootstrap input (one of the `StartupContent` union's variants) that resolves into Workspace content before it is added. | Initial content |
-| Viewer | An open inspection surface hosted by the Workspace. | Player, pane, runtime bucket |
+| Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |
+| Viewer Widget | The `ViewerWidget` base class every Viewer extends: pane frame, header, pin and close, and the lifecycle contract. | Workspace widget, pane |
 | Video Viewer | The application workflow that composes media sources, sync, Scene tools, and frame display. | Player, pane |
 | Frame Display | A reusable shell that presents frames and overlays and exposes generic mount points. | Video player, playback widget, viewer |
 | Frame Viewport | The lower-level viewing area inside a Frame Display. | Video display widget, renderer |

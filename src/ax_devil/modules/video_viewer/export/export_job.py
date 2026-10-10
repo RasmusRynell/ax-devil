@@ -12,8 +12,9 @@ from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
-from ax_devil.modules.data_sources import FileFrameSource, OverlayLookup
+from ax_devil.modules.data_sources.base import OverlayLookup
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.engine.quick.image_renderer import FrameImageRenderer

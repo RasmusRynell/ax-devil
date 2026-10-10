@@ -15,7 +15,8 @@ from typing import Generic, TypeVar
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
-from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
+from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
 from ax_devil.modules.plugin_system import get_file_decoder_factory
@@ -24,7 +25,7 @@ from ax_devil.modules.video_viewer.overlay_persistence import (
     OverlayPersistencePolicy,
     OverlayPersistenceSettings,
 )
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
     LiveVideoContent,

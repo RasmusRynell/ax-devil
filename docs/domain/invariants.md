@@ -19,6 +19,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - `WorkspaceIntake` validates decoder selections and live connection settings for every video and live stream
   opened through a dialog, the CLI or a file drop, so those paths share one set of requirements. Playlists from a
   resolver plugin enter as built; the resolver owns their validity.
+- `workspace/core` imports no PySide6, directly or through other modules; `workspace/ui` holds everything Qt.
 
 ## Coordinates
 
@@ -79,7 +80,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 
 ## Workspace And Viewers
 
-- Open, focused, pinned, and current on-screen viewer facts come from the hosted `WorkspaceWidget` instances; they are
+- Open, focused, pinned, and current on-screen viewer facts come from the hosted `ViewerWidget` instances; they are
   not copied into parallel state records.
 - Video Viewer navigation reads consideration through the read-only `ConsiderationQuery` contract, not the mutable
   `WorkspaceManager`.

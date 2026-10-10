@@ -1,6 +1,6 @@
 # Workspace
 
-> Status: **proposed design**. The current code does not implement this yet; see [Delivery](#delivery).
+> Status: **proposed design**. Delivery step 1 (the `core`/`ui` split) is implemented; the rest is not; see [Delivery](#delivery).
 
 A Workspace is the collection of things a user is working with — videos, live streams, playlists — that can be saved
 to a file and reopened to get back the same set of work. It plays the role a `.code-workspace` file plays in VS Code:
@@ -139,9 +139,10 @@ Each step is one pull request stacked on the previous one. Each leaves the app w
 tests outright rather than carrying both.
 
 1. **Carve out** — create `workspace/core` and `workspace/ui`, move files, rename `WorkspaceWidget` to
-   `ViewerWidget`, move browser rows to `ui`, add the no-PySide6 test for `core`. Today even `content.py` loads PySide6 through
-   its imports (`pyav_decoder`, `timestamp_matching`, and package `__init__` files), so this step makes those
-   dependencies Qt-free.
+   `ViewerWidget`, move browser rows to `ui`, add the no-PySide6 test for `core`. Done. Importing `content.py` loaded
+   PySide6 through the eager `data_sources` and `synchronization` package `__init__` files, and through `logging_config`
+   importing `QLoggingCategory`; each is now Qt-free. The plugin-backed decoder options (`plugin_intake`) moved to `ui`
+   because the plugin system still imports Qt; the headless resolver contract in step 2 removes that dependency.
 2. **Items** — Workspace Items, the Workspace value, stable ids, the headless resolver contract; startup types and
    `WorkspaceManager` removed; tests rewritten around items.
 3. **File format** — JSON v1 load/save, relative paths, credential references, unavailable items.

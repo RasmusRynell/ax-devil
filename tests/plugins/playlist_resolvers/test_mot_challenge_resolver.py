@@ -8,11 +8,8 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.plugin_system import (
-    PLAYLIST_RESOLVER_PLUGIN_TYPE,
-    PlaylistResolverWidget,
-)
-from ax_devil.modules.workspace import FileOverlaySourceSpec, OverlaySourceKind, SeekableVideoContent
+from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverWidget
+from ax_devil.modules.workspace.core import FileOverlaySourceSpec, OverlaySourceKind, SeekableVideoContent
 from ax_devil.plugins.playlist_resolvers.mot_challenge.plugin import (
     MOTChallengeResolverPlugin,
 )

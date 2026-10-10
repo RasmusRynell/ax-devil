@@ -36,15 +36,15 @@ from ax_devil.modules.video_viewer.offline_viewer_runtime import (
     show_video_on_controls,
     video_details,
 )
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     ConsiderationQuery,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
 )
-from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
-from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 logger = get_logger(__name__)
 
@@ -66,7 +66,7 @@ class _ViewerOverlayHost(QWidget):
         overlay.raise_()
 
 
-class OfflineVideoViewerWidget(WorkspaceWidget):
+class OfflineVideoViewerWidget(ViewerWidget):
     """Offline video viewer for local playback with multi-lane support."""
 
     current_entry_changed = Signal(int)

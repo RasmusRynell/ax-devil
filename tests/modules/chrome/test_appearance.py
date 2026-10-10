@@ -11,10 +11,10 @@ from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.chrome.title_bar import TitleBar
 from ax_devil.modules.chrome.tokens import TextRole
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
-from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 
-class _Pane(WorkspaceWidget):
+class _Pane(ViewerWidget):
     def _setup_widget_ui(self) -> None:
         pass
 
