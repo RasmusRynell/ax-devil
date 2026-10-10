@@ -53,7 +53,6 @@ class WorkspaceController(QObject):
         self._workspace_manager.contents_added.connect(self._on_contents_added)
         self._workspace_manager.content_removed.connect(self._on_content_removed)
         self._workspace_manager.item_consideration_changed.connect(self._on_item_consideration_changed)
-        self._workspace_manager.workspace_cleared.connect(self._on_workspace_cleared)
         self._center_area.widget_removed.connect(self._on_widget_removed)
 
     def _sync_content_browser(self, *_args: object) -> None:
@@ -104,13 +103,6 @@ class WorkspaceController(QObject):
             if content.content_id in tracked_content_ids:
                 self._center_area.remove_workspace_widget(widget)
         self._sync_content_browser()
-
-    def _on_workspace_cleared(self) -> None:
-        """Reset all viewers after the workspace is cleared."""
-        self._center_area.clear_all_widgets()
-        self._widget_content_ids.clear()
-        self._sync_content_browser()
-        self._logger.info("Workspace cleared")
 
     def _pause_all_viewers(self) -> None:
         """Pause playback on all open viewers."""
