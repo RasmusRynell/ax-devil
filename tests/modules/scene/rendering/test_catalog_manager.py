@@ -11,6 +11,7 @@ from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogStore,
     create_scene_render_catalog_manager,
 )
+from ax_devil.modules.scene.rendering.catalog import CatalogJsonDocument
 
 
 def test_catalog_manager_starts_selections_on_built_in_catalog(qtbot: QtBot, tmp_path: Path) -> None:
@@ -45,6 +46,28 @@ def test_catalog_revision_shares_selection_cache_and_reloads_document_with_compi
     assert updated.document["metadata"]["name"] == "Updated review"
     assert updated.catalog.content_hash == SceneRenderCatalogLoader().validate_document(updated.document).content_hash
     assert updated.catalog is manager.load_catalog(path)
+
+
+def test_catalog_revision_compiles_the_document_it_read_when_the_file_changes_meanwhile(
+    tmp_path: Path, small_catalog_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A save landing between reading and compiling must not pair one version's preview with another's drawing."""
+    manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
+    path = manager.create_catalog("Review", base_catalog_path=small_catalog_path).path
+    read_document = SceneRenderCatalogLoader.read_document
+
+    def read_then_save(catalog_path: Path) -> CatalogJsonDocument:
+        document = read_document(catalog_path)
+        changed = json.loads(catalog_path.read_text(encoding="utf-8"))
+        changed["metadata"]["name"] = "Saved meanwhile"
+        catalog_path.write_text(json.dumps(changed), encoding="utf-8")
+        return document
+
+    monkeypatch.setattr(SceneRenderCatalogLoader, "read_document", staticmethod(read_then_save))
+    revision = manager.load_revision(path, force_reload=True)
+
+    assert revision.document["metadata"]["name"] == "Review"
+    assert revision.catalog.content_hash == SceneRenderCatalogLoader().validate_document(revision.document).content_hash
 
 
 def test_catalog_manager_starts_new_selections_on_default_catalog(

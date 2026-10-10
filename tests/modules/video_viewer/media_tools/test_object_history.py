@@ -38,7 +38,8 @@ def _frame(index: int) -> FrameIdentifier:
     return FrameIdentifier(sequence_id=index, timestamp_monotime_us=index * 1_000_000.0)
 
 
-_FRAME_TIMES = tuple(index * 1_000_000 for index in range(10))
+_FRAME_COUNT = 10
+_FRAME_TIMES = tuple(index * 1_000_000 for index in range(_FRAME_COUNT))
 _RENAME = FrameEvent(_frame(4), "Rename", "Rename a → b", ("a", "b"))
 _DELETE = FrameEvent(_frame(9), "Delete", "Delete b", ("b",))
 
@@ -50,7 +51,7 @@ def _history() -> SceneHistory:
             ObjectHistory("a", ("human",), ((0, 3),), _FRAME_TIMES),
             ObjectHistory("b", ("car",), ((5, 6), (8, 8)), _FRAME_TIMES),
         ),
-        frame_count=10,
+        frame_count=_FRAME_COUNT,
     )
 
 
@@ -123,7 +124,7 @@ def _title(pane: ObjectHistoryPane) -> str:
 def _click_strip_at_frame(card: ObjectCard, frame: int) -> None:
     strip = card.findChild(PresenceStrip)
     assert strip is not None
-    QTest.mouseClick(strip, Qt.MouseButton.LeftButton, pos=QPoint(int(strip.width() * (frame + 0.5) / 10), 8))
+    QTest.mouseClick(strip, Qt.MouseButton.LeftButton, pos=QPoint(int(strip.width() * (frame + 0.5) / _FRAME_COUNT), 8))
 
 
 def test_file_scope_lists_every_object_and_highlights_those_on_the_displayed_frame(qtbot: QtBot) -> None:
@@ -339,7 +340,7 @@ def test_panel_replaces_history_in_every_tool(
     replacement = SceneHistory(
         events=(_DELETE,),
         objects=(ObjectHistory("b", ("car",), ((2, 9),), _FRAME_TIMES),),
-        frame_count=10,
+        frame_count=_FRAME_COUNT,
     )
 
     panel.set_scene_history(replacement)
