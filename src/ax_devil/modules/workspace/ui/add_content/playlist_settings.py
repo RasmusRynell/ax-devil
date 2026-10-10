@@ -86,7 +86,7 @@ class PlaylistSettingsUI(QWidget):
     def _populate_resolvers(self) -> None:
         overview = QVBoxLayout()
         overview.addWidget(_wrapped_label(_INTRODUCTION))
-        self._resolver_combo.addItem("Select a source...", None)
+        self._resolver_combo.addItem("Select a source", None)
 
         for record in RuntimePluginRegistry.get_plugins(PLAYLIST_RESOLVER_PLUGIN_TYPE):
             if record.status != PluginStatus.LOADED:

@@ -226,7 +226,7 @@ class ShortcutsDialog(BaseDialog):
         """Build the search bar and category-grouped shortcut list."""
         self._search = QLineEdit(self)
         self._search.setObjectName("SearchBar")
-        self._search.setPlaceholderText("Search shortcuts…")
+        self._search.setPlaceholderText("Search shortcuts")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._on_search_changed)
         self._content_layout.addWidget(self._search)

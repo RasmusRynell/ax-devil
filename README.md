@@ -104,7 +104,7 @@ attributes. Built-in catalogs:
 | **Classic** | IDs above boxes, class names below, confidence bars, and movement symbols |
 
 To make your own, open **View → Render Catalogs** (`Ctrl+R`) or run `ax-devil catalog`, pick a catalog, and choose
-**New copy…**. Edit the JSON yourself or ask a coding agent. Changes show up when you save. [Catalog format →](https://github.com/RasmusRynell/ax-devil/blob/main/.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built)
+**New copy**. Edit the JSON yourself or ask a coding agent. Changes show up when you save. [Catalog format →](https://github.com/RasmusRynell/ax-devil/blob/main/.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built)
 
 ## Plugins
 

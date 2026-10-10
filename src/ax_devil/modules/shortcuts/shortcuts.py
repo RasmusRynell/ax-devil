@@ -221,6 +221,12 @@ class ShortcutManager(QObject):
             return seq if not seq.isEmpty() else None
         return self._resolve_key_sequence(action_id)
 
+    def tooltip(self, action_id: str) -> str:
+        """Return *action_id*'s name followed by its current keys, as in ``Open Workspace (Ctrl+O)``."""
+        name = self.get_definition(action_id).display_name
+        keys = self.current_key_sequence(action_id)
+        return f"{name} ({keys.toString(QKeySequence.SequenceFormat.NativeText)})" if keys is not None else name
+
     # ------------------------------------------------------------------
     # Rebinding
     # ------------------------------------------------------------------

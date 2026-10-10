@@ -11,8 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from weakref import ref
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QCloseEvent, QResizeEvent, QShowEvent
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
     QTabBar,
     QVBoxLayout,
     QWidget,
@@ -31,6 +30,7 @@ from ax_devil.modules.catalog_viewer.sheets import Sheet, drawing_errors, sheet_
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.chrome_window import ChromeWindow, window_uses_custom_frame
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space
@@ -69,34 +69,6 @@ class NewCatalogDialog(BaseDialog):
         return self.name_edit.text().strip()
 
 
-class ElidedLabel(QLabel):
-    """A one-line label that takes the room it is given and shortens its text in the middle to fit it."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._full = ""
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-
-    def set_full_text(self, text: str) -> None:
-        """Show *text*, shortened to fit; the whole text is in the tooltip."""
-        self._full = text
-        self.setToolTip(text)
-        self._elide()
-
-    def minimumSizeHint(self) -> QSize:  # noqa: N802
-        """Allow shrinking to a few characters."""
-        return QSize(self.fontMetrics().horizontalAdvance("…/x.json"), super().minimumSizeHint().height())
-
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        """Shorten the text again for the new width."""
-        super().resizeEvent(event)
-        self._elide()
-
-    def _elide(self) -> None:
-        self.setText(self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideMiddle, self.width()))
-
-
 class CatalogViewerWindow(ChromeWindow):
     """Show one render catalog file on example sheets: an overview, one sheet per object type and relation, a crowd.
 
@@ -133,10 +105,10 @@ class CatalogViewerWindow(ChromeWindow):
         self._catalogs.setObjectName("catalogViewerCatalogs")
         self._catalogs.setMinimumContentsLength(16)
         self._catalogs.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self._new = QPushButton("New copy…", self)
+        self._new = QPushButton("New copy", self)
         self._new.setObjectName("catalogViewerNew")
         self._new.setToolTip("Create a new catalog that starts as a copy of this one")
-        self._delete = QPushButton("Delete…", self)
+        self._delete = QPushButton("Delete", self)
         self._delete.setObjectName("catalogViewerDelete")
         self._apply_to_all = QPushButton("Apply to all", self)
         self._apply_to_all.setObjectName("catalogViewerApplyToAll")
@@ -144,7 +116,8 @@ class CatalogViewerWindow(ChromeWindow):
         self._use_as_default = QPushButton("Use as default", self)
         self._use_as_default.setObjectName("catalogViewerUseAsDefault")
         self._use_as_default.setToolTip("Start new viewers and lanes with this catalog")
-        self._file = ElidedLabel(self)
+        self._file = ElidedLabel("", Qt.TextElideMode.ElideMiddle, self)
+        self._file.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._file.setObjectName("catalogViewerFile")
         self._state = QLabel(self)
         self._state.setObjectName("catalogViewerState")

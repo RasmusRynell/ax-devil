@@ -285,7 +285,7 @@ class EventLogWidget(QWidget):
 
         self._search = QLineEdit(self)
         self._search.setObjectName("eventSearch")
-        self._search.setPlaceholderText("Search events…")
+        self._search.setPlaceholderText("Search events")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._apply_filter)
         self._kind_boxes: dict[str, QCheckBox] = {}

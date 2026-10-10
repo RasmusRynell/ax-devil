@@ -119,7 +119,7 @@ class ExportDialog(BaseDialog):
         self._cancel_button.setEnabled(True)
         for check in self._lane_checks:
             check.setEnabled(False)
-        self._status_label.setText("Exporting...")
+        self._status_label.setText("Exporting…")
 
         try:
             QApplication.processEvents()

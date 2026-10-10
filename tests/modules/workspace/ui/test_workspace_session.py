@@ -11,6 +11,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     FileOverlaySourceSpec,
@@ -548,24 +549,28 @@ def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_previ
     assert len(workspace_session._workspace_controller._widget_item_ids) == 2
 
 
-def test_sidebar_appears_with_content_at_its_width_and_toggles(workspace_session: WorkspaceSession) -> None:
-    """The sidebar stays hidden on the welcome screen, appears at its width with content, and the user can hide it."""
+def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspace_session: WorkspaceSession) -> None:
+    """The sidebar shows the start panel while empty and the content browser with content; the user can hide it."""
     window = workspace_session.widget()
     window.resize(1200, 700)
+    window.show()
     QCoreApplication.processEvents()
     splitter = window._splitter
-    assert not window.is_sidebar_shown()
+    sidebar = workspace_session._sidebar
+    assert window.is_sidebar_shown() and sidebar.showing_start_panel()
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         workspace_session.add_items([content_item(_make_video("a"))])
     QCoreApplication.processEvents()
-    assert window.is_sidebar_shown()
+    assert window.is_sidebar_shown() and not sidebar.showing_start_panel()
     width = splitter.sizes()[0]
     assert 0 < width < 1200 // 2
 
-    window.toggle_sidebar()
+    workspace_button = window._activity_bar._view_button
+    assert workspace_button is not None and workspace_button.isChecked()
+    workspace_button.click()
     QCoreApplication.processEvents()
-    assert not window.is_sidebar_shown()
+    assert not window.is_sidebar_shown() and not workspace_button.isChecked()
 
     # Hidden by the user, it stays hidden when content changes.
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
@@ -588,6 +593,26 @@ def test_sidebar_appears_with_content_at_its_width_and_toggles(workspace_session
     assert not window.is_sidebar_shown()
     window.toggle_sidebar()
     assert window.is_sidebar_shown() and splitter.sizes()[0] == width + 60
+
+
+def test_activity_bar_buttons_trigger_render_catalogs_and_settings(workspace_session: WorkspaceSession) -> None:
+    """The activity bar's action buttons trigger the same actions as the menus."""
+    window = workspace_session.widget()
+    manager = ShortcutManager()
+    manager.register_defaults()
+    manager.install(window)
+    workspace_session.set_shortcut_manager(manager)
+    triggered: list[str] = []
+    for action_id in ("view.render_catalogs", "app.settings"):
+        manager.get_action(action_id).triggered.connect(
+            lambda _=False, action_id=action_id: triggered.append(action_id)
+        )
+
+    for button in window._activity_bar._buttons:
+        if button is not window._activity_bar._view_button:
+            button.click()
+
+    assert triggered == ["view.render_catalogs", "app.settings"]
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
@@ -634,7 +659,7 @@ def test_restored_workspace_lists_its_items_and_opens_no_viewer(
     assert restored._center_area.get_widget_count() == 0
 
 
-def test_saved_workspace_is_listed_on_the_welcome_screen(
+def test_saved_workspace_is_listed_on_the_start_panel(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
     session = _session(render_catalog_manager, tmp_path, prompts=FakePrompts(save_path=tmp_path / "Lot"))
@@ -646,7 +671,7 @@ def test_saved_workspace_is_listed_on_the_welcome_screen(
 
     saved = tmp_path / "Lot.ax-devil.workspace"
     assert session.lifecycle.recent_workspaces() == (saved,)
-    assert session._welcome._recent_workspaces == (saved,)
+    assert [row.path for row in session._start_panel.recent_rows()] == [saved]
 
 
 def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: WorkspaceSession, tmp_path: Path) -> None:

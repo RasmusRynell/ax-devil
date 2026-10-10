@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
@@ -24,7 +25,9 @@ from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
+from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
+from ax_devil.modules.workspace.ui.start_panel import StartPanel
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
 from ax_devil.modules.workspace.ui.workspace_prompts import DialogPrompts, WorkspacePrompts
@@ -69,9 +72,11 @@ class WorkspaceSession(QObject):
 
         self._workspace_store = WorkspaceStore(self._resolver, parent=self)
         self._content_browser = ContentBrowserWidget()
+        self._start_panel = StartPanel()
+        self._sidebar = SidebarPanel(self._content_browser, self._start_panel)
         self._center_area = SplitView()
         self._window = ApplicationWindow(
-            content_browser=self._content_browser,
+            sidebar=self._sidebar,
             center_area=self._center_area,
             parent=parent,
         )
@@ -89,12 +94,13 @@ class WorkspaceSession(QObject):
             recent_workspaces or RecentWorkspaces(partial(_storage_file, "recent-workspaces.json")),
             parent=self,
         )
-        self._welcome = self._center_area.welcome_widget()
         self._show_recent_workspaces()
         self._lifecycle.recent_workspaces_changed.connect(self._show_recent_workspaces)
-        self._welcome.recent_workspace_requested.connect(self._lifecycle.open_workspace)
+        self._start_panel.recent_workspace_requested.connect(self._lifecycle.open_workspace)
         self._window.files_dropped.connect(self.open_files)
         self._workspace_store.state_changed.connect(self.state_changed)
+        self._workspace_store.state_changed.connect(self._show_workspace)
+        self._show_workspace()
 
     def widget(self) -> ApplicationWindow:
         """Return the composed viewer widget tree."""
@@ -128,9 +134,14 @@ class WorkspaceSession(QObject):
         """Add items a dialog already resolved, without resolving them again, and open the first."""
         self._workspace_store.add_resolved(resolutions)
 
+    def _show_workspace(self) -> None:
+        """Show the Workspace's name, file, and whether it has unsaved changes at the top of the sidebar."""
+        workspace = self._workspace_store.workspace
+        self._sidebar.set_workspace(workspace.name, workspace.path, self._workspace_store.is_modified)
+
     def _show_recent_workspaces(self) -> None:
-        """Show the recent workspace files on the welcome screen."""
-        self._welcome.set_recent_workspaces(self._lifecycle.recent_workspaces())
+        """Show the recent workspace files on the start panel."""
+        self._start_panel.set_recent_workspaces(self._lifecycle.recent_workspaces())
 
     def open_files(self, paths: Sequence[Path]) -> None:
         """Add dropped files as one batch, asking for an overlay's data handler when several decoders may read it."""
@@ -167,6 +178,13 @@ class WorkspaceSession(QObject):
         self._workspace_controller.cleanup()
         self._logger.debug("Workspace session cleanup completed")
 
-    def set_welcome_shortcut_manager(self, manager: ShortcutManager) -> None:
-        """Configure the welcome screen to read shortcuts from *manager*."""
+    def set_shortcut_manager(self, manager: ShortcutManager) -> None:
+        """Trigger *manager*'s actions from the welcome screen, the start panel, and the activity bar.
+
+        Call once: each call adds the activity bar's action buttons.
+        """
         self._center_area.set_welcome_shortcut_manager(manager)
+        self._start_panel.set_shortcut_manager(manager)
+        activity_bar = self._window.activity_bar()
+        for action_id, icon in (("view.render_catalogs", Icon.CATALOGS), ("app.settings", Icon.SETTINGS)):
+            activity_bar.add_action(icon, manager.tooltip(action_id), manager.get_action(action_id).trigger)

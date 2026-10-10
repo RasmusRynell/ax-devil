@@ -39,7 +39,7 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
 
         self._decoder_combo = QComboBox()
         self._decoder_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self._decoder_combo.addItem("Select a decoder...", None)
+        self._decoder_combo.addItem("Select a decoder", None)
         for decoder in get_file_decoder_definitions():
             self._decoder_combo.addItem(f"{decoder.display_name} ({decoder.handler_type})", decoder.handler_type)
         form.addRow("Decoder", self._decoder_combo)

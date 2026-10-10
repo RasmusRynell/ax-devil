@@ -31,7 +31,7 @@ Commands take the default catalog when no file is given; pass a path to work on 
 ## Which file
 
 `uv run ax-devil catalog list` lists every catalog and its file; `*` marks the default, which new views use. Users
-create and delete catalogs themselves in the viewer (**New copy…**, **Delete…**), which also shows the file of the
+create and delete catalogs themselves in the viewer (**New copy**, **Delete**), which also shows the file of the
 catalog on screen.
 
 - **The user names a catalog** ("my night shift catalog"), or gives its file: edit that one. If the name matches

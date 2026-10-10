@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from math import ceil
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -31,7 +30,6 @@ from ax_devil.modules.chrome.key_chips import (
     key_chips_width,
 )
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
-from ax_devil.modules.workspace.core import workspace_name
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QEvent
@@ -44,7 +42,6 @@ _GROUP_SPACING = 2 * Space.XL
 _ROW_H_PAD = Space.M
 _ROW_RADIUS = Radius.CONTROL
 _MAX_LABEL_WIDTH = 420.0
-_RECENT_GROUP = "Recent"
 _DROP_HINT = "Or drop a video file, with an optional overlay file, anywhere here"
 
 
@@ -94,27 +91,17 @@ class _WelcomeFonts:
 
 
 class WelcomeWidget(QWidget):
-    """Show clickable VS Code-style actions, recent workspaces, and a drop hint centered in the empty workspace."""
-
-    recent_workspace_requested = Signal(object)  # Path
+    """Show clickable VS Code-style actions and a drop hint centered in the empty workspace."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMouseTracking(True)
         self._shortcut_manager: ShortcutManager | None = None
-        self._recent_workspaces: tuple[Path, ...] = ()
         self._hovered: int | None = None
 
     def set_shortcut_manager(self, manager: ShortcutManager) -> None:
         """Bind to a ShortcutManager so rows reflect current key bindings and trigger their actions."""
         self._shortcut_manager = manager
-        self.updateGeometry()
-        self.update()
-
-    def set_recent_workspaces(self, paths: Sequence[Path]) -> None:
-        """Show workspace files *paths* as a Recent group; clicking one emits ``recent_workspace_requested``."""
-        self._recent_workspaces = tuple(paths)
-        self._hovered = None
         self.updateGeometry()
         self.update()
 
@@ -165,7 +152,7 @@ class WelcomeWidget(QWidget):
         item.activate()
 
     def _resolve_grouped_hints(self) -> OrderedDict[str, list[WelcomeItem]]:
-        """Build grouped rows from ShortcutManager's current bindings, then recent workspaces."""
+        """Build grouped rows from ShortcutManager's current bindings."""
         sm = self._shortcut_manager
         groups: OrderedDict[str, list[WelcomeItem]] = OrderedDict()
         if sm is not None:
@@ -181,16 +168,6 @@ class WelcomeWidget(QWidget):
                         activate=lambda action_id=defn.action_id, manager=sm: manager.get_action(action_id).trigger(),
                     )
                 )
-        if self._recent_workspaces:
-            groups[_RECENT_GROUP] = [
-                WelcomeItem(
-                    label=workspace_name(path),
-                    keys=QKeySequence(),
-                    tooltip=str(path),
-                    activate=lambda path=path: self.recent_workspace_requested.emit(path),
-                )
-                for path in self._recent_workspaces
-            ]
         return groups
 
 
@@ -286,8 +263,7 @@ def _draw_layout(painter: QPainter, widget: QWidget, layout: _WelcomeLayout, hov
     fonts = _fonts()
     palette = widget.palette()
     label_color = palette.color(QPalette.ColorRole.Text)
-    muted_color = QColor(label_color)
-    muted_color.setAlphaF(0.6)
+    muted_color = palette.color(QPalette.ColorRole.PlaceholderText)
 
     chip_colors = KeyChipColors.for_palette(palette)
     hover_color = QColor(palette.color(QPalette.ColorRole.Highlight))
