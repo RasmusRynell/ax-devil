@@ -277,21 +277,50 @@ def test_live_reads_device_and_broker_from_environment(
     assert startup.overlay_mode.value == "mqtt"
 
 
+_WEBSOCKET_FROM_CONFIG = {
+    "handler_type": "ADF_V1_FRAME",
+    "websocket_topic": "configured.topic",
+    "websocket_channel_id": 2,
+    "device_api_protocol": "http",
+}
+
+
 @pytest.mark.parametrize(
-    ("configured_mode", "arguments", "expected_mode"),
+    ("configured_mode", "arguments", "expected_mode", "expected"),
     [
-        pytest.param("MQTT", [], "mqtt", id="normalize-config-mode"),
-        pytest.param("websocket", [], "websocket", id="websocket-config"),
+        pytest.param(
+            "MQTT",
+            [],
+            "mqtt",
+            {
+                "handler_type": "ADF_BETA_FRAME",
+                "mqtt_host": "mqtt.example",
+                "analytics_data_source_key": "analytics/source",
+            },
+            id="normalize-config-mode",
+        ),
+        pytest.param("websocket", [], "websocket", _WEBSOCKET_FROM_CONFIG, id="websocket-config"),
         pytest.param(
             "websocket",
             ["--topic", "override.topic", "--channel-id", "4", "--device-api-protocol", "https"],
             "websocket",
+            {
+                **_WEBSOCKET_FROM_CONFIG,
+                "websocket_topic": "override.topic",
+                "websocket_channel_id": 4,
+                "device_api_protocol": "https",
+            },
             id="websocket-cli-overrides",
         ),
     ],
 )
 def test_live_selects_handler_and_transport_settings(
-    tmp_path: Path, startups: list[Any], configured_mode: str, arguments: list[str], expected_mode: str
+    tmp_path: Path,
+    startups: list[Any],
+    configured_mode: str,
+    arguments: list[str],
+    expected_mode: str,
+    expected: dict[str, object],
 ) -> None:
     """The live command normalizes the configured mode and applies transport overrides."""
     config = _default_config()
@@ -310,14 +339,7 @@ def test_live_selects_handler_and_transport_settings(
     assert result.exit_code == 0, result.output
     [startup] = startups
     assert startup.overlay_mode.value == expected_mode
-    if expected_mode == "mqtt":
-        assert startup.handler_type == "ADF_BETA_FRAME"
-        assert startup.mqtt_host == "mqtt.example"
-        assert startup.analytics_data_source_key == "analytics/source"
-    else:
-        assert startup.handler_type == "ADF_V1_FRAME"
-        expected = ("override.topic", 4, "https") if arguments else ("configured.topic", 2, "http")
-        assert (startup.websocket_topic, startup.websocket_channel_id, startup.device_api_protocol) == expected
+    assert {name: getattr(startup, name) for name in expected} == expected
 
 
 @pytest.mark.parametrize(

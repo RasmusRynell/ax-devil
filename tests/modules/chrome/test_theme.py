@@ -102,6 +102,7 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     object_button = card.findChild(QToolButton, "objectButton")
     assert object_button is not None
     object_button.setChecked(True)
+    (details,) = [label for label in card.findChildren(QLabel) if label.isVisibleTo(card)]
     hover.show_for("person-1", build_entity_hover_html(entity), 20, 20)
 
     for mode in ("light", "dark", "light"):
@@ -122,7 +123,7 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
         assert _foreground_pixels(events_image, QRect(170, 3, 200, 18), dark=dark) > 20, mode
         hover_image = hover.grab().toImage()
         assert _foreground_pixels(hover_image, QRect(10, 8, 150, 70), dark=dark) > 100, mode
-        detail_image = card._details.grab().toImage()
+        detail_image = details.grab().toImage()
         assert _foreground_pixels(detail_image, detail_image.rect(), dark=dark) > 100, mode
 
         # Selection must preserve readable summaries and cached rich text.

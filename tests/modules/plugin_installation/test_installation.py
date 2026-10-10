@@ -195,6 +195,7 @@ def test_prepare_uses_isolated_editable_project(
     sync, validate = uv.call_args_list
     command = sync.args[0]
     assert command[command.index("--project") + 1] == str(prepared)
+    assert command[command.index("--python") + 1] == sys.executable
     assert ("--upgrade" in command) is upgrade
     environment = sync.kwargs["env"]
     assert environment["UV_PROJECT_ENVIRONMENT"] == str(prepared / ".venv")
@@ -277,7 +278,10 @@ def test_failed_preparation_preserves_current(plugin: Path, uv: Mock, failed_ste
         step = calls
         calls += 1
         if step == failed_step:
-            raise subprocess.CalledProcessError(1, command)
+            # Behave like subprocess.run: a failed command only raises when the caller asks it to.
+            if kwargs.get("check"):
+                raise subprocess.CalledProcessError(1, command)
+            return subprocess.CompletedProcess(command, 1)
         result: subprocess.CompletedProcess[str] = success(command, **kwargs)
         return result
 

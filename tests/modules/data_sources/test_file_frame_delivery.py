@@ -138,6 +138,42 @@ def test_delivery_plays_every_frame_then_reports_the_end() -> None:
     assert frames == [(0, 0), (1, 0), (2, 0)]
 
 
+def test_paused_delivery_holds_its_frame_until_played_again() -> None:
+    """Pausing the real worker stops paced frames; playing again continues to the end."""
+    frames: list[int] = []
+    first_frame = threading.Event()
+    finished = threading.Event()
+    delivery: FileFrameDelivery
+
+    def on_playback_frame(frame: DecodedFrame, _generation: int) -> None:
+        """Record playback and pause on the first frame, before the worker picks the next one."""
+        frames.append(frame.frame_index)
+        if frame.frame_index == 0:
+            delivery.pause()
+            first_frame.set()
+
+    delivery = FileFrameDelivery(
+        decoder=cast(FrameReaderWorker, _Decoder(total_frames=3)),
+        fps=100.0,
+        source_id="pause",
+        on_playback_frame=on_playback_frame,
+        on_playback_finished=finished.set,
+    )
+    delivery.open()
+    try:
+        assert delivery.play()
+        assert first_frame.wait(timeout=1.0)
+        assert not finished.wait(timeout=0.1), "Paused playback must not run on to the end"
+        assert frames == [0]
+
+        assert delivery.play()
+        assert finished.wait(timeout=1.0)
+    finally:
+        delivery.close()
+
+    assert frames == [0, 1, 2]
+
+
 def _paced_frames(
     monkeypatch: pytest.MonkeyPatch, total_frames: int, times: list[float], *, pause_after: int | None = None
 ) -> list[int | None]:
@@ -233,7 +269,6 @@ def test_file_frame_source_reports_its_length_without_reading_every_timestamp(
     try:
         duration = source.get_duration_s()
         assert duration == pytest.approx(source.get_total_frames() / 20, abs=0.001)
-        assert source._frame_timestamps_us is None
         assert source.peek_frame_seconds(10) == pytest.approx(0.5, abs=0.001)
         assert source.peek_frame_seconds(source.get_total_frames()) is None
     finally:

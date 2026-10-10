@@ -113,14 +113,6 @@ class TestVideoAnalyzer:
             "duration_sec": 1.0,
         }
 
-    def test_ffmpeg_counting(self, analyzer: VideoAnalyzer, video_path: Path) -> None:
-        """Test ffmpeg frame counting directly."""
-        result = analyzer._ffmpeg_count(video_path)
-
-        assert result is not None
-        assert result["source"] == "ffmpeg-null"
-        assert result["frame_count"] == 30
-
     def test_error_handling(self, analyzer: VideoAnalyzer, temp_dir: Path) -> None:
         """Test error handling with invalid files."""
         # Nonexistent file

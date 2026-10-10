@@ -12,6 +12,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QProgressBar
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
@@ -21,6 +22,7 @@ from ax_devil.modules.video_player.engine.quick.image_renderer import FrameImage
 from ax_devil.modules.video_viewer.export.export_dialog import ExportDialog
 from ax_devil.modules.video_viewer.export.export_job import ExportJob, ExportLane
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
+from tests.helpers.widgets import button
 
 
 class _VideoSource:
@@ -48,6 +50,35 @@ class _VideoSource:
 
 def _lane(source: _VideoSource, name: str = "lane") -> ExportLane:
     return ExportLane(name=name, video_source=cast(FileFrameSource, source), presenter=SceneFramePresenter())
+
+
+def _export(dialog: ExportDialog, output: Path | None) -> None:
+    """Press Export and choose *output* in the save dialog, or dismiss it when None."""
+    with (
+        patch("PySide6.QtWidgets.QFileDialog.exec", return_value=output is not None),
+        patch("PySide6.QtWidgets.QFileDialog.selectedFiles", return_value=[str(output)]),
+    ):
+        button(dialog, "Export").click()
+
+
+def _progress_bar(dialog: ExportDialog) -> QProgressBar:
+    progress = dialog.findChild(QProgressBar)
+    assert progress is not None
+    return progress
+
+
+def _status(dialog: ExportDialog) -> str:
+    """Return the status line shown under the progress bar."""
+    parent = _progress_bar(dialog).parentWidget()
+    label = parent.findChild(QLabel) if parent is not None else None
+    assert label is not None
+    return label.text()
+
+
+def _shows_options(dialog: ExportDialog) -> bool:
+    quality = dialog.findChild(QComboBox)
+    assert quality is not None
+    return quality.isVisibleTo(dialog)
 
 
 @pytest.fixture
@@ -87,9 +118,9 @@ def test_failed_frame_preserves_destination_and_reports_error(
     with patch.object(
         source, "read_decoded_frame", side_effect=lambda index: None if index == failure_frame else original_read(index)
     ):
-        dialog._export(output)
+        _export(dialog, output)
     assert output.read_bytes() == b"previous export"
-    assert "Error:" in dialog._status_label.text()
+    assert "Error:" in _status(dialog)
     assert "Export failed" in caplog.text
     assert not list(tmp_path.glob(".output-*.mp4"))
 
@@ -123,16 +154,13 @@ def test_export_button_asks_for_mp4_destination(
 ) -> None:
     """The destination is chosen after pressing Export and always ends in .mp4."""
     _source, dialog, _output = export_setup
-    with (
-        patch("PySide6.QtWidgets.QFileDialog.exec", return_value=accepted),
-        patch("PySide6.QtWidgets.QFileDialog.selectedFiles", return_value=[str(tmp_path / typed)]),
-        patch.object(dialog, "_export") as export,
-    ):
-        dialog._start_export()
+    _export(dialog, tmp_path / typed if accepted else None)
     if expected is None:
-        export.assert_not_called()
+        assert _shows_options(dialog)
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["output.mp4", "source.mp4"]
     else:
-        export.assert_called_once_with(tmp_path / expected)
+        assert _status(dialog) == f"Done: {tmp_path / expected}"
+        assert (tmp_path / expected).stat().st_size > 0
 
 
 def test_export_dialog_switches_from_options_to_progress(
@@ -140,20 +168,20 @@ def test_export_dialog_switches_from_options_to_progress(
 ) -> None:
     """Progress controls replace setup options only after export starts."""
     _source, dialog, output = export_setup
-    assert not dialog._options_widget.isHidden()
-    assert dialog._progress_widget.isHidden()
+    assert _shows_options(dialog)
+    assert not _progress_bar(dialog).isVisibleTo(dialog)
 
     def run_export(_job: ExportJob, progress: object = None) -> bool:
-        assert dialog._options_widget.isHidden()
-        assert not dialog._progress_widget.isHidden()
+        assert not _shows_options(dialog)
+        assert _progress_bar(dialog).isVisibleTo(dialog)
         return True
 
     with patch.object(ExportJob, "run", autospec=True, side_effect=run_export):
-        dialog._export(output)
+        _export(dialog, output)
 
-    assert dialog._options_widget.isHidden()
-    assert not dialog._progress_widget.isHidden()
-    assert dialog._status_label.text().startswith("Done:")
+    assert not _shows_options(dialog)
+    assert _progress_bar(dialog).isVisibleTo(dialog)
+    assert _status(dialog).startswith("Done:")
 
 
 def test_export_dialog_size_grows_for_more_and_longer_lanes(qtbot: QtBot) -> None:
@@ -216,22 +244,24 @@ def test_closing_during_export_cancels_before_replacing_destination(
     tmp_path: Path, export_setup: tuple[_VideoSource, ExportDialog, Path], action: str
 ) -> None:
     """Window dismissal must not hide an export that continues overwriting in the background."""
-    _source, dialog, output = export_setup
+    source, dialog, output = export_setup
     dialog.show()
+    original_read = source.read_decoded_frame
 
-    def dismiss(_index: int, _total: int) -> None:
+    def dismiss_then_read(index: int) -> DecodedFrame:
         if action == "escape":
             QTest.keyClick(dialog, Qt.Key.Key_Escape)
         elif action == "close":
             dialog.close()
         else:
-            QTest.mouseClick(dialog._cancel_button, Qt.MouseButton.LeftButton)
+            QTest.mouseClick(button(dialog, "Cancel"), Qt.MouseButton.LeftButton)
         assert dialog.isVisible()
+        return original_read(index)
 
-    with patch.object(dialog, "_update_progress", side_effect=dismiss):
-        dialog._export(output)
+    with patch.object(source, "read_decoded_frame", side_effect=dismiss_then_read):
+        _export(dialog, output)
     assert output.read_bytes() == b"previous export"
-    assert dialog._status_label.text() == "Cancelled"
+    assert _status(dialog) == "Cancelled"
     assert not list(tmp_path.glob(".output-*.mp4"))
     dialog.reject()
     assert not dialog.isVisible()
@@ -318,9 +348,9 @@ def test_selected_lanes_are_tiled_and_follow_the_first_lane(tmp_path: Path, qtbo
     lanes = [_lane(first, "a"), _lane(first, "a2"), _lane(shorter, "b"), _lane(unselected, "c")]
     dialog = ExportDialog(lanes)
     qtbot.addWidget(dialog)
-    dialog._lane_checks[3].setChecked(False)
-    dialog._export(output)
-    assert dialog._status_label.text().startswith("Done:")
+    next(check for check in dialog.findChildren(QCheckBox) if check.text() == "c").click()
+    _export(dialog, output)
+    assert _status(dialog).startswith("Done:")
     assert first.requested_frames == [0, 1, 2]
     assert shorter.requested_frames == [0, 1]
     assert unselected.requested_frames == []

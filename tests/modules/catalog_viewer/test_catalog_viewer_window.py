@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QTabBar
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
@@ -15,6 +15,7 @@ from ax_devil.modules.catalog_viewer.sheets import sheets
 from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogLoader, SceneRenderCatalogManager
 from ax_devil.modules.scene.rendering.catalog import CatalogJsonDocument
+from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
 
 
 def _viewer(qtbot: QtBot, manager: SceneRenderCatalogManager, path: Path) -> CatalogViewerWindow:
@@ -36,6 +37,23 @@ def _banner(window: CatalogViewerWindow) -> QLabel:
     banner = window.findChild(QLabel, "catalogViewerError")
     assert banner is not None
     return banner
+
+
+def _draws_a_sheet(window: CatalogViewerWindow) -> bool:
+    renderer = window.findChild(VideoFrameRenderer, "catalogViewerRenderer")
+    assert renderer is not None
+    return renderer.frame_display_rect() is not None
+
+
+def _sheet_description(window: CatalogViewerWindow) -> str:
+    """Return the description of the selected sheet, which its tab also shows as a tooltip."""
+    tabs = window.findChild(QTabBar, "catalogViewerTabs")
+    assert tabs is not None
+    return tabs.tabToolTip(tabs.currentIndex())
+
+
+def _shows_text(window: CatalogViewerWindow, text: str) -> bool:
+    return any(label.text() == text for label in window.findChildren(QLabel))
 
 
 def test_the_viewer_shows_a_tab_per_sheet(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> None:
@@ -64,7 +82,7 @@ def test_catalog_change_notification_redraws_the_file(
     assert "Human" not in window.sheet_titles()
 
 
-def test_a_save_during_loading_keeps_the_preview_and_compilation_on_one_revision(
+def test_a_save_during_loading_shows_the_version_read_until_the_change_notification(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
     monkeypatch: pytest.MonkeyPatch,
@@ -72,8 +90,6 @@ def test_a_save_during_loading_keeps_the_preview_and_compilation_on_one_revision
 ) -> None:
     path = render_catalog_manager.create_catalog("Review", base_catalog_path=small_catalog_path).path
     read_document = SceneRenderCatalogLoader.read_document
-    original = read_document(path)
-    expected = SceneRenderCatalogLoader().validate_document(original)
     saved = False
 
     def read_then_save(catalog_path: Path) -> CatalogJsonDocument:
@@ -90,13 +106,10 @@ def test_a_save_during_loading_keeps_the_preview_and_compilation_on_one_revision
 
     assert "Human" in window.sheet_titles()
     assert "Pedestrian" not in window.sheet_titles()
-    assert window._catalog is not None
-    assert window._catalog.content_hash == expected.content_hash
     render_catalog_manager.refresh_catalogs()
     render_catalog_manager.catalogFileChanged.emit(path)
     assert "Pedestrian" in window.sheet_titles()
-    current = SceneRenderCatalogLoader().validate_document(read_document(path))
-    assert window._catalog.content_hash == current.content_hash
+    assert "Human" not in window.sheet_titles()
 
 
 def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
@@ -105,7 +118,8 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
     catalog = render_catalog_manager.create_catalog("Review", base_catalog_path=small_catalog_path)
     window = _viewer(qtbot, render_catalog_manager, catalog.path)
     titles = window.sheet_titles()
-    description = window._description.text()
+    description = _sheet_description(window)
+    assert description and _shows_text(window, description)
     original = catalog.path.read_text(encoding="utf-8")
 
     catalog.path.write_text(original.replace('"schema_version": 3', '"schema_version": 99', 1), encoding="utf-8")
@@ -115,8 +129,8 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
 
     assert "$.metadata.schema_version" in (window.error() or "")
     assert window.sheet_titles() == titles
-    assert window._renderer.frame_display_rect() is not None
-    assert window._description.text() == description
+    assert _draws_a_sheet(window)
+    assert _shows_text(window, description)
     assert "Showing the last version that loaded." in _banner(window).text()
 
     _relabel_person(catalog.path, "Pedestrian", original)
@@ -140,9 +154,9 @@ def test_switching_to_a_catalog_that_does_not_load_clears_the_previous_preview(
     catalog = render_catalog_manager.create_catalog("Review", base_catalog_path=small_catalog_path)
     window = _viewer(qtbot, render_catalog_manager, catalog.path)
     titles = window.sheet_titles()
-    description = window._description.text()
-    assert window._renderer.frame_display_rect() is not None
-    assert description
+    description = _sheet_description(window)
+    assert description and _shows_text(window, description)
+    assert _draws_a_sheet(window)
     if hidden:
         window.hide()
     broken = tmp_path / "broken.json"
@@ -155,16 +169,16 @@ def test_switching_to_a_catalog_that_does_not_load_clears_the_previous_preview(
     assert window.error() is not None
     assert window.sheet_titles() == []
     assert "Nothing to show yet." in _banner(window).text()
-    assert window._renderer.frame_display_rect() is None
-    assert window._description.text() == ""
+    assert not _draws_a_sheet(window)
+    assert not _shows_text(window, description)
 
     window.show_catalog(catalog.path)
     window.show()
 
     assert window.error() is None
     assert window.sheet_titles() == titles
-    assert window._renderer.frame_display_rect() is not None
-    assert window._description.text() == description
+    assert _draws_a_sheet(window)
+    assert _shows_text(window, description)
 
 
 def test_a_catalog_without_a_preview_starts_drawing_when_fixed(
@@ -179,15 +193,15 @@ def test_a_catalog_without_a_preview_starts_drawing_when_fixed(
     window.show_catalog(repaired.path)
 
     assert window.error() is not None
-    assert window._renderer.frame_display_rect() is None
+    assert not _draws_a_sheet(window)
     _relabel_person(repaired.path, "Pedestrian", original)
     render_catalog_manager.refresh_catalogs()
     render_catalog_manager.catalogFileChanged.emit(repaired.path)
     assert window.error() is None
 
     assert "Pedestrian" in window.sheet_titles()
-    assert window._renderer.frame_display_rect() is not None
-    assert window._description.text()
+    assert _draws_a_sheet(window)
+    assert _shows_text(window, _sheet_description(window))
     assert _banner(window).isHidden()
 
 

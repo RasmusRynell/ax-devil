@@ -12,6 +12,9 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.settings import GlobalSettings
+from tests.helpers.settings_dialog import answer_restart_prompt, choice, choose, click_ok, save_error
+
+ACCELERATION = "Graphics acceleration (requires restart)"
 
 
 @pytest.fixture(autouse=True)
@@ -51,23 +54,24 @@ def test_invalid_saved_mode_uses_auto(invalid: object) -> None:
 def test_dialog_cancel_ok_and_reopen(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     """The choice is saved on OK, discarded on Cancel, and only takes effect at the next start."""
     monkeypatch.delenv("QT_WIDGETS_RHI", raising=False)
+    asked = answer_restart_prompt(monkeypatch, "Later")
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    dialog._acceleration_combo.setCurrentIndex(dialog._acceleration_combo.findData("off"))
+    choose(choice(dialog, ACCELERATION), "off")
     dialog.reject()
     assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.AUTO
 
-    monkeypatch.setattr(SettingsDialog, "_ask_to_restart", lambda self: False)  # Restart later.
     saved_dialog = SettingsDialog()
     qtbot.addWidget(saved_dialog)
-    saved_dialog._acceleration_combo.setCurrentIndex(saved_dialog._acceleration_combo.findData("off"))
-    saved_dialog._on_ok()
-    assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.OFF, saved_dialog._status_label.text()
+    choose(choice(saved_dialog, ACCELERATION), "off")
+    assert click_ok(saved_dialog), save_error(saved_dialog)
+    assert GlobalSettings().graphics_acceleration is GraphicsAcceleration.OFF
+    assert len(asked) == 1 and not saved_dialog.restart_requested
     assert "QT_WIDGETS_RHI" not in os.environ
 
     reopened = SettingsDialog()
     qtbot.addWidget(reopened)
-    assert reopened._acceleration_combo.currentData() == "off"
+    assert choice(reopened, ACCELERATION).currentData() == "off"
 
 
 @pytest.mark.parametrize("inherited", ["0", None])

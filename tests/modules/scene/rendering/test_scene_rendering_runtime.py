@@ -355,7 +355,7 @@ def test_optional_bindings_keep_valid_false_and_zero_and_ignore_wrong_shapes(
     assert [item.text for item in primitives if isinstance(item, TextCall)] == ["entity", "human"]
 
 
-@pytest.mark.parametrize("motion_state", [MotionState.Moving, None])
+@pytest.mark.parametrize("motion_state", [MotionState.Moving, MotionState.Stationary, None])
 @pytest.mark.parametrize("visible", [True, False])
 def test_movement_and_speed_inputs_respect_visibility(motion_state: MotionState | None, visible: bool) -> None:
     scene = _scene(motion_state=motion_state)
@@ -377,10 +377,13 @@ def test_movement_and_speed_inputs_respect_visibility(motion_state: MotionState 
     assert [(line.x2, line.y2) for line in lines] == ([(0.2, 0.1)] if visible else [])
 
 
+@pytest.mark.parametrize("motion_state", [MotionState.Moving, MotionState.Stationary])
 @pytest.mark.parametrize("classification", [None, "custom", "human", "car", "head"])
-def test_built_in_recipes_keep_movement_and_speed_controls_independent(classification: str | None) -> None:
+def test_built_in_recipes_keep_movement_and_speed_controls_independent(
+    classification: str | None, motion_state: MotionState
+) -> None:
     """Each packaged recipe hides its own movement badge and speed arrow, and only that, per control."""
-    scene = _scene(motion_state=MotionState.Moving)
+    scene = _scene(motion_state=motion_state)
     observation = next(iter(scene.entities.values())).observations[0]
     observation.classification = [] if classification is None else [Classification(classification, Score(0.8))]
     observation.velocity_in_image_space = ImageVelocity(vx=0.2, vy=0.1)

@@ -2,10 +2,8 @@
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 from threading import Event, Thread
-from time import monotonic
 
 import pytest
 from PySide6.QtCore import Qt, QThread
@@ -156,7 +154,7 @@ def test_sampling_failure_keeps_completed_snapshots(
 
 @pytest.mark.parametrize("registered", [True, False])
 def test_reused_thread_ids_keep_separate_exported_histories(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, registered: bool
+    tmp_path: Path, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, registered: bool
 ) -> None:
     """Reused identifiers cannot relabel old samples after replacement or observed absence."""
     first = Thread(name="first worker")
@@ -168,19 +166,22 @@ def test_reused_thread_ids_keep_separate_exported_histories(
     monkeypatch.setattr(trace_recorder, "enumerate_threads", lambda: threads)
     monkeypatch.setattr(sys, "_current_frames", lambda: frames.copy())
     recorder = TraceRecorder()
-    recorder._spool = tempfile.TemporaryFile(mode="w+b")
-    recorder._started_at = monotonic()
+
+    def sampled_twice_more() -> None:
+        target = recorder.sample_count + 2
+        qtbot.waitUntil(lambda: recorder.sample_count >= target)
+
     try:
-        recorder._sample()
-        recorder._sample()
+        recorder.start()
+        sampled_twice_more()
         if registered:
             threads[:] = [second]
         else:
             frames.clear()
-            recorder._sample()
+            sampled_twice_more()
             frames[42] = sys._getframe()
-        recorder._sample()
-        recorder._ended_at = monotonic()
+        sampled_twice_more()
+        recorder.stop()
         path = tmp_path / "reused.json"
         recorder.save(path)
         data = json.loads(path.read_text())
@@ -193,6 +194,6 @@ def test_reused_thread_ids_keep_separate_exported_histories(
             assert data["threads"][old_id] == "first worker"
             assert data["threads"][new_id] == "second worker"
         else:
-            assert data["samples"][2][1] == []
+            assert [] in [stacks for _, stacks in data["samples"]]
     finally:
         recorder.cleanup()

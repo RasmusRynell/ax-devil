@@ -6,6 +6,7 @@ import json
 import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 from ax_devil_mqtt import MqttMessage
@@ -14,7 +15,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.core.data_types import OverlayData
 from ax_devil.modules.data_sources.live import mqtt_discovery, mqtt_overlay_source
 from ax_devil.modules.data_sources.live.mqtt_overlay_source import MQTTOverlaySource
-from ax_devil.modules.scene.model import EntityId
+from ax_devil.modules.scene.model import EntityId, Scene
 from ax_devil.plugins.decoders.adf_v1.frame import ADFFrameV1Decoder
 
 
@@ -69,6 +70,18 @@ class _Broker:
         self.events.append("stop")
 
 
+class _RecordingDecoder(ADFFrameV1Decoder):
+    """Real ADF decoder that records each payload the worker hands it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.payloads: list[Any] = []
+
+    def decode(self, payload: Any) -> Scene | None:
+        self.payloads.append(payload)
+        return super().decode(payload)
+
+
 @pytest.fixture
 def broker(monkeypatch: pytest.MonkeyPatch) -> _Broker:
     """Replace the device API and MQTT broker connection with offline fakes."""
@@ -78,7 +91,9 @@ def broker(monkeypatch: pytest.MonkeyPatch) -> _Broker:
     return fake
 
 
-def _source(data_source_key: str = "com.axis.scene.frame.v1#1") -> MQTTOverlaySource:
+def _source(
+    data_source_key: str = "com.axis.scene.frame.v1#1", decoder: ADFFrameV1Decoder | None = None
+) -> MQTTOverlaySource:
     return MQTTOverlaySource(
         broker_host="broker.local",
         broker_port=1883,
@@ -89,17 +104,16 @@ def _source(data_source_key: str = "com.axis.scene.frame.v1#1") -> MQTTOverlaySo
         device_password="pass",
         device_api_protocol="https",
         analytics_data_source_key=data_source_key,
-        decoder=ADFFrameV1Decoder(),
+        decoder=decoder or ADFFrameV1Decoder(),
         handler_type="ADF_V1_FRAME",
         source_id="test-camera",
     )
 
 
-def test_mqtt_delivery_recovers_after_malformed_payload(
-    qtbot: QtBot, broker: _Broker, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_mqtt_delivery_recovers_after_malformed_payload(qtbot: QtBot, broker: _Broker) -> None:
     """Real decoding and Qt emission preserve camera time after a bad transport packet."""
-    source = _source()
+    decoder = _RecordingDecoder()
+    source = _source(decoder=decoder)
     overlays: list[OverlayData] = []
     connected: list[bool] = []
     source.overlayReady.connect(overlays.append)
@@ -126,14 +140,14 @@ def test_mqtt_delivery_recovers_after_malformed_payload(
         qtbot.waitUntil(lambda: connected == [True])
         assert broker.message_callback is not None
         broker.message_callback(MqttMessage(topic="analytics", payload="{invalid"))
-        qtbot.waitUntil(lambda: "Error decoding MQTT message" in caplog.text)
-        assert overlays == []
+        qtbot.waitUntil(lambda: "{invalid" in decoder.payloads)
         broker.message_callback(message)
-        qtbot.waitUntil(lambda: len(overlays) == 1)
+        qtbot.waitUntil(lambda: len(overlays) >= 1)
     finally:
         source.stop()
         source.deleteLater()
 
+    assert len(overlays) == 1
     overlay = overlays[0]
     assert overlay.source_id == "test-camera"
     assert overlay.frame_id.timestamp_monotime_us == 12_500_000

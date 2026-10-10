@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import pytest
 from PySide6.QtCore import QRunnable, QThreadPool
@@ -11,7 +11,6 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
-    QFormLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -37,25 +36,7 @@ from ax_devil.modules.workspace.add_content.add_playlist_dialog import AddPlayli
 from ax_devil.modules.workspace.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.intake import WorkspaceDecoderOption, WorkspaceIntake
-
-_W = TypeVar("_W", bound=QWidget)
-
-
-def _field(dialog: QWidget, label: str, kind: type[_W]) -> _W:
-    """Return the *kind* widget in the form row the user sees labeled *label*."""
-    for form in dialog.findChildren(QFormLayout):
-        for row in range(form.rowCount()):
-            label_item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
-            field_item = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
-            label_widget = label_item.widget() if label_item is not None else None
-            if not isinstance(label_widget, QLabel) or label_widget.text() != label or field_item is None:
-                continue
-            widget = field_item.widget()
-            assert widget is not None
-            found = widget if isinstance(widget, kind) else widget.findChild(kind)
-            assert found is not None, f"{label!r} has no {kind.__name__}"
-            return found
-    raise LookupError(f"No form row labeled {label!r}")
+from tests.helpers.forms import form_field
 
 
 def _ok(dialog: QWidget) -> QPushButton:
@@ -71,7 +52,7 @@ def _visible_texts(dialog: QWidget) -> list[str]:
 
 
 def _set_overlay_mode(dialog: AddLiveStreamDialog, mode: LiveOverlayMode) -> None:
-    combo = _field(dialog, "Overlay Mode", QComboBox)
+    combo = form_field(dialog, "Overlay Mode", QComboBox)
     combo.setCurrentIndex(combo.findData(mode.value))
 
 
@@ -194,7 +175,7 @@ def test_live_transport_selection_preserves_usable_geometry(qtbot: QtBot, small_
             if button.isVisibleTo(dialog) and not scroll_area.isAncestorOf(button):
                 assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
         if mode is LiveOverlayMode.MQTT:
-            data_source = _field(dialog, "Data Source", AnalyticsChoice)
+            data_source = form_field(dialog, "Data Source", AnalyticsChoice)
             scroll_area.ensureWidgetVisible(data_source)
             QApplication.processEvents()
             viewport = scroll_area.viewport()
@@ -247,8 +228,8 @@ def test_add_video_keeps_ok_disabled_and_says_why_until_selection_is_complete(
     video.write_bytes(b"")
     overlay = tmp_path / "overlay.jsonl"
     overlay.write_text("{}\n")
-    video_edit = _field(video_dialog, "Video File", QLineEdit)
-    overlay_edit = _field(video_dialog, "Overlay File", QLineEdit)
+    video_edit = form_field(video_dialog, "Video File", QLineEdit)
+    overlay_edit = form_field(video_dialog, "Overlay File", QLineEdit)
     steps = [
         (video_edit, "", "Choose a video file to continue."),
         (video_edit, str(tmp_path / "missing.mp4"), "Video file not found."),
@@ -265,7 +246,7 @@ def test_add_video_keeps_ok_disabled_and_says_why_until_selection_is_complete(
     video_dialog.accept()
     assert video_dialog.get_result() is None
 
-    _select(_field(video_dialog, "Data Handler", QComboBox), "TRACKS")
+    _select(form_field(video_dialog, "Data Handler", QComboBox), "TRACKS")
     _ok(video_dialog).click()
 
     assert video_dialog.get_result() == VideoFileStartup(
@@ -283,11 +264,11 @@ def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
     overlay.write_text("1,1,0,0,1,1,1,-1,-1,-1\n")
     pdf = tmp_path / "notes.pdf"
     pdf.write_bytes(b"")
-    handler = _field(video_dialog, "Data Handler", QComboBox)
-    overlay_edit = _field(video_dialog, "Overlay File", QLineEdit)
+    handler = form_field(video_dialog, "Data Handler", QComboBox)
+    overlay_edit = form_field(video_dialog, "Overlay File", QLineEdit)
 
     assert not handler.isEnabled()
-    _field(video_dialog, "Video File", QLineEdit).setText(str(video))
+    form_field(video_dialog, "Video File", QLineEdit).setText(str(video))
     overlay_edit.setText(str(overlay))
     assert handler.isEnabled()
     assert handler.currentData() == "TXT"
@@ -300,7 +281,7 @@ def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
 
     overlay_edit.setText(str(overlay))
     assert handler.currentData() == "TXT"
-    name_edit = _field(video_dialog, "Display Name", QLineEdit)
+    name_edit = form_field(video_dialog, "Display Name", QLineEdit)
     assert name_edit.placeholderText() == "clip.mp4"
     name_edit.setText("Gate camera")
     _ok(video_dialog).click()
@@ -322,7 +303,7 @@ def test_add_video_prefills_a_dropped_selection(qtbot: QtBot, video_intake: None
 
     assert not _ok(dialog).isEnabled()
     assert _shows(dialog, "Choose the data handler that reads the overlay file.")
-    _select(_field(dialog, "Data Handler", QComboBox), "FRAME")
+    _select(form_field(dialog, "Data Handler", QComboBox), "FRAME")
     _ok(dialog).click()
     assert dialog.get_result() == VideoFileStartup(video_path=video, overlay_path=overlay, handler_type="FRAME")
 
@@ -342,7 +323,7 @@ def test_add_live_stream_ok_waits_for_a_host(qtbot: QtBot, monkeypatch: pytest.M
     _use_defaults(monkeypatch, empty, empty)
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
-    host = _field(dialog, "Host", QLineEdit)
+    host = form_field(dialog, "Host", QLineEdit)
 
     _assert_blocked(dialog, "Enter the device host.")
 
@@ -359,7 +340,7 @@ def test_add_live_stream_without_overlay_ignores_the_disabled_handler(qtbot: QtB
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
     _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
-    _select(_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
+    _select(form_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
     _set_overlay_mode(dialog, LiveOverlayMode.NONE)
 
     _ok(dialog).click()
@@ -373,7 +354,7 @@ def test_add_live_stream_requires_handler_when_overlay_mode_is_enabled(qtbot: Qt
     qtbot.addWidget(dialog)
 
     _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
-    _field(dialog, "Handler Type", QComboBox).setCurrentIndex(0)
+    form_field(dialog, "Handler Type", QComboBox).setCurrentIndex(0)
 
     _assert_blocked(dialog, "Select a handler type for RTSP Embedded overlays.")
 
@@ -383,7 +364,7 @@ def test_add_live_stream_requires_positive_camera_head(qtbot: QtBot) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
-    camera_head = _field(dialog, "Camera Head", QLineEdit)
+    camera_head = form_field(dialog, "Camera Head", QLineEdit)
     camera_head.selectAll()
     QTest.keyClicks(camera_head, "0")
 
@@ -403,15 +384,15 @@ def test_add_live_stream_mqtt_needs_broker_and_data_source_then_builds_spec(
     qtbot.addWidget(dialog)
 
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
-    _select(_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
+    _select(form_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
     _assert_blocked(dialog, "MQTT Host is required for MQTT overlay mode.")
 
-    _field(dialog, "MQTT Host", QLineEdit).setText("broker.local")
-    _field(dialog, "MQTT Username", QLineEdit).setText("mqtt-user")
+    form_field(dialog, "MQTT Host", QLineEdit).setText("broker.local")
+    form_field(dialog, "MQTT Username", QLineEdit).setText("mqtt-user")
     _assert_blocked(dialog, "Data Source is required for MQTT overlay mode.")
 
     discovery.finish()
-    _select(_field(dialog, "Data Source", AnalyticsChoice).combo, "analytics/source")
+    _select(form_field(dialog, "Data Source", AnalyticsChoice).combo, "analytics/source")
     _ok(dialog).click()
 
     result = dialog.get_result()
@@ -437,7 +418,7 @@ def test_add_live_stream_uses_env_backed_defaults_without_copying_them(qtbot: Qt
         ("MQTT Username", "mqtt-user", "$AX_DEVIL_MQTT_BROKER_USER"),
     ]
     for label, value, variable in env_fields:
-        edit = _field(dialog, label, QLineEdit)
+        edit = form_field(dialog, label, QLineEdit)
         assert edit.text() == ""
         assert value in edit.placeholderText()
         assert variable in edit.placeholderText()
@@ -456,7 +437,7 @@ def test_add_live_stream_selects_configured_data_source_only_when_available(
     discovery.sources = ("other/source", "analytics/source") if available else ("other/source",)
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
-    data_source = _field(dialog, "Data Source", AnalyticsChoice).combo
+    data_source = form_field(dialog, "Data Source", AnalyticsChoice).combo
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
     discovery.finish()
 
@@ -475,8 +456,8 @@ def test_add_live_stream_discards_stale_discovery_and_reloads_after_connection_r
     """Connection changes invalidate both pending responses and loaded choices, even when the host reverts."""
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
-    data_source = _field(dialog, "Data Source", AnalyticsChoice).combo
-    host = _field(dialog, "Host", QLineEdit)
+    data_source = form_field(dialog, "Data Source", AnalyticsChoice).combo
+    host = form_field(dialog, "Host", QLineEdit)
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
     if completed:
         discovery.finish()
@@ -501,17 +482,17 @@ def test_add_live_stream_websocket_shows_its_fields_and_builds_spec(
 ) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
-    topic = _field(dialog, "DataHub Topic", AnalyticsChoice)
+    topic = form_field(dialog, "DataHub Topic", AnalyticsChoice)
 
     _set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
-    _select(_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
+    _select(form_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
     discovery.finish()
 
     assert topic.combo.currentData() == "com.axis.scene.frame.v1"
     assert topic.isVisibleTo(dialog)
-    assert _field(dialog, "Topic Channel", QSpinBox).isVisibleTo(dialog)
-    assert not _field(dialog, "MQTT Host", QLineEdit).isVisibleTo(dialog)
-    assert not _field(dialog, "Data Source", AnalyticsChoice).isVisibleTo(dialog)
+    assert form_field(dialog, "Topic Channel", QSpinBox).isVisibleTo(dialog)
+    assert not form_field(dialog, "MQTT Host", QLineEdit).isVisibleTo(dialog)
+    assert not form_field(dialog, "Data Source", AnalyticsChoice).isVisibleTo(dialog)
 
     _ok(dialog).click()
 
@@ -528,7 +509,7 @@ def test_add_live_stream_websocket_shows_its_fields_and_builds_spec(
 def test_add_live_stream_websocket_topics_show_empty_state(qtbot: QtBot, discovery: _Discovery) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
-    topic = _field(dialog, "DataHub Topic", AnalyticsChoice).combo
+    topic = form_field(dialog, "DataHub Topic", AnalyticsChoice).combo
 
     discovery.topics = ()
     _set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
@@ -541,7 +522,7 @@ def test_add_live_stream_websocket_topics_show_empty_state(qtbot: QtBot, discove
 def test_add_live_stream_applies_transport_protocol_defaults_when_mode_changes(qtbot: QtBot) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
-    protocol = _field(dialog, "Device Protocol", QComboBox)
+    protocol = form_field(dialog, "Device Protocol", QComboBox)
 
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
     assert protocol.currentText() == "https"
@@ -568,9 +549,9 @@ def test_live_stream_numeric_defaults_handle_changed_environment(
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
     valid = resolved == "8883"
-    assert _field(dialog, "Camera Head", QLineEdit).text() == ("8883" if valid else "1")
-    assert _field(dialog, "MQTT Port", QSpinBox).value() == (8883 if valid else 1883)
-    assert _field(dialog, "Topic Channel", QSpinBox).value() == (8883 if valid else 1)
+    assert form_field(dialog, "Camera Head", QLineEdit).text() == ("8883" if valid else "1")
+    assert form_field(dialog, "MQTT Port", QSpinBox).value() == (8883 if valid else 1883)
+    assert form_field(dialog, "Topic Channel", QSpinBox).value() == (8883 if valid else 1)
 
 
 def _playlist(name: str) -> PlaylistContent:

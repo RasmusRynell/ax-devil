@@ -12,6 +12,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.workspace import FileOverlaySourceSpec, ResolvedPlaylistStartup, SeekableVideoContent
 from ax_devil.plugins.playlist_resolvers.folder_pair.plugin import FolderPairResolverPlugin
 from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import build_playlist_contents, discover_folder_pairs
+from tests.helpers.forms import form_field
 from tests.helpers.widgets import button
 
 
@@ -60,9 +61,9 @@ def test_settings_widget_loads_scanned_pairs_and_needs_a_new_scan_after_path_cha
     _write_file(overlays_dir / "sample.json")
     widget = FolderPairResolverPlugin().create_settings_widget()
     qtbot.addWidget(widget)
-    videos_input, overlays_input = widget.findChildren(QLineEdit)
-    decoder = widget.findChild(QComboBox)
-    assert decoder is not None
+    videos_input = form_field(widget, "Videos:", QLineEdit)
+    overlays_input = form_field(widget, "Overlays:", QLineEdit)
+    decoder = form_field(widget, "Decoder", QComboBox)
     scan, load = button(widget, "Scan"), button(widget, "Load Playlist")
 
     scan.click()
@@ -76,7 +77,12 @@ def test_settings_widget_loads_scanned_pairs_and_needs_a_new_scan_after_path_cha
     with qtbot.waitSignal(widget.playlist_resolved) as resolved:
         load.click()
     [playlist] = resolved.args[0]
-    assert len(playlist.entries) == 1
+    [entry] = playlist.entries
+    [lane] = entry.lanes
+    assert lane.overlay is not None
+    assert lane.overlay.source_spec == FileOverlaySourceSpec(
+        path=overlays_dir / "sample.json", handler_type="ADF_BETA_FRAME"
+    )
 
     videos_input.setText(str(tmp_path / "other-videos"))
     assert not load.isEnabled()

@@ -8,7 +8,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QPoint, QPointF
+from PySide6.QtCore import QCoreApplication, QPoint, QPointF, QPropertyAnimation
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QListView, QPushButton, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
@@ -658,6 +658,27 @@ class TestOfflineVideoViewerWidget:
         assert widget.header_details() == "640×480 · 25 fps · 0:04"
         (controls,) = _transports(widget)
         assert controls.timeline_slider.cached_ranges() == ((0, 9),)
+
+    def test_closing_the_viewer_stops_transport_fading(self, qtbot: QtBot) -> None:
+        """A closed playlist viewer's shared transport stops fading, so no animation or timer outlives its widgets."""
+        videos = [_make_seekable_content(name) for name in ("A", "B")]
+        playlist = PlaylistContent(
+            display_name="Test Playlist",
+            entries=tuple(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True) for video in videos),
+        )
+        widget = self._open(qtbot, playlist)
+        (controls,) = _transports(widget)
+        controls.start_auto_hide_timer()
+        controls.fade_out()
+        assert controls.hide_timer.isActive()
+        assert controls.fade_animation.state() == QPropertyAnimation.State.Running
+
+        widget.cleanup()
+        controls.fade_in()
+        controls.start_auto_hide_timer()
+
+        assert not controls.hide_timer.isActive()
+        assert controls.fade_animation.state() == QPropertyAnimation.State.Stopped
 
     def test_single_video_controls_drive_playback(self, qtbot: QtBot) -> None:
         source = _stub_frame_source()

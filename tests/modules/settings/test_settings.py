@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QProcess
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.configuration_preferences import ConfigField
@@ -23,6 +23,17 @@ from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
+from tests.helpers.forms import form_field
+from tests.helpers.settings_dialog import (
+    answer_restart_prompt,
+    checkbox,
+    choice,
+    choose,
+    click_ok,
+    config_editor,
+    preference_input,
+    save_error,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -123,16 +134,16 @@ def test_theme_dialog_cancel_ok_and_config_round_trip(qtbot: QtBot, config: Conf
     settings.theme_changed.connect(changes.append)
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    assert dialog._theme_combo.currentData() == "dark"
-    dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
+    assert choice(dialog, "Theme").currentData() == "dark"
+    choose(choice(dialog, "Theme"), "light")
     dialog.reject()
     assert settings.snapshot().theme == ThemeMode.DARK
     assert changes == []
 
     saved_dialog = SettingsDialog()
     qtbot.addWidget(saved_dialog)
-    saved_dialog._theme_combo.setCurrentIndex(saved_dialog._theme_combo.findData("light"))
-    saved_dialog._on_ok()
+    choose(choice(saved_dialog, "Theme"), "light")
+    assert click_ok(saved_dialog)
     assert changes == ["light"]
     saved = json.loads(config.config_path.read_text(encoding="utf-8"))["ui"]
     assert (saved["theme"], saved["window"], saved["custom"]) == ("light", {"custom_frame": False}, "$KEEP_RAW")
@@ -140,7 +151,7 @@ def test_theme_dialog_cancel_ok_and_config_round_trip(qtbot: QtBot, config: Conf
     settings.load_from_config(config)
     reopened = SettingsDialog()
     qtbot.addWidget(reopened)
-    assert reopened._theme_combo.currentData() == "light"
+    assert choice(reopened, "Theme").currentData() == "light"
 
 
 @pytest.mark.parametrize("invalid", ["unknown", {}])
@@ -150,7 +161,7 @@ def test_invalid_saved_appearance_follows_system(invalid: object) -> None:
 
 
 def test_all_preferences_persist_and_storage_waits_for_restart(
-    qtbot: QtBot, config: ConfigManager, tmp_path: Path
+    qtbot: QtBot, config: ConfigManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
@@ -158,6 +169,7 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
     settings.load_from_config(config)
     config.activate_storage()
     active_storage = config.get("storage")
+    answer_restart_prompt(monkeypatch, "Later")
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
     edits = {
@@ -168,16 +180,11 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
         "defaults.live_stream.rtsp.data_stream_handler": "UNAVAILABLE_PLUGIN",
         "storage.cache_dir": str(tmp_path / "new-cache"),
     }
-    for field, editor in dialog._configuration_editors.items():
-        if field.path in edits:
-            if editor._text is not None:
-                editor._text.setText(edits[field.path])
-            else:
-                assert editor._choices is not None
-                editor._choices.setEditText(edits[field.path])
-    dialog._custom_frame.setChecked(False)
-    dialog._text_size_combo.setCurrentIndex(dialog._text_size_combo.findData("large"))
-    assert dialog._apply()
+    for path, value in edits.items():
+        preference_input(dialog, path).setText(value)
+    checkbox(dialog, "Use the app title bar (requires restart)").setChecked(False)
+    choose(choice(dialog, "Text size"), "large")
+    assert click_ok(dialog), save_error(dialog)
     saved = json.loads(config.config_path.read_text())
     assert saved["defaults"]["device"]["password"] == "$CAMERA_SECRET"
     assert saved["defaults"]["device"]["host"] == "camera.example"
@@ -192,10 +199,8 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
     assert config.get("storage")["cache_dir"] == str(tmp_path / "new-cache")
     reopened = SettingsDialog()
     qtbot.addWidget(reopened)
-    assert reopened._text_size_combo.currentData() == "large"
-    for field, editor in reopened._configuration_editors.items():
-        if field.path in edits:
-            assert editor.text() == edits[field.path]
+    assert choice(reopened, "Text size").currentData() == "large"
+    assert {path: config_editor(reopened, path).text() for path in edits} == edits
 
 
 def test_invalid_transport_and_failed_save_do_not_partially_apply(
@@ -213,32 +218,31 @@ def test_invalid_transport_and_failed_save_do_not_partially_apply(
     settings.setting_changed.connect(lambda key, value: changes.append((key, value)))
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
-    dialog._overlay_checkboxes[OverlayPreference.HOVER].setChecked(False)
-    dialog._video_cache_mode.setCurrentIndex(1)
-    dialog._video_cache_spin.setValue(0.25)
-    port = next(editor for field, editor in dialog._configuration_editors.items() if field.path.endswith("broker_port"))
-    assert port._text is not None
-    port._text.setText("99999")
-    assert not dialog._apply()
-    assert "Broker port" in dialog._status_label.text()
+    choose(choice(dialog, "Theme"), "light")
+    checkbox(dialog, OverlayPreference.HOVER.label).setChecked(False)
+    choose(choice(dialog, "Memory for video caching"), False)
+    form_field(dialog, "Total allowance", QDoubleSpinBox).setValue(0.25)
+    port = preference_input(dialog, "defaults.live_stream.analytics-mqtt.broker_port")
+    port.setText("99999")
+    assert not click_ok(dialog)
+    assert "Broker port" in save_error(dialog)
     assert settings.snapshot() == previous_snapshot
     assert config.config_path.read_bytes() == previous_document
     assert changes == []
-    port._text.setText("8883")
+    port.setText("8883")
 
     def fail_replace(self: Path, target: Path) -> Path:
         raise OSError("Read-only configuration")
 
     with monkeypatch.context() as patcher:
         patcher.setattr(Path, "replace", fail_replace)
-        assert not dialog._apply()
+        assert not click_ok(dialog)
     assert settings.snapshot() == previous_snapshot
     assert config.config_path.read_bytes() == previous_document
     assert config.get_raw("defaults")["live_stream"]["analytics-mqtt"]["broker_port"] == 1883
     assert set(config.config_path.parent.iterdir()) == previous_files
     assert changes == []
-    assert dialog._apply()
+    assert click_ok(dialog), save_error(dialog)
     assert settings.theme == ThemeMode.LIGHT
 
 
@@ -261,20 +265,17 @@ def test_password_references_are_visible_and_literal_passwords_masked(
     settings.load_from_config(config)
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    editor = next(editor for field, editor in dialog._configuration_editors.items() if field.path == path)
-    edit = editor._text
-    assert edit is not None
+    edit = preference_input(dialog, path)
     assert edit.echoMode() == QLineEdit.EchoMode.Normal
     assert edit.displayText() == reference
 
     edit.setText("synthetic-literal-secret")
     assert edit.echoMode() == QLineEdit.EchoMode.Password
     assert edit.displayText() != edit.text()
-    assert editor.text() == "synthetic-literal-secret"
 
     edit.setText("~$not a reference")
     assert edit.echoMode() == QLineEdit.EchoMode.Password
-    assert dialog._apply()
+    assert click_ok(dialog), save_error(dialog)
     root, *keys = path.split(".")
     saved: Any = config.get(root)
     for key in keys:
@@ -283,12 +284,10 @@ def test_password_references_are_visible_and_literal_passwords_masked(
     edit.setText("$REPLACEMENT_SECRET")
     assert edit.echoMode() == QLineEdit.EchoMode.Normal
     assert edit.displayText() == "$REPLACEMENT_SECRET"
-    assert dialog._apply()
+    assert click_ok(dialog), save_error(dialog)
     reopened = SettingsDialog()
     qtbot.addWidget(reopened)
-    restored = next(editor for field, editor in reopened._configuration_editors.items() if field.path == path)
-    assert restored._text is not None
-    assert restored._text.displayText() == "$REPLACEMENT_SECRET"
+    assert preference_input(reopened, path).displayText() == "$REPLACEMENT_SECRET"
 
 
 @pytest.mark.parametrize("resolved", [None, "not-a-number", "0", "65536"])
@@ -345,33 +344,27 @@ def test_saving_a_restart_setting_asks_to_restart_now(qtbot: QtBot, monkeypatch:
     """Only a saved change marked (requires restart) asks; the answer is left for the main window to act on."""
     from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 
-    asked: list[bool] = []
-
-    def ask_to_restart(self: SettingsDialog) -> bool:
-        asked.append(True)
-        return True
-
-    monkeypatch.setattr(SettingsDialog, "_ask_to_restart", ask_to_restart)
+    asked = answer_restart_prompt(monkeypatch, "Restart Now")
 
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    dialog._theme_combo.setCurrentIndex(dialog._theme_combo.findData("light"))
-    dialog._on_ok()
+    choose(choice(dialog, "Theme"), "light")
+    assert click_ok(dialog)
     assert asked == [] and not dialog.restart_requested
 
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    editor = next(editor for field, editor in dialog._configuration_editors.items() if field.directory)
-    assert editor._text is not None
-    editor._text.setText(f"  {editor.text()}  ")
-    dialog._on_ok()
+    folder = preference_input(dialog, "storage.cache_dir")
+    folder.setText(f"  {folder.text()}  ")
+    assert click_ok(dialog)
     assert asked == []  # The same path with spaces saves the same value.
 
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    dialog._custom_frame.setChecked(not dialog._custom_frame.isChecked())
-    dialog._on_ok()
-    assert asked == [True] and dialog.restart_requested
+    title_bar = checkbox(dialog, "Use the app title bar (requires restart)")
+    title_bar.setChecked(not title_bar.isChecked())
+    assert click_ok(dialog)
+    assert len(asked) == 1 and dialog.restart_requested
 
 
 def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(

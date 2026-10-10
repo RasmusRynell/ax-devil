@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QTextBrowser, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.scene.inspection import debug_section_html
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
+
+
+def _browser(card: EntityHoverCard) -> QTextBrowser:
+    browser = card.findChild(QTextBrowser)
+    assert browser is not None
+    return browser
 
 
 def _rects_intersect(first: tuple[int, int, int, int], second: tuple[int, int, int, int]) -> bool:
@@ -30,10 +36,10 @@ def test_hover_card_updates_html_for_same_target_id(qtbot: QtBot) -> None:
 
     card = EntityHoverCard(parent)
     card.show_for("entity-1", "<span>first</span>", 100, 100)
-    assert card._browser.toPlainText() == "first"
+    assert _browser(card).toPlainText() == "first"
 
     card.show_for("entity-1", "<span>updated</span>", 100, 100)
-    assert card._browser.toPlainText() == "updated"
+    assert _browser(card).toPlainText() == "updated"
 
 
 def test_hover_card_prefers_left_when_more_room_on_left(qtbot: QtBot) -> None:
@@ -80,22 +86,22 @@ def test_card_scrolls_only_when_content_exceeds_viewer(qtbot: QtBot, text_size: 
     card.show_for("entity", html, 100, 100, interactive=True)
     QApplication.processEvents()
     assert parent.rect().contains(card.geometry())
-    assert card._browser.verticalScrollBar().maximum() == 0
-    assert not card._browser.verticalScrollBar().isVisible()
+    assert _browser(card).verticalScrollBar().maximum() == 0
+    assert not _browser(card).verticalScrollBar().isVisible()
 
     parent.resize(320, 240)
     card.show_for("entity", html, 100, 100, interactive=True)
     QApplication.processEvents()
     assert parent.rect().contains(card.geometry())
-    assert card._browser.verticalScrollBar().maximum() > 0
-    assert card._browser.verticalScrollBar().isVisible()
+    assert _browser(card).verticalScrollBar().maximum() > 0
+    assert _browser(card).verticalScrollBar().isVisible()
 
     card.hide_card()
     card.show_for("other", "<b>Person</b><br/>ID: 12<br/>Confidence: 0.98", 100, 100, interactive=True)
     QApplication.processEvents()
     assert parent.rect().contains(card.geometry())
-    assert card._browser.verticalScrollBar().maximum() == 0
-    assert not card._browser.verticalScrollBar().isVisible()
+    assert _browser(card).verticalScrollBar().maximum() == 0
+    assert not _browser(card).verticalScrollBar().isVisible()
 
 
 def test_pinned_card_fits_viewer_wraps_and_keeps_scroll_for_same_object(qtbot: QtBot) -> None:
@@ -106,11 +112,11 @@ def test_pinned_card_fits_viewer_wraps_and_keeps_scroll_for_same_object(qtbot: Q
     card = EntityHoverCard(parent)
     target_id = "object_identifier_" * 8
     card.show_for(target_id, f"{target_id}<br/>{_long_card()}", 100, 100, interactive=True)
-    scroll = card._browser.verticalScrollBar()
+    scroll = _browser(card).verticalScrollBar()
 
     assert parent.rect().contains(card.geometry())
-    assert card._browser.document().size().width() <= card._browser.viewport().width()
-    assert target_id in card._browser.toPlainText()
+    assert _browser(card).document().size().width() <= _browser(card).viewport().width()
+    assert target_id in _browser(card).toPlainText()
     assert scroll.maximum() > 0
     scroll.setValue(scroll.maximum() // 2)
     kept = scroll.value()
@@ -130,10 +136,10 @@ def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
     parent.show()
     card = EntityHoverCard(parent)
     card.show_for("entity", _long_card(), 500, 100, interactive=True)
-    cursor = card._browser.document().find("metric")
+    cursor = _browser(card).document().find("metric")
     assert cursor.hasSelection()
-    card._browser.setTextCursor(cursor)
-    scroll = card._browser.verticalScrollBar()
+    _browser(card).setTextCursor(cursor)
+    scroll = _browser(card).verticalScrollBar()
     scroll.setValue(100)
     original_width = card.width()
 
@@ -141,6 +147,6 @@ def test_pinned_card_refits_after_text_size_change(qtbot: QtBot) -> None:
     QApplication.processEvents()
 
     assert card.width() > original_width
-    assert card._browser.textCursor().selectedText() == "metric"
+    assert _browser(card).textCursor().selectedText() == "metric"
     assert scroll.value() == 100
     assert parent.rect().contains(card.geometry())

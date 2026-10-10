@@ -261,7 +261,7 @@ def test_hover_formats_only_selected_entity_and_reuses_its_card(monkeypatch: pyt
 @pytest.mark.parametrize(
     "changed",
     [
-        DrawingSettings(640.5, 480, 480),
+        DrawingSettings(640, 480, 479.5),
         DrawingSettings(640, 480, 480, dpi=120),
         DrawingSettings(640, 480, 480, dpr=1.5),
         DrawingSettings(640, 480, 480, hardware=True),
