@@ -441,3 +441,18 @@ def test_items_of_an_opened_workspace_do_not_wait_for_a_slow_one(qtbot: QtBot, b
 
     qtbot.waitUntil(lambda: not store.resolution(quick.id).is_pending, timeout=2000)
     assert store.resolution(slow.id).is_pending
+
+
+def test_queued_items_of_a_replaced_workspace_are_never_resolved(qtbot: QtBot, blocking: _BlockingResolver) -> None:
+    counting = _CountingResolver()
+    resolver = FakeResolutionContext(resolvers={"runs": blocking, "counted": counting, "quick": _TwoPlaylists()})
+    store = WorkspaceStore(ItemResolver(resolver))
+    busy = tuple(PlaylistItem(resolver="runs") for _ in range(8))  # More than the resolver has workers.
+    store.replace_workspace(Workspace(items=(*busy, PlaylistItem(resolver="counted"))))
+    requested = PlaylistItem(resolver="quick")
+
+    store.replace_workspace(Workspace(items=(requested,)))
+    blocking.release.set()
+
+    qtbot.waitUntil(lambda: not store.resolution(requested.id).is_pending)
+    assert counting.calls == 0

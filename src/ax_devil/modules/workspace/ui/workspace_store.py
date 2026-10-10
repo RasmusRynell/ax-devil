@@ -188,10 +188,13 @@ class WorkspaceStore(QObject):
         Added items resolve together, so the first of them is the one that opens; a replacing Workspace's items resolve
         one by one, so a slow item never holds back the others.
         """
+        generation = self._generation
         batches = [items] if added else [[item] for item in items]
         for batch in batches:
             if batch:
-                self._resolver.resolve(batch, partial(self._commit, self._generation, added=added))
+                self._resolver.resolve(
+                    batch, partial(self._commit, generation, added=added), lambda: generation == self._generation
+                )
 
     def _commit(self, generation: int, resolutions: tuple[ItemResolution, ...], *, added: bool) -> None:
         """Record the results of items still waiting for them, and exclude Content whose default is not considered."""
