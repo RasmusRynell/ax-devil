@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 import sys
 from pathlib import Path
@@ -121,6 +122,50 @@ def test_relative_paths_are_read_against_the_files_folder_wherever_it_moved(tmp_
     (item,) = load_workspace(path).items
 
     assert isinstance(item, VideoItem) and item.video == tmp_path / "clips" / "lot.mp4"
+
+
+def _symlink(link: Path, target: Path) -> Path:
+    try:
+        os.symlink(target, link)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are not supported here: {exc}")
+    return link
+
+
+def test_a_workspace_opened_through_a_symlink_reads_relative_paths_from_the_real_folder(tmp_path: Path) -> None:
+    real_folder, link_folder = tmp_path / "a", tmp_path / "b"
+    real_folder.mkdir()
+    link_folder.mkdir()
+    real = _write(
+        real_folder / "w.ax-devil.workspace",
+        {"version": 1, "items": [{"kind": "video", "id": "v", "label": "Clip", "video": "clips/lot.mp4"}]},
+    )
+    link = _symlink(link_folder / "linked.ax-devil.workspace", real)
+
+    loaded = load_workspace(link)
+
+    (item,) = loaded.items
+    assert isinstance(item, VideoItem) and item.video == real_folder / "clips" / "lot.mp4"
+    assert loaded.path == link
+
+
+def test_saving_through_a_symlink_updates_the_real_file_and_keeps_the_link(tmp_path: Path) -> None:
+    real_folder, link_folder = tmp_path / "a", tmp_path / "b"
+    real_folder.mkdir()
+    link_folder.mkdir()
+    real = real_folder / "w.ax-devil.workspace"
+    save_workspace(Workspace(items=(PlaylistItem(label="Old", resolver="r"),)), real)
+    link = _symlink(link_folder / "linked.ax-devil.workspace", real)
+    video = VideoItem(label="Clip", video=real_folder / "clips" / "lot.mp4")
+
+    saved = save_workspace(Workspace(items=(video,)), link)
+
+    assert link.is_symlink() and link.resolve() == real.resolve()
+    assert saved.path == link
+    assert _written(real)["items"] == [
+        {"kind": "video", "id": video.id, "label": "Clip", "video": "clips/lot.mp4", "overlays": []}
+    ]
+    assert list(real_folder.iterdir()) == [real]
 
 
 def test_credentials_are_written_as_stored(tmp_path: Path) -> None:
