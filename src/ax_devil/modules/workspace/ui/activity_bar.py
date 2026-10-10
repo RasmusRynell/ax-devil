@@ -14,7 +14,7 @@ from ax_devil.modules.chrome.tokens import Height, Radius, Space
 
 
 class ActivityBar(QWidget):
-    """A vertical strip of icon buttons: one per sidebar view at the top, then app-wide actions at the bottom.
+    """A vertical strip of icon buttons: the sidebar view at the top, and app-wide actions at the bottom.
 
     A view button is checked while its view is on screen; the owner reports that through ``set_view_shown``.
     """
@@ -29,25 +29,18 @@ class ActivityBar(QWidget):
         self._layout.setContentsMargins(Space.XS, Space.S, Space.XS, Space.S)
         self._layout.setSpacing(Space.XS)
         self._layout.addStretch(1)
-        self._bottom_index = 0  # Top buttons are inserted before the stretch.
         follow_appearance(self, self._apply_appearance)
 
     def add_view(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> QToolButton:
         """Add the sidebar view button at the top; clicking it runs *activate*."""
-        button = self._add_button(icon, tooltip, activate, at=self._bottom_index)
+        button = self._add_button(icon, tooltip, activate, at=0)
         button.setCheckable(True)
         self._view_button = button
-        self._bottom_index += 1
         return button
 
-    def add_action(
-        self, icon: Icon, tooltip: str, activate: Callable[[], None], *, bottom: bool = False
-    ) -> QToolButton:
-        """Add an action button at the top, or at the bottom when *bottom* is set."""
-        button = self._add_button(icon, tooltip, activate, at=self._layout.count() if bottom else self._bottom_index)
-        if not bottom:
-            self._bottom_index += 1
-        return button
+    def add_action(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> QToolButton:
+        """Add an action button below the earlier ones at the bottom."""
+        return self._add_button(icon, tooltip, activate, at=self._layout.count())
 
     def set_view_shown(self, shown: bool) -> None:
         """Check the view button while the sidebar view is on screen."""

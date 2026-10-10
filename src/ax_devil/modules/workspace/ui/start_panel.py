@@ -8,10 +8,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
-from PySide6.QtGui import QMouseEvent, QResizeEvent
+from PySide6.QtGui import QGuiApplication, QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -25,13 +24,14 @@ from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
+from ax_devil.modules.shortcuts.shortcuts import DEFAULT_SHORTCUTS
 from ax_devil.modules.workspace.core import workspace_name
 
 if TYPE_CHECKING:
     from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 
-_DROP_HINT = "Or drop video files anywhere"
 _RECENT_DAYS_AS_WEEKDAY = 6
+_ACTION_NAMES = {definition.action_id: definition.display_name for definition in DEFAULT_SHORTCUTS}
 
 
 def recent_date(modified: date, today: date) -> str:
@@ -151,17 +151,17 @@ class _RecentRow(QFrame):
 class StartPanel(QWidget):
     """Open a workspace, a video, a camera, or a playlist, or reopen a recent workspace.
 
-    The open buttons trigger the shortcut manager's actions, so they do what the File menu does and show the same
-    keys in their tooltips.
+    The open buttons trigger the shortcut manager's actions, so they do what the File menu does, carry the same
+    names, and show the same keys in their tooltips.
     """
 
     recent_workspace_requested = Signal(object)  # Path
 
-    _OPEN_ACTIONS: tuple[tuple[str, str, Icon], ...] = (
-        ("app.open_workspace", "Open workspace…", Icon.BROWSE),
-        ("app.add_video", "Open video", Icon.VIDEO),
-        ("app.add_live_stream", "Connect camera", Icon.LIVE_VIDEO),
-        ("app.add_playlist", "Open playlist…", Icon.PLAYLIST),
+    _OPEN_ACTIONS: tuple[tuple[str, Icon], ...] = (
+        ("app.open_workspace", Icon.BROWSE),
+        ("app.add_video", Icon.VIDEO),
+        ("app.add_live_stream", Icon.LIVE_VIDEO),
+        ("app.add_playlist", Icon.PLAYLIST),
     )
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -181,18 +181,12 @@ class StartPanel(QWidget):
         layout.setSpacing(Space.S)
 
         self._open_buttons: dict[str, QPushButton] = {}
-        buttons = QGridLayout()
+        buttons = QVBoxLayout()
         buttons.setContentsMargins(0, 0, 0, 0)
         buttons.setSpacing(Space.S)
-        for index, (action_id, label, icon) in enumerate(self._OPEN_ACTIONS):
-            button = self._open_button(action_id, label, icon)
-            if index == 0:
-                button.setDefault(True)  # The theme fills the default button in the accent color.
-                buttons.addWidget(button, 0, 0, 1, 2)
-            elif index == len(self._OPEN_ACTIONS) - 1:
-                buttons.addWidget(button, 2, 0, 1, 2)
-            else:
-                buttons.addWidget(button, 1, index - 1)
+        for action_id, icon in self._OPEN_ACTIONS:
+            buttons.addWidget(self._open_button(action_id, icon))
+        self._open_buttons[self._OPEN_ACTIONS[0][0]].setDefault(True)  # The theme fills it in the accent color.
         layout.addLayout(buttons)
 
         layout.addSpacing(Space.L)
@@ -210,11 +204,6 @@ class StartPanel(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.viewport().setAutoFillBackground(False)
         outer.addWidget(scroll, 1)
-        self._drop_hint = QLabel(_DROP_HINT)
-        self._drop_hint.setObjectName("AxDevilStartFooter")
-        self._drop_hint.setWordWrap(True)
-        TextRole.SMALL.apply(self._drop_hint)
-        outer.addWidget(self._drop_hint)
 
         self.set_recent_workspaces(())
         follow_appearance(self, self._apply_appearance)
@@ -223,10 +212,7 @@ class StartPanel(QWidget):
         """Trigger *manager*'s actions from the open buttons and show their keys in the tooltips."""
         self._shortcut_manager = manager
         for action_id, button in self._open_buttons.items():
-            keys = manager.current_key_sequence(action_id)
-            shortcut = keys.toString(keys.SequenceFormat.NativeText) if keys is not None else ""
-            name = manager.get_definition(action_id).display_name
-            button.setToolTip(f"{name} ({shortcut})" if shortcut else name)
+            button.setToolTip(manager.tooltip(action_id))
 
     def set_recent_workspaces(self, paths: Sequence[Path]) -> None:
         """List workspace files *paths*, newest first; clicking one emits ``recent_workspace_requested``."""
@@ -248,8 +234,8 @@ class StartPanel(QWidget):
         """Return the button that triggers *action_id*."""
         return self._open_buttons[action_id]
 
-    def _open_button(self, action_id: str, label: str, icon: Icon) -> QPushButton:
-        button = QPushButton(icon.icon(), label, self)
+    def _open_button(self, action_id: str, icon: Icon) -> QPushButton:
+        button = QPushButton(_ACTION_NAMES[action_id], self)
         # Shrink with the sidebar instead of setting its minimum width; the labels fit at the default width.
         button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -262,22 +248,16 @@ class StartPanel(QWidget):
             self._shortcut_manager.get_action(action_id).trigger()
 
     def _apply_appearance(self) -> None:
-        palette = self.palette()
-        border = palette_color_css(palette, palette.ColorRole.Mid, alpha=0.5)
-        muted = palette_color_css(palette, palette.ColorRole.Text, alpha=0.6)
+        # Icons take the color of their button's text. The application palette has it: this widget's stylesheet
+        # resolves its own palette from the theme's partial one, whose highlighted text is wrong.
+        app_palette = QGuiApplication.palette()
         side = TextRole.BODY.px
-        for button in self._open_buttons.values():
+        for index, (action_id, icon) in enumerate(self._OPEN_ACTIONS):
+            role = app_palette.ColorRole.HighlightedText if index == 0 else app_palette.ColorRole.ButtonText
+            button = self._open_buttons[action_id]
+            button.setIcon(icon.icon(app_palette.color(role)))
             button.setIconSize(QSize(side, side))
-        primary = self._open_buttons[self._OPEN_ACTIONS[0][0]]
-        primary.setIcon(self._OPEN_ACTIONS[0][2].icon(palette.color(palette.ColorRole.HighlightedText)))
-        self.setStyleSheet(
-            f"""
-            #AxDevilStartBody {{ background: transparent; }}
-            #AxDevilStartFooter {{
-                color: {muted};
-                border-top: 1px solid {border};
-                padding: {Space.M}px {Space.L}px;
-            }}
-            """
-        )
+        palette = self.palette()
+        muted = palette_color_css(palette, palette.ColorRole.Text, alpha=0.6)
+        self.setStyleSheet("#AxDevilStartBody { background: transparent; }")
         self._recent_heading.setStyleSheet(f"color: {muted}; padding-top: {Space.S}px;")

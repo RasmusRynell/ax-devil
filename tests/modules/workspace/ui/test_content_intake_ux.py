@@ -127,7 +127,7 @@ def test_clicking_welcome_rows_triggers_shortcut_actions(qtbot: QtBot) -> None:
 def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_workspace(
     qtbot: QtBot, tmp_path: Path
 ) -> None:
-    """The start panel's open buttons trigger the shortcut actions; a recent row requests its workspace file."""
+    """The start panel's open buttons trigger and are named after the menu actions; a recent row requests its file."""
     host = QWidget()
     qtbot.addWidget(host)
     manager = ShortcutManager()
@@ -153,6 +153,7 @@ def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_works
     QTest.mouseClick(rows[1], Qt.MouseButton.LeftButton, pos=rows[1].rect().center())
 
     assert triggered == ["app.open_workspace", "app.add_live_stream"]
+    assert panel.open_button("app.add_live_stream").text() == manager.get_action("app.add_live_stream").text()
     assert [row.name_label.full_text() for row in rows] == ["Parking lot", "Exp 3"]
     assert requested == [recent[1]]
 
