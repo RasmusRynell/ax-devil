@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication, QPoint, Qt
+from PySide6.QtCore import QCoreApplication, QPoint, QRect, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 from pytestqt.qtbot import QtBot
@@ -10,21 +10,22 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.video_player.ui.draggable import DraggableHandle, DraggablePanel
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
-from ax_devil.modules.video_player.ui.viewport import FrameViewport
 
 
-def test_frame_display_mounts_overlay_widgets_through_public_interface(qtbot: QtBot) -> None:
+def test_mounted_overlay_is_shown_inside_the_video_area(qtbot: QtBot) -> None:
     display = FrameDisplay()
     qtbot.addWidget(display)
     display.resize(320, 240)
     display.show()
 
-    overlay = QLabel("caller-owned")
+    overlay = QLabel("caller-owned", display.viewport)  # Created on the viewport, as the viewers do.
     display.mount_overlay(overlay, position=OverlayPosition.BOTTOM_CENTER)
+    overlay.show()  # A plain overlay's visibility stays with its caller.
     QCoreApplication.processEvents()
 
-    assert overlay.parent() is display.viewport
-    assert overlay in display.viewport.findChildren(QLabel)
+    assert overlay.isVisible()
+    viewport = display.viewport
+    assert viewport.rect().contains(QRect(overlay.mapTo(viewport, QPoint(0, 0)), overlay.size()))
 
 
 def test_viewport_gets_initial_focus_before_side_panel_text_fields(qtbot: QtBot) -> None:
@@ -79,56 +80,27 @@ def test_frame_display_side_panel_mount_replaces_caller_content(qtbot: QtBot) ->
     assert replacement in display.findChildren(QLabel)
 
 
-def test_frame_display_cleanup_clears_viewport_state(qtbot: QtBot) -> None:
+def test_cleanup_releases_mounted_overlays_and_side_panel(qtbot: QtBot) -> None:
     display = FrameDisplay()
     qtbot.addWidget(display)
 
     viewport = display.viewport
-    assert isinstance(viewport, FrameViewport)
-
     overlay = QLabel("caller-owned")
     display.mount_overlay(overlay, position=OverlayPosition.BOTTOM_CENTER)
-    display.cleanup()
-
-    assert overlay not in viewport.findChildren(QLabel)
-
-
-def test_frame_display_cleanup_tears_down_side_panel(qtbot: QtBot) -> None:
-    display = FrameDisplay()
-    qtbot.addWidget(display)
-
     content = QLabel("caller content")
-    display.enable_side_panel()
-    display.set_side_panel_widget(content)
+    display.enable_side_panel(content)
     QCoreApplication.processEvents()
 
     assert display.findChildren(DraggablePanel)
-    assert display.viewport.findChildren(DraggableHandle)
-    assert content.parent() is not None
+    assert viewport.findChildren(DraggableHandle)
 
     display.cleanup()
     QCoreApplication.processEvents()
 
+    assert overlay not in viewport.findChildren(QLabel)
     assert display.findChildren(DraggablePanel) == []
-    assert display.viewport.findChildren(DraggableHandle) == []
+    assert viewport.findChildren(DraggableHandle) == []
     assert content.parent() is None
-
-    placeholder_display = FrameDisplay()
-    qtbot.addWidget(placeholder_display)
-    placeholder_display.enable_side_panel()
-    placeholder_display.set_side_panel_widget(None)
-    QCoreApplication.processEvents()
-
-    placeholder = next(label for label in placeholder_display.findChildren(QLabel) if label.text() == "No content")
-    assert placeholder.parent() is not None
-    assert placeholder_display.viewport.findChildren(DraggableHandle)
-
-    placeholder_display.cleanup()
-    QCoreApplication.processEvents()
-
-    assert placeholder_display.findChildren(DraggablePanel) == []
-    assert placeholder_display.viewport.findChildren(DraggableHandle) == []
-    assert placeholder.parent() is None
 
 
 def test_side_panel_hides_its_content_while_collapsed(qtbot: QtBot) -> None:
@@ -208,17 +180,19 @@ def _display_in_window(qtbot: QtBot, width: int) -> tuple[QWidget, FrameDisplay,
 
 def test_side_panel_takes_at_most_half_the_pane_and_stays_open_when_it_narrows(qtbot: QtBot) -> None:
     """An open panel never closes on its own; it takes at most half its pane unless its content needs more."""
-    window, display, panel, _content = _display_in_window(qtbot, 1200)
+    window, display, panel, content = _display_in_window(qtbot, 1200)
     display.set_side_panel_open(True)
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
-    assert panel.width() == 400
+    open_width = panel.width()
+    assert 0 < open_width <= display.width() // 2
 
-    window.resize(600, 400)
-    qtbot.waitUntil(lambda: panel.width() == 300)
+    window.resize(open_width, 400)
+    qtbot.waitUntil(lambda: 0 < panel.width() <= display.width() // 2)
     assert display.is_side_panel_open()
+    assert content.isVisible()
 
     window.resize(1200, 400)
-    qtbot.waitUntil(lambda: panel.width() == 400)
+    qtbot.waitUntil(lambda: panel.width() == open_width)
     assert display.is_side_panel_open()
 
 
@@ -270,4 +244,4 @@ def test_side_panel_enabled_on_a_shown_display_takes_half_its_width(qtbot: QtBot
     panel = display.findChild(DraggablePanel)
     assert panel is not None
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
-    assert panel.width() == 320
+    assert 0 < panel.width() <= display.width() // 2

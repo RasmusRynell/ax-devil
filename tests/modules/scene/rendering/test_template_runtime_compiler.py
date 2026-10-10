@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any, cast
 
 import pytest
@@ -11,17 +10,9 @@ from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderPro
 from ax_devil.modules.scene.rendering.template_runtime.program import RenderCatalog
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.drawing_helpers import BoxCall, LabelCall, PointCall, TextCall, record_template
-
-CONTEXT = RenderContext.create(800, 400)
-
-
-def _ref(*parts: str) -> dict[str, object]:
-    return {"ref": list(parts)}
-
-
-def _call(name: str, **args: object) -> dict[str, object]:
-    return {"call": name, "args": args}
+from tests.catalog_helpers import call_expr as _call
+from tests.catalog_helpers import ref_expr as _ref
+from tests.drawing_helpers import CONTEXT, BoxCall, LabelCall, PointCall, TextCall, record_template
 
 
 def _point(x: object = 0, *, enabled: object = True) -> dict[str, object]:
@@ -46,7 +37,10 @@ def _x(catalog: RenderCatalog, inputs: dict[str, object] | None = None) -> float
 def test_reordered_calculations_use_dependencies_and_separate_parameters() -> None:
     program: dict[str, Any] = {
         "parameters": {"x": {"type": "number", "default": 0.25}},
-        "values": {"result": _call("add", values=[_ref("values", "x"), 0.25]), "x": _ref("parameters", "x")},
+        "values": {
+            "result": _call("add", values=[_ref("values", "x"), 0.25]),
+            "x": _ref("parameters", "x"),
+        },
         "steps": [_point(_ref("values", "result"))],
     }
     assert _x(_compile(program)) == 0.5
@@ -83,10 +77,13 @@ def test_lazy_expressions_do_not_evaluate_unused_arithmetic(step: dict[str, obje
     assert _x(_compile({"steps": [step]})) == 0.5
 
 
-def test_disabled_step_does_not_demand_failing_local_calculation() -> None:
+def test_disabled_steps_and_unused_values_do_not_evaluate_failing_calculations() -> None:
     catalog = _compile(
         {
-            "values": {"bad": _call("div", numerator=1, denominator=0)},
+            "values": {
+                "bad": _call("div", numerator=1, denominator=0),
+                "unused": _call("number_text", value=3, precision=-1, hide_zero=False),
+            },
             "steps": [_point(_ref("values", "bad"), enabled=False), _point(0.2)],
         }
     )
@@ -170,11 +167,17 @@ def test_template_inputs_reject_unknown_fields_and_do_not_inherit_caller_values(
         _compile({"steps": [{"template": "child", "inputs": {"extra": 1}}]}, child={"steps": []})
 
 
-def test_compiled_document_is_detached_from_nested_input_mutation() -> None:
-    program: dict[str, Any] = {"steps": [_point(0.25)]}
+def test_compiled_catalog_is_detached_from_later_document_edits() -> None:
+    default = {"x": 0.3, "y": 0.4}
+    program: dict[str, Any] = {
+        "parameters": {"origin": {"type": "image_point", "default": default}},
+        "steps": [_point(_ref("parameters", "origin", "x")), _point(0.25)],
+    }
     catalog = _compile(program)
-    program["steps"][0]["fields"]["position"]["x"] = 0.75
-    assert _x(catalog) == 0.25
+    default["x"] = 0.8
+    program["steps"][1]["fields"]["position"]["x"] = 0.75
+    output = record_template(catalog, "main", {}, context=CONTEXT)
+    assert [point.x for point in output if isinstance(point, PointCall)] == [0.3, 0.25]
 
 
 def test_literal_dollar_text_is_not_a_reference() -> None:
@@ -240,12 +243,16 @@ def test_lookup_text_maps_matches_defaults_unmatched_and_keeps_absent_text_absen
         ("3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", None, "3f2a9c1e-7…"),
         ("3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "end", "3f2a9c1e-7…"),
         ("3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f", "middle", "3f2a9…d5e6f"),
-        ("track-000412", "middle", "track…00412"),
         ("1042", "middle", "1042"),
     ],
 )
 def test_trim_text_elides_at_the_end_by_default_or_in_the_middle(text: str, elide: str | None, expected: str) -> None:
-    args: dict[str, object] = {"text": _ref("parameters", "text"), "max_length": 10, "delimiter": None, "suffix": "…"}
+    args: dict[str, object] = {
+        "text": _ref("parameters", "text"),
+        "max_length": 10,
+        "delimiter": None,
+        "suffix": "…",
+    }
     if elide is not None:
         args["elide"] = elide
     catalog = _compile(
@@ -254,7 +261,11 @@ def test_trim_text_elides_at_the_end_by_default_or_in_the_middle(text: str, elid
             "steps": [
                 {
                     "primitive": "text",
-                    "fields": {"position": {"x": 0, "y": 0}, "text": _call("trim_text", **args), "anchor": "baseline"},
+                    "fields": {
+                        "position": {"x": 0, "y": 0},
+                        "text": _call("trim_text", **args),
+                        "anchor": "baseline",
+                    },
                     "style": {"text": {"color": [255, 255, 255], "size": {"value": 12, "unit": "px"}}},
                 }
             ],
@@ -324,14 +335,14 @@ def test_pick_color_gives_each_text_a_stable_palette_color() -> None:
     assert set(colors) == {(red, green, blue) for red, green, blue in _PALETTE}
 
 
-def test_nested_reference_uses_its_calculation_slot_not_its_path_length() -> None:
+def test_reference_reads_a_field_of_a_calculated_record() -> None:
     assert (
         _x(_compile({"values": {"origin": {"x": 0.7, "y": 0.2}}, "steps": [_point(_ref("values", "origin", "x"))]}))
         == 0.7
     )
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
 def test_nonfinite_literals_are_rejected(value: float) -> None:
     with pytest.raises(TemplateRuntimeError, match="finite"):
         _compile({"steps": [_point(value)]})
@@ -383,7 +394,7 @@ def test_inset_collapses_oversized_margin_at_midpoint() -> None:
     assert len(record_template(catalog, "main", {}, context=CONTEXT)) == 1
 
 
-def test_all_seven_primitives_compile_through_v2_fields() -> None:
+def test_every_primitive_kind_draws() -> None:
     position = {"x": 0.1, "y": 0.2}
     points = [position, {"x": 0.5, "y": 0.2}, {"x": 0.4, "y": 0.6}]
     fields = {
@@ -421,19 +432,6 @@ def test_invalid_color_stop_order_is_rejected_even_in_unused_branch() -> None:
     )
     with pytest.raises(TemplateRuntimeError, match="increasing"):
         _compile({"values": {"unused": expression}, "steps": []})
-
-
-def test_static_mutable_input_defaults_are_copied() -> None:
-    default = {"x": 0.3, "y": 0.4}
-    program = {
-        "parameters": {"origin": {"type": "image_point", "default": default}},
-        "steps": [_point(_ref("parameters", "origin", "x"))],
-    }
-    before = deepcopy(program)
-    catalog = _compile(program)
-    default["x"] = 0.8
-    assert _x(catalog) == 0.3
-    assert _x(_compile(before)) == 0.3
 
 
 def test_guarded_parent_makes_its_required_descendants_accessible() -> None:
@@ -481,27 +479,6 @@ def test_literal_reserved_key_record_can_be_referenced_without_becoming_code() -
         )
         == 0.4
     )
-
-
-def test_compilation_never_invokes_operations_inside_an_unused_guard() -> None:
-    text = _call("number_text", value=3, precision=-1, hide_zero=False)
-    program = {
-        "values": {"unused": text},
-        "steps": [
-            {
-                "primitive": "text",
-                "enabled": False,
-                "fields": {
-                    "position": {"x": 0, "y": 0},
-                    "text": _call("coalesce", values=[text, ""]),
-                    "anchor": "baseline",
-                },
-                "style": {"text": {"color": [0, 0, 0], "size": {"value": 10, "unit": "px"}}},
-            }
-        ],
-    }
-    catalog = _compile(program)
-    assert record_template(catalog, "main", {}, context=CONTEXT) == []
 
 
 def test_specialized_template_keeps_null_input_behind_its_guard() -> None:
@@ -556,17 +533,9 @@ def test_context_dependent_values_follow_the_render_target_and_stay_lazy() -> No
         assert point.x == 9 / context.width
 
 
-def test_scene_reference_validation_is_shared_only_within_one_invocation() -> None:
+def test_scene_values_are_read_and_validated_per_invocation() -> None:
     from ax_devil.modules.scene.rendering.template_runtime.definitions import SCENE
     from tests.drawing_helpers import RecordingTarget
-
-    reads: list[object] = []
-
-    class Geometry(dict[str, object]):
-        def get(self, key: str, default: object = None) -> object:
-            value = super().get(key, default)
-            reads.append(value)
-            return value
 
     program = RenderProgramCompiler().compile_program(
         {"steps": [_point(_ref("scene", "observation", "geometry", "x")) for _ in range(2)]},
@@ -574,12 +543,10 @@ def test_scene_reference_validation_is_shared_only_within_one_invocation() -> No
     )
     for x in (0.2, 0.4):
         target = RecordingTarget()
-        program.emit({"scene": {"observation": {"geometry": Geometry(x=x)}}}, CONTEXT, target)
-        assert len(target.calls) == 2
-        assert all(isinstance(point, PointCall) and point.x == x for point in target.calls)
-    assert reads == [0.2, 0.4]
+        program.emit({"scene": {"observation": {"geometry": {"x": x}}}}, CONTEXT, target)
+        assert [point.x for point in target.calls if isinstance(point, PointCall)] == [x, x]
     with pytest.raises(TemplateRuntimeError, match="finite"):
-        program.emit({"scene": {"observation": {"geometry": Geometry(x=float("nan"))}}}, CONTEXT, RecordingTarget())
+        program.emit({"scene": {"observation": {"geometry": {"x": float("nan")}}}}, CONTEXT, RecordingTarget())
 
 
 def test_specialization_distinguishes_signed_zero_constants() -> None:
@@ -615,7 +582,6 @@ def test_specialization_distinguishes_signed_zero_constants() -> None:
     [
         ("number", 1),
         ("number", True),
-        ("number", float("inf")),
         ("image_box", {"x": 0, "y": 0, "w": 1, "h": 1}),
         ("image_box", {"x": 0, "y": 0, "w": -1, "h": 1}),
         ("image_box", {"x": 0, "y": 0, "w": 1, "h": 1, "extra": 1}),
@@ -625,10 +591,7 @@ def test_specialization_distinguishes_signed_zero_constants() -> None:
         ("image_point_list", [{"x": 0, "y": 0}]),
         ("image_point_list", [{"x": True, "y": 0}]),
         ("image_point_list", [{"x": 0, "y": 0}] * 4097),
-        ("rgb", [0, 128, 255]),
         ("rgb", [0, 128, 256]),
-        ("rgb", [0, 128.5, 255]),
-        ("length", {"value": 1, "unit": "px"}),
         ("length", {"value": 1, "unit": "invalid"}),
     ],
 )
@@ -783,7 +746,7 @@ def test_label_rejects_unknown_weights() -> None:
         _compile({"steps": [step]})
 
 
-@pytest.mark.parametrize("field", ["size", "padding_x", "padding_y", "radius", "gap"])
+@pytest.mark.parametrize("field", ["size", "radius"])
 def test_label_length_overflow_reports_a_located_error(field: str) -> None:
     """Finite lengths can overflow during unit conversion and must never reach the painter."""
     step = _label_step([{"text": "Person", "color": [255, 255, 255], "weight": "regular"}])

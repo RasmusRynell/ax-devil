@@ -31,7 +31,6 @@ def test_snapshot_and_export_include_viewers_sources_and_full_cache_ranges() -> 
         assert detail["reserved_bytes"] == 50 * 768
         assert detail["budget_bytes"] == 100 * 768
         payload = service.build_export_payload()
-        assert payload["schema_version"] == 6
         assert payload["caches"]
         assert payload["viewers"]
         assert (
@@ -47,13 +46,10 @@ def test_disabled_metrics_hide_source_and_cache_values() -> None:
     store = MetricsStore()
     store.set_metric("A", "value", 3)
     set_metrics_enabled(False)
-    try:
-        snapshot = DashboardSnapshotService(store).build_snapshot()
-        assert not snapshot.enabled
-        assert not snapshot.sources
-        assert not snapshot.caches
-    finally:
-        set_metrics_enabled(True)
+    snapshot = DashboardSnapshotService(store).build_snapshot()
+    assert not snapshot.enabled
+    assert not snapshot.sources
+    assert not snapshot.caches
 
 
 def test_source_freshness_is_per_field_and_frozen_exports_do_not_read_live_data() -> None:

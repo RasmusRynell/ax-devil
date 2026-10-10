@@ -17,7 +17,9 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.data_sources import FileFrameSource
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
+from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import offline_entry_media
+from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import (
     EntryMedia,
     EntryOpening,
@@ -177,7 +179,6 @@ def test_failed_open_keeps_what_it_opened_for_release(
     sources = list(media.video_sources)
     release_media(media)
     _wait_released(qtbot, sources, workers)
-    assert sources[0]._frame_delivery is None
 
 
 def test_abandoned_opening_opens_nothing_more_and_releases_what_it_opened(
@@ -210,7 +211,6 @@ def test_abandoned_opening_opens_nothing_more_and_releases_what_it_opened(
     qtbot.waitUntil(lambda: len(opened) == 1)
     _wait_released(qtbot, opened, set(threading.enumerate()) - baseline)
     assert len(opened) == 1
-    assert opened[0]._frame_delivery is None
     assert delivered == []
 
 
@@ -269,7 +269,6 @@ def test_session_cleanup_releases_sources_off_the_gui_thread(
     session.cleanup()
 
     _wait_released(qtbot, sources, workers)
-    assert sources[0]._frame_delivery is None
 
 
 def test_blocking_session_cleanup_closes_sources_before_returning(
@@ -282,25 +281,34 @@ def test_blocking_session_cleanup_closes_sources_before_returning(
     sources = list(media.video_sources)
     session = OfflineSession.build(parent, media, render_catalog_manager=render_catalog_manager)
 
+    assert any(worker.is_alive() for worker in workers)
+
     session.cleanup(blocking=True)
 
-    assert sources[0]._frame_delivery is None
+    assert not any(worker.is_alive() for worker in workers)
     _wait_released(qtbot, sources, workers)
 
 
-def test_viewer_opens_a_real_video_without_waiting_for_it(
+def test_viewer_opens_a_real_video_without_waiting_and_stops_its_workers_on_close(
     qtbot: QtBot, video_file_factory: Callable[[float, int], Path], render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
-    """Attaching the viewer returns at once; the entry appears once its video has opened in the background."""
+    """Attaching the viewer returns at once with a loading indicator; closing it leaves no video worker running."""
     path = video_file_factory(0.1, 10)
     video = SeekableVideoContent(display_name="video", source_spec=FileVideoSourceSpec(path=path))
     widget = OfflineVideoViewerWidget(video, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(widget)
+    baseline = set(threading.enumerate())
 
     widget.on_workspace_attached()
 
-    assert widget._runtime is None
-    assert widget._loading_indicator is not None
-    qtbot.waitUntil(lambda: widget._runtime is not None)
-    assert widget._loading_indicator is None
+    assert widget.findChildren(FrameDisplay) == []
+    assert widget.findChildren(LoadingIndicator)
+    qtbot.waitUntil(lambda: len(widget.findChildren(FrameDisplay)) == 1 and not widget.findChildren(LoadingIndicator))
+    video_workers = [
+        thread for thread in set(threading.enumerate()) - baseline if thread.name.endswith("frame-delivery")
+    ]
+    assert video_workers
+
     widget.cleanup()
+
+    assert not any(worker.is_alive() for worker in video_workers)

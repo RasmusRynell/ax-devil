@@ -10,29 +10,12 @@ from ax_devil.modules.filtering import (
     iter_enabled_options,
 )
 from ax_devil.modules.scene.model import (
-    BoundingBox,
-    Classification,
-    Entity,
-    EntityId,
     KnownClassificationType,
-    Observation,
-    Score,
 )
+from tests.helpers.entities import entity_with_classes
 
 
-def _make_entity(*, classification_types: tuple[str, ...] = (), include_empty: bool = False) -> Entity:
-    geometry = BoundingBox.from_xywh(0.0, 0.0, 0.1, 0.1)
-    if include_empty:
-        classifications = []
-    else:
-        classifications = [
-            Classification(type=classification_type, score=Score(1.0)) for classification_type in classification_types
-        ]
-    observation = Observation(geometry=geometry, classification=classifications, frame_number=0)
-    return Entity(id=EntityId("entity"), observations=[observation])
-
-
-def test_filter_state_initialisation_and_mutation() -> None:
+def test_filter_state_starts_from_defaults_and_rejects_unknown_options() -> None:
     config = build_default_filter_config()
     state = FilterState(config)
 
@@ -42,8 +25,6 @@ def test_filter_state_initialisation_and_mutation() -> None:
     # Initial overrides succeed
     overridden_state = FilterState(config, initial={"show_humans": False})
     assert not overridden_state.is_enabled("show_humans")
-    overridden_state.set_enabled("show_humans", True)
-    assert overridden_state.is_enabled("show_humans")
 
     with pytest.raises(KeyError):
         FilterState(config, initial={"does_not_exist": True})
@@ -66,18 +47,18 @@ def test_default_predicates_cover_known_classifications() -> None:
     state = FilterState(config)
 
     option = next(option for option in config.options if option.id == "show_humans")
-    human_entity = _make_entity(classification_types=(KnownClassificationType.Human.value,))
+    human_entity = entity_with_classes(KnownClassificationType.Human.value)
     assert option.predicate(human_entity, state)
 
     option = next(option for option in config.options if option.id == "show_bikes")
-    bike_entity = _make_entity(classification_types=(KnownClassificationType.Bike.value,))
+    bike_entity = entity_with_classes(KnownClassificationType.Bike.value)
     assert option.predicate(bike_entity, state)
 
     option = next(option for option in config.options if option.id == "show_unknown")
-    unknown_entity = _make_entity(include_empty=True)
+    unknown_entity = entity_with_classes()
     assert option.predicate(unknown_entity, state)
 
-    unknown_type_entity = _make_entity(classification_types=("unexpected",))
+    unknown_type_entity = entity_with_classes("unexpected")
     assert not any(option.predicate(unknown_type_entity, state) for option in config.options)
 
 

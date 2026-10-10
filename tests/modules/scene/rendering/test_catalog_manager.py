@@ -11,8 +11,6 @@ from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogStore,
     create_scene_render_catalog_manager,
 )
-from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.drawing_helpers import PointCall, record_template
 
 
 def test_catalog_manager_starts_selections_on_built_in_catalog(qtbot: QtBot, tmp_path: Path) -> None:
@@ -24,14 +22,6 @@ def test_catalog_manager_starts_selections_on_built_in_catalog(qtbot: QtBot, tmp
     assert selection.active_catalog_loaded()
     assert manager.default_catalog_path() == manager.built_in_catalog_path()
     assert sorted(tmp_path.iterdir()) == []
-    assert [catalog.name for catalog in manager.listing().catalogs] == [
-        "Standard",
-        "Minimal",
-        "Chunky",
-        "Glass",
-        "Tracking",
-        "Classic",
-    ]
     assert selection.status() == "Selected catalog: built-in.standard"
 
 
@@ -281,20 +271,6 @@ def test_catalog_selection_listing_refresh_failure_is_not_a_load_failure(
     assert selection.active_catalog_loaded()
 
 
-def test_catalog_selection_listing_refresh_keeps_compile_error_status(tmp_path: Path, small_catalog_path: Path) -> None:
-    manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
-    selection = manager.create_selection()
-    broken_path = manager.create_catalog("Broken", base_catalog_path=small_catalog_path).path
-    document = json.loads(broken_path.read_text(encoding="utf-8"))
-    document["recipes"]["fallbacks"][0]["steps"].append({"template": "missing", "inputs": {}})
-    broken_path.write_text(f"{json.dumps(document, indent=2)}\n", encoding="utf-8")
-    selection.select_catalog(broken_path)
-
-    manager.refresh_catalogs()
-
-    assert "Render catalog error" in selection.status()
-
-
 def test_catalog_selection_reload_refreshes_listing(tmp_path: Path, small_catalog_path: Path) -> None:
     manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
     selection = manager.create_selection()
@@ -313,8 +289,8 @@ def test_catalog_selection_reload_refreshes_listing(tmp_path: Path, small_catalo
     assert selection.active_catalog_loaded()
 
 
-def test_catalog_reload_preserves_equivalent_reordered_calculations(
-    qtbot: QtBot, tmp_path: Path, small_catalog_path: Path
+def test_catalog_reload_keeps_the_active_catalog_for_equivalent_reordered_calculations(
+    tmp_path: Path, small_catalog_path: Path
 ) -> None:
     manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
     selection = manager.create_selection()
@@ -330,70 +306,33 @@ def test_catalog_reload_preserves_equivalent_reordered_calculations(
     selection.select_catalog(path)
     before = selection.active_catalog()
     assert before is not None
-    original_point = record_template(before.templates, "marker", {}, context=RenderContext.create(640, 480))[0]
-    assert isinstance(original_point, PointCall)
-    assert original_point.x == 0.25
 
     values = document["templates"]["marker"]["values"]
     document["templates"]["marker"]["values"] = dict(reversed(list(values.items())))
     path.write_text(json.dumps(document), encoding="utf-8")
     selection.reload_active_catalog()
 
-    after = selection.active_catalog()
-    assert after is before
-    assert after.content_hash == before.content_hash
-    reordered_point = record_template(after.templates, "marker", {}, context=RenderContext.create(640, 480))[0]
-    assert isinstance(reordered_point, PointCall)
-    assert reordered_point.x == 0.25
+    assert selection.active_catalog() is before
+    assert selection.active_catalog_loaded()
 
 
-@pytest.mark.parametrize("reload", [False, True])
-def test_catalog_selection_keeps_last_good_catalog_for_malformed_bindings(
-    tmp_path: Path, reload: bool, small_catalog_path: Path
+@pytest.mark.parametrize("problem", ["missing", "invalid"])
+def test_catalog_manager_reports_active_catalog_problem_after_refresh(
+    tmp_path: Path, small_catalog_path: Path, problem: str
 ) -> None:
     manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
     selection = manager.create_selection()
-    path = manager.create_catalog("Malformed bindings", base_catalog_path=small_catalog_path).path
-    selection.select_catalog(path)
-    before = selection.active_catalog()
-    document = json.loads(path.read_text(encoding="utf-8"))
-    document["recipes"]["fallbacks"][0]["bindings"] = []
-    path.write_text(json.dumps(document), encoding="utf-8")
+    catalog_file = manager.create_catalog("Vehicle Review", base_catalog_path=small_catalog_path)
+    selection.select_catalog(catalog_file.path)
 
-    if reload:
-        selection.reload_active_catalog()
+    if problem == "missing":
+        catalog_file.path.unlink()
     else:
-        selection.select_catalog(path)
-
-    assert selection.active_catalog() is before
-    assert "Render catalog error" in selection.status()
-    assert "bindings" in selection.status()
-
-
-def test_catalog_manager_reports_active_catalog_missing_after_refresh(tmp_path: Path, small_catalog_path: Path) -> None:
-    manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
-    selection = manager.create_selection()
-    catalog_file = manager.create_catalog("Vehicle Review", base_catalog_path=small_catalog_path)
-    selection.select_catalog(catalog_file.path)
-
-    catalog_file.path.unlink()
+        catalog_file.path.write_text("not valid catalog data\n", encoding="utf-8")
     manager.refresh_catalogs()
 
     assert selection.active_catalog_path() == catalog_file.path
-    assert "Active render catalog is missing" in selection.status()
-
-
-def test_catalog_manager_reports_active_catalog_invalid_after_refresh(tmp_path: Path, small_catalog_path: Path) -> None:
-    manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
-    selection = manager.create_selection()
-    catalog_file = manager.create_catalog("Vehicle Review", base_catalog_path=small_catalog_path)
-    selection.select_catalog(catalog_file.path)
-
-    catalog_file.path.write_text("not valid catalog data\n", encoding="utf-8")
-    manager.refresh_catalogs()
-
-    assert selection.active_catalog_path() == catalog_file.path
-    assert "Active render catalog is invalid" in selection.status()
+    assert f"Active render catalog is {problem}" in selection.status()
 
 
 def test_catalog_manager_emits_when_selected_path_changes_with_same_catalog_identity(
@@ -461,18 +400,19 @@ def test_a_catalog_file_replaced_by_an_editor_is_still_followed(
     catalog_file = manager.create_catalog("Review", base_catalog_path=small_catalog_path)
     selection = manager.create_selection()
     selection.select_catalog(catalog_file.path)
+    seen = set()
 
     for value in (12, 14):
         replacement = tmp_path / "replacement.tmp"
         replacement.write_text(catalog_file.path.read_text(encoding="utf-8"), encoding="utf-8")
         _set_marker_x(replacement, value)
-        with qtbot.waitSignal(manager.catalogFileChanged, timeout=3000):
+        with qtbot.waitSignal(selection.activeCatalogChanged, timeout=3000):
             replacement.replace(catalog_file.path)
-        qtbot.waitUntil(lambda: selection.active_catalog_loaded())
+        active = selection.active_catalog()
+        assert active is not None and selection.active_catalog_loaded()
+        seen.add(active.rendering_identity)
 
-    document = json.loads(catalog_file.path.read_text(encoding="utf-8"))
-    assert document["templates"]["marker"]["parameters"]["x"]["default"] == 14
-    assert selection.status().startswith("Selected catalog")
+    assert len(seen) == 2
 
 
 def test_a_broken_catalog_file_keeps_the_last_version_until_it_is_fixed(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QColor, QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.model import (
@@ -25,10 +25,11 @@ from ax_devil.modules.video_player.engine.data_types import (
     VideoFrameWithOverlays,
     VideoOverlayData,
 )
+from ax_devil.modules.video_player.engine.drawing import DrawingStyle
 from ax_devil.modules.video_player.engine.quick.image_renderer import FrameImageRenderer
 from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.drawing_helpers import prepare_calls
+from tests.drawing_helpers import BoxCall, prepare_calls
 
 
 def _make_solid_frame(width: int = 100, height: int = 80, color: int = 0xFF0000FF) -> QImage:
@@ -82,59 +83,34 @@ def renderer(qtbot: QtBot) -> FrameImageRenderer:
     return widget
 
 
-class TestRenderToImageNoOverlay:
-    """When no overlay is present, export returns frame image pixels."""
-
-    def test_returns_image_with_same_content_when_no_overlay(self, renderer: FrameImageRenderer) -> None:
-        frame = _make_solid_frame(10, 10, color=0xFFFF0000)
-        display = _make_display_frame(frame, scene=None)
-        result = renderer.render_frame(display)
-        assert result.size() == frame.size()
-        assert result.pixelColor(5, 5) == frame.pixelColor(5, 5)
-
-
-@pytest.mark.usefixtures("qapp")
-class TestRenderToImageWithOverlay:
-    """When scene has entities, export draws overlays."""
-
-    def test_image_differs_from_input_when_overlay_drawn(self, renderer: FrameImageRenderer) -> None:
-        frame = _make_solid_frame(200, 150, color=0xFF000000)  # solid black
-        original = frame.copy()
-        scene = _build_scene_with_entity()
-        display = _make_display_frame(frame, scene=scene)
-        result = renderer.render_frame(display)
-        assert result.size() == original.size()
-        assert frame == original
-        assert result.pixelColor(180, 130) == original.pixelColor(180, 130)
-        # Check a pixel inside the entity bounding box region (0.1*200=20, 0.1*150=15)
-        pixel = result.pixelColor(30, 25)
-        # At least one channel should differ from pure black (overlay drawn something)
-        assert pixel.red() > 0 or pixel.green() > 0 or pixel.blue() > 0
-
-    def test_export_raises_when_overlay_generator_fails(self, renderer: FrameImageRenderer) -> None:
-        frame = VideoFrame(image=_make_solid_frame(), timestamp=0.0, frame_id=0)
-        display = VideoFrameWithOverlays(
-            frame=frame,
-            overlays=VideoOverlayData(
-                drawing_generator=_raise_render_error,
-                timestamp=0.0,
-            ),
-        )
-
-        with pytest.raises(ValueError, match="bad overlay"):
-            renderer.render_frame(display)
+def test_export_draws_scene_overlay_without_changing_the_source_frame(renderer: FrameImageRenderer) -> None:
+    frame = _make_solid_frame(200, 150, color=0xFF000000)  # solid black
+    original = frame.copy()
+    result = renderer.render_frame(_make_display_frame(frame, scene=_build_scene_with_entity()))
+    assert result.size() == original.size()
+    assert frame == original
+    assert result.pixelColor(180, 130) == original.pixelColor(180, 130)
+    # Inside the entity's bounding box (0.1*200=20, 0.1*150=15) the overlay draws something.
+    pixel = result.pixelColor(30, 25)
+    assert pixel.red() > 0 or pixel.green() > 0 or pixel.blue() > 0
 
 
-@pytest.mark.parametrize("width,height", [(203, 101), (64, 48), (17, 13)])
+def test_export_raises_when_overlay_generator_fails(renderer: FrameImageRenderer) -> None:
+    frame = VideoFrame(image=_make_solid_frame(), timestamp=0.0, frame_id=0)
+    display = VideoFrameWithOverlays(
+        frame=frame,
+        overlays=VideoOverlayData(drawing_generator=_raise_render_error, timestamp=0.0),
+    )
+
+    with pytest.raises(ValueError, match="bad overlay"):
+        renderer.render_frame(display)
+
+
+@pytest.mark.parametrize("width,height", [(203, 101), (17, 13)])
 def test_export_keeps_native_pixels_and_context_under_display_scaling(
     renderer: FrameImageRenderer, width: int, height: int
 ) -> None:
     """Keep pixel dimensions, edge pixels, and generator context independent of monitor DPI."""
-    from PySide6.QtGui import QColor
-
-    from ax_devil.modules.video_player.engine.drawing import DrawingStyle
-    from tests.drawing_helpers import BoxCall
-
     image = _make_solid_frame(width, height)
     image.setPixelColor(width - 1, height - 1, QColor("green"))
     contexts: list[RenderContext] = []

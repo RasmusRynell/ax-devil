@@ -7,30 +7,13 @@ import pytest
 from ax_devil.modules.filtering import FilterConfig, FilterState, build_default_filter_config
 from ax_devil.modules.scene.filtering import filter_scene
 from ax_devil.modules.scene.model import (
-    BoundingBox,
-    Classification,
-    Entity,
-    EntityId,
-    Observation,
     Scene,
-    Score,
     TimeSlice,
 )
 from ax_devil.plugins.decoders.adf_beta.common import build_adf_beta_filter_config
 from ax_devil.plugins.decoders.adf_v1.common import build_adf_frame_v1_filter_config
 from ax_devil.plugins.decoders.onvif_xml.decoder import build_onvif_filter_config
-
-
-def _make_entity(*classification_types: str) -> Entity:
-    entity = Entity(EntityId("entity-1"))
-    observation = Observation(
-        frame_number=0,
-        geometry=BoundingBox.from_xywh(0.0, 0.0, 0.1, 0.1, allow_outside=True),
-        confidence=Score(1.0),
-        classification=[Classification(c_type, Score(0.9)) for c_type in classification_types],
-    )
-    entity.add_observation(observation)
-    return entity
+from tests.helpers.entities import entity_with_classes
 
 
 @pytest.mark.parametrize(
@@ -50,7 +33,7 @@ def test_decoder_filter_predicates(builder: Callable[[], FilterConfig]) -> None:
         ("show_unknown", (), True),
     ):
         option = next(option for option in config.options if option.id == option_id)
-        assert option.predicate(_make_entity(*classification_types), state) is expected
+        assert option.predicate(entity_with_classes(*classification_types), state) is expected
 
 
 @pytest.mark.parametrize(
@@ -84,7 +67,7 @@ def test_supported_categories_can_be_hidden_and_reenabled(
         *extra_categories,
     )
     for classification, option_id in categories:
-        entity = _make_entity(classification)
+        entity = entity_with_classes(classification)
         scene = Scene(time_slice=TimeSlice(0, 0), entities={entity.id: entity})
         state = FilterState(config)
         assert filter_scene(scene, config, state).entities == {entity.id: entity}, classification

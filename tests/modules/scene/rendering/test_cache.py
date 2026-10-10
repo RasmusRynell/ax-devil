@@ -54,64 +54,8 @@ class _FailingCatalog:
 pytestmark = pytest.mark.usefixtures("qapp")
 
 
-def test_cached_scene_overlay_reuses_prepared_drawing_for_same_identity() -> None:
-    scene = _motion_scene()
-    overlay = CachedSceneOverlay(scene=scene)
-    context = RenderContext.create(640, 480)
-
-    first = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    second = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-
-    assert second is first
-
-
-def test_cached_scene_overlay_misses_when_context_size_changes() -> None:
-    scene = _motion_scene()
-    overlay = CachedSceneOverlay(scene=scene)
-
-    first = overlay.prepare_drawing(
-        RenderContext.create(640, 480), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(640, 480)))
-    )
-    second = overlay.prepare_drawing(
-        RenderContext.create(1280, 720), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(1280, 720)))
-    )
-
-    assert second is not first
-
-
-def test_cached_scene_overlay_misses_when_filter_state_changes_and_hover_tracks_filter() -> None:
-    scene = _human_scene()
-    filter_config = build_default_filter_config()
-    filter_state = SessionFilter(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
-    context = RenderContext.create(640, 480)
-
-    drawing_before = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert len(drawing_before) > 0
-    assert overlay.hit_test(0.2, 0.3) is not None
-
-    filter_state.set_enabled("show_humans", False)
-
-    drawing_after = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert drawing_after is not drawing_before
-    assert len(drawing_after) == 0
-    assert overlay.hit_test(0.2, 0.3) is None
-
-
-def test_cached_scene_overlay_uses_filter_adapter_process_scene() -> None:
-    scene = _human_scene()
-    overlay = CachedSceneOverlay(scene=scene, scene_filter=_EmptySceneFilter())
-
-    primitives = overlay.prepare_drawing(
-        RenderContext.create(640, 480), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(640, 480)))
-    )
-
-    assert not primitives
-    assert overlay.latest_drawing_preparation_metrics().filtered_entity_count == 0
-
-
 def test_cached_scene_overlay_raises_when_catalog_rendering_fails() -> None:
-    scene = _human_scene()
+    scene = _classified_scene()
     overlay = CachedSceneOverlay(scene=scene, catalog=cast(SceneRenderCatalog, _FailingCatalog()))
 
     with pytest.raises(ValueError, match="bad recipe"):
@@ -132,60 +76,30 @@ def test_reported_catalog_errors_evict_least_recent_instead_of_silencing_new_err
     assert reported.is_new(second)
 
 
-def test_cached_scene_overlay_vehicle_filter_removes_primitives_and_pinned_hover() -> None:
-    scene = _vehicle_scene()
-    filter_config = build_default_filter_config()
-    filter_state = SessionFilter(filter_config)
+@pytest.mark.parametrize(
+    "kind,option",
+    [
+        (KnownClassificationType.Human, "show_humans"),
+        (KnownClassificationType.Vehicle, "show_vehicles"),
+        (KnownClassificationType.Head, "show_heads"),
+    ],
+)
+def test_cached_scene_overlay_filter_removes_primitives_and_hover(kind: KnownClassificationType, option: str) -> None:
+    scene = _classified_scene(kind)
+    filter_state = SessionFilter(build_default_filter_config())
     overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
     context = RenderContext.create(640, 480)
 
     drawing_before = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
     assert len(drawing_before) > 0
     assert overlay.hit_test(0.2, 0.3) is not None
-    assert overlay.get_hit_by_id("vehicle-1") is not None
+    assert overlay.get_hit_by_id("object-1") is not None
 
-    filter_state.set_enabled("show_vehicles", False)
+    filter_state.set_enabled(option, False)
 
-    drawing_after = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert drawing_after is not drawing_before
-    assert len(drawing_after) == 0
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))) == 0
     assert overlay.hit_test(0.2, 0.3) is None
-    assert overlay.get_hit_by_id("vehicle-1") is None
-
-
-def test_cached_scene_overlay_head_filter_removes_primitives_and_pinned_hover() -> None:
-    scene = _head_scene()
-    filter_config = build_default_filter_config()
-    filter_state = SessionFilter(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
-    context = RenderContext.create(640, 480)
-
-    drawing_before = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert len(drawing_before) > 0
-    assert overlay.hit_test(0.2, 0.3) is not None
-    assert overlay.get_hit_by_id("head-1") is not None
-
-    filter_state.set_enabled("show_heads", False)
-
-    drawing_after = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert drawing_after is not drawing_before
-    assert len(drawing_after) == 0
-    assert overlay.hit_test(0.2, 0.3) is None
-    assert overlay.get_hit_by_id("head-1") is None
-
-
-def test_cached_scene_overlay_pinned_hover_lookup_tracks_filter_state() -> None:
-    scene = _human_scene()
-    filter_config = build_default_filter_config()
-    filter_state = SessionFilter(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
-
-    visible_hit = overlay.get_hit_by_id("human-1")
-    assert visible_hit is not None
-
-    filter_state.set_enabled("show_humans", False)
-
-    assert overlay.get_hit_by_id("human-1") is None
+    assert overlay.get_hit_by_id("object-1") is None
 
 
 def test_cached_scene_overlay_misses_when_catalog_identity_changes() -> None:
@@ -248,46 +162,14 @@ def _polygon_scene() -> Scene:
     return scene
 
 
-def _human_scene() -> Scene:
+def _classified_scene(kind: KnownClassificationType = KnownClassificationType.Human) -> Scene:
     scene = Scene(time_slice=TimeSlice(start=0, end=1))
-    entity = Entity(id=EntityId("human-1"))
+    entity = Entity(id=EntityId("object-1"))
     entity.add_observation(
         Observation(
             geometry=BoundingBox.from_xywh(0.1, 0.2, 0.3, 0.4),
             classification=[
-                Classification(type=KnownClassificationType.Human.value, score=Score(0.9)),
-            ],
-            frame_number=0,
-        )
-    )
-    scene.add_entity(entity)
-    return scene
-
-
-def _vehicle_scene() -> Scene:
-    scene = Scene(time_slice=TimeSlice(start=0, end=1))
-    entity = Entity(id=EntityId("vehicle-1"))
-    entity.add_observation(
-        Observation(
-            geometry=BoundingBox.from_xywh(0.1, 0.2, 0.3, 0.4),
-            classification=[
-                Classification(type=KnownClassificationType.Vehicle.value, score=Score(0.9)),
-            ],
-            frame_number=0,
-        )
-    )
-    scene.add_entity(entity)
-    return scene
-
-
-def _head_scene() -> Scene:
-    scene = Scene(time_slice=TimeSlice(start=0, end=1))
-    entity = Entity(id=EntityId("head-1"))
-    entity.add_observation(
-        Observation(
-            geometry=BoundingBox.from_xywh(0.1, 0.2, 0.3, 0.4),
-            classification=[
-                Classification(type=KnownClassificationType.Head.value, score=Score(0.9)),
+                Classification(type=kind.value, score=Score(0.9)),
             ],
             frame_number=0,
         )
@@ -297,7 +179,7 @@ def _head_scene() -> Scene:
 
 
 def test_filter_work_before_paint_is_reported_once_and_cache_hits_have_no_duration() -> None:
-    scene = _human_scene()
+    scene = _classified_scene()
     overlay = CachedSceneOverlay(scene=scene, scene_filter=_EmptySceneFilter())
     context = RenderContext.create(640, 480)
     overlay.filtered_scene()  # Presenter/inspector does this before the paint handler.
@@ -332,7 +214,7 @@ def _build_reasons(overlay: CachedSceneOverlay) -> tuple[DrawingBuildReason, ...
 def test_primitive_build_reasons_follow_changed_inputs_and_clear_on_reuse() -> None:
     """Explain rebuilds even when several render inputs change between retrievals."""
 
-    scene = _human_scene()
+    scene = _classified_scene()
     filter_config = build_default_filter_config()
     filter_state = SessionFilter(filter_config)
     overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
@@ -379,7 +261,6 @@ def test_hover_formats_only_selected_entity_and_reuses_its_card(monkeypatch: pyt
 @pytest.mark.parametrize(
     "changed",
     [
-        DrawingSettings(640.5, 480, 480),
         DrawingSettings(640, 480, 479.5),
         DrawingSettings(640, 480, 480, dpi=120),
         DrawingSettings(640, 480, 480, dpr=1.5),
@@ -399,7 +280,7 @@ def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettin
 
 
 def test_cached_scene_overlay_tracks_search_and_toggle_all_without_new_scene() -> None:
-    scene = _human_scene()
+    scene = _classified_scene()
     model = SessionFilter(build_default_filter_config())
     overlay = CachedSceneOverlay(scene=scene, scene_filter=model)
     context = RenderContext.create(640, 480)

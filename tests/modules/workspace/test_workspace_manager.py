@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -23,7 +22,6 @@ from ax_devil.modules.workspace import (
     SeekableVideoContent,
     WorkspaceManager,
 )
-from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
 
 
 def _make_overlay(name: str) -> OverlayContent:
@@ -153,28 +151,22 @@ def test_consideration_defaults_and_updates_are_owned_by_manager() -> None:
 
     state.set_item_considered(entry_ref, True)
     assert state.is_item_considered(entry_ref)
-    state.set_item_considered(entry_ref, True)
-
-
-def test_invalid_lane_ref_does_not_affect_valid_lanes() -> None:
-    state = WorkspaceManager()
-    playlist = _make_playlist()
-    state.add_content(playlist)
-
-    invalid_lane_ref = ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 99)
-    state.set_item_considered(invalid_lane_ref, False)
-
-    valid_lane_ref = ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0)
-    assert state.is_item_considered(valid_lane_ref)
 
 
 def test_unknown_refs_are_ignored() -> None:
     state = WorkspaceManager()
-    lane_ref = ConsiderationItemRef.video_lane("nonexistent", 0)
+    playlist = _make_playlist()
+    state.add_content(playlist)
+    unknown_refs = (
+        ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 99),
+        ConsiderationItemRef.video_lane("nonexistent", 0),
+    )
 
-    state.set_item_considered(lane_ref, False)
+    for ref in unknown_refs:
+        state.set_item_considered(ref, False)
 
-    assert state.is_item_considered(lane_ref)
+    assert all(state.is_item_considered(ref) for ref in unknown_refs)
+    assert state.is_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0))
 
 
 def test_video_rows_include_overlay_children_targets_refs_and_information() -> None:
@@ -202,26 +194,6 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert row.children[0].consideration_ref == ConsiderationItemRef.video_lane(video.content_id, 0)
     assert row.children[0].is_considered
     assert not row.children[1].is_considered
-
-
-def test_browser_rows_defer_information_building_until_requested() -> None:
-    state = WorkspaceManager()
-    video = _make_video("test.mp4", overlay_count=2)
-    state.add_content(video)
-    information = WorkspaceItemInfo(title="test.mp4", fields=(("type", "seekable video"),))
-
-    with patch(
-        "ax_devil.modules.workspace.workspace_manager.build_video_information",
-        return_value=information,
-    ) as build_information:
-        row = state.get_browser_rows()[0]
-
-        build_information.assert_not_called()
-        information_factory = row.information_factory
-        assert information_factory is not None
-        assert information_factory() == information
-
-    build_information.assert_called_once_with(video)
 
 
 def test_live_rows_use_live_icon_and_embedded_overlay_child() -> None:

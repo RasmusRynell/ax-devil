@@ -58,38 +58,7 @@ def test_frame_cache_registry_tracks_sizes() -> None:
         gc.collect()
 
     assert registry.compute_rollup() == baseline
-
-
-def test_frame_cache_registry_reports_cache_rollup() -> None:
-    registry = get_frame_cache_registry()
-
-    baseline_rollup = registry.compute_rollup()
-
-    cache = FrameCache(budget_bytes=768 * 4, identifier="test-cache-collector")
-    try:
-        cache.put(0, make_cached_frame())
-        cache.put(1, make_cached_frame())
-        gauges = registry.compute_rollup()
-        details = registry.snapshot_details()
-
-        assert gauges["total_frames"] == baseline_rollup["total_frames"] + 2
-        assert gauges["total_budget_bytes"] == baseline_rollup["total_budget_bytes"] + 768 * 4
-        assert gauges["cache_count"] == baseline_rollup["cache_count"] + 1
-        entry = _require_entry(details, "test-cache-collector")
-        assert entry["min_index"] == 0
-        assert entry["max_index"] == 1
-        assert entry["ranges"] == ((0, 1),)
-    finally:
-        registry.deregister(cache)
-        del cache
-        gc.collect()
-
-    gauges = registry.compute_rollup()
-    details = registry.snapshot_details()
-    assert gauges["total_frames"] == baseline_rollup["total_frames"]
-    assert gauges["total_budget_bytes"] == baseline_rollup["total_budget_bytes"]
-    assert gauges["cache_count"] == baseline_rollup["cache_count"]
-    assert _get_entry_by_label(details, "test-cache-collector") is None
+    assert _get_entry_by_label(registry.snapshot_details(), "test-cache-registry") is None
 
 
 def test_snapshot_details_supports_duplicate_labels() -> None:

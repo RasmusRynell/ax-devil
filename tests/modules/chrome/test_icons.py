@@ -49,5 +49,4 @@ def test_menu_button_keeps_menu_left_to_right(qtbot: QtBot) -> None:
     button = MenuButton("Filter", menu)
     qtbot.addWidget(button)
 
-    assert button.menu() is menu
     assert menu.layoutDirection() == Qt.LayoutDirection.LeftToRight

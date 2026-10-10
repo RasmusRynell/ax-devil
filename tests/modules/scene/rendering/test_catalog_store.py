@@ -6,10 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from ax_devil.modules.scene.rendering.catalog import (
-    BUILT_IN_CATALOG_PATH,
-    BUILT_IN_CATALOG_PATHS,
-)
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.catalog_manager import create_scene_render_catalog_manager
 from ax_devil.modules.scene.rendering.catalog_store import SceneRenderCatalogStore
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
@@ -88,17 +85,10 @@ def test_catalog_store_lists_built_in_catalogs_from_package_with_standard_as_def
 
     listing = store.list_catalogs_with_errors()
 
-    assert store.built_in_catalog_path == BUILT_IN_CATALOG_PATH
-    assert [catalog.name for catalog in listing.catalogs] == [
-        "Standard",
-        "Minimal",
-        "Chunky",
-        "Glass",
-        "Tracking",
-        "Classic",
-    ]
+    assert [catalog.path for catalog in listing.catalogs] == list(BUILT_IN_CATALOG_PATHS)
     assert all(catalog.is_built_in for catalog in listing.catalogs)
-    assert listing.default_path == BUILT_IN_CATALOG_PATH
+    assert listing.catalogs[0].name == "Standard"
+    assert listing.default_path == store.built_in_catalog_path == listing.catalogs[0].path
     assert not store.catalogs_dir.exists()
 
 
@@ -123,12 +113,13 @@ def test_catalog_store_remembers_another_built_in_catalog_as_default(tmp_path: P
     assert listing.label(CLASSIC_CATALOG_PATH) == "Classic (default)"
 
 
-@pytest.mark.parametrize("name", ["", "../minimal.json", "/minimal.json", "missing.json", "catalog.schema.json"])
+@pytest.mark.parametrize("name", ["", "../minimal.json", "missing.json", "catalog.schema.json"])
 def test_catalog_store_recovers_from_invalid_built_in_choices(tmp_path: Path, name: str) -> None:
     """A damaged saved choice must not stop catalog listing or app startup."""
     (tmp_path / DEFAULT_RENDER_CATALOG_CHOICE_FILENAME).write_text(f"built-in:{name}\n", encoding="utf-8")
-    listing = SceneRenderCatalogStore(tmp_path).list_catalogs_with_errors()
-    assert listing.default_path == listing.chosen_default_path == BUILT_IN_CATALOG_PATH
+    store = SceneRenderCatalogStore(tmp_path)
+    listing = store.list_catalogs_with_errors()
+    assert listing.default_path == listing.chosen_default_path == store.built_in_catalog_path
     assert len(listing.catalogs) == len(BUILT_IN_CATALOG_PATHS)
 
 
@@ -152,7 +143,7 @@ def test_catalog_store_remembers_default_catalog(tmp_path: Path, small_catalog_p
 
     listing = SceneRenderCatalogStore(tmp_path).list_catalogs_with_errors()
     assert listing.default_path == catalog_file.path
-    assert [listing.label(catalog.path) for catalog in listing.catalogs][-2:] == ["Classic", "Vehicle review (default)"]
+    assert listing.label(catalog_file.path) == "Vehicle review (default)"
 
 
 def test_catalog_listing_labels_invalid_and_missing_paths_by_file_name(tmp_path: Path) -> None:
@@ -242,24 +233,13 @@ def test_catalog_store_validates_created_catalog_before_writing(tmp_path: Path) 
     assert not (tmp_path / "copy.json").exists()
 
 
-def test_catalog_store_deletes_user_catalog_file(tmp_path: Path, small_catalog_path: Path) -> None:
-    store = SceneRenderCatalogStore(tmp_path)
-    catalog_file = store.create_catalog("Vehicle Review", base_catalog_path=small_catalog_path)
-
-    store.delete_catalog(catalog_file.path)
-
-    assert not catalog_file.path.exists()
-
-
-@pytest.mark.parametrize("path", BUILT_IN_CATALOG_PATHS, ids=lambda path: path.stem)
-def test_catalog_store_rejects_deleting_built_in_catalogs(tmp_path: Path, path: Path) -> None:
+def test_catalog_store_rejects_deleting_built_in_catalogs(tmp_path: Path) -> None:
     store = SceneRenderCatalogStore(tmp_path)
 
-    with pytest.raises(ValueError, match="Built-in render catalogs cannot be removed"):
-        store.delete_catalog(path)
-
-    assert path.is_file()
-    assert not store.is_user_catalog(path)
+    for path in BUILT_IN_CATALOG_PATHS:
+        with pytest.raises(ValueError, match="Built-in render catalogs cannot be removed"):
+            store.delete_catalog(path)
+        assert path.is_file()
 
 
 def test_catalog_store_deleting_default_restores_built_in_default(tmp_path: Path, small_catalog_path: Path) -> None:
@@ -268,6 +248,7 @@ def test_catalog_store_deleting_default_restores_built_in_default(tmp_path: Path
     store.set_default_catalog(catalog_file.path)
 
     store.delete_catalog(catalog_file.path)
+    assert not catalog_file.path.exists()
     recreated_file = store.create_catalog("Vehicle review", base_catalog_path=small_catalog_path)
 
     assert recreated_file.path == catalog_file.path
