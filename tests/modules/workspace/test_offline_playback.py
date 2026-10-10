@@ -28,7 +28,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
     render_catalog_manager: SceneRenderCatalogManager,
     use_custom_frame: bool,
 ) -> None:
-    """Fullscreen shortcuts reach real playback and workspace clearing stops its worker."""
+    """Fullscreen shortcuts reach real playback and removing content stops its worker."""
     monkeypatch.setattr(CacheManager, "_get_base_cache_dir", lambda self: tmp_path / "cache")
     path = tmp_path / "clip.mp4"
     encoder = VideoEncoder(path, width=32, height=24, fps=1)
@@ -100,7 +100,8 @@ def test_workspace_opens_seeks_and_closes_real_video(
         assert pixel.red() < 15
         assert pixel.green() < 15
 
-        session.clear()
+        (content,) = session._workspace_manager.get_contents()
+        session.remove_content(content)
 
         assert session.focused_widget() is None
         assert window._lane_fullscreen._host is None

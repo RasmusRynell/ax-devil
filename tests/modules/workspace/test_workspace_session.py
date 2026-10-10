@@ -95,24 +95,6 @@ def workspace_session(
     return session
 
 
-def test_workspace_clear_removes_existing_viewers(
-    workspace_session: WorkspaceSession,
-) -> None:
-    assert not workspace_session._content_browser.isVisible()
-    content = _make_video("existing")
-
-    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_content(content)
-        assert workspace_session._center_area.get_widget_count() == 1
-        assert workspace_session._content_browser.isVisible()
-
-        workspace_session.clear()
-
-        assert workspace_session._center_area.get_widget_count() == 0
-        assert workspace_session._content_browser._tree.topLevelItemCount() == 0
-        assert not workspace_session._content_browser.isVisible()
-
-
 def test_removing_content_closes_all_open_viewers_for_same_content(
     workspace_session: WorkspaceSession,
 ) -> None:

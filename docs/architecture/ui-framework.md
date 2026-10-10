@@ -96,7 +96,6 @@ Responsibilities:
 - Register which workspace widgets depend on which content.
 - Project each widget's current on-screen item into browser rows.
 - Close affected widgets when backing content is removed.
-- Clear all viewers when the workspace is cleared.
 - Notify open viewers when consideration state changes.
 
 Workspace content defines which entries and lanes support consideration. Offline viewer navigation reads that state through the narrow `ConsiderationQuery` contract; it does not depend on the mutable `WorkspaceManager` implementation.

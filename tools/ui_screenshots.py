@@ -258,7 +258,6 @@ def test_screenshots(
             window.resize(*size)
             qtbot.wait(500)
             window.grab().save(str(OUT / f"{theme}-{text_size.value}-two-lanes-{size_name}.png"))
-    session.clear()
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
