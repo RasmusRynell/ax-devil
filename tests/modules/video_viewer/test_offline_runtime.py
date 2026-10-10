@@ -22,7 +22,7 @@ from ax_devil.modules.video_viewer import offline_entry_media, offline_viewer_ru
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,

@@ -3,18 +3,18 @@
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     LiveVideoContent,
     PlaylistContent,
     SeekableVideoContent,
-    WorkspaceManager,
 )
-from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
-from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
+from ax_devil.modules.workspace.ui.workspace_manager import WorkspaceManager
 
 
-class DummyViewer(WorkspaceWidget):
+class DummyViewer(ViewerWidget):
     """Record workspace routing and lifecycle without opening media sources."""
 
     def __init__(

@@ -19,7 +19,7 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.live_video_viewer import LiveVideoViewerWidget
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
-from ax_devil.modules.workspace import LiveRTSPStreamSpec, LiveVideoContent
+from ax_devil.modules.workspace.core import LiveRTSPStreamSpec, LiveVideoContent
 
 
 def _make_live_content(name: str = "Camera 1") -> LiveVideoContent:

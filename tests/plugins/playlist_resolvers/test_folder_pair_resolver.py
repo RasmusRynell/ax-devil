@@ -9,7 +9,7 @@ from click.testing import CliRunner
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverWidget
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     OverlaySourceKind,
     ResolvedPlaylistStartup,

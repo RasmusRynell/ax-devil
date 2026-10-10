@@ -30,10 +30,11 @@ from ax_devil.modules.filtering import FilterConfig
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.plugin_system import get_payload_decoder, get_payload_filter_factory
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.synchronization import QtStreamSync, SyncResult
+from ax_devil.modules.synchronization import SyncResult
+from ax_devil.modules.synchronization.qt_adapter import QtStreamSync
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     LiveMQTTOverlaySourceSpec,
     LiveRTSPOverlaySourceSpec,
     LiveRTSPStreamSpec,
@@ -317,7 +318,8 @@ class StreamMediaController:
         self, content: LiveVideoContent
     ) -> tuple[RTSPOverlayDecoder | None, OverlaySource | None]:
         """Return the decoder for overlays embedded in RTSP, or the separate overlay transport, for *content*."""
-        from ax_devil.modules.data_sources import MQTTOverlaySource, WebSocketOverlaySource
+        from ax_devil.modules.data_sources.live.mqtt_overlay_source import MQTTOverlaySource
+        from ax_devil.modules.data_sources.live.websocket_overlay_source import WebSocketOverlaySource
 
         source_spec = content.overlay_spec
         if source_spec is None:

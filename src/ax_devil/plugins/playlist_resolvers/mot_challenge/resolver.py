@@ -7,9 +7,9 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder import ImageSequenceConfig
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,

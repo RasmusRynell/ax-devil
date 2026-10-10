@@ -13,7 +13,8 @@ from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QW
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.chrome.tokens import Radius, Space
-from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
+from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import (
@@ -46,7 +47,7 @@ from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     OverlayAlignmentIndicator,
     TimingDiagnosticsWidget,
 )
-from ax_devil.modules.workspace import EntryLane, SeekableVideoContent
+from ax_devil.modules.workspace.core import EntryLane, SeekableVideoContent
 
 
 def show_video_on_controls(controls: SeekableVideoControlPanel, source: FileFrameSource) -> None:

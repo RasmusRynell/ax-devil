@@ -43,7 +43,7 @@ from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
-from ax_devil.modules.workspace import VideoFileStartup
+from ax_devil.modules.workspace.core import VideoFileStartup
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))

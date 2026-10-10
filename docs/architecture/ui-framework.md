@@ -1,6 +1,6 @@
 # UI Framework Structure
 
-This document maps the current UI framework layer: windows, dialogs, Workspace composition, viewer hosting, and the display stack.
+This document maps the current UI framework layer (code in `modules/workspace/ui/`; see [Workspace](workspace.md) for the `core`/`ui` split): windows, dialogs, Workspace composition, viewer hosting, and the display stack.
 
 ## Top-Level Composition
 
@@ -12,23 +12,23 @@ flowchart TD
     MainWindow --> Dialogs["BaseDialog subclasses<br/>add video, live stream, playlist, settings, shortcuts, about"]
     MainWindow --> DebugWindows["DebugWindow / PluginWindow"]
 
-    WorkspaceSession --> WorkspaceManager["WorkspaceManager<br/>facts + browser rows + signals"]
+    WorkspaceSession --> WorkspaceManager["WorkspaceManager<br/>facts + signals"]
     WorkspaceSession --> ApplicationWindow["ApplicationWindow<br/>central widget"]
     WorkspaceSession --> WorkspaceController["WorkspaceController<br/>UI coordinator"]
     WorkspaceSession --> ContentBrowser["ContentBrowserWidget<br/>workspace tree"]
 
     ApplicationWindow --> HorizontalSplitter["QSplitter<br/>sidebar + center"]
     HorizontalSplitter --> ContentBrowser
-    HorizontalSplitter --> SplitView["SplitView<br/>workspace widget host"]
+    HorizontalSplitter --> SplitView["SplitView<br/>viewer widget host"]
 
     WorkspaceController --> SplitView
     WorkspaceController --> WorkspaceManager
     WorkspaceController --> ContentBrowser
 
-    SplitView --> LeafContainer["LeafContainer<br/>one workspace widget per leaf"]
-    LeafContainer --> WorkspaceWidget["WorkspaceWidget<br/>base class"]
-    WorkspaceWidget --> LiveViewer["LiveVideoViewerWidget"]
-    WorkspaceWidget --> OfflineViewer["OfflineVideoViewerWidget"]
+    SplitView --> LeafContainer["LeafContainer<br/>one viewer widget per leaf"]
+    LeafContainer --> ViewerWidget["ViewerWidget<br/>base class"]
+    ViewerWidget --> LiveViewer["LiveVideoViewerWidget"]
+    ViewerWidget --> OfflineViewer["OfflineVideoViewerWidget"]
 
     LiveViewer --> LiveDisplay["FrameDisplay"]
     OfflineViewer --> OfflineDisplay["FrameDisplay"]
@@ -66,9 +66,9 @@ split view, and controller are composed implementation details rather than separ
 
 ## Workspace Controller
 
-`WorkspaceController` coordinates UI behavior between `ContentBrowserWidget`, `WorkspaceManager`, `SplitView`, and open `WorkspaceWidget` instances.
+`WorkspaceController` coordinates UI behavior between `ContentBrowserWidget`, `WorkspaceManager`, `SplitView`, and open `ViewerWidget` instances.
 
-It owns browser synchronization: Workspace mutations refresh the derived browser rows, and browser intents are routed back to Workspace state or viewer behavior.
+It owns browser synchronization: Workspace mutations refresh the browser rows projected by `build_browser_rows` (`workspace/ui/browser_rows.py`), and browser intents are routed back to Workspace state or viewer behavior.
 
 Opening from the browser has two placements: replace the preview pane (`SplitView.replace_or_open`) or split the
 focused pane and open pinned (`SplitView.open_to_side`).
@@ -77,7 +77,7 @@ Responsibilities:
 
 - Open `SeekableVideoContent`, `LiveVideoContent`, or `PlaylistContent` through `WorkspaceViewerFactory`, placing the
   viewer in the preview pane or in a new split as the browser intent requests.
-- Register which workspace widgets depend on which content.
+- Register which viewer widgets depend on which content.
 - Project each widget's current on-screen item into browser rows.
 - Close affected widgets when backing content is removed.
 - Notify open viewers when consideration state changes.
@@ -96,13 +96,13 @@ flowchart LR
     SplitView --> NestedSplitters["nested QSplitter tree<br/>created as panes split"]
     NestedSplitters --> LeafA["LeafContainer"]
     NestedSplitters --> LeafB["LeafContainer"]
-    LeafA --> WidgetA["WorkspaceWidget"]
-    LeafB --> WidgetB["WorkspaceWidget"]
-    WorkspaceWidget --> Header["header<br/>title, pin, close, drag handle"]
-    WorkspaceWidget --> ContentLayout["content layout<br/>owned by subclass"]
+    LeafA --> WidgetA["ViewerWidget"]
+    LeafB --> WidgetB["ViewerWidget"]
+    ViewerWidget --> Header["header<br/>title, pin, close, drag handle"]
+    ViewerWidget --> ContentLayout["content layout<br/>owned by subclass"]
 ```
 
-Each `LeafContainer` hosts at most one `WorkspaceWidget`. Dragging starts from `WorkspaceWidget.get_header_widget()`. Dropping onto a leaf asks `SplitView` to move the widget there, splitting the leaf when it is occupied.
+Each `LeafContainer` hosts at most one `ViewerWidget`. Dragging starts from `ViewerWidget.get_header_widget()`. Dropping onto a leaf asks `SplitView` to move the widget there, splitting the leaf when it is occupied.
 
 Unpinned panes are previews: their header title is italic, and `replace_or_open` replaces the first one with newly
 opened content. Pinned panes keep a regular title and are never replaced; when every pane is pinned, new content opens
@@ -112,9 +112,9 @@ Framework-level signals:
 
 - `widget_removed`
 
-## Workspace Widget Contract
+## Viewer Widget Contract
 
-`WorkspaceWidget` is the base class for widgets hosted by `SplitView`.
+`ViewerWidget` is the base class for widgets hosted by `SplitView`.
 
 It provides:
 
@@ -126,7 +126,7 @@ It provides:
 - consideration refresh hook through `refresh_item_consideration()`
 - `cleanup()` hook, overridden by widgets that own runtime resources
 
-Current concrete workspace widgets:
+Current concrete viewer widgets:
 
 - `LiveVideoViewerWidget`: one `LiveVideoContent`; composes `FrameDisplay`, live status UI, `MediaToolsPanel`, and `StreamMediaController`.
 - `OfflineVideoViewerWidget`: `SeekableVideoContent` or `PlaylistContent`; opens entries in the background through `EntryOpening` and builds active entry runtimes through `OfflineSession`.
@@ -155,7 +155,7 @@ flowchart TD
 `VideoFrameRenderer` owns frame preparation and prepared-drawing submission.
 
 Each lane's media tools live in its display's side panel. View-menu actions such as the media tools toggle and zoom
-route to the focused viewer through `WorkspaceWidget` methods; shortcuts marked `acts_on_viewer` on their
+route to the focused viewer through `ViewerWidget` methods; shortcuts marked `acts_on_viewer` on their
 `ShortcutDefinition` also work from lane fullscreen. Which lane an offline session targets is a
 [viewer rule](../../src/ax_devil/modules/video_viewer/README.md#rules).
 
@@ -169,13 +169,13 @@ info, respectively.
 - `WorkspaceSession` owns Workspace composition, startup loading, focused-viewer lookup, and teardown.
 - `ApplicationWindow` owns the static central layout.
 - `WorkspaceController` owns browser synchronization, UI coordination, viewer dependency tracking, and lifecycle side effects.
-- `SplitView` owns pane layout, focused workspace widget tracking, drag/drop splitting, and widget removal mechanics.
-- `WorkspaceWidget` owns the common pane frame and lifecycle contract.
+- `SplitView` owns pane layout, focused viewer widget tracking, drag/drop splitting, and widget removal mechanics.
+- `ViewerWidget` owns the common pane frame and lifecycle contract.
 - Video Viewer workflows own media orchestration, playlist navigation, comparison layout, filtering tools, and workflow actions.
 - `FrameDisplay` and `FrameViewport` own reusable display and viewport concerns.
 - `VideoFrameRenderer` owns actual painting.
 
 ## Extension Points
 
-- New center-pane tools should inherit from `WorkspaceWidget`, implement `get_display_name()` and `_setup_widget_ui()`, emit `on_screen_item_changed` when visible Workspace content changes, and override `cleanup()` if they own resources.
+- New center-pane tools should inherit from `ViewerWidget`, implement `get_display_name()` and `_setup_widget_ui()`, emit `on_screen_item_changed` when visible Workspace content changes, and override `cleanup()` if they own resources.
 - New viewer widgets should be opened through `WorkspaceController`.

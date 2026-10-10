@@ -16,13 +16,14 @@ from ax_devil.modules.data_sources.base import FrameSource, OverlaySource
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder
 from ax_devil.modules.scene.model import Scene, TimeSlice
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.synchronization import QtStreamSync, SyncResult, TimestampedData
+from ax_devil.modules.synchronization import SyncResult, TimestampedData
+from ax_devil.modules.synchronization.qt_adapter import QtStreamSync
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import stream_media_controller
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     LiveMQTTOverlaySourceSpec,
     LiveRTSPOverlaySourceSpec,
     LiveRTSPStreamSpec,
@@ -294,7 +295,7 @@ def test_live_controller_opens_mqtt_overlay_source_from_spec(
     monkeypatch.setattr(
         "ax_devil.modules.video_viewer.stream_media_controller.RTSPSource", lambda _url, **_kwargs: _FrameSource()
     )
-    monkeypatch.setattr("ax_devil.modules.data_sources.MQTTOverlaySource", _OverlaySource)
+    monkeypatch.setattr("ax_devil.modules.data_sources.live.mqtt_overlay_source.MQTTOverlaySource", _OverlaySource)
     monkeypatch.setattr(
         "ax_devil_rtsp.build_axis_rtsp_url",
         lambda host, config, **kwargs: rtsp_options.update(config=config, **kwargs) or "rtsp://camera.local/axis",
@@ -379,7 +380,9 @@ def test_live_controller_opens_websocket_overlay_source_from_spec(
     monkeypatch.setattr(
         "ax_devil.modules.video_viewer.stream_media_controller.RTSPSource", lambda _url, **_kwargs: _FrameSource()
     )
-    monkeypatch.setattr("ax_devil.modules.data_sources.WebSocketOverlaySource", _OverlaySource)
+    monkeypatch.setattr(
+        "ax_devil.modules.data_sources.live.websocket_overlay_source.WebSocketOverlaySource", _OverlaySource
+    )
     decoder = MagicMock()
     filter_factory = MagicMock()
     monkeypatch.setattr(stream_media_controller, "get_payload_decoder", lambda handler_type: decoder)
@@ -427,7 +430,9 @@ def test_live_input_routing_and_unique_lifecycle(
     mqtt = _LiveOverlaySource()
     mqtt_filter = build_default_filter_config()
     monkeypatch.setattr(mqtt, "get_filter_config", lambda: mqtt_filter)
-    monkeypatch.setattr("ax_devil.modules.data_sources.MQTTOverlaySource", lambda **_kwargs: mqtt)
+    monkeypatch.setattr(
+        "ax_devil.modules.data_sources.live.mqtt_overlay_source.MQTTOverlaySource", lambda **_kwargs: mqtt
+    )
     decoder = MagicMock()
     rtsp_filter = build_default_filter_config()
     monkeypatch.setattr(stream_media_controller, "get_payload_decoder", lambda _handler: decoder)
@@ -623,7 +628,7 @@ def live_transports(monkeypatch: pytest.MonkeyPatch) -> LiveTransports:
         return overlays[-1]
 
     monkeypatch.setattr(stream_media_controller, "RTSPSource", open_video)
-    monkeypatch.setattr("ax_devil.modules.data_sources.MQTTOverlaySource", open_overlay)
+    monkeypatch.setattr("ax_devil.modules.data_sources.live.mqtt_overlay_source.MQTTOverlaySource", open_overlay)
     monkeypatch.setattr(stream_media_controller, "get_payload_decoder", lambda _handler: MagicMock())
     monkeypatch.setattr(stream_media_controller, "get_payload_filter_factory", lambda _handler: None)
     return videos, overlays

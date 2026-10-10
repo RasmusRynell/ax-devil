@@ -10,8 +10,8 @@ from PySide6.QtGui import QImage
 from ax_devil.core.data_types import FrameData, FrameIdentifier
 from ax_devil.core.playback_speed import clamp_playback_speed
 from ax_devil.modules.cache import CacheManager
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, VideoTimingProfile
 from ax_devil.modules.data_sources.video_analyzer import VideoAnalyzer
 from ax_devil.modules.data_sources.video_cache_memory import get_video_cache_pool

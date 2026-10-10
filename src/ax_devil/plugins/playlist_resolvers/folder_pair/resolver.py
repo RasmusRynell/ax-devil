@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
     OverlayContent,

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QW
 from ax_devil.modules.application_shell.configuration_preferences import ConfigField
 from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.settings.config_manager import is_environment_reference
-from ax_devil.modules.workspace.intake import default_workspace_intake
+from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
 
 class ConfigurationEditor(QWidget):

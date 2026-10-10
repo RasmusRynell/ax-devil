@@ -17,7 +17,8 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | App bootstrap, config wiring, logging setup, plugin loading | `src/ax_devil/app.py` |
 | CLI commands and maintenance entry points | `src/ax_devil/cli.py` |
 | Main window menus, app-wide dialogs (including Settings and Quick Setup), diagnostics window launch | `src/ax_devil/modules/application_shell/` |
-| Workspace content, startup requests, intake, state, browser rows, add-content dialogs, split-view hosting, viewer factory, session/controller | `src/ax_devil/modules/workspace/` |
+| Workspace model: content, startup requests, intake, item information (Qt-free) | `src/ax_devil/modules/workspace/core/` |
+| Workspace interface: state and signals, browser rows, add-content dialogs, split-view hosting, `ViewerWidget`, viewer factory, session/controller | `src/ax_devil/modules/workspace/ui/` |
 | Live/offline viewer workflows, media tools, offline entry opening (`EntryOpening`, `EntryMedia`), `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation | `src/ax_devil/modules/video_player/` |
 | Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
@@ -39,9 +40,11 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 `data_sources/live/` groups RTSP, MQTT, and DataHub transport implementations and discovery. Shared source contracts
 remain in `data_sources/base.py`; file sources and providers remain outside `live/`.
 
-`workspace/add_content/` groups the three add-content dialogs and their analytics discovery and playlist-selection
-helpers. Shared content descriptions, intake validation, and startup requests remain at the Workspace root because
-they also serve CLI and startup workflows. Tests mirror both subfolders.
+`workspace/ui/add_content/` groups the three add-content dialogs and their analytics discovery and playlist-selection
+helpers. Shared content descriptions, intake validation, and startup requests live in `workspace/core/` because they
+also serve CLI and startup workflows. `workspace/ui` is the Qt interface on top; the Qt-free rule for `core/` is in
+[invariants](../domain/invariants.md#content-model), and the split and its planned direction are described in
+[Workspace](workspace.md). Tests mirror `core/`, `ui/`, and `ui/add_content/`.
 
 ## Outside `modules/`
 

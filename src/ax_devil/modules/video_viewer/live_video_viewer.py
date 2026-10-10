@@ -22,9 +22,9 @@ from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, 
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
-from ax_devil.modules.workspace import LiveVideoContent
-from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
-from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+from ax_devil.modules.workspace.core import LiveVideoContent
+from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 logger = get_logger(__name__)
 
@@ -145,7 +145,7 @@ class LiveStatusPanel(QWidget):
             logger.warning("Frame has no frame_id")
 
 
-class LiveVideoViewerWidget(WorkspaceWidget):
+class LiveVideoViewerWidget(ViewerWidget):
     """Viewer for one ``LiveVideoContent`` item."""
 
     def __init__(
