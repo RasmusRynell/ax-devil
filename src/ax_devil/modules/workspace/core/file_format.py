@@ -47,8 +47,8 @@ def load_workspace(path: Path) -> Workspace:
         raise WorkspaceFileError(f"{path.name} is not valid JSON: {exc}") from exc
     if not isinstance(document, dict):
         raise WorkspaceFileError(f"{path.name} is not a workspace file.")
-    if document.get("version") != FORMAT_VERSION:
-        found = document.get("version")
+    found = document.get("version")
+    if type(found) is not int or found != FORMAT_VERSION:
         raise WorkspaceFileError(f"{path.name} has workspace file version {found!r}; this app reads {FORMAT_VERSION}.")
     entries = document.get("items")
     if not isinstance(entries, list):
@@ -72,7 +72,7 @@ def save_workspace(workspace: Workspace, path: Path) -> Workspace:
         backing.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=backing.parent, delete=False) as file:
             temporary = Path(file.name)
-            file.write(f"{json.dumps(document, indent=2)}\n")
+            file.write(f"{json.dumps(document, indent=2, allow_nan=False)}\n")
         if backing.exists():
             os.chmod(temporary, stat.S_IMODE(backing.stat().st_mode))
         temporary.replace(backing)

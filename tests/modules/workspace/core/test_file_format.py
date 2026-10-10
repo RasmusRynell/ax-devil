@@ -285,6 +285,28 @@ def test_a_damaged_file_raises_one_error(tmp_path: Path, document: object) -> No
         load_workspace(_write(tmp_path / "w.ax-devil.workspace", document))
 
 
+@pytest.mark.parametrize("version", [True, 1.0, "1"])
+def test_a_version_that_is_not_the_integer_one_is_rejected(tmp_path: Path, version: object) -> None:
+    path = _write(tmp_path / "w.ax-devil.workspace", {"version": version, "items": []})
+
+    with pytest.raises(WorkspaceFileError, match="workspace file version"):
+        load_workspace(path)
+
+
+@pytest.mark.parametrize("number", [float("nan"), float("inf")])
+def test_a_non_finite_number_fails_the_save_and_keeps_the_old_file(tmp_path: Path, number: float) -> None:
+    path = tmp_path / "w.ax-devil.workspace"
+    save_workspace(Workspace(items=(PlaylistItem(label="Old", resolver="r"),)), path)
+    before = path.read_text(encoding="utf-8")
+    non_finite = PlaylistItem(label="New", resolver="r", settings={"threshold": number})
+
+    with pytest.raises(WorkspaceFileError):
+        save_workspace(Workspace(items=(non_finite,)), path)
+
+    assert path.read_text(encoding="utf-8") == before
+    assert list(tmp_path.iterdir()) == [path]
+
+
 def test_invalid_json_and_missing_files_raise_the_same_error(tmp_path: Path) -> None:
     broken = tmp_path / "broken.ax-devil.workspace"
     broken.write_text("{not json", encoding="utf-8")
