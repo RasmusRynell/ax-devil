@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Content
+from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import build_browser_rows
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
-from ax_devil.modules.workspace.ui.workspace_manager import WorkspaceManager
+from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -26,7 +26,7 @@ class WorkspaceController(QObject):
 
     def __init__(
         self,
-        workspace_manager: WorkspaceManager,
+        workspace_store: WorkspaceStore,
         content_browser: ContentBrowserWidget,
         center_area: SplitView,
         render_catalog_manager: SceneRenderCatalogManager,
@@ -34,13 +34,14 @@ class WorkspaceController(QObject):
         viewer_factory: WorkspaceViewerFactory | None = None,
     ) -> None:
         super().__init__(parent)
-        self._workspace_manager = workspace_manager
+        self._workspace_store = workspace_store
         self._content_browser = content_browser
         self._center_area = center_area
         self._render_catalog_manager = render_catalog_manager
         self._viewer_factory = viewer_factory or default_workspace_viewer_factory(self._render_catalog_manager)
         self._logger = get_logger(__name__)
-        self._widget_content_ids: dict[ViewerWidget, frozenset[str]] = {}
+        # The id of the item whose Content each open viewer shows.
+        self._widget_item_ids: dict[ViewerWidget, str] = {}
 
         self._connect_signals()
         self._sync_content_browser()
@@ -48,21 +49,22 @@ class WorkspaceController(QObject):
     def _connect_signals(self) -> None:
         self._content_browser.content_activated.connect(self._on_content_activated)
         self._content_browser.content_open_to_side_requested.connect(self._on_content_open_to_side_requested)
-        self._content_browser.item_consideration_change_requested.connect(self._workspace_manager.set_item_considered)
-        self._content_browser.content_remove_requested.connect(self._workspace_manager.remove_content)
+        self._content_browser.item_consideration_change_requested.connect(self._workspace_store.set_item_considered)
+        self._content_browser.content_remove_requested.connect(self._on_content_remove_requested)
         self._content_browser.export_requested.connect(self._on_export_requested)
-        self._workspace_manager.contents_added.connect(self._on_contents_added)
-        self._workspace_manager.content_removed.connect(self._on_content_removed)
-        self._workspace_manager.item_consideration_changed.connect(self._on_item_consideration_changed)
+        self._workspace_store.items_added.connect(self._on_items_added)
+        self._workspace_store.item_removed.connect(self._on_item_removed)
+        self._workspace_store.item_renamed.connect(self._sync_content_browser)
+        self._workspace_store.item_consideration_changed.connect(self._on_item_consideration_changed)
         self._center_area.widget_removed.connect(self._on_widget_removed)
 
     def _sync_content_browser(self, *_args: object) -> None:
         """Render current Workspace state into the content browser."""
         open_items = frozenset(
-            item for widget in self._widget_content_ids if (item := widget.current_on_screen_item()) is not None
+            item for widget in self._widget_item_ids if (item := widget.current_on_screen_item()) is not None
         )
         rows = build_browser_rows(
-            self._workspace_manager.get_contents(), self._workspace_manager.is_item_considered, open_items
+            self._workspace_store.contents(), self._workspace_store.is_item_considered, open_items
         )
         self._content_browser.set_browser_rows(rows)
 
@@ -86,30 +88,39 @@ class WorkspaceController(QObject):
 
     def _on_export_requested(self, item: object) -> None:
         """Export from the viewer currently showing the item."""
-        for widget in self._widget_content_ids:
+        for widget in self._widget_item_ids:
             if widget.current_on_screen_item() == item:
                 widget.export_video()
                 return
 
-    def _on_contents_added(self, contents: list[Content]) -> None:
-        """Preview the first newly added content item in the current workspace."""
-        if not contents:
-            return
+    def _on_content_remove_requested(self, content: Content) -> None:
+        """Remove the item the content came from, with all of its Content."""
+        self._workspace_store.remove_item(content.item_id)
 
+    def _on_items_added(self, items: list[WorkspaceItem]) -> None:
+        """Tell the user which new items could not open, and preview the first Content of the others."""
         self._sync_content_browser()
-        self._logger.debug(f"New content added: {contents[0].display_name}")
-        self._open_content(contents[0])
+        resolutions = [self._workspace_store.resolution(item.id) for item in items]
+        failures = [
+            f"{item.label}: {resolution.error}" for item, resolution in zip(items, resolutions) if resolution.error
+        ]
+        if failures:
+            QMessageBox.warning(self._window_parent(), "Open Content", "\n".join(failures))
+        contents = [content for resolution in resolutions for content in resolution.contents]
+        if contents:
+            self._logger.debug(f"New content added: {contents[0].display_name}")
+            self._open_content(contents[0])
 
-    def _on_content_removed(self, content: Content) -> None:
-        """Close any viewer showing or tracking the removed content."""
-        for widget, tracked_content_ids in tuple(self._widget_content_ids.items()):
-            if content.content_id in tracked_content_ids:
+    def _on_item_removed(self, item: WorkspaceItem) -> None:
+        """Close any viewer showing the removed item's Content."""
+        for widget, item_id in tuple(self._widget_item_ids.items()):
+            if item_id == item.id:
                 self._center_area.remove_viewer_widget(widget)
         self._sync_content_browser()
 
     def _pause_all_viewers(self) -> None:
         """Pause playback on all open viewers."""
-        for widget in self._widget_content_ids:
+        for widget in self._widget_item_ids:
             widget.pause_playback()
 
     def _open_content(
@@ -128,7 +139,7 @@ class WorkspaceController(QObject):
                 content,
                 start_index=start_index,
                 parent=self._window_parent(),
-                consideration_query=self._workspace_manager,
+                consideration_query=self._workspace_store,
             )
         except Exception as exc:
             message = str(exc)
@@ -139,7 +150,7 @@ class WorkspaceController(QObject):
         try:
             self._open_widget(
                 opened.widget,
-                opened.tracked_contents,
+                content,
                 opened.status_message,
                 place or self._center_area.replace_or_open,
             )
@@ -151,24 +162,16 @@ class WorkspaceController(QObject):
     def _open_widget(
         self,
         widget: ViewerWidget,
-        contents: Iterable[Content],
+        content: Content,
         status_message: str,
         place: Callable[[ViewerWidget], None],
     ) -> None:
-        """Track and display a widget for the given content dependencies."""
+        """Display *widget* and track it against the item its content came from."""
         place(widget)
-        self._register_widget(widget, contents)
-        self._logger.debug(status_message)
-
-    def _register_widget(
-        self,
-        widget: ViewerWidget,
-        contents: Iterable[Content],
-    ) -> None:
-        """Register a widget against every content item it depends on."""
-        self._widget_content_ids[widget] = frozenset(content.content_id for content in contents)
+        self._widget_item_ids[widget] = content.item_id
         widget.on_screen_item_changed.connect(lambda _=None, w=widget: self._on_widget_on_screen_item_changed(w))
         self._sync_content_browser()
+        self._logger.debug(status_message)
 
     def _on_widget_on_screen_item_changed(self, widget: ViewerWidget) -> None:
         """Refresh browser rows when a viewer changes its visible content."""
@@ -176,7 +179,7 @@ class WorkspaceController(QObject):
 
     def _on_item_consideration_changed(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Notify open viewers that consideration state may affect displayed content."""
-        for widget in list(self._widget_content_ids):
+        for widget in list(self._widget_item_ids):
             widget.refresh_item_consideration(item_ref, considered)
         self._sync_content_browser()
 
@@ -186,14 +189,14 @@ class WorkspaceController(QObject):
 
     def _forget_widget(self, widget: ViewerWidget) -> None:
         """Remove a detached widget from dependency tracking."""
-        if self._widget_content_ids.pop(widget, None) is None:
+        if self._widget_item_ids.pop(widget, None) is None:
             return
         self._sync_content_browser()
 
     def cleanup(self) -> None:
         """Clear tracked state and close all open viewers."""
         self._center_area.clear_all_widgets()
-        self._widget_content_ids.clear()
+        self._widget_item_ids.clear()
 
     def _window_parent(self) -> QWidget | None:
         """Return the owning window used as parent for viewers and dialogs."""

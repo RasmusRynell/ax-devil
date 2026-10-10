@@ -197,6 +197,19 @@ class ApplicationPluginLoader:
                 )
                 return
 
+            unimplemented = sorted(getattr(plugin_cls, "__abstractmethods__", ()))
+            if unimplemented:
+                error_message = f"does not implement {', '.join(unimplemented)}"
+                logger.warning(f"Plugin {entrypoint} {error_message}")
+                RuntimePluginRegistry.mark_failed(
+                    family.plugin_type,
+                    plugin_cls.plugin_id(),
+                    entrypoint,
+                    origin,
+                    error_message,
+                )
+                return
+
             if plugin_cls.plugin_type() != family.plugin_type:
                 error_message = (
                     f"PLUGIN_CLASS declared plugin_type={plugin_cls.plugin_type()!r}, expected {family.plugin_type!r}"

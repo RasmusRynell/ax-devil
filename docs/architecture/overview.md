@@ -5,10 +5,10 @@ The code is organized around concept-owned modules. Workspace content describes 
 ## Layers
 
 ```
-CLI (`cli.py`)                 -> Click commands and startup requests
+CLI (`cli.py`)                 -> Click commands that build Workspace Items
 Application (`app.py`)         -> logging, config, settings, plugins, Qt event loop
 Application Shell              -> MainWindow, menus, app-wide dialogs including Settings
-Workspace                      -> core: content, intake (Qt-free); ui: state, browser rows, split panes, viewer hosting
+Workspace                      -> core: Workspace, items, content, intake (Qt-free); ui: store, browser rows, panes, viewers
 Video Viewer                   -> live/offline workflows, media tools, Scene presentation, catalog viewer
 Video Player                   -> reusable frame display, viewport, drawing preparation
 Runtime Modules                -> Scene, filtering, data sources, synchronization, cache, plugins
@@ -52,22 +52,20 @@ Content also declares its supported consideration items. Playlist entries, visib
 
 `PlaylistEntry.__post_init__()` rejects live video lanes. Playlists are offline comparison/navigation workflows.
 
-## Startup Requests And Intake
+## Workspace Items And Intake
 
-Bare `ax-devil` launch opens an empty workspace without a startup request.
+Bare `ax-devil` launch opens an empty workspace. Everything that adds content — `ax-devil local`, `ax-devil live`,
+resolver commands, the Add dialogs, desktop file drops, and the welcome screen's recent list — creates Workspace Items
+(`VideoItem`, `LiveStreamItem`, `PlaylistItem` in `workspace/core/items.py`); the store resolves them into Content. The
+item model, Content identity, and the playlist resolver contract are described in [Workspace](workspace.md).
 
-Startup request types live in `ax_devil.modules.workspace.core.startup_request`:
-
-- `VideoFileStartup` for `ax-devil local --video ...`, and for videos opened from the Add Video dialog, desktop file
-  drops, and the welcome screen's recent list
-- `LiveStreamStartup` for `ax-devil live ...`
-- `ResolvedPlaylistStartup` for resolver-provided playlists
-
-Video and live startup requests construct their content through `WorkspaceIntake`; resolver playlists arrive
-already built. What intake guarantees is in the [Content Model invariants](../domain/invariants.md#content-model).
-`workspace/ui/plugin_intake.py` supplies the production intake, which adapts plugin decoder definitions into
-`WorkspaceDecoderOption` records. A file decoder's `file_extensions` let the Add Video dialog and file drops pick the
-handler when exactly one matches.
+`WorkspaceIntake` validates decoder selections and constructs video Content for items. `workspace/ui/plugin_intake.py`
+supplies the production intake, which adapts plugin decoder definitions into `WorkspaceDecoderOption` records, and the
+production resolution context, which also looks up playlist resolver plugins. File decoders may declare
+`file_extensions`; `WorkspaceIntake.file_decoder_options_for(path)` returns the decoders that may read an overlay file,
+and the Add Video dialog and file drops pick the handler when exactly one matches. Live entry points convert persisted
+overlay strings into `LiveOverlayMode` at their boundaries. Intake also validates the device host, camera head, and MQTT
+and WebSocket connection settings so dialog, CLI, and saved items share the same content requirements.
 
 ## Opening Content
 
@@ -77,14 +75,15 @@ handler when exactly one matches.
 - `PlaylistContent` -> `OfflineVideoViewerWidget`
 - `LiveVideoContent` -> `LiveVideoViewerWidget`
 
-The factory returns the constructed widget, its content dependencies, and a status message. Offline viewers receive the read-only `ConsiderationQuery` contract, while `WorkspaceManager` remains the mutable state owner. `WorkspaceController` inserts the widget into `SplitView`, tracks its content dependencies, wires lifecycle signals, and handles removal side effects.
+The factory returns the constructed widget and a status message. Offline viewers receive the read-only `ConsiderationQuery` contract, while `WorkspaceStore` remains the mutable state owner. `WorkspaceController` inserts the widget into `SplitView`, tracks which item its Content came from, wires lifecycle signals, and closes the widget when that item is removed.
 
 ## Workspace State
 
-`WorkspaceManager` owns the mutable workspace facts and their Qt mutation signals:
+`WorkspaceStore` (`workspace/ui/workspace_store.py`) owns the mutable workspace facts and their Qt mutation signals:
 
-- content list
-- consideration refs
+- the current Workspace and the last saved one
+- what each item resolved to: its Content, or the reason it could not resolve
+- consideration refs (exclusions)
 
 `build_browser_rows` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query, and the open
 items into `WorkspaceBrowserRow` values. Open-row identity is supplied from the current items reported by hosted viewer widgets. The package split and the planned redesign are described in [Workspace](workspace.md). `ContentBrowserWidget` renders explicit browser rows and emits activation, removal, and consideration intents. It does not decide playlist expansion, lane expansion, open-row identity, or information payloads.

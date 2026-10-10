@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -43,6 +43,14 @@ class WorkspaceDecoderOption:
         return not self.file_extensions or path.suffix.lower() in self.file_extensions
 
 
+@dataclass(frozen=True, slots=True)
+class OverlayFile:
+    """An overlay file and the id of the file decoder that reads it."""
+
+    path: Path
+    decoder: str
+
+
 class WorkspaceDecoderOptionProvider(Protocol):
     """Provider of decoder options normalized for Workspace intake callers."""
 
@@ -75,30 +83,22 @@ class WorkspaceIntake:
         self,
         *,
         video_path: Path,
-        display_name: str | None = None,
-        overlay_path: Path | None = None,
-        handler_type: str | None = None,
+        display_name: str,
+        overlays: Sequence[OverlayFile] = (),
     ) -> SeekableVideoContent:
-        """Create seekable Workspace video content after validating overlay selection."""
-        if overlay_path is None:
-            if handler_type is not None:
-                raise ValueError("Overlay handler was selected without an overlay file.")
-        else:
-            self._require_known_handler(handler_type, self.file_decoder_options(), "overlay file")
-
-        overlays: tuple[OverlayContent, ...] = ()
-        if overlay_path is not None and handler_type is not None:
-            overlays = (
-                OverlayContent(
-                    display_name=overlay_path.stem,
-                    source_spec=FileOverlaySourceSpec(path=overlay_path, handler_type=handler_type),
-                ),
-            )
-
+        """Create seekable Workspace video content after validating each overlay's decoder."""
+        for overlay in overlays:
+            self._require_known_handler(overlay.decoder, self.file_decoder_options(), "overlay file")
         return SeekableVideoContent(
-            display_name=display_name or video_path.name,
+            display_name=display_name,
             source_spec=FileVideoSourceSpec(path=video_path),
-            overlays=overlays,
+            overlays=tuple(
+                OverlayContent(
+                    display_name=overlay.path.stem,
+                    source_spec=FileOverlaySourceSpec(path=overlay.path, handler_type=overlay.decoder),
+                )
+                for overlay in overlays
+            ),
         )
 
     def create_live_stream(
@@ -109,7 +109,7 @@ class WorkspaceIntake:
         password: str,
         camera_head: int = 1,
         resolution: str = "1280x720",
-        display_name: str | None = None,
+        display_name: str,
         stream_url: str | None = None,
         overlay_mode: LiveOverlayMode = LiveOverlayMode.NONE,
         handler_type: str | None = None,
@@ -123,6 +123,8 @@ class WorkspaceIntake:
         websocket_channel_id: int = 1,
     ) -> LiveVideoContent:
         """Create live Workspace video content after validating overlay selection."""
+        if not host:
+            raise ValueError("Enter the device host.")
         if camera_head < 1:
             raise ValueError("Camera Head must be a positive integer.")
         if overlay_mode is LiveOverlayMode.MQTT:
@@ -198,7 +200,7 @@ class WorkspaceIntake:
             )
 
         return LiveVideoContent(
-            display_name=display_name or f"Live: {host}",
+            display_name=display_name,
             source_spec=video_spec,
             overlays=overlays,
         )

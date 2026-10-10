@@ -1,4 +1,4 @@
-"""Workspace viewer factory for content-to-viewer construction and dependency tracking."""
+"""Workspace viewer factory for content-to-viewer construction."""
 
 from __future__ import annotations
 
@@ -16,15 +16,14 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceViewerFactoryResult:
-    """Viewer, content dependencies, and status produced when opening content."""
+    """Viewer and status produced when opening content."""
 
     widget: ViewerWidget
-    tracked_contents: tuple[Content, ...]
     status_message: str
 
 
 class WorkspaceViewerFactory:
-    """Construct Workspace viewers and report tracked content dependencies."""
+    """Construct Workspace viewers for content."""
 
     def __init__(self, render_catalog_manager: SceneRenderCatalogManager) -> None:
         self._render_catalog_manager = render_catalog_manager
@@ -37,12 +36,11 @@ class WorkspaceViewerFactory:
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
     ) -> WorkspaceViewerFactoryResult:
-        """Construct a viewer and return the content it depends on."""
+        """Construct the viewer for *content*."""
         if isinstance(content, LiveVideoContent):
             from ax_devil.modules.video_viewer.live_video_viewer import LiveVideoViewerWidget
 
             widget: ViewerWidget = LiveVideoViewerWidget(content, self._render_catalog_manager, parent)
-            tracked_contents: tuple[Content, ...] = (content,)
         else:
             from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 
@@ -53,11 +51,8 @@ class WorkspaceViewerFactory:
                 parent,
                 consideration_query=consideration_query,
             )
-            lane_videos = (lane.video for entry in content.entries for lane in entry.lanes)
-            tracked_contents = tuple(dict.fromkeys((content, *lane_videos)))
         return WorkspaceViewerFactoryResult(
             widget=widget,
-            tracked_contents=tracked_contents,
             status_message=f"Opened: {content.display_name}",
         )
 

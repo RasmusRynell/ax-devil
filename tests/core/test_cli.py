@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
+from ax_devil.modules.workspace.core import OverlayFile
+
 
 class DummyCacheManager:
     def __init__(self, stats: dict[str, SimpleNamespace]) -> None:
@@ -63,14 +65,14 @@ from pathlib import Path
 
 import click
 
-from ax_devil.modules.workspace.core import ResolvedPlaylistStartup
+from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
 from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
 
 
 class ExternalGroupResolver(PlaylistResolverPlugin):
     @classmethod
     def required_api_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -98,10 +100,14 @@ class ExternalGroupResolver(PlaylistResolverPlugin):
         def run(ctx: click.Context, simulator_root: Path, selected_overlays: tuple[str, ...]) -> None:
             if not simulator_root.is_dir():
                 raise click.ClickException(f"Simulator root directory not found: {simulator_root}")
-            runner = ctx.obj["run_with_startup_content"]
-            runner(ResolvedPlaylistStartup(playlists=()))
+            runner = ctx.obj["run_with_items"]
+            settings = {"root": str(simulator_root), "select": list(selected_overlays)}
+            runner([PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)])
 
         return command
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        raise NotImplementedError
 
     def create_settings_widget(self) -> PlaylistResolverWidget:
         raise NotImplementedError
@@ -218,7 +224,7 @@ def test_clear_cache_rejects_missing_explicit_config(monkeypatch: pytest.MonkeyP
     assert "Config file does not exist" in result.output
 
 
-def test_cli_builds_playlist_startup_content(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_cli_playlist_command_launches_a_playlist_item(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     repo_root = _repo_root()
     src_dir = repo_root / "src"
 
@@ -257,9 +263,8 @@ def test_cli_builds_playlist_startup_content(monkeypatch: pytest.MonkeyPatch, tm
     )
 
     assert result.exit_code == 0
-    startup = captured["startup_content"]
-    assert len(startup.playlists) == 1
-    assert startup.playlists[0].display_name == "MOT Challenge"
+    [item] = captured["startup_items"]
+    assert (item.resolver, item.settings) == ("mot_challenge", {"root": str(tmp_path)})
 
 
 def test_cli_playlist_command_rejects_missing_directory(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -486,7 +491,9 @@ def test_cli_group_resolver_subcommand_help_is_preserved(monkeypatch: pytest.Mon
     assert "--select" in result.output
 
 
-def test_cli_live_uses_resolved_config_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_cli_live_keeps_configured_credential_references_in_the_item(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     repo_root = _repo_root()
     src_dir = repo_root / "src"
 
@@ -524,17 +531,57 @@ def test_cli_live_uses_resolved_config_defaults(monkeypatch: pytest.MonkeyPatch,
     result = runner.invoke(cli, ["--config", str(config_path), "live", "--overlay", "mqtt"])
 
     assert result.exit_code == 0
-    startup = captured["startup_content"]
-    assert startup.host == "camera.example"
-    assert startup.username == "operator"
-    assert startup.password == "secret"
-    assert startup.overlay_mode.value == "mqtt"
-    assert startup.handler_type == "ADF_V1_FRAME"
-    assert startup.mqtt_host == "mqtt.example"
-    assert startup.mqtt_username == "mqtt-user"
-    assert startup.mqtt_password == "mqtt-pass"
-    assert startup.analytics_data_source_key == "com.axis.scene.frame.v1#1"
-    assert startup.device_api_protocol == "https"
+    [item] = captured["startup_items"]
+    assert item.label == "Live: $AX_DEVIL_TARGET_ADDR"
+    assert (item.host, item.username, item.password) == (
+        "$AX_DEVIL_TARGET_ADDR",
+        "$AX_DEVIL_TARGET_USER",
+        "$AX_DEVIL_TARGET_PASS",
+    )
+    assert (item.mqtt_host, item.mqtt_username, item.mqtt_password) == (
+        "$AX_DEVIL_MQTT_BROKER_ADDR",
+        "$AX_DEVIL_MQTT_BROKER_USER",
+        "$AX_DEVIL_MQTT_BROKER_PASS",
+    )
+    values = item.expanded()
+    assert (values.host, values.username, values.password) == ("camera.example", "operator", "secret")
+    assert (values.mqtt_host, values.mqtt_username, values.mqtt_password) == ("mqtt.example", "mqtt-user", "mqtt-pass")
+    assert item.overlay_mode.value == "mqtt"
+    assert item.handler_type == "ADF_V1_FRAME"
+    assert item.analytics_data_source_key == "com.axis.scene.frame.v1#1"
+    assert item.device_api_protocol == "https"
+
+
+def test_cli_live_takes_command_line_credentials_literally(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+    app_module = ModuleType("ax_devil.app")
+
+    class DummyApp:
+        def run(self) -> int:
+            return 0
+
+    def create_app(*args: Any, **kwargs: Any) -> DummyApp:
+        captured.update(kwargs)
+        return DummyApp()
+
+    setattr(app_module, "create_app", create_app)
+    monkeypatch.setitem(sys.modules, "ax_devil.app", app_module)
+    config_module = importlib.import_module("ax_devil.modules.settings.config_manager")
+    config = copy.deepcopy(config_module.DEFAULT_CONFIG)
+    config["defaults"]["live_stream"]["overlay_source"] = "none"
+    config_path = tmp_path / "live-config.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    cli_module = _import_cli_module(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli_module.cli,
+        ["--config", str(config_path), "live", "--host", "camera.local", "--password", "pa$$word"],
+    )
+
+    assert result.exit_code == 0, result.output
+    [item] = captured["startup_items"]
+    assert (item.host, item.password) == ("camera.local", "pa$$word")
+    assert item.expanded().password == "pa$$word"
 
 
 @pytest.mark.parametrize(
@@ -590,7 +637,7 @@ def test_cli_live_selects_handler_and_transport_settings(
     result = CliRunner().invoke(cli_module.cli, ["--config", str(config_path), "live", *arguments])
 
     assert result.exit_code == 0, result.output
-    startup = captured["startup_content"]
+    [startup] = captured["startup_items"]
     assert startup.overlay_mode.value == expected_mode
     if expected_mode == "mqtt":
         assert startup.handler_type == "ADF_BETA_FRAME"
@@ -648,7 +695,7 @@ def test_cli_live_resolves_numeric_references(
     result = CliRunner().invoke(cli_module.cli, args)
 
     assert result.exit_code == 0, result.output
-    startup = captured["startup_content"]
+    [startup] = captured["startup_items"]
     assert (startup.camera_head, startup.mqtt_port, startup.websocket_channel_id) == expected
 
 
@@ -669,7 +716,7 @@ def test_cli_live_reports_invalid_config_overlay_mode(monkeypatch: pytest.Monkey
     assert "Unsupported live overlay mode: invalid" in result.output
 
 
-def test_cli_local_builds_video_file_startup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_cli_local_launches_a_video_item(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     repo_root = _repo_root()
     src_dir = repo_root / "src"
 
@@ -700,10 +747,8 @@ def test_cli_local_builds_video_file_startup(monkeypatch: pytest.MonkeyPatch, tm
     result = runner.invoke(cli, ["local", "--video", str(video_file)])
 
     assert result.exit_code == 0
-    startup = captured["startup_content"]
-    assert startup.video_path == video_file
-    assert startup.overlay_path is None
-    assert startup.handler_type is None
+    [item] = captured["startup_items"]
+    assert (item.label, item.video, item.overlays) == ("test.mp4", video_file, ())
 
 
 def test_cli_local_with_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -741,10 +786,9 @@ def test_cli_local_with_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     )
 
     assert result.exit_code == 0
-    startup = captured["startup_content"]
-    assert startup.video_path == video_file
-    assert startup.overlay_path == overlay_file
-    assert startup.handler_type == "ADF_BETA_FRAME"
+    [item] = captured["startup_items"]
+    assert item.video == video_file
+    assert item.overlays == (OverlayFile(overlay_file, "ADF_BETA_FRAME"),)
 
 
 def test_cli_local_overlay_requires_handler_type(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

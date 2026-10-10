@@ -21,7 +21,7 @@ from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.intake import VIDEO_FILE_SUFFIXES
-from ax_devil.modules.workspace.core.startup_request import VideoFileStartup
+from ax_devil.modules.workspace.core.items import VideoFileSelection, VideoItem
 from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
 logger = get_logger(__name__)
@@ -33,18 +33,17 @@ class AddVideoDialog(BaseDialog):
     OK stays disabled until the selection can be opened; the reason is shown inline under the form.
     """
 
-    def __init__(self, parent: QWidget | None = None, initial: VideoFileStartup | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, initial: VideoFileSelection | None = None) -> None:
         super().__init__(parent, title="Add Video")
-        self._result: VideoFileStartup | None = None
+        self._result: VideoItem | None = None
         self._intake = default_workspace_intake()
         self._setup_form()
         self._ok_button, _ = self.add_standard_buttons()
         if initial is not None:
-            self._video_path_edit.setText(str(initial.video_path))
-            self._overlay_path_edit.setText(str(initial.overlay_path or ""))
-            if initial.handler_type is not None:
-                self._select_handler(initial.handler_type)
-            self._name_edit.setText(initial.display_name or "")
+            self._video_path_edit.setText(str(initial.video))
+            self._overlay_path_edit.setText(str(initial.overlay or ""))
+            if initial.decoder is not None:
+                self._select_handler(initial.decoder)
         self._refresh()
 
     def _setup_form(self) -> None:
@@ -124,16 +123,15 @@ class AddVideoDialog(BaseDialog):
         if index >= 0:
             self._handler_combo.setCurrentIndex(index)
 
-    def _request(self) -> VideoFileStartup:
-        """Return the open request described by the current form."""
-        video = self._video_path_edit.text().strip()
+    def _item(self) -> VideoItem:
+        """Return the Video Item described by the current form."""
         overlay = self._overlay_path_edit.text().strip()
-        return VideoFileStartup(
-            video_path=Path(video),
-            overlay_path=Path(overlay) if overlay else None,
-            handler_type=self._handler_combo.currentData() if overlay else None,
-            display_name=self._name_edit.text().strip() or None,
+        selection = VideoFileSelection(
+            video=Path(self._video_path_edit.text().strip()),
+            overlay=Path(overlay) if overlay else None,
+            decoder=self._handler_combo.currentData() if overlay else None,
         )
+        return selection.to_item(self._name_edit.text().strip())
 
     def _problem(self) -> str:
         """Return why the form cannot be accepted yet, or an empty string when it can."""
@@ -162,9 +160,9 @@ class AddVideoDialog(BaseDialog):
         """Accept only a complete selection."""
         if self._problem():
             return
-        self._result = self._request()
+        self._result = self._item()
         super().accept()
 
-    def get_result(self) -> VideoFileStartup | None:
-        """Return the video open request, or None if the dialog was cancelled."""
+    def get_result(self) -> VideoItem | None:
+        """Return the Video Item, or None if the dialog was cancelled."""
         return self._result

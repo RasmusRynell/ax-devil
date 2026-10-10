@@ -13,8 +13,12 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Overlay Source Kind | The typed lane source identity: file, RTSP, MQTT, DataHub WebSocket, or none. | UI label switch, raw string |
 | Playlist Content | An ordered inspection sequence made from entries and lanes. | Playlist source, playlist viewer |
 | Entry Lane | One visible comparison panel inside a playlist entry or standalone video expansion. | Overlay row, panel config |
-| Workspace | The active session state: its Content and which items are not considered. Open, focused, and pinned viewers live in the hosted widgets; browser rows are derived. | Window, shell, content list |
-| Startup Request | CLI or bootstrap input (one of the `StartupContent` union's variants) that resolves into Workspace content before it is added. | Initial content |
+| Workspace | An ordered collection of Workspace Items, Untitled until saved; see [Workspace](docs/architecture/workspace.md). Exclusions, open viewers, and browser rows are session state, not part of it. | Window, shell, content list, session |
+| Workspace Item | A recipe for one thing to work with, with a stable id and a kind; it resolves into Content. | Startup request, entry, source |
+| Video Item | A Workspace Item for a video file with optional overlay files and decoders. | Video file request |
+| Live Stream Item | A Workspace Item for a camera stream with optional live overlay settings; credentials are kept as entered. | Live startup |
+| Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. | Resolved playlist |
+| Content | What a Workspace Item resolves to: Seekable Video, Live Video, or Playlist Content. Rebuilt on every resolution, never saved. | Startup content, resolved item |
 | Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |
 | Viewer Widget | The `ViewerWidget` base class every Viewer extends: pane frame, header, pin and close, and the lifecycle contract. | Workspace widget, pane |
 | Video Viewer | The application workflow that composes media sources, sync, Scene tools, and frame display. | Player, pane |

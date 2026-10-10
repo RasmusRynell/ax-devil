@@ -1,8 +1,8 @@
 """Settings panel for choosing a playlist resolver plugin.
 
 Presents a combo box of registered resolver plugins and shows the selected
-resolver's own settings widget.  When the resolver emits ``playlist_resolved``
-the signal is re-emitted so the parent widget can act on it.
+resolver's own settings widget.  When the selected resolver submits settings,
+the panel emits a Playlist Item for that resolver and those settings.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from ax_devil.modules.plugin_system import (
     RuntimePluginRegistry,
 )
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core.content import PlaylistContent
+from ax_devil.modules.workspace.core import PlaylistItem, PlaylistSettings
 
 logger = get_logger(__name__)
 
@@ -58,11 +58,12 @@ class PlaylistSettingsUI(QWidget):
     is chosen, the first page explains the dialog and lists every available resolver.
     """
 
-    playlist_resolved = Signal(object)
+    item_ready = Signal(object)  # PlaylistItem
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._resolver_widgets: list[PlaylistResolverWidget] = []
+        # Each resolver form, with its resolver's plugin id and display name.
+        self._resolver_by_widget: dict[PlaylistResolverWidget, tuple[str, str]] = {}
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -100,9 +101,9 @@ class PlaylistSettingsUI(QWidget):
                 plugin_id = record.definition.plugin_id
                 logger.error(f"Resolver {plugin_id} failed to create its settings: {exc}", exc_info=True)
                 continue
-            widget.playlist_resolved.connect(self._on_playlist_resolved)
-            self._resolver_widgets.append(widget)
+            widget.settings_submitted.connect(self._on_settings_submitted)
             name = record.definition.display_name
+            self._resolver_by_widget[widget] = (record.definition.plugin_id, name)
             description = record.definition.description or ""
             overview.addWidget(_wrapped_label(f"{name}: {description}" if description else name))
             page = QVBoxLayout()
@@ -115,17 +116,19 @@ class PlaylistSettingsUI(QWidget):
         self._resolver_pages.insertWidget(0, _page(overview))
         self._resolver_pages.setCurrentIndex(0)
 
-    def _on_playlist_resolved(self, playlist_contents: list[PlaylistContent]) -> None:
-        # A resolver the user switched away from may still finish; only the selected one supplies the playlist.
-        if self.sender() is not self._resolver_combo.currentData():
+    def _on_settings_submitted(self, settings: PlaylistSettings) -> None:
+        # A resolver the user switched away from may still submit; only the selected one supplies the playlist.
+        widget = self._resolver_combo.currentData()
+        if widget is None or self.sender() is not widget:
             return
-        self.playlist_resolved.emit(playlist_contents)
+        resolver_id, name = self._resolver_by_widget[cast(PlaylistResolverWidget, widget)]
+        self.item_ready.emit(PlaylistItem(label=name, resolver=resolver_id, settings=settings))
 
     def cleanup(self) -> None:
         """Disconnect and release every resolver form."""
-        for widget in self._resolver_widgets:
+        for widget in self._resolver_by_widget:
             with suppress(RuntimeError, TypeError):
-                widget.playlist_resolved.disconnect(self._on_playlist_resolved)
+                widget.settings_submitted.disconnect(self._on_settings_submitted)
             widget.setParent(None)
             widget.deleteLater()
-        self._resolver_widgets.clear()
+        self._resolver_by_widget.clear()

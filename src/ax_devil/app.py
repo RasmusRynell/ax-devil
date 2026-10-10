@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import sys
+from collections.abc import Sequence
 from logging import Logger
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
 from ax_devil.modules.settings.qt_logging import setup_qt_logging
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
-from ax_devil.modules.workspace.core import StartupContent
+from ax_devil.modules.workspace.core import WorkspaceItem
 from ax_devil.version import APP_VERSION
 
 
@@ -34,14 +35,14 @@ class Application:
         log_level: str = "INFO",
         config_path: Path | None = None,
         debug: bool = False,
-        startup_content: StartupContent | None = None,
+        startup_items: Sequence[WorkspaceItem] = (),
         open_catalog_viewer: bool = False,
     ):
-        """Store startup parameters and defaults; *open_catalog_viewer* shows the catalog viewer on start."""
+        """Store startup parameters: the Workspace Items to add, and whether to show the catalog viewer on start."""
         self.log_level = log_level
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self.debug = debug
-        self.startup_content = startup_content
+        self.startup_items = tuple(startup_items)
         self.open_catalog_viewer = open_catalog_viewer
         self.app: QApplication | None = None
         self.main_window: MainWindow | None = None
@@ -92,8 +93,7 @@ class Application:
                 render_catalog_manager=render_catalog_manager,
             )
             self.main_window.show()
-            if self.startup_content is not None:
-                self.main_window.load_startup_content(self.startup_content)
+            self.main_window.add_items(self.startup_items)
             QTimer.singleShot(0, self._show_startup_windows)
 
             _collect_garbage_on_gui_thread(self.app, self.logger)
@@ -159,7 +159,7 @@ def create_app(
     log_level: str = "INFO",
     config_path: Path | None = None,
     debug: bool = False,
-    startup_content: StartupContent | None = None,
+    startup_items: Sequence[WorkspaceItem] = (),
     open_catalog_viewer: bool = False,
 ) -> Application:
     """Create application instance."""
@@ -167,6 +167,6 @@ def create_app(
         log_level=log_level,
         config_path=config_path,
         debug=debug,
-        startup_content=startup_content,
+        startup_items=startup_items,
         open_catalog_viewer=open_catalog_viewer,
     )

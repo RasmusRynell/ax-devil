@@ -43,7 +43,7 @@ from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
-from ax_devil.modules.workspace.core import VideoFileStartup
+from ax_devil.modules.workspace.core import OverlayFile, VideoItem, new_item_id
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))
@@ -192,12 +192,13 @@ def test_screenshots(
     catalog_viewer.hide()
 
     session = window._workspace_session
-    tracked_clip = VideoFileStartup(
-        video_path=video_file_factory(CLIP_FRAMES / CLIP_FPS, CLIP_FPS),
-        overlay_path=_write_tracks(tmp_path / "tracks.xml"),
-        handler_type=ONVIF_XML,
+    clip_path = video_file_factory(CLIP_FRAMES / CLIP_FPS, CLIP_FPS)
+    tracked_clip = VideoItem(
+        label=clip_path.name,
+        video=clip_path,
+        overlays=(OverlayFile(_write_tracks(tmp_path / "tracks.xml"), ONVIF_XML),),
     )
-    session.load_startup_content(tracked_clip)
+    session.add_items([tracked_clip])
     viewer = _show_tracked_frame(qtbot, session.focused_offline_viewer())
     shortcuts.get_action("view.toggle_media_tools").trigger()
     media_tools_tabs = viewer.findChild(QTabWidget, "mediaToolsTabs")
@@ -249,8 +250,8 @@ def test_screenshots(
 
     viewer.set_pinned(True)  # An unpinned lane is a preview that the next video replaces.
     second_clip = tmp_path / "second-lane.mp4"
-    shutil.copyfile(tracked_clip.video_path, second_clip)
-    session.open_video(replace(tracked_clip, video_path=second_clip))
+    shutil.copyfile(tracked_clip.video, second_clip)
+    session.open_video(replace(tracked_clip, id=new_item_id(), label=second_clip.name, video=second_clip))
     _show_tracked_frame(qtbot, session.focused_offline_viewer())
     for text_size in TEXT_SIZES:
         settings.text_size = text_size

@@ -12,13 +12,13 @@ from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import PlaylistResolverWidget, get_file_decoder_definitions
 from ax_devil.modules.settings.logging_config import get_logger
 
-from .resolver import FolderPairMatch, build_playlist_contents, discover_folder_pairs
+from .resolver import FolderPairMatch, discover_folder_pairs
 
 logger = get_logger(__name__)
 
 
 class FolderPairSettingsWidget(PlaylistResolverWidget):
-    """Settings widget for matching video and overlay folders."""
+    """Edit and submit the video folder, overlay folder, and decoder of a folder-pair playlist."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -119,4 +119,10 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
             if not self._matches:
                 return
 
-        self.emit_playlists(build_playlist_contents(self._matches, handler_type))
+        self.submit_settings(
+            {
+                "videos_dir": str(Path(self._videos_input.text().strip()).resolve()),
+                "overlays_dir": str(Path(self._overlays_input.text().strip()).resolve()),
+                "handler_type": handler_type,
+            }
+        )

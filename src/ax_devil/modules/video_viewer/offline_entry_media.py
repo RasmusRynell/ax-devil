@@ -15,6 +15,7 @@ from typing import Generic, TypeVar
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.scene_history import SceneHistory
@@ -264,18 +265,20 @@ def _open_lanes(
 
     Abandonment is checked after every blocking open, so a discarded entry never starts its derived analysis.
     """
-    source_index_by_video: dict[str, int] = {}
+    # Lanes showing the same video share one source; image sequence timing is not part of video equality.
+    source_index_by_video: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], int] = {}
     for position, lane_index in enumerate(lane_indices):
         if abandoned.is_set():
             return
         lane = entry.lanes[lane_index]
         video = _require_seekable_video(lane.video)
-        source_index = source_index_by_video.get(video.content_id)
+        video_key = (video, video.source_spec.image_sequence_config)
+        source_index = source_index_by_video.get(video_key)
         if source_index is None:
             report(f"Building frame index: {video.display_name}")
             source_index = len(media.video_sources)
             media.video_sources.append(create_frame_source(video))
-            source_index_by_video[video.content_id] = source_index
+            source_index_by_video[video_key] = source_index
             if abandoned.is_set():
                 return
             # Timing analysis reads the whole index; do it here so the lane's diagnostics never wait for it.
