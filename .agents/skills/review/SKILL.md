@@ -37,7 +37,7 @@ they create, rather than demanding abstractions merely to satisfy a design prefe
 When a change adds a workaround, trace the problem to its owner. Prefer correcting that boundary or data model over
 another conditional, duplicated state record, fallback, or widget-specific patch. Existing bad structure is not a
 reason to extend it. Recommend the smallest complete correction, including affected callers, even if it touches
-more files than a symptom fix. Favor removing unsupported behavior over preserving speculative compatibility.
+more files than a symptom fix.
 
 Keep this tied to the task: identify how the existing design obstructs the requested behavior or creates concrete
 maintenance costs in this change. Unrelated architectural cleanup belongs outside the review's required fixes.

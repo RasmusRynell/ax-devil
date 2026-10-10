@@ -49,12 +49,14 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - With sticky overlays enabled, offline playback and export select the latest sample at or before the requested time,
   regardless of navigation history. Age is measured from the original sample timestamp, never the last matched frame.
   The timeout includes its boundary; no timeout means unlimited retention. Matching tolerance distinguishes normal
-  matches from retained samples; it does not limit sticky retention. Empty scene updates replace previous geometry;
+  matches from retained samples, which are the ones drawn at the retained opacity; it does not limit sticky
+  retention. With sticky disabled, unmatched frames have no overlay. Empty scene updates replace previous geometry;
   missing updates may retain it.
 - Live synchronization consumes the newest queued sample at or before the frame within an inclusive, fixed 10 ms
   tolerance, independent of FPS. Stale samples are discarded before persistence; late older samples cannot replace
   newer state.
-- File overlay packets retain the matched sample timestamp and sequence; the requested frame stays in lookup metadata.
+- File overlay packets retain the matched sample timestamp, and its sequence when the provider knows one; the
+  requested frame stays in lookup metadata.
 - Alignment diagnostics compare on the provider's actual basis: timestamps for timestamp-keyed overlays, frame numbers
   for sequence-keyed overlays.
 
@@ -161,7 +163,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Overlay draw order is geometry, then paths, then text, then labels. Order across entities and within a layer is not
   preserved, so a catalog never relies on one shape covering another.
 - Each recipe evaluates once per frame for all its routed entities or relations. A row that fails a demanded check
-  emits none of its recipe's output; other rows and recipes are unaffected.
+  emits none of its recipe's output, and a recipe whose evaluation raises emits nothing for that frame; other rows
+  and recipes are unaffected.
 - Built-in catalogs are read in place from the installed package and never copied, written or deleted. Every JSON file
   in the user catalog directory is a user catalog, and the app never writes catalog contents; they are edited outside
   it. Catalog writes (copies) validate before atomically replacing the destination.
@@ -173,12 +176,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 ## Settings And Shortcuts
 
 - Settings changes apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart
-  after the exit-time saves. [Quick Setup](../settings.md#quick-setup) is the exception: it applies as clicked because
-  the running app is its preview.
+  after the exit-time saves. [Quick Setup](../settings.md#quick-setup) is the one exception.
 - Saves validate every editable field, replace the configuration atomically, and only then emit runtime change
   signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart.
-- Only a config value that is exactly `$VARIABLE_NAME` is an environment reference, and `~` expands only under the
-  `storage` section. Every other string, including credentials starting with `$` or `~`, is literal.
 - Runtime-mutable settings are consumed through `GlobalSettings` signals, not by polling `ConfigManager`. Settings
   live in one immutable `SettingsState` that setters replace whole.
 - On/off overlay preferences are `OverlayPreference` members; adding a member adds it to the View menu, Settings and

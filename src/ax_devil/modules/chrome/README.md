@@ -20,6 +20,9 @@ How to build UI with it is in the [write-ui skill](../../../../.agents/skills/wr
   selection lives in `QStackedWidget` pages built up front, so the preferred size already covers every choice.
 - A dialog with its own scrolling view passes `scroll_content=False` and gives that view layout stretch; nested
   scrolling containers are avoided.
+- Temporary modal dialogs are opened with `with SomeDialog(...) as dialog:`, which deletes the dialog when the block
+  ends; `done()` runs `cleanup()` but never schedules deletion, so a parented dialog opened without the block lives
+  until its parent dies.
 - Main-window placement belongs to the desktop: `ChromeWindow` restores size and maximized state only, and never
   selects a screen or persists coordinates.
 - Application icons come from `icons.py`, never Qt standard pixmaps or text glyphs.

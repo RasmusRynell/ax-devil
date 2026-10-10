@@ -63,10 +63,10 @@ Startup request types live in `ax_devil.modules.workspace.startup_request`:
 - `LiveStreamStartup` for `ax-devil live ...`
 - `ResolvedPlaylistStartup` for resolver-provided playlists
 
-`WorkspaceIntake` validates decoder selections and connection settings and constructs Workspace content, so dialogs,
-CLI and programmatic startup share one set of requirements. Startup requests own the dispatch from each request shape
-into that boundary. Intake adapts plugin decoder definitions into `WorkspaceDecoderOption` records; a file decoder's
-`file_extensions` let the Add Video dialog and file drops pick the handler when exactly one matches.
+Video and live startup requests construct their content through `WorkspaceIntake`; resolver playlists arrive
+already built. What intake guarantees is in the [Content Model invariants](../domain/invariants.md#content-model).
+Intake adapts plugin decoder definitions into `WorkspaceDecoderOption` records; a file decoder's `file_extensions`
+let the Add Video dialog and file drops pick the handler when exactly one matches.
 
 ## Opening Content
 
@@ -148,7 +148,7 @@ Each owned transport is one feed of a `LiveConnectionStatus` (`video_viewer/live
 the video feed and a separate MQTT or DataHub source is the overlay feed. Sources report `sourceConnected`,
 `sourceReconnecting(reason)` for retries they handle themselves, and `sourceError(reason)` for failures that need the
 user's Retry, which reopens every transport from the same content. A video feed without frames while playing is
-stalled.
+stalled and also needs Retry.
 
 `data_sources/live/datahub_client.py` and `data_sources/live/mqtt_discovery.py` own the DataHub and MQTT protocol
 clients shared by Workspace discovery (`workspace/add_content/analytics_discovery.py`) and the runtime sources.
@@ -289,8 +289,8 @@ FileFrameSource -> FileFrameDelivery -> PyAV frame decoder/cache
 - `GlobalSettings`: reactive runtime settings singleton backed by config on load/save.
 - `ShortcutManager`: default shortcut registration, `QAction` installation, override-only persistence, conflict detection, and rebinding.
 - `CacheManager`: hash-based cache path generation and cache clearing.
-- Scene stores: `SourceIndexedSceneStore` indexes records in the source file; `IndexedFrameSceneStore` persists decoded
-  frame artifacts. Their invalidation rule is in [Data Pipeline](../domain/invariants.md#data-pipeline).
+- Scene stores: `SourceIndexedSceneStore` keeps a cache index of record offsets into the source file;
+  `IndexedFrameSceneStore` persists decoded frame artifacts. Their invalidation rule is in [Data Pipeline](../domain/invariants.md#data-pipeline).
 - Diagnostics: metrics stores, the debug window and stack recording; see the
   [diagnostics README](../../src/ax_devil/modules/diagnostics/README.md).
 - `ExceptionHandler`: global exception hook with optional dialog.

@@ -27,10 +27,9 @@ does not load clears the previous file's preview and description.
 - **Sheets look like real footage and data.** Bright and busy backgrounds, UUID ids and uneven attribute values make
   weak designs visible. Situation sheets are captioned; captions are drawn as overlay text at a fixed screen size, so
   they stay sharp at any zoom and in `render` output.
-- **Built-in catalogs are read-only.** Standard (the default), Minimal, Chunky, Glass, Tracking and Classic are listed
-  first and cannot be deleted; users copy one with **New copy…**. A built-in other than Standard is remembered as the
-  default as `built-in:<file name>`. **Delete…** removes a user catalog file, including one that does not load; a
-  catalog that does not load cannot be copied. Deleting the default user catalog makes Standard the default.
+- **Built-in catalogs are read-only** ([invariant](../domain/invariants.md#rendering)), so the viewer lists them
+  first without **Delete…** and users copy one with **New copy…**. **Delete…** removes a user catalog file, including
+  one that does not load; a catalog that does not load cannot be copied.
 - **The viewer follows the chosen default.** After `ax-devil catalog use`, the viewer switches to the new default.
   When that file stops loading, open views keep their last good catalog and new views fall back to the built-in one,
   while the viewer and `catalog check` keep showing the broken file and its error.

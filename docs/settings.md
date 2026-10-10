@@ -42,8 +42,8 @@ The typeface always follows the operating system. Changes apply to open windows 
 
 It affects video and overlay rendering and window presentation, not video decoding. An explicit `QT_WIDGETS_RHI`
 environment variable overrides Qt's widget presentation policy, and the dialog shows when that is set. Setting it
-to `1` forces acceleration even for ordinary dialogs and menus. The main window prepares accelerated
-composition before its first show, so the first viewer never recreates it.
+to `1` forces acceleration even for ordinary dialogs and menus. The main window prepares Quick
+composition for the selected backend before its first show, so the first viewer never recreates it.
 Auto does not detect incompatible drivers or fall back automatically; if startup fails, follow the
 [software-rendering recovery steps](installation.md#graphics-startup-problems).
 

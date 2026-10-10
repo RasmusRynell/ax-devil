@@ -45,7 +45,8 @@ Do not move Workspace session/layout behavior, reusable player primitives, or pu
 - Tools that follow playback do no work while they cannot be seen: a collapsed side panel hides its content, and
   hidden lists, tabs and cards keep only the latest update and catch up when shown. Live event logs still record
   while hidden, since those events cannot be recovered, and record each overlay's events once.
-- Media tools and zoom shortcuts act on the lane holding keyboard focus, or the first lane when focus is elsewhere.
+- Media tools and zoom shortcuts act on the lane holding keyboard focus, including in lane fullscreen, or the first
+  lane when focus is elsewhere.
 - Multi-lane export tiles the selected lanes in the viewer's lane grid and follows the first selected lane's frame
   index and timing, as playback does; a lane past its last frame holds that frame.
 

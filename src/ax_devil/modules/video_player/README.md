@@ -58,7 +58,7 @@ consumes prepared data. Rules worth knowing before changing `engine/quick/`:
 - Culling uses the surface viewport in overlay-local coordinates, not the image bounds, so overlays stay visible in
   letterboxing; pan and viewport-size changes therefore invalidate preparation.
 - Cleanup submits an empty frame and synchronizes the scene graph before hiding, so Qt deletes native image nodes
-  while their Python texture adapters are still alive. The export renderer is destroyed explicitly after cleanup.
+  while their Python texture adapters are still alive. The export renderer is destroyed explicitly after cleanup, on failure too.
 
 ## Design rules
 

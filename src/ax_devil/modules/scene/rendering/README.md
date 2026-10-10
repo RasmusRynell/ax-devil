@@ -25,8 +25,9 @@ documented by `ax-devil catalog reference`, generated from the runtime definitio
 
 ## How it runs
 
-Routing is latest-observation based: an entity with no observations is skipped; one without a classification uses
-the `unclassified` fallback; a classification with its own recipe uses it, and any other uses `classified`. A
+Routing uses the latest observation's primary classification (the highest-scoring one): an entity with no
+observations is skipped; one without a classification uses the `unclassified` fallback; a primary classification
+with its own recipe uses it, and any other uses `classified`. A
 relation recipe is selected by relation
 type and skipped unless both endpoints have observations in the filtered Scene, so entity filtering applies to
 relations without a separate policy. Each recipe then evaluates once per frame for all its rows; only demanded Scene
