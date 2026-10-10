@@ -24,7 +24,8 @@ data; there is no intermediate primitive list.
 
 ```text
 FrameData + OverlayData(Scene)
-  -> SceneFramePresenter.prepare_frame(...)            video_viewer: retains one CachedSceneOverlay per Scene identity
+  -> SceneFramePresenter.prepare_frame(...)            video_viewer: reuses its CachedSceneOverlay while source id,
+                                                       frame id and Scene identity are unchanged
   -> VideoFrameWithOverlays + VideoOverlayData
   -> FrameDisplay.display_frame(...)
   -> VideoFrameRenderer                                 video_player: GUI-thread preparation, coalesced to latest frame

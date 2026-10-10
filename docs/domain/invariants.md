@@ -16,8 +16,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Seekable video accepts file overlays. Live video accepts at most one RTSP, MQTT, or DataHub WebSocket overlay, chosen
   explicitly as `LiveOverlayMode`; config and CLI strings are converted at their boundaries.
 - Every playlist lane references `SeekableVideoContent`. Playlists are offline workflows.
-- `WorkspaceIntake` validates decoder selections and live connection settings before content enters the Workspace,
-  so dialogs, CLI and plugins share one set of requirements.
+- `WorkspaceIntake` validates decoder selections and live connection settings for every video and live stream
+  opened through a dialog, the CLI or a file drop, so those paths share one set of requirements. Playlists from a
+  resolver plugin enter as built; the resolver owns their validity.
 
 ## Coordinates
 

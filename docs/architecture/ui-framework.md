@@ -42,7 +42,7 @@ flowchart TD
 
 `MainWindow` lives in `ax_devil.modules.application_shell`. It inherits from `ChromeWindow`, owns `WorkspaceSession`, installs shortcuts, creates menus, opens application dialogs, and hosts the session's `ApplicationWindow` as its central widget.
 
-`ChromeWindow` and `BaseDialog` live in `ax_devil.modules.chrome`. With custom chrome enabled they install a shared `TitleBar` and `WindowFrameController`; otherwise the native `QMenuBar` serves the same `menu_host()` API. Dialogs inherit custom-frame behavior from their parent top-level window. Their rules are in the [chrome README](../../src/ax_devil/modules/chrome/README.md).
+`ChromeWindow` and `BaseDialog` live in `ax_devil.modules.chrome`. With custom chrome enabled they install a shared `TitleBar` and `WindowFrameController`. `ChromeWindow.menu_host()` returns the title bar's menu bar or, with custom chrome disabled, the native `QMenuBar`; dialogs have no menu host and inherit custom-frame behavior from their parent top-level window. Their rules are in the [chrome README](../../src/ax_devil/modules/chrome/README.md).
 
 ## Workspace Shell
 

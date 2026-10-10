@@ -51,9 +51,10 @@ consumes prepared data. Rules worth knowing before changing `engine/quick/`:
   entities is not preserved so geometry can batch into a few nodes (split at 60,000 vertices).
 - Geometry items are matched by ordinal; path and text items by content, independent of position, so moving an
   overlay updates transforms instead of rebuilding glyphs and tessellation.
-- Labels are painted once per distinct content into a sprite and submitted through one `LabelLayer` whose node tree
-  shares textures by sprite, so returning content such as a repeated score is not rasterized or uploaded again.
-  Cache limits are in the code; visible groups are never evicted.
+- Labels are painted into a sprite once per distinct content, scale, DPI and DPR, and submitted through one
+  `LabelLayer` whose node tree shares textures by sprite, so returning content such as a repeated score is not
+  rasterized or uploaded again while its sprite and texture are still cached. Cache limits are in the code; visible
+  groups are never evicted, and scene-graph recreation releases everything.
 - Culling uses the surface viewport in overlay-local coordinates, not the image bounds, so overlays stay visible in
   letterboxing; pan and viewport-size changes therefore invalidate preparation.
 - Cleanup submits an empty frame and synchronizes the scene graph before hiding, so Qt deletes native image nodes

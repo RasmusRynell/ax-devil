@@ -65,9 +65,11 @@ it claims to protect. Strengthen an existing meaningful case before adding redun
 
 ### 5. Keep documentation at its layer
 
-Apply the placement rule in [AGENTS.md](../../../AGENTS.md#where-a-fact-belongs). For every added or changed doc
-line, name the second module that must know it; if there is none, it belongs in the module README, a docstring, or
-nowhere. Doc additions are rejected by default and deletions accepted by default.
+Apply the placement rule in [AGENTS.md](../../../AGENTS.md#where-a-fact-belongs). For every added or changed line
+in `docs/architecture/` or `docs/domain/`, name the second module that must know it; if there is none, it belongs
+in the module README, a docstring, or nowhere. User-facing docs (`README.md`, usage, settings, plugins) follow the
+user instead: a fact belongs there when someone using the app needs it. Doc additions are rejected by default and
+deletions accepted by default.
 
 Treat `README.md` as the human entry point and review additions there especially carefully. For misplaced or
 duplicated content, name the appropriate home or recommend deletion.
