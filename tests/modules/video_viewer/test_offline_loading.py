@@ -188,19 +188,21 @@ def test_abandoned_opening_opens_nothing_more_and_releases_what_it_opened(
     opening_started = threading.Event()
     finish_opening = threading.Event()
     opened: list[FileFrameSource] = []
+    source_threads: set[threading.Thread] = set()
     original_open = offline_entry_media.create_frame_source
 
     def slow_open(video: SeekableVideoContent) -> FileFrameSource:
         opening_started.set()
         assert finish_opening.wait(5)
-        source = original_open(video)
+        # Only the source's own threads must stop; the opening and release workers live for the whole process.
+        source, started = _threads_started_by(lambda: original_open(video))
+        source_threads.update(started)
         opened.append(source)
         return source
 
     monkeypatch.setattr(offline_entry_media, "create_frame_source", slow_open)
     delivered: list[EntryMedia] = []
     opening = EntryOpening(on_status=lambda _message: None, on_opened=delivered.append)
-    baseline = set(threading.enumerate())
 
     opening.start(_entry(path, video_file_factory(0.2, 10)), (0, 1))
     qtbot.waitUntil(opening_started.is_set)
@@ -208,7 +210,7 @@ def test_abandoned_opening_opens_nothing_more_and_releases_what_it_opened(
     finish_opening.set()
 
     qtbot.waitUntil(lambda: len(opened) == 1)
-    _wait_released(qtbot, opened, set(threading.enumerate()) - baseline)
+    _wait_released(qtbot, opened, source_threads)
     assert len(opened) == 1
     assert opened[0]._frame_delivery is None
     assert delivered == []
