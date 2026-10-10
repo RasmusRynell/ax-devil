@@ -143,3 +143,17 @@ def test_unreadable_items_without_an_id_do_not_make_a_reopened_workspace_modifie
     backup.keep(opened)
 
     assert not _modified(*backup.restore())
+
+
+def test_a_file_whose_paths_hold_dot_dot_segments_is_restored_unmodified(tmp_path: Path) -> None:
+    path = tmp_path / "lot.ax-devil.workspace"
+    path.write_text(
+        json.dumps({"version": 1, "items": [{"kind": "video", "id": "v", "label": "", "video": "sub/../clip.mp4"}]})
+    )
+    backup = WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json")
+    backup.keep(load_workspace(path))
+
+    current, saved = backup.restore()
+
+    assert current.items[0] == VideoItem(id="v", video=tmp_path / "clip.mp4")
+    assert not _modified(current, saved)

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Sequence
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, Signal
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ItemResolution, ItemResolutionError, ResolutionContext, WorkspaceItem
@@ -14,27 +15,23 @@ logger = get_logger(__name__)
 ResolutionsReady = Callable[[tuple[ItemResolution, ...]], None]
 
 
-class _JobSignals(QObject):
-    resolved = Signal(object, object)  # _ResolveJob, tuple[ItemResolution, ...]
+class _Batch(QObject):
+    """One batch on its way back to the GUI thread; created there, so its signal is queued to the resolver."""
 
+    resolved = Signal(object, object)  # _Batch, tuple[ItemResolution, ...]
 
-class _ResolveJob(QRunnable):
-    def __init__(self, resolve: Callable[[], tuple[ItemResolution, ...]], done: ResolutionsReady) -> None:
+    def __init__(self, done: ResolutionsReady) -> None:
         super().__init__()
-        self.signals = _JobSignals()
         self.done = done
-        self._resolve = resolve
-
-    def run(self) -> None:
-        self.signals.resolved.emit(self, self._resolve())
 
 
 class ItemResolver(QObject):
     """Resolve batches of items on background threads and hand each result back on the GUI thread.
 
-    Resolving reads files and runs playlist resolvers, which may take long on large or slow folders. Batches run side
-    by side, so new work never waits behind a slow batch whose result will be dropped; results may arrive in any
-    order. With ``in_background=False`` every batch resolves at once on the calling thread instead, as tests need.
+    Resolving reads files and runs playlist resolvers, which may take long on large or slow folders. Every batch gets
+    its own daemon thread, so new work never waits behind a slow batch whose result will be dropped, and quitting
+    never waits for a resolver; results may arrive in any order, and none arrive after the resolver is gone. With
+    ``in_background=False`` every batch resolves at once on the calling thread instead, as tests need.
     """
 
     def __init__(
@@ -42,10 +39,8 @@ class ItemResolver(QObject):
     ) -> None:
         super().__init__(parent)
         self._context = context
-        self._pool: QThreadPool | None = None
-        if in_background:
-            self._pool = QThreadPool(self)
-        self._jobs: set[_ResolveJob] = set()
+        self._in_background = in_background
+        self._batches: set[_Batch] = set()  # Kept until delivered, so each is released on the GUI thread.
 
     @property
     def context(self) -> ResolutionContext:
@@ -55,19 +50,20 @@ class ItemResolver(QObject):
     def resolve(self, items: Sequence[WorkspaceItem], done: ResolutionsReady) -> None:
         """Resolve *items* and call *done* with their results, in item order, on the GUI thread."""
         items = tuple(items)
-        if self._pool is None:
+        if not self._in_background:
             done(self._resolve_all(items))
             return
-        job = _ResolveJob(lambda: self._resolve_all(items), done)
-        job.setAutoDelete(False)
-        job.signals.resolved.connect(self._deliver)
-        self._jobs.add(job)
-        self._pool.start(job)
+        batch = _Batch(done)
+        batch.resolved.connect(self._deliver)
+        self._batches.add(batch)
+        threading.Thread(
+            target=lambda: batch.resolved.emit(batch, self._resolve_all(items)), name="item-resolver", daemon=True
+        ).start()
 
-    def _deliver(self, job: _ResolveJob, resolutions: tuple[ItemResolution, ...]) -> None:
-        """Release the finished *job* and hand its *resolutions* to its callback, on the GUI thread."""
-        self._jobs.discard(job)
-        job.done(resolutions)
+    def _deliver(self, batch: _Batch, resolutions: tuple[ItemResolution, ...]) -> None:
+        """Release the finished *batch* and hand its *resolutions* to its callback, on the GUI thread."""
+        self._batches.discard(batch)
+        batch.done(resolutions)
 
     def _resolve_all(self, items: tuple[WorkspaceItem, ...]) -> tuple[ItemResolution, ...]:
         return tuple(self._resolve_one(item) for item in items)

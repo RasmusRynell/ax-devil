@@ -296,6 +296,23 @@ def test_dropped_video_and_overlay_open_with_matching_handler(
     assert [o.source_spec for o in content.overlays] == [FileOverlaySourceSpec(path=overlay, handler_type="MOT_FILE")]
 
 
+def test_dropped_videos_are_added_in_drop_order_and_the_first_opens(
+    workspace_session: WorkspaceSession, tmp_path: Path
+) -> None:
+    first, second = _video_item(tmp_path, "first.mp4"), _video_item(tmp_path, "second.mp4")
+
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        workspace_session.open_files([first.video, second.video])
+
+    assert [item.video for item in cast(tuple[VideoItem, ...], _store(workspace_session).workspace.items)] == [
+        first.video,
+        second.video,
+    ]
+    viewer = workspace_session.focused_widget()
+    assert isinstance(viewer, DummyViewer)
+    assert viewer.get_display_name() == "first.mp4"
+
+
 def test_dropped_overlay_read_by_several_decoders_asks_for_the_handler(
     workspace_session: WorkspaceSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

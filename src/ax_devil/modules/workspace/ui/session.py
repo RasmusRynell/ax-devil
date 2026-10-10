@@ -133,20 +133,21 @@ class WorkspaceSession(QObject):
         self._welcome.set_recent_workspaces(self._lifecycle.recent_workspaces())
 
     def open_files(self, paths: Sequence[Path]) -> None:
-        """Open dropped files, asking for the overlay's data handler when more than one decoder may read it."""
+        """Add dropped files as one batch, asking for an overlay's data handler when several decoders may read it."""
         selections = video_file_selections(paths, self._resolver.context.intake)
         if not selections:
             self._logger.warning("No video files to open among the dropped files")
+        items: list[WorkspaceItem] = []
         for selection in selections:
             if selection.needs_decoder:
                 with AddVideoDialog(self._window, initial=selection) as dialog:
                     dialog.exec()
                     item = dialog.get_result()
-                if item is None:
-                    continue
+                if item is not None:
+                    items.append(item)
             else:
-                item = selection.to_item()
-            self.add_items([item])
+                items.append(selection.to_item())
+        self.add_items(items)
 
     def focused_offline_viewer(self) -> OfflineVideoViewerWidget | None:
         """Return the currently focused offline viewer, if any."""

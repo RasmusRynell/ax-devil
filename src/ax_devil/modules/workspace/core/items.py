@@ -57,9 +57,12 @@ def _path_to_json(path: Path, base_dir: Path | None) -> str:
 
 
 def _path_from_json(data: Mapping[str, Any], key: str, base_dir: Path | None) -> Path:
-    """Return the path in ``data[key]``; a relative one is read against *base_dir* when given."""
+    """Return the path in ``data[key]``; a relative one is read against *base_dir* when given.
+
+    The path is normalized lexically, as ``_path_to_json`` writes it, so reading what was written compares equal.
+    """
     path = Path(_read(data, key, str))
-    return path if base_dir is None else base_dir / path
+    return Path(os.path.normpath(path if base_dir is None else base_dir / path))
 
 
 def new_item_id() -> str:

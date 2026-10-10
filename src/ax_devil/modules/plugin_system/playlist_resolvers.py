@@ -6,7 +6,8 @@ so the resolver runs again, without any widget, every time the item resolves.
 Plugin authors implement:
 
 * ``resolve(settings)`` — headless; returns the playlists the settings describe and raises ``ValueError`` or
-  ``OSError`` with a user-facing message when the settings are missing, invalid, or point at nothing.
+  ``OSError`` with a user-facing message when the settings are missing, invalid, or point at nothing. It runs on a
+  worker thread, possibly beside another call, so it touches no Qt objects and no shared mutable state.
 * ``create_settings_widget()`` — returns a widget that edits settings and calls ``submit_settings(settings)`` when
   the user is ready.
 * ``create_cli_command()`` — optional; builds settings from CLI arguments and passes a ``PlaylistItem`` to the runner
