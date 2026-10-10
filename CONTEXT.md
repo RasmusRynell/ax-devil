@@ -13,7 +13,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Overlay Source Kind | The typed lane source identity: file, RTSP, MQTT, DataHub WebSocket, or none. | UI label switch, raw string |
 | Playlist Content | An ordered inspection sequence made from entries and lanes. | Playlist source, playlist viewer |
 | Entry Lane | One visible comparison panel inside a playlist entry or standalone video expansion. | Overlay row, panel config |
-| Workspace | An ordered collection of Workspace Items, Untitled until saved; see [Workspace](docs/architecture/workspace.md). Exclusions, open viewers, and browser rows are session state, not part of it. | Window, shell, content list, session |
+| Workspace | An ordered collection of Workspace Items, Untitled until saved; see [Workspace](docs/architecture/workspace.md). Saved as a `.ax-devil.workspace` file. Exclusions, open viewers, and browser rows are session state, not part of it. | Window, shell, content list, session |
 | Workspace Item | A recipe for one thing to work with, with a stable id and a kind; it resolves into Content. | Startup request, entry, source |
 | Video Item | A Workspace Item for a video file with optional overlay files and decoders. | Video file request |
 | Live Stream Item | A Workspace Item for a camera stream with optional live overlay settings; credentials are kept as entered. | Live startup |

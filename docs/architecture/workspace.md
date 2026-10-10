@@ -1,7 +1,7 @@
 # Workspace
 
-> Status: **partly implemented**. Delivery steps 1 (the `core`/`ui` split) and 2 (items) are implemented; saving and
-> the lifecycle UI are not; see [Delivery](#delivery).
+> Status: **partly implemented**. Delivery steps 1 (the `core`/`ui` split), 2 (items), and 3 (file format) are
+> implemented; the lifecycle UI is not; see [Delivery](#delivery).
 
 A Workspace is the collection of things a user is working with — videos, live streams, playlists — that can be saved
 to a file and reopened to get back the same set of work. It plays the role a `.code-workspace` file plays in VS Code:
@@ -57,13 +57,15 @@ Every item kind provides:
 - `kind` — the stable string written to the file, e.g. `"video"`, `"live_stream"`, `"playlist"`
 - `id` — a stable item id, created once and saved
 - `label` — display name; it names the item's Content
-- serialization to and from a JSON object, given the workspace folder for relative paths (step 3)
+- `to_json(base_dir)` and `from_json(data, base_dir)` — the item as a JSON object, given the workspace folder for
+  relative paths
 - `resolve(context) -> tuple[Content, ...]` — rebuild the Content, or raise `ItemResolutionError` with a user-facing
   reason. Video and Live Stream Items resolve to one Content; a Playlist Item resolves to whatever its resolver
   returns. A Video Item whose files are missing fails to resolve.
 
 Items are frozen dataclasses deriving from `WorkspaceItem` (`workspace/core/items.py`). A kind implements one hook,
-`_build_contents(context)`; the shared `resolve` turns `ValueError` and `OSError` into `ItemResolutionError`, rejects an
+`_build_contents(context)` and two JSON hooks for its own fields, `_fields_to_json` and `_fields_from_json`; the shared
+`to_json` and `from_json` add and read `kind`, `id`, and `label`. The shared `resolve` turns `ValueError` and `OSError` into `ItemResolutionError`, rejects an
 empty result, and gives every Content its identity. The registry, `ITEM_KINDS`, is a `dict[str, type]` keyed by `kind`.
 
 Content identity is derived, never random: the Content at position *i* of item *x* has `content_id` `x/i` and
@@ -86,7 +88,11 @@ The Workspace is an immutable value (`workspace/core/workspace.py`): a name sour
 items. Edits — add items, remove or rename an item by id — produce a new value. The UI store, `WorkspaceStore`
 (`workspace/ui/workspace_store.py`), keeps the current Workspace and the last saved one, so "modified" is simply
 `current != saved` — no dirty flag to keep in sync. Items may hold settings mappings, so workspaces are compared, never
-hashed. Until saving exists, the saved Workspace is the empty one the store starts with.
+hashed. A new store holds the empty Untitled Workspace as both. `open_workspace(path)` loads a file, resolves its
+items, and makes it both current and saved, or raises `WorkspaceFileError` and changes nothing; `save_workspace(path)`
+writes the current Workspace (to its own file when no path is given) and makes it saved. The store emits
+`workspace_replaced` when a file is opened, so views drop what no longer exists (viewers of items that are gone close),
+and `state_changed` whenever the modified flag, name, or path changes, so a title bar needs no polling.
 
 The store resolves an item when it is added and keeps the result: the Content, or the error. Renaming only relabels:
 the item's kept Content is named again from the new label (`WorkspaceItem.name_contents`), with the same content ids
@@ -124,17 +130,30 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
     {"kind": "live_stream", "id": "1a9e…", "label": "Entrance", "host": "$AX_DEVIL_TARGET_ADDR",
      "username": "$AX_DEVIL_TARGET_USER", "password": "$AX_DEVIL_TARGET_PASS", "camera_head": 1},
     {"kind": "playlist", "id": "c04d…", "label": "Exp 3", "resolver": "mot_challenge",
-     "settings": {"root": "runs/exp3"}}
+     "settings": {"root": "/data/runs/exp3"}}
   ]
 }
 ```
 
-- `version` is required. There is one supported version; older files are not migrated before a stable release.
-- Paths are written relative to the workspace file's folder when they are inside it, absolute otherwise.
-- Credentials are written as entered. A `$VARIABLE` reference stays a reference, using the same rule as the config;
-  a literal value is written literally, so a file holding literal credentials must be shared with care.
-- An item that cannot be resolved on open — missing folder, offline camera, unknown kind, missing plugin — stays in
-  the Workspace as unavailable, with its reason and its original JSON. Saving writes it back unchanged.
+- `version` is required. There is one supported version; older files are not migrated before a stable release. A
+  missing or other version, invalid JSON, a top level that is not an object, or `items` that is not a list makes
+  loading raise one `WorkspaceFileError` with a user-facing message, as does a repeated item id.
+- `workspace/core/file_format.py` has `load_workspace(path)` and `save_workspace(workspace, path)`; both return the
+  Workspace with `path` set. Saving writes a temporary file in the same folder and replaces the target, with two-space
+  indentation and a trailing newline. Item kinds own their JSON, so the file format never branches on kind.
+- Paths a Video Item holds are written relative to the workspace file's folder (with `/` separators) when they are
+  inside it, absolute otherwise; relative paths are read against that folder.
+- Playlist settings are opaque to the core: they are written and read exactly as given, with no path rewriting. A
+  resolver that wants portable settings stores them relative itself.
+- A Live Stream Item writes every field. Credentials and hosts are written as stored: a `$VARIABLE` reference stays a
+  reference, using the same rule as the config; a literal value is written literally, so a file holding literal
+  credentials must be shared with care. Fields missing from the file take their defaults.
+- An item that cannot be read — an unknown kind, or a known kind with malformed JSON — never fails the load. It
+  becomes an `UnreadableItem`: it keeps the raw `id` (or gets a new one) and a label from the raw `label` (or the
+  kind), resolves to an `ItemResolutionError` giving the reason, and is written back unchanged on save. It is not in
+  `ITEM_KINDS`, so the Workspace, the store, and the UI treat it as any item that failed to resolve. An item that reads
+  fine but fails to resolve on open — missing folder, offline camera, missing plugin — is an ordinary item with a
+  recorded error.
 
 ## Playlist Resolver Contract
 
@@ -181,7 +200,8 @@ tests outright rather than carrying both.
    `WorkspaceManager` removed; tests rewritten around items. Done. Offline lanes now share a frame source by video
    value rather than by id, since lane videos inside a playlist carry no identity of their own, and viewers are
    tracked by the item their Content came from.
-3. **File format** — JSON v1 load/save, relative paths, credential references, unavailable items.
+3. **File format** — JSON v1 load/save, relative paths, credential references, unreadable items. Done. Each item kind
+   serializes itself; the store opens and saves files and announces replaced and modified state.
 4. **UI** — File → New / Open / Save / Save As, Untitled and modified state, `ax-devil open <file>`, recent
    workspaces on the welcome screen, unavailable items in the sidebar. Built into today's UI with minimal changes; a
    UI rebuild on top of `workspace/core` is a separate, later effort.

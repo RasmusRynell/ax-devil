@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     Content,
@@ -10,7 +14,10 @@ from ax_devil.modules.workspace.core import (
     PlaylistEntry,
     PlaylistItem,
     PlaylistSettings,
+    Workspace,
+    WorkspaceFileError,
     WorkspaceItem,
+    save_workspace,
 )
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_playlist, make_video
@@ -206,3 +213,101 @@ def test_renaming_an_unresolved_item_only_relabels_it() -> None:
     assert store.workspace.items[0].label == "Exp 4"
     assert store.resolution(broken.id).error is error
     assert store.contents() == ()
+
+
+def _saved_file(tmp_path: Path, *items: WorkspaceItem, name: str = "saved") -> Path:
+    path = tmp_path / f"{name}.ax-devil.workspace"
+    save_workspace(Workspace(items=items), path)
+    return path
+
+
+def test_opening_a_workspace_resolves_its_items_and_is_not_modified(tmp_path: Path) -> None:
+    store = _store()
+    store.add_items([content_item(make_video("old.mp4"))])
+    runs = PlaylistItem(label="Runs", resolver="runs")
+    broken = PlaylistItem(label="Broken", resolver="missing")
+    replaced: list[None] = []
+    store.workspace_replaced.connect(lambda: replaced.append(None))
+
+    store.open_workspace(_saved_file(tmp_path, runs, broken))
+
+    assert replaced == [None]
+    assert store.workspace.items == (runs, broken)
+    assert store.workspace.name == "saved"
+    assert not store.is_modified
+    assert [content.display_name for content in store.contents()] == ["Runs / train", "Runs / test"]
+    assert store.resolution(broken.id).error is not None
+
+
+def test_a_failed_open_leaves_the_store_unchanged(tmp_path: Path) -> None:
+    store = _store()
+    video = content_item(make_video("keep.mp4"))
+    store.add_items([video])
+    signals: list[str] = []
+    store.workspace_replaced.connect(lambda: signals.append("replaced"))
+    store.state_changed.connect(lambda: signals.append("state"))
+    broken = tmp_path / "broken.ax-devil.workspace"
+    broken.write_text("{", encoding="utf-8")
+
+    with pytest.raises(WorkspaceFileError):
+        store.open_workspace(broken)
+
+    assert store.workspace.items == (video,)
+    assert store.workspace.path is None
+    assert store.is_modified
+    assert [content.item_id for content in store.contents()] == [video.id]
+    assert signals == []
+
+
+def test_saving_names_the_workspace_and_clears_modified(tmp_path: Path) -> None:
+    store = _store()
+    item = PlaylistItem(label="Runs", resolver="runs")
+    store.add_items([item])
+    assert store.is_modified
+    path = tmp_path / "mine.ax-devil.workspace"
+
+    store.save_workspace(path)
+
+    assert store.workspace.path == path and store.workspace.name == "mine"
+    assert not store.is_modified
+    store.rename_item(item.id, "Renamed")
+    assert store.is_modified
+    store.save_workspace()
+    assert not store.is_modified
+    reopened = _store()
+    reopened.open_workspace(path)
+    assert [item.label for item in reopened.workspace.items] == ["Renamed"]
+
+
+def test_saving_an_untitled_workspace_needs_a_path() -> None:
+    with pytest.raises(ValueError, match="path"):
+        _store().save_workspace()
+
+
+def test_state_changed_fires_once_per_change_of_modified_name_or_path(tmp_path: Path) -> None:
+    store = _store()
+    states: list[tuple[bool, str]] = []
+    store.state_changed.connect(lambda: states.append((store.is_modified, store.workspace.name)))
+    first, second = PlaylistItem(label="A", resolver="runs"), PlaylistItem(label="B", resolver="runs")
+
+    store.add_items([first])
+    store.add_items([second])
+    store.save_workspace(tmp_path / "w.ax-devil.workspace")
+    store.rename_item(first.id, "A2")
+    store.remove_item(second.id)
+    store.save_workspace()
+    store.open_workspace(tmp_path / "w.ax-devil.workspace")
+
+    assert states == [(True, "Untitled"), (False, "w"), (True, "w"), (False, "w")]
+
+
+def test_removing_what_was_just_added_returns_to_unmodified() -> None:
+    store = _store()
+    states: list[bool] = []
+    store.state_changed.connect(lambda: states.append(store.is_modified))
+    item = PlaylistItem(label="A", resolver="runs")
+
+    store.add_items([item])
+    store.remove_item(item.id)
+
+    assert states == [True, False]
