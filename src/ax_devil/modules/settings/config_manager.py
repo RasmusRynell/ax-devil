@@ -287,6 +287,11 @@ class ConfigManager:
         self._load_if_needed()
         if key == "storage" and self._active_storage is not None:
             return copy.deepcopy(self._active_storage)
+        return self.get_saved(key, default)
+
+    def get_saved(self, key: str, default: Any = None) -> Any:
+        """Return a value as saved now, including storage changes that take effect after a restart."""
+        self._load_if_needed()
         if key not in self._raw_config:
             result = default
         else:

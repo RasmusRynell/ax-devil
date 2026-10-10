@@ -206,7 +206,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Settings changes apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart
   after the exit-time saves. [Quick Setup](../settings.md#quick-setup) is the one exception.
 - Saves validate every editable field, replace the configuration atomically, and only then emit runtime change
-  signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart.
+  signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart, except the workspace backup and recent workspaces, which use
+  the storage folder saved now.
 - Runtime-mutable settings are consumed through `GlobalSettings` signals, not by polling `ConfigManager`. Settings
   live in one immutable `SettingsState` that setters replace whole.
 - On/off overlay preferences are `OverlayPreference` members; adding a member adds it to the View menu, Settings and

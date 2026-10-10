@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,8 +40,8 @@ if TYPE_CHECKING:
 
 
 def _storage_file(name: str) -> Path:
-    """Return the file called *name* in the configured application storage directory."""
-    return Path(ConfigManager().get("storage")["base_dir"]) / name
+    """Return *name* in the storage folder saved now; a changed folder applies from the next launch."""
+    return Path(ConfigManager().get_saved("storage")["base_dir"]) / name
 
 
 class WorkspaceSession(QObject):
@@ -67,8 +68,10 @@ class WorkspaceSession(QObject):
         self._logger = get_logger(__name__)
         self._render_catalog_manager = render_catalog_manager
         self._context = context or default_resolution_context()
-        self._backup = backup or WorkspaceBackup(_storage_file("workspace-backup.json"))
-        self._recent_workspaces = recent_workspaces or RecentWorkspaces(_storage_file("recent-workspaces.json"))
+        self._backup = backup or WorkspaceBackup(partial(_storage_file, "workspace-backup.json"))
+        self._recent_workspaces = recent_workspaces or RecentWorkspaces(
+            partial(_storage_file, "recent-workspaces.json")
+        )
 
         self._workspace_store = WorkspaceStore(self._context, parent=self)
         self._content_browser = ContentBrowserWidget()

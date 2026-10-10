@@ -471,6 +471,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
     def set_display_name(self, name: str) -> None:
         """Show *name* in the header and on the next pane title, after the item is renamed."""
         self._display_name = name
+        if self._runtime is not None:
+            self._runtime.set_display_name(name)
         super().set_display_name(name)
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem:

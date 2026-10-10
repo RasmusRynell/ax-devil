@@ -11,6 +11,7 @@ import pytest
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
+from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import (
     RecentWorkspaces,
     VideoItem,
@@ -42,8 +43,8 @@ class _Sessions:
         session = WorkspaceSession(
             render_catalog_manager=self._render_catalog_manager,
             context=FakeResolutionContext(),
-            backup=WorkspaceBackup(self.state / "workspace-backup.json"),
-            recent_workspaces=RecentWorkspaces(self.state / "recent-workspaces.json"),
+            backup=WorkspaceBackup(lambda: self.state / "workspace-backup.json"),
+            recent_workspaces=RecentWorkspaces(lambda: self.state / "recent-workspaces.json"),
             prompts=prompts or FakePrompts(),
         )
         self._qtbot.addWidget(session.widget())
@@ -301,3 +302,31 @@ def test_opening_a_workspace_closes_every_viewer_even_of_items_it_shares(session
 
     assert _viewer_count(session) == 0
     assert _row_count(session) == 1
+
+
+def test_kept_workspace_goes_to_the_storage_folder_saved_after_launch(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    config = ConfigManager()
+
+    def storage(folder: str) -> dict[str, str]:
+        root = tmp_path / folder
+        return {
+            "base_dir": str(root),
+            "cache_dir": str(root / "caches"),
+            "logs_dir": str(root / "logs"),
+            "render_catalogs_dir": str(root / "render_catalogs"),
+        }
+
+    config.set("storage", storage("launched"))
+    config.activate_storage()
+    config.set("storage", storage("changed"))
+    session = WorkspaceSession(
+        render_catalog_manager=render_catalog_manager, context=FakeResolutionContext(), prompts=FakePrompts()
+    )
+    qtbot.addWidget(session.widget())
+
+    session.keep_workspace()
+
+    assert (tmp_path / "changed" / "workspace-backup.json").is_file()
+    assert not (tmp_path / "launched" / "workspace-backup.json").exists()

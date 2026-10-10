@@ -12,7 +12,7 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.application_shell.main_window import MainWindow
-from ax_devil.modules.application_shell.restart import is_restarted_launch, relaunch_if_requested
+from ax_devil.modules.application_shell.restart import relaunch_if_requested
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme, setup_theme
 from ax_devil.modules.diagnostics.exception_handler import install_exception_handler
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
@@ -57,9 +57,6 @@ class Application:
             setup_qt_logging()
             setup_logging(console_log_level=self.log_level, console_only=True)
             self.logger = get_logger(__name__)
-            if is_restarted_launch() and (self.items or self.workspace_file):
-                self.logger.info("Restarted: restoring the kept workspace instead of the command line's content")
-                self.items, self.workspace_file = (), None
             QApplication.setApplicationName("ax-devil")
             QApplication.setApplicationVersion(APP_VERSION)
 
@@ -115,7 +112,7 @@ class Application:
                 config_manager.save()
 
             if self.app is not None:
-                relaunch_if_requested(self.app)
+                relaunch_if_requested(self.app, self._global_options())
             return exit_code
         except Exception as exc:
             logger = self.logger or get_logger(__name__)
@@ -123,6 +120,11 @@ class Application:
             if self.debug:
                 raise exc
             raise exc
+
+    def _global_options(self) -> list[str]:
+        """Return the command line options that apply to every launch, for a restarted process to keep."""
+        options = ["--log-level", self.log_level, "--config", str(self.config_path)]
+        return [*options, "--debug"] if self.debug else options
 
     def _show_startup_windows(self) -> None:
         """Open start-up windows in order; a modal dialog returns only when closed, so they never stack."""

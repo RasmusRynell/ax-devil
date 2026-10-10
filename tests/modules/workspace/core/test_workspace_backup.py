@@ -32,11 +32,11 @@ def test_an_untitled_workspace_is_kept_with_absolute_paths_and_restored_as_modif
     live = LiveStreamItem(host="$AX_DEVIL_TARGET_ADDR", password="$AX_DEVIL_TARGET_PASS")
     unreadable = item_from_json({"kind": "radar", "id": "r1", "range": 9}, None)
     assert isinstance(unreadable, UnreadableItem)
-    backup = WorkspaceBackup(tmp_path / "state" / "workspace-backup.json")
+    backup = WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json")
 
     backup.keep(Workspace(items=(video, live, unreadable)))
     document = json.loads((tmp_path / "state" / "workspace-backup.json").read_text())
-    current, saved = WorkspaceBackup(tmp_path / "state" / "workspace-backup.json").restore()
+    current, saved = WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json").restore()
 
     assert document["path"] is None
     assert document["items"][0]["video"] == str(tmp_path / "clips" / "lot.mp4")
@@ -51,7 +51,7 @@ def test_a_saved_workspace_is_restored_with_its_file_as_the_saved_state(tmp_path
     folder = tmp_path / "reviews"
     clip = VideoItem(video=folder / "clips" / "a.mp4")
     saved_file = save_workspace(Workspace(items=(clip,)), folder / "Lot.ax-devil.workspace")
-    backup = WorkspaceBackup(tmp_path / "workspace-backup.json")
+    backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
 
     backup.keep(saved_file)
     assert not _modified(*backup.restore())
@@ -67,7 +67,7 @@ def test_items_of_a_saved_workspace_whose_file_is_gone_are_kept_as_untitled(tmp_
     saved_file = save_workspace(
         Workspace(items=(VideoItem(video=tmp_path / "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace"
     )
-    backup = WorkspaceBackup(tmp_path / "workspace-backup.json")
+    backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     backup.keep(saved_file)
     (tmp_path / "Lot.ax-devil.workspace").unlink()
 
@@ -86,7 +86,7 @@ def test_a_missing_or_unusable_backup_restores_the_empty_untitled_workspace(
     if content is not None:
         path.write_text(content)
 
-    assert WorkspaceBackup(path).restore() == (Workspace(), Workspace())
+    assert WorkspaceBackup(lambda: path).restore() == (Workspace(), Workspace())
 
 
 def test_recent_workspaces_are_newest_first_limited_and_drop_files_that_are_gone(
@@ -96,13 +96,13 @@ def test_recent_workspaces_are_newest_first_limited_and_drop_files_that_are_gone
     for file in files:
         file.write_text("{}")
     store = tmp_path / "state" / "recent-workspaces.json"
-    recent = RecentWorkspaces(store, limit=3)
+    recent = RecentWorkspaces(lambda: store, limit=3)
     for file in files:
         recent.record(file)
     monkeypatch.chdir(tmp_path)
     recent.record(Path(files[1].name))
 
-    assert RecentWorkspaces(store, limit=3).entries() == (files[1], files[3], files[2])
+    assert RecentWorkspaces(lambda: store, limit=3).entries() == (files[1], files[3], files[2])
     files[3].unlink()
     assert recent.entries() == (files[1], files[2])
     recent.record(files[0])
@@ -118,7 +118,7 @@ def test_recent_workspaces_keep_the_path_the_user_chose_not_its_symlink_target(t
         link.symlink_to(target)
     except (OSError, NotImplementedError):
         pytest.skip("symlinks are not supported here")
-    recent = RecentWorkspaces(tmp_path / "recent-workspaces.json")
+    recent = RecentWorkspaces(lambda: tmp_path / "recent-workspaces.json")
 
     recent.record(link)
 
@@ -130,13 +130,13 @@ def test_an_unreadable_recent_workspaces_file_is_ignored(tmp_path: Path, content
     path = tmp_path / "recent-workspaces.json"
     path.write_text(content)
 
-    assert RecentWorkspaces(path).entries() == ()
+    assert RecentWorkspaces(lambda: path).entries() == ()
 
 
 def test_unreadable_items_without_an_id_do_not_make_a_reopened_workspace_modified(tmp_path: Path) -> None:
     path = tmp_path / "Lot.ax-devil.workspace"
     path.write_text(json.dumps({"version": 1, "items": [{"kind": "radar"}, {"kind": "radar"}, "junk"]}))
-    backup = WorkspaceBackup(tmp_path / "workspace-backup.json")
+    backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
 
     opened = load_workspace(path)
     assert load_workspace(path) == opened

@@ -252,7 +252,7 @@ def test_quitting_keeps_the_workspace_even_without_closing_the_window(
     window = MainWindow(shortcut_manager=_make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     session = window._workspace_session
-    session._backup = WorkspaceBackup(tmp_path / "workspace-backup.json")
+    session._backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     video = tmp_path / "lot.mp4"
     video.write_bytes(b"")
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
@@ -262,5 +262,5 @@ def test_quitting_keeps_the_workspace_even_without_closing_the_window(
     assert app is not None
     app.aboutToQuit.emit()
 
-    current, _saved = WorkspaceBackup(tmp_path / "workspace-backup.json").restore()
+    current, _saved = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json").restore()
     assert current.items == session._workspace_store.workspace.items

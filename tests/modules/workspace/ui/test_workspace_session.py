@@ -100,8 +100,8 @@ def _session(
     return WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
         context=context,
-        backup=WorkspaceBackup(tmp_path / "state" / "workspace-backup.json"),
-        recent_workspaces=RecentWorkspaces(tmp_path / "state" / "recent-workspaces.json"),
+        backup=WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json"),
+        recent_workspaces=RecentWorkspaces(lambda: tmp_path / "state" / "recent-workspaces.json"),
         prompts=prompts or FakePrompts(),
     )
 
@@ -155,7 +155,7 @@ def test_replacing_the_workspace_closes_viewers_even_when_an_item_id_is_kept(
     session = WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
         context=FakeResolutionContext(resolvers={"named": _NamedPlaylist()}),
-        recent_workspaces=RecentWorkspaces(tmp_path / "recent-workspaces.json"),
+        recent_workspaces=RecentWorkspaces(lambda: tmp_path / "recent-workspaces.json"),
     )
     qtbot.addWidget(session.widget())
     replacement = tmp_path / "replacement.ax-devil.workspace"

@@ -128,7 +128,8 @@ file choices go through `WorkspacePrompts` (`workspace/ui/workspace_prompts.py`)
   the empty Untitled one. When the kept file can no longer be read, its items stay as an Untitled workspace and the
   reason is logged. Restored items are listed; nothing opens or connects on its own. Only adding items opens a viewer,
   the first new item's Content; installing another Workspace closes every viewer. A restart from Settings keeps the
-  command line's options but restores the kept workspace instead of reopening the command line's content.
+  global options of the command line but restores the kept workspace instead of reopening its content. The backup and
+  recent-workspace files use the storage folder saved now, so a changed folder applies from the next launch.
 - **File → New Workspace**, **Open Workspace** (`Ctrl+O`), **Open Recent**, and the welcome screen's recent list ask
   Save / Discard / Cancel when the current workspace is modified. Save on an Untitled workspace goes through Save As;
   cancelling it cancels the whole action. **Save Workspace** (`Ctrl+S`) saves an Untitled workspace through **Save
