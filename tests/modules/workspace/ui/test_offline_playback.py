@@ -49,6 +49,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
     native_id = window.internalWinId()
     try:
         session.add_items([VideoItem(video=path)])
+        qtbot.waitUntil(lambda: session.focused_offline_viewer() is not None)  # Items resolve in the background.
         viewer = session.focused_offline_viewer()
         assert viewer is not None
         qtbot.waitUntil(lambda: viewer._runtime is not None)
@@ -109,6 +110,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
         assert window.internalWinId() == native_id
 
         session.add_items([VideoItem(video=path)])
+        qtbot.waitUntil(lambda: session.focused_offline_viewer() is not None)
         reopened_viewer = session.focused_offline_viewer()
         assert reopened_viewer is not None
         qtbot.waitUntil(lambda: reopened_viewer._runtime is not None)

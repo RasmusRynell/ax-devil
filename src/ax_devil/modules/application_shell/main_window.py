@@ -83,7 +83,7 @@ class MainWindow(ChromeWindow):
         # Every way of quitting passes here, including quitting after an error without closing this window.
         app = QApplication.instance()
         if app is not None:
-            app.aboutToQuit.connect(self._workspace_session.keep_workspace)
+            app.aboutToQuit.connect(self._workspace_session.lifecycle.keep_workspace)
         self._lane_fullscreen = LaneFullscreenController(
             self,
             [
@@ -128,11 +128,11 @@ class MainWindow(ChromeWindow):
 
         session = self._workspace_session
         new_workspace_action = sm.get_action("app.new_workspace")
-        new_workspace_action.triggered.connect(lambda: session.new_workspace())
+        new_workspace_action.triggered.connect(lambda: session.lifecycle.new_workspace())
         file_menu.addAction(new_workspace_action)
 
         open_workspace_action = sm.get_action("app.open_workspace")
-        open_workspace_action.triggered.connect(lambda: session.open_workspace())
+        open_workspace_action.triggered.connect(lambda: session.lifecycle.open_workspace())
         file_menu.addAction(open_workspace_action)
 
         self._recent_menu = file_menu.addMenu("Open Recent")
@@ -140,11 +140,11 @@ class MainWindow(ChromeWindow):
         self._recent_menu.aboutToShow.connect(self._fill_recent_menu)
 
         save_workspace_action = sm.get_action("app.save_workspace")
-        save_workspace_action.triggered.connect(lambda: session.save_workspace())
+        save_workspace_action.triggered.connect(lambda: session.lifecycle.save_workspace())
         file_menu.addAction(save_workspace_action)
 
         save_workspace_as_action = sm.get_action("app.save_workspace_as")
-        save_workspace_as_action.triggered.connect(lambda: session.save_workspace_as())
+        save_workspace_as_action.triggered.connect(lambda: session.lifecycle.save_workspace_as())
         file_menu.addAction(save_workspace_as_action)
 
         file_menu.addSeparator()
@@ -245,10 +245,10 @@ class MainWindow(ChromeWindow):
         """List the recent workspace files; choosing one opens it."""
         menu = self._recent_menu
         menu.clear()
-        for path in self._workspace_session.recent_workspaces():
+        for path in self._workspace_session.lifecycle.recent_workspaces():
             action = menu.addAction(workspace_name(path))
             action.setToolTip(str(path))
-            action.triggered.connect(lambda _=False, path=path: self._workspace_session.open_workspace(path))
+            action.triggered.connect(lambda _=False, path=path: self._workspace_session.lifecycle.open_workspace(path))
         if menu.isEmpty():
             menu.addAction("None").setEnabled(False)
 
@@ -359,19 +359,19 @@ class MainWindow(ChromeWindow):
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
-                    self._workspace_session.add_items([result])
-                    self._logger.info(f"Added live stream: {result.display_name}")
+                    self._workspace_session.add_resolved([result])
+                    self._logger.info(f"Added live stream: {result.item.display_name}")
 
     def _on_add_playlist(self) -> None:
         """Handle File -> Add Playlist action."""
         from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 
-        with AddPlaylistDialog(self) as dialog:
+        with AddPlaylistDialog(self._workspace_session.resolver, self) as dialog:
             if dialog.exec() == AddPlaylistDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
-                    self._workspace_session.add_items([result])
-                    self._logger.info(f"Added playlist: {result.display_name}")
+                    self._workspace_session.add_resolved([result])
+                    self._logger.info(f"Added playlist: {result.item.display_name}")
 
     def show_catalog_viewer(self) -> None:
         """Show the render catalog viewer, as View → Render Catalogs does."""
@@ -379,7 +379,7 @@ class MainWindow(ChromeWindow):
 
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
         """Restore the kept workspace, then open what the command line asked for; see ``WorkspaceSession.launch``."""
-        self._workspace_session.launch(items, workspace_file)
+        self._workspace_session.lifecycle.launch(items, workspace_file)
 
     def show_quick_setup(self) -> None:
         """Show Quick Setup for theme and text size, as on first start and from Help → Quick Setup."""

@@ -52,6 +52,7 @@ _KIND_ICONS: dict[WorkspaceBrowserIconKind, Icon] = {
     "playlist": Icon.PLAYLIST,
     "overlay": Icon.OVERLAY,
     "unavailable": Icon.WARNING,
+    "pending": Icon.MORE,
 }
 
 

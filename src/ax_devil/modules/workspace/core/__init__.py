@@ -33,6 +33,7 @@ from ax_devil.modules.workspace.core.intake import (
 )
 from ax_devil.modules.workspace.core.items import (
     ITEM_KINDS,
+    ItemResolution,
     LiveStreamItem,
     PlaylistItem,
     UnreadableItem,
@@ -67,6 +68,7 @@ __all__ = [
     "FileOverlaySourceSpec",
     "FileVideoSourceSpec",
     "ITEM_KINDS",
+    "ItemResolution",
     "ItemResolutionError",
     "LiveMQTTOverlaySourceSpec",
     "LiveOverlayMode",

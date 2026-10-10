@@ -25,6 +25,7 @@ from ax_devil.modules.workspace.core import (
     WorkspaceItem,
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -136,9 +137,14 @@ class FakePrompts:
         self.errors.append(message)
 
 
+def inline_resolver(context: ResolutionContext | None = None) -> ItemResolver:
+    """Return a resolver that resolves at once on the calling thread, with *context* or a fake one."""
+    return ItemResolver(context or FakeResolutionContext(), in_background=False)
+
+
 def store_with(content: ContentT) -> tuple[WorkspaceStore, ContentT]:
     """Return a store holding an item for *content*, and the content as resolved, with its identity."""
-    store = WorkspaceStore(FakeResolutionContext())
+    store = WorkspaceStore(inline_resolver())
     store.add_items([content_item(content)])
     return store, cast(ContentT, store.contents()[0])
 

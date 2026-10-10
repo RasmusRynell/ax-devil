@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
+from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     FileOverlaySourceSpec,
@@ -34,14 +35,16 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE
+from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
+from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.modules.workspace.ui.workspace_prompts import WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, content_item
+from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, content_item, inline_resolver
 
 
 def _required_top_item(workspace_session: WorkspaceSession, index: int = 0) -> QTreeWidgetItem:
-    item = workspace_session._content_browser._tree.topLevelItem(index)
+    item: QTreeWidgetItem | None = workspace_session._content_browser._tree.topLevelItem(index)
     assert item is not None
     return item
 
@@ -99,7 +102,7 @@ def _session(
     """Return a session whose backup, recents, and prompts never touch the user's files or desktop."""
     return WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
-        context=context,
+        resolver=ItemResolver(context or default_resolution_context(), in_background=False),
         backup=WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json"),
         recent_workspaces=RecentWorkspaces(lambda: tmp_path / "state" / "recent-workspaces.json"),
         prompts=prompts or FakePrompts(),
@@ -119,6 +122,12 @@ def workspace_session(
 
 def _store(workspace_session: WorkspaceSession) -> WorkspaceStore:
     return workspace_session._workspace_store
+
+
+def _video_item(tmp_path: Path, name: str) -> VideoItem:
+    path = tmp_path / name
+    path.write_bytes(b"")
+    return VideoItem(video=path)
 
 
 def test_removing_content_in_the_sidebar_closes_every_viewer_of_its_item(
@@ -154,7 +163,7 @@ def test_replacing_the_workspace_closes_viewers_even_when_an_item_id_is_kept(
 ) -> None:
     session = WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
-        context=FakeResolutionContext(resolvers={"named": _NamedPlaylist()}),
+        resolver=inline_resolver(FakeResolutionContext(resolvers={"named": _NamedPlaylist()})),
         recent_workspaces=RecentWorkspaces(lambda: tmp_path / "recent-workspaces.json"),
     )
     qtbot.addWidget(session.widget())
@@ -303,7 +312,8 @@ def test_dropped_overlay_read_by_several_decoders_asks_for_the_handler(
         asked.append((dialog._video_path_edit.text(), dialog._overlay_path_edit.text()))
         dialog.destroyed.connect(lambda: destroyed.append(True))
         QTimer.singleShot(0, dialog.reject)
-        return original_exec(dialog)
+        result: int = original_exec(dialog)
+        return result
 
     monkeypatch.setattr(AddVideoDialog, "exec", cancel)
     for _ in range(3):
@@ -586,3 +596,86 @@ def test_sidebar_default_width_follows_text_size_until_dragged(workspace_session
     apply_text_size(13)
     QCoreApplication.processEvents()
     assert splitter.sizes()[0] == dragged
+
+
+def test_restored_workspace_lists_its_items_and_opens_no_viewer(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    kept = _session(render_catalog_manager, tmp_path)
+    qtbot.addWidget(kept.widget())
+    clip = _video_item(tmp_path, "clip.mp4")
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        kept.add_items([clip])
+    kept.lifecycle.keep_workspace()
+
+    restored = _session(render_catalog_manager, tmp_path)
+    qtbot.addWidget(restored.widget())
+    restored.lifecycle.launch()
+
+    assert _store(restored).workspace.items == (clip,)
+    assert restored._content_browser._tree.topLevelItemCount() == 1
+    assert restored._center_area.get_widget_count() == 0
+
+
+def test_saved_workspace_is_listed_on_the_welcome_screen(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    session = _session(render_catalog_manager, tmp_path, prompts=FakePrompts(save_path=tmp_path / "Lot"))
+    qtbot.addWidget(session.widget())
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([_video_item(tmp_path, "lot.mp4")])
+
+    assert session.lifecycle.save_workspace()
+
+    saved = tmp_path / "Lot.ax-devil.workspace"
+    assert session.lifecycle.recent_workspaces() == (saved,)
+    assert session._welcome._recent_workspaces == (saved,)
+
+
+def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
+    clip = _video_item(tmp_path, "lot.mp4")
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        workspace_session.add_items([clip])
+    viewer = cast(DummyViewer, workspace_session.focused_widget())
+    browser = workspace_session._content_browser
+
+    browser.item_rename_requested.emit(clip.id, "North gate")
+
+    assert viewer._title_label.text() == "North gate"
+    assert _required_top_item(workspace_session).text(0) == "North gate"
+    assert _store(workspace_session).is_modified
+
+    browser.item_rename_requested.emit(clip.id, "")
+
+    assert viewer._title_label.text() == "lot.mp4"
+    assert _required_top_item(workspace_session).text(0) == "lot.mp4"
+
+
+def test_kept_workspace_goes_to_the_storage_folder_saved_after_launch(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    config = ConfigManager()
+
+    def storage(folder: str) -> dict[str, str]:
+        root = tmp_path / folder
+        return {
+            "base_dir": str(root),
+            "cache_dir": str(root / "caches"),
+            "logs_dir": str(root / "logs"),
+            "render_catalogs_dir": str(root / "render_catalogs"),
+        }
+
+    config.set("storage", storage("launched"))
+    config.activate_storage()
+    config.set("storage", storage("changed"))
+    session = WorkspaceSession(
+        render_catalog_manager=render_catalog_manager,
+        resolver=inline_resolver(),
+        prompts=FakePrompts(),
+    )
+    qtbot.addWidget(session.widget())
+
+    session.lifecycle.keep_workspace()
+
+    assert (tmp_path / "changed" / "workspace-backup.json").is_file()
+    assert not (tmp_path / "launched" / "workspace-backup.json").exists()

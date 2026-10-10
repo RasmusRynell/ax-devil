@@ -26,7 +26,7 @@ from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow, build_browser_rows
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_live_video, make_playlist, make_video
-from tests.helpers.workspace import FakeResolutionContext, content_item, store_with
+from tests.helpers.workspace import FakeResolutionContext, content_item, inline_resolver, store_with
 
 
 def browser_rows(
@@ -38,7 +38,7 @@ def browser_rows(
 
 def _store(*contents: Content) -> WorkspaceStore:
     """Return a store with one item per content."""
-    store = WorkspaceStore(FakeResolutionContext())
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext()))
     store.add_items([content_item(content) for content in contents])
     return store
 

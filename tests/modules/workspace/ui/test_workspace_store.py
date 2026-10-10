@@ -2,26 +2,33 @@
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     Content,
     EntryLane,
+    ItemResolution,
+    LiveStreamItem,
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
     PlaylistSettings,
+    VideoItem,
     Workspace,
     WorkspaceFileError,
     WorkspaceItem,
     save_workspace,
 )
+from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_playlist, make_video
-from tests.helpers.workspace import FakeResolutionContext, content_item
+from tests.helpers.workspace import FakeResolutionContext, content_item, inline_resolver
 
 
 class _TwoPlaylists:
@@ -30,23 +37,30 @@ class _TwoPlaylists:
 
 
 def _store() -> WorkspaceStore:
-    return WorkspaceStore(FakeResolutionContext(resolvers={"runs": _TwoPlaylists()}))
+    return WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"runs": _TwoPlaylists()})))
 
 
-def test_adding_items_resolves_them_and_emits_one_signal_after_the_state_is_updated() -> None:
+def test_adding_items_appends_then_resolves_them_with_one_signal_each_after_the_state_is_updated() -> None:
     store = _store()
     first, second = content_item(make_video("first.mp4")), content_item(make_video("second.mp4"))
     batches: list[list[WorkspaceItem]] = []
+    resolved: list[tuple[list[WorkspaceItem], bool]] = []
 
     def record_added(items: list[WorkspaceItem]) -> None:
-        assert [content.display_name for content in store.contents()] == ["first.mp4", "second.mp4"]
+        assert store.workspace.items == (first, second)
         batches.append(items)
 
+    def record_resolved(resolutions: list[ItemResolution], added: bool) -> None:
+        assert [content.display_name for content in store.contents()] == ["first.mp4", "second.mp4"]
+        resolved.append(([resolution.item for resolution in resolutions], added))
+
     store.items_added.connect(record_added)
+    store.items_resolved.connect(record_resolved)
 
     store.add_items([first, second])
 
     assert batches == [[first, second]]
+    assert resolved == [([first, second], True)]
     assert store.workspace.items == (first, second)
     assert [content.item_id for content in store.contents()] == [first.id, second.id]
 
@@ -186,7 +200,7 @@ class _CountingResolver:
 
 def test_renaming_an_item_names_its_content_again_without_running_its_resolver() -> None:
     resolver = _CountingResolver()
-    store = WorkspaceStore(FakeResolutionContext(resolvers={"runs": resolver}))
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"runs": resolver})))
     runs = PlaylistItem(label="Runs", resolver="runs")
     store.add_items([runs])
     before = [content.content_id for content in store.contents()]
@@ -311,3 +325,95 @@ def test_removing_what_was_just_added_returns_to_unmodified() -> None:
     store.remove_item(item.id)
 
     assert states == [True, False]
+
+
+def test_clearing_a_saved_label_shows_each_kinds_default_name_after_reopening(tmp_path: Path) -> None:
+    video_path = tmp_path / "lot.mp4"
+    video_path.write_bytes(b"")
+    video = VideoItem(label="Parking lot", video=video_path)
+    stream = LiveStreamItem(label="Entrance", host="camera.local")
+    store = _store()
+    store.open_workspace(_saved_file(tmp_path, video, stream))
+
+    store.rename_item(video.id, "")
+    store.rename_item(stream.id, "")
+
+    assert [item.label for item in store.workspace.items] == ["", ""]
+    assert [content.display_name for content in store.contents()] == ["lot.mp4", "camera.local"]
+
+
+class _BlockingResolver:
+    """Resolve to two playlists once the test releases it, recording the thread it ran on."""
+
+    def __init__(self) -> None:
+        self.release = threading.Event()
+        self.threads: list[threading.Thread] = []
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        self.threads.append(threading.current_thread())
+        assert self.release.wait(timeout=5)
+        return [make_playlist("train"), make_playlist("test")]
+
+
+@pytest.fixture()
+def blocking() -> Iterator[_BlockingResolver]:
+    resolver = _BlockingResolver()
+    yield resolver
+    resolver.release.set()
+
+
+def _background_store(resolver: _BlockingResolver) -> WorkspaceStore:
+    return WorkspaceStore(ItemResolver(FakeResolutionContext(resolvers={"runs": resolver, "quick": _TwoPlaylists()})))
+
+
+def test_items_resolve_away_from_the_gui_thread_and_are_pending_until_then(
+    qtbot: QtBot, blocking: _BlockingResolver
+) -> None:
+    store = _background_store(blocking)
+    runs = PlaylistItem(label="Runs", resolver="runs")
+    resolved: list[bool] = []
+    store.items_resolved.connect(lambda _resolutions, added: resolved.append(added))
+
+    store.add_items([runs])
+
+    assert store.workspace.items == (runs,)
+    assert store.is_modified
+    assert store.resolution(runs.id).is_pending
+    assert store.contents() == ()
+    blocking.release.set()
+    qtbot.waitUntil(lambda: resolved == [True])
+    assert blocking.threads != [threading.main_thread()]
+    assert [content.display_name for content in store.contents()] == ["Runs / train", "Runs / test"]
+
+
+def test_a_result_follows_a_rename_made_while_the_item_resolved(qtbot: QtBot, blocking: _BlockingResolver) -> None:
+    store = _background_store(blocking)
+    runs = PlaylistItem(label="Runs", resolver="runs")
+    store.add_items([runs])
+
+    store.rename_item(runs.id, "Exp 3")
+    blocking.release.set()
+
+    qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
+    assert [content.display_name for content in store.contents()] == ["Exp 3 / train", "Exp 3 / test"]
+
+
+def test_results_for_removed_items_or_a_replaced_workspace_are_dropped(
+    qtbot: QtBot, blocking: _BlockingResolver
+) -> None:
+    store = _background_store(blocking)
+    removed, replaced = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
+    kept = PlaylistItem(label="Kept", resolver="quick")
+    store.add_items([removed])
+    store.add_items([replaced])
+    resolved: list[list[ItemResolution]] = []
+    store.items_resolved.connect(lambda resolutions, _added: resolved.append(resolutions))
+
+    store.remove_item(removed.id)
+    store.replace_workspace(Workspace(items=(kept,)))
+    blocking.release.set()
+
+    qtbot.waitUntil(lambda: len(resolved) == 1)
+    assert [resolution.item for resolution in resolved[0]] == [kept]
+    assert store.workspace.items == (kept,)
+    assert [content.display_name for content in store.contents()] == ["Kept / train", "Kept / test"]

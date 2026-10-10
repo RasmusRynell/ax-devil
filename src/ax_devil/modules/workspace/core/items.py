@@ -104,14 +104,13 @@ class WorkspaceItem(ABC):
         return replace(self, label="" if label == self.default_name else label)
 
     def resolve(self, context: ResolutionContext) -> tuple[Content, ...]:
-        """Rebuild this item's Content named after its label, or raise ``ItemResolutionError`` with a reason."""
-        return self.name_contents(self.resolve_base(context))
+        """Rebuild this item's Content named after the item, or raise ``ItemResolutionError`` with a reason."""
+        return self.name_contents(self._resolve_by_default_name(context))
 
-    def resolve_base(self, context: ResolutionContext) -> tuple[Content, ...]:
-        """Rebuild this item's Content before the label is applied, or raise ``ItemResolutionError``.
+    def _resolve_by_default_name(self, context: ResolutionContext) -> tuple[Content, ...]:
+        """Rebuild this item's Content as named without a label, or raise ``ItemResolutionError``.
 
         Content ids derive from the item id and the Content's position, so they are the same on every resolution.
-        Renaming never calls this; it calls ``name_contents`` on the result that was kept.
         """
         try:
             contents = self._build_contents(context)
@@ -123,15 +122,16 @@ class WorkspaceItem(ABC):
             replace(content, content_id=f"{self.id}/{index}", item_id=self.id) for index, content in enumerate(contents)
         )
 
-    def name_contents(self, base: Sequence[Content]) -> tuple[Content, ...]:
-        """Return *base* with display names taken from this item's label; the default names every Content by it."""
+    def name_contents(self, contents: Sequence[Content]) -> tuple[Content, ...]:
+        """Return *contents*, as named without a label, renamed after this item's label when it has one."""
         if not self.label:
-            return tuple(base)
-        return tuple(replace(content, display_name=self.label) for content in base)
+            return tuple(contents)
+        return tuple(replace(content, display_name=self.label) for content in contents)
 
     @abstractmethod
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
-        """Return this item's Content; raise ``ItemResolutionError``, ``ValueError``, or ``OSError`` when it cannot."""
+        """Return this item's Content as named without a label; raise ``ItemResolutionError``, ``ValueError``, or
+        ``OSError`` when it cannot."""
 
     def to_json(self, base_dir: Path | None) -> Any:
         """Return this item as a JSON object; paths inside *base_dir* are written relative to it, others absolute.
@@ -203,7 +203,7 @@ class VideoItem(WorkspaceItem):
                 raise ItemResolutionError(f"File not found: {path}")
         return (
             context.intake.create_seekable_video(
-                video_path=self.video, display_name=self.display_name, overlays=self.overlays
+                video_path=self.video, display_name=self.default_name, overlays=self.overlays
             ),
         )
 
@@ -290,7 +290,7 @@ class LiveStreamItem(WorkspaceItem):
         values = self.expanded()
         return (
             context.intake.create_live_stream(
-                display_name=self.display_name,
+                display_name=self.default_name,
                 host=values.host,
                 username=values.username,
                 password=values.password,
@@ -346,14 +346,14 @@ class PlaylistItem(WorkspaceItem):
         except Exception as exc:  # A plugin may fail in any way; the item stays, with the reason.
             raise ItemResolutionError(f"Playlist resolver '{self.resolver}' failed: {exc}") from exc
 
-    def name_contents(self, base: Sequence[Content]) -> tuple[Content, ...]:
+    def name_contents(self, contents: Sequence[Content]) -> tuple[Content, ...]:
         """Name each playlist with the shared rule: the label alone, or ``label / playlist`` when there are several."""
         if not self.label:
-            return tuple(base)
-        several = len(base) > 1
+            return tuple(contents)
+        several = len(contents) > 1
         return tuple(
             replace(content, display_name=_playlist_display_name(self.label, content.display_name, several=several))
-            for content in base
+            for content in contents
         )
 
 
@@ -410,6 +410,46 @@ class UnreadableItem(WorkspaceItem):
     @classmethod
     def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         raise ValueError("unreadable items are only made from raw JSON")
+
+
+@dataclass(frozen=True)
+class ItemResolution:
+    """What one item resolved to: its Content, the error that kept it from resolving, or neither while it resolves.
+
+    The result keeps the Content as named without a label and derives ``contents`` from the item's label, so a renamed
+    item is named again by ``renamed`` and never resolved twice. Build results with ``of`` or ``pending``.
+    """
+
+    item: WorkspaceItem
+    error: ItemResolutionError | None = None
+    by_default_name: tuple[Content, ...] = field(default=(), repr=False)
+    contents: tuple[Content, ...] = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Name the Content after the item."""
+        object.__setattr__(self, "contents", self.item.name_contents(self.by_default_name))
+
+    @classmethod
+    def of(cls, item: WorkspaceItem, context: ResolutionContext) -> ItemResolution:
+        """Resolve *item*; a failure is recorded as the result's error instead of raised."""
+        try:
+            return cls(item, by_default_name=item._resolve_by_default_name(context))
+        except ItemResolutionError as exc:
+            return cls(item, error=exc)
+
+    @classmethod
+    def pending(cls, item: WorkspaceItem) -> ItemResolution:
+        """Return the result of *item* while it is still being resolved."""
+        return cls(item)
+
+    @property
+    def is_pending(self) -> bool:
+        """Return whether the item is still being resolved."""
+        return self.error is None and not self.by_default_name
+
+    def renamed(self, item: WorkspaceItem) -> ItemResolution:
+        """Return this result for *item*, the same item under another label, with its Content named again."""
+        return replace(self, item=item)
 
 
 ITEM_KINDS: dict[str, type[WorkspaceItem]] = {kind.kind: kind for kind in (VideoItem, LiveStreamItem, PlaylistItem)}

@@ -39,10 +39,6 @@ class MOTChallengeResolverPlugin(PlaylistResolverPlugin):
         @click.pass_context
         def command(ctx: click.Context, dataset_dir: Path) -> None:
             settings = {"root": str(dataset_dir.resolve())}
-            try:
-                cls().resolve(settings)
-            except (ValueError, OSError) as exc:
-                raise click.ClickException(str(exc)) from exc
             runner = ctx.obj.get("run_with_items") if isinstance(ctx.obj, dict) else None
             if runner is None:
                 raise click.ClickException("CLI runtime is not available.")

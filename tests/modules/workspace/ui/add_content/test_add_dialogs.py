@@ -15,12 +15,14 @@ from ax_devil.modules.workspace.core import (
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
     LiveOverlayMode,
+    LiveStreamItem,
     LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
     OverlayFile,
     OverlaySourceKind,
     PlaylistContent,
     PlaylistEntry,
+    PlaylistItem,
     PlaylistResolver,
     PlaylistSettings,
     SeekableVideoContent,
@@ -31,7 +33,7 @@ from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, Works
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
-from tests.helpers.workspace import FakeResolutionContext
+from tests.helpers.workspace import FakeResolutionContext, inline_resolver
 
 
 class _DialogOptionProvider:
@@ -339,7 +341,8 @@ def test_add_live_stream_without_overlay_ignores_the_disabled_handler(
     dialog.accept()
     result = dialog.get_result()
     assert result is not None
-    assert (result.overlay_mode, result.handler_type) == (LiveOverlayMode.NONE, None)
+    assert isinstance(result.item, LiveStreamItem)
+    assert (result.item.overlay_mode, result.item.handler_type) == (LiveOverlayMode.NONE, None)
 
 
 def test_add_live_stream_keeps_configured_references_for_fields_left_empty(
@@ -359,12 +362,13 @@ def test_add_live_stream_keeps_configured_references_for_fields_left_empty(
 
     result = dialog.get_result()
     assert result is not None
-    assert (result.host, result.username, result.password) == (
+    assert isinstance(result.item, LiveStreamItem)
+    assert (result.item.host, result.item.username, result.item.password) == (
         "$AX_DEVIL_TARGET_ADDR",
         "$AX_DEVIL_TARGET_USER",
         "pa$$word",
     )
-    assert result.label == "", "the default name is derived from the host, never stored"
+    assert result.item.label == "", "the default name is derived from the host, never stored"
 
 
 def test_analytics_discovery_expands_typed_environment_references(
@@ -402,7 +406,8 @@ def test_analytics_discovery_expands_typed_environment_references(
     dialog.accept()
     result = dialog.get_result()
     assert result is not None
-    assert (result.host, result.username, result.password) == (
+    assert isinstance(result.item, LiveStreamItem)
+    assert (result.item.host, result.item.username, result.item.password) == (
         "$AX_DEVIL_TEST_CAMERA_HOST",
         "$AX_DEVIL_TEST_CAMERA_USER",
         "$AX_DEVIL_TEST_CAMERA_PASS",
@@ -593,7 +598,7 @@ def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
 
     result = dialog.get_result()
     assert result is not None
-    [content] = result.resolve(_dialog_context())
+    [content] = result.contents
     assert isinstance(content, LiveVideoContent)
     assert content.overlays[0].source_spec == LiveWebSocketOverlaySourceSpec(
         handler_type="TEST_HANDLER",
@@ -647,11 +652,7 @@ class _AnyResolverContext(FakeResolutionContext):
 @pytest.fixture
 def playlist_dialog(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> AddPlaylistDialog:
     """Return the dialog with every installed resolver's form, resolving through a test resolver."""
-    monkeypatch.setattr(
-        "ax_devil.modules.workspace.ui.add_content.add_playlist_dialog.default_resolution_context",
-        _AnyResolverContext,
-    )
-    dialog = AddPlaylistDialog()
+    dialog = AddPlaylistDialog(inline_resolver(_AnyResolverContext()))
     qtbot.addWidget(dialog)
     return dialog
 
@@ -672,7 +673,8 @@ def test_add_playlist_dialog_returns_an_item_from_the_selected_resolver(playlist
     assert playlist_dialog.result() == AddPlaylistDialog.DialogCode.Accepted
     result = playlist_dialog.get_result()
     assert result is not None
-    assert (result.resolver, result.settings) == (second_id, {"root": "/selected"})
+    assert isinstance(result.item, PlaylistItem)
+    assert (result.item.resolver, result.item.settings) == (second_id, {"root": "/selected"})
     first.submit_settings({"root": "/selected"})
     assert playlist_dialog.get_result() is result
 

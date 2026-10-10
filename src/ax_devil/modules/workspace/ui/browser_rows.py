@@ -28,10 +28,9 @@ from ax_devil.modules.workspace.core.item_info import (
     build_video_information,
     build_video_lane_information,
 )
-from ax_devil.modules.workspace.core.items import WorkspaceItem
-from ax_devil.modules.workspace.ui.workspace_store import ItemResolution
+from ax_devil.modules.workspace.core.items import ItemResolution, WorkspaceItem
 
-WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay", "unavailable"]
+WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay", "unavailable", "pending"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +128,7 @@ class _RowProjection:
     def rows(
         self, resolutions: Sequence[ItemResolution], open_items: Set[OnScreenWorkspaceItem]
     ) -> tuple[WorkspaceBrowserRow, ...]:
-        """Return a top-level row per Content, or per unavailable item, with location hints for look-alike siblings."""
+        """Return a row per Content, or per unavailable or pending item, with hints for look-alike siblings."""
         return _with_location_hints(
             tuple(
                 row
@@ -137,10 +136,16 @@ class _RowProjection:
                 for row in (
                     [self._unavailable_row(resolution.item, str(resolution.error))]
                     if resolution.error is not None
+                    else [self._pending_row(resolution.item)]
+                    if resolution.is_pending
                     else [self._content_row(resolution.item, content, open_items) for content in resolution.contents]
                 )
             )
         )
+
+    def _pending_row(self, item: WorkspaceItem) -> WorkspaceBrowserRow:
+        """Build the single row of an item that is still resolving; it opens nothing until its Content arrives."""
+        return WorkspaceBrowserRow(row_id=item.id, label=item.display_name, icon_kind="pending", item=item)
 
     def _unavailable_row(self, item: WorkspaceItem, reason: str) -> WorkspaceBrowserRow:
         """Build the single row of an item that could not resolve."""

@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, WorkspaceItem
+from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import build_browser_rows
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -53,7 +53,8 @@ class WorkspaceController(QObject):
         self._content_browser.item_remove_requested.connect(self._workspace_store.remove_item)
         self._content_browser.item_rename_requested.connect(self._workspace_store.rename_item)
         self._content_browser.export_requested.connect(self._on_export_requested)
-        self._workspace_store.items_added.connect(self._on_items_added)
+        self._workspace_store.items_added.connect(self._sync_content_browser)
+        self._workspace_store.items_resolved.connect(self._on_items_resolved)
         self._workspace_store.item_removed.connect(self._close_orphaned_viewers)
         self._workspace_store.workspace_replaced.connect(self._close_all_viewers)
         self._workspace_store.item_renamed.connect(self._on_item_renamed)
@@ -106,13 +107,14 @@ class WorkspaceController(QObject):
                 widget.set_display_name(names[on_screen.content_id])
         self._sync_content_browser()
 
-    def _on_items_added(self, items: list[WorkspaceItem]) -> None:
-        """Tell the user which new items could not open, and preview the first Content of the others.
+    def _on_items_resolved(self, resolutions: list[ItemResolution], added: bool) -> None:
+        """Show resolved items; for items the user added, tell which could not open and preview the first Content.
 
         Only adding items opens a viewer; opening, creating, or restoring a Workspace lists its items and opens nothing.
         """
         self._sync_content_browser()
-        resolutions = [self._workspace_store.resolution(item.id) for item in items]
+        if not added:
+            return
         failures = [
             f"{resolution.item.display_name}: {resolution.error}" for resolution in resolutions if resolution.error
         ]

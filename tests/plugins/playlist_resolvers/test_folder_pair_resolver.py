@@ -71,23 +71,6 @@ class TestFolderPairResolverPluginMetadata:
             "handler_type": "ADF_BETA_FRAME",
         }
 
-    def test_cli_reports_folders_without_pairs_before_launching(self, tmp_path: Path) -> None:
-        (tmp_path / "videos").mkdir()
-        (tmp_path / "annotations").mkdir()
-        launched: list[object] = []
-        command = FolderPairResolverPlugin.create_cli_command()
-        assert command is not None
-
-        result = CliRunner().invoke(
-            command,
-            [str(tmp_path / "videos"), str(tmp_path / "annotations"), "--handler-type", "ADF_BETA_FRAME"],
-            obj={"run_with_items": launched.append},
-        )
-
-        assert result.exit_code != 0
-        assert "No matched video/overlay pairs" in result.output
-        assert launched == []
-
 
 class TestResolveFromSettings:
     def test_resolves_matched_pairs_without_a_widget(self, tmp_path: Path) -> None:

@@ -297,17 +297,6 @@ class TestCliCommand:
         [[item]] = launched
         assert (item.label, item.resolver, item.settings) == ("", "mot_challenge", {"root": str(tmp_path)})
 
-    def test_cli_reports_a_folder_without_sequences_before_launching(self, tmp_path: Path) -> None:
-        launched: list[object] = []
-        command = MOTChallengeResolverPlugin.create_cli_command()
-        assert command is not None
-
-        result = CliRunner().invoke(command, [str(tmp_path)], obj={"run_with_items": launched.append})
-
-        assert result.exit_code != 0
-        assert "No MOT sequences found" in result.output
-        assert launched == []
-
 
 class TestSettingsWidget:
     def test_load_submits_the_scanned_root_and_checked_sequences(self, tmp_path: Path, qtbot: QtBot) -> None:

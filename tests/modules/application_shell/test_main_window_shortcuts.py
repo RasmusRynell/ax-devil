@@ -214,7 +214,7 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
     )
     qtbot.addWidget(window)
     session = window._workspace_session
-    session._prompts = FakePrompts(save_path=tmp_path / "Parking lot")
+    session.lifecycle._prompts = FakePrompts(save_path=tmp_path / "Parking lot")
     expected_keys = {
         "app.new_workspace": "",
         "app.open_workspace": "Ctrl+O",
@@ -238,6 +238,7 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
     video.write_bytes(b"")
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         session.add_items([VideoItem(video=video)])
+        qtbot.waitUntil(lambda: session.focused_widget() is not None)  # Items resolve in the background.
     assert shown_title() == "● Untitled — ax-devil"
 
     manager.get_action("app.save_workspace").trigger()
@@ -252,11 +253,12 @@ def test_quitting_keeps_the_workspace_even_without_closing_the_window(
     window = MainWindow(shortcut_manager=_make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     session = window._workspace_session
-    session._backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
+    session.lifecycle._backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     video = tmp_path / "lot.mp4"
     video.write_bytes(b"")
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         session.add_items([VideoItem(video=video)])
+        qtbot.waitUntil(lambda: session.focused_widget() is not None)  # Items resolve in the background.
 
     app = QApplication.instance()
     assert app is not None

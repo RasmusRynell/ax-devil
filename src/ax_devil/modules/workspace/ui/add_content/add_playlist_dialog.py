@@ -6,21 +6,24 @@ from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QLabel, QWidget
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
-from ax_devil.modules.workspace.core import ItemResolutionError, PlaylistItem
+from ax_devil.modules.workspace.core import ItemResolution, PlaylistItem
 from ax_devil.modules.workspace.ui.add_content.playlist_settings import PlaylistSettingsUI
-from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
+from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 
 
 class AddPlaylistDialog(BaseDialog):
     """Dialog for adding a playlist via a resolver plugin.
 
-    Embeds PlaylistSettingsUI and accepts as soon as the selected resolver submits settings that resolve; otherwise
-    the dialog stays open with the reason shown under the form.
+    Embeds PlaylistSettingsUI and resolves the submitted Playlist Item with *resolver*, away from the GUI thread. It
+    accepts with the result when the item resolves; otherwise the dialog stays open with the reason shown under the
+    form. While the item resolves, further submissions are ignored.
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        self._result: PlaylistItem | None = None
-        self._context = default_resolution_context()
+    def __init__(self, resolver: ItemResolver, parent: QWidget | None = None) -> None:
+        self._result: ItemResolution | None = None
+        self._resolver = resolver
+        self._resolving = False
+        self._closed = False
         super().__init__(parent, title="Add Playlist")
         self._setup_form()
         self.add_button("Cancel", self.reject)
@@ -35,18 +38,29 @@ class AddPlaylistDialog(BaseDialog):
         self.add_content_widget(self._message_label)
 
     def _on_item_ready(self, item: PlaylistItem) -> None:
-        try:
-            item.resolve(self._context)
-        except ItemResolutionError as exc:
-            self._message_label.setText(str(exc))
+        if self._resolving:
             return
-        self._result = item
+        self._resolving = True
+        self._message_label.setText("Finding playlists…")
+        self._resolver.resolve([item], self._on_resolved)
+
+    def _on_resolved(self, resolutions: tuple[ItemResolution, ...]) -> None:
+        """Accept with the resolved item, or show why it did not resolve; a closed dialog ignores the result."""
+        if self._closed:
+            return
+        self._resolving = False
+        resolution = resolutions[0]
+        if resolution.error is not None:
+            self._message_label.setText(str(resolution.error))
+            return
+        self._result = resolution
         self.accept()
 
-    def get_result(self) -> PlaylistItem | None:
-        """Return the Playlist Item of the accepted dialog session, or None if it was cancelled."""
+    def get_result(self) -> ItemResolution | None:
+        """Return the resolved Playlist Item of the accepted dialog session, or None if it was cancelled."""
         return self._result
 
     def cleanup(self) -> None:
-        """Release resolver forms after every dialog outcome."""
+        """Release resolver forms after every dialog outcome, and ignore a result still on its way."""
+        self._closed = True
         self._settings.cleanup()

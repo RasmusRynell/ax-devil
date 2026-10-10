@@ -24,7 +24,7 @@ from ax_devil.modules.settings.config_manager import (
     integer_default,
     is_environment_reference,
 )
-from ax_devil.modules.workspace.core import ItemResolutionError, LiveOverlayMode, LiveStreamItem
+from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.ui.add_content.analytics_discovery import (
     AnalyticsChoiceLoader,
@@ -62,7 +62,7 @@ class AddLiveStreamDialog(BaseDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, title="Add Live Stream")
-        self._result: LiveStreamItem | None = None
+        self._result: ItemResolution | None = None
         self._context = default_resolution_context()
         self._intake = self._context.intake
         self._config = ConfigManager()
@@ -377,8 +377,8 @@ class AddLiveStreamDialog(BaseDialog):
         self._validation_label.setText(message)
         self._ok_button.setEnabled(not message)
 
-    def _build_result(self) -> LiveStreamItem:
-        """Return the stream item the form describes, or raise ``ValueError`` naming what to fix."""
+    def _build_result(self) -> ItemResolution:
+        """Return the stream item the form describes, resolved, or raise ``ValueError`` naming what to fix."""
         raw_device_defaults = self._raw_defaults["device"]
         raw_mqtt_defaults = self._raw_defaults["live_stream"].get("analytics-mqtt", {}) or {}
 
@@ -424,11 +424,10 @@ class AddLiveStreamDialog(BaseDialog):
             websocket_topic=websocket_topic,
             websocket_channel_id=self._websocket_channel_id_spin.value(),
         )
-        try:
-            item.resolve(self._context)
-        except ItemResolutionError as exc:
-            raise ValueError(str(exc)) from exc
-        return item
+        resolution = ItemResolution.of(item, self._context)
+        if resolution.error is not None:
+            raise ValueError(str(resolution.error))
+        return resolution
 
     def accept(self) -> None:
         """Add the stream when the form is complete; otherwise keep the dialog open with the reason shown."""
@@ -439,8 +438,8 @@ class AddLiveStreamDialog(BaseDialog):
             return
         super().accept()
 
-    def get_result(self) -> LiveStreamItem | None:
-        """Return the Live Stream Item, or None if the dialog was cancelled."""
+    def get_result(self) -> ItemResolution | None:
+        """Return the resolved Live Stream Item, or None if the dialog was cancelled."""
         return self._result
 
     def cleanup(self) -> None:
