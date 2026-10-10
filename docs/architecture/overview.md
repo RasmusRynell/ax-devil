@@ -251,7 +251,7 @@ Built-in playlist resolver bundles:
 
 ## UI Structure
 
-The main UI is a workspace shell: content browser on the left, drag-to-split viewer area in the center, and application actions in `MainWindow`.
+The main UI is a workspace shell: an activity bar and a sidebar (start panel or content browser) on the left, drag-to-split viewer area in the center, and application actions in `MainWindow`.
 
 [UI Framework Structure](ui-framework.md) describes its owners: `MainWindow`, `WorkspaceSession`, `SplitView`,
 `ViewerWidget` and the display stack.

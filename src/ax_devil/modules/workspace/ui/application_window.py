@@ -56,7 +56,7 @@ class ApplicationWindow(QWidget):
         follow_appearance(self, self._follow_text_size)
 
     def toggle_sidebar(self) -> None:
-        """Show or hide the content browser."""
+        """Show or hide the sidebar."""
         self._sidebar_wanted = not self.is_sidebar_shown()
         self._apply_sidebar()
 

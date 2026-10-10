@@ -11,6 +11,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     FileOverlaySourceSpec,
@@ -592,6 +593,26 @@ def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspac
     assert not window.is_sidebar_shown()
     window.toggle_sidebar()
     assert window.is_sidebar_shown() and splitter.sizes()[0] == width + 60
+
+
+def test_activity_bar_buttons_trigger_render_catalogs_and_settings(workspace_session: WorkspaceSession) -> None:
+    """The activity bar's action buttons trigger the same actions as the menus."""
+    window = workspace_session.widget()
+    manager = ShortcutManager()
+    manager.register_defaults()
+    manager.install(window)
+    workspace_session.set_shortcut_manager(manager)
+    triggered: list[str] = []
+    for action_id in ("view.render_catalogs", "app.settings"):
+        manager.get_action(action_id).triggered.connect(
+            lambda _=False, action_id=action_id: triggered.append(action_id)
+        )
+
+    for button in window._activity_bar._buttons:
+        if button is not window._activity_bar._view_button:
+            button.click()
+
+    assert triggered == ["view.render_catalogs", "app.settings"]
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

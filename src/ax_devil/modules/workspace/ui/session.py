@@ -172,7 +172,10 @@ class WorkspaceSession(QObject):
         self._logger.debug("Workspace session cleanup completed")
 
     def set_shortcut_manager(self, manager: ShortcutManager) -> None:
-        """Trigger *manager*'s actions from the welcome screen, the start panel, and the activity bar."""
+        """Trigger *manager*'s actions from the welcome screen, the start panel, and the activity bar.
+
+        Call once: each call adds the activity bar's action buttons.
+        """
         self._center_area.set_welcome_shortcut_manager(manager)
         self._start_panel.set_shortcut_manager(manager)
         activity_bar = self._window.activity_bar()
