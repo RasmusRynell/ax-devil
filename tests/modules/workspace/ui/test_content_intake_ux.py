@@ -157,21 +157,22 @@ def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_works
     assert requested == [recent[1]]
 
 
-def test_start_panel_recent_rows_never_widen_a_narrow_sidebar(qtbot: QtBot, tmp_path: Path) -> None:
-    """A long workspace name or folder elides instead of pushing the start panel wider than the sidebar."""
+def test_start_panel_never_overflows_a_narrow_sidebar(qtbot: QtBot, tmp_path: Path) -> None:
+    """Open buttons shrink and long recent names and folders elide instead of pushing past a narrow sidebar."""
     panel = StartPanel()
     qtbot.addWidget(panel)
     folder = tmp_path / ("very-long-folder-name-" * 6)
     folder.mkdir()
     panel.set_recent_workspaces([_touch(folder / f"{'Long workspace name ' * 6}.ax-devil.workspace")])
-    panel.resize(240, 400)
+    panel.resize(160, 400)
     panel.show()
     QApplication.processEvents()
 
     row = panel.recent_rows()[0]
-    assert panel.minimumSizeHint().width() <= 240
+    assert panel.minimumSizeHint().width() <= 160
     assert row.geometry().right() < panel.width()
     assert row.date_label.geometry().right() <= row.width()
+    assert all(button.geometry().right() < panel.width() for button in panel._open_buttons.values())
 
 
 def test_recent_date_shows_today_a_weekday_then_a_date() -> None:

@@ -198,6 +198,7 @@ class StartPanel(QWidget):
         layout.addSpacing(Space.L)
         self._recent_heading = QLabel("Recent workspaces")
         TextRole.CAPTION.apply(self._recent_heading)
+        self._recent_heading.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(self._recent_heading)
         self._recent_list = QVBoxLayout()
         self._recent_list.setContentsMargins(0, 0, 0, 0)
@@ -249,7 +250,8 @@ class StartPanel(QWidget):
 
     def _open_button(self, action_id: str, label: str, icon: Icon) -> QPushButton:
         button = QPushButton(icon.icon(), label, self)
-        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # Shrink with the sidebar instead of setting its minimum width; the labels fit at the default width.
+        button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(lambda _checked=False: self._trigger(action_id))
         self._open_buttons[action_id] = button
