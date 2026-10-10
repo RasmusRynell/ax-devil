@@ -16,13 +16,13 @@ from ax_devil.modules.workspace.content import Content
 from ax_devil.modules.workspace.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.intake import WorkspaceIntake, default_workspace_intake
 from ax_devil.modules.workspace.recent_videos import RecentVideos, default_recent_videos
-from ax_devil.modules.workspace.session_controller import WorkspaceController
 from ax_devil.modules.workspace.split_view import SplitView
 from ax_devil.modules.workspace.startup_request import (
     StartupContent,
     VideoFileStartup,
     video_file_requests,
 )
+from ax_devil.modules.workspace.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.workspace_manager import WorkspaceManager
 
 if TYPE_CHECKING:
@@ -85,10 +85,6 @@ class WorkspaceSession(QObject):
     def remove_content(self, content: Content) -> None:
         """Remove one content item from the workspace."""
         self._workspace_manager.remove_content(content)
-
-    def clear(self) -> None:
-        """Clear the workspace."""
-        self._workspace_manager.clear()
 
     def load_startup_content(self, startup: StartupContent) -> bool:
         """Resolve startup content and add it to the workspace; return whether anything was added."""

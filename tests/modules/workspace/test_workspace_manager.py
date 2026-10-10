@@ -512,22 +512,6 @@ def test_remove_content_emits_only_when_content_exists() -> None:
     assert manager.get_contents() == []
 
 
-def test_clear_emits_workspace_cleared_and_resets_state() -> None:
-    manager = WorkspaceManager()
-    video = _make_video(overlay_count=1)
-    manager.add_content(video)
-    lane_ref = ConsiderationItemRef.video_lane(video.content_id, 0)
-    manager.set_item_considered(lane_ref, False)
-    clears: list[bool] = []
-    manager.workspace_cleared.connect(lambda: clears.append(True))
-
-    manager.clear()
-
-    assert clears == [True]
-    assert manager.get_contents() == []
-    assert manager.is_item_considered(lane_ref)
-
-
 def test_item_consideration_signal_emits_only_on_change() -> None:
     manager = WorkspaceManager()
     video = _make_video(overlay_count=1)

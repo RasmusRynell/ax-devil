@@ -1,6 +1,7 @@
 # Catalog Viewer
 
-Render catalogs (see [Draw System](draw-system.md)) decide how every overlay is drawn. The app does not edit their contents:
+Render catalogs (see [Draw System](draw-system.md)) decide how every overlay is drawn. There is no in-app editor
+([invariant](../domain/invariants.md#rendering)):
 an agent edits the catalog JSON following `.agents/skills/render-catalog/SKILL.md`, and the **catalog viewer** shows
 the result the moment the file is saved. Open it with `ax-devil catalog` or **View → Render Catalogs** (`Ctrl+R`).
 

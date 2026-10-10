@@ -15,9 +15,10 @@ become Scene-aware. See the [video player README](../../src/ax_devil/modules/vid
 
 The boundary object is `VideoOverlayData`. Scene code supplies a `drawing_generator`, `interaction_provider`, and
 `metrics_provider`; the video player calls those protocols without knowing what domain object produced them. The
-`DrawingTarget` contract accepts batches of catalog-resolved boxes, circles, lines, points, polygons, polylines, texts
-and labels, where row i of every argument describes one primitive and a `Paint` carries each style field as one
-shared value or one value per row. Catalog instructions resolve normalized coordinates straight into final backend
+`DrawingTarget` contract accepts batches of catalog-resolved boxes, circles, lines, points, polygons, polylines and
+texts, where row i of every argument describes one primitive and a `Paint` carries each style field as one shared
+value or one value per row; labels carry no `Paint`, since each `LabelContent` row packages its own runs, font,
+background, padding, radius and gap. Catalog instructions resolve normalized coordinates straight into final backend
 data; there is no intermediate primitive list.
 
 ## Runtime Flow

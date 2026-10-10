@@ -120,7 +120,6 @@ class WorkspaceManager(QObject):
 
     contents_added = Signal(list)
     content_removed = Signal(object)
-    workspace_cleared = Signal()
     item_consideration_changed = Signal(object, bool)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -153,13 +152,6 @@ class WorkspaceManager(QObject):
         self._discard_refs_for_content(content.content_id)
         logger.debug(f"Content removed: {content.content_id}")
         self.content_removed.emit(content)
-
-    def clear(self) -> None:
-        """Remove all workspace facts."""
-        self._contents.clear()
-        self._not_considered.clear()
-        logger.debug("Workspace cleared")
-        self.workspace_cleared.emit()
 
     def get_contents(self) -> list[Content]:
         """Return a shallow copy of the workspace contents."""

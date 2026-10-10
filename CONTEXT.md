@@ -13,8 +13,8 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Overlay Source Kind | The typed lane source identity: file, RTSP, MQTT, DataHub WebSocket, or none. | UI label switch, raw string |
 | Playlist Content | An ordered inspection sequence made from entries and lanes. | Playlist source, playlist viewer |
 | Entry Lane | One visible comparison panel inside a playlist entry or standalone video expansion. | Overlay row, panel config |
-| Workspace | The active session state: content, consideration flags, open viewers, pinned state, and browser rows. | Window, shell, content list |
-| Startup Request | CLI or bootstrap input (`StartupContent` and its subtypes) that resolves into Workspace content before it is added. | Initial content |
+| Workspace | The active session state: its Content and which items are not considered. Open, focused, and pinned viewers live in the hosted widgets; browser rows are derived. | Window, shell, content list |
+| Startup Request | CLI or bootstrap input (one of the `StartupContent` union's variants) that resolves into Workspace content before it is added. | Initial content |
 | Viewer | An open inspection surface hosted by the Workspace. | Player, pane, runtime bucket |
 | Video Viewer | The application workflow that composes media sources, sync, Scene tools, and frame display. | Player, pane |
 | Frame Display | A reusable shell that presents frames and overlays and exposes generic mount points. | Video player, playback widget, viewer |

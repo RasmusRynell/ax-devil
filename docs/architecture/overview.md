@@ -233,7 +233,8 @@ Built-in decoder plugin bundles:
 | `uvg-vcm` | `UVG_VCM` | none |
 | `axis-onvif-xml` | `ONVIF_XML` | `ONVIF_XML` |
 
-The UVG-VCM decoder's behavior is described with the [dataset](../datasets/uvg-vcm.md#decoder-behavior).
+The UVG-VCM and MOT decoders' behavior is described with their datasets:
+[UVG-VCM](../datasets/uvg-vcm.md#decoder-behavior), [MOT Challenge](../datasets/mot-challenge.md#decoder-behavior).
 
 Built-in playlist resolver bundles:
 
