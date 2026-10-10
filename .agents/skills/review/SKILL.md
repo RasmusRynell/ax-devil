@@ -67,7 +67,7 @@ it claims to protect. Strengthen an existing meaningful case before adding redun
 
 Apply the placement rule in [AGENTS.md](../../../AGENTS.md#where-a-fact-belongs). For every added or changed line
 in `docs/architecture/` or `docs/domain/`, name the second module that must know it; if there is none, it belongs
-in the module README, a docstring, or nowhere. User-facing docs (`README.md`, usage, settings, plugins) follow the
+in the module README, a docstring, or nowhere. User-facing docs (`README.md`, usage, settings, plugins, datasets) follow the
 user instead: a fact belongs there when someone using the app needs it. Doc additions are rejected by default and
 deletions accepted by default.
 

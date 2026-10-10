@@ -47,8 +47,9 @@ Graphics Off selects Quick's software backend at startup. QQuickWidget keeps wid
 composition pass and no threaded render loop, so all preparation stays on the GUI thread and the scene graph only
 consumes prepared data. Rules worth knowing before changing `engine/quick/`:
 
-- Geometry, paths, text and labels are separate pools and layers drawn bottom to top in that order. Order across
-  entities is not preserved so geometry can batch into a few nodes (split at 60,000 vertices).
+- Geometry, paths, text and labels are separate pools and layers. The
+  [draw-order invariant](../../../../docs/domain/invariants.md#rendering) is what lets geometry batch into a few
+  nodes (split at 60,000 vertices).
 - Geometry items are matched by ordinal; path and text items by content, independent of position, so moving an
   overlay updates transforms instead of rebuilding glyphs and tessellation.
 - Labels are painted into a sprite once per distinct content, scale, DPI and DPR, and submitted through one

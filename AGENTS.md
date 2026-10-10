@@ -122,7 +122,7 @@ A fact lives at the narrowest layer that covers every reader who needs it:
 | One module | That module's `README.md` under `src/ax_devil/modules/` (create a short one if needed) |
 | One class or function | Its docstring or a comment at the surprising line |
 | Already enforced by a type, validation, or test | Nowhere |
-| Someone using the app | `README.md`, `docs/usage.md`, `docs/settings.md`, `docs/plugins.md` |
+| Someone using the app | `README.md`, `docs/usage.md`, `docs/settings.md`, `docs/plugins.md`, `docs/datasets/` |
 
 Each fact has one home; link to it instead of repeating it. When a fact moves layers, delete it from the old home.
 

@@ -55,7 +55,8 @@ filtered Scene; hit testing picks the smallest box containing the cursor.
 
 ## Catalog files and selection
 
-The **built-in catalogs** are the packaged `catalog_definitions/*.json` files, read in place and never written.
+The **built-in catalogs** are the packaged files named in `BUILT_IN_CATALOG_PATHS` (the schema beside them is not
+one), read in place and never written.
 The **default catalog** is the one new selections start from: Standard until the user picks another with
 **Use as default**, stored in `default_catalog.txt` beside the user catalogs (`built-in:<file name>` for another
 built-in). Deleting the default clears the choice.

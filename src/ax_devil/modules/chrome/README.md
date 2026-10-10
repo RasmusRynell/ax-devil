@@ -24,4 +24,5 @@ How to build UI with it is in the [write-ui skill](../../../../.agents/skills/wr
   until its parent dies.
 - Main-window placement belongs to the desktop: `ChromeWindow` restores size and maximized state only, and never
   selects a screen or persists coordinates.
-- Application icons come from `icons.py`, never Qt standard pixmaps or text glyphs.
+- Button and chrome icons come from `icons.py`, never Qt standard pixmaps or text glyphs; status text such as
+  `● Live` may still carry a glyph.
