@@ -7,9 +7,12 @@ activation (Ctrl+double-click opens to the side) and context menus.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
+from html import escape
+from typing import cast
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QBrush, QGuiApplication, QPalette
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QBrush, QColor, QFontMetrics, QGuiApplication, QPainter, QPalette
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -18,6 +21,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QMessageBox,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -28,7 +34,8 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Space
+from ax_devil.modules.chrome.theme import StatusColor
+from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Content
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.core.items import WorkspaceItem
@@ -46,14 +53,136 @@ TREE_CONSIDERATION_COLUMN_WIDTH_PX = 24
 TREE_ROW_ROLE = Qt.ItemDataRole.UserRole
 
 
-_KIND_ICONS: dict[WorkspaceBrowserIconKind, Icon] = {
-    "video": Icon.VIDEO,
-    "live_video": Icon.LIVE_VIDEO,
-    "playlist": Icon.PLAYLIST,
-    "overlay": Icon.OVERLAY,
-    "unavailable": Icon.WARNING,
-    "pending": Icon.MORE,
+_OPEN_EDGE_PX = 2
+_SECTION_MARK_PX = 8
+
+
+@dataclass(frozen=True)
+class _KindMark:
+    """The icon a row kind shows, in its color on the dark and on the light theme."""
+
+    icon: Icon
+    dark: str
+    light: str
+
+    def color(self, palette: QPalette) -> QColor:
+        """Return the mark's color for the theme *palette* belongs to."""
+        return QColor(self.dark if palette.color(QPalette.ColorRole.Text).lightnessF() > 0.5 else self.light)
+
+
+# Each kind keeps one icon and color, so live streams, videos, and playlists read apart in a mixed workspace.
+_KIND_MARKS: dict[WorkspaceBrowserIconKind, _KindMark] = {
+    "live_video": _KindMark(Icon.LIVE_VIDEO, "#e5534b", "#c4362e"),
+    "video": _KindMark(Icon.VIDEO, "#a8b3bf", "#526477"),
+    "playlist": _KindMark(Icon.PLAYLIST, "#b18cf0", "#6f45c2"),
+    "overlay": _KindMark(Icon.OVERLAY, "#8f9aa6", "#607080"),
+    "unavailable": _KindMark(Icon.WARNING, *StatusColor.WARNING.value),
+    "pending": _KindMark(Icon.MORE, "#858585", "#5a6a7d"),
 }
+
+
+def _row_at(index: QModelIndex | QPersistentModelIndex) -> WorkspaceBrowserRow:
+    """Return the row stored on the label cell of *index*'s row."""
+    return cast(WorkspaceBrowserRow, index.sibling(index.row(), TREE_LABEL_COLUMN).data(TREE_ROW_ROLE))
+
+
+class _RowDelegate(QStyledItemDelegate):
+    """Draw a row's label with its muted detail beside it, and section rows as captions with a count."""
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex) -> QSize:  # noqa: N802
+        """Give every row, section rows included, the shared row height; the tree takes it from its first row."""
+        return QSize(super().sizeHint(option, index).width(), Height.ROW.px)
+
+    def paint(
+        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> None:
+        """Draw the row."""
+        row = _row_at(index)
+        if row.is_section:
+            self._paint_section(painter, option, row)
+            return
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        widget = opt.widget
+        style = widget.style()
+        detail = row.detail
+        # The style reports a text rect only as wide as the text; the label and detail share the cell after the icon.
+        text_left = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, opt, widget).left()
+        text_rect = QRect(text_left, opt.rect.top(), opt.rect.right() - text_left - Space.XS, opt.rect.height())
+        detail_metrics = QFontMetrics(TextRole.SMALL.font())
+        # The detail takes the room the label leaves, and at least half the row when both do not fit.
+        label_width = opt.fontMetrics.horizontalAdvance(opt.text)
+        room = max(text_rect.width() - label_width - Space.M, text_rect.width() // 2)
+        detail_advance = detail_metrics.horizontalAdvance(detail)
+        detail_width = min(detail_advance, room) if detail else 0
+        if detail:
+            label_room = max(0, text_rect.width() - detail_width - Space.M)
+            # Qt also elides text exactly as wide as the room, so elide only text that does not fit.
+            if label_width > label_room:
+                opt.text = opt.fontMetrics.elidedText(opt.text, Qt.TextElideMode.ElideMiddle, label_room)
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+        if not detail:
+            return
+        painter.save()
+        color = opt.palette.color(QPalette.ColorRole.PlaceholderText)
+        if not row.is_considered or row.unavailable_reason is not None:
+            color.setAlphaF(0.6)
+        painter.setPen(color)
+        painter.setFont(TextRole.SMALL.font())
+        detail_rect = QRect(text_rect.right() - detail_width + 1, text_rect.top(), detail_width, text_rect.height())
+        painter.drawText(
+            detail_rect,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            detail
+            if detail_advance <= detail_width
+            else detail_metrics.elidedText(detail, Qt.TextElideMode.ElideMiddle, detail_width),
+        )
+        painter.restore()
+
+    def _paint_section(self, painter: QPainter, option: QStyleOptionViewItem, row: WorkspaceBrowserRow) -> None:
+        """Draw a section caption: its kind's color mark, the title, the count, and a rule to the right edge."""
+        rect = option.rect.adjusted(Space.S, 0, -Space.S, 0)
+        palette = option.palette
+        center_y = rect.center().y()
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        mark = QRectF(rect.left(), center_y - _SECTION_MARK_PX / 2 + 1, _SECTION_MARK_PX, _SECTION_MARK_PX)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(_KIND_MARKS[row.icon_kind].color(palette))
+        painter.drawRoundedRect(mark, Radius.CONTROL / 2, Radius.CONTROL / 2)
+        font = TextRole.CAPTION.font()
+        metrics = QFontMetrics(font)
+        painter.setFont(font)
+        painter.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
+        text = f"{row.label}  {row.summary}"
+        text_left = rect.left() + _SECTION_MARK_PX + Space.S
+        painter.drawText(
+            QRect(text_left, rect.top(), rect.width(), rect.height()),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            text,
+        )
+        rule_left = text_left + metrics.horizontalAdvance(text) + Space.S
+        if rule_left < rect.right():
+            rule = QColor(palette.color(QPalette.ColorRole.Text))
+            rule.setAlphaF(0.12)
+            painter.setPen(rule)
+            painter.drawLine(rule_left, center_y + 1, rect.right(), center_y + 1)
+        painter.restore()
+
+
+class _BrowserTree(QTreeWidget):
+    """The content tree; a row open in a viewer gets an accent edge along the left side."""
+
+    def drawRow(  # noqa: N802
+        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> None:
+        """Draw the row, then its open edge."""
+        super().drawRow(painter, option, index)
+        if _row_at(index).is_open:
+            rect = option.rect
+            edge = QRect(0, rect.top() + Space.XS, _OPEN_EDGE_PX, rect.height() - 2 * Space.XS)
+            # The application palette has the accent; this tree's stylesheet-resolved palette does not.
+            painter.fillRect(edge, QGuiApplication.palette().color(QPalette.ColorRole.Highlight))
 
 
 class _ConsiderationToggle(QToolButton):
@@ -124,7 +253,7 @@ class ContentBrowserWidget(QWidget):
         toolbar.addWidget(self._show_excluded_toggle)
         layout.addLayout(toolbar)
 
-        self._tree = QTreeWidget()
+        self._tree = _BrowserTree()
         self._configure_tree()
         layout.addWidget(self._tree)
 
@@ -145,10 +274,13 @@ class ContentBrowserWidget(QWidget):
             self._tree.addTopLevelItem(item)
             self._install_tree_widgets(item)
             self._refresh_visual_state(item)
-        self._apply_open_indicators()
+        self._reveal_open_rows_and_describe()
         for item in self._tree_items():
             row = self._row_data(item)
-            if row.row_id in expansion:
+            if row.is_section:
+                item.setFirstColumnSpanned(True)
+                item.setExpanded(True)
+            elif row.row_id in expansion:
                 was_expanded, was_open = expansion[row.row_id]
                 if was_open or not row.is_open:
                     item.setExpanded(was_expanded)
@@ -184,12 +316,22 @@ class ContentBrowserWidget(QWidget):
         self._tree.setFrameShape(QFrame.Shape.NoFrame)
         self._tree.setIndentation(TREE_INDENTATION_PX)
         self._tree.setUniformRowHeights(True)
+        # Section rows sit undecorated at the root, so the rows under them indent as top-level rows used to. They
+        # cannot be collapsed: nothing would show that one was.
+        self._tree.setRootIsDecorated(False)
+        self._tree.itemCollapsed.connect(self._keep_section_expanded)
+        self._tree.setItemDelegateForColumn(TREE_LABEL_COLUMN, _RowDelegate(self._tree))
         self._tree.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         header = self._tree.header()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(TREE_LABEL_COLUMN, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(TREE_CONSIDERATION_COLUMN, QHeaderView.ResizeMode.Fixed)
         self._tree.setColumnWidth(TREE_CONSIDERATION_COLUMN, TREE_CONSIDERATION_COLUMN_WIDTH_PX)
+
+    def _keep_section_expanded(self, item: QTreeWidgetItem) -> None:
+        """Expand a section row again when the keyboard collapses it."""
+        if self._row_data(item).is_section:
+            item.setExpanded(True)
 
     def _create_show_excluded_toggle(self) -> QToolButton:
         """Create the global toggle for showing or hiding excluded items."""
@@ -268,7 +410,7 @@ class ContentBrowserWidget(QWidget):
 
     def _item_matches_search(self, item: QTreeWidgetItem) -> bool:
         """Return whether the tree item label matches the active search query."""
-        return not self._search_query or self._search_query in self._row_data(item).display_text.casefold()
+        return not self._search_query or self._search_query in self._row_data(item).search_text.casefold()
 
     def _apply_appearance(self) -> None:
         """Recolor row text from the current palette."""
@@ -279,9 +421,15 @@ class ContentBrowserWidget(QWidget):
 
     def _create_tree_item(self, row: WorkspaceBrowserRow) -> QTreeWidgetItem:
         """Create a tree item for one explicit browser row."""
-        item = QTreeWidgetItem([row.display_text, ""])
+        item = QTreeWidgetItem([row.label, ""])
         item.setData(TREE_LABEL_COLUMN, TREE_ROW_ROLE, row)
-        item.setIcon(TREE_LABEL_COLUMN, _KIND_ICONS[row.icon_kind].icon())
+        # The detail is painted beside the label; screen readers get it from here.
+        detail = row.summary if row.is_section else row.detail
+        item.setData(
+            TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole, f"{row.label}, {detail}" if detail else row.label
+        )
+        if row.is_section:
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         for child_row in row.children:
             item.addChild(self._create_tree_item(child_row))
         return item
@@ -327,6 +475,9 @@ class ContentBrowserWidget(QWidget):
         if not row.is_considered or row.unavailable_reason is not None:
             color.setAlphaF(0.5)
         brush = QBrush(color)
+        if not row.is_section:
+            mark = _KIND_MARKS[row.icon_kind]
+            item.setIcon(TREE_LABEL_COLUMN, mark.icon.icon(mark.color(palette)))
         item.setForeground(TREE_LABEL_COLUMN, brush)
         for column in range(1, self._tree.columnCount()):
             item.setForeground(column, brush)
@@ -361,22 +512,20 @@ class ContentBrowserWidget(QWidget):
                 current.setExpanded(True)
             current = current.parent()
 
-    def _apply_open_indicators(self) -> None:
+    def _reveal_open_rows_and_describe(self) -> None:
         """Apply open-item indicators to all visible tree rows."""
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
             if item is not None:
-                self._refresh_open_indicator(item)
+                self._reveal_open_and_describe(item)
 
-    def _refresh_open_indicator(self, item: QTreeWidgetItem) -> None:
-        """Style one row as open or closed, then recurse into children."""
-        is_open = self._row_data(item).is_open
-        for column in range(self._tree.columnCount()):
-            font = item.font(column)
-            font.setBold(is_open)
-            item.setFont(column, font)
-
-        item.setToolTip(TREE_LABEL_COLUMN, self._row_data(item).tooltip)
+    def _reveal_open_and_describe(self, item: QTreeWidgetItem) -> None:
+        """Expand the path to an open row and give each row its hover text, then recurse into children."""
+        row = self._row_data(item)
+        is_open = row.is_open
+        if not row.is_section:
+            lines = "".join(f"<br>{escape(line)}" for line in row.tooltip.splitlines())
+            item.setToolTip(TREE_LABEL_COLUMN, f"<b>{escape(row.label)}</b>{lines}")
 
         if is_open:
             if item.childCount() > 0:
@@ -389,7 +538,7 @@ class ContentBrowserWidget(QWidget):
         for i in range(item.childCount()):
             child = item.child(i)
             if child is not None:
-                self._refresh_open_indicator(child)
+                self._reveal_open_and_describe(child)
 
     def _show_context_menu(self, position: QPoint) -> None:
         """Show a context menu for the item under the cursor."""

@@ -302,8 +302,9 @@ class LiveVideoContent:
 
     @property
     def source_location(self) -> str:
-        """Return the device and camera head, shown to tell same-named streams apart."""
-        return f"{self.source_spec.host}/camera head {self.source_spec.camera_head}"
+        """Return the device, and the camera head when it is not the first; the browser shows it beside the name."""
+        head = self.source_spec.camera_head
+        return self.source_spec.host if head == 1 else f"{self.source_spec.host} · head {head}"
 
     @property
     def overlay_spec(self) -> LiveOverlaySourceSpec | None:

@@ -26,7 +26,15 @@ from typing import cast
 
 import pytest
 from PySide6.QtCore import QSize, QTimer
-from PySide6.QtWidgets import QApplication, QDialog, QTabWidget, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QMessageBox,
+    QTabWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
+    QWidget,
+)
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
@@ -44,7 +52,15 @@ from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
-from ax_devil.modules.workspace.core import OverlayFile, VideoItem, new_item_id
+from ax_devil.modules.workspace.core import (
+    LiveStreamItem,
+    OverlayFile,
+    PlaylistItem,
+    VideoItem,
+    new_item_id,
+)
+from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
+from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 
@@ -278,6 +294,53 @@ def test_screenshots(
             window.resize(*size)
             qtbot.wait(500)
             window.grab().save(str(OUT / f"{theme}-{text_size.value}-two-lanes-{size_name}.png"))
+
+    # Live streams, videos, a playlist, and a missing video together. Adding opens the first live stream; its
+    # documentation-only address (RFC 5737) never reaches a device.
+    mixed_dir = tmp_path / "night-shift"
+    videos_dir = mixed_dir / "videos"
+    overlays_dir = mixed_dir / "overlays"
+    videos_dir.mkdir(parents=True)
+    overlays_dir.mkdir()
+    for index in range(1, 6):
+        shutil.copyfile(clip_path, videos_dir / f"run_{index:02d}.mp4")
+        _write_tracks(overlays_dir / f"run_{index:02d}.xml")
+    # The missing video makes adding report a modal warning, which would wait forever offscreen.
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_args: None)
+    session.add_items(
+        [
+            LiveStreamItem(host="192.0.2.10", label="Entrance"),
+            LiveStreamItem(host="192.0.2.11", camera_head=2, label="Parking north"),
+            PlaylistItem(
+                resolver="folder_pair",
+                settings={"videos_dir": str(videos_dir), "overlays_dir": str(overlays_dir), "handler_type": ONVIF_XML},
+                label="Night shift",
+            ),
+            VideoItem(video=tmp_path / "gate.mp4"),
+        ]
+    )
+
+    def tree_items() -> list[QTreeWidgetItem]:
+        """Return every row of the content browser, depth first."""
+        iterator = QTreeWidgetItemIterator(session._content_browser._tree)
+        items = []
+        while (item := iterator.value()) is not None:
+            items.append(item)
+            iterator += 1
+        return items
+
+    def row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
+        """Return the row an item shows."""
+        return cast(WorkspaceBrowserRow, item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE))
+
+    qtbot.waitUntil(lambda: all(row_of(item).icon_kind != "pending" for item in tree_items()), timeout=10000)
+    for item in tree_items():
+        item.setExpanded(item.isExpanded() or row_of(item).label == "Night shift")
+    for text_size in TEXT_SIZES:
+        settings.text_size = text_size
+        window.resize(*WINDOW_SIZES["wide"])
+        qtbot.wait(500)
+        window.grab().save(str(OUT / f"{theme}-{text_size.value}-mixed-workspace.png"))
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

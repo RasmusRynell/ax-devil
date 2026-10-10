@@ -44,10 +44,15 @@ from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, content_item, inline_resolver
 
 
-def _required_top_item(workspace_session: WorkspaceSession, index: int = 0) -> QTreeWidgetItem:
-    item: QTreeWidgetItem | None = workspace_session._content_browser._tree.topLevelItem(index)
-    assert item is not None
-    return item
+def _item_rows(workspace_session: WorkspaceSession) -> list[QTreeWidgetItem]:
+    """Return the tree items of the workspace's items, in section order, skipping the section headings."""
+    tree = workspace_session._content_browser._tree
+    sections = [tree.topLevelItem(index) for index in range(tree.topLevelItemCount())]
+    return [section.child(index) for section in sections if section for index in range(section.childCount())]
+
+
+def _required_item_row(workspace_session: WorkspaceSession, index: int = 0) -> QTreeWidgetItem:
+    return _item_rows(workspace_session)[index]
 
 
 def _is_open(item: QTreeWidgetItem) -> bool:
@@ -193,11 +198,11 @@ def test_removing_one_content_of_an_item_removes_the_whole_item(
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         session.add_items([PlaylistItem(label="Runs", resolver="runs"), kept])
-        assert session._content_browser._tree.topLevelItemCount() == 3
+        assert len(_item_rows(session)) == 3
         session._content_browser.item_remove_requested.emit(_store(session).contents()[1].item_id)
 
     assert _store(session).workspace.items == (kept,)
-    assert session._content_browser._tree.topLevelItemCount() == 1
+    assert len(_item_rows(session)) == 1
 
 
 def test_removing_a_video_item_leaves_a_playlist_of_the_same_video_open(
@@ -261,7 +266,7 @@ def test_adding_content_auto_opens_viewers(
     viewer = workspace_session._center_area.get_focused_widget()
     assert isinstance(viewer, DummyViewer)
     assert viewer.consideration_query is _store(workspace_session)
-    assert _is_open(_required_top_item(workspace_session))
+    assert _is_open(_required_item_row(workspace_session))
 
 
 def test_adding_a_video_item_opens_an_offline_viewer(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
@@ -275,8 +280,8 @@ def test_adding_a_video_item_opens_an_offline_viewer(workspace_session: Workspac
 
         assert isinstance(viewer, DummyViewer)
     assert workspace_session._center_area.get_widget_count() == 1
-    assert workspace_session._content_browser._tree.topLevelItemCount() == 1
-    assert _is_open(_required_top_item(workspace_session))
+    assert len(_item_rows(workspace_session)) == 1
+    assert _is_open(_required_item_row(workspace_session))
 
 
 def test_dropped_video_and_overlay_open_with_matching_handler(
@@ -352,8 +357,8 @@ def test_adding_a_live_stream_item_opens_a_live_viewer(workspace_session: Worksp
 
         assert isinstance(viewer, DummyViewer)
     assert workspace_session._center_area.get_widget_count() == 1
-    assert workspace_session._content_browser._tree.topLevelItemCount() == 1
-    assert _is_open(_required_top_item(workspace_session))
+    assert len(_item_rows(workspace_session)) == 1
+    assert _is_open(_required_item_row(workspace_session))
 
 
 @pytest.mark.parametrize("kind", ["video", "live_stream"])
@@ -377,8 +382,8 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
     [(parent, title, message)] = [call.args for call in warning.call_args_list]
     assert (parent, title) == (workspace_session.widget(), "Open Content")
     assert message.startswith("Clip: ")
-    assert workspace_session._content_browser._tree.topLevelItemCount() == 1
-    row = cast(WorkspaceBrowserRow, _required_top_item(workspace_session).data(TREE_LABEL_COLUMN, TREE_ROW_ROLE))
+    assert len(_item_rows(workspace_session)) == 1
+    row = cast(WorkspaceBrowserRow, _required_item_row(workspace_session).data(TREE_LABEL_COLUMN, TREE_ROW_ROLE))
     assert (row.label, row.unavailable_reason) == ("Clip", message.removeprefix("Clip: "))
 
 
@@ -391,7 +396,7 @@ def test_adding_live_content_auto_opens_live_viewer(
         workspace_session.add_items([content_item(content)])
 
     assert workspace_session._center_area.get_widget_count() == 1
-    assert _is_open(_required_top_item(workspace_session))
+    assert _is_open(_required_item_row(workspace_session))
 
 
 def test_adding_playlist_auto_expands_and_marks_open_entry(
@@ -402,7 +407,7 @@ def test_adding_playlist_auto_expands_and_marks_open_entry(
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         workspace_session.add_items([content_item(playlist)])
 
-    top_item = _required_top_item(workspace_session)
+    top_item = _required_item_row(workspace_session)
     assert top_item.isExpanded()
     assert _is_open(_required_child(top_item, 0))
 
@@ -416,14 +421,14 @@ def test_viewer_current_item_change_updates_browser_open_indicator(
         workspace_session.add_items([content_item(playlist)])
 
     viewer = cast(DummyViewer, workspace_session._center_area.get_focused_widget())
-    top_item = _required_top_item(workspace_session)
+    top_item = _required_item_row(workspace_session)
     assert _is_open(_required_child(top_item, 0))
     assert not _is_open(_required_child(top_item, 1))
 
     viewer.start_index = 1
     viewer.on_screen_item_changed.emit(viewer.current_on_screen_item())
 
-    top_item = _required_top_item(workspace_session)
+    top_item = _required_item_row(workspace_session)
     assert not _is_open(_required_child(top_item, 0))
     assert _is_open(_required_child(top_item, 1))
 
@@ -442,13 +447,13 @@ def test_focusing_open_viewer_preserves_open_indicators(
 
         workspace_session.add_items([content_item(second)])
 
-    assert _is_open(_required_top_item(workspace_session, 0))
-    assert _is_open(_required_top_item(workspace_session, 1))
+    assert _is_open(_required_item_row(workspace_session, 0))
+    assert _is_open(_required_item_row(workspace_session, 1))
 
     workspace_session._center_area._set_focused_widget(first_widget)
 
-    assert _is_open(_required_top_item(workspace_session, 0))
-    assert _is_open(_required_top_item(workspace_session, 1))
+    assert _is_open(_required_item_row(workspace_session, 0))
+    assert _is_open(_required_item_row(workspace_session, 1))
 
 
 def test_open_content_failure_shows_error_and_keeps_existing_viewer(
@@ -496,7 +501,7 @@ def test_deferred_open_failure_restores_existing_viewer(
     assert workspace_session._center_area.get_widget_count() == 1
     assert workspace_session._center_area.get_focused_widget() is existing_widget
     assert not existing_widget.cleaned_up
-    assert _is_open(_required_top_item(workspace_session, 0))
+    assert _is_open(_required_item_row(workspace_session, 0))
     warning.assert_called_once_with(workspace_session.widget(), "Open Content", "Failed to load local media: boom")
 
 
@@ -655,7 +660,7 @@ def test_restored_workspace_lists_its_items_and_opens_no_viewer(
     restored.lifecycle.launch()
 
     assert _store(restored).workspace.items == (clip,)
-    assert restored._content_browser._tree.topLevelItemCount() == 1
+    assert len(_item_rows(restored)) == 1
     assert restored._center_area.get_widget_count() == 0
 
 
@@ -684,13 +689,13 @@ def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: Wor
     browser.item_rename_requested.emit(clip.id, "North gate")
 
     assert viewer._title_label.text() == "North gate"
-    assert _required_top_item(workspace_session).text(0) == "North gate"
+    assert _required_item_row(workspace_session).text(0) == "North gate"
     assert _store(workspace_session).is_modified
 
     browser.item_rename_requested.emit(clip.id, "")
 
     assert viewer._title_label.text() == "lot.mp4"
-    assert _required_top_item(workspace_session).text(0) == "lot.mp4"
+    assert _required_item_row(workspace_session).text(0) == "lot.mp4"
 
 
 def test_kept_workspace_goes_to_the_storage_folder_saved_after_launch(
