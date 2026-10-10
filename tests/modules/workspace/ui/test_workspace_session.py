@@ -25,7 +25,9 @@ from ax_devil.modules.workspace.core import (
     PlaylistSettings,
     SeekableVideoContent,
     VideoItem,
+    Workspace,
     WorkspaceItem,
+    save_workspace,
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
@@ -125,6 +127,36 @@ def test_removing_content_in_the_sidebar_closes_every_viewer_of_its_item(
 class _TwoPlaylists:
     def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
         return [_make_playlist("train"), _make_playlist("test")]
+
+
+class _NamedPlaylist:
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        return [_make_playlist(str(settings["name"]))]
+
+
+def test_replacing_the_workspace_closes_viewers_even_when_an_item_id_is_kept(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    session = WorkspaceSession(
+        render_catalog_manager=render_catalog_manager,
+        context=FakeResolutionContext(resolvers={"named": _NamedPlaylist()}),
+        recent_videos=RecentVideos(tmp_path / "recent-videos.json"),
+    )
+    qtbot.addWidget(session.widget())
+    replacement = tmp_path / "replacement.ax-devil.workspace"
+    save_workspace(
+        Workspace(items=(PlaylistItem(id="runs", label="New runs", resolver="named", settings={"name": "new"}),)),
+        replacement,
+    )
+
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([PlaylistItem(id="runs", label="Runs", resolver="named", settings={"name": "old"})])
+        assert session._center_area.get_widget_count() == 1
+
+        _store(session).open_workspace(replacement)
+
+    assert session._center_area.get_widget_count() == 0
+    assert [content.display_name for content in _store(session).contents()] == ["New runs"]
 
 
 def test_removing_one_content_of_an_item_removes_the_whole_item(

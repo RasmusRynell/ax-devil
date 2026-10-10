@@ -99,7 +99,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   reports when the modified flag, name, or path changed; a failed `open_workspace` changes nothing.
 - Consideration refs identify current Workspace content, playlist entries, or lanes; orphan and out-of-range refs are
   ignored.
-- Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content.
+- Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content. Opening a Workspace file closes every viewer widget, even when item ids are kept.
   `SplitView` exclusively owns hosted widget removal and deletion; callers use its removal API.
 
 ## UI Lifecycle

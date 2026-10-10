@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import tempfile
 from dataclasses import replace
 from pathlib import Path
@@ -60,6 +62,8 @@ def save_workspace(workspace: Workspace, path: Path) -> Workspace:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as file:
             temporary = Path(file.name)
             file.write(f"{json.dumps(document, indent=2)}\n")
+        if path.exists():
+            os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
         temporary.replace(path)
     except (OSError, TypeError, ValueError) as exc:
         raise WorkspaceFileError(f"Could not save {path.name}: {exc}") from exc

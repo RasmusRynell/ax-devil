@@ -140,9 +140,11 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
   loading raise one `WorkspaceFileError` with a user-facing message, as does a repeated item id.
 - `workspace/core/file_format.py` has `load_workspace(path)` and `save_workspace(workspace, path)`; both return the
   Workspace with `path` set. Saving writes a temporary file in the same folder and replaces the target, with two-space
-  indentation and a trailing newline. Item kinds own their JSON, so the file format never branches on kind.
+  indentation and a trailing newline. The temporary file takes the target's permission bits when the target exists;
+  a new file is private to its owner (0600 on POSIX). Item kinds own their JSON, so the file format never branches on kind.
 - Paths a Video Item holds are written relative to the workspace file's folder (with `/` separators) when they are
-  inside it, absolute otherwise; relative paths are read against that folder.
+  inside it, absolute otherwise; relative paths are read against that folder. Both sides are normalized lexically
+  first (`..` collapses, symlinks are not resolved), so an escaping `..` segment makes a path absolute.
 - Playlist settings are opaque to the core: they are written and read exactly as given, with no path rewriting. A
   resolver that wants portable settings stores them relative itself.
 - A Live Stream Item writes every field. Credentials and hosts are written as stored: a `$VARIABLE` reference stays a

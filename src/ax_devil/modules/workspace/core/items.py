@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -41,10 +42,14 @@ def _read_optional_str(data: Mapping[str, Any], key: str) -> str | None:
 
 
 def _path_to_json(path: Path, base_dir: Path) -> str:
-    """Return *path* relative to *base_dir* with POSIX separators when inside it, absolute otherwise."""
-    absolute = path.absolute()
+    """Return *path* relative to *base_dir* with POSIX separators when inside it, absolute otherwise.
+
+    Both are normalized lexically first, so ``..`` segments cannot escape the folder; symlinks are not resolved.
+    """
+    absolute = Path(os.path.normpath(path.absolute()))
+    folder = Path(os.path.normpath(base_dir.absolute()))
     try:
-        return absolute.relative_to(base_dir).as_posix()
+        return absolute.relative_to(folder).as_posix()
     except ValueError:
         return str(absolute)
 

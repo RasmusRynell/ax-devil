@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import stat
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -97,6 +99,19 @@ def test_paths_inside_the_workspace_folder_are_relative_and_others_absolute(tmp_
     assert load_workspace(path).items == (item,)
 
 
+def test_dot_dot_segments_are_normalized_before_checking_the_folder(tmp_path: Path) -> None:
+    folder = tmp_path / "ws"
+    path = folder / "w.ax-devil.workspace"
+    inside = VideoItem(label="Inside", video=folder / "clips" / ".." / "lot.mp4")
+    outside = VideoItem(label="Outside", video=folder / ".." / "lot.mp4")
+
+    save_workspace(Workspace(items=(inside, outside)), path)
+
+    inside_json, outside_json = _written(path)["items"]
+    assert inside_json["video"] == "lot.mp4"
+    assert outside_json["video"] == str(tmp_path / "lot.mp4")
+
+
 def test_relative_paths_are_read_against_the_files_folder_wherever_it_moved(tmp_path: Path) -> None:
     path = _write(
         tmp_path / "w.ax-devil.workspace",
@@ -140,6 +155,27 @@ def test_a_failed_save_keeps_the_old_file_and_leaves_no_temporary_file(tmp_path:
 
     assert path.read_text(encoding="utf-8") == before
     assert list(tmp_path.iterdir()) == [path]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="permission bits are POSIX")
+def test_saving_over_an_existing_file_keeps_its_permissions(tmp_path: Path) -> None:
+    path = tmp_path / "w.ax-devil.workspace"
+    save_workspace(Workspace(items=(PlaylistItem(label="Old", resolver="r"),)), path)
+    path.chmod(0o664)
+
+    save_workspace(Workspace(items=(PlaylistItem(label="New", resolver="r"),)), path)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o664
+    assert load_workspace(path).items[0].label == "New"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="permission bits are POSIX")
+def test_a_new_workspace_file_is_private_to_its_owner(tmp_path: Path) -> None:
+    path = tmp_path / "w.ax-devil.workspace"
+
+    save_workspace(Workspace(items=(PlaylistItem(label="New", resolver="r"),)), path)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 @pytest.mark.parametrize(
