@@ -334,11 +334,16 @@ class AddLiveStreamDialog(BaseDialog):
             choice.loader.load()
 
     def _current_device_connection(self) -> tuple[str, str, str, str]:
+        """Return the device connection discovery uses; ``$VARIABLE`` references are expanded for the request only."""
         device_defaults = self._defaults["device"]
         return (
-            self._text_or_default(self._host_edit, device_defaults.get("host", "")),
-            self._text_or_default(self._username_edit, device_defaults.get("username", "")),
-            self._text_or_default(self._password_edit, device_defaults.get("password", "")),
+            expand_environment_reference(self._text_or_default(self._host_edit, device_defaults.get("host", ""))),
+            expand_environment_reference(
+                self._text_or_default(self._username_edit, device_defaults.get("username", ""))
+            ),
+            expand_environment_reference(
+                self._text_or_default(self._password_edit, device_defaults.get("password", ""))
+            ),
             self._mqtt_device_protocol_combo.currentText(),
         )
 

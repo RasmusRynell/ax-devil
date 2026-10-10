@@ -58,7 +58,7 @@ class ExamplePlugin(DecoderPlugin):
     @classmethod
     def required_api_version(cls) -> int:
         """Declare the plugin API this implementation supports."""
-        return 1
+        return 2
 
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
@@ -101,7 +101,9 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   Include `"ax-devil"` with any required version constraints. The installer supplies the editable app checkout
   in development, or pins the exact base app release for standalone installations. Plugins cannot upgrade the app.
 - Declare supported Python versions honestly. The installation uses the Python version running ax-devil.
-- Point an entry point at your plugin class or `PLUGIN_CLASS`. Declare `required_api_version()` explicitly.
+- Point an entry point at your plugin class or `PLUGIN_CLASS`. Declare `required_api_version()` explicitly. The host's
+  version is `PLUGIN_API_VERSION` in `ax_devil.modules.plugin_system.base` (currently 2). A plugin built for an
+  earlier version is rejected at load; there is no compatibility path, so rebuild it against the current version.
 - Decoder plugins must declare `scene_model_version()` as `(major, minor)`. ax-devil exposes its own as
   `ax_devil.modules.scene.model.SCENE_MODEL_VERSION`. A plugin loads when the major matches and its minor is not
   newer. ax-devil bumps the major when Scene fields are removed, renamed, or change meaning, and the minor when fields

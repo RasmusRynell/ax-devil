@@ -166,3 +166,43 @@ def test_unknown_and_out_of_range_refs_are_ignored() -> None:
         store.set_item_considered(ref, False)
         assert store.is_item_considered(ref)
     assert changes == []
+
+
+class _CountingResolver:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        self.calls += 1
+        return [make_playlist("train"), make_playlist("test")]
+
+
+def test_renaming_an_item_names_its_content_again_without_running_its_resolver() -> None:
+    resolver = _CountingResolver()
+    store = WorkspaceStore(FakeResolutionContext(resolvers={"runs": resolver}))
+    runs = PlaylistItem(label="Runs", resolver="runs")
+    store.add_items([runs])
+    before = [content.content_id for content in store.contents()]
+
+    store.rename_item(runs.id, "Exp 3")
+    store.rename_item(runs.id, "Exp 4")
+
+    assert resolver.calls == 1
+    assert [content.content_id for content in store.contents()] == before
+    assert [content.display_name for content in store.contents()] == ["Exp 4 / train", "Exp 4 / test"]
+
+
+def test_renaming_an_unresolved_item_only_relabels_it() -> None:
+    store = _store()
+    broken = PlaylistItem(label="Exp 3", resolver="missing")
+    store.add_items([broken])
+    error = store.resolution(broken.id).error
+    renamed: list[WorkspaceItem] = []
+    store.item_renamed.connect(renamed.append)
+
+    store.rename_item(broken.id, "Exp 4")
+
+    assert [item.label for item in renamed] == ["Exp 4"]
+    assert store.workspace.items[0].label == "Exp 4"
+    assert store.resolution(broken.id).error is error
+    assert store.contents() == ()

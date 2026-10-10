@@ -47,7 +47,7 @@ class ExampleFamilyPlugin(PluginBase):
 
     @classmethod
     def required_api_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
     def plugin_type(cls) -> str:
@@ -67,7 +67,7 @@ class WrongTypePlugin(DecoderPlugin):
 
     @classmethod
     def required_api_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
     def plugin_type(cls) -> str:
@@ -104,7 +104,7 @@ def test_application_loader_loads_installed_entry_point(monkeypatch: pytest.Monk
     class ExamplePlugin(DecoderPlugin):
         @classmethod
         def required_api_version(cls) -> int:
-            return 1
+            return 2
 
         @classmethod
         def scene_model_version(cls) -> tuple[int, int]:
@@ -281,7 +281,7 @@ def test_decoder_plugin_rejects_incompatible_scene_model(
     class ScenePlugin(DecoderPlugin):
         @classmethod
         def required_api_version(cls) -> int:
-            return 1
+            return 2
 
         @classmethod
         def scene_model_version(cls) -> tuple[int, int] | None:
@@ -380,7 +380,36 @@ def test_application_loader_rejects_incompatible_plugin_api(tmp_path: Path) -> N
 
     record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "incompatible-plugin")
     assert record.status.value == "failed"
-    assert record.error == "requires plugin API 999, host provides 1"
+    assert record.error == "requires plugin API 999, host provides 2"
+
+
+def test_application_loader_rejects_plugin_built_for_previous_api(tmp_path: Path) -> None:
+    """A plugin written for API 1 must fail the version check now that the resolver contract has changed."""
+
+    class PreviousApiPlugin(DecoderPlugin):
+        @classmethod
+        def required_api_version(cls) -> int:
+            return 1
+
+        @classmethod
+        def plugin_id(cls) -> str:
+            return "previous-api-plugin"
+
+        @classmethod
+        def display_name(cls) -> str:
+            return "Previous API Plugin"
+
+    ApplicationPluginLoader._register_plugin_class(
+        DECODER_FAMILY,
+        PreviousApiPlugin,
+        tmp_path,
+        "package:previous-api",
+        plugin_id_hint="previous-api-plugin",
+    )
+
+    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "previous-api-plugin")
+    assert record.status.value == "failed"
+    assert record.error == "requires plugin API 1, host provides 2"
 
 
 def test_valid_plugin_replaces_failed_same_id(tmp_path: Path) -> None:
@@ -389,7 +418,7 @@ def test_valid_plugin_replaces_failed_same_id(tmp_path: Path) -> None:
     class ValidPlugin(DecoderPlugin):
         @classmethod
         def required_api_version(cls) -> int:
-            return 1
+            return 2
 
         @classmethod
         def scene_model_version(cls) -> tuple[int, int]:
@@ -431,7 +460,7 @@ def test_duplicate_plugin_id_does_not_replace_loaded_plugin(tmp_path: Path, capl
     class FirstPlugin(DecoderPlugin):
         @classmethod
         def required_api_version(cls) -> int:
-            return 1
+            return 2
 
         @classmethod
         def scene_model_version(cls) -> tuple[int, int]:
@@ -492,7 +521,7 @@ def test_resolver_without_headless_resolve_fails_to_load_and_says_why(tmp_path: 
     class WidgetOnlyResolver(PlaylistResolverPlugin):
         @classmethod
         def required_api_version(cls) -> int:
-            return 1
+            return 2
 
         @classmethod
         def plugin_id(cls) -> str:

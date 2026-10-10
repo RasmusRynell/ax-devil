@@ -88,8 +88,10 @@ items. Edits — add items, remove or rename an item by id — produce a new val
 `current != saved` — no dirty flag to keep in sync. Items may hold settings mappings, so workspaces are compared, never
 hashed. Until saving exists, the saved Workspace is the empty one the store starts with.
 
-The store resolves items as they are added or renamed and keeps each result: the Content, or the error. An item that
-fails to resolve stays in the Workspace and the user is told why; showing it in the sidebar is step 4. The Add Live
+The store resolves an item when it is added and keeps the result: the Content, or the error. Renaming only relabels:
+the item's kept Content is named again from the new label (`WorkspaceItem.name_contents`), with the same content ids
+and exclusions, and no resolver runs. An item that fails to resolve stays in the Workspace and the user is told why;
+showing it in the sidebar is step 4. The Add Live
 Stream and Add Playlist dialogs resolve their item before accepting, so their errors keep the dialog open instead.
 
 Exclusions — playlist entries and lanes the user hid from playback with the eye toggle — are session state, like the

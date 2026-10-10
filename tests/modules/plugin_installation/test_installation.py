@@ -531,7 +531,7 @@ def test_documented_plugin_missing_dependency(discoverable_plugin: Path) -> None
 def test_documented_plugin_incompatible_api(discoverable_plugin: Path) -> None:
     """Reject an installed entry point requiring an incompatible host API."""
     source = discoverable_plugin / "example_plugin.py"
-    source.write_text(source.read_text().replace("return 1\n", "return 999\n"))
+    source.write_text(source.read_text().replace("return 2\n", "return 999\n"))
     result = _decode_documented_plugin(sys.executable)
     assert result.returncode == 1, result.stderr
     assert "requires plugin API 999" in result.stderr

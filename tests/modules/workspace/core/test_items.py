@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -207,3 +208,18 @@ def test_playlist_item_that_cannot_resolve_fails_with_a_reason(resolvers: dict[s
 
     with pytest.raises(ItemResolutionError, match=message):
         item.resolve(FakeResolutionContext(resolvers=resolvers))
+
+
+def test_playlist_item_keeps_its_own_copy_of_the_settings_from_the_caller_and_the_resolver() -> None:
+    class _MutatingResolver:
+        def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+            cast(dict[str, Any], settings)["root"] = "/changed/by/plugin"
+            return [_playlist("MOT")]
+
+    caller_settings: dict[str, Any] = {"root": "/runs/exp3"}
+    item = PlaylistItem(label="Exp 3", resolver="mot", settings=caller_settings)
+    caller_settings["root"] = "/changed/by/caller"
+
+    item.resolve(FakeResolutionContext(resolvers={"mot": _MutatingResolver()}))
+
+    assert item.settings == {"root": "/runs/exp3"}

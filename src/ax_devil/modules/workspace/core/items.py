@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import ClassVar, TypeVar
@@ -42,9 +43,14 @@ class WorkspaceItem(ABC):
         return replace(self, label=label)
 
     def resolve(self, context: ResolutionContext) -> tuple[Content, ...]:
-        """Rebuild this item's Content, or raise ``ItemResolutionError`` with a user-facing reason.
+        """Rebuild this item's Content named after its label, or raise ``ItemResolutionError`` with a reason."""
+        return self.name_contents(self.resolve_base(context))
+
+    def resolve_base(self, context: ResolutionContext) -> tuple[Content, ...]:
+        """Rebuild this item's Content before the label is applied, or raise ``ItemResolutionError``.
 
         Content ids derive from the item id and the Content's position, so they are the same on every resolution.
+        Renaming never calls this; it calls ``name_contents`` on the result that was kept.
         """
         try:
             contents = self._build_contents(context)
@@ -55,6 +61,10 @@ class WorkspaceItem(ABC):
         return tuple(
             replace(content, content_id=f"{self.id}/{index}", item_id=self.id) for index, content in enumerate(contents)
         )
+
+    def name_contents(self, base: Sequence[Content]) -> tuple[Content, ...]:
+        """Return *base* with display names taken from this item's label; the default names every Content by it."""
+        return tuple(replace(content, display_name=self.label) for content in base)
 
     @abstractmethod
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
@@ -158,19 +168,31 @@ class PlaylistItem(WorkspaceItem):
     resolver: str
     settings: PlaylistSettings = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Keep a private copy of the settings, so later changes to the caller's mapping never reach the item."""
+        object.__setattr__(self, "settings", deepcopy(self.settings))
+
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
-        """Run the resolver again; one playlist takes the item's label, several are prefixed with it."""
+        """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings."""
         try:
-            playlists = context.playlist_resolver(self.resolver).resolve(self.settings)
+            return context.playlist_resolver(self.resolver).resolve(deepcopy(self.settings))
         except ItemResolutionError:
             raise
         except Exception as exc:  # A plugin may fail in any way; the item stays, with the reason.
             raise ItemResolutionError(f"Playlist resolver '{self.resolver}' failed: {exc}") from exc
-        if len(playlists) == 1:
-            return (replace(playlists[0], display_name=self.label),)
+
+    def name_contents(self, base: Sequence[Content]) -> tuple[Content, ...]:
+        """Name each playlist with the shared rule: the label alone, or ``label / playlist`` when there are several."""
+        several = len(base) > 1
         return tuple(
-            replace(playlist, display_name=f"{self.label} / {playlist.display_name}") for playlist in playlists
+            replace(content, display_name=_playlist_display_name(self.label, content.display_name, several=several))
+            for content in base
         )
+
+
+def _playlist_display_name(label: str, playlist_name: str, *, several: bool) -> str:
+    """Return the display name of one playlist of a Playlist Item: the label alone, or ``label / playlist``."""
+    return f"{label} / {playlist_name}" if several else label
 
 
 ITEM_KINDS: dict[str, type[WorkspaceItem]] = {kind.kind: kind for kind in (VideoItem, LiveStreamItem, PlaylistItem)}

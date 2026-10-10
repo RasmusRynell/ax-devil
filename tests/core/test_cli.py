@@ -72,7 +72,7 @@ from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResol
 class ExternalGroupResolver(PlaylistResolverPlugin):
     @classmethod
     def required_api_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
     def plugin_id(cls) -> str:

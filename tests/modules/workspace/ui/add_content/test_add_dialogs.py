@@ -367,6 +367,48 @@ def test_add_live_stream_keeps_configured_references_for_fields_left_empty(
     assert result.label == "Live: $AX_DEVIL_TARGET_ADDR"
 
 
+def test_analytics_discovery_expands_typed_environment_references(
+    qtbot: QtBot, discovery: _Discovery, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discovery reaches the device with the expanded connection; the item keeps the references as typed."""
+    monkeypatch.setattr(
+        "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.default_resolution_context",
+        _dialog_context,
+    )
+    monkeypatch.setenv("AX_DEVIL_TEST_CAMERA_HOST", "camera.local")
+    monkeypatch.setenv("AX_DEVIL_TEST_CAMERA_USER", "root")
+    monkeypatch.setenv("AX_DEVIL_TEST_CAMERA_PASS", "secret")
+    requested: list[tuple[str, ...]] = []
+
+    def fake_list_keys(*args: str) -> tuple[str, ...]:
+        requested.append(args)
+        return ("analytics/source",)
+
+    monkeypatch.setattr(
+        "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.list_analytics_data_source_keys",
+        fake_list_keys,
+    )
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    dialog._host_edit.setText("$AX_DEVIL_TEST_CAMERA_HOST")
+    dialog._username_edit.setText("$AX_DEVIL_TEST_CAMERA_USER")
+    dialog._password_edit.setText("$AX_DEVIL_TEST_CAMERA_PASS")
+
+    _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
+    discovery.finish()
+    assert requested == [("camera.local", "root", "secret", "https")]
+
+    _set_overlay_mode(dialog, LiveOverlayMode.NONE)
+    dialog.accept()
+    result = dialog.get_result()
+    assert result is not None
+    assert (result.host, result.username, result.password) == (
+        "$AX_DEVIL_TEST_CAMERA_HOST",
+        "$AX_DEVIL_TEST_CAMERA_USER",
+        "$AX_DEVIL_TEST_CAMERA_PASS",
+    )
+
+
 def test_add_live_stream_requires_handler_when_overlay_mode_is_enabled(qtbot: QtBot) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)

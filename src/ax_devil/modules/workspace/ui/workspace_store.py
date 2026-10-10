@@ -26,6 +26,7 @@ class ItemResolution:
 
     contents: tuple[Content, ...] = ()
     error: ItemResolutionError | None = None
+    base: tuple[Content, ...] = ()  # Content before the label is applied; a rename names this, never resolves again.
 
 
 class WorkspaceStore(QObject):
@@ -80,13 +81,19 @@ class WorkspaceStore(QObject):
         self.item_removed.emit(item)
 
     def rename_item(self, item_id: str, label: str) -> None:
-        """Rename the item with *item_id* and resolve it again; its Content ids and exclusions stay."""
+        """Relabel the item with *item_id* and name its kept Content again; nothing is resolved.
+
+        Content ids, errors, and exclusions stay as they were.
+        """
         if not self._workspace.has_item(item_id):
             logger.warning(f"Attempted to rename an item not in the workspace: {item_id}")
             return
         self._workspace = self._workspace.rename_item(item_id, label)
         item = self._workspace.item(item_id)
-        self._resolve(item, seed_exclusions=self._resolutions[item_id].error is not None)
+        previous = self._resolutions[item_id]
+        self._resolutions[item_id] = ItemResolution(
+            contents=item.name_contents(previous.base), error=previous.error, base=previous.base
+        )
         self.item_renamed.emit(item)
 
     def contents(self) -> tuple[Content, ...]:
@@ -115,18 +122,18 @@ class WorkspaceStore(QObject):
         logger.debug(f"Item consideration changed: {item_ref} considered={considered}")
         self.item_consideration_changed.emit(item_ref, considered)
 
-    def _resolve(self, item: WorkspaceItem, *, seed_exclusions: bool = True) -> None:
-        """Resolve *item* and record the result; *seed_exclusions* applies the default exclusions of its Content."""
+    def _resolve(self, item: WorkspaceItem) -> None:
+        """Resolve *item*, record the result, and exclude the Content whose default is not considered."""
         try:
-            resolution = ItemResolution(contents=item.resolve(self._context))
+            base = item.resolve_base(self._context)
+            resolution = ItemResolution(contents=item.name_contents(base), base=base)
         except ItemResolutionError as exc:
             logger.warning(f"Could not open {item.label}: {exc}")
             resolution = ItemResolution(error=exc)
         self._resolutions[item.id] = resolution
-        if seed_exclusions:
-            self._not_considered.update(
-                consideration.ref
-                for content in resolution.contents
-                for consideration in content.consideration_items()
-                if not consideration.default_considered
-            )
+        self._not_considered.update(
+            consideration.ref
+            for content in resolution.contents
+            for consideration in content.consideration_items()
+            if not consideration.default_considered
+        )
