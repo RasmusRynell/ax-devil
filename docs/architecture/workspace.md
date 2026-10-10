@@ -1,7 +1,6 @@
 # Workspace
 
-> Status: **partly implemented**. Delivery steps 1 (the `core`/`ui` split), 2 (items), and 3 (file format) are
-> implemented; the lifecycle UI is not; see [Delivery](#delivery).
+> Status: **implemented**. How it was delivered is summarized under [Delivery](#delivery).
 
 A Workspace is the collection of things a user is working with — videos, live streams, playlists — that can be saved
 to a file and reopened to get back the same set of work. It plays the role a `.code-workspace` file plays in VS Code:
@@ -56,17 +55,22 @@ Every item kind provides:
 
 - `kind` — the stable string written to the file, e.g. `"video"`, `"live_stream"`, `"playlist"`
 - `id` — a stable item id, created once and saved
-- `label` — display name; it names the item's Content
+- `label` — the name the user gave it, or empty; `display_name` is the label, or else `default_name`, and it names
+  the item's Content
+- `default_name` — the name derived from the recipe for display, never saved: a Video Item's file name, a Live Stream
+  Item's host with any `$VARIABLE` expanded, a Playlist Item's resolver id (its playlists keep the names their
+  resolver gives them)
 - `to_json(base_dir)` and `from_json(data, base_dir)` — the item as a JSON object, given the workspace folder for
-  relative paths
+  relative paths; without one, every path is written absolute
 - `resolve(context) -> tuple[Content, ...]` — rebuild the Content, or raise `ItemResolutionError` with a user-facing
   reason. Video and Live Stream Items resolve to one Content; a Playlist Item resolves to whatever its resolver
   returns. A Video Item whose files are missing fails to resolve.
 
 Items are frozen dataclasses deriving from `WorkspaceItem` (`workspace/core/items.py`). A kind implements one hook,
 `_build_contents(context)` and two JSON hooks for its own fields, `_fields_to_json` and `_fields_from_json`; the shared
-`to_json` and `from_json` add and read `kind`, `id`, and `label`. The shared `resolve` turns `ValueError` and `OSError` into `ItemResolutionError`, rejects an
-empty result, and gives every Content its identity. The registry, `ITEM_KINDS`, is a `dict[str, type]` keyed by `kind`.
+`to_json` and `from_json` add and read `kind`, `id`, and `label`; `default_name` is a property each kind answers. The
+shared `resolve` turns `ValueError` and `OSError` into `ItemResolutionError`, rejects an empty result, and gives every
+Content its identity. The registry, `ITEM_KINDS`, is a `dict[str, type]` keyed by `kind`.
 
 Content identity is derived, never random: the Content at position *i* of item *x* has `content_id` `x/i` and
 `item_id` `x`, so resolving the same item again yields the same ids, and the UI can group an item's Content and remove
@@ -78,9 +82,10 @@ and `playlist_resolver(resolver_id)`. Core never imports the plugin system; the 
 
 A Live Stream Item keeps the device and MQTT broker hosts, usernames, and passwords as entered. A `$VARIABLE` reference
 stays a reference in the item and is expanded with the config's rule only while resolving; the CLI reads those config
-defaults raw, and the Add Live Stream dialog fills empty fields with the raw defaults. Default labels use the host as
-entered too, so an item never stores an expanded value. A Playlist Item that resolves to
-one playlist names it after the item; several are named `label / playlist name`.
+defaults raw, and the Add Live Stream dialog fills empty fields with the raw defaults. Items added by the CLI and
+the Add dialogs have an empty label unless the user typed a name, so the expanded host is only ever shown, never
+stored. Renaming an item to an empty name, or to its default name, empties its label again. A labeled Playlist Item that
+resolves to one playlist names it after the item; several are named `label / playlist name`.
 
 ## Workspace
 
@@ -91,14 +96,18 @@ items. Edits — add items, remove or rename an item by id — produce a new val
 hashed. A new store holds the empty Untitled Workspace as both. `open_workspace(path)` loads a file, resolves its
 items, and makes it both current and saved, or raises `WorkspaceFileError` and changes nothing; `save_workspace(path)`
 writes the current Workspace (to its own file when no path is given) and makes it saved. The store emits
-`workspace_replaced` when a file is opened, so views drop what no longer exists (viewers of items that are gone close),
-and `state_changed` whenever the modified flag, name, or path changes, so a title bar needs no polling.
+`workspace_replaced` when another Workspace is installed, so views drop what no longer exists (viewers of items that
+are gone close), and `state_changed` whenever the modified flag, name, or path changes, so a title bar needs no
+polling.
 
-The store resolves an item when it is added and keeps the result: the Content, or the error. Renaming only relabels:
-the item's kept Content is named again from the new label (`WorkspaceItem.name_contents`), with the same content ids
-and exclusions, and no resolver runs. An item that fails to resolve stays in the Workspace and the user is told why;
-showing it in the sidebar is step 4. The Add Live
-Stream and Add Playlist dialogs resolve their item before accepting, so their errors keep the dialog open instead.
+The store resolves items as they are added and keeps each result, `ItemResolution`: the item, its Content, and the
+error. Renaming never resolves again: the kept base Content is named from the new label (`WorkspaceItem.name_contents`),
+with the same content ids and exclusions, and an empty label shows the default name. An item that fails to resolve
+stays in the Workspace, the user is told why when adding it, and the sidebar shows it as one unavailable row with a
+warning icon and the reason in its tooltip and information; activating it shows the reason instead of opening. It can
+be renamed and removed, except that an `UnreadableItem` cannot be renamed (`renamable` is false), since it is written
+back unchanged. The Add Live Stream and Add Playlist dialogs resolve their item before accepting, so their errors keep
+the dialog open instead.
 
 Exclusions — playlist entries and lanes the user hid from playback with the eye toggle — are session state, like the
 current frame. They are not saved, so the file stays a pure list of recipes and nothing needs keys that survive a
@@ -106,15 +115,32 @@ resolver re-run.
 
 ## Lifecycle
 
-The app behaves like VS Code:
+The app behaves like VS Code. `WorkspaceSession` (`workspace/ui/session.py`) owns the lifecycle; the questions and
+file choices go through `WorkspacePrompts` (`workspace/ui/workspace_prompts.py`), which tests replace.
 
-- Launch reopens the last workspace, saved or Untitled. Its items are listed; nothing opens or connects on its own.
-- Closing never prompts. The current workspace, including unsaved edits and an Untitled one, is kept in the storage
-  directory and restored on the next launch, still marked modified.
-- Opening or creating another workspace while the current one is modified asks Save / Discard / Cancel.
-- A CLI launch with content (`ax-devil local`, `ax-devil live`, resolver commands) starts a fresh Untitled workspace;
-  if the kept workspace is modified, the same Save / Discard / Cancel question comes first.
-  `ax-devil open <file>.ax-devil.workspace` opens a saved workspace.
+- Closing never prompts. Whenever the app quits — closing, restarting, or quitting after an error — `MainWindow`
+  has `WorkspaceBackup` (`workspace/core/workspace_backup.py`) keep the current workspace in
+  `workspace-backup.json` in the storage directory: its file path, or null, and its items in the file format's item
+  JSON with absolute paths. Credentials are kept as entered, as in a workspace file.
+- Every launch first restores the kept workspace. The file at the kept path, read again, becomes the saved state and
+  the kept items the current one, so unsaved edits are still marked modified; an Untitled workspace's saved state is
+  the empty Untitled one. When the kept file can no longer be read, its items stay as an Untitled workspace and the
+  reason is logged. Restored items are listed; nothing opens or connects on its own. Only adding items opens a viewer,
+  the first new item's Content; installing another Workspace closes every viewer. A restart from Settings keeps the
+  command line's options but restores the kept workspace instead of reopening the command line's content.
+- **File → New Workspace**, **Open Workspace** (`Ctrl+O`), **Open Recent**, and the welcome screen's recent list ask
+  Save / Discard / Cancel when the current workspace is modified. Save on an Untitled workspace goes through Save As;
+  cancelling it cancels the whole action. **Save Workspace** (`Ctrl+S`) saves an Untitled workspace through **Save
+  Workspace As** (`Ctrl+Shift+S`), which appends `.ax-devil.workspace` when the chosen name lacks it and then asks
+  before replacing an existing file of that name. A file that cannot be read or written is reported and changes
+  nothing.
+- A CLI launch with content (`ax-devil local`, `ax-devil live`, resolver commands) then starts a fresh Untitled
+  workspace with those items, after the same question when the kept workspace is modified; Cancel keeps the kept
+  workspace without the CLI's items. `ax-devil open <file>.ax-devil.workspace` opens a saved workspace the same way.
+- `RecentWorkspaces` (`workspace/core/recent_workspaces.py`) records every opened and saved file in
+  `recent-workspaces.json` in the storage directory, newest first, at most eight; files that no longer exist are
+  dropped.
+- The main window title shows the workspace name and `●` while it is modified, following `state_changed`.
 - Items can be added, removed, and renamed. Editing an item's recipe is not part of the first version.
 
 ## File Format
@@ -150,13 +176,14 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
   credentials must be shared with care. Fields missing from the file take their defaults.
 - An item that cannot be read — an unknown kind, or a known kind with malformed JSON — never fails the load. It
   becomes an `UnreadableItem`: it keeps the raw `id` (or gets a new one) and a label from the raw `label` (or the
-  kind), resolves to an `ItemResolutionError` giving the reason, and is written back unchanged on save. The
+  kind), resolves to an `ItemResolutionError` giving the reason, and is written back unchanged on save. Unreadable
+  items compare by their raw JSON, not their id, so reading the same file twice gives equal workspaces. The
   Workspace, the store, and the UI treat it as any item that failed to resolve. An item that reads fine but fails to
   resolve on open — missing folder, offline camera, missing plugin — is an ordinary item with a recorded error.
 
 ## Playlist Resolver Contract
 
-Recipes need resolvers that run without a widget. The contract becomes:
+Recipes need resolvers that run without a widget. The contract is:
 
 - `resolve(settings) -> list[PlaylistContent]` — headless; `settings` is a JSON-serializable mapping. Missing or
   invalid settings, or settings that point at nothing, raise `ValueError` or `OSError` with a user-facing message.
@@ -177,18 +204,16 @@ The built-in resolvers' settings:
 ## Removed By This Design
 
 - `StartupContent`, `VideoFileStartup`, `LiveStreamStartup`, `ResolvedPlaylistStartup` — replaced by Workspace Items.
-  The CLI, dialogs, file drops, and recents all create items.
+  The CLI, dialogs, and file drops all create items.
 - `PlaylistResolverWidget.playlist_resolved` and `emit_playlists` — resolver widgets submit settings instead.
 - `WorkspaceManager` — replaced by the core Workspace value and the UI store.
 - `WorkspaceBrowserRow` projection inside the state owner — moves to `workspace/ui`.
 - Random `content_id` as the only identity — Content records the id of the item it came from.
 - `WorkspaceWidget` — renamed `ViewerWidget` and moved to `workspace/ui`.
-- `recent-videos.json` — replaced by recent workspaces.
 
 ## Delivery
 
-Each step is one pull request stacked on the previous one. Each leaves the app working and replaces the old code and
-tests outright rather than carrying both.
+The design was delivered in four stacked pull requests, each replacing the old code and tests outright.
 
 1. **Carve out** — create `workspace/core` and `workspace/ui`, move files, rename `WorkspaceWidget` to
    `ViewerWidget`, move browser rows to `ui`, add the no-PySide6 test for `core`. Done. Importing `content.py` loaded
@@ -202,5 +227,5 @@ tests outright rather than carrying both.
 3. **File format** — JSON v1 load/save, relative paths, credential references, unreadable items. Done. Each item kind
    serializes itself; the store opens and saves files and announces replaced and modified state.
 4. **UI** — File → New / Open / Save / Save As, Untitled and modified state, `ax-devil open <file>`, recent
-   workspaces on the welcome screen, unavailable items in the sidebar. Built into today's UI with minimal changes; a
-   UI rebuild on top of `workspace/core` is a separate, later effort.
+   workspaces on the welcome screen, unavailable items in the sidebar, rename, and default names. Done, built into
+   the existing UI with minimal changes; a UI rebuild on top of `workspace/core` is a separate, later effort.

@@ -295,7 +295,7 @@ class TestCliCommand:
 
         assert result.exit_code == 0, result.output
         [[item]] = launched
-        assert (item.label, item.resolver, item.settings) == ("MOT Challenge", "mot_challenge", {"root": str(tmp_path)})
+        assert (item.label, item.resolver, item.settings) == ("", "mot_challenge", {"root": str(tmp_path)})
 
     def test_cli_reports_a_folder_without_sequences_before_launching(self, tmp_path: Path) -> None:
         launched: list[object] = []

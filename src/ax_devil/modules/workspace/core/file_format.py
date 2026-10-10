@@ -72,19 +72,28 @@ def save_workspace(workspace: Workspace, path: Path) -> Workspace:
         "version": FORMAT_VERSION,
         "items": [item.to_json(backing.parent) for item in workspace.items],
     }
-    temporary: Path | None = None
     try:
-        backing.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=backing.parent, delete=False) as file:
-            temporary = Path(file.name)
-            file.write(f"{json.dumps(document, indent=2, allow_nan=False)}\n")
-        if backing.exists():
-            os.chmod(temporary, stat.S_IMODE(backing.stat().st_mode))
-        temporary.replace(backing)
+        write_json_file(backing, document)
     except (OSError, TypeError, ValueError) as exc:
         raise WorkspaceFileError(f"Could not save {path.name}: {exc}") from exc
+    logger.info(f"Saved workspace to {path}")
+    return replace(workspace, path=path)
+
+
+def write_json_file(path: Path, document: Any) -> None:
+    """Write *document* to *path* as indented JSON, replacing the old file only when the new one is complete.
+
+    Raises ``OSError`` when writing fails, and ``TypeError`` or ``ValueError`` when *document* is not JSON.
+    """
+    temporary: Path | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as file:
+            temporary = Path(file.name)
+            file.write(f"{json.dumps(document, indent=2, allow_nan=False)}\n")
+        if path.exists():
+            os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
+        temporary.replace(path)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-    logger.info(f"Saved workspace to {path}")
-    return replace(workspace, path=path)

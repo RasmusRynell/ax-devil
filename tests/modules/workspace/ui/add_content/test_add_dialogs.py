@@ -47,7 +47,7 @@ def _dialog_context() -> FakeResolutionContext:
 
 
 def _recipe(item: VideoItem | None) -> tuple[str, Path, tuple[OverlayFile, ...]] | None:
-    return None if item is None else (item.label, item.video, item.overlays)
+    return None if item is None else (item.display_name, item.video, item.overlays)
 
 
 def _set_overlay_mode(dialog: AddLiveStreamDialog, mode: LiveOverlayMode) -> None:
@@ -364,7 +364,7 @@ def test_add_live_stream_keeps_configured_references_for_fields_left_empty(
         "$AX_DEVIL_TARGET_USER",
         "pa$$word",
     )
-    assert result.label == "Live: $AX_DEVIL_TARGET_ADDR"
+    assert result.label == "", "the default name is derived from the host, never stored"
 
 
 def test_analytics_discovery_expands_typed_environment_references(
@@ -660,7 +660,7 @@ def test_add_playlist_dialog_returns_an_item_from_the_selected_resolver(playlist
     """A resolver submitting after the user switched away cannot close the dialog with its settings."""
     settings = playlist_dialog._settings
     first, second = list(settings._resolver_by_widget)[:2]
-    second_id, second_name = settings._resolver_by_widget[second]
+    second_id = settings._resolver_by_widget[second]
     settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(first))
     settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(second))
 
@@ -672,7 +672,7 @@ def test_add_playlist_dialog_returns_an_item_from_the_selected_resolver(playlist
     assert playlist_dialog.result() == AddPlaylistDialog.DialogCode.Accepted
     result = playlist_dialog.get_result()
     assert result is not None
-    assert (result.label, result.resolver, result.settings) == (second_name, second_id, {"root": "/selected"})
+    assert (result.resolver, result.settings) == (second_id, {"root": "/selected"})
     first.submit_settings({"root": "/selected"})
     assert playlist_dialog.get_result() is result
 

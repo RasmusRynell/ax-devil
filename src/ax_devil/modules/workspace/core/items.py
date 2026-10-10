@@ -41,12 +41,14 @@ def _read_optional_str(data: Mapping[str, Any], key: str) -> str | None:
     return None if data.get(key) is None else _read(data, key, str)
 
 
-def _path_to_json(path: Path, base_dir: Path) -> str:
-    """Return *path* relative to *base_dir* with POSIX separators when inside it, absolute otherwise.
+def _path_to_json(path: Path, base_dir: Path | None) -> str:
+    """Return *path* relative to *base_dir* with POSIX separators when inside it, absolute otherwise or without one.
 
     Both are normalized lexically first, so ``..`` segments cannot escape the folder; symlinks are not resolved.
     """
     absolute = Path(os.path.normpath(path.absolute()))
+    if base_dir is None:
+        return str(absolute)
     folder = Path(os.path.normpath(base_dir.absolute()))
     try:
         return absolute.relative_to(folder).as_posix()
@@ -54,9 +56,10 @@ def _path_to_json(path: Path, base_dir: Path) -> str:
         return str(absolute)
 
 
-def _path_from_json(data: Mapping[str, Any], key: str, base_dir: Path) -> Path:
-    """Return the path in ``data[key]``; a relative one is read against *base_dir*."""
-    return base_dir / _read(data, key, str)
+def _path_from_json(data: Mapping[str, Any], key: str, base_dir: Path | None) -> Path:
+    """Return the path in ``data[key]``; a relative one is read against *base_dir* when given."""
+    path = Path(_read(data, key, str))
+    return path if base_dir is None else base_dir / path
 
 
 def new_item_id() -> str:
@@ -69,17 +72,36 @@ class WorkspaceItem(ABC):
     """A recipe for one thing to work with: enough to rebuild its Content, never the rebuilt result.
 
     A kind is one subclass with a unique ``kind`` registered in ``ITEM_KINDS``; it implements ``_build_contents`` and
-    the JSON hooks ``_fields_to_json`` and ``_fields_from_json`` for its own fields. Callers use ``resolve``, which also
-    gives every Content its identity, and ``to_json`` / ``from_json``, which add the common fields.
+    the JSON hooks ``_fields_to_json`` and ``_fields_from_json`` for its own fields, and ``default_name``. Callers use
+    ``resolve``, which also gives every Content its identity, and ``to_json`` / ``from_json``, which add the common
+    fields.
+
+    An empty ``label`` means the item is shown by its ``default_name``, which is derived when displayed and never saved.
     """
 
     kind: ClassVar[str]
-    label: str
+    renamable: ClassVar[bool] = True
+    """Whether a new label survives saving; an item written back unchanged cannot be renamed."""
+    label: str = ""
     id: str = field(default_factory=new_item_id)
 
+    @property
+    @abstractmethod
+    def default_name(self) -> str:
+        """Return the name shown when the item has no label, such as the file name or the expanded host."""
+
+    @property
+    def display_name(self) -> str:
+        """Return the label, or the default name when the label is empty."""
+        return self.label or self.default_name
+
     def with_label(self: _ItemT, label: str) -> _ItemT:
-        """Return this item renamed to *label*, keeping its id."""
-        return replace(self, label=label)
+        """Return this item renamed to *label*, keeping its id.
+
+        An empty label, or the default name itself, returns the item to its default name, so the item never stores a
+        derived value such as an expanded host.
+        """
+        return replace(self, label="" if label == self.default_name else label)
 
     def resolve(self, context: ResolutionContext) -> tuple[Content, ...]:
         """Rebuild this item's Content named after its label, or raise ``ItemResolutionError`` with a reason."""
@@ -96,31 +118,33 @@ class WorkspaceItem(ABC):
         except (ValueError, OSError) as exc:
             raise ItemResolutionError(str(exc)) from exc
         if not contents:
-            raise ItemResolutionError(f"{self.label} has nothing to open.")
+            raise ItemResolutionError(f"{self.display_name} has nothing to open.")
         return tuple(
             replace(content, content_id=f"{self.id}/{index}", item_id=self.id) for index, content in enumerate(contents)
         )
 
     def name_contents(self, base: Sequence[Content]) -> tuple[Content, ...]:
         """Return *base* with display names taken from this item's label; the default names every Content by it."""
+        if not self.label:
+            return tuple(base)
         return tuple(replace(content, display_name=self.label) for content in base)
 
     @abstractmethod
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
         """Return this item's Content; raise ``ItemResolutionError``, ``ValueError``, or ``OSError`` when it cannot."""
 
-    def to_json(self, base_dir: Path) -> Any:
-        """Return this item as a JSON object; paths inside *base_dir* are written relative to it.
+    def to_json(self, base_dir: Path | None) -> Any:
+        """Return this item as a JSON object; paths inside *base_dir* are written relative to it, others absolute.
 
         Typed ``Any`` because an unreadable item returns whatever JSON value the file held.
         """
         return {"kind": self.kind, "id": self.id, "label": self.label, **self._fields_to_json(base_dir)}
 
     @classmethod
-    def from_json(cls: type[_ItemT], data: Mapping[str, Any], base_dir: Path) -> _ItemT:
+    def from_json(cls: type[_ItemT], data: Mapping[str, Any], base_dir: Path | None) -> _ItemT:
         """Return the item *data* describes; raise ``ValueError`` saying what is malformed.
 
-        Relative paths are read against *base_dir*.
+        Relative paths are read against *base_dir* when given.
         """
         try:
             return cls(
@@ -130,12 +154,12 @@ class WorkspaceItem(ABC):
             raise ValueError(f"Malformed {cls.kind} item: {exc}") from exc
 
     @abstractmethod
-    def _fields_to_json(self, base_dir: Path) -> dict[str, Any]:
+    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         """Return this kind's own JSON fields."""
 
     @classmethod
     @abstractmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path) -> dict[str, Any]:
+    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         """Return the constructor arguments for this kind's own fields; raise ``ValueError`` when malformed."""
 
 
@@ -148,11 +172,11 @@ class VideoItem(WorkspaceItem):
     overlays: tuple[OverlayFile, ...] = ()
 
     @property
-    def description(self) -> str:
-        """Return the full file paths behind this item."""
-        return "\n".join([str(self.video), *(f"Overlay: {overlay.path}" for overlay in self.overlays)])
+    def default_name(self) -> str:
+        """Return the video's file name."""
+        return self.video.name
 
-    def _fields_to_json(self, base_dir: Path) -> dict[str, Any]:
+    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         """Return the video path and the overlay files with their decoders."""
         return {
             "video": _path_to_json(self.video, base_dir),
@@ -162,7 +186,7 @@ class VideoItem(WorkspaceItem):
         }
 
     @classmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path) -> dict[str, Any]:
+    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         """Read the video path and the overlay files."""
         entries = _read(data, "overlays", list, [])
         if not all(isinstance(entry, dict) for entry in entries):
@@ -179,7 +203,7 @@ class VideoItem(WorkspaceItem):
                 raise ItemResolutionError(f"File not found: {path}")
         return (
             context.intake.create_seekable_video(
-                video_path=self.video, display_name=self.label, overlays=self.overlays
+                video_path=self.video, display_name=self.display_name, overlays=self.overlays
             ),
         )
 
@@ -225,7 +249,7 @@ class LiveStreamItem(WorkspaceItem):
     websocket_topic: str = ""
     websocket_channel_id: int = 1
 
-    def _fields_to_json(self, base_dir: Path) -> dict[str, Any]:
+    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         """Return every field as stored; references stay references and the overlay mode is its value string."""
         return {
             name: getattr(self, name).value if name == "overlay_mode" else getattr(self, name)
@@ -233,9 +257,9 @@ class LiveStreamItem(WorkspaceItem):
         }
 
     @classmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path) -> dict[str, Any]:
+    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         """Read every field, using the defaults for absent ones."""
-        defaults = cls(label="", host="")
+        defaults = cls(host="")
         return {
             **{name: _read(data, name, str, getattr(defaults, name)) for name in _LIVE_STR_FIELDS},
             **{name: _read(data, name, int, getattr(defaults, name)) for name in _LIVE_INT_FIELDS},
@@ -243,6 +267,11 @@ class LiveStreamItem(WorkspaceItem):
             "handler_type": _read_optional_str(data, "handler_type"),
             "overlay_mode": LiveOverlayMode.from_value(_read(data, "overlay_mode", str, defaults.overlay_mode.value)),
         }
+
+    @property
+    def default_name(self) -> str:
+        """Return the device host, with an environment reference expanded for display only."""
+        return expand_environment_reference(self.host) or "Live stream"
 
     def expanded(self) -> LiveStreamItem:
         """Return this item with its environment references replaced by their current values."""
@@ -261,7 +290,7 @@ class LiveStreamItem(WorkspaceItem):
         values = self.expanded()
         return (
             context.intake.create_live_stream(
-                display_name=self.label,
+                display_name=self.display_name,
                 host=values.host,
                 username=values.username,
                 password=values.password,
@@ -294,14 +323,19 @@ class PlaylistItem(WorkspaceItem):
         """Keep a private copy of the settings, so later changes to the caller's mapping never reach the item."""
         object.__setattr__(self, "settings", deepcopy(self.settings))
 
-    def _fields_to_json(self, base_dir: Path) -> dict[str, Any]:
+    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         """Return the resolver id and its settings exactly as given; the core does not know which are paths."""
         return {"resolver": self.resolver, "settings": dict(self.settings)}
 
     @classmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path) -> dict[str, Any]:
+    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         """Read the resolver id and its settings as they were written."""
         return {"resolver": _read(data, "resolver", str), "settings": _read(data, "settings", dict, {})}
+
+    @property
+    def default_name(self) -> str:
+        """Return the resolver id; resolved playlists keep the names their resolver gives them."""
+        return self.resolver
 
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
         """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings."""
@@ -314,6 +348,8 @@ class PlaylistItem(WorkspaceItem):
 
     def name_contents(self, base: Sequence[Content]) -> tuple[Content, ...]:
         """Name each playlist with the shared rule: the label alone, or ``label / playlist`` when there are several."""
+        if not self.label:
+            return tuple(base)
         several = len(base) > 1
         return tuple(
             replace(content, display_name=_playlist_display_name(self.label, content.display_name, several=several))
@@ -330,10 +366,14 @@ def _playlist_display_name(label: str, playlist_name: str, *, several: bool) -> 
 class UnreadableItem(WorkspaceItem):
     """An item the file held but this version cannot read: an unknown kind, or a known kind with malformed JSON.
 
-    It never resolves, and it is written back exactly as it was read, so saving does not lose it.
+    It never resolves, and it is written back exactly as it was read, so saving does not lose it. Raw JSON without an
+    id gets a new id on every read, so unreadable items compare by what they hold, not by id; a reopened or restored
+    workspace is then not modified by them alone.
     """
 
     kind: ClassVar[str] = "unreadable"
+    renamable: ClassVar[bool] = False
+    id: str = field(default_factory=new_item_id, compare=False)
     raw: Any
     reason: str
 
@@ -342,27 +382,33 @@ class UnreadableItem(WorkspaceItem):
         """Return the item standing in for *raw*, keeping its id and label when it has them."""
         fields: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}
         item_id = fields.get("id")
-        label = fields.get("label") or fields.get("kind")
+        label = fields.get("label")
         return cls(
             raw=raw,
             reason=reason,
-            label=label if isinstance(label, str) else "Unreadable item",
+            label=label if isinstance(label, str) else "",
             **({"id": item_id} if isinstance(item_id, str) else {}),
         )
+
+    @property
+    def default_name(self) -> str:
+        """Return the kind the file named, or a generic name."""
+        kind = self.raw.get("kind") if isinstance(self.raw, Mapping) else None
+        return kind if isinstance(kind, str) and kind else "Unreadable item"
 
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
         """Fail with the reason this item could not be read."""
         raise ItemResolutionError(self.reason)
 
-    def to_json(self, base_dir: Path) -> Any:
+    def to_json(self, base_dir: Path | None) -> Any:
         """Return the original JSON unchanged."""
         return self.raw
 
-    def _fields_to_json(self, base_dir: Path) -> dict[str, Any]:
+    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         return {}
 
     @classmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path) -> dict[str, Any]:
+    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         raise ValueError("unreadable items are only made from raw JSON")
 
 
@@ -370,7 +416,7 @@ ITEM_KINDS: dict[str, type[WorkspaceItem]] = {kind.kind: kind for kind in (Video
 """Every built-in item kind, keyed by its ``kind``."""
 
 
-def item_from_json(data: Any, base_dir: Path) -> WorkspaceItem:
+def item_from_json(data: Any, base_dir: Path | None) -> WorkspaceItem:
     """Return the item *data* describes, or an ``UnreadableItem`` when its kind is unknown or its JSON malformed."""
     if not isinstance(data, Mapping):
         return UnreadableItem.from_raw(data, "This item is not a JSON object.")
@@ -398,12 +444,12 @@ class VideoFileSelection:
         return self.overlay is not None and self.decoder is None
 
     def to_item(self, label: str = "") -> VideoItem:
-        """Return the Video Item for this selection, named *label* or else after the video file.
+        """Return the Video Item for this selection, named *label* or, when empty, after the video file.
 
         An overlay still waiting for its decoder is left out.
         """
         overlays = (OverlayFile(self.overlay, self.decoder),) if self.overlay is not None and self.decoder else ()
-        return VideoItem(label=label or self.video.name, video=self.video, overlays=overlays)
+        return VideoItem(label=label, video=self.video, overlays=overlays)
 
 
 def video_file_selections(paths: Sequence[Path], intake: WorkspaceIntake) -> tuple[VideoFileSelection, ...]:

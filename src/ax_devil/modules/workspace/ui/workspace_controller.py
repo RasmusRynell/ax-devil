@@ -50,12 +50,13 @@ class WorkspaceController(QObject):
         self._content_browser.content_activated.connect(self._on_content_activated)
         self._content_browser.content_open_to_side_requested.connect(self._on_content_open_to_side_requested)
         self._content_browser.item_consideration_change_requested.connect(self._workspace_store.set_item_considered)
-        self._content_browser.content_remove_requested.connect(self._on_content_remove_requested)
+        self._content_browser.item_remove_requested.connect(self._workspace_store.remove_item)
+        self._content_browser.item_rename_requested.connect(self._workspace_store.rename_item)
         self._content_browser.export_requested.connect(self._on_export_requested)
         self._workspace_store.items_added.connect(self._on_items_added)
         self._workspace_store.item_removed.connect(self._close_orphaned_viewers)
         self._workspace_store.workspace_replaced.connect(self._close_all_viewers)
-        self._workspace_store.item_renamed.connect(self._sync_content_browser)
+        self._workspace_store.item_renamed.connect(self._on_item_renamed)
         self._workspace_store.item_consideration_changed.connect(self._on_item_consideration_changed)
         self._center_area.widget_removed.connect(self._on_widget_removed)
 
@@ -65,7 +66,7 @@ class WorkspaceController(QObject):
             item for widget in self._widget_item_ids if (item := widget.current_on_screen_item()) is not None
         )
         rows = build_browser_rows(
-            self._workspace_store.contents(), self._workspace_store.is_item_considered, open_items
+            self._workspace_store.resolutions(), self._workspace_store.is_item_considered, open_items
         )
         self._content_browser.set_browser_rows(rows)
 
@@ -94,16 +95,26 @@ class WorkspaceController(QObject):
                 widget.export_video()
                 return
 
-    def _on_content_remove_requested(self, content: Content) -> None:
-        """Remove the item the content came from, with all of its Content."""
-        self._workspace_store.remove_item(content.item_id)
+    def _on_item_renamed(self, item: WorkspaceItem) -> None:
+        """Show the item's new name in the rows and in the header of every viewer showing its Content."""
+        names = {
+            content.content_id: content.display_name for content in self._workspace_store.resolution(item.id).contents
+        }
+        for widget, item_id in self._widget_item_ids.items():
+            on_screen = widget.current_on_screen_item()
+            if item_id == item.id and on_screen is not None and on_screen.content_id in names:
+                widget.set_title(names[on_screen.content_id])
+        self._sync_content_browser()
 
     def _on_items_added(self, items: list[WorkspaceItem]) -> None:
-        """Tell the user which new items could not open, and preview the first Content of the others."""
+        """Tell the user which new items could not open, and preview the first Content of the others.
+
+        Only adding items opens a viewer; opening, creating, or restoring a Workspace lists its items and opens nothing.
+        """
         self._sync_content_browser()
         resolutions = [self._workspace_store.resolution(item.id) for item in items]
         failures = [
-            f"{item.label}: {resolution.error}" for item, resolution in zip(items, resolutions) if resolution.error
+            f"{resolution.item.display_name}: {resolution.error}" for resolution in resolutions if resolution.error
         ]
         if failures:
             QMessageBox.warning(self._window_parent(), "Open Content", "\n".join(failures))
@@ -119,8 +130,12 @@ class WorkspaceController(QObject):
                 self._center_area.remove_viewer_widget(widget)
         self._sync_content_browser()
 
-    def _close_all_viewers(self, *_args: object) -> None:
-        """Close every viewer: a replaced Workspace can keep an item id while its recipe changed."""
+    def _close_all_viewers(self) -> None:
+        """Close every viewer when another Workspace replaces the current one, and refresh the rows.
+
+        The new Workspace's items are resolved afresh, with exclusions back at their defaults, so no viewer keeps
+        Content or names from before; opening a Workspace opens nothing on its own.
+        """
         self._center_area.clear_all_widgets()
         self._sync_content_browser()
 

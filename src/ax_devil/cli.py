@@ -22,7 +22,15 @@ from ax_devil.modules.plugin_system import (
 from ax_devil.modules.settings.config_manager import ConfigManager, integer_default
 from ax_devil.modules.settings.logging_config import setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
-from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem, OverlayFile, VideoItem, WorkspaceItem
+from ax_devil.modules.workspace.core import (
+    LiveOverlayMode,
+    LiveStreamItem,
+    OverlayFile,
+    VideoItem,
+    WorkspaceFileError,
+    WorkspaceItem,
+    load_workspace,
+)
 
 from .app import create_app
 from .cli_options import CONFIG_OPTION, DEBUG_OPTION, LOG_LEVEL_OPTION, apply_run_options
@@ -90,10 +98,8 @@ def _live_item_from_config(
     if resolved_overlay is LiveOverlayMode.WEBSOCKET:
         configured_protocol = websocket.get("device_api_protocol", "https")
 
-    resolved_host = host or str(device.get("host") or "")
     return LiveStreamItem(
-        label=f"Live: {resolved_host}",
-        host=resolved_host,
+        host=host or str(device.get("host") or ""),
         username=username or str(device.get("username") or ""),
         password=password or str(device.get("password") or ""),
         camera_head=camera_head if camera_head is not None else integer_default(rtsp.get("camera_head", 1), 1),
@@ -119,7 +125,8 @@ def _run_app(
     log_level: str,
     config: Path | None,
     debug: bool,
-    startup_items: Sequence[WorkspaceItem] = (),
+    items: Sequence[WorkspaceItem] = (),
+    workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
 ) -> None:
     """Helper function to run the application with consistent error handling."""
@@ -130,7 +137,8 @@ def _run_app(
             log_level=log_level,
             config_path=config,
             debug=debug,
-            startup_items=startup_items,
+            items=items,
+            workspace_file=workspace_file,
             open_catalog_viewer=open_catalog_viewer,
         )
 
@@ -157,7 +165,7 @@ def _build_runtime_context(log_level: str, config: Path | None, debug: bool) -> 
             log_level=log_level,
             config=config,
             debug=debug,
-            startup_items=items,
+            items=items,
         ),
         "run_catalog_viewer": lambda: _run_app(
             log_level=log_level,
@@ -187,7 +195,7 @@ def cli(
 ) -> None:
     """View video, live Axis cameras, and analytics overlays.
 
-    Run without a command to open the workspace.
+    Run without a command to reopen the last workspace.
     """
     setup_logging(console_log_level="WARNING", console_only=True)
     ctx.obj = _build_runtime_context(log_level=log_level, config=config, debug=debug)
@@ -407,11 +415,26 @@ def local(
         raise click.ClickException("--handler-type is required when --overlay is set.")
 
     item = VideoItem(
-        label=video.name,
         video=video.resolve(),
         overlays=(OverlayFile(overlay.resolve(), handler_type),) if overlay and handler_type else (),
     )
-    _run_app(log_level=log_level, config=effective_config, debug=debug, startup_items=[item])
+    _run_app(log_level=log_level, config=effective_config, debug=debug, items=[item])
+
+
+@cli.command("open")
+@LOG_LEVEL_OPTION
+@CONFIG_OPTION
+@DEBUG_OPTION
+@click.argument("workspace_file", type=click.Path(exists=True, path_type=Path, dir_okay=False))
+@click.pass_context
+def open_workspace(ctx: click.Context, log_level: str, config: Path | None, debug: bool, workspace_file: Path) -> None:
+    """Open a saved .ax-devil.workspace file."""
+    effective_config = config or (ctx.obj.get("config") if isinstance(ctx.obj, dict) else None)
+    try:
+        load_workspace(workspace_file)
+    except WorkspaceFileError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _run_app(log_level=log_level, config=effective_config, debug=debug, workspace_file=workspace_file.absolute())
 
 
 @cli.command()
@@ -543,7 +566,7 @@ def live(
         log_level=log_level,
         config=effective_config,
         debug=debug,
-        startup_items=[item],
+        items=[item],
     )
 
 

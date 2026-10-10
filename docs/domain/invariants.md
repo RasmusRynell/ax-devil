@@ -18,6 +18,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Content ids derive from the owning item's id and the Content's position, and Content records its item's id, so ids
   are the same on every resolution. Content built outside resolution has empty ids and is never top-level Content.
 - Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
+- An item's label is what the user named it, or empty. An empty label shows `default_name`, derived from the recipe
+  when displayed; derived names such as an expanded host are never stored or saved.
 - An item that fails to resolve stays in the Workspace with its `ItemResolutionError` recorded. An item the file format
   cannot read is an `UnreadableItem` that always fails to resolve and is saved back unchanged; see
   [Workspace](../architecture/workspace.md#file-format).
@@ -101,6 +103,11 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   ignored.
 - Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content. Opening a Workspace file closes every viewer widget, even when item ids are kept.
   `SplitView` exclusively owns hosted widget removal and deletion; callers use its removal API.
+- Every item is listed: an item that failed to resolve is one unavailable row that shows its reason and never opens.
+- Only adding items opens a viewer. Opening, creating, or restoring a Workspace lists its items and opens and connects
+  nothing.
+- Closing never prompts and keeps the current Workspace for the next launch. Replacing a modified Workspace asks
+  Save / Discard / Cancel first, and nothing is replaced unless the answer, including any Save As, completes.
 
 ## UI Lifecycle
 

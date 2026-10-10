@@ -314,7 +314,7 @@ class AddLiveStreamDialog(BaseDialog):
     def _on_host_changed(self, text: str) -> None:
         host = text.strip() or str(self._raw_defaults["device"].get("host") or "")
         if not self._name_edit.text().strip():
-            self._name_edit.setPlaceholderText(f"Live: {host}" if host else "")
+            self._name_edit.setPlaceholderText(expand_environment_reference(host))
 
     def _on_overlay_mode_changed(self, index: int) -> None:
         """Show the selected mode's transport page and enable the fields it uses."""
@@ -402,7 +402,7 @@ class AddLiveStreamDialog(BaseDialog):
         websocket_topic = str(websocket_topic_value) if isinstance(websocket_topic_value, str) else ""
 
         item = LiveStreamItem(
-            label=self._name_edit.text().strip() or f"Live: {host}",
+            label=self._name_edit.text().strip(),
             host=host,
             username=self._text_or_default(self._username_edit, str(raw_device_defaults.get("username") or "")),
             password=self._text_or_default(self._password_edit, str(raw_device_defaults.get("password") or "")),

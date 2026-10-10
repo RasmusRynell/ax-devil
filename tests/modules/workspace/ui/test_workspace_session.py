@@ -23,19 +23,21 @@ from ax_devil.modules.workspace.core import (
     PlaylistEntry,
     PlaylistItem,
     PlaylistSettings,
+    RecentWorkspaces,
     SeekableVideoContent,
     VideoItem,
     Workspace,
+    WorkspaceBackup,
     WorkspaceItem,
     save_workspace,
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE
-from ax_devil.modules.workspace.ui.recent_videos import RecentVideos
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
+from ax_devil.modules.workspace.ui.workspace_prompts import WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.workspace import DummyViewer, FakeResolutionContext, content_item
+from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, content_item
 
 
 def _required_top_item(workspace_session: WorkspaceSession, index: int = 0) -> QTreeWidgetItem:
@@ -88,14 +90,27 @@ def _make_playlist(name: str = "Playlist") -> PlaylistContent:
     )
 
 
+def _session(
+    render_catalog_manager: SceneRenderCatalogManager,
+    tmp_path: Path,
+    context: FakeResolutionContext | None = None,
+    prompts: WorkspacePrompts | None = None,
+) -> WorkspaceSession:
+    """Return a session whose backup, recents, and prompts never touch the user's files or desktop."""
+    return WorkspaceSession(
+        render_catalog_manager=render_catalog_manager,
+        context=context,
+        backup=WorkspaceBackup(tmp_path / "state" / "workspace-backup.json"),
+        recent_workspaces=RecentWorkspaces(tmp_path / "state" / "recent-workspaces.json"),
+        prompts=prompts or FakePrompts(),
+    )
+
+
 @pytest.fixture()
 def workspace_session(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> WorkspaceSession:
-    session = WorkspaceSession(
-        render_catalog_manager=render_catalog_manager,
-        recent_videos=RecentVideos(tmp_path / "recent-videos.json"),
-    )
+    session = _session(render_catalog_manager, tmp_path)
     widget = session.widget()
     qtbot.addWidget(widget)
     widget.show()
@@ -117,7 +132,7 @@ def test_removing_content_in_the_sidebar_closes_every_viewer_of_its_item(
         browser.content_open_to_side_requested.emit(content, 0)
         assert workspace_session._center_area.get_widget_count() == 2
 
-        browser.content_remove_requested.emit(content)
+        browser.item_remove_requested.emit(content.item_id)
 
     assert workspace_session._center_area.get_widget_count() == 0
     assert _store(workspace_session).workspace.items == ()
@@ -162,18 +177,14 @@ def test_replacing_the_workspace_closes_viewers_even_when_an_item_id_is_kept(
 def test_removing_one_content_of_an_item_removes_the_whole_item(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
-    session = WorkspaceSession(
-        render_catalog_manager=render_catalog_manager,
-        context=FakeResolutionContext(resolvers={"runs": _TwoPlaylists()}),
-        recent_videos=RecentVideos(tmp_path / "recent-videos.json"),
-    )
+    session = _session(render_catalog_manager, tmp_path, FakeResolutionContext(resolvers={"runs": _TwoPlaylists()}))
     qtbot.addWidget(session.widget())
     kept = content_item(_make_video("kept.mp4"))
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
         session.add_items([PlaylistItem(label="Runs", resolver="runs"), kept])
         assert session._content_browser._tree.topLevelItemCount() == 3
-        session._content_browser.content_remove_requested.emit(_store(session).contents()[1])
+        session._content_browser.item_remove_requested.emit(_store(session).contents()[1].item_id)
 
     assert _store(session).workspace.items == (kept,)
     assert session._content_browser._tree.topLevelItemCount() == 1
@@ -244,11 +255,11 @@ def test_adding_content_auto_opens_viewers(
 
 
 def test_adding_a_video_item_opens_an_offline_viewer(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
-    video = tmp_path / "startup.mp4"
+    video = tmp_path / "clip.mp4"
     video.write_bytes(b"")
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        workspace_session.add_items([VideoItem(label="startup.mp4", video=video)])
+        workspace_session.add_items([VideoItem(label="clip.mp4", video=video)])
 
         viewer = workspace_session.focused_offline_viewer()
 
@@ -258,10 +269,10 @@ def test_adding_a_video_item_opens_an_offline_viewer(workspace_session: Workspac
     assert _is_open(_required_top_item(workspace_session))
 
 
-def test_dropped_video_and_overlay_open_with_matching_handler_and_join_recent_videos(
+def test_dropped_video_and_overlay_open_with_matching_handler(
     workspace_session: WorkspaceSession, tmp_path: Path
 ) -> None:
-    """A dropped video with an overlay only one decoder reads opens directly and appears under Recent."""
+    """A dropped video with an overlay only one decoder reads opens directly."""
     video = tmp_path / "gate.mp4"
     video.write_bytes(b"")
     overlay = tmp_path / "gate.txt"
@@ -274,8 +285,6 @@ def test_dropped_video_and_overlay_open_with_matching_handler_and_join_recent_vi
     assert isinstance(content, SeekableVideoContent)
     assert content.source_spec.path == video
     assert [o.source_spec for o in content.overlays] == [FileOverlaySourceSpec(path=overlay, handler_type="MOT_FILE")]
-    [recent] = workspace_session._welcome._recent_videos
-    assert (recent.video, recent.overlays) == (video, (OverlayFile(overlay, "MOT_FILE"),))
 
 
 def test_dropped_overlay_read_by_several_decoders_asks_for_the_handler(
@@ -305,7 +314,6 @@ def test_dropped_overlay_read_by_several_decoders_asks_for_the_handler(
     assert destroyed == [True] * 3
     assert workspace_session.widget().findChildren(AddVideoDialog) == []
     assert _store(workspace_session).workspace.items == ()
-    assert workspace_session._welcome._recent_videos == ()
 
 
 def test_adding_a_live_stream_item_opens_a_live_viewer(workspace_session: WorkspaceSession) -> None:
@@ -324,13 +332,13 @@ def test_adding_a_live_stream_item_opens_a_live_viewer(workspace_session: Worksp
 def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
     workspace_session: WorkspaceSession, tmp_path: Path, kind: str
 ) -> None:
-    video = tmp_path / "startup.mp4"
-    overlay = tmp_path / "startup.json"
+    video = tmp_path / "clip.mp4"
+    overlay = tmp_path / "clip.json"
     video.write_bytes(b"")
     overlay.write_text("{}")
     items: dict[str, WorkspaceItem] = {
-        "video": VideoItem(label="Startup", video=video, overlays=(OverlayFile(overlay, "MISSING"),)),
-        "live_stream": LiveStreamItem(label="Startup", host="camera.local", overlay_mode=LiveOverlayMode.RTSP),
+        "video": VideoItem(label="Clip", video=video, overlays=(OverlayFile(overlay, "MISSING"),)),
+        "live_stream": LiveStreamItem(label="Clip", host="camera.local", overlay_mode=LiveOverlayMode.RTSP),
     }
 
     with patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
@@ -338,10 +346,12 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
 
     assert _store(workspace_session).workspace.items == (items[kind],)
     assert workspace_session._center_area.get_widget_count() == 0
-    assert workspace_session._content_browser._tree.topLevelItemCount() == 0
     [(parent, title, message)] = [call.args for call in warning.call_args_list]
     assert (parent, title) == (workspace_session.widget(), "Open Content")
-    assert message.startswith("Startup: ")
+    assert message.startswith("Clip: ")
+    assert workspace_session._content_browser._tree.topLevelItemCount() == 1
+    row = cast(WorkspaceBrowserRow, _required_top_item(workspace_session).data(TREE_LABEL_COLUMN, TREE_ROW_ROLE))
+    assert (row.label, row.unavailable_reason) == ("Clip", message.removeprefix("Clip: "))
 
 
 def test_adding_live_content_auto_opens_live_viewer(

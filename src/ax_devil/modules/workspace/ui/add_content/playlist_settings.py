@@ -63,7 +63,7 @@ class PlaylistSettingsUI(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         # Each resolver form, with its resolver's plugin id and display name.
-        self._resolver_by_widget: dict[PlaylistResolverWidget, tuple[str, str]] = {}
+        self._resolver_by_widget: dict[PlaylistResolverWidget, str] = {}
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -103,7 +103,7 @@ class PlaylistSettingsUI(QWidget):
                 continue
             widget.settings_submitted.connect(self._on_settings_submitted)
             name = record.definition.display_name
-            self._resolver_by_widget[widget] = (record.definition.plugin_id, name)
+            self._resolver_by_widget[widget] = record.definition.plugin_id
             description = record.definition.description or ""
             overview.addWidget(_wrapped_label(f"{name}: {description}" if description else name))
             page = QVBoxLayout()
@@ -121,8 +121,8 @@ class PlaylistSettingsUI(QWidget):
         widget = self._resolver_combo.currentData()
         if widget is None or self.sender() is not widget:
             return
-        resolver_id, name = self._resolver_by_widget[cast(PlaylistResolverWidget, widget)]
-        self.item_ready.emit(PlaylistItem(label=name, resolver=resolver_id, settings=settings))
+        resolver_id = self._resolver_by_widget[cast(PlaylistResolverWidget, widget)]
+        self.item_ready.emit(PlaylistItem(resolver=resolver_id, settings=settings))
 
     def cleanup(self) -> None:
         """Disconnect and release every resolver form."""

@@ -46,7 +46,7 @@ class MOTChallengeResolverPlugin(PlaylistResolverPlugin):
             runner = ctx.obj.get("run_with_items") if isinstance(ctx.obj, dict) else None
             if runner is None:
                 raise click.ClickException("CLI runtime is not available.")
-            runner([PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)])
+            runner([PlaylistItem(resolver=cls.plugin_id(), settings=settings)])
 
         return command
 

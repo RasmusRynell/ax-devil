@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 class ItemResolution:
     """What one item resolved to: its Content, or the error that kept it from resolving."""
 
+    item: WorkspaceItem
     contents: tuple[Content, ...] = ()
     error: ItemResolutionError | None = None
     base: tuple[Content, ...] = ()  # Content before the label is applied; a rename names this, never resolves again.
@@ -44,7 +45,7 @@ class WorkspaceStore(QObject):
     item_removed = Signal(object)  # WorkspaceItem
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
-    workspace_replaced = Signal()  # another Workspace was opened; every item may be new
+    workspace_replaced = Signal()  # another Workspace was opened, created, or restored; every item may be new
     state_changed = Signal()  # is_modified, the name, or the path changed
 
     def __init__(self, context: ResolutionContext, parent: QObject | None = None) -> None:
@@ -71,11 +72,19 @@ class WorkspaceStore(QObject):
 
         A ``WorkspaceFileError`` from reading the file propagates and leaves the store as it was.
         """
-        opened = load_workspace(path)
-        self._workspace = self._saved_workspace = opened
+        self.replace_workspace(load_workspace(path))
+
+    def replace_workspace(self, current: Workspace, saved: Workspace | None = None) -> None:
+        """Make *current* the Workspace, with *saved* as its last saved state (*current* itself when None).
+
+        Every item is resolved again and exclusions start from their defaults. Restoring a kept Workspace passes the
+        file's content as *saved*, so its unsaved edits still count as modified.
+        """
+        self._workspace = current
+        self._saved_workspace = current if saved is None else saved
         self._resolutions = {}
         self._not_considered = set()
-        for item in opened.items:
+        for item in current.items:
             self._resolve(item)
         self.workspace_replaced.emit()
         self._announce_state()
@@ -110,14 +119,14 @@ class WorkspaceStore(QObject):
         self._workspace = self._workspace.remove_item(item_id)
         removed_ids = {content.content_id for content in self._resolutions.pop(item_id).contents}
         self._not_considered = {ref for ref in self._not_considered if ref.content_id not in removed_ids}
-        logger.debug(f"Item removed: {item.label} ({item_id})")
+        logger.debug(f"Item removed: {item.display_name} ({item_id})")
         self.item_removed.emit(item)
         self._announce_state()
 
     def rename_item(self, item_id: str, label: str) -> None:
         """Relabel the item with *item_id* and name its kept Content again; nothing is resolved.
 
-        Content ids, errors, and exclusions stay as they were.
+        Content ids, errors, and exclusions stay as they were. An empty *label* returns the item to its default name.
         """
         if not self._workspace.has_item(item_id):
             logger.warning(f"Attempted to rename an item not in the workspace: {item_id}")
@@ -126,7 +135,7 @@ class WorkspaceStore(QObject):
         item = self._workspace.item(item_id)
         previous = self._resolutions[item_id]
         self._resolutions[item_id] = ItemResolution(
-            contents=item.name_contents(previous.base), error=previous.error, base=previous.base
+            item, contents=item.name_contents(previous.base), error=previous.error, base=previous.base
         )
         self.item_renamed.emit(item)
         self._announce_state()
@@ -138,6 +147,10 @@ class WorkspaceStore(QObject):
     def resolution(self, item_id: str) -> ItemResolution:
         """Return what the item with *item_id* resolved to."""
         return self._resolutions[item_id]
+
+    def resolutions(self) -> tuple[ItemResolution, ...]:
+        """Return what every item resolved to, in item order."""
+        return tuple(self._resolutions[item.id] for item in self._workspace.items)
 
     def is_item_considered(self, item_ref: ConsiderationItemRef) -> bool:
         """Return whether the referenced item participates in navigation/layout."""
@@ -172,10 +185,10 @@ class WorkspaceStore(QObject):
         """Resolve *item*, record the result, and exclude the Content whose default is not considered."""
         try:
             base = item.resolve_base(self._context)
-            resolution = ItemResolution(contents=item.name_contents(base), base=base)
+            resolution = ItemResolution(item, contents=item.name_contents(base), base=base)
         except ItemResolutionError as exc:
-            logger.warning(f"Could not open {item.label}: {exc}")
-            resolution = ItemResolution(error=exc)
+            logger.warning(f"Could not open {item.display_name}: {exc}")
+            resolution = ItemResolution(item, error=exc)
         self._resolutions[item.id] = resolution
         self._not_considered.update(
             consideration.ref

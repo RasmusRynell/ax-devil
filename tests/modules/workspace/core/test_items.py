@@ -119,12 +119,34 @@ def test_content_ids_come_from_the_item_and_stay_the_same_on_every_resolution() 
     )
 
 
-def test_renaming_keeps_the_item_id() -> None:
-    item = VideoItem(label="a.mp4", video=Path("/clips/a.mp4"))
+def test_renaming_keeps_the_item_id_and_an_empty_or_default_name_returns_to_the_default() -> None:
+    item = VideoItem(video=Path("/clips/a.mp4"))
 
     renamed = item.with_label("Gate")
 
     assert (renamed.id, renamed.label, renamed.video) == (item.id, "Gate", item.video)
+    assert (renamed.with_label("").label, renamed.with_label("").display_name) == ("", "a.mp4")
+    assert renamed.with_label("a.mp4").label == ""
+
+
+def test_items_without_a_label_are_shown_by_a_name_derived_from_their_recipe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Video: file name; live: expanded host; playlist: the resolver's own names. None of it is stored."""
+    monkeypatch.setenv("TEST_CAMERA_ADDR", "10.0.0.7")
+    video = tmp_path / "lot.mp4"
+    video.write_bytes(b"")
+    live = LiveStreamItem(host="$TEST_CAMERA_ADDR")
+    context = FakeResolutionContext(
+        _CONTEXT.intake, resolvers={"runs": _Resolver([_playlist("train"), _playlist("test")])}
+    )
+
+    assert [content.display_name for content in VideoItem(video=video).resolve(context)] == ["lot.mp4"]
+    assert [content.display_name for content in live.resolve(context)] == ["10.0.0.7"]
+    assert live.with_label("10.0.0.7").label == ""
+    playlists = PlaylistItem(resolver="runs").resolve(context)
+    assert [content.display_name for content in playlists] == ["train", "test"]
+    assert live.to_json(None)["label"] == "" and live.to_json(None)["host"] == "$TEST_CAMERA_ADDR"
 
 
 def test_live_stream_item_keeps_references_and_expands_them_only_when_resolving(

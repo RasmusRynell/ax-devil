@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
-from PySide6.QtWidgets import QMenu
+import pytest
+from PySide6.QtWidgets import QApplication, QLabel, QMenu
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
@@ -13,7 +16,9 @@ from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
+from ax_devil.modules.workspace.core import VideoItem, WorkspaceBackup
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
+from tests.helpers.workspace import DummyViewer, FakePrompts
 
 
 class _FocusedWidget:
@@ -197,3 +202,65 @@ def test_view_display_preferences_save_and_follow_settings_changes(
         assert all(actions[preference.label].isChecked() for preference in OverlayPreference)
     finally:
         settings.apply_snapshot(previous)
+
+
+@pytest.mark.parametrize("use_custom_frame", [False, True])
+def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspace_and_unsaved_changes(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path, use_custom_frame: bool
+) -> None:
+    manager = _make_shortcut_manager()
+    window = MainWindow(
+        shortcut_manager=manager, render_catalog_manager=render_catalog_manager, use_custom_frame=use_custom_frame
+    )
+    qtbot.addWidget(window)
+    session = window._workspace_session
+    session._prompts = FakePrompts(save_path=tmp_path / "Parking lot")
+    expected_keys = {
+        "app.new_workspace": "",
+        "app.open_workspace": "Ctrl+O",
+        "app.save_workspace": "Ctrl+S",
+        "app.save_workspace_as": "Ctrl+Shift+S",
+    }
+    for action_id, key in expected_keys.items():
+        action = manager.get_action(action_id)
+        assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["File"]
+        assert action.shortcut().toString() == key
+
+    def shown_title() -> str:
+        if not use_custom_frame:
+            return window.windowTitle()
+        label = window.findChild(QLabel, "AxDevilTitleLabel")
+        assert label is not None
+        return label.text()
+
+    assert shown_title() == "Untitled — ax-devil"
+    video = tmp_path / "lot.mp4"
+    video.write_bytes(b"")
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([VideoItem(video=video)])
+    assert shown_title() == "● Untitled — ax-devil"
+
+    manager.get_action("app.save_workspace").trigger()
+
+    assert shown_title() == "Parking lot — ax-devil"
+
+
+def test_quitting_keeps_the_workspace_even_without_closing_the_window(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    """Quitting after an unexpected error skips closing the window; unsaved edits are still kept."""
+    window = MainWindow(shortcut_manager=_make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    session = window._workspace_session
+    session._backup = WorkspaceBackup(tmp_path / "workspace-backup.json")
+    video = tmp_path / "lot.mp4"
+    video.write_bytes(b"")
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([VideoItem(video=video)])
+
+    app = QApplication.instance()
+    assert app is not None
+    app.aboutToQuit.emit()
+
+    current, _saved = WorkspaceBackup(tmp_path / "workspace-backup.json").restore()
+    assert current.items == session._workspace_store.workspace.items

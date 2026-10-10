@@ -6,6 +6,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from math import ceil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
@@ -30,7 +31,7 @@ from ax_devil.modules.chrome.key_chips import (
     key_chips_width,
 )
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
-from ax_devil.modules.workspace.core import VideoItem
+from ax_devil.modules.workspace.core import workspace_name
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QEvent
@@ -93,15 +94,15 @@ class _WelcomeFonts:
 
 
 class WelcomeWidget(QWidget):
-    """Show clickable VS Code-style actions, recent videos, and a drop hint centered in the empty workspace."""
+    """Show clickable VS Code-style actions, recent workspaces, and a drop hint centered in the empty workspace."""
 
-    recent_video_requested = Signal(object)
+    recent_workspace_requested = Signal(object)  # Path
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMouseTracking(True)
         self._shortcut_manager: ShortcutManager | None = None
-        self._recent_videos: tuple[VideoItem, ...] = ()
+        self._recent_workspaces: tuple[Path, ...] = ()
         self._hovered: int | None = None
 
     def set_shortcut_manager(self, manager: ShortcutManager) -> None:
@@ -110,9 +111,9 @@ class WelcomeWidget(QWidget):
         self.updateGeometry()
         self.update()
 
-    def set_recent_videos(self, entries: Sequence[VideoItem]) -> None:
-        """Show *entries* as a Recent group; clicking one emits ``recent_video_requested``."""
-        self._recent_videos = tuple(entries)
+    def set_recent_workspaces(self, paths: Sequence[Path]) -> None:
+        """Show workspace files *paths* as a Recent group; clicking one emits ``recent_workspace_requested``."""
+        self._recent_workspaces = tuple(paths)
         self._hovered = None
         self.updateGeometry()
         self.update()
@@ -164,7 +165,7 @@ class WelcomeWidget(QWidget):
         item.activate()
 
     def _resolve_grouped_hints(self) -> OrderedDict[str, list[WelcomeItem]]:
-        """Build grouped rows from ShortcutManager's current bindings, then recent videos."""
+        """Build grouped rows from ShortcutManager's current bindings, then recent workspaces."""
         sm = self._shortcut_manager
         groups: OrderedDict[str, list[WelcomeItem]] = OrderedDict()
         if sm is not None:
@@ -180,15 +181,15 @@ class WelcomeWidget(QWidget):
                         activate=lambda action_id=defn.action_id, manager=sm: manager.get_action(action_id).trigger(),
                     )
                 )
-        if self._recent_videos:
+        if self._recent_workspaces:
             groups[_RECENT_GROUP] = [
                 WelcomeItem(
-                    label="  +  ".join([entry.label, *(overlay.path.name for overlay in entry.overlays)]),
+                    label=workspace_name(path),
                     keys=QKeySequence(),
-                    tooltip=entry.description,
-                    activate=lambda entry=entry: self.recent_video_requested.emit(entry),
+                    tooltip=str(path),
+                    activate=lambda path=path: self.recent_workspace_requested.emit(path),
                 )
-                for entry in self._recent_videos
+                for path in self._recent_workspaces
             ]
         return groups
 

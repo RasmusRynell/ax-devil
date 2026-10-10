@@ -9,22 +9,30 @@ from unittest.mock import Mock, patch
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QAction, QColor, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMenu, QToolButton, QTreeWidget, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent
+from ax_devil.modules.workspace.core import (
+    ConsiderationItemRef,
+    FileVideoSourceSpec,
+    SeekableVideoContent,
+    UnreadableItem,
+    VideoItem,
+)
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.content_browser import (
     TREE_CONSIDERATION_COLUMN,
     TREE_INDENTATION_PX,
+    TREE_LABEL_COLUMN,
     ContentBrowserWidget,
 )
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
+from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 
 
 def _noop() -> NoReturn:
@@ -371,7 +379,6 @@ def test_double_click_consideration_column_does_not_activate(qtbot: QtBot) -> No
 def test_context_menu_uses_explicit_information_and_removal_payload(qtbot: QtBot) -> None:
     browser = ContentBrowserWidget()
     qtbot.addWidget(browser)
-    video = _make_video()
     info = WorkspaceItemInfo(title="Video", fields=(("type", "video"),))
     information_factory = Mock(return_value=info)
     browser.set_browser_rows(
@@ -380,7 +387,7 @@ def test_context_menu_uses_explicit_information_and_removal_payload(qtbot: QtBot
                 row_id="row-16",
                 label="Video",
                 icon_kind="video",
-                removable_content=video,
+                item=VideoItem(video=Path("/tmp/video.mp4")),
                 information_factory=information_factory,
                 children=(
                     WorkspaceBrowserRow(
@@ -397,7 +404,7 @@ def test_context_menu_uses_explicit_information_and_removal_payload(qtbot: QtBot
     top_menu = browser._build_context_menu(_required_top_item(browser))
     child_menu = browser._build_context_menu(_required_child(_required_top_item(browser), 0))
 
-    assert [action.text() for action in top_menu.actions()] == ["Information", "Remove"]
+    assert [action.text() for action in top_menu.actions()] == ["Information", "Rename", "Remove"]
     assert [action.text() for action in child_menu.actions()] == ["Information"]
     information_factory.assert_not_called()
 
@@ -433,7 +440,7 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
                 row_id="video",
                 label="Video",
                 icon_kind="video",
-                removable_content=_make_video(),
+                item=VideoItem(video=Path("/tmp/video.mp4")),
             ),
         )
     )
@@ -454,7 +461,7 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
         browser._show_context_menu(position)
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
-    assert destroyed.call_count == 6
+    assert destroyed.call_count == 9  # Each time: the menu, Rename, and Remove.
     assert browser.findChildren(QMenu) == []
 
 
@@ -568,3 +575,78 @@ def test_excluded_filter_and_row_toggle_use_different_icons_and_tooltips(qtbot: 
     assert all(filter_image != eye_image for eye_image in eye_images)
     assert "this list" in browser._show_excluded_toggle.toolTip()
     assert "playback" in row_toggle.toolTip()
+
+
+def _actions_by_text(menu: QMenu) -> dict[str, QAction]:
+    return {action.text(): action for action in menu.actions()}
+
+
+def test_an_unavailable_row_shows_its_reason_instead_of_opening(qtbot: QtBot) -> None:
+    browser = ContentBrowserWidget()
+    qtbot.addWidget(browser)
+    item = VideoItem(video=Path("/missing/lot.mp4"))
+    browser.set_browser_rows(
+        (
+            WorkspaceBrowserRow(
+                row_id=item.id,
+                label="lot.mp4",
+                icon_kind="unavailable",
+                item=item,
+                unavailable_reason="File not found: /missing/lot.mp4",
+            ),
+        )
+    )
+    activated: list[object] = []
+    browser.content_activated.connect(lambda content, index: activated.append(content))
+    tree_item = _required_top_item(browser)
+
+    with patch("ax_devil.modules.workspace.ui.content_browser.QMessageBox.warning") as warning:
+        browser._tree.itemDoubleClicked.emit(tree_item, TREE_LABEL_COLUMN)
+
+    assert activated == []
+    [(_, _, message)] = [call.args for call in warning.call_args_list]
+    assert message == "lot.mp4: File not found: /missing/lot.mp4"
+    assert "File not found: /missing/lot.mp4" in tree_item.toolTip(TREE_LABEL_COLUMN)
+    actions = _actions_by_text(browser._build_context_menu(tree_item))
+    assert set(actions) == {"Rename", "Remove"}
+    with qtbot.waitSignal(browser.item_remove_requested) as removed:
+        actions["Remove"].trigger()
+    assert removed.args == [item.id]
+
+
+def test_rename_asks_for_a_name_and_requests_it(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    browser = ContentBrowserWidget()
+    qtbot.addWidget(browser)
+    item = VideoItem(label="Gate", video=Path("/tmp/gate.mp4"))
+    browser.set_browser_rows((WorkspaceBrowserRow(row_id="gate", label="Gate", icon_kind="video", item=item),))
+    shown: list[str] = []
+
+    def enter_name(dialog: RenameDialog) -> int:
+        shown.append(dialog._name_edit.text())
+        dialog._name_edit.setText("  North gate ")
+        return RenameDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(RenameDialog, "exec", enter_name)
+    with qtbot.waitSignal(browser.item_rename_requested) as renamed:
+        _actions_by_text(browser._build_context_menu(_required_top_item(browser)))["Rename"].trigger()
+
+    assert shown == ["Gate"]
+    assert renamed.args == [item.id, "North gate"]
+
+
+def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
+    browser = ContentBrowserWidget()
+    qtbot.addWidget(browser)
+    item = UnreadableItem.from_raw({"kind": "radar", "id": "r1"}, "Unknown item kind: 'radar'.")
+    browser.set_browser_rows(
+        (
+            WorkspaceBrowserRow(
+                row_id=item.id, label="radar", icon_kind="unavailable", item=item, unavailable_reason=item.reason
+            ),
+        )
+    )
+
+    actions = _actions_by_text(browser._build_context_menu(_required_top_item(browser)))
+
+    assert not actions["Rename"].isEnabled()
+    assert actions["Remove"].isEnabled()

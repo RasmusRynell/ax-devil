@@ -140,3 +140,8 @@ def build_playlist_lane_information(
         fields.extend(_metadata_fields(lane.overlay.metadata))
     fields.extend(_metadata_fields(lane.metadata))
     return _build_information(lane.display_name, fields)
+
+
+def build_unavailable_information(name: str, reason: str) -> WorkspaceItemInfo:
+    """Build the information payload for an item that could not open, giving the reason."""
+    return _build_information(name, [("Unavailable", reason)])

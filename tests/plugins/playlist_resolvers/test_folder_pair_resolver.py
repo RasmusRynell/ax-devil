@@ -64,7 +64,7 @@ class TestFolderPairResolverPluginMetadata:
 
         assert result.exit_code == 0, result.output
         [[item]] = launched
-        assert (item.label, item.resolver) == ("Folder Pair", "folder_pair")
+        assert (item.label, item.resolver) == ("", "folder_pair")
         assert item.settings == {
             "videos_dir": str(videos_dir),
             "overlays_dir": str(overlays_dir),

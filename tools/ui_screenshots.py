@@ -173,6 +173,9 @@ def test_screenshots(
     qtbot.addWidget(window)
     window.show()
     qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
+    window._workspace_session._welcome.set_recent_workspaces(
+        [Path("/data/reviews") / f"{name}.ax-devil.workspace" for name in ("Parking lot", "Entrance cameras", "Exp 3")]
+    )
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         window.resize(*WINDOW_SIZES["wide"])
@@ -194,7 +197,6 @@ def test_screenshots(
     session = window._workspace_session
     clip_path = video_file_factory(CLIP_FRAMES / CLIP_FPS, CLIP_FPS)
     tracked_clip = VideoItem(
-        label=clip_path.name,
         video=clip_path,
         overlays=(OverlayFile(_write_tracks(tmp_path / "tracks.xml"), ONVIF_XML),),
     )
@@ -251,7 +253,7 @@ def test_screenshots(
     viewer.set_pinned(True)  # An unpinned lane is a preview that the next video replaces.
     second_clip = tmp_path / "second-lane.mp4"
     shutil.copyfile(tracked_clip.video, second_clip)
-    session.open_video(replace(tracked_clip, id=new_item_id(), label=second_clip.name, video=second_clip))
+    session.add_items([replace(tracked_clip, id=new_item_id(), label="", video=second_clip)])
     _show_tracked_frame(qtbot, session.focused_offline_viewer())
     for text_size in TEXT_SIZES:
         settings.text_size = text_size

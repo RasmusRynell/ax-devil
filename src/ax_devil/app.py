@@ -12,7 +12,7 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.application_shell.main_window import MainWindow
-from ax_devil.modules.application_shell.restart import relaunch_if_requested
+from ax_devil.modules.application_shell.restart import is_restarted_launch, relaunch_if_requested
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme, setup_theme
 from ax_devil.modules.diagnostics.exception_handler import install_exception_handler
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
@@ -35,14 +35,17 @@ class Application:
         log_level: str = "INFO",
         config_path: Path | None = None,
         debug: bool = False,
-        startup_items: Sequence[WorkspaceItem] = (),
+        items: Sequence[WorkspaceItem] = (),
+        workspace_file: Path | None = None,
         open_catalog_viewer: bool = False,
     ):
-        """Store startup parameters: the Workspace Items to add, and whether to show the catalog viewer on start."""
+        """Store launch parameters: the Workspace Items to start a new workspace with, or the workspace file to open,
+        and whether to show the catalog viewer on start. Without either, the kept workspace is restored."""
         self.log_level = log_level
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self.debug = debug
-        self.startup_items = tuple(startup_items)
+        self.items = tuple(items)
+        self.workspace_file = workspace_file
         self.open_catalog_viewer = open_catalog_viewer
         self.app: QApplication | None = None
         self.main_window: MainWindow | None = None
@@ -54,6 +57,9 @@ class Application:
             setup_qt_logging()
             setup_logging(console_log_level=self.log_level, console_only=True)
             self.logger = get_logger(__name__)
+            if is_restarted_launch() and (self.items or self.workspace_file):
+                self.logger.info("Restarted: restoring the kept workspace instead of the command line's content")
+                self.items, self.workspace_file = (), None
             QApplication.setApplicationName("ax-devil")
             QApplication.setApplicationVersion(APP_VERSION)
 
@@ -93,7 +99,7 @@ class Application:
                 render_catalog_manager=render_catalog_manager,
             )
             self.main_window.show()
-            self.main_window.add_items(self.startup_items)
+            self.main_window.launch(self.items, self.workspace_file)
             QTimer.singleShot(0, self._show_startup_windows)
 
             _collect_garbage_on_gui_thread(self.app, self.logger)
@@ -159,7 +165,8 @@ def create_app(
     log_level: str = "INFO",
     config_path: Path | None = None,
     debug: bool = False,
-    startup_items: Sequence[WorkspaceItem] = (),
+    items: Sequence[WorkspaceItem] = (),
+    workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
 ) -> Application:
     """Create application instance."""
@@ -167,6 +174,7 @@ def create_app(
         log_level=log_level,
         config_path=config_path,
         debug=debug,
-        startup_items=startup_items,
+        items=items,
+        workspace_file=workspace_file,
         open_catalog_viewer=open_catalog_viewer,
     )

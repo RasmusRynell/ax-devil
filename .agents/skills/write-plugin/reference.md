@@ -122,7 +122,7 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   - `create_settings_widget()` is required: a `PlaylistResolverWidget` that edits settings and calls
     `submit_settings(settings)` when the user is ready.
   - `create_cli_command()` is optional: it builds the same settings from CLI arguments and passes
-    `[PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)]` to
+    `[PlaylistItem(resolver=cls.plugin_id(), settings=settings)]` to
     `ctx.obj["run_with_items"]`.
 
   The model is `src/ax_devil/plugins/playlist_resolvers/folder_pair/` (`plugin.py`, `resolver.py`).

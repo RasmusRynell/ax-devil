@@ -11,11 +11,13 @@ from collections.abc import Iterator
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
+    QDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -29,11 +31,13 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Content
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
+from ax_devil.modules.workspace.core.items import WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserIconKind,
     WorkspaceBrowserRow,
 )
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
+from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 
 TREE_INDENTATION_PX = Space.L
 TREE_LABEL_COLUMN = 0
@@ -47,6 +51,7 @@ _KIND_ICONS: dict[WorkspaceBrowserIconKind, Icon] = {
     "live_video": Icon.LIVE_VIDEO,
     "playlist": Icon.PLAYLIST,
     "overlay": Icon.OVERLAY,
+    "unavailable": Icon.WARNING,
 }
 
 
@@ -93,7 +98,8 @@ class ContentBrowserWidget(QWidget):
     content_activated = Signal(object, int)
     content_open_to_side_requested = Signal(object, int)
     item_consideration_change_requested = Signal(object, bool)
-    content_remove_requested = Signal(object)
+    item_remove_requested = Signal(str)  # item id
+    item_rename_requested = Signal(str, str)  # item id, new label; empty for the default name
     export_requested = Signal(object)  # OnScreenWorkspaceItem
     rows_changed = Signal()  # After set_browser_rows; see has_rows
 
@@ -313,11 +319,11 @@ class ContentBrowserWidget(QWidget):
 
     def _refresh_visual_state(self, item: QTreeWidgetItem) -> None:
         """Derive and apply the visual state for item and descendants from local state."""
-        considered = self._row_data(item).is_considered
+        row = self._row_data(item)
 
         palette = self.palette()
         color = palette.color(QPalette.ColorRole.Text)
-        if not considered:
+        if not row.is_considered or row.unavailable_reason is not None:
             color.setAlphaF(0.5)
         brush = QBrush(color)
         item.setForeground(TREE_LABEL_COLUMN, brush)
@@ -334,7 +340,11 @@ class ContentBrowserWidget(QWidget):
         if column == TREE_CONSIDERATION_COLUMN:
             return
         self._expand_item_path(item)
-        activation_target = self._row_data(item).activation_target
+        row = self._row_data(item)
+        if row.unavailable_reason is not None:
+            QMessageBox.warning(self, "Open Content", f"{row.label}: {row.unavailable_reason}")
+            return
+        activation_target = row.activation_target
         if activation_target is None:
             return
         if QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -416,16 +426,27 @@ class ContentBrowserWidget(QWidget):
             )
             menu.addAction(export_action)
 
-        if item.parent() is None:
-            content = self._row_data(item).removable_content
-            if content is not None:
-                remove_action = QAction("Remove", menu)
-                remove_action.triggered.connect(
-                    lambda _checked=False, value=content: self.content_remove_requested.emit(value)
-                )
-                menu.addAction(remove_action)
+        workspace_item = row.item
+        if workspace_item is not None:
+            rename_action = QAction("Rename", menu)
+            rename_action.setEnabled(workspace_item.renamable)
+            rename_action.triggered.connect(lambda _checked=False, value=workspace_item: self._rename_item(value))
+            menu.addAction(rename_action)
+            remove_action = QAction("Remove", menu)
+            remove_action.triggered.connect(
+                lambda _checked=False, item_id=workspace_item.id: self.item_remove_requested.emit(item_id)
+            )
+            menu.addAction(remove_action)
 
         return menu
+
+    def _rename_item(self, item: WorkspaceItem) -> None:
+        """Ask for a new name for *item* and request the rename when the user confirms it."""
+        with RenameDialog(item.display_name, self) as dialog:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            name = dialog.name()
+        self.item_rename_requested.emit(item.id, name)
 
     def _add_open_actions(self, menu: QMenu, content: Content, start_index: int) -> None:
         """Add actions that open the row in the preview pane or in a new split."""

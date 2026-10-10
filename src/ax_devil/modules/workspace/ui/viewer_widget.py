@@ -166,6 +166,11 @@ class ViewerWidget(QFrame):
             button.setFixedSize(Height.CONTROL.px, Height.CONTROL.px)
         self._update_pin_state()
 
+    def set_title(self, title: str) -> None:
+        """Show *title* in the header, such as the new name of a renamed item."""
+        self._title_label.setText(title)
+        self._fit_header_details()
+
     def set_header_details(self, text: str) -> None:
         """Show *text*, such as the video's size, frame rate and length, muted next to the title."""
         self._details_label.setText(text)
