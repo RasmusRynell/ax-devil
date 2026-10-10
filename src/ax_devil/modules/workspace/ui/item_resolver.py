@@ -30,10 +30,11 @@ class _ResolveJob(QRunnable):
 
 
 class ItemResolver(QObject):
-    """Resolve batches of items on one background thread, in the order asked, and hand each back on the GUI thread.
+    """Resolve batches of items on background threads and hand each result back on the GUI thread.
 
-    Resolving reads files and runs playlist resolvers, which may take long on large or slow folders. With
-    ``in_background=False`` every batch resolves at once on the calling thread instead, as tests need.
+    Resolving reads files and runs playlist resolvers, which may take long on large or slow folders. Batches run side
+    by side, so new work never waits behind a slow batch whose result will be dropped; results may arrive in any
+    order. With ``in_background=False`` every batch resolves at once on the calling thread instead, as tests need.
     """
 
     def __init__(
@@ -44,7 +45,6 @@ class ItemResolver(QObject):
         self._pool: QThreadPool | None = None
         if in_background:
             self._pool = QThreadPool(self)
-            self._pool.setMaxThreadCount(1)
         self._jobs: set[_ResolveJob] = set()
 
     @property

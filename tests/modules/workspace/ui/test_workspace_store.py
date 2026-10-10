@@ -417,3 +417,17 @@ def test_results_for_removed_items_or_a_replaced_workspace_are_dropped(
     assert [resolution.item for resolution in resolved[0]] == [kept]
     assert store.workspace.items == (kept,)
     assert [content.display_name for content in store.contents()] == ["Kept / train", "Kept / test"]
+
+
+def test_a_replacing_workspace_resolves_without_waiting_for_the_one_it_replaced(
+    qtbot: QtBot, blocking: _BlockingResolver
+) -> None:
+    store = _background_store(blocking)
+    store.replace_workspace(Workspace(items=(PlaylistItem(resolver="runs"),)))
+    requested = PlaylistItem(label="Requested", resolver="quick")
+
+    store.replace_workspace(Workspace(items=(requested,)))
+
+    qtbot.waitUntil(lambda: not store.resolution(requested.id).is_pending, timeout=2000)
+    assert not blocking.release.is_set()
+    assert [content.display_name for content in store.contents()] == ["Requested / train", "Requested / test"]

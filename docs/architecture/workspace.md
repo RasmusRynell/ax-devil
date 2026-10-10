@@ -49,7 +49,7 @@ file format, and the store do not branch on kind.
 ## Resolution
 
 `WorkspaceStore` owns resolution. Every change to the items applies at once; their Content follows from `ItemResolver`,
-which resolves on one background thread because playlist resolvers search folders. Until then the item is pending and
+which resolves on background threads because playlist resolvers search folders. Until then the item is pending and
 its row opens nothing. A result for an item removed meanwhile, or for a Workspace since replaced, is dropped; a result
 for an item renamed meanwhile is named after the new label. Renaming never resolves again: `ItemResolution` keeps the
 Content as named without a label and names it after the item.
