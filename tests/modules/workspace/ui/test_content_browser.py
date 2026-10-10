@@ -29,6 +29,7 @@ from ax_devil.modules.workspace.ui.content_browser import (
     TREE_CONSIDERATION_COLUMN,
     TREE_INDENTATION_PX,
     TREE_LABEL_COLUMN,
+    TREE_ROW_ROLE,
     ContentBrowserWidget,
 )
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
@@ -111,7 +112,45 @@ def test_refresh_preserves_expansion_by_identity_after_reordering(qtbot: QtBot) 
 
     assert _required_top_item(browser, 0).isExpanded()
     assert not _required_top_item(browser, 1).isExpanded()
-    assert _required_child(_required_top_item(browser, 1), 0).font(0).bold()
+    open_child = _required_child(_required_top_item(browser, 1), 0)
+    assert open_child.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE).is_open
+
+
+def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qtbot: QtBot) -> None:
+    browser = ContentBrowserWidget()
+    qtbot.addWidget(browser)
+    browser.set_browser_rows(
+        (
+            WorkspaceBrowserRow(
+                row_id="section/videos",
+                label="Videos",
+                icon_kind="video",
+                summary="1",
+                is_section=True,
+                children=(WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"),),
+            ),
+        )
+    )
+    section = _required_top_item(browser)
+
+    assert section.isExpanded()
+    assert not section.flags() & Qt.ItemFlag.ItemIsSelectable
+    assert section.toolTip(0) == ""
+    assert _required_child(section, 0).text(0) == "clip.mp4"
+
+    section.setExpanded(False)
+
+    assert section.isExpanded()
+
+    browser._search_edit.setText("videos")
+
+    assert section.isHidden()
+    assert _required_child(section, 0).isHidden()
+
+    browser._search_edit.setText("clip")
+
+    assert not section.isHidden()
+    assert not _required_child(section, 0).isHidden()
 
 
 def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
@@ -310,7 +349,7 @@ def test_search_preserves_hidden_excluded_rows(qtbot: QtBot) -> None:
     assert not _required_top_item(browser).isHidden()
 
 
-def test_open_row_is_bold_and_expanded(qtbot: QtBot) -> None:
+def test_open_row_is_revealed_and_hovering_it_says_so(qtbot: QtBot) -> None:
     browser = ContentBrowserWidget()
     qtbot.addWidget(browser)
     browser.set_browser_rows(
@@ -328,8 +367,39 @@ def test_open_row_is_bold_and_expanded(qtbot: QtBot) -> None:
     child_item = _required_child(top_item, 0)
 
     assert top_item.isExpanded()
-    assert child_item.font(0).bold()
-    assert child_item.toolTip(0) == "Open in at least one viewer"
+    assert child_item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE).is_open
+    assert "Open in a viewer" in child_item.toolTip(0)
+
+
+def test_tree_items_expose_their_detail_as_accessible_text(qtbot: QtBot) -> None:
+    browser = ContentBrowserWidget()
+    qtbot.addWidget(browser)
+    browser.set_browser_rows(
+        (
+            WorkspaceBrowserRow(
+                row_id="section/live",
+                label="Live",
+                icon_kind="live_video",
+                summary="2",
+                is_section=True,
+                children=(
+                    WorkspaceBrowserRow(row_id="a", label="Entrance", icon_kind="live_video", summary="192.0.2.10"),
+                    WorkspaceBrowserRow(row_id="b", label="Plain", icon_kind="live_video"),
+                ),
+            ),
+        )
+    )
+
+    section = _required_top_item(browser)
+    entrance = _required_child(section, 0)
+    plain = _required_child(section, 1)
+
+    def accessible_text(item: QTreeWidgetItem) -> object:
+        return item.data(TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole)
+
+    assert accessible_text(section) == "Live, 2"
+    assert accessible_text(entrance) == "Entrance, 192.0.2.10"
+    assert accessible_text(plain) == "Plain"
 
 
 def test_double_click_emits_activation_target_and_expands_path(qtbot: QtBot) -> None:
@@ -544,8 +614,8 @@ def test_rows_show_location_hints_with_middle_elision_and_path_tooltips(qtbot: Q
     item = _required_top_item(browser)
 
     assert browser._tree.textElideMode() == Qt.TextElideMode.ElideMiddle
-    assert item.text(0) == "cam.mp4 — site_a"
-    assert item.toolTip(0) == "/data/site_a/cam.mp4"
+    assert item.text(0) == "cam.mp4"
+    assert "/data/site_a/cam.mp4" in item.toolTip(0)
     browser._search_edit.setText("site_a")
     assert not item.isHidden()
 
