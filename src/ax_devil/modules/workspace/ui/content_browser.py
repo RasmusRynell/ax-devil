@@ -169,7 +169,7 @@ class ContentBrowserWidget(QWidget):
     def _create_search_edit(self) -> QLineEdit:
         """Create the content-name search field."""
         search = QLineEdit(self)
-        search.setPlaceholderText("Search items...")
+        search.setPlaceholderText("Search items")
         search.setClearButtonEnabled(True)
         search.textChanged.connect(self._on_search_text_changed)
         return search

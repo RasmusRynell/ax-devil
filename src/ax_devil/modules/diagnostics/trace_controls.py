@@ -23,7 +23,7 @@ class TraceControls(QWidget):
         layout = QHBoxLayout(self)
         self.record_button = QPushButton("Start recording")
         self.record_button.clicked.connect(self._toggle_recording)
-        self.save_button = QPushButton("Save trace…")
+        self.save_button = QPushButton("Save trace")
         self.save_button.setEnabled(False)
         self.save_button.clicked.connect(self._save)
         self.status = QLabel("Sample Python stacks at a target 100 Hz and save the recording as JSON.")

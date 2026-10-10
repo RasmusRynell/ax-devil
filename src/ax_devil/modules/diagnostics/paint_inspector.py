@@ -130,7 +130,7 @@ class PaintInspector(QWidget):
         self.sources.header().setStretchLastSection(True)
         self.sources.setMaximumHeight(200)
         content.addWidget(self.sources)
-        record = QPushButton("Investigate with recording…")
+        record = QPushButton("Investigate with recording")
         record.clicked.connect(self.recordingRequested.emit)
         content.addWidget(record)
         content.addWidget(

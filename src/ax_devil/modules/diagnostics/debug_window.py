@@ -108,7 +108,7 @@ class DebugWindow(ChromeWindow):
             f"Recent {HISTORY_SECONDS:g} seconds, limited to {HISTORY_LIMIT} paints per viewer."
         )
         controls.addWidget(self.status_label, 1)
-        export = QPushButton("Export…")
+        export = QPushButton("Export")
         export.setToolTip("Export rendering history, source observations, and full cache ranges as JSON.")
         export.clicked.connect(self._export_metrics)
         reset = QPushButton("Reset history")
@@ -141,7 +141,7 @@ class DebugWindow(ChromeWindow):
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText("Find a viewer…")
+        self.filter_input.setPlaceholderText("Find a viewer")
         self.filter_input.setClearButtonEnabled(True)
         self.filter_input.textChanged.connect(self._filter_viewers)
         sidebar_layout.addWidget(self.filter_input)

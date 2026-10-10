@@ -142,7 +142,7 @@ class SettingsDialog(BaseDialog):
 
         layout.addWidget(overlay_group)
 
-        shortcuts = QPushButton("Keyboard shortcuts…")
+        shortcuts = QPushButton("Keyboard shortcuts")
         shortcuts.setEnabled(self._shortcut_manager is not None)
         shortcuts.clicked.connect(self._edit_shortcuts)
         layout.addWidget(shortcuts)
