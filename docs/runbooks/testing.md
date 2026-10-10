@@ -175,8 +175,12 @@ Other pixel-coordinate tests assume scale 1. Linux/OpenGL results do not certify
 
 ## Rendering benchmarks
 
-Expected costs are in [Draw System performance](../architecture/draw-system.md#performance). On Xvfb, OpenGL
-composition adds about 24 ms per round because each frame is copied back to the X server; a real display differs.
+The GUI thread is the limit; video decoding costs little. With 250 moving objects per lane on a 1080p25 recording,
+two lanes play at full rate and four lanes saturate one core, where playback stays in real time by showing fewer
+frames. On an RTX 5080 with Qt 6.10.2, one round of `tools/benchmark_catalog_lanes.py --lanes 4 --entities 250`
+costs about 24 ms of catalog evaluation and drawing preparation, 4.1 ms of item binding, 0.8 ms of scene graph sync
+and 3.6 ms of render submission, for 36 ms of process CPU. On Xvfb, OpenGL composition adds about 24 ms per round
+because each frame is copied back to the X server; a real display differs.
 `--gpu-sync` adds about 0 ms there, and software-backend rounds spike near 170 ms regardless of the change under
 test. `tools/benchmark_quick_renderer.py` measures the Quick renderer with synthetic shapes. For a native-window
 comparison on a private display, run each backend separately. These results do not certify physical GPU performance:

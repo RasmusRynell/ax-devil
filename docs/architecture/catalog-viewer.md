@@ -7,7 +7,7 @@ the result the moment the file is saved. Open it with `ax-devil catalog` or **Vi
 ## Pieces
 
 Code lives in `src/ax_devil/modules/catalog_viewer/`. File watching belongs to `SceneRenderCatalogManager`; see
-[Render Catalog Storage And UI](draw-system.md#render-catalog-storage-and-ui).
+[Catalog files and selection](../../src/ax_devil/modules/scene/rendering/README.md#catalog-files-and-selection).
 
 | Piece | What it does |
 |---|---|

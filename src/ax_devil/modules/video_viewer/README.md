@@ -37,6 +37,15 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
 
 Do not move Workspace session/layout behavior, reusable player primitives, or pure Scene behavior into this module.
 
+## Rules
+
+- Tools that follow playback do no work while they cannot be seen: a collapsed side panel hides its content, and
+  hidden lists, tabs and cards keep only the latest update and catch up when shown. Live event logs still record
+  while hidden, since those events cannot be recovered, and record each overlay's events once.
+- Media tools and zoom shortcuts act on the lane holding keyboard focus, or the first lane when focus is elsewhere.
+- Multi-lane export tiles the selected lanes in the viewer's lane grid and follows the first selected lane's frame
+  index and timing, as playback does; a lane past its last frame holds that frame.
+
 ## Testing focus
 
 - Live workflow, controller and connection status behavior: `tests/modules/video_viewer/test_live_video_viewer.py`,
@@ -48,5 +57,4 @@ Do not move Workspace session/layout behavior, reusable player primitives, or pu
 - Viewer media tools and overlay persistence:
   `tests/modules/video_viewer/media_tools/` and `tests/modules/video_viewer/test_overlay_persistence.py`.
 - Export job output and dialog cancellation: `tests/modules/video_viewer/export/`.
-- Scene-to-player presenter behavior: `tests/modules/video_viewer/test_scene_frame_presenter.py` and
-  `tests/modules/video_viewer/test_filter_rendering.py`.
+- Scene-to-player presenter behavior: `tests/modules/video_viewer/test_scene_frame_presenter.py`.

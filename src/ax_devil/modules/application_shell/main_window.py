@@ -52,6 +52,9 @@ class MainWindow(ChromeWindow):
     ) -> None:
         super().__init__(use_custom_frame=use_custom_frame, show_custom_frame_border=False, remember_size=True)
 
+        # An empty, hidden Quick child before the first show makes Qt create the main window with accelerated
+        # composition, so opening the first viewer never replaces the raster native window. Dialogs and menus stay
+        # on the normal widget path; Qt deletes this child with the window.
         self._composition_host = QQuickWidget(self)
         self._composition_host.hide()
         self._logger = get_logger(__name__)

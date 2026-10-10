@@ -38,6 +38,25 @@ orchestration.
 4. `RenderContext` is built (cached by target size) and passed with the surface-owned `DrawingBuffer` (carrying exact `DrawingSettings`) to drawing generators.
 5. Widget overlays (controls, drag handle) are laid out by `overlay_layout.py` policy.
 
+## Quick surface
+
+`VideoFrameRenderer` is a QWidget shell around one `QQuickWidget` that draws the video texture and every overlay;
+Graphics Off selects Quick's software backend at startup. QQuickWidget keeps widget stacking at the cost of an extra
+composition pass and no threaded render loop, so all preparation stays on the GUI thread and the scene graph only
+consumes prepared data. Rules worth knowing before changing `engine/quick/`:
+
+- Geometry, paths, text and labels are separate pools and layers drawn bottom to top in that order. Order across
+  entities is not preserved so geometry can batch into a few nodes (split at 60,000 vertices).
+- Geometry items are matched by ordinal; path and text items by content, independent of position, so moving an
+  overlay updates transforms instead of rebuilding glyphs and tessellation.
+- Labels are painted once per distinct content into a sprite and submitted through one `LabelLayer` whose node tree
+  shares textures by sprite, so returning content such as a repeated score is not rasterized or uploaded again.
+  Cache limits are in the code; visible groups are never evicted.
+- Culling uses the surface viewport in overlay-local coordinates, not the image bounds, so overlays stay visible in
+  letterboxing; pan and viewport-size changes therefore invalidate preparation.
+- Cleanup submits an empty frame and synchronizes the scene graph before hiding, so Qt deletes native image nodes
+  while their Python texture adapters are still alive. The export renderer is destroyed explicitly after cleanup.
+
 ## Design rules
 
 - This module is application-independent. It must not import Workspace, Video Viewer workflow, data-source runtime
@@ -71,11 +90,9 @@ orchestration.
 - Transform sizing math: `tests/modules/video_player/test_video_transforms.py`.
 - Keep renderer tests focused on behavior contracts, not internal private fields.
 
-Quick GPU rendering and texture upload are asynchronous to the measured GUI preparation.
-Rendering diagnostics use `modules/diagnostics/render_metrics.py`. Viewer owners set a
-content/lane label through `display.viewport.set_diagnostics_label(...)`. See
-[measurement definitions](../diagnostics/README.md#measurement-definitions)
-for timing boundaries, cache hits, and submission versus paint semantics.
+Rendering diagnostics use `modules/diagnostics/render_metrics.py`; viewer owners set a content/lane label through
+`display.viewport.set_diagnostics_label(...)`. Timing boundaries are in the
+[measurement definitions](../diagnostics/README.md#measurement-definitions).
 
 ## Lane fullscreen
 

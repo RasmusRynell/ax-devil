@@ -30,8 +30,9 @@ choosing its own sizes and colors.
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 
-Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invariants.md#ui-lifecycle): they say when
-sizes may be computed, how to top-align content, which colors belong on the video scrim, and which pixels are exempt.
+Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invariants.md#ui-lifecycle) and the
+[chrome README](../../../src/ax_devil/modules/chrome/README.md): they say when sizes may be computed, how to top-align
+content, how dialogs get their size, and which pixels are exempt.
 
 ## Common patterns
 
