@@ -5,9 +5,10 @@ prefix them with `uv run`.
 
 ## Workspaces
 
-The sidebar lists the workspace: the videos, live streams, and playlists you added. **File → Save Workspace**
+The sidebar lists the workspace: the videos, live streams, and playlists you added. While the workspace is empty it
+shows buttons to open content and your recent workspaces instead. **File → Save Workspace**
 (`Ctrl+S`) saves it as a `.ax-devil.workspace` file. **File → Open Workspace** (`Ctrl+O`), **File → Open Recent**, the
-welcome screen's **Recent** list, and `ax-devil open <file>` open one. The window title shows the workspace name, with
+sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The window title shows the workspace name, with
 `●` while it has unsaved changes.
 
 Closing never asks. The workspace, unsaved changes included, is kept in the storage folder and reopened by the next
@@ -31,7 +32,8 @@ icon; hover it for the reason. The details are in [Workspace](architecture/works
 
 The **media tools panel** holds filtering, object inspection, the event log, the render catalog choice and export.
 Open it with **View → Media Tools Panel** (`Ctrl+B`) or by double-clicking or dragging the handle on the right edge of the video.
-**View → Sidebar** (`Ctrl+\`) hides or shows the list of opened content on the left.
+**View → Sidebar** (`Ctrl+\`), or the folder button in the strip along the left edge, hides or shows the sidebar.
+The same strip opens the render catalogs and Settings.
 
 Press **F** on a lane to show it fullscreen; **F** or **Esc** restores it, and **F11** toggles the application
 window. Playback shortcuts can be changed in **Settings → General**.

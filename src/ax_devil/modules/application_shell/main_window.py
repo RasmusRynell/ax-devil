@@ -75,7 +75,7 @@ class MainWindow(ChromeWindow):
 
         self._setup_window()
         self._shortcut_manager.install(self)
-        self._workspace_session.set_welcome_shortcut_manager(self._shortcut_manager)
+        self._workspace_session.set_shortcut_manager(self._shortcut_manager)
         self._setup_menu_bar()
         self._setup_central_widget()
         self._workspace_session.state_changed.connect(self._update_title)

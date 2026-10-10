@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -182,9 +183,16 @@ def test_screenshots(
     qtbot.addWidget(window)
     window.show()
     qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
-    window._workspace_session._welcome.set_recent_workspaces(
-        [Path("/data/reviews") / f"{name}.ax-devil.workspace" for name in ("Parking lot", "Entrance cameras", "Exp 3")]
-    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)  # Recent folders show as ~/..., as on a real machine.
+    recent = []
+    for days_ago, name in ((0, "Parking lot"), (2, "Entrance cameras"), (40, "Exp 3")):
+        path = tmp_path / "reviews" / f"{name}.ax-devil.workspace"
+        path.parent.mkdir(exist_ok=True)
+        path.touch()
+        stamp = time.time() - days_ago * 86400
+        os.utime(path, (stamp, stamp))
+        recent.append(path)
+    window._workspace_session._start_panel.set_recent_workspaces(recent)
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         window.resize(*WINDOW_SIZES["wide"])

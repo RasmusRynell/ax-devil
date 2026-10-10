@@ -6,22 +6,25 @@ from pathlib import Path
 
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics
-from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QSplitter, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.intake import is_video_file
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
+from ax_devil.modules.workspace.ui.activity_bar import ActivityBar
+from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
 
-_SIDEBAR_CHARS = 22  # Default sidebar width in average characters of body text.
+_SIDEBAR_CHARS = 34  # Default sidebar width in average characters of body text.
 
 
 class ApplicationWindow(QWidget):
     """Main application workspace widget.
 
     Coordinates the main application components:
-    - Content browser sidebar for workspace navigation
+    - Activity bar along the left edge, whose Workspace button shows and hides the sidebar
+    - Sidebar with the start panel or the content browser
     - Center area for viewer widgets (video viewers, analysis tools)
 
     Files dragged in from the desktop that include a video are offered through ``files_dropped``.
@@ -32,21 +35,22 @@ class ApplicationWindow(QWidget):
 
     def __init__(
         self,
-        content_browser: ContentBrowserWidget,
+        sidebar: SidebarPanel,
         center_area: SplitView,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
 
         self._logger = get_logger(__name__)
-        self._content_browser = content_browser
+        self._sidebar = sidebar
         self._center_area = center_area
-        self._sidebar_wanted = True  # The user's choice; the sidebar also stays hidden while there is no content.
+        self._sidebar_wanted = True  # The user's choice.
+        self._activity_bar = ActivityBar(self)
+        self._activity_bar.add_view(Icon.BROWSE, "Workspace", self.toggle_sidebar)
         self._sidebar_width: int | None = None  # Until the user drags it, from the text size when it appears.
 
         self._setup_layout()
         self.setAcceptDrops(True)
-        self._content_browser.rows_changed.connect(self._apply_sidebar)
         self._splitter.splitterMoved.connect(self._on_splitter_moved)
         self._apply_sidebar()
         follow_appearance(self, self._follow_text_size)
@@ -57,8 +61,12 @@ class ApplicationWindow(QWidget):
         self._apply_sidebar()
 
     def is_sidebar_shown(self) -> bool:
-        """Return whether the content browser is on screen."""
-        return not self._content_browser.isHidden()
+        """Return whether the sidebar is on screen."""
+        return not self._sidebar.isHidden()
+
+    def activity_bar(self) -> ActivityBar:
+        """Return the activity bar, for adding app-wide action buttons."""
+        return self._activity_bar
 
     def _on_splitter_moved(self, _position: int, _index: int) -> None:
         """Remember the width the user drags the sidebar to; dragging it closed hides it until toggled back."""
@@ -67,21 +75,23 @@ class ApplicationWindow(QWidget):
             self._sidebar_width = width
         else:
             self._sidebar_wanted = False
-            self._content_browser.hide()
+            self._sidebar.hide()
+            self._activity_bar.set_view_shown(False)
 
     def _apply_sidebar(self) -> None:
-        """Show the sidebar when the user wants it and there is content, at its remembered width.
+        """Show the sidebar when the user wants it, at its remembered width.
 
         Setting both splitter sizes when the sidebar appears keeps the splitter from first laying it out at another
         width and then moving the panes again.
         """
-        show = self._sidebar_wanted and self._content_browser.has_rows()
+        show = self._sidebar_wanted
+        self._activity_bar.set_view_shown(show)
         if show == self.is_sidebar_shown():
             return
         if not show:
-            self._content_browser.hide()
+            self._sidebar.hide()
             return
-        self._content_browser.show()
+        self._sidebar.show()
         self._set_sidebar_width(self._sidebar_width or _default_sidebar_width())
 
     def _follow_text_size(self) -> None:
@@ -113,11 +123,12 @@ class ApplicationWindow(QWidget):
         """Set up the main layout structure."""
         self._logger.debug("Setting up application window layout")
 
-        main_layout = QVBoxLayout(self)
+        main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+        main_layout.addWidget(self._activity_bar)
 
-        # Horizontal splitter: content browser (left) + split view (center)
+        # Horizontal splitter: sidebar (left) + split view (center)
         self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self._splitter.setObjectName("WorkspaceSidebarSplitter")
         self._splitter.setHandleWidth(1)
@@ -137,7 +148,7 @@ class ApplicationWindow(QWidget):
             }
             """
         )
-        self._splitter.addWidget(self._content_browser)
+        self._splitter.addWidget(self._sidebar)
         self._splitter.addWidget(self._center_area)
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)

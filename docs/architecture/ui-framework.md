@@ -19,8 +19,11 @@ flowchart TD
     WorkspaceSession --> WorkspaceController["WorkspaceController<br/>UI coordinator"]
     WorkspaceSession --> ContentBrowser["ContentBrowserWidget<br/>workspace tree"]
 
+    ApplicationWindow --> ActivityBar["ActivityBar<br/>left-edge icon strip"]
     ApplicationWindow --> HorizontalSplitter["QSplitter<br/>sidebar + center"]
-    HorizontalSplitter --> ContentBrowser
+    HorizontalSplitter --> SidebarPanel["SidebarPanel<br/>start panel or content tree"]
+    SidebarPanel --> StartPanel["StartPanel<br/>open actions, recent workspaces"]
+    SidebarPanel --> ContentBrowser
     HorizontalSplitter --> SplitView["SplitView<br/>viewer widget host"]
 
     WorkspaceController --> SplitView
@@ -65,10 +68,10 @@ lifecycle (`session.lifecycle`), route to the focused widget, configure welcome 
 the window title. The store, browser, split view, and controller are composed implementation details rather than
 separate session APIs.
 
-`ApplicationWindow` is the static central shell. It lays out `ContentBrowserWidget` in the left sidebar and `SplitView` in the center area. It owns only whether the sidebar shows and how wide it is, not workspace state, teardown, or viewer behavior. The sidebar shows while the workspace has content and the user has not hidden it with **View → Sidebar** (`Ctrl+\`) or dragged it closed; it always appears at the width the user last dragged it to. It accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
+`ApplicationWindow` is the static central shell. It lays out the `ActivityBar`, the `SidebarPanel`, and `SplitView` in the center area. It owns only whether the sidebar shows and how wide it is, not workspace state, teardown, or viewer behavior. The sidebar shows unless the user hid it with **View → Sidebar** (`Ctrl+\`), the activity bar's Workspace button, or by dragging it closed; it always appears at the width the user last dragged it to. `SidebarPanel` shows the `StartPanel` while the content browser lists nothing, and the content browser otherwise. It accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
 
 `WelcomeWidget`, shown by `SplitView` while no widgets are open, paints clickable rows. Shortcut rows come from `ShortcutManager` definitions marked `show_on_welcome` and trigger the same `QAction` as the menu and key binding; recent rows show a workspace file's name, with its path as tooltip, and emit `recent_workspace_requested`.
-The welcome screen scrolls when its rows cannot fit, keeping actions and recent workspaces reachable in small windows.
+The welcome screen scrolls when its rows cannot fit, keeping its actions reachable in small windows.
 
 ## Workspace Controller
 
