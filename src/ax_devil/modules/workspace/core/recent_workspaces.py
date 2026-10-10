@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from ax_devil.modules.settings.logging_config import get_logger
@@ -25,8 +26,11 @@ class RecentWorkspaces:
         return tuple(path for path in self._load() if path.is_file())
 
     def record(self, workspace_path: Path) -> None:
-        """Put *workspace_path* first, drop files that no longer exist, and keep at most the limit."""
-        workspace_path = workspace_path.resolve()
+        """Put *workspace_path* first, drop files that no longer exist, and keep at most the limit.
+
+        The path is kept as the user chose it, made absolute and normalized lexically; symlinks are not followed.
+        """
+        workspace_path = Path(os.path.normpath(workspace_path.absolute()))
         entries = [workspace_path, *(path for path in self.entries() if path != workspace_path)][: self._limit]
         try:
             write_json_file(self._path, [str(path) for path in entries])

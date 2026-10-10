@@ -77,7 +77,7 @@ Opening from the browser has two placements: replace the preview pane (`SplitVie
 focused pane and open pinned (`SplitView.open_to_side`).
 
 Top-level browser rows are one per Content, or one unavailable row for an item that failed to resolve. **Rename** and
-**Remove** act on the whole item, and a rename refreshes the headers of open viewers showing that Content.
+**Remove** act on the whole item, and a rename calls `ViewerWidget.set_display_name` on open viewers showing that Content.
 
 Responsibilities:
 

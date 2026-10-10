@@ -103,7 +103,7 @@ class WorkspaceController(QObject):
         for widget, item_id in self._widget_item_ids.items():
             on_screen = widget.current_on_screen_item()
             if item_id == item.id and on_screen is not None and on_screen.content_id in names:
-                widget.set_title(names[on_screen.content_id])
+                widget.set_display_name(names[on_screen.content_id])
         self._sync_content_browser()
 
     def _on_items_added(self, items: list[WorkspaceItem]) -> None:

@@ -492,6 +492,16 @@ class TestOfflineVideoViewerWidget:
         assert len(opened) == 1
         assert len(widget.findChildren(FrameDisplay)) == 1
 
+    def test_set_display_name_updates_the_name_and_the_header(self, qtbot: QtBot) -> None:
+        content = _make_seekable_content("Solo")
+        widget = OfflineVideoViewerWidget(content, render_catalog_manager=self._render_catalog_manager)
+        qtbot.addWidget(widget)
+
+        widget.set_display_name("North gate")
+
+        assert widget.get_display_name() == "North gate"
+        assert widget._title_label.text() == "North gate"
+
     def test_refresh_item_consideration_after_cleanup_is_noop(self, qtbot: QtBot) -> None:
         v1 = _make_local_content("A")
         v2 = _make_local_content("B")

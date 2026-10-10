@@ -109,6 +109,22 @@ def test_recent_workspaces_are_newest_first_limited_and_drop_files_that_are_gone
     assert recent.entries() == (files[0], files[1], files[2])
 
 
+def test_recent_workspaces_keep_the_path_the_user_chose_not_its_symlink_target(tmp_path: Path) -> None:
+    target = tmp_path / "real" / "w.ax-devil.workspace"
+    target.parent.mkdir()
+    target.write_text("{}")
+    link = tmp_path / "link.ax-devil.workspace"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are not supported here")
+    recent = RecentWorkspaces(tmp_path / "recent-workspaces.json")
+
+    recent.record(link)
+
+    assert recent.entries() == (link,)
+
+
 @pytest.mark.parametrize("content", ["{not json", "{}", "[3, null]"])
 def test_an_unreadable_recent_workspaces_file_is_ignored(tmp_path: Path, content: str) -> None:
     path = tmp_path / "recent-workspaces.json"

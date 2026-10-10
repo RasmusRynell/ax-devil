@@ -430,7 +430,9 @@ class ContentBrowserWidget(QWidget):
         if workspace_item is not None:
             rename_action = QAction("Rename", menu)
             rename_action.setEnabled(workspace_item.renamable)
-            rename_action.triggered.connect(lambda _checked=False, value=workspace_item: self._rename_item(value))
+            rename_action.triggered.connect(
+                lambda _checked=False, value=workspace_item, shown=row.label: self._rename_item(value, shown)
+            )
             menu.addAction(rename_action)
             remove_action = QAction("Remove", menu)
             remove_action.triggered.connect(
@@ -440,12 +442,18 @@ class ContentBrowserWidget(QWidget):
 
         return menu
 
-    def _rename_item(self, item: WorkspaceItem) -> None:
-        """Ask for a new name for *item* and request the rename when the user confirms it."""
-        with RenameDialog(item.display_name, self) as dialog:
+    def _rename_item(self, item: WorkspaceItem, shown_name: str) -> None:
+        """Ask for a new name for *item* and request the rename when the user confirms it.
+
+        *shown_name* is the label of the row the user clicked. An unlabeled item shows its default name there, which
+        can differ from ``item.display_name`` when several playlists share the row. Keeping that name means no label.
+        """
+        with RenameDialog(item.label or shown_name, self) as dialog:
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
             name = dialog.name()
+        if not item.label and name == shown_name:
+            name = ""
         self.item_rename_requested.emit(item.id, name)
 
     def _add_open_actions(self, menu: QMenu, content: Content, start_index: int) -> None:

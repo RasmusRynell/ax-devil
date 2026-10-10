@@ -84,7 +84,8 @@ A Live Stream Item keeps the device and MQTT broker hosts, usernames, and passwo
 stays a reference in the item and is expanded with the config's rule only while resolving; the CLI reads those config
 defaults raw, and the Add Live Stream dialog fills empty fields with the raw defaults. Items added by the CLI and
 the Add dialogs have an empty label unless the user typed a name, so the expanded host is only ever shown, never
-stored. Renaming an item to an empty name, or to its default name, empties its label again. A labeled Playlist Item that
+stored. Renaming an item to an empty name, or to the name its browser row already shows while unlabeled, empties its label
+again. A labeled Playlist Item that
 resolves to one playlist names it after the item; several are named `label / playlist name`.
 
 ## Workspace
@@ -138,8 +139,8 @@ file choices go through `WorkspacePrompts` (`workspace/ui/workspace_prompts.py`)
   workspace with those items, after the same question when the kept workspace is modified; Cancel keeps the kept
   workspace without the CLI's items. `ax-devil open <file>.ax-devil.workspace` opens a saved workspace the same way.
 - `RecentWorkspaces` (`workspace/core/recent_workspaces.py`) records every opened and saved file in
-  `recent-workspaces.json` in the storage directory, newest first, at most eight; files that no longer exist are
-  dropped.
+  `recent-workspaces.json` in the storage directory, newest first, at most eight, under the absolute path the user chose
+  (symlinks are not followed); files that no longer exist are dropped.
 - The main window title shows the workspace name and `●` while it is modified, following `state_changed`.
 - Items can be added, removed, and renamed. Editing an item's recipe is not part of the first version.
 

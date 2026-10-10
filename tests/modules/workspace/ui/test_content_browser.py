@@ -634,6 +634,32 @@ def test_rename_asks_for_a_name_and_requests_it(qtbot: QtBot, monkeypatch: pytes
     assert renamed.args == [item.id, "North gate"]
 
 
+def test_renaming_an_unlabeled_row_seeds_the_shown_name_and_keeping_it_clears_the_label(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    browser = ContentBrowserWidget()
+    qtbot.addWidget(browser)
+    item = VideoItem(video=Path("/tmp/gate.mp4"))
+    shown_label = "Lot / gate.mp4"
+    browser.set_browser_rows((WorkspaceBrowserRow(row_id="gate", label=shown_label, icon_kind="video", item=item),))
+    entered: list[str] = []
+    shown: list[str] = []
+
+    def enter_name(dialog: RenameDialog) -> int:
+        shown.append(dialog._name_edit.text())
+        dialog._name_edit.setText(entered.pop(0))
+        return RenameDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(RenameDialog, "exec", enter_name)
+    for name, expected in ((shown_label, ""), ("North gate", "North gate")):
+        entered.append(name)
+        with qtbot.waitSignal(browser.item_rename_requested) as renamed:
+            _actions_by_text(browser._build_context_menu(_required_top_item(browser)))["Rename"].trigger()
+        assert renamed.args == [item.id, expected]
+
+    assert shown == [shown_label, shown_label]
+
+
 def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
     browser = ContentBrowserWidget()
     qtbot.addWidget(browser)
