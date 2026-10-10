@@ -49,6 +49,9 @@ not RTSP or MQTT.
 The [UVG-VCM walkthrough](datasets/uvg-vcm.md) pairs the dataset's official MP4s with native JSON annotations,
 including tracking IDs and available segmentation polygons.
 
+The [MOT Challenge walkthrough](datasets/mot-challenge.md) opens MOT17 and MOT20 sequences, with each public
+detector and the ground truth as comparison lanes on the same frames.
+
 ## Overlay appearance
 
 Built-in catalogs are read-only; make a copy before editing. A catalog choice applies to the current view; the
