@@ -10,7 +10,7 @@ import sys
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 from click.testing import CliRunner
@@ -206,6 +206,16 @@ def test_prepare_uses_isolated_editable_project(
     assert validate.args[0][-1] == str(prepared)
 
 
+def test_installing_with_upgrade_upgrades_beyond_the_lock(plugin: Path, uv: Mock) -> None:
+    """Updating one plugin from the app reinstalls its requirement and lets its dependencies move on."""
+    result = CliRunner().invoke(plugins, ["install", "--upgrade", str(plugin)])
+    assert result.exit_code == 0, result.output
+    assert "--upgrade" in uv.call_args_list[0].args[0]
+    assert project.selected_plugins(project.installation_root(current_host()) / "current") == {
+        "example-plugin": str(plugin)
+    }
+
+
 def test_install_remove_and_lock_reuse(plugin: Path, uv: Mock) -> None:
     """Host files stay unchanged; replacement installations reuse the uv lock."""
     host = current_host()
@@ -325,13 +335,19 @@ def test_launch_preserves_arguments(plugin: Path, uv: Mock, monkeypatch: pytest.
     """Launch executes the prepared Python directly and bypasses the launcher on re-entry."""
     project.change_plugins(current_host(), install=(str(plugin),))
     arguments = ["--config", "/tmp/config with spaces.json", "local", "--video", "movie.mp4"]
-    monkeypatch.setattr(sys, "argv", ["ax-devil", *arguments])
+    monkeypatch.setattr(sys, "orig_argv", ["/venv/bin/python", "/venv/bin/ax-devil", *arguments])
+    monkeypatch.setattr(sys, "argv", ["/venv/bin/ax-devil", *arguments])
     execute = Mock(side_effect=SystemExit(0))
-    monkeypatch.setattr(os, "execv", execute)
+    monkeypatch.setattr(os, "execve", execute)
     with pytest.raises(SystemExit):
         launcher.main()
     interpreter = str(project.runtime_python(current_host()))
-    execute.assert_called_once_with(interpreter, [interpreter, "-I", "-m", "ax_devil.cli", *arguments])
+    execute.assert_called_once_with(interpreter, [interpreter, "-I", "-m", "ax_devil.cli", *arguments], ANY)
+    # The plugin interpreter restarts and manages plugins through the launcher, in the base app.
+    environment = execute.call_args.args[2]
+    monkeypatch.setattr(os, "environ", environment)
+    assert launcher.launch_command() == ["/venv/bin/python", "/venv/bin/ax-devil"]
+    assert launcher.plugin_root() == project.installation_root(current_host())
 
 
 @pytest.mark.parametrize("refreshes", [True, False])
@@ -346,7 +362,7 @@ def test_launch_refreshes_outdated_plugins(
     monkeypatch.setattr(launcher, "current_host", Mock(return_value=upgraded))
     monkeypatch.setattr(sys, "argv", ["ax-devil"])
     execute = Mock(side_effect=SystemExit(0))
-    monkeypatch.setattr(os, "execv", execute)
+    monkeypatch.setattr(os, "execve", execute)
     base = Mock()
     monkeypatch.setattr(cli, "cli", base)
     succeed = uv.side_effect
@@ -358,7 +374,7 @@ def test_launch_refreshes_outdated_plugins(
     assert "updating plugins" in error
     if refreshes:
         interpreter = str(project.runtime_python(upgraded))
-        execute.assert_called_once_with(interpreter, [interpreter, "-I", "-m", "ax_devil.cli"])
+        execute.assert_called_once_with(interpreter, [interpreter, "-I", "-m", "ax_devil.cli"], ANY)
         current = project.installation_root(upgraded) / "current"
         assert project.read_project(current)["tool"]["uv"]["constraint-dependencies"] == ["example-dependency==2.0"]
     else:
