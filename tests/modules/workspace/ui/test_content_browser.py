@@ -757,3 +757,28 @@ def test_a_section_counts_only_excluded_items_the_search_would_otherwise_show(qt
 
     assert section.data(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE) == 1
     assert section.data(TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole) == "Videos, 2, 1 hidden"
+
+
+def test_a_section_counts_an_excluded_entry_revealed_with_its_excluded_lane_matching_a_search(qtbot: QtBot) -> None:
+    lane = WorkspaceBrowserRow(
+        row_id="lane",
+        label="Overlay lane",
+        icon_kind="overlay",
+        consideration_ref=ConsiderationItemRef.playlist_lane("playlist-id", 0, 0),
+        is_considered=False,
+    )
+    entry = WorkspaceBrowserRow(
+        row_id="entry",
+        label="Entry",
+        icon_kind="video",
+        consideration_ref=ConsiderationItemRef.playlist_entry("playlist-id", 0),
+        is_considered=False,
+        children=(lane,),
+    )
+    browser = _browser(qtbot, entry)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+
+    _search(browser).setText("lane")
+
+    assert section.data(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE) == 2

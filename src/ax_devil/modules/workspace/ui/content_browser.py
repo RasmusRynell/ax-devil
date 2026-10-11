@@ -249,7 +249,6 @@ class ContentBrowserWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._show_excluded = False
         self._search_query = ""
-        self._excluded_hidden = 0
         self._folded: set[BrowserSection] = set()
         """The sections the user folded; a search unfolds them only while it is active."""
         self._revealed: set[BrowserSection] = set()
@@ -427,19 +426,19 @@ class ContentBrowserWidget(QWidget):
             if heading is None:
                 continue
             visible = False
-            self._excluded_hidden = 0
             for index in range(heading.childCount()):
                 item = heading.child(index)
                 if item is not None:
                     visible = self._apply_item_visibility(item, ancestor_matches=False) or visible
+            hidden = 0 if self._show_excluded else self._excluded_rows_hidden(heading)
             # A search matching only excluded items keeps the heading, so its hidden count points to them.
-            heading.setHidden(not visible and not self._excluded_hidden)
+            heading.setHidden(not visible and not hidden)
             kind = heading.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE).kind
             with self._programmatic_folds():
                 heading.setExpanded(
                     bool(visible and self._search_query) or kind not in self._folded or kind in self._revealed
                 )
-            self._set_hidden_count(heading, 0 if self._show_excluded else self._excluded_hidden)
+            self._set_hidden_count(heading, hidden)
 
     def _apply_item_visibility(self, item: QTreeWidgetItem, *, ancestor_matches: bool) -> bool:
         """Show or hide a single item and return whether it is visible."""
@@ -458,14 +457,36 @@ class ContentBrowserWidget(QWidget):
         search_active = bool(self._search_query)
         passes_search_filter = not search_active or ancestor_matches or item_matches or child_visible
         visible = passes_consideration_filter and passes_search_filter
-        if passes_search_filter and not passes_consideration_filter:
-            self._excluded_hidden += 1
         item.setHidden(not visible)
 
         if search_active and visible and child_visible:
             item.setExpanded(True)
 
         return visible
+
+    def _excluded_rows_hidden(self, heading: QTreeWidgetItem) -> int:
+        """Return how many rows under *heading* showing excluded items would reveal, the search still applied."""
+        children = [heading.child(index) for index in range(heading.childCount())]
+        return sum(
+            self._visible_rows(child, ancestor_matches=False, show_excluded=True)
+            - self._visible_rows(child, ancestor_matches=False, show_excluded=False)
+            for child in children
+            if child is not None
+        )
+
+    def _visible_rows(self, item: QTreeWidgetItem, *, ancestor_matches: bool, show_excluded: bool) -> int:
+        """Return how many rows in *item*'s subtree, itself included, the filters would leave visible."""
+        item_matches = self._item_matches_search(item)
+        children = [item.child(index) for index in range(item.childCount())]
+        below = sum(
+            self._visible_rows(child, ancestor_matches=ancestor_matches or item_matches, show_excluded=show_excluded)
+            for child in children
+            if child is not None
+        )
+        row = self._row_data(item)
+        passes_consideration = row.consideration_ref is None or row.is_considered or show_excluded
+        passes_search = not self._search_query or ancestor_matches or item_matches or below > 0
+        return 1 + below if passes_consideration and passes_search else 0
 
     def _set_hidden_count(self, heading: QTreeWidgetItem, hidden: int) -> None:
         """Record on a section row how many excluded items the list hides, for its caption and screen readers."""
