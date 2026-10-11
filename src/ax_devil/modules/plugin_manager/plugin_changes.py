@@ -17,6 +17,7 @@ from ax_devil.modules.settings.logging_config import get_logger
 logger = get_logger(__name__)
 
 _URL_USER_INFO = re.compile(r"(?<=://)[^/@\s]+@")
+_URL_QUERY = re.compile(r"(?<=://)([^\s?#]*)[?#]\S*")
 
 
 class ChangeKind(Enum):
@@ -89,9 +90,14 @@ def run_plugins_command(change: PluginChange) -> None:
     except subprocess.CalledProcessError as exc:
         # The command line is never logged or shown, nor chained into a traceback: a requirement may be a URL with
         # credentials in it.
-        output = _URL_USER_INFO.sub("", f"{exc.stdout or ''}\n{exc.stderr or ''}")
+        output = _without_url_secrets(f"{exc.stdout or ''}\n{exc.stderr or ''}")
         logger.error(f"Plugin {change.kind.name.lower()} failed with exit status {exc.returncode}\n{output}")
         raise PluginChangeError(failure_reason(output) or f"Exit status {exc.returncode}") from None
+
+
+def _without_url_secrets(text: str) -> str:
+    """Return *text* without the user info, query string and fragment of the URLs in it, where credentials go."""
+    return _URL_QUERY.sub(r"\1", _URL_USER_INFO.sub("", text))
 
 
 def failure_reason(output: str) -> str:

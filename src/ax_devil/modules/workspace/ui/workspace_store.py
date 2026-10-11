@@ -373,10 +373,9 @@ class WorkspaceStore(QObject):
         current = resolution.renamed(self._workspace.item(item_id))
         if current.error is not None:
             logger.warning(f"Could not open {current.item.display_name}: {current.error}")
-        before, after = _defaults(self._resolutions[item_id]), _defaults(current)
+        previous = self._resolutions[item_id]
         self._resolutions[item_id] = current
-        self._not_considered = {ref for ref in self._not_considered if ref not in before or ref in after}
-        self._not_considered.update(ref for ref, considered in after.items() if ref not in before and not considered)
+        self._not_considered = _carried_exclusions(self._not_considered, previous, current)
         self.item_rescanned.emit(current)
 
 
@@ -391,4 +390,38 @@ def _defaults(resolution: ItemResolution) -> dict[ConsiderationItemRef, bool]:
         consideration.ref: consideration.default_considered
         for content in resolution.contents
         for consideration in content.consideration_items()
+    }
+
+
+def _identities(resolution: ItemResolution) -> dict[ConsiderationItemRef, tuple[object, ...]]:
+    """Return what names each consideration item of *resolution*'s Content across rescans, by its ref.
+
+    A ref's entry index shifts when a rescan inserts or removes entries, so an entry is named by its Bookmark Target
+    entry instead, and a lane by its index within that entry.
+    """
+    return {
+        consideration.ref: (
+            consideration.ref.kind,
+            consideration.ref.content_id,
+            content.bookmark_entries[consideration.ref.entry_index],
+            consideration.ref.lane_index,
+        )
+        for content in resolution.contents
+        for consideration in content.consideration_items()
+    }
+
+
+def _carried_exclusions(
+    not_considered: set[ConsiderationItemRef], previous: ItemResolution, current: ItemResolution
+) -> set[ConsiderationItemRef]:
+    """Return *not_considered* with the exclusions of *previous* moved to the same items of *current*.
+
+    An item that is gone loses its exclusion, and one that is new starts at its default.
+    """
+    before, after = _identities(previous), _identities(current)
+    excluded = {before[ref] for ref in not_considered if ref in before}
+    known = set(before.values())
+    defaults = _defaults(current)
+    return {ref for ref in not_considered if ref not in before} | {
+        ref for ref, identity in after.items() if identity in excluded or (identity not in known and not defaults[ref])
     }

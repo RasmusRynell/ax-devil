@@ -139,7 +139,7 @@ def test_a_source_that_looks_like_an_option_is_installed_as_a_source(monkeypatch
 def test_a_failed_install_never_logs_or_shows_the_credentials_of_its_source(
     qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    source = "private-plugin @ https://user:s3cr3t-token@example.com/private-plugin.whl"
+    source = "private-plugin @ https://user:s3cr3t-token@example.com/private-plugin.whl?token=q-s3cr3t"
 
     def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.CalledProcessError(1, command, output="", stderr=f"Error: Failed to fetch: {source}\n")
@@ -153,4 +153,6 @@ def test_a_failed_install_never_logs_or_shows_the_credentials_of_its_source(
     assert reason
     assert "s3cr3t-token" not in reason
     assert "s3cr3t-token" not in caplog.text
+    assert "q-s3cr3t" not in reason
+    assert "q-s3cr3t" not in caplog.text
     assert "example.com" in caplog.text  # The log still says what failed.

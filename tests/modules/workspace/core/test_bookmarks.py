@@ -23,6 +23,7 @@ from ax_devil.modules.workspace.core.content import (
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
+    numbered_when_shared,
 )
 
 
@@ -109,3 +110,11 @@ def test_entries_that_share_a_label_get_numbered_keys_so_each_has_its_own_target
 
     assert runs.bookmark_entries == ("runs/video.mp4", "runs/video.mp4 (2)")
     assert find_entry([runs], entry_target(runs, 1)) == (runs, 1)
+
+
+def test_numbering_shared_labels_never_repeats_a_label_the_resolver_already_gave() -> None:
+    assert numbered_when_shared(["video.mp4", "video.mp4", "video.mp4 (2)"]) == (
+        "video.mp4",
+        "video.mp4 (3)",
+        "video.mp4 (2)",
+    )

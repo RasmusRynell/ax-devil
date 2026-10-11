@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -583,12 +582,23 @@ every time the item resolves. Content built outside resolution, such as a playli
 
 
 def numbered_when_shared(labels: Iterable[str]) -> tuple[str, ...]:
-    """Return *labels* with the second and later of equal ones numbered " (2)", " (3)", so no two are equal."""
-    seen: Counter[str] = Counter()
+    """Return *labels* with the second and later of equal ones numbered " (2)", " (3)", so no two are equal.
+
+    A number is skipped when it would equal another label, such as an existing "video (2)".
+    """
+    labels = tuple(labels)
+    taken = set(labels)
+    seen: set[str] = set()
     numbered = []
     for label in labels:
-        seen[label] += 1
-        numbered.append(label if seen[label] == 1 else f"{label} ({seen[label]})")
+        name = label
+        if label in seen:
+            number = 2
+            while (name := f"{label} ({number})") in taken:
+                number += 1
+            taken.add(name)
+        seen.add(label)
+        numbered.append(name)
     return tuple(numbered)
 
 

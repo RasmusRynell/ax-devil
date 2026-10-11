@@ -706,6 +706,25 @@ def test_rescanning_follows_the_folder_and_keeps_exclusions_only_of_what_still_e
     assert not store.is_modified and state_changes == []
 
 
+def test_a_rescan_that_inserts_an_entry_before_an_excluded_one_keeps_that_entry_excluded() -> None:
+    folder = _Folder("b.mp4", "c.mp4")
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})))
+    runs = PlaylistItem(label="Runs", resolver="folder")
+    store.add_items([runs])
+    [playlist] = store.contents()
+    store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
+
+    folder.clips = ["a.mp4", "b.mp4", "c.mp4"]
+    store.rescan_item(runs.id)
+
+    [rescanned] = (cast(PlaylistContent, content) for content in store.contents())
+    considered = {
+        entry.display_label(index): store.is_item_considered(rescanned.entry_consideration_ref(index))
+        for index, entry in enumerate(rescanned.entries)
+    }
+    assert considered == {"a.mp4": True, "b.mp4": False, "c.mp4": True}
+
+
 def test_a_rescan_that_fails_shows_the_item_as_unavailable_until_it_resolves_again() -> None:
     folder = _Folder("a.mp4")
     store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})))
