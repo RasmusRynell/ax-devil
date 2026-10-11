@@ -23,16 +23,24 @@ class RecentWorkspaces:
         self._limit = limit
 
     def entries(self) -> tuple[Path, ...]:
-        """Return remembered workspace files that still exist, newest first."""
-        return tuple(path for path in self._load() if path.is_file())
+        """Return the remembered workspace files, newest first; their files are not checked, so none is touched."""
+        return tuple(self._load())
 
     def record(self, workspace_path: Path) -> None:
-        """Put *workspace_path* first, drop files that no longer exist, and keep at most the limit.
+        """Put *workspace_path* first, and keep at most the limit.
 
         The path is kept as the user chose it, made absolute and normalized lexically; symlinks are not followed.
         """
         workspace_path = Path(os.path.normpath(workspace_path.absolute()))
         entries = [workspace_path, *(path for path in self.entries() if path != workspace_path)][: self._limit]
+        self._write(entries)
+
+    def forget(self, workspace_path: Path) -> None:
+        """Remove *workspace_path*, as recorded, from the list; a file that cannot be opened is forgotten this way."""
+        workspace_path = Path(os.path.normpath(workspace_path.absolute()))
+        self._write([path for path in self.entries() if path != workspace_path])
+
+    def _write(self, entries: list[Path]) -> None:
         try:
             write_json_file(self._path_provider(), [str(path) for path in entries])
         except OSError as exc:
