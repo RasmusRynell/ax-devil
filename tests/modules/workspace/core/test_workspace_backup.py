@@ -21,6 +21,10 @@ from ax_devil.modules.workspace.core import (
 )
 
 
+def _restore(backup: WorkspaceBackup) -> tuple[Workspace, Workspace]:
+    return backup.load_saved(backup.restore())
+
+
 def _modified(current: Workspace, saved: Workspace) -> bool:
     return current != saved
 
@@ -36,7 +40,7 @@ def test_an_untitled_workspace_is_kept_with_absolute_paths_and_restored_as_modif
 
     backup.keep(Workspace(items=(video, live, unreadable)))
     document = json.loads((tmp_path / "state" / "workspace-backup.json").read_text())
-    current, saved = WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json").restore()
+    current, saved = _restore(WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json"))
 
     assert document["path"] is None
     assert document["items"][0]["video"] == str(tmp_path / "clips" / "lot.mp4")
@@ -54,11 +58,11 @@ def test_a_saved_workspace_is_restored_with_its_file_as_the_saved_state(tmp_path
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
 
     backup.keep(saved_file)
-    assert not _modified(*backup.restore())
+    assert not _modified(*_restore(backup))
 
     edited = saved_file.add_items([VideoItem(video=folder / "clips" / "b.mp4")])
     backup.keep(edited)
-    current, saved = backup.restore()
+    current, saved = _restore(backup)
     assert (current, saved) == (edited, load_workspace(saved_file.path or Path()))
     assert current.name == "Lot" and _modified(current, saved)
 
@@ -71,7 +75,7 @@ def test_items_of_a_saved_workspace_whose_file_is_gone_are_kept_as_untitled(tmp_
     backup.keep(saved_file)
     (tmp_path / "Lot.ax-devil.workspace").unlink()
 
-    current, saved = backup.restore()
+    current, saved = _restore(backup)
 
     assert current == Workspace(items=saved_file.items)
     assert saved == Workspace()
@@ -86,7 +90,7 @@ def test_a_missing_or_unusable_backup_restores_the_empty_untitled_workspace(
     if content is not None:
         path.write_text(content)
 
-    assert WorkspaceBackup(lambda: path).restore() == (Workspace(), Workspace())
+    assert _restore(WorkspaceBackup(lambda: path)) == (Workspace(), Workspace())
 
 
 def test_recent_workspaces_are_newest_first_limited_and_drop_files_that_are_gone(
@@ -142,7 +146,7 @@ def test_unreadable_items_without_an_id_do_not_make_a_reopened_workspace_modifie
     assert load_workspace(path) == opened
     backup.keep(opened)
 
-    assert not _modified(*backup.restore())
+    assert not _modified(*_restore(backup))
 
 
 def test_a_file_whose_paths_hold_dot_dot_segments_is_restored_unmodified(tmp_path: Path) -> None:
@@ -153,7 +157,7 @@ def test_a_file_whose_paths_hold_dot_dot_segments_is_restored_unmodified(tmp_pat
     backup = WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json")
     backup.keep(load_workspace(path))
 
-    current, saved = backup.restore()
+    current, saved = _restore(backup)
 
     assert current.items[0] == VideoItem(id="v", video=tmp_path / "clip.mp4")
     assert not _modified(current, saved)

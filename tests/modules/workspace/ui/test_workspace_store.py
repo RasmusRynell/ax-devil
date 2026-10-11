@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -187,6 +188,7 @@ def test_unknown_and_out_of_range_refs_are_ignored() -> None:
         store.set_item_considered(ref, False)
         assert store.is_item_considered(ref)
     assert changes == []
+    assert store.is_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0))
 
 
 class _CountingResolver:
@@ -456,3 +458,66 @@ def test_queued_items_of_a_replaced_workspace_are_never_resolved(qtbot: QtBot, b
 
     qtbot.waitUntil(lambda: not store.resolution(requested.id).is_pending)
     assert counting.calls == 0
+
+
+class _SlowSavedFile:
+    """Read the saved state of a restored workspace only when the test releases it."""
+
+    def __init__(self, saved: Workspace) -> None:
+        self.saved = saved
+        self.release = threading.Event()
+        self.started = threading.Event()
+
+    def __call__(self, kept: Workspace) -> tuple[Workspace, Workspace]:
+        self.started.set()
+        self.release.wait(5)
+        return kept, self.saved
+
+
+def _restorable(tmp_path: Path) -> tuple[Workspace, Workspace]:
+    """Return a kept workspace with an unsaved extra item, and the saved one it grew from."""
+    saved = Workspace(path=tmp_path / "Lot.ax-devil.workspace", items=(VideoItem(video=tmp_path / "a.mp4"),))
+    return saved.add_items([VideoItem(video=tmp_path / "b.mp4")]), saved
+
+
+def test_a_restored_workspace_is_usable_before_its_slow_saved_file_is_read(qtbot: QtBot, tmp_path: Path) -> None:
+    kept, saved = _restorable(tmp_path)
+    store = WorkspaceStore(ItemResolver(FakeResolutionContext()))
+    slow = _SlowSavedFile(saved)
+
+    store.restore_workspace(kept, slow)
+
+    assert store.workspace == kept and not store.is_modified
+    slow.release.set()
+    qtbot.waitUntil(lambda: store.is_modified, timeout=2000)
+
+
+def test_a_saved_file_that_cannot_be_read_leaves_the_restored_items_untitled(qtbot: QtBot, tmp_path: Path) -> None:
+    kept, _saved = _restorable(tmp_path)
+    store = WorkspaceStore(ItemResolver(FakeResolutionContext()))
+
+    store.restore_workspace(kept, lambda workspace: (replace(workspace, path=None), Workspace()))
+
+    qtbot.waitUntil(lambda: store.workspace.path is None, timeout=2000)
+    assert store.workspace.items == kept.items and store.is_modified
+
+
+def test_a_saved_state_arriving_after_the_workspace_was_replaced_or_saved_is_dropped(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    kept, saved = _restorable(tmp_path)
+    store = WorkspaceStore(ItemResolver(FakeResolutionContext()))
+    replaced_slow, saved_slow = _SlowSavedFile(saved), _SlowSavedFile(saved)
+
+    store.restore_workspace(kept, replaced_slow)
+    replaced_slow.started.wait(2)
+    other = Workspace(items=(VideoItem(video=tmp_path / "c.mp4"),))
+    store.replace_workspace(other)
+    replaced_slow.release.set()
+    store.restore_workspace(kept, saved_slow)
+    saved_slow.started.wait(2)
+    store.save_workspace(tmp_path / "Mine.ax-devil.workspace")
+    saved_slow.release.set()
+
+    qtbot.wait(200)
+    assert store.workspace.name == "Mine" and not store.is_modified

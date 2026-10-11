@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,10 +17,11 @@ from ax_devil.modules.workspace.core import (
     load_workspace,
     save_workspace,
 )
+from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
 from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.workspace import FakePrompts, inline_resolver
+from tests.helpers.workspace import FakePrompts, FakeResolutionContext, inline_resolver
 
 
 @dataclass(frozen=True)
@@ -232,6 +235,27 @@ def test_a_launch_with_content_replaces_an_unmodified_kept_workspace_without_ask
     assert prompts.asked_to_save == []
     assert launched.store.workspace.items == (from_cli,)
     assert added == [True]
+
+
+def test_a_launch_with_a_workspace_file_asks_about_the_kept_workspace_edits_even_when_reading_is_slow(
+    tmp_path: Path,
+) -> None:
+    class _NeverRuns(ItemResolver):
+        def run(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = bool) -> None:
+            """Leave background work unfinished, as a slow filesystem does."""
+
+    saved = save_workspace(Workspace(items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace")
+    backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
+    backup.keep(saved.add_items([_video(tmp_path, "unsaved.mp4")]))
+    other = save_workspace(Workspace(), tmp_path / "Other.ax-devil.workspace")
+    prompts = FakePrompts(SaveChoice.CANCEL)
+    store = WorkspaceStore(_NeverRuns(FakeResolutionContext(), in_background=False))
+    lifecycle = WorkspaceLifecycle(store, prompts, backup, RecentWorkspaces(lambda: tmp_path / "recent.json"))
+
+    lifecycle.launch(workspace_file=other.path)
+
+    assert prompts.asked_to_save == ["Lot"]
+    assert store.workspace.path == saved.path and store.is_modified
 
 
 def test_a_launch_with_a_workspace_file_opens_it(launches: _Launches, tmp_path: Path) -> None:

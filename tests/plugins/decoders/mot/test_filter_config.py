@@ -1,58 +1,23 @@
 from __future__ import annotations
 
 from ax_devil.modules.filtering import FilterState
-from ax_devil.modules.scene.model import (
-    BoundingBox,
-    Classification,
-    Entity,
-    EntityId,
-    Observation,
-    Score,
-)
-from ax_devil.plugins.decoders.mot.decoder import build_mot_filter_config
+from ax_devil.modules.scene.filtering import filter_scene
+from ax_devil.plugins.decoders.mot.decoder import build_mot_filter_config, decode_mot_frame, prepare_mot_frame_payloads
 
 
-def _make_entity(classification_type: str) -> Entity:
-    entity = Entity(EntityId("1"))
-    observation = Observation(
-        frame_number=0,
-        geometry=BoundingBox.from_xywh(0.0, 0.0, 0.1, 0.1, allow_outside=True),
-        confidence=Score(1.0),
-        classification=[Classification(classification_type, Score(1.0))],
-    )
-    entity.add_observation(observation)
-    return entity
-
-
-def test_mot_filter_config_contains_expected_options() -> None:
+def test_each_mot_class_has_exactly_one_toggle() -> None:
+    """Every MOT Challenge class id, and an unknown id, can be hidden without hiding any other class."""
     config = build_mot_filter_config()
-    option_ids = {option.id for option in config.options}
+    for class_id in (*range(1, 14), 99):
+        payloads, _ = prepare_mot_frame_payloads([f"1,1,0,0,64,48,1,{class_id},1.0"], width=640, height=480)
+        scene = decode_mot_frame(payloads[0])
+        assert filter_scene(scene, config, FilterState(config)).entities, class_id
 
-    assert {
-        "show_person",
-        "show_person_on_vehicle",
-        "show_car",
-        "show_bicycle",
-        "show_motorcycle",
-        "show_vehicle",
-        "show_static_person",
-        "show_distractor",
-        "show_occluder",
-        "show_occluder_on_ground",
-        "show_occluder_full",
-        "show_reflection",
-        "show_crowd",
-        "show_unknown",
-    } == option_ids
+        hiding = []
+        for option in config.options:
+            state = FilterState(config)
+            state.set_enabled(option.id, False)
+            if not filter_scene(scene, config, state).entities:
+                hiding.append(option.id)
 
-
-def test_mot_filter_config_predicates_match_entities() -> None:
-    config = build_mot_filter_config()
-    state = FilterState(config)
-
-    car_option = next(option for option in config.options if option.id == "show_car")
-    unknown_option = next(option for option in config.options if option.id == "show_unknown")
-
-    assert car_option.predicate(_make_entity("car"), state)
-    assert unknown_option.predicate(_make_entity("unknown"), state)
-    assert not car_option.predicate(_make_entity("bicycle"), state)
+        assert len(hiding) == 1, (class_id, hiding)

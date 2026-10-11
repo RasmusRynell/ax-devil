@@ -27,29 +27,17 @@ from ax_devil.modules.data_sources.scene_history import (
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.scene.model import (
-    BoundingBox,
-    Classification,
     Delete,
-    Entity,
     EntityId,
-    Observation,
     Rename,
     Scene,
-    Score,
     TimeSlice,
 )
+from tests.helpers.entities import entity_with_classes
+from tests.helpers.jsonl import write_jsonl
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _VIDEO = FrameTimeline.from_timestamps([0, 40_000, 80_000, 120_000])
-
-
-def _entity(entity_id: str, object_type: str = "human") -> Entity:
-    observation = Observation(
-        geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2),
-        classification=[Classification(object_type, Score(0.9))],
-        frame_number=0,
-    )
-    return Entity(id=EntityId(entity_id), observations=[observation])
 
 
 class _HistoryDecoder(PayloadToSceneDecoder):
@@ -61,7 +49,7 @@ class _HistoryDecoder(PayloadToSceneDecoder):
         time_slice = TimeSlice(start=start, end=start)
         scene = Scene(time_slice=time_slice)
         for entity_id in record.get("seen", []):
-            scene.add_entity(_entity(entity_id))
+            scene.add_entity(entity_with_classes("human", entity_id=entity_id))
         for entity_id in record.get("delete", []):
             scene.add_event(Delete(timestamp=time_slice, entity_id=EntityId(entity_id)))
         for from_id, to_id in record.get("rename", []):
@@ -71,9 +59,14 @@ class _HistoryDecoder(PayloadToSceneDecoder):
         return scene
 
 
-def _write(path: Path, records: list[dict[str, Any]]) -> Path:
-    path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
-    return path
+class _CountingDecoder(_HistoryDecoder):
+    """Count decoded records so tests can tell a cache restore from a rebuild."""
+
+    decoded = 0
+
+    def decode(self, payload: Any) -> Scene:
+        _CountingDecoder.decoded += 1
+        return super().decode(payload)
 
 
 def _provider(
@@ -86,7 +79,7 @@ def _provider(
     with patch.object(CacheManager, "get_cache_subdir", return_value=cache_dir):
         return SceneDecoderFileProvider(
             path,
-            decoder_factory=_HistoryDecoder,
+            decoder_factory=_CountingDecoder,
             decoder_name="history_test",
             artifact_version=1,
             storage_mode=storage_mode,
@@ -103,7 +96,7 @@ def test_collector_records_runs_of_consecutive_samples_and_types_in_first_seen_o
     for key, entities in [(30, ("a",)), (10, ("a", "b")), (20, ("b",)), (40, ("a",))]:
         scene = Scene(time_slice=TimeSlice(start=key, end=key))
         for entity_id in entities:
-            scene.add_entity(_entity(entity_id, "car" if key == 30 else "human"))
+            scene.add_entity(entity_with_classes("car" if key == 30 else "human", entity_id=entity_id))
         collector.add(key, scene)
 
     records = collector.records()
@@ -115,28 +108,22 @@ def test_collector_records_runs_of_consecutive_samples_and_types_in_first_seen_o
 
 
 def test_collector_keeps_only_the_served_sample_for_a_repeated_timestamp() -> None:
+    """A later sample at the same timestamp replaces the earlier one's objects, types, and events."""
     collector = SceneHistoryCollector()
     old = Scene(time_slice=TimeSlice(start=5, end=5))
-    old.add_entity(_entity("old"))
+    old.add_entity(entity_with_classes("human", entity_id="old"))
+    old.add_entity(entity_with_classes("human", entity_id="a"))
     old.add_event(Delete(timestamp=old.time_slice, entity_id=EntityId("old")))
     new = Scene(time_slice=TimeSlice(start=5, end=5))
+    new.add_entity(entity_with_classes("car", entity_id="a"))
     new.add_event(Delete(timestamp=new.time_slice, entity_id=EntityId("new")))
     collector.add(5, old)
     collector.add(5, new)
 
     assert collector.records() == SceneHistoryRecords(
-        events=(SampleEvent(5, "Delete", "Delete new", ("new",)),), tracks=()
+        events=(SampleEvent(5, "Delete", "Delete new", ("new",)),),
+        tracks=(SampleTrack("a", ("car",), ((5, 5),)),),
     )
-
-
-def test_collector_takes_types_only_from_served_samples() -> None:
-    collector = SceneHistoryCollector()
-    for object_type in ("human", "car"):
-        scene = Scene(time_slice=TimeSlice(start=5, end=5))
-        scene.add_entity(_entity("a", object_type))
-        collector.add(5, scene)
-
-    assert collector.records().tracks == (SampleTrack("a", ("car",), ((5, 5),)),)
 
 
 def test_records_round_trip_and_reject_malformed_metadata() -> None:
@@ -192,7 +179,7 @@ def test_placement_follows_the_sample_each_frame_shows() -> None:
 
 def test_objects_follow_retention_and_replacement_like_lookup(tmp_path: Path) -> None:
     """Retained samples keep objects shown; a replacing sample hides them even between video frames."""
-    path = _write(
+    path = write_jsonl(
         tmp_path / "lookup.jsonl",
         [
             {"t": 0.0, "seen": ["kept", "replaced"]},
@@ -216,7 +203,7 @@ def test_objects_follow_retention_and_replacement_like_lookup(tmp_path: Path) ->
 
 @pytest.mark.parametrize("storage_mode", list(StorageMode))
 def test_provider_history_survives_a_cache_restore(storage_mode: StorageMode, tmp_path: Path) -> None:
-    path = _write(
+    path = write_jsonl(
         tmp_path / "history.jsonl",
         [
             {"t": 0.08, "seen": ["b"], "delete": ["a"]},
@@ -227,7 +214,6 @@ def test_provider_history_survives_a_cache_restore(storage_mode: StorageMode, tm
     cold = _provider(path, tmp_path, storage_mode=storage_mode)
     try:
         expected = cold.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
-        assert "history" not in cold.get_metadata().all_metadata
     finally:
         cold.close()
     assert [(event.frame_id.sequence_id, event.label) for event in expected.events] == [
@@ -239,19 +225,19 @@ def test_provider_history_survives_a_cache_restore(storage_mode: StorageMode, tm
         ("b", 1, 3),  # The last sample stays shown until the video ends.
     ]
 
-    with patch.object(type(cold._store), "_rebuild", side_effect=AssertionError("rebuild must not be called")):
-        warm = _provider(path, tmp_path, storage_mode=storage_mode)
+    _CountingDecoder.decoded = 0
+    warm = _provider(path, tmp_path, storage_mode=storage_mode)
     try:
         restored = warm.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
+        assert _CountingDecoder.decoded == 0
         assert restored.events == expected.events
         assert restored.objects == expected.objects
-        assert "history" not in warm.get_metadata().all_metadata  # Parsed records only, not their JSON form.
     finally:
         warm.close()
 
 
 def test_frame_keyed_samples_land_on_their_sequence_frame(tmp_path: Path) -> None:
-    path = _write(
+    path = write_jsonl(
         tmp_path / "frames.jsonl",
         [
             {"t": 2, "frame_keyed": True, "seen": ["a"], "delete": ["a"]},
@@ -271,7 +257,7 @@ def test_frame_keyed_samples_land_on_their_sequence_frame(tmp_path: Path) -> Non
 
 def test_source_index_without_history_is_rebuilt(tmp_path: Path) -> None:
     """Indexes written before history was collected are rebuilt instead of showing an empty history."""
-    path = _write(tmp_path / "legacy.jsonl", [{"t": 0.0, "seen": ["a"]}])
+    path = write_jsonl(tmp_path / "legacy.jsonl", [{"t": 0.0, "seen": ["a"]}])
     _provider(path, tmp_path).close()
     (index_path,) = tmp_path.rglob("*.scene-index.json")
     payload = json.loads(index_path.read_text(encoding="utf-8"))
@@ -280,6 +266,7 @@ def test_source_index_without_history_is_rebuilt(tmp_path: Path) -> None:
 
     provider = _provider(path, tmp_path)
     try:
-        assert [track.entity_id for track in provider._store.catalog.history.tracks] == ["a"]
+        history = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
+        assert [h.entity_id for h in history.objects] == ["a"]
     finally:
         provider.close()

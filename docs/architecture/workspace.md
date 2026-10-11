@@ -66,8 +66,9 @@ the store; it asks the user through `WorkspacePrompts` and builds no widgets.
 
 - Quitting never prompts and keeps the current Workspace, unsaved edits included, in `workspace-backup.json` in the
   storage folder saved at that time. Credentials are kept as entered, as in a workspace file.
-- Every launch first restores the kept Workspace. The file at its kept path, read again, is the saved state, so unsaved
-  edits are still marked modified; when the file can no longer be read, the items stay as an Untitled Workspace.
+- Every launch first restores the kept Workspace at once. The file at its kept path, read again on a worker thread so a
+  slow filesystem cannot freeze the window, is the saved state, so unsaved edits are still marked modified once it
+  arrives; when the file can no longer be read, the items stay as an Untitled Workspace.
 - Restored, opened, and new Workspaces list their items and open and connect nothing; only adding items opens a viewer.
   A CLI launch with content then starts an Untitled Workspace with those items, and `ax-devil open <file>` opens a
   saved one, each after the usual question.

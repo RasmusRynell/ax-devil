@@ -1,10 +1,11 @@
-"""Resolve Workspace Items away from the GUI thread."""
+"""Run Workspace work, chiefly resolving Items, away from the GUI thread."""
 
 from __future__ import annotations
 
 import queue
 import threading
 from collections.abc import Callable, Sequence
+from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
@@ -20,11 +21,11 @@ _MAX_WORKERS = 4
 class _Batch(QObject):
     """One batch on its way back to the GUI thread; created there, so its signal is queued to the resolver."""
 
-    resolved = Signal(object, object)  # _Batch, tuple[ItemResolution, ...]
+    resolved = Signal(object, object, bool)  # _Batch, its result, whether it ran
 
-    def __init__(self, items: tuple[WorkspaceItem, ...], done: ResolutionsReady, wanted: Callable[[], bool]) -> None:
+    def __init__(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool]) -> None:
         super().__init__()
-        self.items = items
+        self.work = work
         self.done = done
         self.wanted = wanted
 
@@ -63,10 +64,19 @@ class ItemResolver(QObject):
         resolved and *done* gets no results.
         """
         items = tuple(items)
+        self.run(lambda: self._resolve_all(items), done, wanted)
+
+    def run(
+        self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = lambda: True
+    ) -> None:
+        """Call *work* on a worker thread and hand its result to *done* on the GUI thread, unless *wanted* says no.
+
+        *work* must not touch Qt objects or shared state.
+        """
         if not self._in_background:
-            done(self._resolve_all(items))
+            done(work())
             return
-        batch = _Batch(items, done, wanted)
+        batch = _Batch(work, done, wanted)
         batch.resolved.connect(self._deliver)
         self._batches.add(batch)
         self._queue.put(batch)
@@ -78,12 +88,14 @@ class ItemResolver(QObject):
         """Resolve queued batches for as long as the process runs."""
         while True:
             batch = self._queue.get()
-            batch.resolved.emit(batch, self._resolve_all(batch.items) if batch.wanted() else ())
+            ran = batch.wanted()
+            batch.resolved.emit(batch, batch.work() if ran else None, ran)
 
-    def _deliver(self, batch: _Batch, resolutions: tuple[ItemResolution, ...]) -> None:
-        """Release the finished *batch* and hand its *resolutions* to its callback, on the GUI thread."""
+    def _deliver(self, batch: _Batch, result: Any, ran: bool) -> None:
+        """Release the finished *batch* and hand its *result* to its callback, unless it was skipped."""
         self._batches.discard(batch)
-        batch.done(resolutions)
+        if ran:
+            batch.done(result)
 
     def _resolve_all(self, items: tuple[WorkspaceItem, ...]) -> tuple[ItemResolution, ...]:
         return tuple(self._resolve_one(item) for item in items)

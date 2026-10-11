@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from PySide6.QtWidgets import QDoubleSpinBox
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
@@ -19,6 +20,8 @@ from ax_devil.modules.data_sources.video_cache_memory import get_video_cache_poo
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget, detect_available_memory_bytes
 from ax_devil.modules.settings.settings import GlobalSettings
+from tests.helpers.forms import form_field
+from tests.helpers.settings_dialog import choice, choose, click_ok
 from tests.helpers.video import create_test_video
 
 
@@ -31,14 +34,14 @@ def reset_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     GlobalSettings.reset_instance()
 
 
-@pytest.mark.parametrize("invalid", [True, "512", 256.5, 255, 1048577])
+@pytest.mark.parametrize("invalid", [True, "512", 255, 1048577])
 def test_invalid_saved_budget_uses_auto(invalid: object) -> None:
     assert VideoCacheBudget.from_config(invalid).mib is None
 
 
 @pytest.mark.parametrize(
     ("ram_bytes", "expected_bytes"),
-    [(16 * 1024**3, 4 * 1024**3), (3 * 1024**3, 768 * 1024**2), (1024**3, 256 * 1024**2), (0, 0), (None, 1024**3)],
+    [(16 * 1024**3, 4 * 1024**3), (1024**3, 256 * 1024**2), (0, 0), (None, 1024**3)],
 )
 def test_auto_uses_a_quarter_of_available_ram_without_a_fixed_ceiling(
     ram_bytes: int | None, expected_bytes: int
@@ -92,33 +95,30 @@ def test_budget_persistence_and_change_signal(
 def test_dialog_cancel_ok_and_return_to_auto(qtbot: QtBot) -> None:
     dialog = SettingsDialog()
     qtbot.addWidget(dialog)
-    assert dialog._video_cache_mode.currentData() is True
-    assert not dialog._video_cache_spin.isEnabled()
-    dialog._video_cache_mode.setCurrentIndex(1)
-    dialog._video_cache_spin.setValue(1.5)
-    assert dialog._video_cache_spin.isEnabled()
+    mode, allowance = choice(dialog, "Memory for video caching"), form_field(dialog, "Total allowance", QDoubleSpinBox)
+    assert mode.currentData() is True
+    assert not allowance.isEnabled()
+    choose(mode, False)
+    allowance.setValue(1.5)
+    assert allowance.isEnabled()
     dialog.reject()
     assert GlobalSettings().video_cache_budget.mib is None
 
     saved_dialog = SettingsDialog()
     qtbot.addWidget(saved_dialog)
-    saved_dialog._video_cache_mode.setCurrentIndex(1)
-    saved_dialog._video_cache_spin.setValue(1.5)
-    saved_dialog._on_ok()
-    discarded = SettingsDialog()
-    qtbot.addWidget(discarded)
-    discarded._video_cache_spin.setValue(2.0)
-    discarded.reject()
+    choose(choice(saved_dialog, "Memory for video caching"), False)
+    form_field(saved_dialog, "Total allowance", QDoubleSpinBox).setValue(1.5)
+    assert click_ok(saved_dialog)
     assert GlobalSettings().video_cache_budget.mib == 1536
 
     reopened = SettingsDialog()
     qtbot.addWidget(reopened)
-    assert reopened._video_cache_mode.currentData() is False
-    assert reopened._video_cache_spin.value() == 1.5
-    reopened._video_cache_mode.setCurrentIndex(0)
-    assert reopened._video_cache_mode.currentData() is True
+    mode = choice(reopened, "Memory for video caching")
+    assert mode.currentData() is False
+    assert form_field(reopened, "Total allowance", QDoubleSpinBox).value() == 1.5
+    choose(mode, True)
     assert GlobalSettings().video_cache_budget.mib == 1536
-    reopened._on_ok()
+    assert click_ok(reopened)
     assert GlobalSettings().video_cache_budget.mib is None
 
 

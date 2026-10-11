@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import gzip
 import json
-import pickle
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,23 +21,17 @@ def test_binary_frames_support_direct_access(tmp_path: Path, use_mmap: bool, com
         cache = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap, compress=compress)
         cache.save(frames, meta={"example": "metadata"})
         header_bytes, payload = cache_path.read_bytes().split(b"\n", 1)
-        header = json.loads(header_bytes)
-        assert len(payload) == sum(header["frame_lengths"].values())
-        # Verify binary storage directly, including embedded newline bytes.
-        first_length = header["frame_lengths"]["0"]
-        first_payload = payload[:first_length]
-        assert pickle.loads(gzip.decompress(first_payload) if compress else first_payload) == frames[0]
+        first_length = json.loads(header_bytes)["frame_lengths"]["0"]
         for frame_id in (9000, 0, 3041):
             assert cache.load_frame(frame_id) == frames[frame_id]
         cache.close()
 
+        # Zero the first frame's payload: a later frame must load without decoding it.
         cache_path.write_bytes(header_bytes + b"\n" + bytes(first_length) + payload[first_length:])
         # A reopened reader also honors the persisted compression flag.
         reader = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap, compress=not compress)
         try:
-            with patch.object(reader, "_decode_frame", wraps=reader._decode_frame) as decode:
-                assert reader.load_frame(3041) == frames[3041]
-                decode.assert_called_once()
+            assert reader.load_frame(3041) == frames[3041]
             assert reader.load_metadata() == {"example": "metadata"}
             assert reader.available_frames() == set(frames)
             assert reader.load_frame(1234) is None

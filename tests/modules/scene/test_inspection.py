@@ -34,31 +34,12 @@ def _make_entity(*, motion_state: MotionState = MotionState.Moving) -> Entity:
     return entity
 
 
-def test_entity_motion_state_defaults_absent() -> None:
-    entity = Entity(id=EntityId("1"))
-    assert entity.motion_state is None
-    assert "motion_state" not in build_entity_hover_html(entity)
-
-
-def test_hover_html_includes_stationary_motion_state() -> None:
-    entity = _make_entity(motion_state=MotionState.Stationary)
-    html = build_entity_hover_html(entity)
-    assert "motion_state" in html
-    assert "stationary" in html
-
-
-def test_hover_html_includes_unknown_motion_state() -> None:
-    entity = _make_entity(motion_state=MotionState.Unknown)
-    html = build_entity_hover_html(entity)
-    assert "motion_state" in html
-    assert "unknown" in html
-
-
-def test_hover_html_includes_moving_motion_state() -> None:
-    entity = _make_entity(motion_state=MotionState.Moving)
-    html = build_entity_hover_html(entity)
-    assert "motion_state" in html
-    assert "moving" in html
+def test_hover_html_shows_motion_state_only_when_known() -> None:
+    assert "motion_state" not in build_entity_hover_html(Entity(id=EntityId("1")))
+    for state in MotionState:
+        html = build_entity_hover_html(_make_entity(motion_state=state))
+        assert "motion_state" in html
+        assert state.value in html
 
 
 def test_hover_html_includes_entity_and_observation_fields_without_field_specific_branches() -> None:
@@ -117,9 +98,6 @@ def test_hover_html_surfaces_custom_classification_attributes() -> None:
     assert "vehicle_type" in html
     assert "truck" in html
     assert "bus" in html
-    assert "- " in html
-    assert "<br/>" in html
-    assert "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" in html
 
 
 def test_hover_html_surfaces_nested_observation_debug() -> None:

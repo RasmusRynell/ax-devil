@@ -12,7 +12,6 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QScrollArea, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import (
     OverlayFile,
     VideoFileSelection,
@@ -25,8 +24,9 @@ from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.start_panel import StartPanel, recent_date
-from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeWidget
+from tests.helpers.shortcuts import make_shortcut_manager
+from tests.helpers.workspace import PlainViewerWidget
 
 
 class _OptionProvider:
@@ -39,14 +39,6 @@ class _OptionProvider:
 
     def live_overlay_decoder_options(self) -> tuple[WorkspaceDecoderOption, ...]:
         return ()
-
-
-class _PaneWidget(ViewerWidget):
-    def _setup_widget_ui(self) -> None:
-        pass
-
-    def get_display_name(self) -> str:
-        return "Pane"
 
 
 def _touch(path: Path) -> Path:
@@ -109,8 +101,7 @@ def test_clicking_welcome_rows_triggers_shortcut_actions(qtbot: QtBot) -> None:
     """Welcome rows are buttons: a shortcut row triggers its action, and empty space does nothing."""
     host = QWidget()
     qtbot.addWidget(host)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(host)
     welcome = WelcomeWidget(host)
     welcome.resize(900, 700)
@@ -132,8 +123,7 @@ def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_works
     """The start panel's open buttons trigger and are named after the menu actions; a recent row requests its file."""
     host = QWidget()
     qtbot.addWidget(host)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(host)
     panel = StartPanel(host)
     panel.set_shortcut_manager(manager)
@@ -164,8 +154,7 @@ def test_rebinding_updates_the_start_panel_and_activity_bar_tooltips(qtbot: QtBo
     """Buttons advertise a shortcut's current keys, not the keys it had when they were created."""
     host = QWidget()
     qtbot.addWidget(host)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(host)
     panel = StartPanel(host)
     panel.set_shortcut_manager(manager)
@@ -229,8 +218,7 @@ def test_welcome_actions_remain_clickable_in_a_small_workspace(qtbot: QtBot) -> 
     """Every welcome action stays reachable by scrolling in a supported small window."""
     center = SplitView()
     qtbot.addWidget(center)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(center)
     center.set_welcome_shortcut_manager(manager)
     welcome = center.welcome_widget()
@@ -284,7 +272,7 @@ def test_desktop_file_drops_reach_the_workspace_over_welcome_and_open_panes(qtbo
 
     assert _send_drop(center.welcome_widget(), [video, overlay])
     assert not _send_drop(center.welcome_widget(), [overlay])
-    pane = _PaneWidget()
+    pane = PlainViewerWidget()
     center.add_viewer_widget(pane)
     assert _send_drop(pane, [video])
 

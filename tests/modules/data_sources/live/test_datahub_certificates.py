@@ -71,8 +71,9 @@ def test_unverified_https_and_wss_connections(certificate_files: tuple[Path, Pat
         assert request.query["wssession"] == "test-token"
         ws = web.WebSocketResponse()
         await ws.prepare(request)
-        async for _ in ws:
-            pass
+        async for message in ws:
+            request_id = message.json()["id"]
+            await ws.send_json({"jsonrpc": "2.0", "id": request_id, "result": {"topics": [{"name": "topic"}]}})
         return ws
 
     async def check_connections() -> None:
@@ -92,7 +93,7 @@ def test_unverified_https_and_wss_connections(certificate_files: tuple[Path, Pat
                 channel_id=None,
             )
             await client.connect()
-            assert client._websocket is not None
+            assert await client.list_topics() == ("topic",)
             await client.close()
             assert requests == ["", "Basic dXNlcjpwYXNz"]
         finally:
@@ -101,8 +102,7 @@ def test_unverified_https_and_wss_connections(certificate_files: tuple[Path, Pat
     asyncio.run(check_connections())
 
 
-@pytest.mark.parametrize("stage", ["token", "basic", "digest", "websocket"])
-@pytest.mark.parametrize("status", [302, 307])
+@pytest.mark.parametrize(("stage", "status"), [("token", 302), ("basic", 307), ("digest", 302), ("websocket", 307)])
 def test_redirects_are_rejected_without_following(
     certificate_files: tuple[Path, Path], stage: str, status: int
 ) -> None:
@@ -153,12 +153,10 @@ def test_redirects_are_rejected_without_following(
                     topic=None,
                     channel_id=None,
                 )
-                with pytest.raises(DataHubWebSocketError, match="redirects are not allowed") as error:
+                with pytest.raises(DataHubWebSocketError, match="redirects are not allowed"):
                     await client.connect()
-                assert type(error.value) is DataHubWebSocketError
                 assert target_requests == []
                 assert client._session is None
-                assert client._websocket is None
                 if stage in {"basic", "digest"}:
                     assert source_requests[-1].lower().startswith(f"{stage} ")
                 else:

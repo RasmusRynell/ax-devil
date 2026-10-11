@@ -6,8 +6,10 @@ import subprocess
 from pathlib import Path
 
 import av
+import pytest
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.cached_frame import CachedFrame
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import FrameReaderWorker
 
 
 def create_test_video(
@@ -53,3 +55,16 @@ def make_cached_frame(index: int = 0, *, width: int = 16, height: int = 16) -> C
         period_after_s=0.001,
         source_timing_metadata={},
     )
+
+
+def drain_prefetch(worker: FrameReaderWorker, limit: int = 100) -> None:
+    """Run prefetch steps until the worker reports it has nothing more to fetch; fail if it never stops."""
+    for _ in range(limit):
+        if not worker.prefetch_one():
+            return
+    pytest.fail("Prefetch did not stop")
+
+
+def cached_frames(worker: FrameReaderWorker) -> list[int]:
+    """Return the index of every frame in the worker's cache."""
+    return [index for first, last in worker.get_cached_ranges() for index in range(first, last + 1)]
