@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
+from ax_devil.modules.data_sources.live.network_scan import parse_scan_targets
 from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings, SettingsState
@@ -36,6 +37,8 @@ class ConfigField:
         if reference:
             if self.directory and not os.getenv(value[1:], "").strip():
                 raise ValueError(f"{self.label}: the environment reference must resolve to a non-empty folder path.")
+            if self.path.endswith(".ip_range"):
+                parse_scan_targets(os.getenv(value[1:], ""))
             if self.minimum is None:
                 return value
             numeric_value = os.getenv(value[1:], "")
@@ -55,6 +58,8 @@ class ConfigField:
                 raise ValueError(f"{self.label}: choose one of the listed values or use an environment reference.")
         if self.directory and not value:
             raise ValueError(f"{self.label}: choose a folder or use an environment reference.")
+        if self.path.endswith(".ip_range"):
+            parse_scan_targets(value)
         if self.path.endswith(".resolution") and re.fullmatch(r"[1-9]\d*x[1-9]\d*", value) is None:
             raise ValueError("Resolution: enter width x height, such as 1280x720.")
         return value
@@ -78,6 +83,7 @@ CONNECTION_SECTIONS = (
             ConfigField("defaults.device.password", "Password", secret=True),
         ),
     ),
+    ConfigSection("Network scan", (ConfigField("defaults.network_scan.ip_range", "Default IP range"),)),
     ConfigSection(
         "Video and overlay",
         (

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QLabel, QLineEdit, QProgressBar, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
@@ -63,9 +63,11 @@ class _Scanner:
     cameras: list[DiscoveredCamera] = field(default_factory=list)
     error: Exception | None = None
     calls: int = 0
+    targets: tuple[str, ...] = ()
 
-    def __call__(self) -> list[DiscoveredCamera]:
+    def __call__(self, targets: tuple[str, ...]) -> list[DiscoveredCamera]:
         self.calls += 1
+        self.targets = targets
         if self.error is not None:
             raise self.error
         return self.cameras
@@ -79,6 +81,7 @@ class _Live:
     scanner: _Scanner
     scans: _HeldResolver
     resolutions: _HeldResolver
+    controller: LiveViewController
 
     def open_workspace(self, *items: WorkspaceItem) -> None:
         """Make *items* the workspace, opening nothing, as restoring one does."""
@@ -100,6 +103,10 @@ class _Live:
     def button(self, text: str) -> QPushButton:
         [button] = [button for button in _shown(self.view, QPushButton) if button.text() == text]
         return button
+
+    def ip_range(self) -> QLineEdit:
+        [field] = _shown(self.view, QLineEdit)
+        return field
 
     def texts(self) -> list[str]:
         return [label.text() for label in _shown(self.view, QLabel) if label.text()]
@@ -134,14 +141,14 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
     view = LiveView(host)
     qtbot.addWidget(center)
     scanner = _Scanner()
-    LiveViewController(view, workspace, store, scans, scan=scanner, parent=workspace)
+    controller = LiveViewController(view, workspace, store, scans, scan=scanner, parent=workspace)
     with patch(_LIVE_VIEWER, DummyViewer):
-        yield _Live(view, store, center, scanner, scans, resolutions)
+        yield _Live(view, store, center, scanner, scans, resolutions, controller)
 
 
 def _scan(live: _Live, *cameras: DiscoveredCamera) -> None:
     live.scanner.cameras = list(cameras)
-    live.button("Scan network").click()
+    live.button("Rescan").click()
     live.scans.finish()
 
 
@@ -187,7 +194,7 @@ def test_cameras_that_cannot_open_yet_or_at_all_offer_no_action(live: _Live) -> 
     assert live.rows()["Gate"] == "Disconnect", "an added camera opens once resolved"
 
 
-def test_nothing_scans_until_scan_network_is_pressed(qtbot: QtBot, live: _Live) -> None:
+def test_nothing_scans_until_rescan_is_pressed(qtbot: QtBot, live: _Live) -> None:
     live.view.window().show()
     qtbot.waitExposed(live.view)
     live.scans.finish()
@@ -199,14 +206,20 @@ def test_nothing_scans_until_scan_network_is_pressed(qtbot: QtBot, live: _Live) 
     assert live.scanner.calls == 1
 
 
-def test_the_scan_button_waits_while_a_scan_runs(live: _Live) -> None:
-    live.button("Scan network").click()
-    assert not live.button("Scan network").isEnabled()
+def test_the_scan_button_waits_and_progress_shows_while_a_scan_runs(live: _Live) -> None:
+    progress = live.view.findChild(QProgressBar)
+    assert progress is not None
+    assert progress.isHidden()
+
+    live.button("Rescan").click()
+    assert not live.button("Rescan").isEnabled()
+    assert not progress.isHidden()
     assert "Scanning…" in live.texts()
 
     live.scans.finish()
 
-    assert live.button("Scan network").isEnabled()
+    assert live.button("Rescan").isEnabled()
+    assert progress.isHidden()
     assert "Scanning…" not in live.texts()
 
 
@@ -266,19 +279,69 @@ def test_add_puts_the_camera_in_the_workspace_with_the_stream_defaults(
 
 def test_a_failed_scan_says_so_and_keeps_the_reason_on_hover(live: _Live) -> None:
     live.scanner.error = OSError("Network is unreachable")
-    live.button("Scan network").click()
+    live.button("Rescan").click()
     live.scans.finish()
 
     [failed] = [label for label in _shown(live.view, QLabel) if label.text() == "Scan failed"]
     assert "Network is unreachable" in failed.toolTip()
-    assert live.button("Scan network").isEnabled()
+    assert live.button("Rescan").isEnabled()
 
 
 def test_a_scan_is_dropped_once_the_view_is_gone(live: _Live) -> None:
-    live.button("Scan network").click()
+    live.button("Rescan").click()
 
     live.view.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     live.scans.finish()
 
     assert live.scanner.calls == 0
+
+
+def test_a_scan_searches_the_ip_range_in_the_field_and_the_field_starts_as_the_settings_default(live: _Live) -> None:
+    assert live.ip_range().text() == ConfigManager().get("defaults")["network_scan"]["ip_range"]
+
+    live.ip_range().setText("10.0.0.5, 10.0.0.0/30")
+    live.button("Rescan").click()
+    live.scans.finish()
+
+    assert live.scanner.targets == ("10.0.0.1", "10.0.0.2", "10.0.0.5")
+
+
+def test_an_empty_ip_range_scans_the_local_network(live: _Live) -> None:
+    live.ip_range().setText("")
+    live.button("Rescan").click()
+    live.scans.finish()
+
+    assert live.scanner.targets == ()
+    assert live.scanner.calls == 1
+
+
+def test_an_invalid_ip_range_scans_nothing_and_says_why_on_hover(live: _Live) -> None:
+    live.ip_range().setText("camera")
+    live.button("Rescan").click()
+
+    [invalid] = [label for label in _shown(live.view, QLabel) if label.text() == "Invalid IP range"]
+    assert "camera" in invalid.toolTip()
+    assert live.scanner.calls == 0
+    assert live.button("Rescan").isEnabled()
+
+
+def test_a_changed_default_reaches_the_field_unless_the_user_typed_another(live: _Live) -> None:
+    config = ConfigManager()
+    defaults = config.get_raw("defaults")
+    default = defaults["network_scan"]["ip_range"]
+    controller = live.controller
+    defaults["network_scan"]["ip_range"] = "10.1.0.0/24"
+    config.set("defaults", defaults)
+    try:
+        controller.refresh_default_range()
+        assert live.ip_range().text() == "10.1.0.0/24"
+
+        live.ip_range().setText("10.2.0.0/24")
+        for changed in ("10.2.0.0/24", "10.3.0.0/24"):  # Even a default equal to what was typed is not theirs to take.
+            defaults["network_scan"]["ip_range"] = changed
+            controller.refresh_default_range()
+            assert live.ip_range().text() == "10.2.0.0/24"
+    finally:
+        defaults["network_scan"]["ip_range"] = default
+        config.set("defaults", defaults)

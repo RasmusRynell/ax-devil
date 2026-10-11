@@ -1,4 +1,4 @@
-"""Find Axis cameras on the local network with an SSDP search.
+"""Find Axis cameras with an SSDP search, on the local network or at addresses the user names.
 
 Everything on the LAN can answer an SSDP search, so each answer is untrusted: only an ``http://`` description URL on
 the answering address is fetched, the download is size-limited, and XML that declares a DTD is never parsed.
@@ -14,6 +14,7 @@ import socket
 import threading
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.error import URLError
@@ -26,19 +27,25 @@ logger = get_logger(__name__)
 
 SSDP_GROUP = "239.255.255.250"
 SSDP_PORT = 1900
-_SEARCH_REQUEST = (
-    "M-SEARCH * HTTP/1.1\r\n"
-    f"HOST: {SSDP_GROUP}:{SSDP_PORT}\r\n"
-    'MAN: "ssdp:discover"\r\n'
-    "MX: 2\r\n"
-    "ST: upnp:rootdevice\r\n"
-    "\r\n"
-).encode("ascii")
+
+
+def _search_request(destination: str) -> bytes:
+    """Return the M-SEARCH for *destination*, whose address and port the HOST header must carry."""
+    return (
+        "M-SEARCH * HTTP/1.1\r\n"
+        f"HOST: {destination}:{SSDP_PORT}\r\n"
+        'MAN: "ssdp:discover"\r\n'
+        "MX: 2\r\n"
+        "ST: upnp:rootdevice\r\n"
+        "\r\n"
+    ).encode("ascii")
+
 
 _FETCH_TIMEOUT_SECONDS = 2.0
 _FETCH_DEADLINE_SECONDS = 5.0  # For the whole download: a device that trickles bytes cannot hold a worker.
 _MAX_DESCRIPTION_BYTES = 64 * 1024
 _MAX_RESPONDERS = 128
+MAX_SCAN_TARGETS = 4096
 _FETCH_WORKERS = 16
 _SCAN_DEADLINE_SECONDS = 20.0  # For all description downloads together.
 _SERIAL_SUFFIX = re.compile(r"[0-9A-Fa-f]{12}")
@@ -62,11 +69,39 @@ class SsdpResponse:
     location: str
 
 
+def parse_scan_targets(text: str) -> tuple[str, ...]:
+    """Return the IPv4 addresses *text* names, in address order and without repeats; empty text names none.
+
+    *text* is addresses and CIDR ranges such as ``192.168.1.0/24`` (its host addresses, not the network and broadcast
+    addresses), separated by commas or spaces. Raise ``ValueError`` for anything else, or when the addresses named
+    add up to more than ``MAX_SCAN_TARGETS``; ranges are merged and counted before any is expanded, so pasting a huge
+    list is cheap.
+    """
+    spans: set[tuple[int, int]] = set()  # First and last address of each token, as integers.
+    for token in text.replace(",", " ").split():
+        try:
+            network = ipaddress.IPv4Network(token, strict=False)
+        except (ipaddress.AddressValueError, ipaddress.NetmaskValueError):
+            raise ValueError(f"{token} is not an IPv4 address or range such as 192.168.1.0/24.") from None
+        hosts = network.prefixlen >= 31
+        spans.add((int(network[0]) + (not hosts), int(network[-1]) - (not hosts)))
+    merged: list[list[int]] = []
+    for first, last in sorted(spans):
+        if merged and first <= merged[-1][1] + 1:
+            merged[-1][1] = max(merged[-1][1], last)
+        else:
+            merged.append([first, last])
+    if sum(last - first + 1 for first, last in merged) > MAX_SCAN_TARGETS:
+        raise ValueError(f"Enter at most {MAX_SCAN_TARGETS} addresses.")
+    return tuple(str(ipaddress.IPv4Address(address)) for first, last in merged for address in range(first, last + 1))
+
+
 class ScanTransport(Protocol):
     """The network access a scan needs, replaceable in tests."""
 
-    def search(self, timeout: float) -> list[SsdpResponse]:
-        """Send one SSDP search; return the answers received within ``timeout`` seconds."""
+    def search(self, timeout: float, targets: Sequence[str]) -> list[SsdpResponse]:
+        """Send one SSDP search to each of *targets*, or to the whole local network if none; return the answers
+        received within ``timeout`` seconds."""
         ...
 
     def fetch(self, url: str) -> str:
@@ -77,26 +112,42 @@ class ScanTransport(Protocol):
 class NetworkScanTransport:
     """Real transport: SSDP over UDP multicast and plain HTTP without redirects or proxies."""
 
-    def search(self, timeout: float) -> list[SsdpResponse]:
-        """Send one M-SEARCH to the SSDP multicast group and collect answers until ``timeout`` elapses.
+    def search(self, timeout: float, targets: Sequence[str]) -> list[SsdpResponse]:
+        """Send one M-SEARCH to each of *targets*, or to the SSDP multicast group if none, and collect answers until
+        ``timeout`` elapses.
 
         Only the first valid answer of each address is kept, and only for the first 128 addresses, so a device that
-        floods the network with replies cannot grow the result.
+        floods the network with replies cannot grow the result. Given *targets*, only they are heard. Raise the last
+        ``OSError`` if the search could not be sent to any destination.
         """
+        destinations = list(targets) or [SSDP_GROUP]
         responses: dict[str, SsdpResponse] = {}
         overflowed = False
         deadline = time.monotonic() + timeout
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
             sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-            sock.sendto(_SEARCH_REQUEST, (SSDP_GROUP, SSDP_PORT))
+            sent = 0
+            failure: OSError | None = None
+            for destination in destinations:
+                try:
+                    sock.sendto(_search_request(destination), (destination, SSDP_PORT))
+                    sent += 1
+                except OSError as exc:
+                    failure = exc
+            if failure is not None and not sent:
+                raise failure
             while (remaining := deadline - time.monotonic()) > 0:
                 sock.settimeout(remaining)
                 try:
                     data, (address, _port) = sock.recvfrom(8192)
                 except TimeoutError:
                     break
+                except ConnectionResetError:  # Windows reports an unreachable target's ICMP error on the next read.
+                    continue
                 location = _location_header(data)
                 if location is None or address in responses or not _is_own_http_url(location, address):
+                    continue
+                if targets and address not in targets:
                     continue
                 if len(responses) < _MAX_RESPONDERS:
                     responses[address] = SsdpResponse(address=address, location=location)
@@ -130,15 +181,19 @@ class NetworkScanTransport:
         return b"".join(chunks).decode("utf-8", errors="replace")
 
 
-def scan_network(*, timeout: float = 3.0, transport: ScanTransport | None = None) -> list[DiscoveredCamera]:
+def scan_network(
+    *, targets: Sequence[str] = (), timeout: float = 3.0, transport: ScanTransport | None = None
+) -> list[DiscoveredCamera]:
     """Return the Axis cameras that answer an SSDP search, de-duplicated by host and sorted by IP address.
+
+    The search goes to *targets*, or to the whole local network if there are none.
 
     Blocks for about ``timeout`` seconds plus the description downloads, so call it from a worker thread. A network
     that cannot be searched yields an empty list, and a device with an unusable answer is skipped.
     """
     transport = transport or NetworkScanTransport()
     try:
-        responses = transport.search(timeout)
+        responses = transport.search(timeout, targets)
     except OSError as exc:
         logger.warning(f"Network scan could not search the network: {exc}")
         return []

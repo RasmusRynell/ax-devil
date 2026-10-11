@@ -273,7 +273,7 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
     assert_titles("Parking lot", modified=False)
 
 
-def test_add_by_address_in_the_live_view_opens_the_add_live_stream_dialog(
+def test_add_manually_in_the_live_view_opens_the_add_live_stream_dialog(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
@@ -288,7 +288,7 @@ def test_add_by_address_in_the_live_view_opens_the_add_live_stream_dialog(
     window._workspace_session.show_sidebar_view("live")
     view = window.findChild(LiveView)
     assert view is not None
-    [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add by address"]
+    [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add manually"]
 
     button.click()
 

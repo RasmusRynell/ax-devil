@@ -352,6 +352,7 @@ class MainWindow(ChromeWindow):
             dialog.exec()
             restart = dialog.restart_requested
         self._workspace_session.refresh_recent_workspaces()
+        self._workspace_session.refresh_scan_range()
         if restart:
             restart_application(self)
 

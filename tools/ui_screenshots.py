@@ -215,8 +215,8 @@ def _fill_sidebar_views(
         DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "ACCC8E123456"),
         DiscoveredCamera("192.0.2.51", "AXIS M3086-V", ""),
     ]
-    session._live_view_controller._scan = lambda: cameras
-    session._live_view_controller.scan()
+    session._live_view_controller._scan = lambda _targets: cameras
+    session._live_view_controller.scan("192.0.2.0/24")
     qtbot.waitUntil(lambda: not session._live_view_controller._scanning, timeout=10000)
 
     store = session._workspace_store

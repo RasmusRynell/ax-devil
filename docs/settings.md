@@ -10,7 +10,8 @@
 
 **OK** saves all pages and closes, and **Cancel** discards the changes. When a saved change needs a restart, ax-devil
 asks whether to restart now or later.
-Stream defaults apply to newly opened live-stream dialogs.
+Stream defaults apply to newly opened live-stream dialogs. **Default IP range** (`defaults.network_scan.ip_range`) is the
+addresses the Live view's **Scan settings** start with, such as `192.168.1.0/24`.
 Theme and text size changes apply immediately; storage, title bar, and graphics changes need a restart. Changing storage locations does not move existing files.
 Keyboard shortcuts are confirmed in their own dialog.
 
