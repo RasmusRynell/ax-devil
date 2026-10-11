@@ -329,3 +329,52 @@ def test_fetch_gives_up_on_a_device_that_trickles_its_answer(monkeypatch: pytest
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_manufacturer_must_name_axis_as_a_word() -> None:
+    assert _scan({"192.168.0.90": _description(manufacturer="Praxis Vision")}) == []
+    assert [camera.host for camera in _scan({"192.168.0.91": _description(manufacturer="AXIS Communications AB")})] == [
+        "192.168.0.91"
+    ]
+
+
+def test_search_keeps_one_answer_per_address_and_bounds_the_number_of_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def answer(address: str, path: str = "d.xml") -> tuple[bytes, tuple[str, int]]:
+        return f"HTTP/1.1 200 OK\r\nLOCATION: http://{address}/{path}\r\n\r\n".encode(), (address, 1900)
+
+    flood = [answer("192.168.0.90", f"{i}.xml") for i in range(1000)]
+    others = [answer(f"10.0.{i // 250}.{i % 250 + 1}") for i in range(300)]
+    fake = _FakeUdpSocket(flood + others)
+    monkeypatch.setattr(socket, "socket", lambda *args: fake)
+
+    responses = NetworkScanTransport().search(timeout=5.0)
+
+    assert len(responses) == 128
+    assert len({response.address for response in responses}) == 128
+    assert responses[0] == SsdpResponse("192.168.0.90", "http://192.168.0.90/0.xml")
+    assert fake._datagrams == []  # The whole flood was read, not just the first part.
+
+
+def test_slow_responders_do_not_keep_the_process_alive_after_the_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ax_devil.modules.data_sources.live import network_scan
+
+    release = threading.Event()
+    threads_seen: list[threading.Thread] = []
+
+    class Stuck(_FakeTransport):
+        def fetch(self, url: str) -> str:
+            threads_seen.append(threading.current_thread())
+            release.wait(timeout=10)
+            return ""
+
+    monkeypatch.setattr(network_scan, "_SCAN_DEADLINE_SECONDS", 0.3)
+    hosts = [f"192.168.0.{i}" for i in range(1, 40)]
+    responses = [SsdpResponse(host, f"http://{host}/d.xml") for host in hosts]
+    try:
+        assert scan_network(transport=Stuck(responses, {})) == []
+        assert threads_seen
+        assert all(thread.daemon for thread in threads_seen)
+    finally:
+        release.set()

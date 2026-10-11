@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
+import queue
 import re
 import socket
+import threading
 import time
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.error import URLError
@@ -39,7 +40,9 @@ _FETCH_DEADLINE_SECONDS = 5.0  # For the whole download: a device that trickles 
 _MAX_DESCRIPTION_BYTES = 64 * 1024
 _MAX_RESPONDERS = 128
 _FETCH_WORKERS = 16
+_SCAN_DEADLINE_SECONDS = 20.0  # For all description downloads together.
 _SERIAL_SUFFIX = re.compile(r"[0-9A-Fa-f]{12}")
+_AXIS_MANUFACTURER = re.compile(r"\baxis\b", re.IGNORECASE)  # Not "Praxis".
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,7 @@ class ScanTransport(Protocol):
     """The network access a scan needs, replaceable in tests."""
 
     def search(self, timeout: float) -> list[SsdpResponse]:
-        """Send one SSDP search and return every answer received within ``timeout`` seconds."""
+        """Send one SSDP search; return the answers received within ``timeout`` seconds."""
         ...
 
     def fetch(self, url: str) -> str:
@@ -75,8 +78,13 @@ class NetworkScanTransport:
     """Real transport: SSDP over UDP multicast and plain HTTP without redirects or proxies."""
 
     def search(self, timeout: float) -> list[SsdpResponse]:
-        """Send one M-SEARCH to the SSDP multicast group and collect answers until ``timeout`` elapses."""
-        responses: list[SsdpResponse] = []
+        """Send one M-SEARCH to the SSDP multicast group and collect answers until ``timeout`` elapses.
+
+        Only the first valid answer of each address is kept, and only for the first 128 addresses, so a device that
+        floods the network with replies cannot grow the result.
+        """
+        responses: dict[str, SsdpResponse] = {}
+        overflowed = False
         deadline = time.monotonic() + timeout
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
             sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
@@ -88,9 +96,15 @@ class NetworkScanTransport:
                 except TimeoutError:
                     break
                 location = _location_header(data)
-                if location is not None:
-                    responses.append(SsdpResponse(address=address, location=location))
-        return responses
+                if location is None or address in responses or not _is_own_http_url(location, address):
+                    continue
+                if len(responses) < _MAX_RESPONDERS:
+                    responses[address] = SsdpResponse(address=address, location=location)
+                else:
+                    overflowed = True
+        if overflowed:
+            logger.warning(f"Network scan saw more than {_MAX_RESPONDERS} responders; checking the first ones")
+        return list(responses.values())
 
     def fetch(self, url: str) -> str:
         """Download at most 64 KiB from ``url``; a larger body is rejected rather than truncated."""
@@ -133,14 +147,41 @@ def scan_network(*, timeout: float = 3.0, transport: ScanTransport | None = None
     for response in responses:
         if response.address not in locations and _is_own_http_url(response.location, response.address):
             locations[response.address] = response.location
-    if len(locations) > _MAX_RESPONDERS:
-        logger.warning(f"Network scan saw {len(locations)} responders; checking the first {_MAX_RESPONDERS}")
-    hosts = list(locations)[:_MAX_RESPONDERS]
-
-    with ThreadPoolExecutor(max_workers=_FETCH_WORKERS) as pool:
-        found = list(pool.map(lambda host: _describe(transport, host, locations[host]), hosts))
-    cameras = [camera for camera in found if camera is not None]
+    cameras = _describe_all(transport, locations)
     return sorted(cameras, key=lambda camera: int(ipaddress.IPv4Address(camera.host)))
+
+
+def _describe_all(transport: ScanTransport, locations: dict[str, str]) -> list[DiscoveredCamera]:
+    """Describe every host on daemon threads; hosts still waiting when the batch deadline passes are abandoned.
+
+    Daemon threads (not a ``ThreadPoolExecutor``, whose workers are joined at interpreter exit) keep a slow
+    responder from delaying application exit.
+    """
+    deadline = time.monotonic() + _SCAN_DEADLINE_SECONDS
+    pending: queue.SimpleQueue[str] = queue.SimpleQueue()
+    for host in locations:
+        pending.put(host)
+    cameras: list[DiscoveredCamera] = []
+
+    def work() -> None:
+        while time.monotonic() < deadline:
+            try:
+                host = pending.get_nowait()
+            except queue.Empty:
+                return
+            camera = _describe(transport, host, locations[host])
+            if camera is not None:
+                cameras.append(camera)
+
+    workers = [
+        threading.Thread(target=work, name="network-scan", daemon=True)
+        for _ in range(min(_FETCH_WORKERS, len(locations)))
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(max(0.0, deadline - time.monotonic()))
+    return list(cameras)
 
 
 def _location_header(datagram: bytes) -> str | None:
@@ -187,7 +228,7 @@ def _parse_axis_description(host: str, document: str) -> DiscoveredCamera | None
                 return element.text.strip()
         return ""
 
-    if "axis" not in text("manufacturer").lower():
+    if not _AXIS_MANUFACTURER.search(text("manufacturer")):
         return None
     serial = text("serialNumber")
     model = text("modelName") or _without_serial(text("friendlyName"), serial)
