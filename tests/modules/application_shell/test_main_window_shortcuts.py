@@ -264,5 +264,5 @@ def test_quitting_keeps_the_workspace_even_without_closing_the_window(
     assert app is not None
     app.aboutToQuit.emit()
 
-    current, _saved = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json").restore()
+    current = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json").restore()
     assert current.items == session._workspace_store.workspace.items
