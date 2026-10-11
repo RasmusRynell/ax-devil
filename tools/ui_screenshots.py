@@ -42,6 +42,8 @@ from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
+from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera
+from ax_devil.modules.plugin_system import DECODER_PLUGIN_TYPE, RuntimePluginRegistry
 from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import BoundingBox, Classification, Entity, EntityId, MotionState, Observation, Score
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -52,11 +54,15 @@ from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.workspace.core import (
+    BookmarkKind,
+    BookmarkTarget,
     LiveStreamItem,
     OverlayFile,
+    PlaylistContent,
     PlaylistItem,
     RecentWorkspace,
     VideoItem,
+    entry_target,
     new_item_id,
 )
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
@@ -168,6 +174,49 @@ def _grab_next_dialog(name: str, before: Callable[[QDialog], None] | None = None
                 widget.reject()
 
     QTimer.singleShot(300, grab)
+
+
+def _fill_sidebar_views(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, session: WorkspaceSession, video_item_id: str
+) -> None:
+    """Give the Live, Bookmarks and Plugins views something to show: a scan result, bookmarks and a failed plugin."""
+    cameras = [
+        DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "ACCC8E123456"),
+        DiscoveredCamera("192.0.2.51", "AXIS M3086-V", ""),
+    ]
+    session._live_view_controller._scan = lambda: cameras
+    session._live_view_controller.scan()
+    qtbot.waitUntil(lambda: not session._live_view_controller._scanning, timeout=10000)
+
+    store = session._workspace_store
+    [playlist_item] = [item for item in store.workspace.items if isinstance(item, PlaylistItem)]
+    [playlist] = store.resolution(playlist_item.id).contents
+    assert isinstance(playlist, PlaylistContent)
+    clip = BookmarkTarget(video_item_id)
+    run_two = entry_target(playlist_item.id, playlist, 1)
+    for target, frame, kind, note in (
+        (clip, 20, BookmarkKind.ISSUE, "Bicycle 6 disappears"),
+        (clip, 25, BookmarkKind.QUESTION, "ID 3 renamed to 7 behind the car"),
+        (clip, SHOWN_FRAME, BookmarkKind.ISSUE, "Car 8 deleted at the frame edge"),
+        (run_two, 41, BookmarkKind.ISSUE, "Truck box covers the whole frame"),
+        (run_two, 54, BookmarkKind.EXAMPLE, "Clean tracks, good for the slides"),
+    ):
+        store.add_bookmark(target, frame, frame / CLIP_FPS, kind, note)
+    store.set_reviewed(clip, True)
+
+    # The registry is restored when the test ends.
+    monkeypatch.setattr(
+        RuntimePluginRegistry,
+        "_plugins_by_type",
+        {k: dict(v) for k, v in RuntimePluginRegistry._plugins_by_type.items()},
+    )
+    RuntimePluginRegistry.mark_failed(
+        DECODER_PLUGIN_TYPE,
+        "old-model-decoder",
+        Path("old_model_decoder"),
+        "package:old-model-decoder",
+        "Plugin requires API 1, but this app has API 2",
+    )
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
@@ -343,6 +392,18 @@ def test_screenshots(
             qtbot.wait(500)
             suffix = "" if size_name == "wide" else f"-{size_name}"
             window.grab().save(str(OUT / f"{theme}-{text_size.value}-mixed-workspace{suffix}.png"))
+
+    # The other sidebar views over the same workspace, each with some content of its own.
+    _fill_sidebar_views(qtbot, monkeypatch, session, tracked_clip.id)
+    for text_size in TEXT_SIZES:
+        settings.text_size = text_size
+        for size_name, size in WINDOW_SIZES.items():
+            window.resize(*size)
+            suffix = "" if size_name == "wide" else f"-{size_name}"
+            for view_id in ("live", "playlists", "bookmarks", "plugins"):
+                session.show_sidebar_view(view_id)
+                qtbot.wait(500)
+                window.grab().save(str(OUT / f"{theme}-{text_size.value}-view-{view_id}{suffix}.png"))
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

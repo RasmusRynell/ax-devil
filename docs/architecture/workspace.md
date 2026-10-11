@@ -67,6 +67,12 @@ its row opens nothing. A result for an item removed meanwhile, or for a Workspac
 for an item renamed meanwhile is named after the new label. Renaming never resolves again: `ItemResolution` keeps the
 Content as named without a label and names it after the item.
 
+`WorkspaceStore.rescan_item` resolves an item again on request, for example after files were added to a playlist's
+folder. The new result, an error included, replaces the old one only while the item and Workspace are still current.
+Exclusions stay for Content that still exists and are dropped for Content that is gone. A rescan never opens a viewer,
+never changes what open viewers show, since they keep the Content they opened, and never makes the Workspace
+modified, since results are never saved.
+
 An item that fails to resolve stays in the Workspace with its reason, shown as one unavailable row; when the user added
 it, they are also told at once. The Add Live Stream and Add Playlist dialogs resolve their item first and stay open
 with the reason when it fails; on success they hand the result to the store, which does not resolve it again. CLI

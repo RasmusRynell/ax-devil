@@ -22,7 +22,12 @@ uv run ax-devil plugins install /absolute/path/to/example-plugin
 uv run ax-devil
 ```
 
-`plugins install` accepts one or more package requirements, local wheels, or editable source directories.
+The **Plugins** view in the app does the same from the running app: **Add plugin** is `plugins install`, **Update** is
+`plugins install --upgrade` for that package, and **Remove** is `plugins remove`. Each runs through the launcher, so
+the base app manages the plugins, and applies after a restart.
+
+`plugins install` accepts one or more package requirements, local wheels, or editable source directories; `--upgrade`
+also upgrades their dependencies beyond the existing lockfile.
 Quote requirements containing shell operators such as `>=` or `<`. All selected plugins and the app are resolved
 together in one private environment. Packages the app already uses stay at the versions installed with the app, so
 plugins run on exactly the dependencies the app was installed and tested with. Conflicting requirements, including a

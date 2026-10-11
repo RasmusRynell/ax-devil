@@ -18,7 +18,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | CLI commands and maintenance entry points | `src/ax_devil/cli.py` |
 | Main window menus, app-wide dialogs (including Settings and Quick Setup), diagnostics window launch | `src/ax_devil/modules/application_shell/` |
 | Workspace model: the Workspace, Workspace Items and their resolution, file format, kept workspace and recent workspaces, content, intake, item information (Qt-free) | `src/ax_devil/modules/workspace/core/` |
-| Workspace interface: `WorkspaceStore`, plugin-backed background resolution, browser rows, add-content and rename dialogs, workspace lifecycle and prompts, split-view hosting, `ViewerWidget`, viewer factory, session/controller | `src/ax_devil/modules/workspace/ui/` |
+| Workspace interface: `WorkspaceStore`, plugin-backed background resolution, browser rows, add-content and rename dialogs, workspace lifecycle and prompts, split-view hosting, `ViewerWidget`, viewer factory, session/controller, the activity bar, sidebar host and the Workspace, Live, Playlists and Bookmarks views | `src/ax_devil/modules/workspace/ui/` |
 | Live/offline viewer workflows, media tools, offline entry opening (`EntryOpening`, `EntryMedia`), `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation | `src/ax_devil/modules/video_player/` |
 | Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
@@ -27,17 +27,18 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
 | Session filtering, shared filter configs, state, predicates, and whole-file history filtering | `src/ax_devil/modules/filtering/` |
 | Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |
+| The Plugins sidebar view: the plugin catalog, in-app install, update, remove and reload | `src/ax_devil/modules/plugin_manager/` |
 | Locked plugin installation projects and install/update/remove commands | `src/ax_devil/modules/plugin_installation/` |
 | Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
 | Config, settings state and preference values, logging, paths | `src/ax_devil/modules/settings/` |
 | Shortcut definitions, the manager that installs them, override persistence, and the shortcuts dialog | `src/ax_devil/modules/shortcuts/` |
-| Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons, menu buttons, browse buttons and key chips, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
+| Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons, the sidebar view contract and list building blocks (view panel, section caption, list row, chip, small button, banner), menu buttons, browse buttons and key chips, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
 | Diagnostics windows, metrics, exception reporting | `src/ax_devil/modules/diagnostics/` |
 | Cache services | `src/ax_devil/modules/cache/` |
 
 ## Live Sources And Add-Content Placement
 
-`data_sources/live/` groups RTSP, MQTT, and DataHub transport implementations and discovery. Shared source contracts
+`data_sources/live/` groups RTSP, MQTT, and DataHub transport implementations and discovery, including the on-request network scan that finds cameras. Shared source contracts
 remain in `data_sources/base.py`; file sources and providers remain outside `live/`.
 
 `workspace/ui/add_content/` groups the three add-content dialogs and their analytics discovery and playlist-selection

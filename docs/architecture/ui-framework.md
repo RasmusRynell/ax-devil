@@ -10,7 +10,8 @@ flowchart TD
     MainWindow --> MenuHost["menu_host()<br/>TitleBar menu bar or native QMenuBar"]
     MainWindow --> WorkspaceSession["WorkspaceSession"]
     MainWindow --> Dialogs["BaseDialog subclasses<br/>add video, live stream, playlist, settings, shortcuts, about"]
-    MainWindow --> DebugWindows["DebugWindow / PluginWindow"]
+    MainWindow --> DebugWindows["DebugWindow"]
+    MainWindow --> PluginsView["PluginsView<br/>sidebar view"]
 
     WorkspaceSession --> WorkspaceStore["WorkspaceStore<br/>items, resolved Content, signals"]
     WorkspaceSession --> WorkspaceLifecycle["WorkspaceLifecycle<br/>launch, quit, new, open, save"]
@@ -21,9 +22,12 @@ flowchart TD
 
     ApplicationWindow --> ActivityBar["ActivityBar<br/>left-edge icon strip"]
     ApplicationWindow --> HorizontalSplitter["QSplitter<br/>sidebar + center"]
-    HorizontalSplitter --> SidebarPanel["SidebarPanel<br/>start panel or content tree"]
-    SidebarPanel --> StartPanel["StartPanel<br/>open actions, recent workspaces"]
-    SidebarPanel --> ContentBrowser
+    HorizontalSplitter --> SidebarPanel["SidebarPanel<br/>one SidebarView at a time"]
+    SidebarPanel --> WorkspaceView["WorkspaceView<br/>start panel or content tree"]
+    WorkspaceView --> StartPanel["StartPanel<br/>open actions, recent workspaces"]
+    WorkspaceView --> ContentBrowser
+    SidebarPanel --> SourceViews["LiveView, PlaylistsView"]
+    SidebarPanel --> BookmarksView
     HorizontalSplitter --> SplitView["SplitView<br/>viewer widget host"]
 
     WorkspaceController --> SplitView
@@ -64,15 +68,39 @@ Callers use the session to add Workspace Items (`add_items`, `add_resolved`, `op
 lifecycle (`session.lifecycle`), route to the focused widget, configure shortcuts, and tear down. The lifecycle
 — the kept workspace, the Save / Discard / Cancel question, and recent workspaces — is described in
 [Workspace](workspace.md#lifecycle). The session re-emits the store's
-`state_changed`, and `MainWindow` sets its window title from `workspace_name` and `is_modified` for the desktop's task
-switcher; the session shows the same in the `SidebarPanel` header, and the main window's custom `TitleBar` shows only
-the app name. The store, browser, split view, and controller are composed implementation details rather than
+`state_changed`, and `MainWindow` sets its window title from `workspace_name` and `is_modified`, and its custom `TitleBar` follows the
+window title, so the name and the unsaved mark sit at the top whichever sidebar view is on screen. The store, browser, split view, and controller are composed implementation details rather than
 separate session APIs.
 
-`ApplicationWindow` is the static central shell. It lays out the `ActivityBar`, the `SidebarPanel`, and `SplitView` in the center area. It owns only whether the sidebar shows and how wide it is, not workspace state, teardown, or viewer behavior. The sidebar shows unless the user hid it with **View → Sidebar** (`Ctrl+\`), the activity bar's Workspace button, or by dragging it closed; it always appears at the width the user last dragged it to. `SidebarPanel` shows the `StartPanel` while the content browser lists nothing, and the content browser otherwise. `ApplicationWindow` accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
+`ApplicationWindow` is the static central shell. It lays out the `ActivityBar`, the `SidebarPanel`, and `SplitView` in the center area. It owns only whether the sidebar shows, how wide it is and which view is on screen, not workspace state, teardown, or viewer behavior. The sidebar shows unless the user hid it with **View → Sidebar** (`Ctrl+\`), by clicking the button of the view on screen, or by dragging it closed; it always appears at the width the user last dragged it to. `ApplicationWindow` accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
 
 `WelcomeWidget`, shown by `SplitView` while no widgets are open, paints clickable rows. Shortcut rows come from `ShortcutManager` definitions marked `show_on_welcome` and trigger the same `QAction` as the menu and key binding. Recent workspaces are listed by `StartPanel`, which emits `recent_workspace_requested`.
 The welcome screen scrolls when its rows cannot fit, keeping its actions reachable in small windows.
+
+## Sidebar Views
+
+The window is always in a Workspace. The activity bar has one button per sidebar view, and each view is a part of
+that Workspace or a way of acting on it:
+
+| View | Group | Shows |
+|------|-------|-------|
+| Workspace | Workspace | Everything the Workspace holds (`WorkspaceView`: the start panel while empty, else the content browser). |
+| Live | Sources | The Workspace's cameras with Connect and Disconnect, and cameras found by a network scan on request. |
+| Playlists | Sources | The Workspace's playlists with Rescan, and the playlist resolvers that can add more. |
+| Bookmarks | Review | The moments marked in local videos and playlists, with each target's review state. |
+| Plugins | App | What loaded, what failed, and adding, updating, removing and reloading plugins. |
+
+A view is a `SidebarView` value (`modules/chrome/sidebar_view.py`: id, title, icon, `ViewGroup`, widget). Its owner
+builds the widget and registers it with `WorkspaceSession.add_sidebar_view`; the window only hosts it. Groups run in
+the order of `ViewGroup`, a rule between them, and the `APP` group sits at the bottom of the bar above the app-wide
+actions. Clicking the button of the view on screen hides the sidebar; any other button shows that view.
+
+Views follow one pattern. The widget is thin: it renders plain data it is given and emits signals. A controller beside
+it (`LiveViewController`, `PlaylistsViewController`, the bookmarks controller) reads `WorkspaceController.sections()`
+and follows `sections_changed`, the same rows the content browser shows, acts through `open_content` and
+`close_item_viewers`, and changes items through `WorkspaceStore`. Views of part of the Workspace never read the store
+directly or reach into the content browser. The widgets are built from the chrome kit (`ViewPanel`, `SectionCaption`,
+`ListRow`, `SmallButton`, `Chip`, `Banner`) so spacing, text size and theme follow the rest of the app.
 
 ## Workspace Controller
 

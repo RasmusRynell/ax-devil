@@ -153,6 +153,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   directory exists.
 - Plugin IDs are unique within each plugin type; decoder `handler_type` strings are unique across loaded decoders for
   each capability.
+- The launcher tells the plugin interpreter how to start the app again and where this installation keeps its plugin
+  selection (`AX_DEVIL_LAUNCH_COMMAND`, `AX_DEVIL_PLUGIN_ROOT`). Restarting and changing plugins from the running app go
+  through that command, so management stays in the base app and a restart picks up the current selection.
 - Plugin load failures must not stop the application. External load, validation and registration failures are
   recorded in `RuntimePluginRegistry`; a built-in import failure may only be logged.
 - `ax-devil` selects the prepared plugin interpreter before importing application code; management stays in base.
