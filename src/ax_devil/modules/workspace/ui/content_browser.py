@@ -161,7 +161,8 @@ class _RowDelegate(QStyledItemDelegate):
         """Draw a section caption: an arrow, its kind's color mark, the title, the count with any hidden items, and a
         rule to the right edge."""
         mark = _KIND_MARKS[section.kind.icon_kind].color(option.palette)
-        text = f"{section.kind.title}  {len(section.rows)}" + (f"  · {hidden_count} hidden" if hidden_count else "")
+        hidden_note = f"  · {hidden_count} hidden" if hidden_count else ""
+        text = f"{section.kind.title}  {len(section.rows)}{hidden_note}"
         # The arrow is the one the tree draws beside rows that have children.
         arrow = QStyleOptionViewItem(option)
         arrow.rect = QRect(option.rect.left(), option.rect.top(), _SECTION_ARROW_PX, option.rect.height())
@@ -324,13 +325,6 @@ class ContentBrowserWidget(QWidget):
         """Return whether the browser lists any workspace content."""
         return self._tree.topLevelItemCount() > 0
 
-    def _section_headings(self) -> Iterator[QTreeWidgetItem]:
-        """Iterate over the section rows."""
-        for index in range(self._tree.topLevelItemCount()):
-            heading = self._tree.topLevelItem(index)
-            if heading is not None:
-                yield heading
-
     def _tree_items(self) -> Iterator[QTreeWidgetItem]:
         """Iterate over all rows, including hidden and collapsed descendants."""
         iterator = QTreeWidgetItemIterator(self._tree)
@@ -477,7 +471,8 @@ class ContentBrowserWidget(QWidget):
         """Record on a section row how many excluded items the list hides, for its caption and screen readers."""
         section: WorkspaceBrowserSection = heading.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE)
         heading.setData(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE, hidden)
-        text = f"{section.kind.title}, {len(section.rows)}" + (f", {hidden} hidden" if hidden else "")
+        hidden_note = f", {hidden} hidden" if hidden else ""
+        text = f"{section.kind.title}, {len(section.rows)}{hidden_note}"
         heading.setData(TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole, text)
 
     def _item_matches_search(self, item: QTreeWidgetItem) -> bool:
