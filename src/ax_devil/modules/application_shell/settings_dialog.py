@@ -285,7 +285,7 @@ class SettingsDialog(BaseDialog):
     def _ask_to_restart(self) -> bool:
         """Ask whether to restart now for the saved changes that need it; return True for now."""
         choices = {"Restart Now": True, "Later": False}
-        return ask(self, "Restart ax-devil?", "Some changes take effect after a restart.", choices, True) is True
+        return ask(self, "Restart ax-devil?", "Some changes take effect after a restart.", choices, True)
 
     def _saved_restart_values(self) -> tuple[object, ...]:
         """Return the saved values of every setting marked as needing a restart, as the next start reads them.

@@ -15,11 +15,10 @@ _FILE_FILTER = f"Workspaces (*{WORKSPACE_FILE_SUFFIX})"
 
 
 class SaveChoice(Enum):
-    """The answer to whether unsaved changes should be saved before they are replaced."""
+    """The answer to whether unsaved changes should be saved before they are replaced; there is no cancelling."""
 
     SAVE = "save"
     DISCARD = "discard"
-    CANCEL = "cancel"
 
 
 class WorkspacePrompts(Protocol):
@@ -53,12 +52,11 @@ class DialogPrompts:
         self._parent = parent
 
     def ask_save_changes(self, workspace_name: str) -> SaveChoice:
-        """Ask Save / Don't Save about the modified workspace being replaced; closing the box cancels."""
+        """Ask Save / Don't Save about the modified workspace being replaced."""
         choices = {"Save": SaveChoice.SAVE, "Don't Save": SaveChoice.DISCARD}
-        answer = ask(
+        return ask(
             self._parent, "Save Previous Workspace", f"Save changes to {workspace_name}?", choices, SaveChoice.SAVE
         )
-        return answer or SaveChoice.CANCEL
 
     def choose_workspace_to_open(self) -> Path | None:
         """Show an open dialog filtered to workspace files."""
@@ -72,9 +70,8 @@ class DialogPrompts:
 
     def confirm_replace(self, path: Path) -> bool:
         """Ask whether to replace *path*."""
-        return (
-            ask(self._parent, "Save Workspace As", f"Replace {path.name}?", {"Replace": True, "Cancel": False}, False)
-            is True
+        return ask(
+            self._parent, "Save Workspace As", f"Replace {path.name}?", {"Replace": True, "Cancel": False}, False
         )
 
     def show_error(self, message: str) -> None:
