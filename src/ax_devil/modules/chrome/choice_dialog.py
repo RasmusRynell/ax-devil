@@ -29,6 +29,7 @@ class ChoiceDialog(BaseDialog, Generic[_AnswerT]):
         self.answer: _AnswerT | None = None
         message = QLabel(text)
         message.setWordWrap(True)
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.add_content_widget(message)
         for label, answer in choices.items():
@@ -36,6 +37,7 @@ class ChoiceDialog(BaseDialog, Generic[_AnswerT]):
             self.add_button(
                 label, lambda _checked=False, answer=answer: self._choose(answer), is_default=answer == default
             )
+        self._button_layout.addStretch()  # The base layout leads with a stretch; a trailing one centers the row.
 
     def _choose(self, answer: _AnswerT) -> None:
         self.answer = answer
