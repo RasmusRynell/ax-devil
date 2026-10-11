@@ -55,16 +55,19 @@ class PlaylistSettingsUI(QWidget):
 
     Every resolver form is built up front as a stacked page under its plugin description, so the panel's preferred
     size already covers the largest form and selecting a resolver never changes the window size. Before a resolver
-    is chosen, the first page explains the dialog and lists every available resolver.
+    is chosen, the first page explains the dialog and lists every available resolver; *resolver_id* chooses one at
+    once.
     """
 
     item_ready = Signal(object)  # PlaylistItem
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, resolver_id: str | None = None) -> None:
         super().__init__(parent)
         # Each resolver form, with its resolver's plugin id and display name.
         self._resolver_by_widget: dict[PlaylistResolverWidget, str] = {}
         self._setup_ui()
+        if resolver_id is not None:
+            self._select_resolver(resolver_id)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -115,6 +118,16 @@ class PlaylistSettingsUI(QWidget):
         # The overview lists every resolver, so it is built last and shown first, matching the combo's first item.
         self._resolver_pages.insertWidget(0, _page(overview))
         self._resolver_pages.setCurrentIndex(0)
+
+    def _select_resolver(self, resolver_id: str) -> None:
+        """Show the form of the resolver with *resolver_id*; one that is not available leaves the overview shown."""
+        widget = next(
+            (widget for widget, plugin_id in self._resolver_by_widget.items() if plugin_id == resolver_id), None
+        )
+        if widget is None:
+            logger.warning(f"Playlist resolver {resolver_id} is not available")
+            return
+        self._resolver_combo.setCurrentIndex(self._resolver_combo.findData(widget))
 
     def _on_settings_submitted(self, settings: PlaylistSettings) -> None:
         # A resolver the user switched away from may still submit; only the selected one supplies the playlist.

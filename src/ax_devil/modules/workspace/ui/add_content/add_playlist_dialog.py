@@ -16,12 +16,16 @@ class AddPlaylistDialog(BaseDialog):
 
     Embeds PlaylistSettingsUI and resolves the submitted Playlist Item with *resolver*, away from the GUI thread. It
     accepts with the result when the item resolves; otherwise the dialog stays open with the reason shown under the
-    form. While the item resolves, further submissions are ignored.
+    form. While the item resolves, further submissions are ignored. *resolver_id* chooses the playlist resolver the
+    dialog opens with.
     """
 
-    def __init__(self, resolver: ItemResolver, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, resolver: ItemResolver, parent: QWidget | None = None, *, resolver_id: str | None = None
+    ) -> None:
         self._result: ItemResolution | None = None
         self._resolver = resolver
+        self._initial_resolver_id = resolver_id
         self._resolving = False
         self._closed = False
         super().__init__(parent, title="Add Playlist")
@@ -29,7 +33,7 @@ class AddPlaylistDialog(BaseDialog):
         self.add_button("Cancel", self.reject)
 
     def _setup_form(self) -> None:
-        self._settings = PlaylistSettingsUI()
+        self._settings = PlaylistSettingsUI(resolver_id=self._initial_resolver_id)
         self._settings.item_ready.connect(self._on_item_ready)
         self.add_content_widget(self._settings)
         self._message_label = QLabel()

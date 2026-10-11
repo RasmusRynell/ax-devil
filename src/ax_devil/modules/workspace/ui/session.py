@@ -27,6 +27,8 @@ from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
+from ax_devil.modules.workspace.ui.playlists_view import PlaylistsView
+from ax_devil.modules.workspace.ui.playlists_view_controller import PlaylistsViewController
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
@@ -59,6 +61,7 @@ class WorkspaceSession(QObject):
 
     state_changed = Signal()  # The Workspace's name or modified flag changed.
     add_live_stream_requested = Signal()  # The Live view asked to add a camera by its address.
+    add_playlist_requested = Signal(str)  # The id of the playlist resolver to add a playlist with.
 
     def __init__(
         self,
@@ -99,6 +102,12 @@ class WorkspaceSession(QObject):
         )
         self._window.add_view(self._live_view.sidebar_view())
         self._live_view.add_by_address_requested.connect(self.add_live_stream_requested)
+        self._playlists_view = PlaylistsView()
+        self._window.add_view(self._playlists_view.sidebar_view())
+        self._playlists_controller = PlaylistsViewController(
+            self._playlists_view, self._workspace_controller, self._workspace_store, parent=self
+        )
+        self._playlists_view.add_requested.connect(self.add_playlist_requested)
         self._lifecycle = WorkspaceLifecycle(
             self._workspace_store,
             prompts or DialogPrompts(self._window),

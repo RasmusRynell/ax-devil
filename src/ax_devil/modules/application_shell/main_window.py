@@ -80,6 +80,7 @@ class MainWindow(ChromeWindow):
         self._setup_central_widget()
         self._workspace_session.state_changed.connect(self._update_title)
         self._workspace_session.add_live_stream_requested.connect(self._on_add_live_stream)
+        self._workspace_session.add_playlist_requested.connect(self._on_add_playlist)
         self._update_title()
         # Every way of quitting passes here, including quitting after an error without closing this window.
         app = QApplication.instance()
@@ -159,7 +160,7 @@ class MainWindow(ChromeWindow):
         file_menu.addAction(add_live_action)
 
         add_playlist_action = sm.get_action("app.add_playlist")
-        add_playlist_action.triggered.connect(self._on_add_playlist)
+        add_playlist_action.triggered.connect(lambda: self._on_add_playlist())  # Not ``checked`` as the resolver id.
         file_menu.addAction(add_playlist_action)
 
         file_menu.addSeparator()
@@ -364,11 +365,11 @@ class MainWindow(ChromeWindow):
                     self._workspace_session.add_resolved([result])
                     self._logger.info(f"Added live stream: {result.item.display_name}")
 
-    def _on_add_playlist(self) -> None:
-        """Handle File -> Add Playlist action."""
+    def _on_add_playlist(self, resolver_id: str | None = None) -> None:
+        """Handle File -> Add Playlist, or Add on a resolver in the Playlists view, which opens with *resolver_id*."""
         from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 
-        with AddPlaylistDialog(self._workspace_session.resolver, self) as dialog:
+        with AddPlaylistDialog(self._workspace_session.resolver, self, resolver_id=resolver_id) as dialog:
             if dialog.exec() == AddPlaylistDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:

@@ -63,7 +63,7 @@ class ListRow(QFrame):
             top = Qt.AlignmentFlag.AlignTop if subtitle else Qt.AlignmentFlag.AlignVCenter
             layout.addWidget(mark, 0, top)
         column = QVBoxLayout()
-        column.setSpacing(0)
+        column.setSpacing(Space.XS)
         name = ElidedLabel(title, Qt.TextElideMode.ElideRight, self)
         if dim:
             name.setStyleSheet(_MUTED)
@@ -84,10 +84,13 @@ class ListRow(QFrame):
         for widget in trailing:
             layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
         edge = "palette(highlight)" if active else "transparent"
+        # The theme borders every QFrame, labels included; a bordered label measures a wrapped line narrower than it
+        # draws it, so a wrapped subtitle would get room for a line it never uses.
         self.setStyleSheet(
             f"""
             #AxDevilListRow {{ border-left: 2px solid {edge}; }}
             #AxDevilListRow:hover {{ background: palette(midlight); }}
+            #AxDevilListRow QLabel {{ border: none; }}
             """
         )
         follow_appearance(self, lambda: self.setMinimumHeight(Height.ROW.px))
