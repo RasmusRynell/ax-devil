@@ -10,6 +10,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLineEdit, QSplitter, QTreeWidget, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import (
@@ -36,9 +37,10 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
-from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE, ContentBrowserWidget
+from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
+from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.modules.workspace.ui.split_view import LeafContainer, SplitView
 from ax_devil.modules.workspace.ui.workspace_prompts import WorkspacePrompts
@@ -80,8 +82,12 @@ def _tree(session: WorkspaceSession) -> QTreeWidget:
     return tree
 
 
+def _row(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
+    return cast(WorkspaceBrowserRow, item.data(0, ROW_ROLE))
+
+
 def _is_open(item: QTreeWidgetItem) -> bool:
-    return cast(WorkspaceBrowserRow, item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE)).is_open is True
+    return _row(item).is_open is True
 
 
 def _store(session: WorkspaceSession) -> WorkspaceStore:
@@ -440,8 +446,14 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
     assert (parent, title) == (workspace_session.widget(), "Open Content")
     assert message.startswith("Clip: ")
     assert len(_item_rows(workspace_session)) == 1
-    row = cast(WorkspaceBrowserRow, _required_item_row(workspace_session).data(TREE_LABEL_COLUMN, TREE_ROW_ROLE))
+    row = _row(_required_item_row(workspace_session))
     assert (row.label, row.unavailable_reason) == ("Clip", message.removeprefix("Clip: "))
+
+    with patch("PySide6.QtWidgets.QMessageBox.warning") as again:
+        _tree(workspace_session).itemDoubleClicked.emit(_required_item_row(workspace_session), 0)
+
+    assert [call.args[1:] for call in again.call_args_list] == [("Open Content", message)], "a double click says why"
+    assert _center(workspace_session).get_widget_count() == 0
 
 
 def test_adding_live_content_auto_opens_live_viewer(
@@ -533,7 +545,7 @@ def test_replaced_viewer_stops_receiving_consideration_updates(
 
     stored_second = _store(workspace_session).contents()[1]
     item_ref = ConsiderationItemRef.video_lane(stored_second.content_id, 0)
-    _browser(workspace_session).item_consideration_change_requested.emit(item_ref, False)
+    _browser(workspace_session).tree.row_consideration_changed.emit(item_ref, False)
 
     assert first_widget.cleaned_up
     assert first_widget.refresh_calls == []
@@ -706,13 +718,13 @@ def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: Wor
     browser.item_rename_requested.emit(clip.id, "North gate")
 
     assert viewer._title_label.text() == "North gate"
-    assert _required_item_row(workspace_session).text(0) == "North gate"
+    assert _row(_required_item_row(workspace_session)).label == "North gate"
     assert _store(workspace_session).is_modified
 
     browser.item_rename_requested.emit(clip.id, "")
 
     assert viewer._title_label.text() == "lot.mp4"
-    assert _required_item_row(workspace_session).text(0) == "lot.mp4"
+    assert _row(_required_item_row(workspace_session)).label == "lot.mp4"
 
 
 def test_kept_workspace_goes_to_the_storage_folder_saved_after_launch(
@@ -743,3 +755,53 @@ def test_kept_workspace_goes_to_the_storage_folder_saved_after_launch(
 
     assert (tmp_path / "changed" / "workspace-backup.json").is_file()
     assert not (tmp_path / "launched" / "workspace-backup.json").exists()
+
+
+def _press_row_action(session: WorkspaceSession, label: str) -> None:
+    """Press the action button of the Workspace view's top-level row named *label*."""
+    [item] = [item for item in _item_rows(session) if _row(item).label == label]
+    widget = _tree(session).itemWidget(item, 0)
+    assert widget is not None
+    [button] = widget.findChildren(SmallButton)
+    button.click()
+
+
+def test_connect_and_disconnect_in_the_workspace_view_open_and_close_the_camera(
+    workspace_session: WorkspaceSession,
+) -> None:
+    _store(workspace_session).replace_workspace(Workspace(items=(LiveStreamItem(label="Gate", host="camera.local"),)))
+    with patch(_LIVE_VIEWER, DummyViewer):
+        _press_row_action(workspace_session, "Gate")
+        assert _center(workspace_session).get_widget_count() == 1
+        assert _is_open(_required_item_row(workspace_session))
+
+        _press_row_action(workspace_session, "Gate")
+
+    assert _center(workspace_session).get_widget_count() == 0
+    assert not _is_open(_required_item_row(workspace_session))
+
+
+def test_rescan_in_the_workspace_view_resolves_the_playlist_again(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    class Growing:
+        """A resolver whose playlist gains an entry each time it is resolved."""
+
+        def __init__(self) -> None:
+            self.entries = 0
+
+        def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+            self.entries += 1
+            lanes = _make_video("clip.mp4").standalone_lanes()
+            return [PlaylistContent(display_name="Runs", entries=(PlaylistEntry(lanes, True),) * self.entries)]
+
+    session = _session(render_catalog_manager, tmp_path, FakeResolutionContext(resolvers={"folder_pair": Growing()}))
+    qtbot.addWidget(session.widget())
+    session.widget().show()
+    _store(session).replace_workspace(Workspace(items=(PlaylistItem(resolver="folder_pair"),)))
+    assert _required_item_row(session).childCount() == 1
+
+    _press_row_action(session, "Runs")
+
+    assert _required_item_row(session).childCount() == 2
+    assert _center(session).get_widget_count() == 0

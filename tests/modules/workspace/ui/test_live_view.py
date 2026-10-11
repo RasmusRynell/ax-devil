@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -13,8 +13,6 @@ from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QLabel, QLineEdit, QProgressBar, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.chrome.elided_label import ElidedLabel
-from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -27,9 +25,9 @@ from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_conte
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
+from tests.helpers.section_tree import captions, press, row, row_action, row_texts, shown_rows, texts
 from tests.helpers.workspace import DummyViewer
 
-_W = TypeVar("_W", bound=QWidget)
 _LIVE_VIEWER = "ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget"
 
 
@@ -89,44 +87,26 @@ class _Live:
 
     def rows(self) -> dict[str, str]:
         """Return each listed row's title and its action, empty for none, in order."""
-        return {_title(row): _action(row) for row in _shown(self.view, ListRow)}
+        return {row_texts(row)[0]: row_action(row) for row in shown_rows(self.view.tree)}
 
-    def subtitles(self) -> list[str]:
-        return [labels[1].full_text() for row in _shown(self.view, ListRow) if len(labels := _labels(row)) > 1]
+    def detail(self, title: str) -> str:
+        """Return the second line of the row named *title*."""
+        return row_texts(row(self.view.tree, title))[1]
 
     def press(self, title: str) -> None:
         """Press the action of the row titled *title*."""
-        [row] = [row for row in _shown(self.view, ListRow) if _title(row) == title]
-        [button] = _shown(row, QPushButton)
-        button.click()
+        press(self.view.tree, title)
 
     def button(self, text: str) -> QPushButton:
-        [button] = [button for button in _shown(self.view, QPushButton) if button.text() == text]
+        [button] = [button for button in self.view.findChildren(QPushButton) if button.text() == text]
         return button
 
     def ip_range(self) -> QLineEdit:
-        [field] = _shown(self.view, QLineEdit)
+        [field] = self.view.findChildren(QLineEdit)
         return field
 
     def texts(self) -> list[str]:
-        return [label.text() for label in _shown(self.view, QLabel) if label.text()]
-
-
-def _shown(parent: QWidget, kind: type[_W]) -> list[_W]:
-    """Return *parent*'s children of *kind* that were not removed, which hides them until they are deleted."""
-    return [child for child in parent.findChildren(kind) if not child.isHidden()]
-
-
-def _labels(row: ListRow) -> list[ElidedLabel]:
-    return row.findChildren(ElidedLabel)
-
-
-def _title(row: ListRow) -> str:
-    return _labels(row)[0].full_text()
-
-
-def _action(row: ListRow) -> str:
-    return "".join(button.text() for button in _shown(row, QPushButton))
+        return texts(self.view)
 
 
 @pytest.fixture
@@ -188,7 +168,7 @@ def test_cameras_that_cannot_open_yet_or_at_all_offer_no_action(live: _Live) -> 
     live.store.add_items([LiveStreamItem(host="192.0.2.11", label="Gate")])
 
     assert live.rows() == {"Dock": "", "Gate": ""}
-    assert any("nope" in subtitle for subtitle in live.subtitles())
+    assert "nope" in row(live.view.tree, "Dock").toolTip(), "the reason is on hover"
 
     live.resolutions.finish()
     assert live.rows()["Gate"] == "Disconnect", "an added camera opens once resolved"
@@ -199,11 +179,12 @@ def test_nothing_scans_until_rescan_is_pressed(qtbot: QtBot, live: _Live) -> Non
     qtbot.waitExposed(live.view)
     live.scans.finish()
     assert live.scanner.calls == 0
-    assert "On the network" not in str(live.texts())
+    assert captions(live.view.tree) == []
 
     _scan(live)
 
     assert live.scanner.calls == 1
+    assert captions(live.view.tree) == ["On the network, 0"]
 
 
 def test_the_scan_button_waits_and_progress_shows_while_a_scan_runs(live: _Live) -> None:
@@ -236,9 +217,11 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: _Live, monk
         DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", "ACCC8E000002"),
     )
 
+    assert captions(live.view.tree) == ["Live, 2", "On the network, 1"]
     assert list(live.rows())[2:] == ["AXIS P3265-LVE"]
     assert live.rows()["AXIS P3265-LVE"] == "Add"
-    assert "192.0.2.12 · ACCC8E000002" in live.subtitles()
+    assert live.detail("AXIS P3265-LVE") == "192.0.2.12"
+    assert "ACCC8E000002" in row(live.view.tree, "AXIS P3265-LVE").toolTip()
 
     _scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", ""))
 
@@ -273,7 +256,8 @@ def test_add_puts_the_camera_in_the_workspace_with_the_stream_defaults(
         "$CAMERA_PASS",
     )
     assert (item.camera_head, item.resolution, item.overlay_mode) == (2, "640x480", LiveOverlayMode.RTSP)
-    assert live.rows() == {"AXIS P3265-LVE": "Disconnect"}
+    assert live.rows()["AXIS P3265-LVE"] == "Disconnect"
+    assert captions(live.view.tree) == ["Live, 1", "On the network, 0"]
     assert "No new cameras" in live.texts()
 
 
@@ -282,7 +266,7 @@ def test_a_failed_scan_says_so_and_keeps_the_reason_on_hover(live: _Live) -> Non
     live.button("Rescan").click()
     live.scans.finish()
 
-    [failed] = [label for label in _shown(live.view, QLabel) if label.text() == "Scan failed"]
+    [failed] = [label for label in live.view.findChildren(QLabel) if label.text() == "Scan failed"]
     assert "Network is unreachable" in failed.toolTip()
     assert live.button("Rescan").isEnabled()
 
@@ -320,7 +304,7 @@ def test_an_invalid_ip_range_scans_nothing_and_says_why_on_hover(live: _Live) ->
     live.ip_range().setText("camera")
     live.button("Rescan").click()
 
-    [invalid] = [label for label in _shown(live.view, QLabel) if label.text() == "Invalid IP range"]
+    [invalid] = [label for label in live.view.findChildren(QLabel) if label.text() == "Invalid IP range"]
     assert "camera" in invalid.toolTip()
     assert live.scanner.calls == 0
     assert live.button("Rescan").isEnabled()

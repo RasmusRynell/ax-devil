@@ -105,10 +105,20 @@ button of the view on screen hides the sidebar; any other button shows that view
 
 Views follow one pattern. The widget is thin: it renders plain data it is given and emits signals. A controller beside
 it (`LiveViewController`, `PlaylistsViewController`, the bookmarks controller) reads `WorkspaceController.sections()`
-and follows `sections_changed`, the same rows the content browser shows, acts through `open_content` and
-`close_item_viewers`, and changes items through `WorkspaceStore`. Views of part of the Workspace never read the store
-directly or reach into the content browser. The widgets are built from the chrome kit (`ViewPanel`, `SectionCaption`,
-`ListRow`, `SmallButton`, `Chip`, `Banner`) so spacing, text size and theme follow the rest of the app.
+and follows `sections_changed`, the same rows the content browser shows, acts through `WorkspaceController`, and
+changes items through `WorkspaceStore`. Views of part of the Workspace never read the store directly or reach into the
+content browser. The widgets are built from the chrome kit (`ViewPanel`, `SectionCaption`, `ListRow`, `SmallButton`,
+`Chip`, `Banner`) so spacing, text size and theme follow the rest of the app.
+
+Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Connect,
+Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
+(`section_tree.py`) lists sections of them under captions that fold on a click, building a row's widget only once
+its parent is expanded.
+The content browser, Live and Playlists each show one `SectionTree`, which `WorkspaceController.connect_tree` serves,
+so a row behaves the same in all three: a double-click opens it, its action runs through `perform_row_action`, and its
+eye includes or excludes it. Live and Playlists are `SectionsView`s (`sections_view.py`): a header summary over the
+tree, plus their own extras. Their controllers add rows for things the Workspace does not hold, cameras a scan found
+and playlist resolvers, whose Add runs the row's `add`.
 
 ## Workspace Controller
 

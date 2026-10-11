@@ -28,6 +28,7 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.core.items import ItemResolution, UnreadableItem
 from ax_devil.modules.workspace.ui.browser_rows import (
+    RowAction,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
     build_browser_sections,
@@ -216,7 +217,7 @@ def test_same_named_playlist_entries_get_folder_hints() -> None:
     (row,) = item_rows(store)
 
     assert [(child.label, child.detail) for child in row.children] == [("clip.mp4", "a"), ("clip.mp4", "b")]
-    assert (row.label, row.detail) == ("Playlist", "2 entries")
+    assert (row.label, row.detail) == ("Playlist", "")
 
 
 @pytest.mark.parametrize("in_playlist", [False, True])
@@ -355,11 +356,8 @@ def test_sections_group_rows_by_kind_in_a_fixed_order_with_counts(tmp_path: Path
         ["future"],
     ]
     missing = sections[1].rows[2]
-    assert (missing.detail, missing.unavailable_reason) == (
-        "Unavailable",
-        f"File not found: {tmp_path / 'missing.mp4'}",
-    )
-    assert sections[3].rows[0].detail == "Unavailable"
+    assert (missing.detail, missing.unavailable_reason) == ("", f"File not found: {tmp_path / 'missing.mp4'}")
+    assert sections[3].rows[0].detail == ""
 
 
 def test_sections_are_present_only_for_kinds_in_the_workspace(tmp_path: Path) -> None:
@@ -404,7 +402,7 @@ def test_same_names_in_one_section_get_location_hints_while_other_sections_do_no
     assert [(row.label, row.detail) for row in live_section.rows] == [("front.mp4", "camera.local")]
 
 
-def test_unavailable_items_with_the_same_name_keep_their_status_instead_of_numbered_hints() -> None:
+def test_unavailable_items_with_the_same_name_get_no_hints() -> None:
     store = _store_of_items(
         UnreadableItem.from_raw({"kind": "future", "label": "same"}, "Unknown kind"),
         UnreadableItem.from_raw({"kind": "future", "label": "same"}, "Unknown kind"),
@@ -412,7 +410,7 @@ def test_unavailable_items_with_the_same_name_keep_their_status_instead_of_numbe
 
     (other,) = browser_sections(store)
 
-    assert [row.detail for row in other.rows] == ["Unavailable", "Unavailable"]
+    assert [row.detail for row in other.rows] == ["", ""]
 
 
 def test_a_live_rows_detail_is_its_host_unless_the_name_is_the_host() -> None:
@@ -428,7 +426,7 @@ def test_a_live_rows_detail_is_its_host_unless_the_name_is_the_host() -> None:
     assert (unnamed.label, unnamed.detail) == ("camera.local", "")
 
 
-def test_a_playlists_detail_counts_entries_and_those_left_out() -> None:
+def test_a_playlists_tooltip_counts_entries_and_those_left_out() -> None:
     playlist = PlaylistContent(
         display_name="Suite",
         entries=tuple(
@@ -437,12 +435,12 @@ def test_a_playlists_detail_counts_entries_and_those_left_out() -> None:
     )
     store, playlist = store_with(playlist)
 
-    assert item_rows(store)[0].detail == "3 entries"
+    assert item_rows(store)[0].tooltip.splitlines()[0] == "Playlist · 3 entries"
 
     store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 1), False)
 
     row = item_rows(store)[0]
-    assert row.detail == "2 of 3 entries"
+    assert row.detail == ""
     assert row.tooltip.splitlines()[0] == "Playlist · 3 entries, 1 left out"
 
 
@@ -470,28 +468,51 @@ def test_repeated_live_sources_keep_the_address_when_numbered(head: int) -> None
     assert all("camera.local" in row.search_text for row in rows)
 
 
-def test_playlist_count_is_visible_even_when_it_matches_the_name() -> None:
-    playlist = PlaylistContent(
-        display_name="1 entry",
-        entries=(PlaylistEntry(lanes=make_video("clip.mp4").standalone_lanes(), default_considered=True),),
-    )
-
-    (row,) = item_rows(_store(playlist))
-
-    assert row.detail == "1 entry"
-
-
-def test_resolution_status_is_visible_even_when_it_matches_the_name(tmp_path: Path) -> None:
-    store = _store_of_items(VideoItem(video=tmp_path / "missing.mp4", label="Unavailable"))
-
-    (row,) = item_rows(store)
-
-    assert row.detail == "Unavailable"
-
-
-def test_same_named_pending_items_keep_the_loading_status() -> None:
-    items = [LiveStreamItem(label="Loading…", host=host) for host in ("camera.local", "other.local")]
+def test_same_named_pending_items_get_no_hints() -> None:
+    items = [LiveStreamItem(label="Camera", host=host) for host in ("camera.local", "other.local")]
 
     (section,) = build_browser_sections([ItemResolution.pending(item) for item in items], lambda _ref: True)
 
-    assert [row.detail for row in section.rows] == ["Loading…", "Loading…"]
+    assert [row.detail for row in section.rows] == ["", ""]
+
+
+def test_cameras_offer_connect_while_idle_and_disconnect_while_a_viewer_shows_them(tmp_path: Path) -> None:
+    store = _store_of_items(LiveStreamItem(host="192.0.2.10", label="Gate"))
+    [live] = store.contents()
+
+    closed = item_rows(store)[0]
+    opened = item_rows(store, frozenset({OnScreenWorkspaceItem(kind="video", content_id=live.content_id)}))[0]
+
+    assert (closed.action, closed.idle, closed.is_dimmed) == (RowAction.CONNECT, True, True)
+    assert (opened.action, opened.idle, opened.is_dimmed) == (RowAction.DISCONNECT, False, False)
+
+
+def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_action(tmp_path: Path) -> None:
+    store = _store_of_items(
+        PlaylistItem(resolver="fixed"),
+        PlaylistItem(label="Broken", resolver="missing"),
+        VideoItem(video=tmp_path / "missing.mp4"),
+    )
+    store.add_items([content_item(make_video("clip.mp4", overlay_count=1))])
+
+    rows = {row.label: row for row in item_rows(store)}
+
+    assert rows["Suite"].action is RowAction.RESCAN
+    assert rows["Broken"].action is RowAction.RESCAN and rows["Broken"].unavailable_reason is not None
+    assert rows["missing.mp4"].action is None
+    assert rows["clip.mp4"].action is None and not rows["clip.mp4"].idle
+    nested = [child for row in rows.values() for child in row.children]
+    nested += [lane for row in nested for lane in row.children]
+    assert nested and all(child.action is None for child in nested)
+
+
+def test_an_item_still_loading_is_idle_and_marked_with_its_kind() -> None:
+    items = [LiveStreamItem(host="192.0.2.10"), PlaylistItem(resolver="fixed")]
+
+    sections = build_browser_sections([ItemResolution.pending(item) for item in items], lambda _ref: True)
+
+    rows = [row for section in sections for row in section.rows]
+    assert [(row.icon_kind, row.idle, row.action) for row in rows] == [
+        ("live_video", True, None),
+        ("playlist", True, None),
+    ]

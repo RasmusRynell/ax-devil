@@ -5,9 +5,8 @@ prefix them with `uv run`.
 
 ## Workspaces
 
-The **Workspace** view of the sidebar lists the workspace under **Live**, **Videos**, and **Playlists**. Beside a camera is its address, beside
-a playlist how many entries take part, and beside two items with the same name the folder that tells them apart; hover
-an item for more. An accent edge marks what is open in a viewer. While the workspace is empty the sidebar shows
+The **Workspace** view of the sidebar lists the workspace under **Live**, **Videos**, and **Playlists**. Under a camera is its address, and under two items with the same name the folder that tells them apart; hover
+an item for more, such as how many entries of a playlist take part. An accent edge marks what is open in a viewer. While the workspace is empty the sidebar shows
 buttons to open content and your recent workspaces instead. **File → Save Workspace**
 (`Ctrl+S`) saves it as a `.ax-devil.workspace` file. **File → Open Workspace** (`Ctrl+O`), **File → Open Recent**, the
 sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The Workspace view's header shows the

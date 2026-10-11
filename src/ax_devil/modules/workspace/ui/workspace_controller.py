@@ -10,13 +10,19 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem
-from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserSection, build_browser_sections
+from ax_devil.modules.workspace.ui.browser_rows import (
+    RowAction,
+    WorkspaceBrowserRow,
+    WorkspaceBrowserSection,
+    build_browser_sections,
+)
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
     from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
+    from ax_devil.modules.workspace.ui.section_tree import SectionTree
     from ax_devil.modules.workspace.ui.split_view import SplitView
     from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
@@ -25,7 +31,8 @@ class WorkspaceController(QObject):
     """Coordinate workspace UI state across the tree, center area, and viewers.
 
     Views of part of the workspace read ``sections`` and follow ``sections_changed``, which reports every change to
-    the rows, including which Content is open in a viewer, and act through ``open_content`` and ``close_item_viewers``.
+    the rows, including which Content is open in a viewer, and hand their ``SectionTree`` to ``connect_tree``, so a row
+    does the same in every view.
     """
 
     sections_changed = Signal(object)  # tuple[WorkspaceBrowserSection, ...]
@@ -70,6 +77,36 @@ class WorkspaceController(QObject):
         self._pause_all_viewers()
         self._open_content(content, start_index=start_index, place=place, start_frame=start_frame)
 
+    def connect_tree(self, tree: SectionTree) -> None:
+        """Carry out what the user does with the rows of *tree*: double-clicks open, actions run, and eyes include
+        or exclude."""
+        tree.row_activated.connect(self.open_row)
+        tree.row_action_requested.connect(self.perform_row_action)
+        tree.row_consideration_changed.connect(self._workspace_store.set_item_considered)
+
+    def open_row(self, row: WorkspaceBrowserRow, to_side: bool = False) -> None:
+        """Open what *row* opens, in a new split with *to_side*; a row that cannot open says why instead."""
+        if row.unavailable_reason is not None:
+            QMessageBox.warning(self._window_parent(), "Open Content", f"{row.label}: {row.unavailable_reason}")
+        elif row.activation_target is not None:
+            self.open_content(*row.activation_target, to_side=to_side)
+
+    def perform_row_action(self, row: WorkspaceBrowserRow) -> None:
+        """Carry out the action *row* offers, whichever view showed it.
+
+        Connect opens the camera beside the open viewers, never in place of one, so connecting never disconnects
+        another; Disconnect closes every viewer of the camera; Rescan resolves the row's item again; Add does what the
+        row's ``add`` does.
+        """
+        if row.action is RowAction.CONNECT and row.activation_target is not None:
+            self.open_content(*row.activation_target, to_side=True)
+        elif row.action is RowAction.DISCONNECT and row.item is not None:
+            self.close_item_viewers(row.item.id)
+        elif row.action is RowAction.RESCAN and row.item is not None:
+            self._workspace_store.rescan_item(row.item.id)
+        elif row.action is RowAction.ADD and row.add is not None:
+            row.add()
+
     def close_item_viewers(self, item_id: str) -> None:
         """Close every viewer showing Content of the item *item_id*."""
         for widget, widget_item_id in tuple(self._widget_item_ids.items()):
@@ -79,7 +116,7 @@ class WorkspaceController(QObject):
     def _connect_signals(self) -> None:
         self._content_browser.content_activated.connect(self._on_content_activated)
         self._content_browser.content_open_to_side_requested.connect(self._on_content_open_to_side_requested)
-        self._content_browser.item_consideration_change_requested.connect(self._workspace_store.set_item_considered)
+        self.connect_tree(self._content_browser.tree)
         self._content_browser.item_remove_requested.connect(self._workspace_store.remove_item)
         self._content_browser.item_rename_requested.connect(self._workspace_store.rename_item)
         self._content_browser.export_requested.connect(self._on_export_requested)
