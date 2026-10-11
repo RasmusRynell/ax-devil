@@ -63,6 +63,7 @@ from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
+from tests.helpers.workspace import DummyViewer
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))
 WINDOW_SIZES = {"wide": (1440, 900), "narrow": (1000, 640)}
@@ -295,8 +296,9 @@ def test_screenshots(
             qtbot.wait(500)
             window.grab().save(str(OUT / f"{theme}-{text_size.value}-two-lanes-{size_name}.png"))
 
-    # Live streams, videos, a playlist, and a missing video together. Adding opens the first live stream; its
-    # documentation-only address (RFC 5737) never reaches a device.
+    # Live streams, videos, a playlist, and a missing video together. Adding opens the first live stream in a
+    # stand-in viewer, so no RTSP connection starts.
+    monkeypatch.setattr("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", DummyViewer)
     mixed_dir = tmp_path / "night-shift"
     videos_dir = mixed_dir / "videos"
     overlays_dir = mixed_dir / "overlays"
