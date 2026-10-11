@@ -2,9 +2,30 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from ax_devil.modules.workspace.core import Bookmark, BookmarkKind, BookmarkTarget
+from ax_devil.modules.workspace.core import Bookmark, BookmarkKind, BookmarkTarget, entry_target, find_entry
+from ax_devil.modules.workspace.core.content import (
+    FileVideoSourceSpec,
+    PlaylistContent,
+    PlaylistEntry,
+    SeekableVideoContent,
+)
+
+
+def _playlist(name: str, *videos: str) -> PlaylistContent:
+    entries = tuple(
+        PlaylistEntry(
+            lanes=SeekableVideoContent(
+                display_name=video, source_spec=FileVideoSourceSpec(Path(video))
+            ).standalone_lanes(),
+            default_considered=True,
+        )
+        for video in videos
+    )
+    return PlaylistContent(display_name=name, entries=entries)
 
 
 def test_a_bookmark_is_shown_by_its_note_or_else_its_frame() -> None:
@@ -32,3 +53,18 @@ def test_kinds_are_read_from_their_saved_values_and_unknown_values_are_rejected(
     assert [BookmarkKind.from_value(kind.value) for kind in BookmarkKind] == list(BookmarkKind)
     with pytest.raises(ValueError, match="sticker"):
         BookmarkKind.from_value("sticker")
+
+
+def test_entries_of_two_playlists_of_one_item_are_told_apart_even_when_they_share_a_video_name() -> None:
+    train = _playlist("train", "a.mp4", "b.mp4")
+    test = _playlist("test", "a.mp4")
+
+    assert entry_target("item", train, 0) != entry_target("item", test, 0)
+    assert find_entry([train, test], entry_target("item", test, 0)) == (test, 0)
+    assert find_entry([train, test], entry_target("item", train, 1)) == (train, 1)
+
+
+def test_an_entry_that_no_longer_exists_is_not_found() -> None:
+    old = entry_target("item", _playlist("train", "gone.mp4"), 0)
+
+    assert find_entry([_playlist("train", "a.mp4")], old) is None

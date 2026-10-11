@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TypeVar
 
+from ax_devil.modules.workspace.core.content import PlaylistContent
 from ax_devil.modules.workspace.core.items import _read, new_item_id
 
 _EntryT = TypeVar("_EntryT")
@@ -17,9 +18,9 @@ _EntryT = TypeVar("_EntryT")
 class BookmarkTarget:
     """One video that is reviewed: a Video Item (``entry`` empty) or one entry of a Playlist Item.
 
-    A playlist entry is named by its ``display_label``, since entries have no id and their indexes shift when the
-    resolver runs again. A target whose item or entry no longer exists is orphaned and kept; only removing its item
-    removes it.
+    A playlist entry is named by its playlist's name and its own ``display_label`` (see ``entry_target``), since entries
+    have no id and their indexes shift when the resolver runs again. A target whose item or entry no longer exists is
+    orphaned and kept; only removing its item removes it.
     """
 
     item_id: str
@@ -33,6 +34,27 @@ class BookmarkTarget:
     def from_json(cls, data: Mapping[str, Any]) -> BookmarkTarget:
         """Return the target in *data*'s ``item`` and ``entry``; raise ``ValueError`` saying what is malformed."""
         return cls(_read(data, "item", str), _read(data, "entry", str, ""))
+
+
+def entry_target(item_id: str, playlist: PlaylistContent, entry_index: int) -> BookmarkTarget:
+    """Return the target for entry *entry_index* of *playlist*, which a Playlist Item *item_id* resolved to.
+
+    One Playlist Item may resolve to several playlists, so the entry is named "<playlist name>/<entry label>".
+    """
+    label = playlist.entries[entry_index].display_label(entry_index)
+    return BookmarkTarget(item_id, f"{playlist.display_name}/{label}")
+
+
+def find_entry(playlists: Sequence[PlaylistContent], target: BookmarkTarget) -> tuple[PlaylistContent, int] | None:
+    """Return the playlist and entry index *target* names among *playlists*, or None when it no longer exists.
+
+    *playlists* are the Content of the target's item. Entries that share a name resolve to the first of them.
+    """
+    for playlist in playlists:
+        for index in range(len(playlist.entries)):
+            if entry_target(target.item_id, playlist, index) == target:
+                return playlist, index
+    return None
 
 
 class BookmarkKind(Enum):

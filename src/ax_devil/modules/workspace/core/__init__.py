@@ -1,6 +1,12 @@
 """Qt-free Workspace model: the Workspace, its items and bookmarks, their resolution, content, intake, and item info."""
 
-from ax_devil.modules.workspace.core.bookmarks import Bookmark, BookmarkKind, BookmarkTarget
+from ax_devil.modules.workspace.core.bookmarks import (
+    Bookmark,
+    BookmarkKind,
+    BookmarkTarget,
+    entry_target,
+    find_entry,
+)
 from ax_devil.modules.workspace.core.content import (
     ConsiderationItem,
     ConsiderationItemRef,
@@ -64,6 +70,8 @@ __all__ = [
     "Bookmark",
     "BookmarkKind",
     "BookmarkTarget",
+    "entry_target",
+    "find_entry",
     "ConsiderationItem",
     "ConsiderationItemRef",
     "ConsiderationQuery",
