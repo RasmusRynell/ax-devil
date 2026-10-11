@@ -115,8 +115,8 @@ def test_playlists_list_their_entries_once_expanded(
         )
 
     assert captions(view.tree)[0] == "Playlists, 2"
-    assert _texts(view, "Night shift") == ["Night shift", "3 entries"]
-    assert _texts(view, "MOT") == ["MOT", "1 entry"]
+    assert _texts(view, "Night shift") == ["Night shift"]
+    assert _texts(view, "MOT") == ["MOT"]
     shown = titles(view.tree)
     assert "run_02.mp4" in shown, "the playlist that opened on adding shows its entries"
     assert shown[shown.index("MOT") + 1] == _resolver_names()[0], "the other one keeps them in until expanded"
@@ -158,7 +158,7 @@ def test_rescan_picks_up_new_entries_without_opening_or_changing_a_viewer(
         assert row_action(row(view.tree, "Night shift")) == "Rescan"
         press(view.tree, "Night shift")
 
-    assert _texts(view, "Night shift") == ["Night shift", "4 entries"]
+    assert "4 entries" in row(view.tree, "Night shift").toolTip()
     assert session.focused_widget() is viewer and viewer.payload is shown
 
 
@@ -171,7 +171,7 @@ def test_a_playlist_that_failed_says_why_on_hover_and_can_only_be_rescanned(
         session.add_items([PlaylistItem(label="Archive", resolver="folder_pair")])
 
     failed = row(view.tree, "Archive")
-    assert row_texts(failed) == ["Archive", "Unavailable"]
+    assert row_texts(failed) == ["Archive"]
     assert "is not installed" in failed.toolTip()
     assert row_action(failed) == "Rescan"
 
@@ -202,11 +202,11 @@ def test_a_playlist_still_resolving_shows_loading_and_no_actions(
 
     session.add_items([PlaylistItem(label="Night shift", resolver="folder_pair")])
 
-    assert _texts(view, "Night shift") == ["Night shift", "Loading…"]
+    assert _texts(view, "Night shift") == ["Night shift"]
     assert row_action(row(view.tree, "Night shift")) == ""
     with patch(_OFFLINE_VIEWER, DummyViewer):
         blocking.release.set()
-        qtbot.waitUntil(lambda: _texts(view, "Night shift") == ["Night shift", "1 entry"])
+        qtbot.waitUntil(lambda: row_action(row(view.tree, "Night shift")) == "Rescan")
 
 
 def _external_resolver() -> PluginRecord:
@@ -238,9 +238,9 @@ def test_add_from_lists_the_loaded_resolvers_whenever_the_view_is_shown(
         titles(view.tree), "Add"
     )
     external = row(view.tree, "Experiment Runs")
-    assert row_texts(external) == ["Experiment Runs", "Open each run."]
+    assert row_texts(external) == ["Experiment Runs"]
     assert "From lab-experiments." in external.toolTip()
-    assert _texts(view, "Folder Pair")[1] == "Match videos and overlays from two folders by file name."
+    assert "Match videos and overlays from two folders by file name." in row(view.tree, "Folder Pair").toolTip()
 
 
 def test_add_opens_the_add_playlist_dialog_with_that_resolver_chosen(

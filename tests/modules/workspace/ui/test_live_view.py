@@ -168,7 +168,6 @@ def test_cameras_that_cannot_open_yet_or_at_all_offer_no_action(live: _Live) -> 
     live.store.add_items([LiveStreamItem(host="192.0.2.11", label="Gate")])
 
     assert live.rows() == {"Dock": "", "Gate": ""}
-    assert (live.detail("Dock"), live.detail("Gate")) == ("Unavailable", "Loading…")
     assert "nope" in row(live.view.tree, "Dock").toolTip(), "the reason is on hover"
 
     live.resolutions.finish()
@@ -221,7 +220,8 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: _Live, monk
     assert captions(live.view.tree) == ["Live, 2", "On the network, 1"]
     assert list(live.rows())[2:] == ["AXIS P3265-LVE"]
     assert live.rows()["AXIS P3265-LVE"] == "Add"
-    assert live.detail("AXIS P3265-LVE") == "192.0.2.12 · ACCC8E000002"
+    assert live.detail("AXIS P3265-LVE") == "192.0.2.12"
+    assert "ACCC8E000002" in row(live.view.tree, "AXIS P3265-LVE").toolTip()
 
     _scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", ""))
 

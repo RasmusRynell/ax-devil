@@ -33,8 +33,8 @@ def _loaded_resolvers() -> tuple[PluginRecord, ...]:
 
 
 def _resolver_row(record: PluginRecord, add: Callable[[], None]) -> WorkspaceBrowserRow:
-    """Return the row of a playlist resolver, whose Add does *add*: its description on one line, and in full on
-    hover with the plugin package it comes from."""
+    """Return the row of a playlist resolver, whose Add does *add*; its description and the plugin package it
+    comes from show on hover."""
     definition = record.definition
     description = " ".join((definition.description or "").split())
     origin = f"From {record.package}." if record.package else ""
@@ -42,7 +42,6 @@ def _resolver_row(record: PluginRecord, add: Callable[[], None]) -> WorkspaceBro
         row_id=f"resolver/{definition.plugin_id}",
         label=definition.display_name,
         icon_kind="playlist",
-        detail=description,
         facts=tuple(line for line in ("Playlist resolver", description, origin) if line),
         action=RowAction.ADD,
         add=add,

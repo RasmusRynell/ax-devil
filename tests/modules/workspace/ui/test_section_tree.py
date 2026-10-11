@@ -58,7 +58,6 @@ def _playlist(entries: int, row_id: str = "playlist") -> WorkspaceBrowserRow:
         row_id=row_id,
         label="Night shift",
         icon_kind="playlist",
-        detail=f"{entries} entries",
         action=RowAction.RESCAN,
         children=tuple(
             WorkspaceBrowserRow(

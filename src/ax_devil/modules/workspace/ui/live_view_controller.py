@@ -54,13 +54,14 @@ def _workspace_hosts(items: Sequence[WorkspaceItem]) -> frozenset[str]:
 
 
 def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceBrowserRow:
-    """Return the row of a *camera* the scan found, named by its model, whose Add does *add*."""
+    """Return the row of a *camera* the scan found, named by its model with its address under it, whose Add does
+    *add*; its serial number shows on hover."""
     return WorkspaceBrowserRow(
         row_id=f"network/{camera.host}",
         label=camera.model or camera.host,
         icon_kind="live_video",
-        detail=" · ".join(part for part in (camera.host, camera.serial) if part),
-        facts=("Camera on the network",),
+        detail=camera.host if camera.model else "",
+        facts=("Camera on the network", *((f"Serial {camera.serial}",) if camera.serial else ())),
         action=RowAction.ADD,
         add=add,
     )

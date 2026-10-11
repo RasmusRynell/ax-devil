@@ -219,7 +219,7 @@ def _with_details(
     """
     same_label: defaultdict[str, list[int]] = defaultdict(list)
     for index, row in enumerate(rows):
-        if row.activation_target is not None:  # Unresolved rows retain their status detail.
+        if row.activation_target is not None:  # Unresolved rows have no location to tell apart.
             same_label[row.label].append(index)
     hints: dict[int, str] = {}
     for indexes in same_label.values():
@@ -273,7 +273,6 @@ class _RowProjection:
             label=item.display_name,
             icon_kind=_section_of(item).icon_kind,
             item=item,
-            detail="Loading…",
             idle=True,
         )
 
@@ -286,7 +285,6 @@ class _RowProjection:
             item=item,
             unavailable_reason=reason,
             information_factory=partial(build_unavailable_information, item.display_name, reason),
-            detail="Unavailable",
             # A playlist that failed may resolve once its files are back; nothing else can be resolved again.
             action=RowAction.RESCAN if _section_of(item) is BrowserSection.PLAYLISTS else None,
         )
@@ -314,7 +312,6 @@ class _RowProjection:
                 is_open=self._is_content_open(content.content_id, open_items),
                 children=children,
                 location=content.source_location,
-                detail=entries if taking_part == total else f"{taking_part} of {entries}",
                 facts=(f"Playlist · {entries}{excluded}",),
                 action=RowAction.RESCAN,
             )
