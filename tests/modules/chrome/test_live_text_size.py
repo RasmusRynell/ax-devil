@@ -15,6 +15,7 @@ from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
+from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from tests.helpers.clipping import clipped_text_on_every_page
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.modules.chrome.test_surface_fit import SURFACES
@@ -106,3 +107,20 @@ def test_windows_follow_a_text_size_change(qtbot: QtBot, render_catalog_manager:
         changed = _size_constraints(window)
         window.close()
         assert changed == _size_constraints(_open_at(qtbot, build, LARGE, 200)), name
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+def test_playback_readouts_follow_a_text_size_change(qtbot: QtBot) -> None:
+    """The frame field and the time are sized for the video's longest values at the new text size."""
+
+    def playing_panel() -> QWidget:
+        panel = SeekableVideoControlPanel()
+        panel.show_video(total_frames=90000, frame_rate=25.0)
+        return panel
+
+    panel = _open_at(qtbot, playing_panel, SMALL)
+    apply_text_size(LARGE)
+    _settle(qtbot)
+    changed = _size_constraints(panel)
+
+    assert changed == _size_constraints(_open_at(qtbot, playing_panel, LARGE))
