@@ -54,9 +54,8 @@ class DialogPrompts:
     def ask_save_changes(self, workspace_name: str) -> SaveChoice:
         """Ask Save / Don't Save about the modified workspace being replaced."""
         choices = {"Save": SaveChoice.SAVE, "Don't Save": SaveChoice.DISCARD}
-        return ask(
-            self._parent, "Save Previous Workspace", f"Save changes to {workspace_name}?", choices, SaveChoice.SAVE
-        )
+        text = f"{workspace_name} has unsaved changes.\nSave them, or they are lost."
+        return ask(self._parent, "Save Previous Workspace", text, choices, SaveChoice.SAVE)
 
     def choose_workspace_to_open(self) -> Path | None:
         """Show an open dialog filtered to workspace files."""
