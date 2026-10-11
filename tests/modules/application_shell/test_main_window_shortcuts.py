@@ -67,6 +67,7 @@ class _RoutingSession:
     def __init__(self, focused_widget: _FocusedWidget | None, offline_viewer: _OfflineViewer | None) -> None:
         self._focused_widget = focused_widget
         self._offline_viewer = offline_viewer
+        self.bookmark_requests = 0
 
     def focused_widget(self) -> _FocusedWidget | None:
         """Return the focused viewer widget."""
@@ -75,6 +76,10 @@ class _RoutingSession:
     def focused_offline_viewer(self) -> _OfflineViewer | None:
         """Return the focused offline viewer."""
         return self._offline_viewer
+
+    def bookmark_focused_viewer(self) -> None:
+        """Record a request to bookmark the focused viewer's frame."""
+        self.bookmark_requests += 1
 
     def cleanup(self) -> None:
         """Match the workspace session teardown API."""
@@ -132,6 +137,25 @@ def test_media_tools_action_is_in_view_menu_and_routes_to_focused_widget(
     action.trigger()
 
     assert focused_widget.media_tools_toggle_count == 1
+
+
+def test_add_bookmark_is_in_view_menu_on_m_and_bookmarks_the_focused_viewer(
+    qtbot: QtBot,
+    render_catalog_manager: SceneRenderCatalogManager,
+) -> None:
+    manager = make_shortcut_manager()
+    window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    session = _RoutingSession(_FocusedWidget(), None)
+    window._workspace_session = cast(WorkspaceSession, session)
+    action = manager.get_action("view.add_bookmark")
+
+    assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["View"]
+    assert action.shortcut().toString() == "M"
+
+    action.trigger()
+
+    assert session.bookmark_requests == 1
 
 
 def test_render_catalogs_action_is_in_view_menu_and_opens_the_catalog_viewer(

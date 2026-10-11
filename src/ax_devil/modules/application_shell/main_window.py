@@ -208,6 +208,8 @@ class MainWindow(ChromeWindow):
         settings.overlay_preference_changed.connect(self._on_overlay_preference_changed)
         view_menu.addAction(sm.get_action("view.toggle_info"))
         view_menu.addSeparator()
+        view_menu.addAction(sm.get_action("view.add_bookmark"))
+        view_menu.addSeparator()
         render_catalogs_action = sm.get_action("view.render_catalogs")
         render_catalogs_action.setObjectName("renderCatalogsAction")
         render_catalogs_action.triggered.connect(self.show_catalog_viewer)
@@ -297,6 +299,7 @@ class MainWindow(ChromeWindow):
         sm.get_action("view.toggle_media_tools").triggered.connect(
             lambda: self._route_to_focused_widget(lambda widget: widget.toggle_media_tools())
         )
+        sm.get_action("view.add_bookmark").triggered.connect(lambda: self._workspace_session.bookmark_focused_viewer())
         sm.get_action("view.toggle_fullscreen").triggered.connect(self._toggle_fullscreen)
         sm.get_action("view.toggle_sidebar").triggered.connect(self._workspace_session.widget().toggle_sidebar)
         for action_id, step in (
