@@ -281,6 +281,19 @@ def test_replacing_a_workspace_still_being_restored_asks_about_its_edits_even_wh
     assert store.workspace.path == saved.path and store.is_modified
 
 
+def test_a_recent_workspace_that_cannot_be_opened_is_forgotten(launches: _Launches, tmp_path: Path) -> None:
+    saved = tmp_path / "Lot.ax-devil.workspace"
+    save_workspace(Workspace(), saved)
+    launch = launches.new(FakePrompts())
+    assert launch.lifecycle.open_workspace(saved)
+    assert launch.lifecycle.recent_workspaces() == (saved,)
+    saved.unlink()
+
+    assert not launch.lifecycle.open_workspace(saved)
+
+    assert launch.lifecycle.recent_workspaces() == ()
+
+
 def test_a_launch_with_a_workspace_file_opens_it(launches: _Launches, tmp_path: Path) -> None:
     saved = save_workspace(Workspace(items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace")
     launch = launches.new()
