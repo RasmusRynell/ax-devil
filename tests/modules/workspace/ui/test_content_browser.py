@@ -646,7 +646,7 @@ def test_clicking_a_section_folds_it_and_the_fold_survives_a_refresh(qtbot: QtBo
     assert folded.isExpanded()
 
 
-def test_a_folded_section_unfolds_for_an_open_row_and_for_a_search_match(qtbot: QtBot) -> None:
+def test_a_folded_section_unfolds_for_a_search_and_folds_again_after_it(qtbot: QtBot) -> None:
     row = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
     browser = _browser(qtbot, row)
     section = _tree(browser).topLevelItem(0)
@@ -657,8 +657,21 @@ def test_a_folded_section_unfolds_for_an_open_row_and_for_a_search_match(qtbot: 
 
     assert section.isExpanded()
 
+    _set_rows(browser, (row,))
     _search(browser).clear()
+
+    refolded = _tree(browser).topLevelItem(0)
+    assert refolded is not None
+    assert not refolded.isExpanded()
+
+
+def test_a_folded_section_unfolds_for_an_open_row(qtbot: QtBot) -> None:
+    row = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
+    browser = _browser(qtbot, row)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
     section.setExpanded(False)
+
     _set_rows(browser, (replace(row, is_open=True),))
 
     reopened = _tree(browser).topLevelItem(0)

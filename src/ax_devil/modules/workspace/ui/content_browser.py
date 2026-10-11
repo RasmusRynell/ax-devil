@@ -6,7 +6,8 @@ activation (Ctrl+double-click opens to the side) and context menus.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from html import escape
 from typing import cast
@@ -43,6 +44,7 @@ from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Conten
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.core.items import WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import (
+    BrowserSection,
     WorkspaceBrowserIconKind,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
@@ -87,6 +89,11 @@ _KIND_MARKS: dict[WorkspaceBrowserIconKind, _KindMark] = {
     "unavailable": _KindMark(Icon.WARNING, StatusColor.WARNING),
     "pending": _KindMark(Icon.MORE, KindColor.MUTED),
 }
+
+
+def _has_open_row(rows: Sequence[WorkspaceBrowserRow]) -> bool:
+    """Return whether any of *rows*, or their descendants, is open in a viewer."""
+    return any(row.is_open or _has_open_row(row.children) for row in rows)
 
 
 def _row_at(index: QModelIndex | QPersistentModelIndex) -> WorkspaceBrowserRow:
@@ -242,6 +249,9 @@ class ContentBrowserWidget(QWidget):
         self._show_excluded = False
         self._search_query = ""
         self._excluded_hidden = 0
+        self._folded: set[BrowserSection] = set()
+        """The sections the user folded; a search unfolds them only while it is active."""
+        self._applying_folds = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -267,11 +277,6 @@ class ContentBrowserWidget(QWidget):
 
     def set_browser_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
         """Render section headings and their explicit workspace item rows."""
-        collapsed = {
-            heading.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE).kind
-            for heading in self._section_headings()
-            if not heading.isExpanded()
-        }
         expansion = {
             self._row_data(item).row_id: (item.isExpanded(), self._row_data(item).is_open)
             for item in self._tree_items()
@@ -288,12 +293,16 @@ class ContentBrowserWidget(QWidget):
             heading.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self._tree.addTopLevelItem(heading)
             heading.setFirstColumnSpanned(True)
-            heading.setExpanded(section.kind not in collapsed)
+            if _has_open_row(section.rows):
+                self._folded.discard(section.kind)
+            with self._programmatic_folds():
+                heading.setExpanded(section.kind not in self._folded)
             for row in section.rows:
                 item = self._create_tree_item(row)
                 heading.addChild(item)
                 self._install_tree_widgets(item)
-                self._reveal_open_and_describe(item)
+                with self._programmatic_folds():
+                    self._reveal_open_and_describe(item)
         for item in self._tree_items():
             row = self._row_data(item)
             if row.row_id in expansion:
@@ -345,6 +354,8 @@ class ContentBrowserWidget(QWidget):
         # paints its own arrow and a click on it folds it.
         self._tree.setRootIsDecorated(False)
         self._tree.itemClicked.connect(self._toggle_section)
+        self._tree.itemExpanded.connect(self._remember_fold)
+        self._tree.itemCollapsed.connect(self._remember_fold)
         self._tree.setItemDelegateForColumn(TREE_LABEL_COLUMN, _RowDelegate(self._tree))
         self._tree.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         header = self._tree.header()
@@ -352,6 +363,25 @@ class ContentBrowserWidget(QWidget):
         header.setSectionResizeMode(TREE_LABEL_COLUMN, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(TREE_CONSIDERATION_COLUMN, QHeaderView.ResizeMode.Fixed)
         self._tree.setColumnWidth(TREE_CONSIDERATION_COLUMN, TREE_CONSIDERATION_COLUMN_WIDTH_PX)
+
+    @contextmanager
+    def _programmatic_folds(self) -> Iterator[None]:
+        """Mark section folds changed by the browser itself, so only the user's are remembered."""
+        self._applying_folds = True
+        try:
+            yield
+        finally:
+            self._applying_folds = False
+
+    def _remember_fold(self, item: QTreeWidgetItem) -> None:
+        """Remember that the user folded or unfolded a section."""
+        section = item.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE)
+        if section is None or self._applying_folds:
+            return
+        if item.isExpanded():
+            self._folded.discard(section.kind)
+        else:
+            self._folded.add(section.kind)
 
     def _toggle_section(self, item: QTreeWidgetItem) -> None:
         """Fold or unfold a clicked section row."""
@@ -401,8 +431,9 @@ class ContentBrowserWidget(QWidget):
                 if item is not None:
                     visible = self._apply_item_visibility(item, ancestor_matches=False) or visible
             heading.setHidden(not visible)
-            if visible and self._search_query:
-                heading.setExpanded(True)
+            kind = heading.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE).kind
+            with self._programmatic_folds():
+                heading.setExpanded(bool(visible and self._search_query) or kind not in self._folded)
             self._set_hidden_count(heading, 0 if self._show_excluded else self._excluded_hidden)
 
     def _apply_item_visibility(self, item: QTreeWidgetItem, *, ancestor_matches: bool) -> bool:
