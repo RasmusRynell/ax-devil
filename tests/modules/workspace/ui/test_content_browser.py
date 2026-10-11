@@ -683,3 +683,25 @@ def test_a_section_counts_the_excluded_items_the_list_hides(qtbot: QtBot) -> Non
     _show_excluded_toggle(browser).click()
 
     assert section.data(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE) == 0
+
+
+def test_a_section_counts_only_excluded_items_the_search_would_otherwise_show(qtbot: QtBot) -> None:
+    excluded = WorkspaceBrowserRow(
+        row_id="entry",
+        label="Entry",
+        icon_kind="video",
+        consideration_ref=ConsiderationItemRef.playlist_entry("playlist-id", 0),
+        is_considered=False,
+    )
+    browser = _browser(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"), excluded)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+
+    _search(browser).setText("clip")
+
+    assert section.data(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE) == 0
+
+    _search(browser).setText("entry")
+
+    assert section.data(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE) == 1
+    assert section.data(TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole) == "Videos, 2, 1 hidden"

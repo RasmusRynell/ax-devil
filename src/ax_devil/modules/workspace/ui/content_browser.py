@@ -241,6 +241,7 @@ class ContentBrowserWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._show_excluded = False
         self._search_query = ""
+        self._excluded_hidden = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -313,14 +314,6 @@ class ContentBrowserWidget(QWidget):
             heading = self._tree.topLevelItem(index)
             if heading is not None:
                 yield heading
-
-    def _descendant_rows(self, parent: QTreeWidgetItem) -> Iterator[WorkspaceBrowserRow]:
-        """Iterate over the rows under *parent* at any depth."""
-        for index in range(parent.childCount()):
-            child = parent.child(index)
-            if child is not None:
-                yield self._row_data(child)
-                yield from self._descendant_rows(child)
 
     def _tree_items(self) -> Iterator[QTreeWidgetItem]:
         """Iterate over all rows, including hidden and collapsed descendants."""
@@ -402,6 +395,7 @@ class ContentBrowserWidget(QWidget):
             if heading is None:
                 continue
             visible = False
+            self._excluded_hidden = 0
             for index in range(heading.childCount()):
                 item = heading.child(index)
                 if item is not None:
@@ -409,10 +403,7 @@ class ContentBrowserWidget(QWidget):
             heading.setHidden(not visible)
             if visible and self._search_query:
                 heading.setExpanded(True)
-            excluded = sum(
-                1 for row in self._descendant_rows(heading) if row.consideration_ref and not row.is_considered
-            )
-            heading.setData(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE, 0 if self._show_excluded else excluded)
+            self._set_hidden_count(heading, 0 if self._show_excluded else self._excluded_hidden)
 
     def _apply_item_visibility(self, item: QTreeWidgetItem, *, ancestor_matches: bool) -> bool:
         """Show or hide a single item and return whether it is visible."""
@@ -431,12 +422,21 @@ class ContentBrowserWidget(QWidget):
         search_active = bool(self._search_query)
         passes_search_filter = not search_active or ancestor_matches or item_matches or child_visible
         visible = passes_consideration_filter and passes_search_filter
+        if passes_search_filter and not passes_consideration_filter:
+            self._excluded_hidden += 1
         item.setHidden(not visible)
 
         if search_active and visible and child_visible:
             item.setExpanded(True)
 
         return visible
+
+    def _set_hidden_count(self, heading: QTreeWidgetItem, hidden: int) -> None:
+        """Record on a section row how many excluded items the list hides, for its caption and screen readers."""
+        section: WorkspaceBrowserSection = heading.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE)
+        heading.setData(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE, hidden)
+        text = f"{section.kind.title}, {len(section.rows)}" + (f", {hidden} hidden" if hidden else "")
+        heading.setData(TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole, text)
 
     def _item_matches_search(self, item: QTreeWidgetItem) -> bool:
         """Return whether the tree item label matches the active search query."""
