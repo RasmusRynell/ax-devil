@@ -32,7 +32,12 @@ class BaseDialog(QDialog):
     - Standard window properties and behavior
     - Common button layouts and handling
     - Proper parent-child relationships
+
+    An open dialog resizes to its opening size when the text size changes, unless `refit_on_text_size` is False: a
+    dialog that opens with room for every text size, because its own controls change the size, keeps its size.
     """
+
+    refit_on_text_size = True
 
     def __init__(
         self,
@@ -173,7 +178,7 @@ class BaseDialog(QDialog):
         QTimer.singleShot(0, self, self._refit_when_laid_out)
 
     def _refit_when_laid_out(self) -> None:
-        if self.isVisible() and not (self.isMaximized() or self.isFullScreen()):
+        if self.refit_on_text_size and self.isVisible() and not (self.isMaximized() or self.isFullScreen()):
             self._fit_to_content(center=False)
 
     def opening_size_hint(self) -> QSize:
