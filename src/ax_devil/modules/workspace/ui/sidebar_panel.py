@@ -1,86 +1,34 @@
-"""Sidebar panel: the workspace name over the start panel or the content browser."""
+"""The sidebar: one view at a time, chosen from the activity bar."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QStackedWidget, QWidget
 
-from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.elided_label import ElidedLabel
-from ax_devil.modules.chrome.palette_css import palette_color_css
-from ax_devil.modules.chrome.tokens import Height, Space, TextRole
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
-from ax_devil.modules.workspace.ui.start_panel import StartPanel
+from ax_devil.modules.chrome.sidebar_view import SidebarView
 
 
-class SidebarPanel(QWidget):
-    """Show the workspace name over the start panel while the workspace is empty, or the content browser once it
-    lists anything."""
+class SidebarPanel(QStackedWidget):
+    """Hosts the sidebar views and shows the chosen one; each view draws its own header and content."""
 
-    def __init__(
-        self, content_browser: ContentBrowserWidget, start_panel: StartPanel, parent: QWidget | None = None
-    ) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("AxDevilSidebar")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._content_browser = content_browser
-        self._start_panel = start_panel
+        self._views: dict[str, SidebarView] = {}
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    def add_view(self, view: SidebarView) -> None:
+        """Host *view*; the first one added is shown. A second view with the same id is a programming error."""
+        if view.view_id in self._views:
+            raise ValueError(f"Duplicate sidebar view id: {view.view_id}")
+        self._views[view.view_id] = view
+        self.addWidget(view.widget)
 
-        self._header = QWidget(self)
-        self._header.setObjectName("AxDevilSidebarHeader")
-        self._header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        header_layout = QHBoxLayout(self._header)
-        header_layout.setContentsMargins(Space.L, 0, Space.M, 0)
-        header_layout.setSpacing(Space.M)
-        self._name_label = ElidedLabel("", Qt.TextElideMode.ElideRight, self._header)
-        self._name_label.setObjectName("AxDevilWorkspaceName")
-        TextRole.STRONG.apply(self._name_label)
-        header_layout.addWidget(self._name_label, 1)
-        self._modified_label = QLabel("●", self._header)
-        self._modified_label.setObjectName("AxDevilWorkspaceModified")
-        self._modified_label.setToolTip("Unsaved changes")
-        self._modified_label.hide()
-        header_layout.addWidget(self._modified_label)
-        layout.addWidget(self._header)
+    def show_view(self, view_id: str) -> None:
+        """Show the view with *view_id*."""
+        self.setCurrentWidget(self._views[view_id].widget)
 
-        self._pages = QStackedWidget(self)
-        self._pages.addWidget(start_panel)
-        self._pages.addWidget(content_browser)
-        layout.addWidget(self._pages, 1)
-
-        content_browser.rows_changed.connect(self._show_page)
-        self._show_page()
-        follow_appearance(self, self._apply_appearance)
-
-    def set_workspace(self, name: str, path: Path | None, modified: bool) -> None:
-        """Show the workspace called *name*, saved at *path* (None before the first save), and whether it has unsaved
-        changes."""
-        self._name_label.set_full_text(name)
-        self._name_label.setToolTip("" if path is None else str(path))  # The file, rather than the name again.
-        self._modified_label.setVisible(modified)
-
-    def showing_start_panel(self) -> bool:
-        """Return whether the start panel is the page on screen."""
-        return self._pages.currentWidget() is self._start_panel
-
-    def _show_page(self) -> None:
-        self._pages.setCurrentWidget(self._content_browser if self._content_browser.has_rows() else self._start_panel)
-
-    def _apply_appearance(self) -> None:
-        self._header.setFixedHeight(Height.PANE_HEADER.px)
-        palette = self.palette()
-        border = palette_color_css(palette, palette.ColorRole.Mid, alpha=0.5)
-        muted = palette_color_css(palette, palette.ColorRole.PlaceholderText)
-        self.setStyleSheet(
-            f"""
-            #AxDevilSidebar {{ background: palette(alternate-base); }}
-            #AxDevilSidebarHeader {{ border-bottom: 1px solid {border}; background: transparent; }}
-            #AxDevilWorkspaceModified {{ color: {muted}; }}
-            """
-        )
+    def current_view_id(self) -> str | None:
+        """Return the id of the view on screen, or None before any view was added."""
+        current = self.currentWidget()
+        return next((view.view_id for view in self._views.values() if view.widget is current), None)

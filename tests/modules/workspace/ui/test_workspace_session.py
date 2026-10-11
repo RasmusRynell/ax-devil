@@ -526,7 +526,7 @@ def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspac
     window.show()
     QCoreApplication.processEvents()
     splitter = _sidebar_splitter(workspace_session)
-    sidebar = workspace_session._sidebar
+    sidebar = workspace_session._workspace_view
     assert window.is_sidebar_shown() and sidebar.showing_start_panel()
 
     with patch(_OFFLINE_VIEWER, DummyViewer):
@@ -536,8 +536,8 @@ def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspac
     width = splitter.sizes()[0]
     assert 0 < width < 1200 // 2
 
-    workspace_button = window._activity_bar._view_button
-    assert workspace_button is not None and workspace_button.isChecked()
+    workspace_button = window._activity_bar.view_button("workspace")
+    assert workspace_button.isChecked()
     workspace_button.click()
     QCoreApplication.processEvents()
     assert not window.is_sidebar_shown() and not workspace_button.isChecked()
@@ -577,9 +577,8 @@ def test_activity_bar_buttons_trigger_render_catalogs_and_settings(workspace_ses
             lambda _=False, action_id=action_id: triggered.append(action_id)
         )
 
-    for button in window._activity_bar._buttons:
-        if button is not window._activity_bar._view_button:
-            button.click()
+    for button in window._activity_bar._action_buttons:
+        button.click()
 
     assert triggered == ["view.render_catalogs", "app.settings"]
 

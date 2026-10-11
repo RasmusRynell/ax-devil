@@ -4,62 +4,109 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QToolButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtWidgets import QFrame, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.tokens import Height, Space
 
 _ICON_STROKE = 1.75  # A little heavier than the default, so the small icons stay crisp on the bar.
+_GROUP_ORDER = tuple(ViewGroup)
 
 
 class ActivityBar(QWidget):
-    """A vertical strip of icon buttons: the sidebar view at the top, and app-wide actions at the bottom.
+    """A vertical strip of icon buttons: a button per sidebar view, and app-wide actions at the bottom.
 
-    A view button is checked while its view is on screen; the owner reports that through ``set_view_shown``.
+    Views are grouped by their ``ViewGroup``, a rule between groups, in the groups' order; the ``APP`` group sits at
+    the bottom above the actions. The button of the view on screen is checked, which the owner reports through
+    ``set_current_view``; a click on any view button is reported as ``view_requested`` and changes nothing else.
     """
+
+    view_requested = Signal(str)  # view_id
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("AxDevilActivityBar")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._buttons: list[QToolButton] = []
-        self._view_button: QToolButton | None = None
+        self._views: list[tuple[SidebarView, QToolButton]] = []
+        self._action_buttons: list[QToolButton] = []
+        self._dividers: list[QFrame] = []
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, Space.XS, 0, Space.XS)
         self._layout.setSpacing(Space.XS)
+        self._top = QVBoxLayout()
+        self._bottom = QVBoxLayout()
+        self._actions = QVBoxLayout()
+        for column in (self._top, self._bottom, self._actions):
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(Space.XS)
+        self._layout.addLayout(self._top)
         self._layout.addStretch(1)
+        self._layout.addLayout(self._bottom)
+        self._layout.addLayout(self._actions)
         follow_appearance(self, self._apply_appearance)
 
-    def add_view(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> QToolButton:
-        """Add the sidebar view button at the top; clicking it runs *activate*."""
-        button = self._add_button(icon, tooltip, activate, at=0)
+    def add_view(self, view: SidebarView) -> QToolButton:
+        """Add *view*'s button in its group; clicking it emits ``view_requested`` with the view's id."""
+        button = self._new_button(view.icon, view.title, lambda: self.view_requested.emit(view.view_id))
         button.setCheckable(True)
-        self._view_button = button
+        self._views.append((view, button))
+        self._arrange_views()
         return button
 
     def add_action(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> QToolButton:
         """Add an action button below the earlier ones at the bottom."""
-        return self._add_button(icon, tooltip, activate, at=self._layout.count())
+        button = self._new_button(icon, tooltip, activate)
+        self._action_buttons.append(button)
+        self._actions.addWidget(button)
+        return button
 
-    def set_view_shown(self, shown: bool) -> None:
-        """Check the view button while the sidebar view is on screen."""
-        if self._view_button is not None:
-            self._view_button.setChecked(shown)
+    def set_current_view(self, view_id: str | None) -> None:
+        """Check the button of the view on screen; None, while the sidebar is hidden, checks none."""
+        for view, button in self._views:
+            button.setChecked(view.view_id == view_id)
 
-    def _add_button(self, icon: Icon, tooltip: str, activate: Callable[[], None], *, at: int) -> QToolButton:
+    def view_button(self, view_id: str) -> QToolButton:
+        """Return the button of the view with *view_id*."""
+        return next(button for view, button in self._views if view.view_id == view_id)
+
+    def _new_button(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> QToolButton:
         button = QToolButton(self)
         button.setAutoRaise(True)
         button.setIcon(icon.icon(stroke=_ICON_STROKE))
         button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(lambda _checked=False: activate())
-        self._layout.insertWidget(at, button)
-        self._buttons.append(button)
         self._size_button(button)
         return button
+
+    def _arrange_views(self) -> None:
+        """Lay the view buttons out by group, with a rule between the groups of each column."""
+        for divider in self._dividers:
+            divider.deleteLater()
+        self._dividers.clear()
+        ordered = sorted(self._views, key=lambda pair: _GROUP_ORDER.index(pair[0].group))
+        for column, at_bottom in ((self._top, False), (self._bottom, True)):
+            while column.count():
+                column.takeAt(0)
+            previous: ViewGroup | None = None
+            for view, button in ordered:
+                if view.group.at_bottom != at_bottom:
+                    continue
+                if previous is not None and view.group is not previous:
+                    column.addWidget(self._new_divider())
+                column.addWidget(button)
+                previous = view.group
+
+    def _new_divider(self) -> QFrame:
+        divider = QFrame(self)
+        divider.setObjectName("AxDevilActivityDivider")
+        divider.setFixedHeight(1)
+        self._dividers.append(divider)
+        return divider
 
     def _size_button(self, button: QToolButton) -> None:
         # Buttons span the bar, so the checked button's accent edge sits on the window edge.
@@ -69,7 +116,7 @@ class ActivityBar(QWidget):
         button.setIconSize(QSize(icon_side, icon_side))
 
     def _apply_appearance(self) -> None:
-        for button in self._buttons:
+        for button in (*(button for _, button in self._views), *self._action_buttons):
             self._size_button(button)
         palette = self.palette()
         text = palette.ColorRole.WindowText
@@ -93,6 +140,10 @@ class ActivityBar(QWidget):
             }}
             #AxDevilActivityBar QToolButton:checked:hover {{
                 background: {palette_color_css(palette, text, alpha=0.16)};
+            }}
+            #AxDevilActivityDivider {{
+                background: {palette_color_css(palette, text, alpha=0.14)};
+                margin: {Space.XS}px {Space.L}px;
             }}
             """
         )

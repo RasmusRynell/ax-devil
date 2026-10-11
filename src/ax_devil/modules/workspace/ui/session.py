@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.sidebar_view import SidebarView
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
@@ -32,6 +33,7 @@ from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceControll
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
 from ax_devil.modules.workspace.ui.workspace_prompts import DialogPrompts, WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
+from ax_devil.modules.workspace.ui.workspace_view import WorkspaceView
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -73,13 +75,14 @@ class WorkspaceSession(QObject):
         self._workspace_store = WorkspaceStore(self._resolver, parent=self)
         self._content_browser = ContentBrowserWidget()
         self._start_panel = StartPanel()
-        self._sidebar = SidebarPanel(self._content_browser, self._start_panel)
+        self._workspace_view = WorkspaceView(self._content_browser, self._start_panel)
         self._center_area = SplitView()
         self._window = ApplicationWindow(
-            sidebar=self._sidebar,
+            sidebar=SidebarPanel(),
             center_area=self._center_area,
             parent=parent,
         )
+        self._window.add_view(self._workspace_view.sidebar_view())
         self._workspace_controller = WorkspaceController(
             workspace_store=self._workspace_store,
             content_browser=self._content_browser,
@@ -99,8 +102,6 @@ class WorkspaceSession(QObject):
         self._start_panel.recent_workspace_requested.connect(self._lifecycle.open_workspace)
         self._window.files_dropped.connect(self.open_files)
         self._workspace_store.state_changed.connect(self.state_changed)
-        self._workspace_store.state_changed.connect(self._show_workspace)
-        self._show_workspace()
 
     def widget(self) -> ApplicationWindow:
         """Return the composed viewer widget tree."""
@@ -126,6 +127,14 @@ class WorkspaceSession(QObject):
         """Return the resolver that resolves this session's items away from the GUI thread."""
         return self._resolver
 
+    def add_sidebar_view(self, view: SidebarView) -> None:
+        """Add a view to the sidebar, with its button on the activity bar."""
+        self._window.add_view(view)
+
+    def show_sidebar_view(self, view_id: str) -> None:
+        """Show the sidebar with the view *view_id* on screen."""
+        self._window.show_view(view_id)
+
     def add_items(self, items: Sequence[WorkspaceItem]) -> None:
         """Add *items* to the workspace; once they resolve, the first opens and those that cannot open are reported."""
         self._workspace_store.add_items(items)
@@ -133,11 +142,6 @@ class WorkspaceSession(QObject):
     def add_resolved(self, resolutions: Sequence[ItemResolution]) -> None:
         """Add items a dialog already resolved, without resolving them again, and open the first."""
         self._workspace_store.add_resolved(resolutions)
-
-    def _show_workspace(self) -> None:
-        """Show the Workspace's name, file, and whether it has unsaved changes at the top of the sidebar."""
-        workspace = self._workspace_store.workspace
-        self._sidebar.set_workspace(workspace.name, workspace.path, self._workspace_store.is_modified)
 
     def refresh_recent_workspaces(self) -> None:
         """Show the recent workspace files on the start panel."""

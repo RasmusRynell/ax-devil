@@ -1,0 +1,72 @@
+"""The frame of a sidebar view: a pane header with the view's title over a column of content."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
+
+
+class ViewPanel(QWidget):
+    """A pane header, with an optional widget at its right end, over the *body* layout views fill.
+
+    Keep the body's rows at the top with ``add_stretch`` after the last one, so a short list does not spread out.
+    """
+
+    def __init__(self, title: str, header_widget: QWidget | None = None, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("AxDevilViewPanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self._header = QWidget(self)
+        self._header.setObjectName("AxDevilViewHeader")
+        self._header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        header_layout = QHBoxLayout(self._header)
+        header_layout.setContentsMargins(Space.L, 0, Space.M, 0)
+        header_layout.setSpacing(Space.M)
+        self._title = QLabel(title, self._header)
+        TextRole.STRONG.apply(self._title)
+        header_layout.addWidget(self._title, 1)
+        if header_widget is not None:
+            header_layout.addWidget(header_widget)
+        layout.addWidget(self._header)
+
+        self.body = QVBoxLayout()
+        self.body.setContentsMargins(0, 0, 0, 0)
+        self.body.setSpacing(0)
+        layout.addLayout(self.body, 1)
+        follow_appearance(self, self._apply_appearance)
+
+    def add(self, widget: QWidget) -> None:
+        """Append *widget* to the body, across its full width."""
+        self.body.addWidget(widget)
+
+    def add_padded(self, widget: QWidget, *, top: int = Space.M, bottom: int = Space.S) -> None:
+        """Append *widget* to the body with the side margins rows have, and *top* and *bottom* room."""
+        holder = QWidget(self)
+        layout = QHBoxLayout(holder)
+        layout.setContentsMargins(Space.M, top, Space.M, bottom)
+        layout.setSpacing(Space.M)
+        layout.addWidget(widget, 1)
+        self.body.addWidget(holder)
+
+    def add_stretch(self) -> None:
+        """Take the remaining room, so what comes after sits at the bottom."""
+        self.body.addStretch(1)
+
+    def _apply_appearance(self) -> None:
+        self._header.setFixedHeight(Height.PANE_HEADER.px)
+        border = palette_color_css(self.palette(), QPalette.ColorRole.Mid, alpha=0.5)
+        self.setStyleSheet(
+            f"""
+            #AxDevilViewPanel {{ background: palette(alternate-base); }}
+            #AxDevilViewHeader {{ border-bottom: 1px solid {border}; background: transparent; }}
+            """
+        )

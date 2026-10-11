@@ -21,7 +21,6 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
 from ax_devil.modules.workspace.ui import start_panel
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.start_panel import StartPanel, recent_date
@@ -262,7 +261,7 @@ def _send_drop(target: QWidget, paths: list[Path]) -> bool:
 def test_desktop_file_drops_reach_the_workspace_over_welcome_and_open_panes(qtbot: QtBot, tmp_path: Path) -> None:
     """Video drops land on the workspace from the welcome screen or a pane; drops without a video are refused."""
     center = SplitView()
-    window = ApplicationWindow(sidebar=SidebarPanel(ContentBrowserWidget(), StartPanel()), center_area=center)
+    window = ApplicationWindow(sidebar=SidebarPanel(), center_area=center)
     qtbot.addWidget(window)
     window.resize(800, 600)
     window.show()

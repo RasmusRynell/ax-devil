@@ -11,7 +11,6 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
-from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
@@ -222,16 +221,12 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
         assert action.shortcut().toString() == key
 
     def assert_titles(name: str, modified: bool) -> None:
-        assert window.windowTitle() == f"{'● ' if modified else ''}{name} — ax-devil"
+        title = f"{'● ' if modified else ''}{name} — ax-devil"
+        assert window.windowTitle() == title
         if use_custom_frame:
             title_label = window.findChild(QLabel, "AxDevilTitleLabel")
             assert title_label is not None
-            assert title_label.text() == "ax-devil"
-        sidebar_name = window.findChild(ElidedLabel, "AxDevilWorkspaceName")
-        modified_marker = window.findChild(QLabel, "AxDevilWorkspaceModified")
-        assert sidebar_name is not None and modified_marker is not None
-        assert sidebar_name.full_text() == name
-        assert (not modified_marker.isHidden()) == modified
+            assert title_label.text() == title
 
     assert_titles("Untitled", modified=False)
     video = tmp_path / "lot.mp4"

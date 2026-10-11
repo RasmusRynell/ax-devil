@@ -9,7 +9,7 @@ from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetr
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QSplitter, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.sidebar_view import SidebarView
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.intake import is_video_file
 from ax_devil.modules.workspace.ui.activity_bar import ActivityBar
@@ -23,8 +23,8 @@ class ApplicationWindow(QWidget):
     """Main application workspace widget.
 
     Coordinates the main application components:
-    - Activity bar along the left edge, whose Workspace button shows and hides the sidebar
-    - Sidebar with the start panel or the content browser
+    - Activity bar along the left edge, with a button per sidebar view
+    - Sidebar showing one view at a time: the workspace's items, or a view of part of it
     - Center area for viewer widgets (video viewers, analysis tools)
 
     Files dragged in from the desktop that include a video are offered through ``files_dropped``.
@@ -46,7 +46,7 @@ class ApplicationWindow(QWidget):
         self._center_area = center_area
         self._sidebar_wanted = True  # The user's choice.
         self._activity_bar = ActivityBar(self)
-        self._activity_bar.add_view(Icon.BROWSE, "Workspace", self.toggle_sidebar)
+        self._activity_bar.view_requested.connect(self._on_view_requested)
         self._sidebar_width: int | None = None  # Until the user drags it, from the text size when it appears.
 
         self._setup_layout()
@@ -55,8 +55,20 @@ class ApplicationWindow(QWidget):
         self._apply_sidebar()
         follow_appearance(self, self._follow_text_size)
 
+    def add_view(self, view: SidebarView) -> None:
+        """Add *view* to the sidebar and its button to the activity bar; the first view added is shown."""
+        self._sidebar.add_view(view)
+        self._activity_bar.add_view(view)
+        self._show_current_view()
+
+    def show_view(self, view_id: str) -> None:
+        """Show the sidebar, if hidden, with the view *view_id* on screen."""
+        self._sidebar.show_view(view_id)
+        self._sidebar_wanted = True
+        self._apply_sidebar()
+
     def toggle_sidebar(self) -> None:
-        """Show or hide the sidebar."""
+        """Show or hide the sidebar, keeping its view."""
         self._sidebar_wanted = not self.is_sidebar_shown()
         self._apply_sidebar()
 
@@ -68,6 +80,17 @@ class ApplicationWindow(QWidget):
         """Return the activity bar, for adding app-wide action buttons."""
         return self._activity_bar
 
+    def _on_view_requested(self, view_id: str) -> None:
+        """Switch to the view whose button was clicked; clicking the view on screen hides the sidebar."""
+        if self.is_sidebar_shown() and self._sidebar.current_view_id() == view_id:
+            self.toggle_sidebar()
+        else:
+            self.show_view(view_id)
+
+    def _show_current_view(self) -> None:
+        """Check the button of the view on screen, or none while the sidebar is hidden."""
+        self._activity_bar.set_current_view(self._sidebar.current_view_id() if self.is_sidebar_shown() else None)
+
     def _on_splitter_moved(self, _position: int, _index: int) -> None:
         """Remember the width the user drags the sidebar to; dragging it closed hides it until toggled back."""
         width = self._splitter.sizes()[0]
@@ -76,7 +99,7 @@ class ApplicationWindow(QWidget):
         else:
             self._sidebar_wanted = False
             self._sidebar.hide()
-            self._activity_bar.set_view_shown(False)
+            self._show_current_view()
 
     def _apply_sidebar(self) -> None:
         """Show the sidebar when the user wants it, at its remembered width.
@@ -85,14 +108,13 @@ class ApplicationWindow(QWidget):
         width and then moving the panes again.
         """
         show = self._sidebar_wanted
-        self._activity_bar.set_view_shown(show)
-        if show == self.is_sidebar_shown():
-            return
-        if not show:
-            self._sidebar.hide()
-            return
-        self._sidebar.show()
-        self._set_sidebar_width(self._sidebar_width or _default_sidebar_width())
+        if show != self.is_sidebar_shown():
+            if show:
+                self._sidebar.show()
+                self._set_sidebar_width(self._sidebar_width or _default_sidebar_width())
+            else:
+                self._sidebar.hide()
+        self._show_current_view()
 
     def _follow_text_size(self) -> None:
         """Keep a sidebar the user never dragged at its default width for the current text size."""

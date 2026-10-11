@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import cast
 
-from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QFontMetrics, QGuiApplication, QPainter, QPalette
 from PySide6.QtWidgets import (
     QDialog,
@@ -34,8 +34,9 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.theme import StatusColor
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.section_caption import paint_section_caption
+from ax_devil.modules.chrome.theme import KindColor, StatusColor
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Content
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.core.items import WorkspaceItem
@@ -56,30 +57,28 @@ TREE_SECTION_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 _OPEN_EDGE_PX = 2
-_SECTION_MARK_PX = 8
 
 
 @dataclass(frozen=True)
 class _KindMark:
-    """The icon a row kind shows, in its color on the dark and on the light theme."""
+    """The icon a row kind shows, and the color it is drawn in."""
 
     icon: Icon
-    dark: str
-    light: str
+    color_source: KindColor | StatusColor
 
     def color(self, palette: QPalette) -> QColor:
         """Return the mark's color for the theme *palette* belongs to."""
-        return QColor(self.dark if palette.color(QPalette.ColorRole.Text).lightnessF() > 0.5 else self.light)
+        return self.color_source.color(palette)
 
 
 # Each kind keeps one icon and color, so live streams, videos, and playlists read apart in a mixed workspace.
 _KIND_MARKS: dict[WorkspaceBrowserIconKind, _KindMark] = {
-    "live_video": _KindMark(Icon.LIVE_VIDEO, "#e5534b", "#c4362e"),
-    "video": _KindMark(Icon.VIDEO, "#a8b3bf", "#526477"),
-    "playlist": _KindMark(Icon.PLAYLIST, "#b18cf0", "#6f45c2"),
-    "overlay": _KindMark(Icon.OVERLAY, "#8f9aa6", "#607080"),
-    "unavailable": _KindMark(Icon.WARNING, *StatusColor.WARNING.value),
-    "pending": _KindMark(Icon.MORE, "#858585", "#5a6a7d"),
+    "live_video": _KindMark(Icon.LIVE_VIDEO, KindColor.LIVE),
+    "video": _KindMark(Icon.VIDEO, KindColor.VIDEO),
+    "playlist": _KindMark(Icon.PLAYLIST, KindColor.PLAYLIST),
+    "overlay": _KindMark(Icon.OVERLAY, KindColor.OVERLAY),
+    "unavailable": _KindMark(Icon.WARNING, StatusColor.WARNING),
+    "pending": _KindMark(Icon.MORE, KindColor.MUTED),
 }
 
 
@@ -144,33 +143,8 @@ class _RowDelegate(QStyledItemDelegate):
 
     def _paint_section(self, painter: QPainter, option: QStyleOptionViewItem, section: WorkspaceBrowserSection) -> None:
         """Draw a section caption: its kind's color mark, the title, the count, and a rule to the right edge."""
-        rect = option.rect.adjusted(Space.S, 0, -Space.S, 0)
-        palette = option.palette
-        center_y = rect.center().y()
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        mark = QRectF(rect.left(), center_y - _SECTION_MARK_PX / 2 + 1, _SECTION_MARK_PX, _SECTION_MARK_PX)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(_KIND_MARKS[section.kind.icon_kind].color(palette))
-        painter.drawRoundedRect(mark, Radius.CONTROL / 2, Radius.CONTROL / 2)
-        font = TextRole.CAPTION.font()
-        metrics = QFontMetrics(font)
-        painter.setFont(font)
-        painter.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
-        text = f"{section.kind.title}  {len(section.rows)}"
-        text_left = rect.left() + _SECTION_MARK_PX + Space.S
-        painter.drawText(
-            QRect(text_left, rect.top(), rect.width(), rect.height()),
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            text,
-        )
-        rule_left = text_left + metrics.horizontalAdvance(text) + Space.S
-        if rule_left < rect.right():
-            rule = QColor(palette.color(QPalette.ColorRole.Text))
-            rule.setAlphaF(0.12)
-            painter.setPen(rule)
-            painter.drawLine(rule_left, center_y + 1, rect.right(), center_y + 1)
-        painter.restore()
+        mark = _KIND_MARKS[section.kind.icon_kind].color(option.palette)
+        paint_section_caption(painter, option.rect, option.palette, f"{section.kind.title}  {len(section.rows)}", mark)
 
 
 class _BrowserTree(QTreeWidget):
