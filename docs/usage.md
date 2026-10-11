@@ -45,8 +45,10 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   to rename it, change its kind (Note, Issue, Example, Question) or remove it. The chips and the search filter the
   list, and a group's **Reviewed** / **To review** mark toggles when clicked. **Export CSV** writes every bookmark.
   Bookmarks and review marks are saved in the workspace file, and live streams cannot be bookmarked.
-- **Plugins** shows which plugins loaded, which failed and why, and which are built in. **Add plugin** installs a
-  package, wheel or folder; the `…` menu of an installed plugin updates or removes it; **Reload** loads plugins again.
+- **Plugins** shows which plugins loaded, which failed and why, and which are built in, and under each plugin the
+  decoders and playlist resolvers it gives you, with whether a decoder reads overlay files, live messages or both.
+  **Add** installs a package, wheel or folder; the `…` menu of an installed plugin updates or removes it; the reload
+  button next to **Add** loads plugins again.
   Installs, updates and removals apply after a restart, which a banner offers. **Debug → Plug-ins** also opens it.
 
 ## Video and overlays

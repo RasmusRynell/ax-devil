@@ -5,9 +5,10 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
-from PySide6.QtWidgets import QLineEdit, QToolButton
+from PySide6.QtWidgets import QLabel, QLineEdit, QToolButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.banner import Banner
@@ -19,12 +20,21 @@ from ax_devil.modules.plugin_manager.add_plugin_dialog import AddPluginDialog
 from ax_devil.modules.plugin_manager.catalog import PluginGroup, plugin_catalog
 from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChangeError, PluginChanges
 from ax_devil.modules.plugin_manager.plugins_view import PluginsView
-from ax_devil.modules.plugin_system import DECODER_PLUGIN_TYPE, PluginDefinitionBase, PluginRecord, PluginStatus
+from ax_devil.modules.plugin_system import (
+    DECODER_PLUGIN_TYPE,
+    DecoderPluginDefinition,
+    FileToSceneDecoderDefinition,
+    PluginRecord,
+    PluginStatus,
+)
 
 
-def _record(plugin_id: str, origin: str, error: str | None = None) -> PluginRecord:
+def _record(plugin_id: str, origin: str, error: str | None = None, handlers: tuple[str, ...] = ()) -> PluginRecord:
+    files = tuple(FileToSceneDecoderDefinition(name.upper(), Mock(), name) for name in handlers)
     return PluginRecord(
-        definition=PluginDefinitionBase(plugin_type=DECODER_PLUGIN_TYPE, plugin_id=plugin_id, display_name=plugin_id),
+        definition=DecoderPluginDefinition(
+            plugin_type=DECODER_PLUGIN_TYPE, plugin_id=plugin_id, display_name=plugin_id, file_to_scene_decoders=files
+        ),
         entrypoint=Path(f"/plugins/{plugin_id}"),
         origin=origin,
         status=PluginStatus.FAILED if error else PluginStatus.LOADED,
@@ -39,8 +49,8 @@ SELECTION = {"yolo-detections": "yolo-detections>=0.2", "old-model-decoder": "ol
 def records() -> list[PluginRecord]:
     """The registry's records, as the view reads them."""
     return [
-        _record("mot", "builtin"),
-        _record("yolo", "package:yolo-detections"),
+        _record("mot", "builtin", handlers=("mot", "mot-extra")),
+        _record("yolo", "package:yolo-detections", handlers=("yolo-boxes",)),
         _record("old", "package:old-model-decoder", error="requires plugin API 1, host provides 2"),
     ]
 
@@ -79,8 +89,8 @@ def _rows(view: PluginsView) -> list[tuple[str, str]]:
     """Return each row's title and subtitle, top to bottom."""
     rows = []
     for row in view.findChildren(ListRow):
-        labels = [label.full_text() for label in row.findChildren(ElidedLabel)]
-        rows.append((labels[0], labels[1] if len(labels) > 1 else ""))
+        texts = [label.text() for label in row.findChildren(QLabel) if label.text()]
+        rows.append((texts[0], texts[1] if len(texts) > 1 else ""))
     return rows
 
 
@@ -103,7 +113,7 @@ def _banner_shown(view: PluginsView) -> bool:
 
 
 def _add_button(view: PluginsView) -> SmallButton:
-    return next(button for button in view.findChildren(SmallButton) if button.text() == "Add plugin")
+    return next(button for button in view.findChildren(SmallButton) if button.text() == "Add")
 
 
 def test_the_view_lists_failed_installed_and_built_in_plugins(qtbot: QtBot, records: list[PluginRecord]) -> None:
@@ -112,9 +122,10 @@ def test_the_view_lists_failed_installed_and_built_in_plugins(qtbot: QtBot, reco
     assert len(view.findChildren(SectionCaption)) == 3
     assert _rows(view) == [
         ("old-model-decoder", "Requires plugin API 1, host provides 2"),
-        ("yolo-detections", "0.2.1 · Decoder"),
-        ("Decoders", ""),
-        ("Playlist resolvers", ""),
+        ("yolo-detections", "yolo-boxes"),
+        ("mot", ""),
+        ("mot", ""),
+        ("mot-extra", ""),
     ]
     assert not _banner_shown(view)
 
@@ -137,7 +148,7 @@ def test_updating_a_plugin_disables_changes_until_it_is_done_and_then_offers_a_r
     qtbot.waitUntil(lambda: _banner_shown(view), timeout=5000)
     assert installer.made == [PluginChange.update("yolo-detections", "yolo-detections>=0.2")]
     assert _add_button(view).isEnabled()
-    assert ("yolo-detections", "0.2.1 · Decoder") in _rows(view)
+    assert ("yolo-detections", "yolo-boxes") in _rows(view)
     with qtbot.waitSignal(view.restart_requested, timeout=1000):
         _banner(view).action.click()
 
@@ -188,11 +199,11 @@ def test_reload_loads_the_plugins_again_and_lists_them_anew(qtbot: QtBot, record
         records.append(_record("lab", "package:lab-experiments"))
 
     view = _view(qtbot, records, FakeInstaller(), reload)
-    assert ("lab-experiments", "Decoder") not in _rows(view)
+    assert ("lab-experiments", "Not loaded") not in _rows(view)
 
-    next(button for button in view.findChildren(SmallButton) if button.text() == "Reload").click()
+    next(button for button in view.findChildren(SmallButton) if button.accessibleName() == "Reload plugins").click()
 
-    assert ("lab-experiments", "Decoder") in _rows(view)
+    assert ("lab-experiments", "Not loaded") in _rows(view)
 
 
 def test_the_list_is_read_again_when_the_view_is_shown(qtbot: QtBot, records: list[PluginRecord]) -> None:
