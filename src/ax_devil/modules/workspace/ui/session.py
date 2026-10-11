@@ -23,6 +23,8 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
+from ax_devil.modules.workspace.ui.bookmarks_view import BOOKMARKS_VIEW_ID, BookmarksView
+from ax_devil.modules.workspace.ui.bookmarks_view_controller import BookmarksViewController
 from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
@@ -108,6 +110,11 @@ class WorkspaceSession(QObject):
             self._playlists_view, self._workspace_controller, self._workspace_store, parent=self
         )
         self._playlists_view.add_requested.connect(self.add_playlist_requested)
+        self._bookmarks_view = BookmarksView()
+        self._bookmarks = BookmarksViewController(
+            self._bookmarks_view, self._workspace_store, self._workspace_controller, parent=self
+        )
+        self._window.add_view(self._bookmarks_view.sidebar_view())
         self._lifecycle = WorkspaceLifecycle(
             self._workspace_store,
             prompts or DialogPrompts(self._window),
@@ -152,6 +159,17 @@ class WorkspaceSession(QObject):
     def show_sidebar_view(self, view_id: str) -> None:
         """Show the sidebar with the view *view_id* on screen."""
         self._window.show_view(view_id)
+
+    def bookmark_focused_viewer(self) -> None:
+        """Bookmark the frame on screen in the focused viewer, and show the Bookmarks view.
+
+        Nothing happens without a focused viewer, or when what it shows cannot be bookmarked, such as a live stream.
+        Focus stays where it is, so playback keys keep reaching the viewer.
+        """
+        widget = self.focused_widget()
+        position = widget.bookmark_position() if widget is not None else None
+        if position is not None and self._bookmarks.add_bookmark(position) is not None:
+            self.show_sidebar_view(BOOKMARKS_VIEW_ID)
 
     def add_items(self, items: Sequence[WorkspaceItem]) -> None:
         """Add *items* to the workspace; once they resolve, the first opens and those that cannot open are reported."""
