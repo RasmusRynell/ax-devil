@@ -6,21 +6,14 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLineEdit, QListWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.plugin_system import (
-    PLAYLIST_RESOLVER_PLUGIN_TYPE,
-    PlaylistResolverWidget,
-)
-from ax_devil.modules.workspace import FileOverlaySourceSpec, OverlaySourceKind, SeekableVideoContent
-from ax_devil.plugins.playlist_resolvers.mot_challenge.plugin import (
-    MOTChallengeResolverPlugin,
-)
-from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import (
-    build_playlist_contents,
-    discover_sequences,
-    parse_seqinfo,
-)
+from ax_devil.modules.workspace import FileOverlaySourceSpec, SeekableVideoContent
+from ax_devil.plugins.playlist_resolvers.mot_challenge.plugin import MOTChallengeResolverPlugin
+from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import build_playlist_contents, discover_sequences
+from tests.helpers.widgets import button
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,48 +61,34 @@ def _make_sequence(
 
 
 # ---------------------------------------------------------------------------
-# Plugin metadata
+# Settings widget
 # ---------------------------------------------------------------------------
 
 
-class TestMOTChallengeResolverPluginMetadata:
-    """Tests for MOTChallengeResolverPlugin identity and definition."""
+def test_settings_widget_loads_only_checked_sequences(tmp_path: Path, qtbot: QtBot) -> None:
+    _make_sequence(tmp_path, "SEQ-01")
+    _make_sequence(tmp_path, "SEQ-02")
+    widget = MOTChallengeResolverPlugin().create_settings_widget()
+    qtbot.addWidget(widget)
+    load = button(widget, "Load Playlist")
+    assert not load.isEnabled()
 
-    def test_definition_and_settings_widget(self, qtbot: QtBot) -> None:
-        assert MOTChallengeResolverPlugin.plugin_id() == "mot_challenge"
-        assert MOTChallengeResolverPlugin.plugin_type() == PLAYLIST_RESOLVER_PLUGIN_TYPE
-        assert MOTChallengeResolverPlugin.display_name() == "MOT Challenge"
-        assert MOTChallengeResolverPlugin.description() is not None
+    root = widget.findChild(QLineEdit)
+    assert root is not None
+    root.setText(str(tmp_path))
+    button(widget, "Scan").click()
+    sequences = widget.findChild(QListWidget)
+    assert sequences is not None
+    assert sequences.count() == 2
+    assert load.isEnabled()
+    first = sequences.item(0)
+    assert first is not None
+    first.setCheckState(Qt.CheckState.Unchecked)
+    with qtbot.waitSignal(widget.playlist_resolved) as resolved:
+        load.click()
 
-        defn = MOTChallengeResolverPlugin.definition()
-        assert defn.plugin_type == PLAYLIST_RESOLVER_PLUGIN_TYPE
-        assert defn.plugin_id == "mot_challenge"
-        assert defn.display_name == "MOT Challenge"
-
-        widget = MOTChallengeResolverPlugin().create_settings_widget()
-        qtbot.addWidget(widget)
-        assert isinstance(widget, PlaylistResolverWidget)
-
-
-# ---------------------------------------------------------------------------
-# seqinfo.ini parsing
-# ---------------------------------------------------------------------------
-
-
-class TestParseSeqinfo:
-    def test_parses_valid_ini(self, tmp_path: Path) -> None:
-        ini = tmp_path / "seqinfo.ini"
-        ini.write_text(SEQINFO_TEMPLATE.format(name="MOT16-01", fps=30, width=1920, height=1080, length=450))
-        result = parse_seqinfo(ini)
-        assert result["name"] == "MOT16-01"
-        assert result["framerate"] == "30"
-        assert result["imwidth"] == "1920"
-
-    def test_raises_on_missing_section(self, tmp_path: Path) -> None:
-        ini = tmp_path / "seqinfo.ini"
-        ini.write_text("[Other]\nkey=val\n")
-        with pytest.raises(ValueError, match="Missing.*Sequence"):
-            parse_seqinfo(ini)
+    [playlist] = resolved.args[0]
+    assert [entry.lanes[0].video.display_name for entry in playlist.entries] == ["SEQ-02"]
 
 
 # ---------------------------------------------------------------------------
@@ -117,35 +96,35 @@ class TestParseSeqinfo:
 # ---------------------------------------------------------------------------
 
 
-class TestDiscoverSequences:
-    def test_discovers_sorted_sequences_with_metadata_and_ignores_unrelated_folders(self, tmp_path: Path) -> None:
-        """Discovery accepts an empty root and yields only complete sequence folders in name order."""
-        assert discover_sequences(tmp_path) == []
-        (tmp_path / "random_folder").mkdir()
-        _make_sequence(tmp_path, "MOT16-06", fps=14, width=640, height=480, length=1194)
-        _make_sequence(tmp_path, "MOT16-01", length=450, fps=30)
+def test_discovers_sorted_sequences_with_metadata_and_skips_other_folders(tmp_path: Path) -> None:
+    """Discovery accepts an empty root and yields only readable sequence folders in name order."""
+    assert discover_sequences(tmp_path) == []
+    (tmp_path / "random_folder").mkdir()
+    broken = tmp_path / "MOT16-02"
+    broken.mkdir()
+    (broken / "seqinfo.ini").write_text("[Other]\nkey=val\n")
+    _make_sequence(tmp_path, "MOT16-06", fps=14, width=640, height=480, length=1194)
+    _make_sequence(tmp_path, "MOT16-01", length=450, fps=30)
 
-        seqs = discover_sequences(tmp_path)
+    seqs = discover_sequences(tmp_path)
 
-        assert [seq.name for seq in seqs] == ["MOT16-01", "MOT16-06"]
-        assert seqs[0].frame_count == 450
-        seq = seqs[1]
-        assert (seq.fps, seq.width, seq.height, seq.frame_count) == (14.0, 640, 480, 1194)
-        assert (seq.im_dir, seq.im_ext) == ("img1", ".jpg")
+    assert [seq.name for seq in seqs] == ["MOT16-01", "MOT16-06"]
+    assert seqs[0].frame_count == 450
+    seq = seqs[1]
+    assert (seq.fps, seq.width, seq.height, seq.frame_count) == (14.0, 640, 480, 1194)
+    assert (seq.im_dir, seq.im_ext) == ("img1", ".jpg")
 
-    def test_discovers_train_and_test_split_sequences_from_dataset_root(self, tmp_path: Path) -> None:
-        train = tmp_path / "train"
-        test = tmp_path / "test"
-        _make_sequence(train, "MOT17-02-DPM", create_gt=True)
-        _make_sequence(test, "MOT17-01-DPM", create_gt=False)
 
-        seqs = discover_sequences(tmp_path)
+def test_discovers_train_and_test_split_sequences_from_dataset_root(tmp_path: Path) -> None:
+    _make_sequence(tmp_path / "train", "MOT17-02-DPM", create_gt=True)
+    _make_sequence(tmp_path / "test", "MOT17-01-DPM", create_gt=False)
 
-        assert [seq.name for seq in seqs] == ["MOT17-01-DPM", "MOT17-02-DPM"]
+    assert [seq.name for seq in discover_sequences(tmp_path)] == ["MOT17-01-DPM", "MOT17-02-DPM"]
 
-    def test_raises_on_missing_root(self, tmp_path: Path) -> None:
-        with pytest.raises(FileNotFoundError):
-            discover_sequences(tmp_path / "nonexistent")
+
+def test_discovery_rejects_missing_root(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        discover_sequences(tmp_path / "nonexistent")
 
 
 # ---------------------------------------------------------------------------
@@ -153,85 +132,51 @@ class TestDiscoverSequences:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildPlaylistContents:
-    def test_builds_single_playlist_entry_with_det_overlay(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "SEQ-01", fps=25, width=1920, height=1080, length=100)
-        seqs = discover_sequences(tmp_path)
-        playlists = build_playlist_contents(seqs)
+def test_sequence_becomes_image_video_with_detection_overlay_at_frame_size(tmp_path: Path) -> None:
+    """MOT boxes are in pixels, so the overlay decoder needs the sequence's own frame size."""
+    _make_sequence(tmp_path, "SEQ-01", width=640, height=480)
 
-        assert len(playlists) == 1
-        assert playlists[0].display_name == "MOT Challenge"
-        assert len(playlists[0].entries) == 1
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
 
-        entry = playlists[0].entries[0]
-        assert len(entry.lanes) == 1
-        assert entry.lanes[0].video.display_name == "SEQ-01"
-        lane = entry.lanes[0]
-        assert isinstance(lane.video, SeekableVideoContent)
-        assert lane.video.source_spec.path == tmp_path / "SEQ-01" / "img1" / "%06d.jpg"
-        assert lane.video.metadata == {}
-        assert lane.overlay is not None
-        assert lane.overlay.display_name == "DET"
-        assert lane.overlay.source_spec == FileOverlaySourceSpec(
-            path=tmp_path / "SEQ-01" / "det" / "det.txt",
-            handler_type="MOT_FILE",
-            decoder_kwargs={"width": 640, "height": 480},
-        )
-        assert lane.source_kind == OverlaySourceKind.FILE_SOURCE
-        assert lane.metadata == {}
-        assert lane.overlay.metadata == {}
+    [entry] = playlist.entries
+    [lane] = entry.lanes
+    assert lane.video.display_name == "SEQ-01"
+    assert isinstance(lane.video, SeekableVideoContent)
+    assert lane.video.source_spec.path == tmp_path / "SEQ-01" / "img1" / "%06d.jpg"
+    assert lane.overlay is not None
+    assert lane.overlay.display_name == "DET"
+    spec = lane.overlay.source_spec
+    assert isinstance(spec, FileOverlaySourceSpec)
+    assert (spec.path, spec.handler_type) == (tmp_path / "SEQ-01" / "det" / "det.txt", "MOT_FILE")
+    assert spec.decoder_kwargs == {"width": 640, "height": 480}
 
-    def test_det_and_gt_overlays_attached(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "SEQ-01", create_det=True, create_gt=True)
-        seqs = discover_sequences(tmp_path)
-        playlists = build_playlist_contents(seqs)
 
-        assert len(playlists) == 1
-        lanes = playlists[0].entries[0].lanes
-        assert [lane.display_name for lane in lanes] == ["DET", "GT"]
+def test_det_and_gt_overlays_attached(tmp_path: Path) -> None:
+    _make_sequence(tmp_path, "SEQ-01", create_det=True, create_gt=True)
 
-    def test_no_overlays_when_det_missing(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "SEQ-01", create_det=False)
-        seqs = discover_sequences(tmp_path)
-        playlists = build_playlist_contents(seqs)
-        assert len(playlists) == 1
-        lane = playlists[0].entries[0].lanes[0]
-        assert lane.overlay is None
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
 
-    def test_multiple_sequences_become_multiple_entries(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "SEQ-01")
-        _make_sequence(tmp_path, "SEQ-02")
-        seqs = discover_sequences(tmp_path)
-        playlists = build_playlist_contents(seqs)
-        assert len(playlists) == 1
-        assert len(playlists[0].entries) == 2
+    assert [lane.display_name for lane in playlist.entries[0].lanes] == ["DET", "GT"]
 
-    def test_mot17_detector_variants_share_one_entry(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "MOT17-01-DPM")
-        _make_sequence(tmp_path, "MOT17-01-FRCNN")
-        _make_sequence(tmp_path, "MOT17-01-SDP")
 
-        seqs = discover_sequences(tmp_path)
-        playlists = build_playlist_contents(seqs)
+def test_sequence_without_detections_has_video_only(tmp_path: Path) -> None:
+    _make_sequence(tmp_path, "SEQ-01", create_det=False)
 
-        assert len(playlists) == 1
-        assert len(playlists[0].entries) == 1
-        lanes = playlists[0].entries[0].lanes
-        assert lanes[0].video.display_name == "MOT17-01"
-        assert len(lanes) == 3
-        assert [lane.display_name for lane in lanes] == ["DPM", "FRCNN", "SDP"]
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
 
-    def test_grouped_detector_variants_deduplicate_gt_overlay(self, tmp_path: Path) -> None:
-        _make_sequence(tmp_path, "MOT17-01-DPM", create_gt=True)
-        _make_sequence(tmp_path, "MOT17-01-FRCNN", create_gt=True)
-        _make_sequence(tmp_path, "MOT17-01-SDP", create_gt=True)
+    [lane] = playlist.entries[0].lanes
+    assert lane.overlay is None
 
-        seqs = discover_sequences(tmp_path)
-        playlists = build_playlist_contents(seqs)
 
-        assert len(playlists) == 1
-        assert len(playlists[0].entries) == 1
-        lanes = playlists[0].entries[0].lanes
-        assert lanes[0].video.display_name == "MOT17-01"
-        assert len(lanes) == 4
-        assert [lane.display_name for lane in lanes] == ["DPM", "GT", "FRCNN", "SDP"]
+def test_detector_variants_share_one_entry_with_a_single_gt(tmp_path: Path) -> None:
+    """MOT17 ships one video per sequence under three detector folders; other sequences stay separate."""
+    for detector in ("DPM", "FRCNN", "SDP"):
+        _make_sequence(tmp_path, f"MOT17-01-{detector}", create_gt=True)
+    _make_sequence(tmp_path, "MOT17-02-DPM")
+
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
+
+    assert len(playlist.entries) == 2
+    lanes = playlist.entries[0].lanes
+    assert {lane.video.display_name for lane in lanes} == {"MOT17-01"}
+    assert [lane.display_name for lane in lanes] == ["DPM", "GT", "FRCNN", "SDP"]

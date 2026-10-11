@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from functools import partial
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -12,19 +12,23 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QWidget
+from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.modules.data_sources import FileFrameSource
+from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.scene.model import Scene, TimeSlice
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
+from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import offline_entry_media, offline_viewer_runtime
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
+from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from ax_devil.modules.workspace import (
     FileOverlaySourceSpec,
-    FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
     OverlayContent,
     SeekableVideoContent,
@@ -37,18 +41,17 @@ class _Display:
 
     def __init__(self) -> None:
         self.frames: list[VideoFrameWithOverlays] = []
-        self.refresh_count = 0
 
     def display_frame(self, frame: VideoFrameWithOverlays) -> None:
         """Record displayed frames."""
         self.frames.append(frame)
 
-    def refresh_overlays(self) -> None:
-        """Record overlay refresh requests."""
-        self.refresh_count += 1
-
     def cleanup(self) -> None:
         """Match FrameDisplay cleanup."""
+
+    def frame_ids(self) -> list[int | None]:
+        """Return the ids of the displayed frames in order."""
+        return [frame.frame.frame_id for frame in self.frames]
 
 
 class _DisplayWithInspectorAssertion(_Display):
@@ -73,14 +76,12 @@ class _StepBackDuringDisplay(_Display):
         self.delta = delta
         self.session: OfflineSession | None = None
         self.current_frame_seen_during_display: int | None = None
-        self.triggered = False
 
     def display_frame(self, frame: VideoFrameWithOverlays) -> None:
         """Record the frame and trigger one relative step during presentation."""
         super().display_frame(frame)
-        if self.triggered or frame.frame.frame_id != self.trigger_frame or self.session is None:
+        if frame.frame.frame_id != self.trigger_frame or self.session is None:
             return
-        self.triggered = True
         self.current_frame_seen_during_display = self.session.current_frame
         self.session.step_frames(self.delta)
 
@@ -96,25 +97,6 @@ class _OverlaySource:
         """Return the configured overlay for a direct frame lookup."""
         self.requested_frame_ids.append(frame_id)
         return self.overlay
-
-
-class _AsyncFrameSource:
-    """Async frame source test double that lets tests complete requests out of order."""
-
-    def __init__(self) -> None:
-        self.frameReady = _Signal()
-        self.requests: list[int] = []
-        self.callbacks: dict[int, Callable[[FrameData | None], None]] = {}
-
-    def request_frame_async(self, frame_number: int, callback: Callable[[FrameData | None], None]) -> None:
-        """Record the callback for explicit test completion."""
-        self.requests.append(frame_number)
-        self.callbacks[frame_number] = callback
-
-    def complete(self, frame_number: int) -> None:
-        """Complete a previously requested frame."""
-        callback = self.callbacks[frame_number]
-        callback(_frame(frame_number))
 
 
 class _Signal:
@@ -137,6 +119,33 @@ class _Signal:
             callback(*args)
 
 
+class _AsyncFrameSource:
+    """Secondary frame source test double that lets tests complete requests out of order."""
+
+    def __init__(self) -> None:
+        self.frameReady = _Signal()
+        self.requests: list[int] = []
+        self.callbacks: dict[int, Callable[[FrameData | None], None]] = {}
+
+    def request_frame_async(self, frame_number: int, callback: Callable[[FrameData | None], None]) -> None:
+        """Record the callback for explicit test completion."""
+        self.requests.append(frame_number)
+        self.callbacks[frame_number] = callback
+
+    def complete(self, frame_number: int) -> None:
+        """Complete the latest request for *frame_number*."""
+        self.callbacks[frame_number](_frame(frame_number))
+
+    def complete_from_worker(self, frame_number: int) -> None:
+        """Complete the latest request for *frame_number* from a worker thread, as the decoder does."""
+        worker = threading.Thread(target=lambda: self.complete(frame_number))
+        worker.start()
+        worker.join()
+
+    def set_playback_speed(self, speed: float) -> None:
+        """Accept speed changes applied to every session source."""
+
+
 class _PlaybackSource:
     """Primary video source test double for offline-session frame ordering."""
 
@@ -145,7 +154,7 @@ class _PlaybackSource:
         self.frameReady = _Signal()
         self.current_frame = 0
         self.total_frames = total_frames
-        self._position_generation = 0
+        self.position_generation = 0
         self.play_calls = 0
         self.pause_calls = 0
         self.jump_calls: list[int] = []
@@ -161,7 +170,7 @@ class _PlaybackSource:
 
     def get_position_generation(self) -> int:
         """Return current explicit-position generation."""
-        return self._position_generation
+        return self.position_generation
 
     def play(self) -> bool:
         """Record playback start."""
@@ -174,18 +183,24 @@ class _PlaybackSource:
 
     def jump_to(self, frame_number: int) -> None:
         """Record a seek."""
-        self._position_generation += 1
+        self.position_generation += 1
         self.current_frame = frame_number
         self.jump_calls.append(frame_number)
 
     def reset_to_start(self) -> None:
         """Reset to first frame."""
-        self._position_generation += 1
+        self.position_generation += 1
         self.current_frame = 0
 
     def set_playback_speed(self, speed: float) -> None:
         """Record playback speed changes."""
         self.speed_updates.append(speed)
+
+    def deliver(self, frame_number: int, *, position_generation: int | None = None) -> None:
+        """Emit a decoded frame as playback does and let the GUI thread present it."""
+        generation = self.position_generation if position_generation is None else position_generation
+        self.frameReady.emit(_frame(frame_number, position_generation=generation))
+        QCoreApplication.processEvents()
 
 
 def _frame(frame_number: int, *, position_generation: int | None = None) -> FrameData:
@@ -199,10 +214,6 @@ def _frame(frame_number: int, *, position_generation: int | None = None) -> Fram
     )
 
 
-def _source_frame(source: _PlaybackSource, frame_number: int) -> FrameData:
-    return _frame(frame_number, position_generation=source._position_generation)
-
-
 def _overlay(frame_number: int) -> OverlayData:
     frame_id = FrameIdentifier(sequence_id=frame_number, timestamp_monotime_us=float(frame_number * 1000))
     return OverlayData(
@@ -213,36 +224,62 @@ def _overlay(frame_number: int) -> OverlayData:
     )
 
 
-def _make_primary_session(
-    qtbot: object,
+def _lane(
+    display: _Display,
     *,
-    current_frame: int = 0,
-    total_frames: int = 1000,
+    overlay_source: _OverlaySource | None = None,
+    video_source: object = None,
+    source_index: int = 0,
+    overlay_policy: OverlayPersistencePolicy | None = None,
+    tools_panel: MediaToolsPanel | None = None,
+) -> OfflineLane:
+    return OfflineLane(
+        content=cast(SeekableVideoContent, object()),
+        name="lane",
+        display=cast(FrameDisplay, display),
+        overlay_source=cast(FileOverlaySource | None, overlay_source),
+        video_source=cast(FileFrameSource | None, video_source),
+        source_index=source_index,
+        overlay_policy=overlay_policy,
+        tools_panel=tools_panel,
+    )
+
+
+def _make_session(qtbot: QtBot, lanes: list[OfflineLane], sources: list[object]) -> OfflineSession:
+    """Wire a session over test sources the way `OfflineSession.build` wires opened media.
+
+    `build` needs real displays; the source pool and the frame slot are private, so this is the one place tests
+    reach them.
+    """
+    container = QWidget()
+    qtbot.addWidget(container)
+    pool = [
+        offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
+            source=cast(FileFrameSource, source),
+            relay=offline_viewer_runtime._FrameDeliveryRelay(index, container),  # noqa: SLF001
+            source_index=index,
+        )
+        for index, source in enumerate(sources)
+    ]
+    session = OfflineSession(lanes, container, media=EntryMedia(), source_pool=pool)
+    for pooled in pool:
+        pooled.source.frameReady.connect(pooled.relay.deliver)
+        pooled.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
+    return session
+
+
+def _make_primary_session(
+    qtbot: QtBot, *, current_frame: int = 0, total_frames: int = 1000
 ) -> tuple[OfflineSession, _Display, _PlaybackSource]:
     display = _Display()
     source = _PlaybackSource(total_frames=total_frames)
     source.current_frame = current_frame
-    lane = OfflineLane(
-        content=cast(SeekableVideoContent, object()),
-        name="primary",
-        display=display,  # type: ignore[arg-type]
-        overlay_source=None,
-        video_source=source,  # type: ignore[arg-type]
-    )
-    container = QWidget()
-    qtbot.addWidget(container)  # type: ignore[attr-defined]
-    pooled_source = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
-        source=source,  # type: ignore[arg-type]
-        relay=offline_viewer_runtime._FrameDeliveryRelay(0, container),  # noqa: SLF001
-        source_index=0,
-    )
-    session = OfflineSession([lane], container, media=EntryMedia(), source_pool=[pooled_source])
-    source.frameReady.connect(pooled_source.relay.deliver)
-    pooled_source.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
+    session = _make_session(qtbot, [_lane(display, video_source=source)], [source])
     return session, display, source
 
 
-def test_offline_session_bounds_commands_clamps_speed_and_tracks_playback_state(qtbot: object) -> None:
+def test_offline_session_bounds_commands_clamps_speed_and_tracks_playback_state(qtbot: QtBot) -> None:
+    """Play at the last frame restarts; seeks and steps stay inside the video; speed is clamped."""
     session, _display, source = _make_primary_session(qtbot, current_frame=9, total_frames=10)
 
     assert session.total_frames == 10
@@ -276,42 +313,31 @@ def test_offline_session_bounds_commands_clamps_speed_and_tracks_playback_state(
     assert source.speed_updates[-1] == 10.0
 
 
-def test_offline_lane_uses_direct_overlay_lookup_and_presenter_without_offline_sync() -> None:
-    overlay = _overlay(7)
-    overlay_source = _OverlaySource(overlay)
+def test_lane_shows_each_frame_with_the_overlay_for_that_frame() -> None:
+    overlay_source = _OverlaySource(_overlay(7))
     display = _Display()
-    lane = OfflineLane(
-        content=cast(SeekableVideoContent, object()),
-        name="lane",
-        display=display,  # type: ignore[arg-type]
-        overlay_source=overlay_source,  # type: ignore[arg-type]
-    )
+    lane = _lane(display, overlay_source=overlay_source)
 
     lane.present_frame(_frame(7))
 
     assert overlay_source.requested_frame_ids == [FrameIdentifier(sequence_id=7, timestamp_monotime_us=7000.0)]
-    assert len(display.frames) == 1
+    assert display.frame_ids() == [7]
     assert display.frames[0].overlays is not None
     assert display.frames[0].overlays.overlay_id == 7
 
 
-def test_offline_lane_displays_frame_before_scheduling_scene_inspection(qtbot: object) -> None:
+def test_lane_displays_frame_before_scheduling_scene_inspection(qtbot: QtBot) -> None:
+    """Inspection runs after the frame is on screen, so a slow inspector never delays playback."""
     inspector = RecordingSceneInspector()
     overlay_source = _OverlaySource(_overlay(7))
     display = _DisplayWithInspectorAssertion(inspector)
-    lane = OfflineLane(
-        content=cast(SeekableVideoContent, object()),
-        name="lane",
-        display=display,  # type: ignore[arg-type]
-        overlay_source=overlay_source,  # type: ignore[arg-type]
-        tools_panel=cast(MediaToolsPanel, inspector),
-    )
+    lane = _lane(display, overlay_source=overlay_source, tools_panel=cast(MediaToolsPanel, inspector))
 
     lane.present_frame(_frame(7))
 
     assert len(display.frames) == 1
     assert inspector.updates == []
-    qtbot.waitUntil(lambda: len(inspector.updates) == 1)  # type: ignore[attr-defined]
+    qtbot.waitUntil(lambda: len(inspector.updates) == 1)
     inspected_scene, inspected_frame_id, inspected_metadata = inspector.updates[0]
     assert overlay_source.overlay is not None
     assert inspected_scene is overlay_source.overlay.content
@@ -319,140 +345,107 @@ def test_offline_lane_displays_frame_before_scheduling_scene_inspection(qtbot: o
     assert inspected_metadata == {"source": "direct"}
 
 
-def test_offline_session_shared_secondary_presents_latest_frame_with_each_lanes_overlay(qtbot: object) -> None:
-    session, primary_display, primary_source = _make_primary_session(qtbot)
-    secondary_source = _AsyncFrameSource()
+def test_secondary_video_shows_only_the_current_primary_frame(qtbot: QtBot) -> None:
+    """Lanes on a second video follow the primary frame; superseded or stale completions never reach the screen."""
+    primary_display = _Display()
+    primary = _PlaybackSource()
+    secondary = _AsyncFrameSource()
     displays = [_Display(), _Display()]
     overlays = [_OverlaySource(_overlay(90)), _OverlaySource(_overlay(91))]
-    for display, overlay in zip(displays, overlays, strict=True):
-        session.lanes.append(
-            OfflineLane(
-                content=cast(SeekableVideoContent, object()),
-                name="secondary",
-                display=display,  # type: ignore[arg-type]
-                overlay_source=overlay,  # type: ignore[arg-type]
-                video_source=secondary_source,  # type: ignore[arg-type]
-                source_index=1,
-            )
-        )
-    pooled = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
-        source=secondary_source,  # type: ignore[arg-type]
-        relay=offline_viewer_runtime._FrameDeliveryRelay(1, session.container),  # noqa: SLF001
-        source_index=1,
+    session = _make_session(
+        qtbot,
+        [
+            _lane(primary_display, video_source=primary),
+            *(
+                _lane(display, overlay_source=overlay, video_source=secondary, source_index=1)
+                for display, overlay in zip(displays, overlays, strict=True)
+            ),
+        ],
+        [primary, secondary],
     )
-    session._source_pool.append(pooled)  # noqa: SLF001
 
-    session._on_frame_ready(0, _source_frame(primary_source, 7))  # noqa: SLF001
-    session._on_frame_ready(0, _source_frame(primary_source, 9))  # noqa: SLF001
-    assert secondary_source.requests == [7]
-    worker = threading.Thread(target=lambda: secondary_source.complete(7))
-    worker.start()
-    worker.join()
+    # Frame 9 arrives while frame 7 is still decoding on the second video: 7 is skipped once it completes.
+    primary.deliver(7)
+    primary.deliver(9)
+    assert secondary.requests == [7]
+    secondary.complete_from_worker(7)
     assert displays[0].frames == displays[1].frames == []
-    assert secondary_source.requests == [7]
-    qtbot.waitUntil(lambda: secondary_source.requests == [7, 9])  # type: ignore[attr-defined]
-    worker = threading.Thread(target=lambda: secondary_source.complete(9))
-    worker.start()
-    worker.join()
+    qtbot.waitUntil(lambda: secondary.requests == [7, 9])
+    secondary.complete_from_worker(9)
     assert displays[0].frames == displays[1].frames == []
-    qtbot.waitUntil(lambda: all(display.frames for display in displays))  # type: ignore[attr-defined]
-    assert [frame.frame.frame_id for frame in primary_display.frames] == [7, 9]
+    qtbot.waitUntil(lambda: all(display.frames for display in displays))
+    assert primary_display.frame_ids() == [7, 9]
     for index, display in enumerate(displays):
-        assert [frame.frame.frame_id for frame in display.frames] == [9]
+        assert display.frame_ids() == [9]
         assert display.frames[0].overlays is not None
         assert display.frames[0].overlays.overlay_id == 90 + index
         assert [frame_id.sequence_id for frame_id in overlays[index].requested_frame_ids] == [9]
 
-    # Seeking to the same pending frame must still reject its earlier completion.
-    session._on_frame_ready(0, _source_frame(primary_source, 10))  # noqa: SLF001
-    old_completion = secondary_source.callbacks[10]
+    # Seeking to the frame already being decoded still rejects the completion requested before the seek.
+    primary.deliver(10)
+    before_seek = secondary.callbacks[10]
     session.jump_to_frame(10)
-    session._on_frame_ready(0, _source_frame(primary_source, 10))  # noqa: SLF001
-    old_completion(_frame(10))
-    assert len(displays[0].frames) == 1
-    secondary_source.complete(10)
-    assert [frame.frame.frame_id for frame in displays[0].frames] == [9, 10]
+    primary.deliver(10)
+    before_seek(_frame(10))
+    assert displays[0].frame_ids() == [9]
+    secondary.complete(10)
+    assert displays[0].frame_ids() == [9, 10]
 
-    session._on_frame_ready(0, _source_frame(primary_source, 11))  # noqa: SLF001
+    # Pausing drops the pending request; a missing secondary frame keeps the previous one on screen.
+    primary.deliver(11)
     session.pause_playback()
-    secondary_source.complete(11)
-    assert len(displays[0].frames) == 2
+    secondary.complete(11)
     session.step_frames(2)
-    session._on_frame_ready(0, _source_frame(primary_source, 12))  # noqa: SLF001
-    secondary_source.callbacks[12](None)
-    # A shorter or unavailable secondary keeps its previous displayed frame.
-    assert [frame.frame.frame_id for frame in displays[0].frames] == [9, 10]
-    session._on_frame_ready(0, _source_frame(primary_source, 13))  # noqa: SLF001
-    secondary_source.complete(13)
-    assert [frame.frame.frame_id for frame in displays[0].frames] == [9, 10, 13]
+    primary.deliver(13)
+    secondary.callbacks[13](None)
+    assert displays[0].frame_ids() == [9, 10]
+    primary.deliver(14)
+    secondary.complete(14)
+    assert displays[0].frame_ids() == [9, 10, 14]
 
-    session._on_frame_ready(0, _source_frame(primary_source, 14))  # noqa: SLF001
-    late_completion = secondary_source.callbacks[14]
-    # Model the source pool being retired while its callback is still on the worker.
-    session._source_pool.remove(pooled)  # noqa: SLF001
-    replacement = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
-        source=secondary_source,  # type: ignore[arg-type]
-        relay=offline_viewer_runtime._FrameDeliveryRelay(1, session.container),  # noqa: SLF001
-        source_index=1,
-    )
-    session._source_pool.append(replacement)  # noqa: SLF001
-    secondary_source.frameReady.connect(replacement.relay.deliver)
-    replacement.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
-    late_completion(_frame(14))
-    assert len(displays[0].frames) == 3
+    # A decoder finishing after the session is gone must not touch it.
+    primary.deliver(15)
+    late_completion = secondary.callbacks[15]
     session.cleanup(blocking=True)
     QCoreApplication.sendPostedEvents(session, QEvent.Type.DeferredDelete)
     failures: list[Exception] = []
 
     def complete_after_destruction() -> None:
         try:
-            late_completion(_frame(14))
+            late_completion(_frame(15))
         except Exception as exc:
             failures.append(exc)
 
     worker = threading.Thread(target=complete_after_destruction)
     worker.start()
     worker.join()
+    QCoreApplication.processEvents()
     assert failures == []
-    assert len(displays[0].frames) == 3
+    assert displays[0].frame_ids() == [9, 10, 14]
 
 
-def test_offline_session_drops_queued_old_primary_frame_until_seek_target_arrives(
-    qtbot: object,
-) -> None:
+def test_seek_drops_frames_decoded_before_it(qtbot: QtBot) -> None:
+    """Frames queued from the old position are skipped until the seek target arrives; frames without a position
+    generation are always shown."""
     session, display, source = _make_primary_session(qtbot)
     session.start_playback()
-    current_frame = source.total_frames // 2
-    target_frame = current_frame - 2
-    queued_old_frame = current_frame + 1
-    playback_after_target = target_frame + 1
-    old_generation = source._position_generation
+    old_generation = source.position_generation
+    source.deliver(500)
 
-    session._on_frame_ready(0, _source_frame(source, current_frame))  # noqa: SLF001
-    source.current_frame = current_frame
-    session.jump_to_frame(target_frame)
-    session._on_frame_ready(0, _frame(queued_old_frame, position_generation=old_generation))  # noqa: SLF001
-    session._on_frame_ready(0, _source_frame(source, target_frame))  # noqa: SLF001
-    session._on_frame_ready(0, _frame(queued_old_frame, position_generation=old_generation))  # noqa: SLF001
-    session._on_frame_ready(0, _source_frame(source, playback_after_target))  # noqa: SLF001
+    session.jump_to_frame(498)
+    source.deliver(501, position_generation=old_generation)
+    source.deliver(498)
+    source.deliver(501, position_generation=old_generation)
+    source.deliver(499)
 
-    assert source.jump_calls[-1] == target_frame
-    displayed_ids = [frame.frame.frame_id for frame in display.frames]
-    assert displayed_ids == [current_frame, target_frame, playback_after_target]
-
-
-def test_offline_session_accepts_primary_frames_without_position_generation(
-    qtbot: object,
-) -> None:
-    session, display, source = _make_primary_session(qtbot)
-    session._on_frame_ready(0, _source_frame(source, 10))  # noqa: SLF001
-    source.current_frame = 10
+    assert source.jump_calls[-1] == 498
+    assert display.frame_ids() == [500, 498, 499]
 
     session.jump_to_frame(4)
-    session._on_frame_ready(0, _frame(5))  # noqa: SLF001
+    source.frameReady.emit(_frame(5))
+    QCoreApplication.processEvents()
 
-    displayed_ids = [frame.frame.frame_id for frame in display.frames]
-    assert displayed_ids == [10, 5]
+    assert display.frame_ids() == [500, 498, 499, 5]
 
 
 class _DeliveringSource(QObject):
@@ -461,10 +454,10 @@ class _DeliveringSource(QObject):
     frameReady = Signal(FrameData)
 
 
-def test_frame_relay_presents_only_newest_of_queued_deliveries(qtbot: object) -> None:
+def test_frame_relay_presents_only_newest_of_queued_deliveries(qtbot: QtBot) -> None:
     """A GUI thread that falls behind presents the newest queued frame and skips superseded ones."""
     container = QWidget()
-    qtbot.addWidget(container)  # type: ignore[attr-defined]
+    qtbot.addWidget(container)
     relay = offline_viewer_runtime._FrameDeliveryRelay(3, container)  # noqa: SLF001
     source = _DeliveringSource()
     source.frameReady.connect(relay.deliver)
@@ -482,125 +475,77 @@ def test_frame_relay_presents_only_newest_of_queued_deliveries(qtbot: object) ->
 
     deliver_from_worker(1, 2, 3)
     assert presented == []
-    qtbot.waitUntil(lambda: bool(presented))  # type: ignore[attr-defined]
+    qtbot.waitUntil(lambda: bool(presented))
     QCoreApplication.processEvents()
     assert presented == [(3, 3)]
 
     deliver_from_worker(4)
-    qtbot.waitUntil(lambda: len(presented) == 2)  # type: ignore[attr-defined]
+    qtbot.waitUntil(lambda: len(presented) == 2)
     assert presented == [(3, 3), (3, 4)]
 
 
-def test_offline_session_updates_current_frame_before_display_callbacks(
-    qtbot: object,
-) -> None:
+def test_step_during_display_is_relative_to_the_frame_being_shown(qtbot: QtBot) -> None:
     """A command triggered by displaying frame 800 should seek relative to frame 800, not 799."""
     source = _PlaybackSource(total_frames=1000)
     display = _StepBackDuringDisplay(trigger_frame=800, delta=-30)
-    lane = OfflineLane(
-        content=cast(SeekableVideoContent, object()),
-        name="primary",
-        display=display,  # type: ignore[arg-type]
-        overlay_source=None,
-        video_source=source,  # type: ignore[arg-type]
-    )
-    container = QWidget()
-    qtbot.addWidget(container)  # type: ignore[attr-defined]
-    pooled_source = offline_viewer_runtime._PooledVideoSource(  # noqa: SLF001
-        source=source,  # type: ignore[arg-type]
-        relay=offline_viewer_runtime._FrameDeliveryRelay(0, container),  # noqa: SLF001
-        source_index=0,
-    )
-    session = OfflineSession([lane], container, media=EntryMedia(), source_pool=[pooled_source])
-    source.frameReady.connect(pooled_source.relay.deliver)
-    pooled_source.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
+    session = _make_session(qtbot, [_lane(display, video_source=source)], [source])
     display.session = session
 
-    source.current_frame = 799
-    session._on_frame_ready(0, _source_frame(source, 799))  # noqa: SLF001
-    source.current_frame = 800
-    session._on_frame_ready(0, _source_frame(source, 800))  # noqa: SLF001
+    source.deliver(799)
+    source.deliver(800)
 
-    assert (
-        display.current_frame_seen_during_display,
-        source.jump_calls[-1],
-    ) == (800, 770)
+    assert display.current_frame_seen_during_display == 800
+    assert source.jump_calls[-1] == 770
 
 
-def test_entry_media_opens_file_video_source_from_seekable_spec(monkeypatch: pytest.MonkeyPatch) -> None:
-    opened: list[tuple[str, object]] = []
+class _RecordingProvider:
+    """Overlay data provider test double recording how the decoder was configured."""
 
-    class _FileFrameSource:
-        def __init__(self, file_path: str, **kwargs: object) -> None:
-            opened.append((file_path, kwargs["image_sequence_config"]))
+    def __init__(self, file_path: Path, **kwargs: object) -> None:
+        self.file_path = file_path
+        self.kwargs = kwargs
+        self.policy = TimestampFallbackPolicy()
 
-    monkeypatch.setattr(offline_entry_media, "FileFrameSource", _FileFrameSource)
-    video = SeekableVideoContent(
-        display_name="clip.mp4",
-        source_spec=FileVideoSourceSpec(path=Path("/tmp/clip.mp4")),
-    )
+    def set_timestamp_fallback_policy(self, policy: TimestampFallbackPolicy) -> None:
+        self.policy = policy
 
-    source = offline_entry_media.create_frame_source(video)
+    def get_timestamp_fallback_policy(self) -> TimestampFallbackPolicy:
+        return self.policy
 
-    assert isinstance(source, _FileFrameSource)
-    assert opened == [("/tmp/clip.mp4", None)]
+    def get_total_frames(self) -> int:
+        return 0
 
 
-def test_entry_media_opens_file_overlay_source_from_decoder_spec(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _DecoderFactory:
-        def __call__(self, **_kwargs: object) -> object:
-            return object()
+def test_overlay_source_is_opened_with_the_decoder_options_and_fallback_policy_of_its_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def get_file_decoder_factory(handler_type: str) -> type[_RecordingProvider]:
+        assert handler_type == "MOT_FILE"
+        return _RecordingProvider
 
-    decoder_factory = _DecoderFactory()
-    lookups: list[str] = []
-    opened: list[tuple[Path, object, str, dict[str, object]]] = []
-
-    class _FileOverlaySource:
-        def __init__(self, path: Path, factory: object, handler_type: str, **kwargs: object) -> None:
-            opened.append((path, factory, handler_type, kwargs))
-
-    def _get_file_decoder_factory(handler_type: str) -> object:
-        lookups.append(handler_type)
-        return decoder_factory
-
-    monkeypatch.setattr(offline_entry_media, "FileOverlaySource", _FileOverlaySource)
-    monkeypatch.setattr(offline_entry_media, "get_file_decoder_factory", _get_file_decoder_factory)
+    monkeypatch.setattr(offline_entry_media, "get_file_decoder_factory", get_file_decoder_factory)
+    policy = TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY, tolerance_us=12_000)
     overlay = OverlayContent(
         display_name="overlay.txt",
         source_spec=FileOverlaySourceSpec(
             path=Path("/tmp/overlay.txt"),
             handler_type="MOT_FILE",
-            timestamp_fallback_policy=TimestampFallbackPolicy(
-                mode=TimestampFallbackMode.EXACT_ONLY,
-                tolerance_us=12_000,
-            ),
+            timestamp_fallback_policy=policy,
             decoder_kwargs={"width": 1920, "height": 1080},
         ),
-        metadata={"path": "/tmp/overlay.txt", "handler_type": "MOT_FILE"},
     )
 
-    frame_timeline = FrameTimeline.lazy(count=0, timestamp_loader=tuple)
-    overlay_source, overlay_policy = offline_entry_media.create_overlay_source(overlay, frame_timeline=frame_timeline)
+    overlay_source, overlay_policy = offline_entry_media.create_overlay_source(
+        overlay, frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple)
+    )
 
-    assert overlay.source_spec is not None
-    assert isinstance(overlay.source_spec, FileOverlaySourceSpec)
-    assert overlay.source_spec.decoder_kwargs == {"width": 1920, "height": 1080}
-    assert isinstance(overlay_source, _FileOverlaySource)
-    assert overlay_policy is not None
-    assert lookups == ["MOT_FILE"]
-    opened_path, opened_factory, opened_handler, opened_kwargs = opened[0]
-    assert opened_path == Path("/tmp/overlay.txt")
-    assert opened_handler == "MOT_FILE"
-    assert opened_kwargs == {
-        "frame_timeline": frame_timeline,
-        "timestamp_fallback_policy": TimestampFallbackPolicy(
-            mode=TimestampFallbackMode.EXACT_ONLY,
-            tolerance_us=12_000,
-        ),
-    }
-    assert isinstance(opened_factory, partial)
-    assert opened_factory.func is decoder_factory
-    assert opened_factory.keywords == {"width": 1920, "height": 1080}
+    provider = overlay_source.data_provider
+    assert isinstance(provider, _RecordingProvider)
+    assert provider.file_path == Path("/tmp/overlay.txt")
+    assert provider.kwargs == {"width": 1920, "height": 1080}
+    assert overlay_source.handler_type == "MOT_FILE"
+    assert overlay_source.get_timestamp_fallback_policy() == policy
+    assert overlay_policy.settings.enabled
 
 
 def test_entry_media_rejects_non_file_overlay_source_spec() -> None:
@@ -615,20 +560,13 @@ def test_entry_media_rejects_non_file_overlay_source_spec() -> None:
         )
 
 
-def test_offline_lane_uses_stateless_retention_and_original_sample_time() -> None:
+def test_lane_retains_a_recent_overlay_at_its_original_sample_time() -> None:
     """Direct display and backward revisits use lookup selection and retained styling."""
-    from dataclasses import replace
-
-    from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
-
     overlay = replace(_overlay(7), metadata={"timestamp_match_type": "retained"})
-    overlay_source = _OverlaySource(overlay)
     display = _Display()
-    lane = OfflineLane(
-        content=cast(SeekableVideoContent, object()),
-        name="lane",
-        display=display,  # type: ignore[arg-type]
-        overlay_source=overlay_source,  # type: ignore[arg-type]
+    lane = _lane(
+        display,
+        overlay_source=_OverlaySource(overlay),
         overlay_policy=OverlayPersistencePolicy(OverlayPersistenceSettings(enabled=True, timeout_ms=2, opacity=0.4)),
     )
     for frame in [8, 10, 8, 6]:

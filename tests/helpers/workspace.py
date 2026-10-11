@@ -59,3 +59,14 @@ class DummyViewer(WorkspaceWidget):
     def refresh_item_consideration(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Record consideration updates forwarded by the workspace."""
         self.refresh_calls.append((item_ref, considered))
+
+
+class PlainWorkspaceWidget(WorkspaceWidget):
+    """Minimal workspace widget with no content, for layout and attachment tests."""
+
+    def _setup_widget_ui(self) -> None:
+        pass
+
+    def get_display_name(self) -> str:
+        """Return a fixed name."""
+        return "Plain"

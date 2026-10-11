@@ -8,15 +8,24 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QRunnable, QThreadPool
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QWidget,
+)
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace import (
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
     LiveOverlayMode,
+    LiveRTSPStreamSpec,
     LiveWebSocketOverlaySourceSpec,
-    OverlaySourceKind,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
@@ -25,7 +34,30 @@ from ax_devil.modules.workspace import (
 from ax_devil.modules.workspace.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.add_content.add_video_dialog import AddVideoDialog
+from ax_devil.modules.workspace.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.intake import WorkspaceDecoderOption, WorkspaceIntake
+from tests.helpers.forms import form_field
+
+
+def _ok(dialog: QWidget) -> QPushButton:
+    return next(button for button in dialog.findChildren(QPushButton) if button.text() == "OK")
+
+
+def _shows(dialog: QWidget, text: str) -> bool:
+    return any(label.text() == text for label in dialog.findChildren(QLabel))
+
+
+def _visible_texts(dialog: QWidget) -> list[str]:
+    return [label.text() for label in dialog.findChildren(QLabel) if label.isVisibleTo(dialog)]
+
+
+def _set_overlay_mode(dialog: AddLiveStreamDialog, mode: LiveOverlayMode) -> None:
+    combo = form_field(dialog, "Overlay Mode", QComboBox)
+    combo.setCurrentIndex(combo.findData(mode.value))
+
+
+def _select(combo: QComboBox, data: str) -> None:
+    combo.setCurrentIndex(combo.findData(data))
 
 
 class _DialogOptionProvider:
@@ -36,59 +68,12 @@ class _DialogOptionProvider:
         return (WorkspaceDecoderOption(handler_type="TEST_HANDLER", display_name="Test Handler"),)
 
 
-def _set_overlay_mode(dialog: AddLiveStreamDialog, mode: LiveOverlayMode) -> None:
-    index = dialog._overlay_mode_combo.findData(mode.value)
-    dialog._overlay_mode_combo.setCurrentIndex(index)
-
-
-@pytest.mark.parametrize("small_window", [False, True])
-def test_live_transport_selection_preserves_usable_geometry(qtbot: QtBot, small_window: bool) -> None:
-    """Every overlay mode fits the opening size, so selecting one never resizes the window or adds scrolling."""
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-    dialog.show()
-    if small_window:
-        dialog.resize(420, 300)
-    QApplication.processEvents()
-    opening_size = dialog.size()
-    for mode in (*LiveOverlayMode, LiveOverlayMode.NONE):
-        _set_overlay_mode(dialog, mode)
-        QApplication.processEvents()
-        assert dialog.size() == opening_size
-        if not small_window:
-            assert dialog._scroll_area.horizontalScrollBar().maximum() == 0
-            assert dialog._scroll_area.verticalScrollBar().maximum() == 0
-        for index in range(dialog._button_layout.count()):
-            item = dialog._button_layout.itemAt(index)
-            assert item is not None
-            button = item.widget()
-            if button is not None:
-                assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
-        if mode is LiveOverlayMode.MQTT:
-            field = dialog._data_source_choice
-            dialog._scroll_area.ensureWidgetVisible(field)
-            QApplication.processEvents()
-            assert (
-                dialog._scroll_area.viewport()
-                .rect()
-                .contains(field.mapTo(dialog._scroll_area.viewport(), field.rect().center()))
-            )
-    dialog.cleanup()
-
-
-def test_live_overlay_pages_describe_their_modes(qtbot: QtBot) -> None:
-    """The None page explains every mode; each other mode's page starts with its own description."""
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-    for mode in LiveOverlayMode:
-        _set_overlay_mode(dialog, mode)
-        page = dialog._transport_pages.currentWidget()
-        assert page is not None
-        texts = [label.text() for label in page.findChildren(QLabel)]
-        assert mode.description in texts
-        if mode is LiveOverlayMode.NONE:
-            assert all(any(other.description in text for text in texts) for other in LiveOverlayMode)
-    dialog.cleanup()
+@pytest.fixture
+def live_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ax_devil.modules.workspace.add_content.add_live_stream_dialog.default_workspace_intake",
+        lambda: WorkspaceIntake(_DialogOptionProvider()),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -130,11 +115,12 @@ def _stub_live_stream_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     raw_defaults["live_stream"]["analytics-mqtt"]["broker_host"] = "$AX_DEVIL_MQTT_BROKER_ADDR"
     raw_defaults["live_stream"]["analytics-mqtt"]["broker_username"] = "$AX_DEVIL_MQTT_BROKER_USER"
     raw_defaults["live_stream"]["analytics-mqtt"]["broker_password"] = "$AX_DEVIL_MQTT_BROKER_PASS"
-    monkeypatch.setattr(
-        AddLiveStreamDialog,
-        "_load_defaults",
-        lambda self: (raw_defaults, resolved_defaults),
-    )
+    _use_defaults(monkeypatch, raw_defaults, resolved_defaults)
+
+
+def _use_defaults(monkeypatch: pytest.MonkeyPatch, raw: dict[str, Any], resolved: dict[str, Any]) -> None:
+    """Replace the dialog's config lookup; the dialog has no other seam for configured defaults."""
+    monkeypatch.setattr(AddLiveStreamDialog, "_load_defaults", lambda self: (raw, resolved))
 
 
 @dataclass
@@ -166,6 +152,50 @@ def discovery(monkeypatch: pytest.MonkeyPatch) -> _Discovery:
     return pending
 
 
+@pytest.mark.parametrize("small_window", [False, True])
+def test_live_transport_selection_preserves_usable_geometry(qtbot: QtBot, small_window: bool) -> None:
+    """Every overlay mode fits the opening size, so selecting one never resizes the window or adds scrolling."""
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    dialog.show()
+    if small_window:
+        dialog.resize(420, 300)
+    QApplication.processEvents()
+    opening_size = dialog.size()
+    scroll_area = dialog.findChild(QScrollArea)
+    assert scroll_area is not None
+    for mode in (*LiveOverlayMode, LiveOverlayMode.NONE):
+        _set_overlay_mode(dialog, mode)
+        QApplication.processEvents()
+        assert dialog.size() == opening_size
+        if not small_window:
+            assert scroll_area.horizontalScrollBar().maximum() == 0
+            assert scroll_area.verticalScrollBar().maximum() == 0
+        for button in dialog.findChildren(QPushButton):
+            if button.isVisibleTo(dialog) and not scroll_area.isAncestorOf(button):
+                assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
+        if mode is LiveOverlayMode.MQTT:
+            data_source = form_field(dialog, "Data Source", AnalyticsChoice)
+            scroll_area.ensureWidgetVisible(data_source)
+            QApplication.processEvents()
+            viewport = scroll_area.viewport()
+            assert viewport.rect().contains(data_source.mapTo(viewport, data_source.rect().center()))
+    dialog.cleanup()
+
+
+def test_live_overlay_pages_describe_their_modes(qtbot: QtBot) -> None:
+    """The None page explains every mode; each other mode's page shows its own description."""
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    for mode in LiveOverlayMode:
+        _set_overlay_mode(dialog, mode)
+        texts = _visible_texts(dialog)
+        assert mode.description in texts
+        if mode is LiveOverlayMode.NONE:
+            assert all(any(other.description in text for text in texts) for other in LiveOverlayMode)
+    dialog.cleanup()
+
+
 class _VideoOptionProvider(_DialogOptionProvider):
     def file_decoder_options(self) -> tuple[WorkspaceDecoderOption, ...]:
         return (
@@ -176,11 +206,15 @@ class _VideoOptionProvider(_DialogOptionProvider):
 
 
 @pytest.fixture
-def video_dialog(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> AddVideoDialog:
+def video_intake(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "ax_devil.modules.workspace.add_content.add_video_dialog.default_workspace_intake",
         lambda: WorkspaceIntake(_VideoOptionProvider()),
     )
+
+
+@pytest.fixture
+def video_dialog(qtbot: QtBot, video_intake: None) -> AddVideoDialog:
     dialog = AddVideoDialog()
     qtbot.addWidget(dialog)
     return dialog
@@ -194,24 +228,26 @@ def test_add_video_keeps_ok_disabled_and_says_why_until_selection_is_complete(
     video.write_bytes(b"")
     overlay = tmp_path / "overlay.jsonl"
     overlay.write_text("{}\n")
+    video_edit = form_field(video_dialog, "Video File", QLineEdit)
+    overlay_edit = form_field(video_dialog, "Overlay File", QLineEdit)
     steps = [
-        (video_dialog._video_path_edit, "", "Choose a video file to continue."),
-        (video_dialog._video_path_edit, str(tmp_path / "missing.mp4"), "Video file not found."),
-        (video_dialog._video_path_edit, str(video), ""),
-        (video_dialog._overlay_path_edit, str(tmp_path / "missing.jsonl"), "Overlay file not found."),
-        (video_dialog._overlay_path_edit, str(overlay), "Choose the data handler that reads the overlay file."),
+        (video_edit, "", "Choose a video file to continue."),
+        (video_edit, str(tmp_path / "missing.mp4"), "Video file not found."),
+        (video_edit, str(video), ""),
+        (overlay_edit, str(tmp_path / "missing.jsonl"), "Overlay file not found."),
+        (overlay_edit, str(overlay), "Choose the data handler that reads the overlay file."),
     ]
     for edit, text, message in steps:
         edit.setText(text)
-        assert video_dialog._message_label.text() == message
-        assert video_dialog._ok_button.isEnabled() is not bool(message)
+        assert _ok(video_dialog).isEnabled() is not bool(message)
+        if message:
+            assert _shows(video_dialog, message)
 
     video_dialog.accept()
     assert video_dialog.get_result() is None
 
-    video_dialog._handler_combo.setCurrentIndex(video_dialog._handler_combo.findData("TRACKS"))
-    assert video_dialog._ok_button.isEnabled()
-    video_dialog.accept()
+    _select(form_field(video_dialog, "Data Handler", QComboBox), "TRACKS")
+    _ok(video_dialog).click()
 
     assert video_dialog.get_result() == VideoFileStartup(
         video_path=video, overlay_path=overlay, handler_type="TRACKS", display_name=None
@@ -226,38 +262,37 @@ def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
     video.write_bytes(b"")
     overlay = tmp_path / "gt.txt"
     overlay.write_text("1,1,0,0,1,1,1,-1,-1,-1\n")
-
-    assert not video_dialog._handler_combo.isEnabled()
-    video_dialog._video_path_edit.setText(str(video))
-    video_dialog._overlay_path_edit.setText(str(overlay))
-
-    assert video_dialog._handler_combo.isEnabled()
-    assert video_dialog._handler_combo.currentData() == "TXT"
-    video_dialog._overlay_path_edit.setText(str(tmp_path / "scene.jsonl"))
-    assert video_dialog._handler_combo.currentData() is None
-    video_dialog._overlay_path_edit.setText(str(overlay))
     pdf = tmp_path / "notes.pdf"
     pdf.write_bytes(b"")
-    video_dialog._overlay_path_edit.setText(str(pdf))
-    assert video_dialog._handler_combo.currentData() is None
-    assert not video_dialog._ok_button.isEnabled()
-    video_dialog._overlay_path_edit.setText(str(overlay))
-    assert video_dialog._handler_combo.currentData() == "TXT"
-    assert video_dialog._name_edit.placeholderText() == "clip.mp4"
-    video_dialog._name_edit.setText("Gate camera")
-    video_dialog.accept()
+    handler = form_field(video_dialog, "Data Handler", QComboBox)
+    overlay_edit = form_field(video_dialog, "Overlay File", QLineEdit)
+
+    assert not handler.isEnabled()
+    form_field(video_dialog, "Video File", QLineEdit).setText(str(video))
+    overlay_edit.setText(str(overlay))
+    assert handler.isEnabled()
+    assert handler.currentData() == "TXT"
+
+    overlay_edit.setText(str(tmp_path / "scene.jsonl"))
+    assert handler.currentData() is None
+    overlay_edit.setText(str(pdf))
+    assert handler.currentData() is None
+    assert not _ok(video_dialog).isEnabled()
+
+    overlay_edit.setText(str(overlay))
+    assert handler.currentData() == "TXT"
+    name_edit = form_field(video_dialog, "Display Name", QLineEdit)
+    assert name_edit.placeholderText() == "clip.mp4"
+    name_edit.setText("Gate camera")
+    _ok(video_dialog).click()
 
     assert video_dialog.get_result() == VideoFileStartup(
         video_path=video, overlay_path=overlay, handler_type="TXT", display_name="Gate camera"
     )
 
 
-def test_add_video_prefills_a_dropped_selection(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_add_video_prefills_a_dropped_selection(qtbot: QtBot, video_intake: None, tmp_path: Path) -> None:
     """A dropped video and ambiguous overlay open the dialog filled in, waiting only for the handler."""
-    monkeypatch.setattr(
-        "ax_devil.modules.workspace.add_content.add_video_dialog.default_workspace_intake",
-        lambda: WorkspaceIntake(_VideoOptionProvider()),
-    )
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"")
     overlay = tmp_path / "scene.jsonl"
@@ -266,57 +301,49 @@ def test_add_video_prefills_a_dropped_selection(qtbot: QtBot, monkeypatch: pytes
     dialog = AddVideoDialog(initial=VideoFileStartup(video_path=video, overlay_path=overlay))
     qtbot.addWidget(dialog)
 
-    assert dialog._video_path_edit.text() == str(video)
-    assert dialog._overlay_path_edit.text() == str(overlay)
-    assert dialog._message_label.text() == "Choose the data handler that reads the overlay file."
-    assert not dialog._ok_button.isEnabled()
+    assert not _ok(dialog).isEnabled()
+    assert _shows(dialog, "Choose the data handler that reads the overlay file.")
+    _select(form_field(dialog, "Data Handler", QComboBox), "FRAME")
+    _ok(dialog).click()
+    assert dialog.get_result() == VideoFileStartup(video_path=video, overlay_path=overlay, handler_type="FRAME")
 
 
-def _blocked_reason(dialog: AddLiveStreamDialog) -> str:
-    """Return the inline reason the dialog cannot be accepted, checking that OK is disabled and accept is refused."""
-    assert not dialog._ok_button.isEnabled()
+def _assert_blocked(dialog: AddLiveStreamDialog, reason: str) -> None:
+    """Check that OK is disabled, accepting is refused, and *reason* is shown inline."""
+    assert not _ok(dialog).isEnabled()
     dialog.accept()
     assert dialog.get_result() is None
     assert dialog.result() != AddLiveStreamDialog.DialogCode.Accepted
-    return dialog._validation_label.text()
+    assert _shows(dialog, reason)
 
 
 def test_add_live_stream_ok_waits_for_a_host(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     """Without a configured default host, OK stays disabled and says why until a host is entered."""
-    monkeypatch.setattr(
-        AddLiveStreamDialog,
-        "_load_defaults",
-        lambda self: ({"device": {}, "live_stream": {}}, {"device": {}, "live_stream": {}}),
-    )
+    empty: dict[str, Any] = {"device": {}, "live_stream": {}}
+    _use_defaults(monkeypatch, empty, empty)
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
+    host = form_field(dialog, "Host", QLineEdit)
 
-    assert _blocked_reason(dialog) == "Enter the device host."
+    _assert_blocked(dialog, "Enter the device host.")
 
-    dialog._host_edit.setText("camera.local")
-    assert dialog._ok_button.isEnabled()
-    assert dialog._validation_label.text() == ""
+    host.setText("camera.local")
+    assert _ok(dialog).isEnabled()
+    assert not _shows(dialog, "Enter the device host.")
 
-    dialog._host_edit.setText("   ")
-    assert _blocked_reason(dialog) == "Enter the device host."
+    host.setText("   ")
+    _assert_blocked(dialog, "Enter the device host.")
 
 
-def test_add_live_stream_without_overlay_ignores_the_disabled_handler(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_add_live_stream_without_overlay_ignores_the_disabled_handler(qtbot: QtBot, live_handler: None) -> None:
     """Switching back to no overlay keeps OK available even though the handler combo still shows a choice."""
-    monkeypatch.setattr(
-        "ax_devil.modules.workspace.add_content.add_live_stream_dialog.default_workspace_intake",
-        lambda: WorkspaceIntake(_DialogOptionProvider()),
-    )
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
     _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
-    dialog._handler_combo.setCurrentIndex(dialog._handler_combo.findData("TEST_HANDLER"))
+    _select(form_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
     _set_overlay_mode(dialog, LiveOverlayMode.NONE)
 
-    assert dialog._ok_button.isEnabled()
-    dialog.accept()
+    _ok(dialog).click()
     result = dialog.get_result()
     assert result is not None
     assert result.overlays == ()
@@ -326,11 +353,10 @@ def test_add_live_stream_requires_handler_when_overlay_mode_is_enabled(qtbot: Qt
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
-    dialog._host_edit.setText("camera.local")
     _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
-    dialog._handler_combo.setCurrentIndex(0)
+    form_field(dialog, "Handler Type", QComboBox).setCurrentIndex(0)
 
-    assert _blocked_reason(dialog) == "Select a handler type for RTSP Embedded overlays."
+    _assert_blocked(dialog, "Select a handler type for RTSP Embedded overlays.")
 
 
 def test_add_live_stream_requires_positive_camera_head(qtbot: QtBot) -> None:
@@ -338,71 +364,69 @@ def test_add_live_stream_requires_positive_camera_head(qtbot: QtBot) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
-    dialog._host_edit.setText("camera.local")
-    dialog._camera_head_edit.selectAll()
-    QTest.keyClicks(dialog._camera_head_edit, "0")
+    camera_head = form_field(dialog, "Camera Head", QLineEdit)
+    camera_head.selectAll()
+    QTest.keyClicks(camera_head, "0")
 
-    assert _blocked_reason(dialog) == "Camera Head must be a positive integer."
+    _assert_blocked(dialog, "Camera Head must be a positive integer.")
 
 
-def test_add_live_stream_requires_mqtt_host_and_data_source(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Override defaults to have empty MQTT host/data source so validation kicks in
-    empty_mqtt_defaults = {
+def test_add_live_stream_mqtt_needs_broker_and_data_source_then_builds_spec(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, live_handler: None, discovery: _Discovery
+) -> None:
+    """MQTT overlays stay blocked until a broker and a discovered data source are chosen."""
+    defaults: dict[str, Any] = {
         "device": {"host": "camera.local", "username": "root", "password": ""},
-        "live_stream": {
-            "rtsp": {"camera_head": 1, "resolution": "1280x720", "data_stream_handler": "ONVIF_XML"},
-            "analytics-mqtt": {
-                "broker_host": "",
-                "broker_username": "",
-                "broker_password": "",
-                "broker_port": 1883,
-                "data_source_key": "",
-                "data_stream_handler": "ADF_BETA_FRAME",
-                "device_api_protocol": "https",
-            },
-            "overlay_source": "none",
-        },
+        "live_stream": {"analytics-mqtt": {"device_api_protocol": "https"}, "overlay_source": "none"},
     }
-    monkeypatch.setattr(AddLiveStreamDialog, "_load_defaults", lambda self: (empty_mqtt_defaults, empty_mqtt_defaults))
-
+    _use_defaults(monkeypatch, defaults, defaults)
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
-    dialog._host_edit.setText("camera.local")
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
-    dialog._handler_combo.addItem("Test Handler", "TEST_HANDLER")
-    dialog._handler_combo.setCurrentIndex(dialog._handler_combo.findData("TEST_HANDLER"))
+    _select(form_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
+    _assert_blocked(dialog, "MQTT Host is required for MQTT overlay mode.")
 
-    assert _blocked_reason(dialog) == "MQTT Host is required for MQTT overlay mode."
+    form_field(dialog, "MQTT Host", QLineEdit).setText("broker.local")
+    form_field(dialog, "MQTT Username", QLineEdit).setText("mqtt-user")
+    _assert_blocked(dialog, "Data Source is required for MQTT overlay mode.")
 
-    dialog._mqtt_host_edit.setText("broker.local")
-    assert _blocked_reason(dialog) == "Data Source is required for MQTT overlay mode."
+    discovery.finish()
+    _select(form_field(dialog, "Data Source", AnalyticsChoice).combo, "analytics/source")
+    _ok(dialog).click()
+
+    result = dialog.get_result()
+    assert result is not None
+    assert result.overlays[0].source_spec == LiveMQTTOverlaySourceSpec(
+        handler_type="TEST_HANDLER",
+        broker_host="broker.local",
+        broker_username="mqtt-user",
+        analytics_data_source_key="analytics/source",
+        device_api_protocol="https",
+    )
 
 
-def test_add_live_stream_shows_defaults_as_placeholders(qtbot: QtBot) -> None:
+def test_add_live_stream_uses_env_backed_defaults_without_copying_them(qtbot: QtBot) -> None:
+    """Env-backed defaults appear as placeholders naming their variable, and an untouched form uses them."""
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
-    # Env-backed fields show resolved value + source in placeholder, text is empty
-    assert dialog._host_edit.text() == ""
-    assert "camera.local" in dialog._host_edit.placeholderText()
-    assert "$AX_DEVIL_TARGET_ADDR" in dialog._host_edit.placeholderText()
+    env_fields = [
+        ("Host", "camera.local", "$AX_DEVIL_TARGET_ADDR"),
+        ("Username", "root", "$AX_DEVIL_TARGET_USER"),
+        ("MQTT Host", "broker.local", "$AX_DEVIL_MQTT_BROKER_ADDR"),
+        ("MQTT Username", "mqtt-user", "$AX_DEVIL_MQTT_BROKER_USER"),
+    ]
+    for label, value, variable in env_fields:
+        edit = form_field(dialog, label, QLineEdit)
+        assert edit.text() == ""
+        assert value in edit.placeholderText()
+        assert variable in edit.placeholderText()
 
-    assert dialog._username_edit.text() == ""
-    assert "root" in dialog._username_edit.placeholderText()
-    assert "$AX_DEVIL_TARGET_USER" in dialog._username_edit.placeholderText()
-
-    assert dialog._mqtt_host_edit.text() == ""
-    assert "broker.local" in dialog._mqtt_host_edit.placeholderText()
-    assert "$AX_DEVIL_MQTT_BROKER_ADDR" in dialog._mqtt_host_edit.placeholderText()
-
-    assert dialog._mqtt_username_edit.text() == ""
-    assert "mqtt-user" in dialog._mqtt_username_edit.placeholderText()
-    assert dialog._mqtt_device_protocol_combo.currentText() == "https"
-
-    # Non-env fields still use setText
-    assert dialog._camera_head_edit.text() == "1"
-    assert dialog._resolution_edit.text() == "1280x720"
+    _ok(dialog).click()
+    result = dialog.get_result()
+    assert result is not None
+    assert result.source_spec == LiveRTSPStreamSpec(host="camera.local", username="root", password="")
 
 
 @pytest.mark.parametrize("available", [False, True])
@@ -413,14 +437,15 @@ def test_add_live_stream_selects_configured_data_source_only_when_available(
     discovery.sources = ("other/source", "analytics/source") if available else ("other/source",)
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
+    data_source = form_field(dialog, "Data Source", AnalyticsChoice).combo
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
     discovery.finish()
 
     expected = "analytics/source" if available else None
-    assert dialog._data_source_choice.combo.currentData() == expected
+    assert data_source.currentData() == expected
     _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
-    assert dialog._data_source_choice.combo.currentData() == expected
+    assert data_source.currentData() == expected
     assert not discovery.jobs
 
 
@@ -431,77 +456,45 @@ def test_add_live_stream_discards_stale_discovery_and_reloads_after_connection_r
     """Connection changes invalidate both pending responses and loaded choices, even when the host reverts."""
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
+    data_source = form_field(dialog, "Data Source", AnalyticsChoice).combo
+    host = form_field(dialog, "Host", QLineEdit)
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
     if completed:
         discovery.finish()
-        assert dialog._data_source_choice.combo.currentData() == "analytics/source"
-    dialog._host_edit.setText("another-camera.local")
+        assert data_source.currentData() == "analytics/source"
+    host.setText("another-camera.local")
     if not completed:
         discovery.finish()
 
-    assert dialog._data_source_choice.combo.currentData() is None
-    assert dialog._data_source_choice.combo.currentText() == "Connection changed — refresh data sources"
+    assert data_source.currentData() is None
+    assert data_source.currentText() == "Connection changed — refresh data sources"
 
-    dialog._host_edit.clear()
+    host.clear()
     _set_overlay_mode(dialog, LiveOverlayMode.RTSP)
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
     assert len(discovery.jobs) == 1
     discovery.finish()
-    assert dialog._data_source_choice.combo.currentData() == "analytics/source"
+    assert data_source.currentData() == "analytics/source"
 
 
-def test_live_stream_intake_passes_mqtt_protocol_to_overlay_source() -> None:
-    result = WorkspaceIntake(_DialogOptionProvider()).create_live_stream(
-        host="camera.local",
-        username="root",
-        password="",
-        overlay_mode=LiveOverlayMode.MQTT,
-        handler_type="TEST_HANDLER",
-        mqtt_host="broker.local",
-        mqtt_username="mqtt-user",
-        analytics_data_source_key="analytics/source",
-        device_api_protocol="https",
-    )
-
-    overlay = result.overlays[0]
-    assert isinstance(overlay.source_spec, LiveMQTTOverlaySourceSpec)
-
-    assert overlay.source_spec.device_api_protocol == "https"
-    assert overlay.source_spec.broker_username == "mqtt-user"
-    assert overlay.source_spec.analytics_data_source_key == "analytics/source"
-    assert overlay.display_name == OverlaySourceKind.MQTT_SOURCE.display_name
-
-
-def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
-    qtbot: QtBot,
-    monkeypatch: pytest.MonkeyPatch,
-    discovery: _Discovery,
+def test_add_live_stream_websocket_shows_its_fields_and_builds_spec(
+    qtbot: QtBot, live_handler: None, discovery: _Discovery
 ) -> None:
-    monkeypatch.setattr(
-        "ax_devil.modules.workspace.add_content.add_live_stream_dialog.default_workspace_intake",
-        lambda: WorkspaceIntake(_DialogOptionProvider()),
-    )
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
+    topic = form_field(dialog, "DataHub Topic", AnalyticsChoice)
 
-    dialog._host_edit.setText("camera.local")
     _set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
-    dialog._handler_combo.setCurrentIndex(dialog._handler_combo.findData("TEST_HANDLER"))
-    dialog._mqtt_device_protocol_combo.setCurrentText("http")
-
-    assert dialog._websocket_channel_id_spin.value() == 2
+    _select(form_field(dialog, "Handler Type", QComboBox), "TEST_HANDLER")
     discovery.finish()
 
-    assert dialog._websocket_topic_choice.combo.currentData() == "com.axis.scene.frame.v1"
-    assert dialog._websocket_topic_choice.isVisibleTo(dialog)
-    assert dialog._websocket_channel_id_spin.isVisibleTo(dialog)
-    assert not dialog._mqtt_host_edit.isVisibleTo(dialog)
-    assert not dialog._data_source_choice.isVisibleTo(dialog)
-    assert dialog._mqtt_device_protocol_combo.isEnabled()
-    assert dialog._ok_button.isEnabled()
-    assert dialog._validation_label.text() == ""
+    assert topic.combo.currentData() == "com.axis.scene.frame.v1"
+    assert topic.isVisibleTo(dialog)
+    assert form_field(dialog, "Topic Channel", QSpinBox).isVisibleTo(dialog)
+    assert not form_field(dialog, "MQTT Host", QLineEdit).isVisibleTo(dialog)
+    assert not form_field(dialog, "Data Source", AnalyticsChoice).isVisibleTo(dialog)
 
-    dialog.accept()
+    _ok(dialog).click()
 
     result = dialog.get_result()
     assert result is not None
@@ -511,30 +504,54 @@ def test_add_live_stream_websocket_fields_are_visible_and_build_spec(
         channel_id=2,
         device_api_protocol="http",
     )
-    assert result.overlays[0].display_name == OverlaySourceKind.WEBSOCKET_SOURCE.display_name
 
 
 def test_add_live_stream_websocket_topics_show_empty_state(qtbot: QtBot, discovery: _Discovery) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
+    topic = form_field(dialog, "DataHub Topic", AnalyticsChoice).combo
 
     discovery.topics = ()
     _set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
     discovery.finish()
 
-    assert dialog._websocket_topic_choice.combo.currentData() is None
-    assert dialog._websocket_topic_choice.combo.currentText() == "No DataHub topics available"
+    assert topic.currentData() is None
+    assert topic.currentText() == "No DataHub topics available"
 
 
 def test_add_live_stream_applies_transport_protocol_defaults_when_mode_changes(qtbot: QtBot) -> None:
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
+    protocol = form_field(dialog, "Device Protocol", QComboBox)
 
     _set_overlay_mode(dialog, LiveOverlayMode.MQTT)
-    assert dialog._mqtt_device_protocol_combo.currentText() == "https"
+    assert protocol.currentText() == "https"
 
     _set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
-    assert dialog._mqtt_device_protocol_combo.currentText() == "http"
+    assert protocol.currentText() == "http"
+
+
+@pytest.mark.parametrize("resolved", ["", "not-a-number", "8883"])
+def test_live_stream_numeric_defaults_handle_changed_environment(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, resolved: str
+) -> None:
+    """Numeric defaults resolved from an unset or malformed environment fall back instead of breaking the dialog."""
+    defaults = {
+        "device": {},
+        "live_stream": {
+            "overlay_source": "none",
+            "rtsp": {"camera_head": resolved},
+            "analytics-mqtt": {"broker_port": resolved},
+            "analytics-websocket": {"channel_id": resolved},
+        },
+    }
+    _use_defaults(monkeypatch, defaults, defaults)
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    valid = resolved == "8883"
+    assert form_field(dialog, "Camera Head", QLineEdit).text() == ("8883" if valid else "1")
+    assert form_field(dialog, "MQTT Port", QSpinBox).value() == (8883 if valid else 1883)
+    assert form_field(dialog, "Topic Channel", QSpinBox).value() == (8883 if valid else 1)
 
 
 def _playlist(name: str) -> PlaylistContent:
@@ -557,10 +574,10 @@ def test_add_playlist_dialog_returns_playlists_from_the_selected_resolver(qtbot:
     """A resolver finishing after the user switched away cannot close the dialog with its playlist."""
     dialog = AddPlaylistDialog()
     qtbot.addWidget(dialog)
-    settings = dialog._settings
-    first, second = settings._resolver_widgets[:2]
-    settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(first))
-    settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(second))
+    source = next(combo for combo in dialog.findChildren(QComboBox) if combo.itemText(0) == "Select a source...")
+    first, second = source.itemData(1), source.itemData(2)
+    source.setCurrentIndex(1)
+    source.setCurrentIndex(2)
     stale = _playlist("Stale")
     selected = _playlist("Imported")
 
@@ -574,24 +591,3 @@ def test_add_playlist_dialog_returns_playlists_from_the_selected_resolver(qtbot:
     first.emit_playlists([stale])
     second.emit_playlists([stale])
     assert dialog.get_result() == [selected]
-
-
-@pytest.mark.parametrize("resolved", ["", "not-a-number", None, "8883"])
-def test_live_stream_numeric_defaults_handle_changed_environment(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, resolved: str | None
-) -> None:
-    defaults = {
-        "device": {},
-        "live_stream": {
-            "overlay_source": "none",
-            "rtsp": {"camera_head": resolved},
-            "analytics-mqtt": {"broker_port": resolved},
-            "analytics-websocket": {"channel_id": resolved},
-        },
-    }
-    monkeypatch.setattr(AddLiveStreamDialog, "_load_defaults", lambda self: (defaults, defaults))
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-    assert dialog._camera_head_edit.text() == ("8883" if resolved == "8883" else "1")
-    assert dialog._mqtt_port_spin.value() == (8883 if resolved == "8883" else 1883)
-    assert dialog._websocket_channel_id_spin.value() == (8883 if resolved == "8883" else 1)

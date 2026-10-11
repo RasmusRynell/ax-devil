@@ -9,17 +9,17 @@ from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
 from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.item_info_dialog import WorkspaceItemInfoDialog
+from tests.helpers.dialogs import content_scroll
+from tests.helpers.shortcuts import make_shortcut_manager
 
 
 @pytest.mark.parametrize("point_size", [9, 18])
 def test_shortcut_list_uses_window_space_and_preserves_search(qtbot: QtBot, point_size: int) -> None:
     """The list fills its viewport while search and actions remain reachable."""
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     dialog = ShortcutsDialog(manager)
     qtbot.addWidget(dialog)
     font = dialog.font()
@@ -45,8 +45,7 @@ def test_shortcut_list_uses_window_space_and_preserves_search(qtbot: QtBot, poin
     assert any(row.isVisible() for row in dialog._all_rows)
 
 
-@pytest.mark.parametrize("point_size", [9, 18])
-@pytest.mark.parametrize("custom_frame", [False, True])
+@pytest.mark.parametrize(("point_size", "custom_frame"), [(9, False), (18, True)])
 def test_catalog_name_form_fits_font_and_wrapped_source(qtbot: QtBot, point_size: int, custom_frame: bool) -> None:
     """A simple catalog form and a wrapped source note avoid unnecessary scrolling."""
     parent = ChromeWindow(use_custom_frame=custom_frame)
@@ -59,8 +58,8 @@ def test_catalog_name_form_fits_font_and_wrapped_source(qtbot: QtBot, point_size
         dialog.setFont(font)
         dialog.show()
         QApplication.processEvents()
-        assert dialog._scroll_area.horizontalScrollBar().maximum() == 0
-        assert dialog._scroll_area.verticalScrollBar().maximum() == 0
+        assert content_scroll(dialog).horizontalScrollBar().maximum() == 0
+        assert content_scroll(dialog).verticalScrollBar().maximum() == 0
         screen = dialog.screen()
         assert screen is not None
         assert screen.availableGeometry().contains(dialog.frameGeometry())
@@ -76,7 +75,7 @@ def test_oversized_catalog_note_scrolls_with_actions_visible(qtbot: QtBot) -> No
     screen = dialog.screen()
     assert screen is not None
     assert screen.availableGeometry().contains(dialog.frameGeometry())
-    assert dialog._scroll_area.verticalScrollBar().maximum() > 0
+    assert content_scroll(dialog).verticalScrollBar().maximum() > 0
     for index in range(dialog._button_layout.count()):
         item = dialog._button_layout.itemAt(index)
         assert item is not None

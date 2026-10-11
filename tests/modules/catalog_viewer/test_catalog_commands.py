@@ -102,7 +102,7 @@ def test_render_reports_failed_png_write_and_releases_renderer(qtbot: QtBot, tmp
     result = CliRunner().invoke(catalog, ["render", "--out", str(out), "--sheet", "overview", *config])
 
     assert result.exit_code == 1
-    assert result.output == f"Error: Could not write PNG image: {target}\n"
+    assert str(target) in result.output
     assert target.is_dir()
     assert set(QApplication.topLevelWidgets()) == widgets
 

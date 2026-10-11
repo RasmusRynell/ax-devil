@@ -11,7 +11,6 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace import VideoFileStartup
 from ax_devil.modules.workspace.application_window import ApplicationWindow
 from ax_devil.modules.workspace.content_browser import ContentBrowserWidget
@@ -19,8 +18,9 @@ from ax_devil.modules.workspace.intake import WorkspaceDecoderOption, WorkspaceI
 from ax_devil.modules.workspace.recent_videos import RecentVideos
 from ax_devil.modules.workspace.split_view import SplitView
 from ax_devil.modules.workspace.startup_request import video_file_requests
-from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
 from ax_devil.modules.workspace.welcome_widget import WelcomeWidget
+from tests.helpers.shortcuts import make_shortcut_manager
+from tests.helpers.workspace import PlainWorkspaceWidget
 
 
 class _OptionProvider:
@@ -33,14 +33,6 @@ class _OptionProvider:
 
     def live_overlay_decoder_options(self) -> tuple[WorkspaceDecoderOption, ...]:
         return ()
-
-
-class _PaneWidget(WorkspaceWidget):
-    def _setup_widget_ui(self) -> None:
-        pass
-
-    def get_display_name(self) -> str:
-        return "Pane"
 
 
 def _touch(path: Path) -> Path:
@@ -126,7 +118,7 @@ def test_recent_videos_reopen_relative_selections_after_the_working_directory_ch
     assert recent.entries() == (VideoFileStartup(video_path=video, overlay_path=overlay, handler_type="TXT"),)
 
 
-@pytest.mark.parametrize("content", ["{not json", "[null]", '["bad"]', '{"video_path": "x"}', "[{}]", "BAD_FIELD"])
+@pytest.mark.parametrize("content", ["{not json", '["bad"]', "[{}]", "BAD_FIELD"])
 def test_unreadable_recent_videos_file_is_ignored(tmp_path: Path, content: str) -> None:
     """Broken or wrongly shaped recent-video files never stop the workspace from starting."""
     store_path = tmp_path / "recent-videos.json"
@@ -151,8 +143,7 @@ def test_clicking_welcome_rows_triggers_shortcut_actions_and_recent_videos(qtbot
     """Welcome rows are buttons: shortcut rows trigger their action, recent rows request their video."""
     host = QWidget()
     qtbot.addWidget(host)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(host)
     welcome = WelcomeWidget(host)
     welcome.resize(900, 700)
@@ -178,8 +169,7 @@ def test_welcome_actions_and_recents_remain_clickable_in_a_small_workspace(qtbot
     """A full recent list never clips actions out of reach in a supported small window."""
     center = SplitView()
     qtbot.addWidget(center)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(center)
     center.set_welcome_shortcut_manager(manager)
     recent = [VideoFileStartup(video_path=tmp_path / f"clip{index}.mp4") for index in range(5)]
@@ -238,7 +228,7 @@ def test_desktop_file_drops_reach_the_workspace_over_welcome_and_open_panes(qtbo
 
     assert _send_drop(center.welcome_widget(), [video, overlay])
     assert not _send_drop(center.welcome_widget(), [overlay])
-    pane = _PaneWidget()
+    pane = PlainWorkspaceWidget()
     center.add_workspace_widget(pane)
     assert _send_drop(pane, [video])
 

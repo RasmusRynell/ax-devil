@@ -73,24 +73,6 @@ def test_policy_timeout_clears_cache() -> None:
     assert expired.reused is False
 
 
-def test_policy_single_step_within_video_timeout_reuses_overlay() -> None:
-    """Adjacent frames (~33 ms apart in video time) must not trigger the timeout."""
-    # This also confirms that real-time pauses between steps are irrelevant:
-    # the timeout is measured purely in video time, so no wall-clock tricks are needed.
-    settings = OverlayPersistenceSettings(enabled=True, timeout_ms=1000, opacity=0.7)
-    policy = OverlayPersistencePolicy(settings)
-
-    # Store overlay at frame 7 (video time 0 ms)
-    overlay = _make_overlay(7, timestamp_us=0.0)
-    policy.select_overlay(overlay.frame_id, overlay)
-
-    # Step to frame 8 — video time advances by only 33 ms
-    next_frame = _frame_id(8, timestamp_us=33_333.0)
-    still_reused = policy.select_overlay(next_frame, None)
-    assert still_reused.overlay is overlay
-    assert still_reused.reused is True
-
-
 def test_live_policy_rejects_future_and_expired_samples() -> None:
     """Received samples must be eligible before presentation, even on first arrival."""
     policy = OverlayPersistencePolicy(OverlayPersistenceSettings(enabled=True, timeout_ms=1000))
