@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import socket
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -13,6 +13,7 @@ from ax_devil.modules.data_sources.live.network_scan import (
     DiscoveredCamera,
     NetworkScanTransport,
     SsdpResponse,
+    parse_scan_targets,
     scan_network,
 )
 
@@ -38,7 +39,7 @@ class _FakeTransport:
         self._search_error = search_error
         self.fetched: list[str] = []
 
-    def search(self, timeout: float) -> list[SsdpResponse]:
+    def search(self, timeout: float, targets: Sequence[str] = ()) -> list[SsdpResponse]:
         if self._search_error is not None:
             raise self._search_error
         return self._responses
@@ -272,7 +273,7 @@ def test_search_sends_one_ssdp_discovery_and_collects_successful_answers(monkeyp
     )
     monkeypatch.setattr(socket, "socket", lambda *args: fake)
 
-    responses = NetworkScanTransport().search(timeout=5.0)
+    responses = NetworkScanTransport().search(timeout=5.0, targets=())
 
     assert responses == [SsdpResponse("192.168.0.90", "http://192.168.0.90:49152/d.xml")]
     [(request, destination)] = fake.sent
@@ -338,6 +339,66 @@ def test_manufacturer_must_name_axis_as_a_word() -> None:
     ]
 
 
+def test_search_asks_each_target_and_hears_only_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    def answer(address: str) -> tuple[bytes, tuple[str, int]]:
+        return f"HTTP/1.1 200 OK\r\nLOCATION: http://{address}/d.xml\r\n\r\n".encode(), (address, 1900)
+
+    fake = _FakeUdpSocket([answer("192.168.0.90"), answer("192.168.0.77")])
+    monkeypatch.setattr(socket, "socket", lambda *args: fake)
+
+    responses = NetworkScanTransport().search(timeout=5.0, targets=["192.168.0.90", "192.168.0.91"])
+
+    assert [response.address for response in responses] == ["192.168.0.90"]
+    assert [destination for _request, destination in fake.sent] == [("192.168.0.90", 1900), ("192.168.0.91", 1900)]
+
+
+def test_search_skips_a_target_it_cannot_reach_but_fails_when_none_can_be_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Unreachable(_FakeUdpSocket):
+        def sendto(self, data: bytes, address: tuple[str, int]) -> int:
+            if address[0] != "192.168.0.91":
+                raise OSError("No route to host")
+            return super().sendto(data, address)
+
+    fake = Unreachable([])
+    monkeypatch.setattr(socket, "socket", lambda *args: fake)
+
+    NetworkScanTransport().search(timeout=0.1, targets=["192.168.0.90", "192.168.0.91"])
+    assert [destination for _request, destination in fake.sent] == [("192.168.0.91", 1900)]
+
+    with pytest.raises(OSError, match="No route to host"):
+        NetworkScanTransport().search(timeout=0.1, targets=["192.168.0.90"])
+
+
+def test_scan_searches_the_targets_it_is_given() -> None:
+    class Recording(_FakeTransport):
+        asked: Sequence[str] = ()
+
+        def search(self, timeout: float, targets: Sequence[str] = ()) -> list[SsdpResponse]:
+            self.asked = targets
+            return []
+
+    transport = Recording([], {})
+
+    scan_network(targets=["192.168.0.90"], transport=transport)
+
+    assert transport.asked == ["192.168.0.90"]
+
+
+def test_scan_targets_are_addresses_and_ranges_without_repeats() -> None:
+    assert parse_scan_targets("") == ()
+    assert parse_scan_targets("10.0.0.5, 10.0.0.0/30 10.0.0.5") == ("10.0.0.5", "10.0.0.1", "10.0.0.2")
+    assert parse_scan_targets("10.0.0.7/32") == ("10.0.0.7",)
+    assert len(parse_scan_targets("192.168.1.0/24")) == 254
+
+
+@pytest.mark.parametrize("text", ["camera", "10.0.0.256", "10.0.0.0/33", "fe80::1", "10.0.0.0/8"])
+def test_scan_targets_reject_what_is_not_a_small_ipv4_range(text: str) -> None:
+    with pytest.raises(ValueError):
+        parse_scan_targets(text)
+
+
 def test_search_keeps_one_answer_per_address_and_bounds_the_number_of_addresses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -349,7 +410,7 @@ def test_search_keeps_one_answer_per_address_and_bounds_the_number_of_addresses(
     fake = _FakeUdpSocket(flood + others)
     monkeypatch.setattr(socket, "socket", lambda *args: fake)
 
-    responses = NetworkScanTransport().search(timeout=5.0)
+    responses = NetworkScanTransport().search(timeout=5.0, targets=())
 
     assert len(responses) == 128
     assert len({response.address for response in responses}) == 128

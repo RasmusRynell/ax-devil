@@ -407,3 +407,14 @@ def test_restart_relaunches_the_same_command_only_after_the_app_has_saved(
     restart.restart_application(main_window)
     restart.relaunch_if_requested(qapp, [])
     assert "Could not restart ax-devil" in caplog.text
+
+
+def test_default_ip_range_must_name_addresses_or_a_small_range() -> None:
+    ip_range = ConfigField("defaults.network_scan.ip_range", "Default IP range")
+
+    assert ip_range.parse(" 192.168.1.0/24 ") == "192.168.1.0/24"
+    assert ip_range.parse("") == ""
+    with pytest.raises(ValueError, match="not an IPv4 address or range"):
+        ip_range.parse("camera")
+    with pytest.raises(ValueError, match="at most"):
+        ip_range.parse("10.0.0.0/8")

@@ -62,7 +62,7 @@ class WorkspaceSession(QObject):
     """
 
     state_changed = Signal()  # The Workspace's name or modified flag changed.
-    add_live_stream_requested = Signal()  # The Live view asked to add a camera by its address.
+    add_live_stream_requested = Signal()  # The Live view asked to add a camera by entering its details.
     add_playlist_requested = Signal(str)  # The id of the playlist resolver to add a playlist with.
 
     def __init__(
@@ -103,7 +103,7 @@ class WorkspaceSession(QObject):
             self._live_view, self._workspace_controller, self._workspace_store, self._resolver, parent=self
         )
         self._window.add_view(self._live_view.sidebar_view())
-        self._live_view.add_by_address_requested.connect(self.add_live_stream_requested)
+        self._live_view.add_manually_requested.connect(self.add_live_stream_requested)
         self._playlists_view = PlaylistsView()
         self._window.add_view(self._playlists_view.sidebar_view())
         self._playlists_controller = PlaylistsViewController(
@@ -184,6 +184,10 @@ class WorkspaceSession(QObject):
     def add_resolved(self, resolutions: Sequence[ItemResolution]) -> None:
         """Add items a dialog already resolved, without resolving them again, and open the first."""
         self._workspace_store.add_resolved(resolutions)
+
+    def refresh_scan_range(self) -> None:
+        """Show the Settings' default IP range in the Live view, unless the user typed another."""
+        self._live_view_controller.refresh_default_range()
 
     def refresh_recent_workspaces(self) -> None:
         """Show the recent workspace files on the start panel."""

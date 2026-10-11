@@ -34,8 +34,10 @@ first shows everything in it, and the others show one part of it, with their own
 application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
 
 - **Live** lists the workspace's cameras with **Connect** and **Disconnect**; a camera is connected while its viewer is
-  open. **Scan network** looks for Axis cameras on the local network, only when you press it, and **Add** puts one in
-  the workspace with the **Settings → Stream defaults**. **Add by address** opens the Add Live Stream dialog.
+  open. **Scan settings**, at the bottom, takes the IP addresses to search: addresses and ranges such as
+  `192.168.1.0/24`, separated by commas. **Rescan** looks for Axis cameras there, only when you press it, or on the
+  local network when the field is empty. **Add** puts a found camera in the workspace with the **Settings → Stream
+  defaults**. **Add manually** opens the Add Live Stream dialog, as **File → Add Live Stream** does.
 - **Playlists** lists the workspace's playlists. **Rescan** reads a playlist's folders again, for example after adding
   files; open viewers keep what they show. **Add from** lists the playlist resolvers, including those from plugins;
   **Add** opens the Add Playlist dialog with that resolver chosen.

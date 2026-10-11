@@ -154,7 +154,7 @@ class SettingsDialog(BaseDialog):
         streams = self._add_page("Stream defaults")
         self._add_note(
             streams,
-            "These defaults prefill Add Live Stream. Each stream can override them. "
+            "These defaults prefill Add Live Stream and the network scan. Each stream can override them. "
             "Existing viewers keep their settings. "
             "You can enter $VARIABLE_NAME to keep using an environment variable.",
         )
