@@ -54,6 +54,8 @@ class Icon(Enum):
     REMOVE = ("trash-2", False)
     INFO = ("info", False)
     SCAN = ("wifi", False)
+    FILE = ("file-text", False)
+    BROADCAST = ("radio", False)
 
     def __init__(self, file_stem: str, filled: bool) -> None:
         self.file_stem = file_stem

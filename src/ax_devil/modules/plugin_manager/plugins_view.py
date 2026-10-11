@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPalette, QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QMenu, QToolButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QToolButton, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.banner import Banner
@@ -17,19 +17,28 @@ from ax_devil.modules.chrome.list_row import ListRow, muted_label
 from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
-from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
 from ax_devil.modules.chrome.theme import KindColor, StatusColor
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.chrome.view_panel import ViewPanel
 from ax_devil.modules.plugin_manager.add_plugin_dialog import AddPluginDialog
-from ax_devil.modules.plugin_manager.catalog import PluginEntry, PluginGroup, Section, current_catalog
+from ax_devil.modules.plugin_manager.catalog import (
+    PluginEntry,
+    PluginGroup,
+    PluginPart,
+    Reads,
+    Section,
+    current_catalog,
+)
 from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChanges
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 
 PLUGINS_VIEW_ID = "plugins"
 
 _ICON_PX = 16
+_READS_ICON_PX = 14
 _ROW_EDGE_PX = 2  # The accent edge left of a ListRow's content.
+_READS_ICONS = {Reads.FILE: Icon.FILE, Reads.LIVE: Icon.BROADCAST}
 
 
 def _muted(palette: QPalette) -> QColor:
@@ -58,6 +67,7 @@ _LOOKS = {
     Section.INSTALLED: _Look(Icon.PLUGIN, StatusColor.SUCCESS.color, KindColor.INFO.color),
     Section.BUILT_IN: _Look(Icon.PLUGIN, _muted, KindColor.MUTED.color),
 }
+_RESOLVER_LOOK = {section: _Look(Icon.PLAYLIST, look.color, look.mark) for section, look in _LOOKS.items()}
 
 
 class PluginsView(ViewPanel):
@@ -76,8 +86,18 @@ class PluginsView(ViewPanel):
         reload: Callable[[], None] = ApplicationPluginLoader.reload_plugins,
         parent: QWidget | None = None,
     ) -> None:
-        reload_button = SmallButton("Reload", Icon.REFRESH)
-        super().__init__("Plugins", header_widget=reload_button, parent=parent)
+        reload_button = SmallButton("", Icon.REFRESH)
+        reload_button.setToolTip("Reload plugins")
+        reload_button.setAccessibleName("Reload plugins")
+        self._add_button = SmallButton("Add", Icon.ADD, ButtonKind.PRIMARY)
+        self._add_button.setToolTip("Add plugin")
+        header_buttons = QWidget()
+        header_layout = QHBoxLayout(header_buttons)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(Space.S)
+        header_layout.addWidget(reload_button)
+        header_layout.addWidget(self._add_button)
+        super().__init__("Plugins", header_widget=header_buttons, parent=parent)
         self._changes = changes if changes is not None else PluginChanges(parent=self)
         self._catalog = catalog
         self._reload = reload
@@ -92,16 +112,9 @@ class PluginsView(ViewPanel):
         self._rows = RowList(self)
         self.add(self._rows, 1)
 
-        self._add_button = SmallButton("Add plugin", Icon.ADD)
         self._add_button.clicked.connect(self._add_plugin)
-        buttons = QWidget()
-        buttons_layout = QHBoxLayout(buttons)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.addWidget(self._add_button)
-        buttons_layout.addStretch(1)
-        self.add_padded(buttons, top=Space.S, bottom=Space.S)
         self._install_status = _muted_line("")
-        self._install_status_holder = self.add_padded(self._install_status, top=0, bottom=Space.S)
+        self._install_status_holder = self.add_padded(self._install_status, top=Space.S, bottom=Space.S)
         self.add_padded(muted_label("Installs and updates apply after a restart."), top=0, bottom=Space.M)
 
         reload_button.clicked.connect(self._reload_plugins)
@@ -147,11 +160,9 @@ class PluginsView(ViewPanel):
         self._rows.clear()
         self._change_buttons = [self._add_button, self._banner.action]
         for group in self._groups:
-            look = _LOOKS[group.section]
-            count = len(group.entries) if group.section.counted else None
-            self._rows.add(SectionCaption(group.section.title, count, look.mark))
+            self._rows.add(SectionCaption(group.section.title, len(group.entries), _LOOKS[group.section].mark))
             for entry in group.entries:
-                self._add_row(entry, look)
+                self._add_row(entry)
 
         running = self._changes.running
         for button in self._change_buttons:
@@ -165,16 +176,45 @@ class PluginsView(ViewPanel):
         self._install_status.set_full_text(install_status)
         self._install_status_holder.setVisible(bool(install_status))
 
-    def _add_row(self, entry: PluginEntry, look: _Look) -> None:
+    def _add_row(self, entry: PluginEntry) -> None:
         running = self._changes.running
         subtitle = running.kind.progress if running is not None and running.name == entry.name else entry.subtitle
-        trailing: list[QWidget] = []
+        look = (_RESOLVER_LOOK if entry.resolver else _LOOKS)[entry.section]
+        trailing = self._reads_icons(entry.reads)
         if entry.requirement is not None:
             trailing.append(self._more_button(entry, entry.requirement))
         icon = look.icon.icon(look.color(self.palette()))
-        self._rows.add(ListRow(entry.name, icon=icon, subtitle=subtitle, detail=entry.detail, trailing=trailing))
+        self._rows.add(
+            ListRow(entry.name, icon=icon, subtitle=subtitle, detail=entry.detail, trailing=trailing, wrap=True)
+        )
+        for part in entry.parts:
+            self._add_part(part)
         if self._failure is not None and self._failure[0].name == entry.name:
             self._rows.add(self._failure_line(self._failure[1]))
+
+    def _add_part(self, part: PluginPart) -> None:
+        """List what a plugin gives, in under its row: a decoder with where it reads from, or a resolver."""
+        icon = Icon.PLAYLIST if part.resolver else _READS_ICONS[part.reads[0]]
+        self._rows.add(
+            ListRow(
+                part.name,
+                icon=icon.icon(_muted(self.palette())),
+                subtitle=part.description,
+                trailing=self._reads_icons(part.reads),
+                indent=_ICON_PX + Space.M,
+                wrap=True,
+            )
+        )
+
+    def _reads_icons(self, reads: tuple[Reads, ...]) -> list[QWidget]:
+        """Return a small muted icon for each place a decoder reads from, with a tooltip saying which."""
+        icons: list[QWidget] = []
+        for source in reads:
+            mark = QLabel()
+            mark.setPixmap(_READS_ICONS[source].icon(_muted(self.palette())).pixmap(_READS_ICON_PX, _READS_ICON_PX))
+            mark.setToolTip(source.value)
+            icons.append(mark)
+        return icons
 
     def _more_button(self, entry: PluginEntry, requirement: str) -> QToolButton:
         button = QToolButton()

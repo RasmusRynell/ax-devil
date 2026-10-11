@@ -22,7 +22,7 @@ uv run ax-devil plugins install /absolute/path/to/example-plugin
 uv run ax-devil
 ```
 
-The **Plugins** view in the app does the same from the running app: **Add plugin** is `plugins install`, **Update** is
+The **Plugins** view in the app does the same from the running app: **Add** is `plugins install`, **Update** is
 `plugins install --upgrade-package <package>`, which moves only that package and what it needs, and **Remove** is
 `plugins remove`. Each runs through the launcher, so the base app manages the plugins, and applies after a restart.
 
