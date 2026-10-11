@@ -6,6 +6,7 @@ folder; `make -C tools/trace-viewer check` covers the trace viewer.
 
 | Tool | Use it to |
 |------|-----------|
+| [`demo_recorder/`](demo_recorder/README.md) | Record the whole application on a private display, recreate catalog/comparison demos, and restyle saved takes as MP4/WebP. |
 | [`trace-viewer/`](trace-viewer/README.md) | Explore a performance recording from **Debug → Debug Metrics** as a timeline and flame graph, optionally with an AI agent. |
 | `benchmark_quick_renderer.py` | Measure Qt Quick renderer CPU cost with synthetic shapes. |
 | `benchmark_catalog_lanes.py` | Measure production viewers rendering the packaged catalog across several lanes. |
