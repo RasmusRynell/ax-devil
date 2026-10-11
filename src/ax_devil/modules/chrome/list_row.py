@@ -29,8 +29,8 @@ class ListRow(QFrame):
     *trailing* widgets such as buttons.
 
     ``activated`` is emitted by a click on the row itself, never by its trailing widgets. An *active* row has an accent
-    edge; a *dim* row's title is muted. *indent* moves the row in under the one above, and a *wrap*ped subtitle may
-    take several lines where an unwrapped one is elided.
+    edge over the hover background; a *dim* row's title is muted. *indent* moves the row in under the one above, and a
+    *wrap*ped subtitle may take several lines where an unwrapped one is elided.
     """
 
     activated = Signal()
@@ -85,11 +85,12 @@ class ListRow(QFrame):
         for widget in trailing:
             layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
         edge = "palette(highlight)" if active else "transparent"
+        background = "palette(midlight)" if active else "transparent"
         # The theme borders every QFrame, labels included; a bordered label measures a wrapped line narrower than it
         # draws it, so a wrapped subtitle would get room for a line it never uses.
         self.setStyleSheet(
             f"""
-            #AxDevilListRow {{ border-left: 2px solid {edge}; background: transparent; }}
+            #AxDevilListRow {{ border-left: 2px solid {edge}; background: {background}; }}
             #AxDevilListRow:hover {{ background: palette(midlight); }}
             #AxDevilListRow QLabel {{ border: none; }}
             """

@@ -5,12 +5,11 @@ from __future__ import annotations
 from html import escape
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QGuiApplication, QPalette
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
-from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
@@ -30,7 +29,6 @@ _KIND_MARKS: dict[WorkspaceBrowserIconKind, tuple[Icon, KindColor | StatusColor]
     "overlay": (Icon.OVERLAY, KindColor.OVERLAY),
     "unavailable": (Icon.WARNING, StatusColor.WARNING),
 }
-_OPEN_TINT_ALPHA = 0.18
 
 
 def _hidden_note(hidden: int) -> str:
@@ -118,12 +116,11 @@ def _action_button(action: RowAction) -> SmallButton:
 class SourceRow(ListRow):
     """*row* as a list row: its kind's mark, its name over its detail, its action, and its eye toggle.
 
-    The mark is muted and the name dimmed as the row says; a row open in a viewer has the accent edge over a faint
-    accent tint. Hovering shows
-    the full name over the row's tooltip. ``action_requested`` carries the row whose action was pressed and
-    ``consideration_changed`` the consideration item and the state the eye asks for; a click on the row itself is
-    ``activated``. Kind colors are drawn for the palette at construction, so owners build rows again when the theme
-    changes.
+    The mark is muted and the name dimmed as the row says; a row open in a viewer is the list row's active one.
+    Hovering shows the full name over the row's tooltip. ``action_requested`` carries the row whose action was
+    pressed and ``consideration_changed`` the consideration item and the state the eye asks for; a click on the row
+    itself is ``activated``. Kind colors are drawn for the palette at construction, so owners build rows again when
+    the theme changes.
     """
 
     action_requested = Signal(object)  # WorkspaceBrowserRow
@@ -151,15 +148,6 @@ class SourceRow(ListRow):
             parent=parent,
         )
         self.row = row
-        if row.is_open:
-            # A faint accent behind the accent edge; hovering still shows the hover color.
-            tint = palette_color_css(QGuiApplication.palette(), QPalette.ColorRole.Highlight, alpha=_OPEN_TINT_ALPHA)
-            self.setStyleSheet(
-                f"""{self.styleSheet()}
-                #AxDevilListRow {{ background: {tint}; }}
-                #AxDevilListRow:hover {{ background: palette(midlight); }}
-                """
-            )
         lines = "".join(f"<br>{escape(line)}" for line in row.tooltip.splitlines())
         self.setToolTip(f"<b>{escape(row.label)}</b>{lines}")
         for label in self.findChildren(QLabel):
