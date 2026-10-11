@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import threading
 from collections.abc import Callable
@@ -14,6 +15,8 @@ from ax_devil.launcher import launch_command
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+_URL_USER_INFO = re.compile(r"(?<=://)[^/@\s]+@")
 
 
 class ChangeKind(Enum):
@@ -84,8 +87,11 @@ def run_plugins_command(change: PluginChange) -> None:
     try:
         subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as exc:
-        logger.error(f"Plugin change failed: {' '.join(command)}\n{exc.stderr}")
-        raise PluginChangeError(failure_reason(f"{exc.stdout or ''}\n{exc.stderr or ''}") or f"{exc}") from exc
+        # The command line is never logged or shown, nor chained into a traceback: a requirement may be a URL with
+        # credentials in it.
+        output = _URL_USER_INFO.sub("", f"{exc.stdout or ''}\n{exc.stderr or ''}")
+        logger.error(f"Plugin {change.kind.name.lower()} failed with exit status {exc.returncode}\n{output}")
+        raise PluginChangeError(failure_reason(output) or f"Exit status {exc.returncode}") from None
 
 
 def failure_reason(output: str) -> str:
@@ -162,6 +168,6 @@ def _make(installer: Installer, change: PluginChange, run: _Run) -> None:
         installer(change)
         reason = ""
     except Exception as exc:
-        logger.exception(f"Plugin change failed: {' '.join(change.arguments)}")
+        logger.exception(f"Plugin {change.kind.name.lower()} failed")
         reason = f"{exc}" or type(exc).__name__
     run.finished.emit(reason)

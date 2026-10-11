@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from logging import DEBUG
 
 import pytest
 from pytestqt.qtbot import QtBot
@@ -133,3 +134,23 @@ def test_a_source_that_looks_like_an_option_is_installed_as_a_source(monkeypatch
 
     assert result.exit_code == 0, result.output
     assert installed == [("--index=evil=https://example.invalid",)]
+
+
+def test_a_failed_install_never_logs_or_shows_the_credentials_of_its_source(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    source = "private-plugin @ https://user:s3cr3t-token@example.com/private-plugin.whl"
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(1, command, output="", stderr=f"Error: Failed to fetch: {source}\n")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    changes = PluginChanges(run_plugins_command)
+    with caplog.at_level(DEBUG), qtbot.waitSignal(changes.finished, timeout=5000) as finished:
+        changes.start(PluginChange.install(source))
+
+    reason = finished.args[1]
+    assert reason
+    assert "s3cr3t-token" not in reason
+    assert "s3cr3t-token" not in caplog.text
+    assert "example.com" in caplog.text  # The log still says what failed.
