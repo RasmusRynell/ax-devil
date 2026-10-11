@@ -79,21 +79,29 @@ The welcome screen scrolls when its rows cannot fit, keeping its actions reachab
 
 ## Sidebar Views
 
-The window is always in a Workspace. The activity bar has one button per sidebar view, and each view is a part of
-that Workspace or a way of acting on it:
+The window is always in a Workspace. The activity bar has two zones, set apart by a rule:
 
-| View | Group | Shows |
-|------|-------|-------|
-| Workspace | Workspace | Everything the Workspace holds (`WorkspaceView`: the start panel while empty, else the content browser). |
-| Live | Sources | The Workspace's cameras with Connect and Disconnect, and cameras found by a network scan on request. |
-| Playlists | Sources | The Workspace's playlists with Rescan, and the playlist resolvers that can add more. |
-| Bookmarks | Review | The moments marked in local videos and playlists, with each target's review state. |
-| Plugins | App | What loaded, what failed, and adding, updating, removing and reloading plugins. |
+- **The Workspace zone (top)** is the Workspace and its parts. The first button shows everything the Workspace holds;
+  each other button shows one part of it, with the actions that belong to that part.
+- **The app zone (bottom)** is the application, which does not change when another Workspace is opened. A view here
+  never shows Workspace content.
+
+| View | Zone | Group | Shows |
+|------|------|-------|-------|
+| Workspace | Workspace | Workspace | Everything the Workspace holds (`WorkspaceView`: the start panel while empty, else the content browser). |
+| Live | Workspace | Sources | The Workspace's cameras with Connect and Disconnect, and cameras found by a network scan on request. |
+| Playlists | Workspace | Sources | The Workspace's playlists with Rescan, and the playlist resolvers that can add more. |
+| Bookmarks | Workspace | Review | The moments marked in local videos and playlists, with each target's review state. |
+| Plugins | App | App | What loaded, what failed, and adding, updating, removing and reloading plugins. |
+
+The app zone also holds two buttons that are actions, not views: the render catalogs and Settings open dialogs, and the
+sidebar stays as it was. Anything global that needs a sidebar of its own is a view in the `APP` group.
 
 A view is a `SidebarView` value (`modules/chrome/sidebar_view.py`: id, title, icon, `ViewGroup`, widget). Its owner
 builds the widget and registers it with `WorkspaceSession.add_sidebar_view`; the window only hosts it. Groups run in
-the order of `ViewGroup`, a rule between them, and the `APP` group sits at the bottom of the bar above the app-wide
-actions. Clicking the button of the view on screen hides the sidebar; any other button shows that view.
+the order of `ViewGroup`, a rule between them; the `WORKSPACE`, `SOURCES` and `REVIEW` groups order the Workspace
+zone, and the `APP` group is the app zone, at the bottom of the bar above the app-wide actions. Clicking the
+button of the view on screen hides the sidebar; any other button shows that view.
 
 Views follow one pattern. The widget is thin: it renders plain data it is given and emits signals. A controller beside
 it (`LiveViewController`, `PlaylistsViewController`, the bookmarks controller) reads `WorkspaceController.sections()`

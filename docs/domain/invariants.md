@@ -112,6 +112,15 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Closing never prompts and keeps the current Workspace for the next launch. Replacing a modified Workspace asks
   Save / Discard / Cancel first, and nothing is replaced unless the answer, including any Save As, completes.
 
+## Sidebar
+
+- The window is always in a Workspace. The activity bar has a Workspace zone at the top and an app zone at the bottom.
+- A Workspace-zone view is the whole Workspace or one part of it: it lists the Workspace's own items and offers ways to
+  add to them, and keeps no data of its own beyond what the Workspace file saves.
+- An app-zone view is about the application and never shows Workspace content; its `ViewGroup` is `APP`.
+- Bookmarks and review marks apply to local videos and playlists, never to live streams.
+- A sidebar view adds nothing to the viewer area; opening content from a view goes through `open_content`.
+
 ## UI Lifecycle
 
 - UI is a projection of runtime state, not the owner of it. Widgets receive state from the module, service, or

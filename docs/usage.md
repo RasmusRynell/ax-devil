@@ -29,8 +29,9 @@ icon; hover it for the reason. The details are in [Workspace](architecture/works
 
 ## Sidebar views
 
-The strip along the left edge has one button per sidebar view. The first shows everything in the workspace; the others
-show one part of it, with their own actions.
+You are always in a workspace. The strip along the left edge has two parts. The top buttons are the workspace: the
+first shows everything in it, and the others show one part of it, with their own actions. The bottom buttons are the
+application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
 
 - **Live** lists the workspace's cameras with **Connect** and **Disconnect**; a camera is connected while its viewer is
   open. **Scan network** looks for Axis cameras on the local network, only when you press it, and **Add** puts one in
