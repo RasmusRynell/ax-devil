@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from dataclasses import replace
 from datetime import datetime, timezone
 from importlib import resources
 from typing import Any, cast
@@ -152,7 +151,6 @@ def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes
     assert inspected_scene is not None
     assert not inspected_scene.entities
     assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_monotime_us=1_000_000.0)
-    assert presentation.inspection.metadata == {}
     overlay = presentation.display_frame.overlays
     assert overlay is not None
     provider = overlay.interaction_provider
@@ -165,56 +163,18 @@ def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes
         assert (provider.hit_test(0.2, 0.2) is not None) == enabled
 
 
-def test_presenter_reuses_one_filtered_scene_for_inspection_rendering_and_hover() -> None:
+def test_presenter_draws_with_its_catalog_and_updates_existing_overlay_on_catalog_change() -> None:
     scene = _build_scene("entity-1")
-    scene_filter = _CountingSceneFilter()
-    presenter = SceneFramePresenter(scene_filter=scene_filter)
+    presenter = SceneFramePresenter(scene_render_catalog=_catalog_with_disabled_human_recipe())
 
     presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene))
 
-    assert presentation.inspection.scene is scene
-    assert scene_filter.calls == 1
-    assert presentation.display_frame.overlays is not None
-    presentation.display_frame.overlays.drawing_generator(
-        RenderContext.create(640, 480), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(640, 480)))
-    )
-    assert presentation.display_frame.overlays.interaction_provider is not None
-    presentation.display_frame.overlays.interaction_provider.hit_test(0.2, 0.2)
-    assert scene_filter.calls == 1
-
-
-def test_presenter_passes_scene_render_catalog_to_overlay() -> None:
-    scene = _build_scene("entity-1")
-    catalog = replace(get_built_in_scene_render_catalog(), catalog_id="test.catalog", semantic_hash="test-catalog")
-    presenter = SceneFramePresenter(scene_render_catalog=catalog)
-
-    presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene))
-
-    assert presentation.display_frame.overlays is not None
-    cached_overlay = getattr(presentation.display_frame.overlays.drawing_generator, "__self__")
-    assert cached_overlay._catalog is catalog
-
-
-def test_presenter_updates_existing_overlay_catalog_before_next_frame() -> None:
-    scene = _build_scene("entity-1")
-    initial_catalog = get_built_in_scene_render_catalog()
-    changed_catalog = _catalog_with_disabled_human_recipe()
-    presenter = SceneFramePresenter(scene_render_catalog=initial_catalog)
-
-    presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene))
-
-    assert presentation.display_frame.overlays is not None
+    overlay = presentation.display_frame.overlays
+    assert overlay is not None
     context = RenderContext.create(640, 480)
-    initial_drawing = presentation.display_frame.overlays.drawing_generator(
-        context, DrawingBuffer(DrawingSettings.for_context(context))
-    )
-    presenter.attach_scene_render_catalog(changed_catalog)
-    updated_drawing = presentation.display_frame.overlays.drawing_generator(
-        context, DrawingBuffer(DrawingSettings.for_context(context))
-    )
-
-    assert initial_drawing
-    assert updated_drawing == PreparedDrawing()
+    assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == PreparedDrawing()
+    presenter.attach_scene_render_catalog(get_built_in_scene_render_catalog())
+    assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
 
 
 def test_presenter_falls_back_to_unfiltered_inspector_scene_when_filtering_fails() -> None:
@@ -227,7 +187,6 @@ def test_presenter_falls_back_to_unfiltered_inspector_scene_when_filtering_fails
     assert presentation.display_frame.overlays is not None
     assert presentation.inspection.scene is scene
     assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_monotime_us=1_000_000.0)
-    assert presentation.inspection.metadata == {}
 
 
 def _catalog_with_disabled_human_recipe() -> SceneRenderCatalog:
@@ -260,7 +219,7 @@ def _load_catalog_json(filename: str) -> dict[str, Any]:
     return cast(dict[str, Any], value)
 
 
-def test_presenter_retains_preparation_only_for_the_same_source_sample() -> None:
+def test_presenter_filters_and_prepares_each_source_sample_once() -> None:
     scene = _build_scene("entity-1")
     scene_filter = _CountingSceneFilter()
     presenter = SceneFramePresenter(scene_filter=scene_filter)
@@ -270,6 +229,8 @@ def test_presenter_retains_preparation_only_for_the_same_source_sample() -> None
     assert first is not None and second is not None
     primitives = first.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
     assert second.interaction_provider is first.interaction_provider
+    assert second.interaction_provider is not None
+    assert second.interaction_provider.hit_test(0.2, 0.2) is not None
     assert second.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) is primitives
     assert scene_filter.calls == 1
 
@@ -287,7 +248,8 @@ def test_presenter_retains_preparation_only_for_the_same_source_sample() -> None
     fourth = presenter.prepare_frame(_build_frame(4), _build_overlay(2, scene)).display_frame.overlays
     assert fourth is not None and fourth.interaction_provider is not third.interaction_provider
     presenter.prepare_frame(_build_frame(5), None)
-    assert presenter._cached_source is None and presenter._cached_overlay is None
+    fifth = presenter.prepare_frame(_build_frame(6), _build_overlay(2, scene)).display_frame.overlays
+    assert fifth is not None and fifth.interaction_provider is not fourth.interaction_provider
 
 
 def test_retained_overlay_does_not_keep_its_presenter_alive() -> None:

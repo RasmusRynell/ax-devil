@@ -19,32 +19,17 @@ def _make_frame(width: int = 100, height: int = 80, color: int = 0xFFFF0000) -> 
     return image
 
 
-class TestVideoEncoder:
-    """VideoEncoder writes QImage frames to a playable video file."""
+def test_output_has_every_frame_at_the_requested_resolution(tmp_path: Path) -> None:
+    output = tmp_path / "out.mp4"
+    encoder = VideoEncoder(output, width=200, height=150, fps=25.0)
+    for index in range(10):
+        encoder.write_frame(_make_frame(200, 150), timestamp_us=index * 40_000)
+    encoder.finish()
 
-    def test_output_has_correct_frame_count(self, tmp_path: Path) -> None:
-        output = tmp_path / "out.mp4"
-        encoder = VideoEncoder(output, width=100, height=80, fps=25.0)
-        for index in range(10):
-            encoder.write_frame(_make_frame(), timestamp_us=index * 40_000)
-        encoder.finish()
-
-        # Verify with PyAV
-        with av.open(str(output)) as container:
-            stream = container.streams.video[0]
-            frame_count = sum(1 for _ in container.decode(stream))
-        assert frame_count == 10
-
-    def test_output_has_correct_resolution(self, tmp_path: Path) -> None:
-        output = tmp_path / "out.mp4"
-        encoder = VideoEncoder(output, width=200, height=150, fps=30.0)
-        encoder.write_frame(_make_frame(200, 150), timestamp_us=0)
-        encoder.finish()
-
-        with av.open(str(output)) as container:
-            stream = container.streams.video[0]
-            assert stream.width == 200
-            assert stream.height == 150
+    with av.open(str(output)) as container:
+        frames = list(container.decode(video=0))
+    assert len(frames) == 10
+    assert {(frame.width, frame.height) for frame in frames} == {(200, 150)}
 
 
 def test_preserves_variable_frame_timestamps_and_last_duration(tmp_path: Path) -> None:

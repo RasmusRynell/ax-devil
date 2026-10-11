@@ -9,6 +9,7 @@ from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays
+from ax_devil.modules.video_player.engine.viewport_state import NormalizedViewport
 from ax_devil.modules.video_player.ui.draggable import DraggableHandle
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 
@@ -33,8 +34,7 @@ def _make_display_with_frame(qtbot: QtBot) -> FrameDisplay:
 
 
 def _zoom_viewport(display: FrameDisplay) -> None:
-    display.viewport.viewport_state.zoom_level = 2.0
-    display.viewport.viewport_state.pan_offset = QPointF(0.0, 0.0)
+    display.set_viewport(NormalizedViewport(zoom=2.0, pan_x=0.0, pan_y=0.0))
 
 
 def test_dragging_interactive_overlay_does_not_pan_zoomed_viewport(qtbot: QtBot) -> None:

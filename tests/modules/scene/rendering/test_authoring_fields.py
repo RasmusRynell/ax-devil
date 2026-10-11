@@ -11,11 +11,8 @@ import pytest
 from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalogLoader
 from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderProgramCompiler
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
-from ax_devil.modules.video_player.engine.render_context import RenderContext
 from tests.catalog_helpers import CLASSIC_CATALOG_PATH
-from tests.drawing_helpers import record_template
-
-CONTEXT = RenderContext.create(800, 400)
+from tests.drawing_helpers import CONTEXT, record_template
 
 
 def _document() -> dict[str, Any]:

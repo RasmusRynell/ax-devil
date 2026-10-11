@@ -92,8 +92,6 @@ def test_media_tools_panel_reemits_persistence_changes(
     )
     qtbot.addWidget(panel)
 
-    assert panel.filter_widget is not None
-
     opacity_spin = panel.overlay_controls.findChild(QDoubleSpinBox, "overlayOpacitySpin")
     assert opacity_spin is not None
 
@@ -105,15 +103,17 @@ def test_media_tools_panel_reemits_persistence_changes(
     assert emitted.enabled is True
 
 
-def test_media_tools_panel_reemits_catalog_management_request(
+def test_media_tools_panel_open_catalogs_button_requests_catalog_management(
     qtbot: QtBot,
     render_catalog_selection: SceneRenderCatalogSelection,
 ) -> None:
     panel = MediaToolsPanel(render_catalog_selection=render_catalog_selection, filter_model=SessionFilter())
     qtbot.addWidget(panel)
+    open_button = panel.findChild(QToolButton, "openRenderCatalogsButton")
+    assert open_button is not None
 
     with qtbot.waitSignal(panel.catalogViewerRequested):
-        panel.catalog_selector.catalogViewerRequested.emit()
+        open_button.click()
 
 
 @pytest.mark.parametrize("button_name", ["entityFilterButton", "renderCatalogButton"])

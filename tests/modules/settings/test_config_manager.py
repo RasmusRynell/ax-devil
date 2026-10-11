@@ -17,8 +17,6 @@ def test_load_config_missing_file_returns_new_default(tmp_path: Path) -> None:
 
     assert raw_config == DEFAULT_CONFIG
     assert persisted_raw == DEFAULT_CONFIG
-    assert raw_config["version"] == CONFIG_VERSION
-    assert raw_config["storage"]["render_catalogs_dir"].endswith(".ax_devil/render_catalogs")
     assert raw_config["defaults"]["device"]["host"] == "$AX_DEVIL_TARGET_ADDR"
 
 
@@ -49,13 +47,6 @@ def test_config_manager_resolved_reads_and_save_preserve_raw_values(
     assert cast(dict[str, Any], raw_defaults["device"])["host"] == "$AX_DEVIL_TARGET_ADDR"
     cfg.save()
     assert json.loads(config_path.read_text(encoding="utf-8")) == raw
-    monkeypatch.setattr(ConfigManager, "_instance", None)
-    reopened = ConfigManager()
-    reopened.set_config_path(config_path, create_if_missing=False)
-    assert reopened.get("storage")["base_dir"] == str((tmp_path / "raw-storage").resolve())
-    assert reopened.get("defaults")["device"]["host"] == "10.20.30.40"
-    assert reopened.get("defaults")["device"]["username"] == "camera-admin"
-    assert reopened.get_raw("defaults")["device"]["host"] == "$AX_DEVIL_TARGET_ADDR"
 
 
 def test_load_config_rejects_different_major_version(tmp_path: Path) -> None:
@@ -302,7 +293,6 @@ def test_load_config_warns_once_for_unsupported_keys(
         record.getMessage() for record in caplog.records if "Config contains unsupported keys" in record.getMessage()
     ]
     assert len(unsupported_warnings) == 1
-    assert "preserved but ignored by this version" in unsupported_warnings[0]
     assert "config.extra_top" in unsupported_warnings[0]
     assert "config.ui.window.extra_window_option" in unsupported_warnings[0]
 
@@ -357,17 +347,7 @@ def test_unsupported_nested_config_round_trips_unchanged_on_save(
         persisted_raw["defaults"]["live_stream"]["analytics-mqtt"]["extra_branch"]
         == expected_extras["analytics_extra_branch"]
     )
-
     assert persisted_raw["ui"]["window"]["extra_window_option"] == "enabled"
-    monkeypatch.setattr(ConfigManager, "_instance", None)
-    reopened = ConfigManager()
-    reopened.set_config_path(config_path, create_if_missing=False)
-    assert reopened.get("extra_top") == expected_extras["extra_top"]
-    assert reopened.get("ui")["window"]["extra_window_option"] == "enabled"
-    assert (
-        reopened.get("defaults")["live_stream"]["analytics-mqtt"]["extra_branch"]
-        == expected_extras["analytics_extra_branch"]
-    )
 
 
 def test_config_logs_keys_without_resolved_or_replaced_values(

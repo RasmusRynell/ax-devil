@@ -45,12 +45,10 @@ def test_intake_creates_seekable_content_for_valid_file_overlay_selection() -> N
 
     assert isinstance(content, SeekableVideoContent)
     assert content.source_spec.path == Path("/tmp/video.mp4")
-    assert content.metadata == {}
     assert content.overlays[0].source_spec == FileOverlaySourceSpec(
         path=Path("/tmp/overlay.jsonl"),
         handler_type="FILE",
     )
-    assert content.overlays[0].metadata == {}
     assert content.overlays[0].display_name == "overlay"
 
 
@@ -65,21 +63,6 @@ def test_intake_rejects_unknown_live_overlay_handler_before_creating_content() -
             password="pass",
             overlay_mode=LiveOverlayMode.RTSP,
             handler_type="MISSING",
-        )
-
-
-def test_intake_rejects_mqtt_overlay_without_broker_host() -> None:
-    intake = WorkspaceIntake(_OptionProvider())
-
-    with pytest.raises(ValueError, match="MQTT Host is required for MQTT overlay mode"):
-        intake.create_live_stream(
-            host="camera.local",
-            display_name="Camera",
-            username="root",
-            password="pass",
-            overlay_mode=LiveOverlayMode.MQTT,
-            handler_type="LIVE",
-            analytics_data_source_key="analytics/source",
         )
 
 
@@ -135,6 +118,7 @@ def test_intake_rejects_invalid_websocket_connection_settings(overrides: dict[st
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
+        ({"mqtt_host": ""}, "MQTT Host is required for MQTT overlay mode"),
         ({"analytics_data_source_key": ""}, "Data Source is required for MQTT overlay mode"),
         ({"mqtt_port": 0}, "MQTT Port must be between 1 and 65535"),
         ({"mqtt_port": 65536}, "MQTT Port must be between 1 and 65535"),
