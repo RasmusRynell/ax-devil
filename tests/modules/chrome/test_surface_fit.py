@@ -29,7 +29,7 @@ from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import Add
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
-from tests.helpers.clipping import clipped_text_widgets
+from tests.helpers.clipping import clipped_text_on_every_page
 from tests.helpers.shortcuts import make_shortcut_manager
 
 SURFACES: dict[type[QWidget], Callable[[], QWidget]] = {
@@ -72,7 +72,7 @@ def test_surface_shows_its_text_in_full(qtbot: QtBot, surface: type[QWidget]) ->
         qtbot.addWidget(window)
         window.show()
         QApplication.processEvents()
-        assert clipped_text_widgets(window) == [], (mode, size)
+        assert clipped_text_on_every_page(window) == [], (mode, size)
         window.close()
 
 
