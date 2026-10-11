@@ -10,8 +10,19 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 ## Content Model
 
 - Workspace content (`SeekableVideoContent`, `LiveVideoContent`, `OverlayContent`, `EntryLane`, `PlaylistContent`)
-  describes what the user added. It stores source specs and metadata, never instantiated sources or factories.
+  describes what a Workspace Item resolves to. It stores source specs and metadata, never instantiated sources or
+  factories.
   Runtime sources are created when a viewer opens content: offline by `EntryOpening`, live by `StreamMediaController`.
+- Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
+  only from `WorkspaceItem.resolve`. The Workspace, the store, and the file format never branch on item kind.
+- Content ids derive from the owning item's id and the Content's position, and Content records its item's id, so ids
+  are the same on every resolution. Content built outside resolution has empty ids and is never top-level Content.
+- Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
+- An item's label is what the user named it, or empty. An empty label shows `default_name`, derived from the recipe
+  when displayed; derived names such as an expanded host are never stored or saved.
+- An item that fails to resolve stays in the Workspace with its `ItemResolutionError` recorded. An item the file format
+  cannot read is an `UnreadableItem` that always fails to resolve and is saved back unchanged; see
+  [Workspace](../architecture/workspace.md#file-format).
 - Each overlay source spec owns its `OverlaySourceKind`; overlay content and lanes derive the kind from the spec.
 - Seekable video accepts file overlays. Live video accepts at most one RTSP, MQTT, or DataHub WebSocket overlay, chosen
   explicitly as `LiveOverlayMode`; config and CLI strings are converted at their boundaries.
@@ -19,6 +30,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - `WorkspaceIntake` validates decoder selections and live connection settings for every video and live stream
   opened through a dialog, the CLI or a file drop, so those paths share one set of requirements. Playlists from a
   resolver plugin enter as built; the resolver owns their validity.
+- `workspace/core` imports no PySide6, directly or through other modules; `workspace/ui` holds everything Qt.
 
 ## Coordinates
 
@@ -79,12 +91,26 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 
 ## Workspace And Viewers
 
-- Open, focused, pinned, and current on-screen viewer facts come from the hosted `WorkspaceWidget` instances; they are
+- Open, focused, pinned, and current on-screen viewer facts come from the hosted `ViewerWidget` instances; they are
   not copied into parallel state records.
 - Video Viewer navigation reads consideration through the read-only `ConsiderationQuery` contract, not the mutable
-  `WorkspaceManager`.
-- Content removal closes every viewer widget that tracks the removed content. `SplitView` exclusively owns hosted
-  widget removal and deletion; callers use its removal API.
+  `WorkspaceStore`.
+- `WorkspaceStore` owns the current and last saved Workspace, each item's resolution, consideration refs, and mutation
+  signals, and emits one notification per successful mutation; "modified" is `current != saved`.
+  `build_browser_sections` projects the resolved Content, with the open items, into browser rows. `state_changed` additionally
+  reports when the modified flag, name, or path changed; a failed `open_workspace` changes nothing.
+- Consideration refs identify current Workspace content, playlist entries, or lanes; orphan and out-of-range refs are
+  ignored.
+- Removing Content removes its whole item. Item removal closes every viewer widget showing that item's Content. Opening a Workspace file closes every viewer widget, even when item ids are kept.
+  `SplitView` exclusively owns hosted widget removal and deletion; callers use its removal API.
+- Every item is listed: an item that failed to resolve is one unavailable row that shows its reason and never opens;
+  an item still resolving is one pending row that opens nothing.
+- Workspace items resolve off the GUI thread through `ItemResolver`; `WorkspaceStore` commits a result only while its
+  item and Workspace are still current.
+- Only adding items opens a viewer. Opening, creating, or restoring a Workspace lists its items and opens and connects
+  nothing.
+- Closing never prompts and keeps the current Workspace for the next launch. Replacing a modified Workspace asks
+  Save / Discard / Cancel first, and nothing is replaced unless the answer, including any Save As, completes.
 
 ## UI Lifecycle
 
@@ -171,7 +197,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   and recipes are unaffected.
 - Built-in catalogs are read in place from the installed package and never copied into the store, written or
   deleted. Every JSON file in the user catalog directory is a user catalog, and startup and listing never overwrite
-  one; catalog contents are edited outside the app. The one write the app makes is an explicit copy (**New copy…**,
+  one; catalog contents are edited outside the app. The one write the app makes is an explicit copy (**New copy**,
   `catalog new`), which validates before atomically replacing its destination.
 - The default catalog is the only catalog choice remembered across restarts. Overlay visibility belongs to each view or
   lane, independently of filters and catalog authoring; hiding a feature keeps its inspection and hover data.
@@ -183,7 +209,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Settings changes apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart
   after the exit-time saves. [Quick Setup](../settings.md#quick-setup) is the one exception.
 - Saves validate every editable field, replace the configuration atomically, and only then emit runtime change
-  signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart.
+  signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart, except the workspace backup and recent workspaces, which use
+  the storage folder saved now.
 - Runtime-mutable settings are consumed through `GlobalSettings` signals, not by polling `ConfigManager`. Settings
   live in one immutable `SettingsState` that setters replace whole.
 - On/off overlay preferences are `OverlayPreference` members; adding a member adds it to the View menu, Settings and

@@ -17,7 +17,7 @@ class BrowseButton(QToolButton):
     def __init__(self, what: str, browse: Callable[[], object], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setIcon(Icon.BROWSE.icon())
-        self.setToolTip(f"Choose {what}…")
+        self.setToolTip(f"Choose {what}")
         self.setAccessibleName(f"Choose {what}")
         self.setAutoRaise(True)
         self.clicked.connect(browse)

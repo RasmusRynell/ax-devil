@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
-from ax_devil.modules.data_sources import FileFrameSource
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.scene.model import Scene, TimeSlice
@@ -27,7 +27,7 @@ from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     LiveMQTTOverlaySourceSpec,
     OverlayContent,
@@ -580,3 +580,24 @@ def test_lane_retains_a_recent_overlay_at_its_original_sample_time() -> None:
         assert shown.metadata["overlay_opacity"] == 0.4
     assert display.frames[1].overlays is None
     assert display.frames[3].overlays is None
+
+
+class _LabelRecordingViewport:
+    """Viewport test double recording the render diagnostics labels it is given."""
+
+    def __init__(self) -> None:
+        self.labels: list[str] = []
+
+    def set_diagnostics_label(self, label: str) -> None:
+        """Record the label."""
+        self.labels.append(label)
+
+
+def test_renamed_item_relabels_existing_lane_diagnostics(qtbot: QtBot) -> None:
+    session, display, _source = _make_primary_session(qtbot)
+    viewport = _LabelRecordingViewport()
+    display.viewport = viewport  # type: ignore[attr-defined]
+
+    session.set_display_name("Renamed item")
+
+    assert viewport.labels == ["Renamed item · lane"]

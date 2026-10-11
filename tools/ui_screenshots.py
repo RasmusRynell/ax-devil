@@ -19,13 +19,21 @@ import os
 import shutil
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
 
 import pytest
 from PySide6.QtCore import QSize, QTimer
-from PySide6.QtWidgets import QApplication, QDialog, QTabWidget, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QMessageBox,
+    QTabWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
+    QWidget,
+)
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
@@ -43,8 +51,19 @@ from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
-from ax_devil.modules.workspace import VideoFileStartup
+from ax_devil.modules.workspace.core import (
+    LiveStreamItem,
+    OverlayFile,
+    PlaylistItem,
+    RecentWorkspace,
+    VideoItem,
+    new_item_id,
+)
+from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
+from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE
+from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
+from tests.helpers.workspace import DummyViewer
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))
 WINDOW_SIZES = {"wide": (1440, 900), "narrow": (1000, 640)}
@@ -100,6 +119,14 @@ def _write_tracks(path: Path) -> Path:
         lines.append(f'<tt:Frame xmlns:tt="{namespace}" UtcTime="{time}">{"".join(objects)}{tree}</tt:Frame>')
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _add_and_open(qtbot: QtBot, session: WorkspaceSession, item: VideoItem) -> OfflineVideoViewerWidget | None:
+    """Add *item* and return the viewer it opens once it has resolved in the background."""
+    previous = session.focused_offline_viewer()
+    session.add_items([item])
+    qtbot.waitUntil(lambda: session.focused_offline_viewer() not in (None, previous), timeout=10000)
+    return session.focused_offline_viewer()
 
 
 def _show_tracked_frame(qtbot: QtBot, viewer: OfflineVideoViewerWidget | None) -> OfflineVideoViewerWidget:
@@ -173,6 +200,12 @@ def test_screenshots(
     qtbot.addWidget(window)
     window.show()
     qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)  # Recent folders show as ~/..., as on a real machine.
+    recent: list[RecentWorkspace] = []
+    for days_ago, name in ((0, "Parking lot"), (2, "Entrance cameras"), (40, "Exp 3")):
+        path = tmp_path / "reviews" / f"{name}.ax-devil.workspace"
+        recent.append(RecentWorkspace(path, datetime.now() - timedelta(days=days_ago)))
+    window._workspace_session._start_panel.set_recent_workspaces(recent)
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         window.resize(*WINDOW_SIZES["wide"])
@@ -192,13 +225,12 @@ def test_screenshots(
     catalog_viewer.hide()
 
     session = window._workspace_session
-    tracked_clip = VideoFileStartup(
-        video_path=video_file_factory(CLIP_FRAMES / CLIP_FPS, CLIP_FPS),
-        overlay_path=_write_tracks(tmp_path / "tracks.xml"),
-        handler_type=ONVIF_XML,
+    clip_path = video_file_factory(CLIP_FRAMES / CLIP_FPS, CLIP_FPS)
+    tracked_clip = VideoItem(
+        video=clip_path,
+        overlays=(OverlayFile(_write_tracks(tmp_path / "tracks.xml"), ONVIF_XML),),
     )
-    session.load_startup_content(tracked_clip)
-    viewer = _show_tracked_frame(qtbot, session.focused_offline_viewer())
+    viewer = _show_tracked_frame(qtbot, _add_and_open(qtbot, session, tracked_clip))
     shortcuts.get_action("view.toggle_media_tools").trigger()
     media_tools_tabs = viewer.findChild(QTabWidget, "mediaToolsTabs")
     entities_page = viewer.findChild(QWidget, "mediaToolsEntities")
@@ -249,15 +281,68 @@ def test_screenshots(
 
     viewer.set_pinned(True)  # An unpinned lane is a preview that the next video replaces.
     second_clip = tmp_path / "second-lane.mp4"
-    shutil.copyfile(tracked_clip.video_path, second_clip)
-    session.open_video(replace(tracked_clip, video_path=second_clip))
-    _show_tracked_frame(qtbot, session.focused_offline_viewer())
+    shutil.copyfile(tracked_clip.video, second_clip)
+    _show_tracked_frame(
+        qtbot, _add_and_open(qtbot, session, replace(tracked_clip, id=new_item_id(), label="", video=second_clip))
+    )
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         for size_name, size in WINDOW_SIZES.items():
             window.resize(*size)
             qtbot.wait(500)
             window.grab().save(str(OUT / f"{theme}-{text_size.value}-two-lanes-{size_name}.png"))
+
+    # Live streams, videos, a playlist, and a missing video together. Adding opens the first live stream in a
+    # stand-in viewer, so no RTSP connection starts.
+    monkeypatch.setattr("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", DummyViewer)
+    mixed_dir = tmp_path / "night-shift"
+    videos_dir = mixed_dir / "videos"
+    overlays_dir = mixed_dir / "overlays"
+    videos_dir.mkdir(parents=True)
+    overlays_dir.mkdir()
+    for index in range(1, 6):
+        shutil.copyfile(clip_path, videos_dir / f"run_{index:02d}.mp4")
+        _write_tracks(overlays_dir / f"run_{index:02d}.xml")
+    # The missing video makes adding report a modal warning, which would wait forever offscreen.
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_args: None)
+    session.add_items(
+        [
+            LiveStreamItem(host="192.0.2.10", label="Entrance"),
+            LiveStreamItem(host="192.0.2.10", label="Entrance"),
+            LiveStreamItem(host="192.0.2.11", camera_head=2, label="Parking north"),
+            PlaylistItem(
+                resolver="folder_pair",
+                settings={"videos_dir": str(videos_dir), "overlays_dir": str(overlays_dir), "handler_type": ONVIF_XML},
+                label="Night shift",
+            ),
+            VideoItem(video=tmp_path / "gate.mp4"),
+        ]
+    )
+
+    def tree_items() -> list[QTreeWidgetItem]:
+        """Return every row of the content browser, depth first."""
+        iterator = QTreeWidgetItemIterator(session._content_browser._tree)
+        items = []
+        while (item := iterator.value()) is not None:
+            if item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE) is not None:
+                items.append(item)
+            iterator += 1
+        return items
+
+    def row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
+        """Return the row an item shows."""
+        return cast(WorkspaceBrowserRow, item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE))
+
+    qtbot.waitUntil(lambda: all(row_of(item).icon_kind != "pending" for item in tree_items()), timeout=10000)
+    for item in tree_items():
+        item.setExpanded(item.isExpanded() or row_of(item).label == "Night shift")
+    for text_size in TEXT_SIZES:
+        settings.text_size = text_size
+        for size_name, size in WINDOW_SIZES.items():
+            window.resize(*size)
+            qtbot.wait(500)
+            suffix = "" if size_name == "wide" else f"-{size_name}"
+            window.grab().save(str(OUT / f"{theme}-{text_size.value}-mixed-workspace{suffix}.png"))
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

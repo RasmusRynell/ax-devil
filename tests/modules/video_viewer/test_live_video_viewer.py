@@ -10,13 +10,14 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
 from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.live_video_viewer import LiveStatusPanel, LiveVideoViewerWidget
-from ax_devil.modules.workspace import LiveRTSPStreamSpec, LiveVideoContent
+from ax_devil.modules.workspace.core import LiveRTSPStreamSpec, LiveVideoContent
 
 
 def _make_live_content(name: str = "Camera 1") -> LiveVideoContent:
@@ -160,6 +161,23 @@ def test_live_viewer_shows_displayed_frame_status_and_releases_controller(
 
     assert controller.cleaned
     assert widget.findChild(FrameDisplay) is None
+
+
+def test_set_display_name_updates_the_name_header_and_render_diagnostics(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    with patch(_CONTROLLER, _FakeStreamMediaController):
+        widget = LiveVideoViewerWidget(_make_live_content("Gate cam"), render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(widget)
+
+    widget.set_display_name("North gate cam")
+
+    assert widget.get_display_name() == "North gate cam"
+    assert widget._title_label.text() == "North gate cam"
+    labels = {viewer.label for viewer in get_render_metrics_store().snapshot()}
+    assert "North gate cam" in labels
+    assert "Gate cam" not in labels
+    widget.cleanup()
 
 
 def test_tools_toggle_opens_media_tools(

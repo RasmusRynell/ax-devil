@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import sys
+from collections.abc import Sequence
 from logging import Logger
 from pathlib import Path
 
@@ -17,11 +18,12 @@ from ax_devil.modules.diagnostics.exception_handler import install_exception_han
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import create_scene_render_catalog_manager
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.logging_config import get_logger, setup_logging, setup_qt_logging
+from ax_devil.modules.settings.logging_config import get_logger, setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
+from ax_devil.modules.settings.qt_logging import setup_qt_logging
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
-from ax_devil.modules.workspace import StartupContent
+from ax_devil.modules.workspace.core import WorkspaceItem
 from ax_devil.version import APP_VERSION
 
 
@@ -33,14 +35,17 @@ class Application:
         log_level: str = "INFO",
         config_path: Path | None = None,
         debug: bool = False,
-        startup_content: StartupContent | None = None,
+        items: Sequence[WorkspaceItem] = (),
+        workspace_file: Path | None = None,
         open_catalog_viewer: bool = False,
     ):
-        """Store startup parameters and defaults; *open_catalog_viewer* shows the catalog viewer on start."""
+        """Store launch parameters: the Workspace Items to start a new workspace with, or the workspace file to open,
+        and whether to show the catalog viewer on start. Without either, the kept workspace is restored."""
         self.log_level = log_level
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self.debug = debug
-        self.startup_content = startup_content
+        self.items = tuple(items)
+        self.workspace_file = workspace_file
         self.open_catalog_viewer = open_catalog_viewer
         self.app: QApplication | None = None
         self.main_window: MainWindow | None = None
@@ -91,8 +96,7 @@ class Application:
                 render_catalog_manager=render_catalog_manager,
             )
             self.main_window.show()
-            if self.startup_content is not None:
-                self.main_window.load_startup_content(self.startup_content)
+            self.main_window.launch(self.items, self.workspace_file)
             QTimer.singleShot(0, self._show_startup_windows)
 
             _collect_garbage_on_gui_thread(self.app, self.logger)
@@ -108,7 +112,7 @@ class Application:
                 config_manager.save()
 
             if self.app is not None:
-                relaunch_if_requested(self.app)
+                relaunch_if_requested(self.app, self._global_options())
             return exit_code
         except Exception as exc:
             logger = self.logger or get_logger(__name__)
@@ -116,6 +120,11 @@ class Application:
             if self.debug:
                 raise exc
             raise exc
+
+    def _global_options(self) -> list[str]:
+        """Return the command line options that apply to every launch, for a restarted process to keep."""
+        options = ["--log-level", self.log_level, "--config", str(self.config_path)]
+        return [*options, "--debug"] if self.debug else options
 
     def _show_startup_windows(self) -> None:
         """Open start-up windows in order; a modal dialog returns only when closed, so they never stack."""
@@ -158,7 +167,8 @@ def create_app(
     log_level: str = "INFO",
     config_path: Path | None = None,
     debug: bool = False,
-    startup_content: StartupContent | None = None,
+    items: Sequence[WorkspaceItem] = (),
+    workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
 ) -> Application:
     """Create application instance."""
@@ -166,6 +176,7 @@ def create_app(
         log_level=log_level,
         config_path=config_path,
         debug=debug,
-        startup_content=startup_content,
+        items=items,
+        workspace_file=workspace_file,
         open_catalog_viewer=open_catalog_viewer,
     )

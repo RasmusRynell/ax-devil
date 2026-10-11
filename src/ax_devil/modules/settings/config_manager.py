@@ -125,6 +125,11 @@ def _resolve_runtime_value(value: Any, *, expand_user_paths: bool) -> Any:
     return resolved_value
 
 
+def expand_environment_reference(value: str) -> str:
+    """Return the environment value a ``$VARIABLE_NAME`` reference names, empty when unset; other text unchanged."""
+    return cast(str, _resolve_runtime_value(value, expand_user_paths=False))
+
+
 def integer_default(value: object, default: int) -> int:
     """Read a resolved numeric default, falling back if its environment value is missing or invalid."""
     try:
@@ -282,6 +287,11 @@ class ConfigManager:
         self._load_if_needed()
         if key == "storage" and self._active_storage is not None:
             return copy.deepcopy(self._active_storage)
+        return self.get_saved(key, default)
+
+    def get_saved(self, key: str, default: Any = None) -> Any:
+        """Return a value as saved now, including storage changes that take effect after a restart."""
+        self._load_if_needed()
         if key not in self._raw_config:
             result = default
         else:

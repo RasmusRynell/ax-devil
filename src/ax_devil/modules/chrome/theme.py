@@ -61,7 +61,7 @@ LIGHT_COLORS: dict[str, str] = {
     "foreground": "#263445",
     "foreground>icon": "#526477",
     "foreground>disabled": "#7c8794",
-    "foreground>input.placeholder": "#65768a",
+    "foreground>input.placeholder": "#5a6a7d",
     "border": "#d5dee8",
     "border>input": "#7b8d9f",
     "input.background": "#ffffff",

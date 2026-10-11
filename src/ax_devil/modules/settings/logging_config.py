@@ -29,12 +29,9 @@ import datetime as _dt
 import json as _json
 import logging as _logging
 import logging.handlers as _handlers
-import os as _os
 from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 from typing import Any
-
-from PySide6.QtCore import QLoggingCategory
 
 from ax_devil.modules.settings.paths import DEFAULT_JSON_LOG_FILENAME, DEFAULT_PLAIN_LOG_FILENAME, LOGS_DIR
 
@@ -48,25 +45,6 @@ _COLORS: Mapping[str, str] = {
     "ERROR": "\033[91m",  # red
     "CRITICAL": "\033[95m",  # magenta
 }
-QT_ACCESSIBILITY_ATSPI_CATEGORY = "qt.accessibility.atspi"
-QT_ACCESSIBILITY_ATSPI_LOGGING_RULE = f"{QT_ACCESSIBILITY_ATSPI_CATEGORY}=false"
-
-
-def qt_logging_rules_with_defaults(existing_rules: str | None) -> str:
-    """Add ax-devil's default Qt logging rules without overriding user rules."""
-    rules = (existing_rules or "").strip()
-    if QT_ACCESSIBILITY_ATSPI_CATEGORY in rules:
-        return rules
-    if not rules:
-        return QT_ACCESSIBILITY_ATSPI_LOGGING_RULE
-    return f"{rules}\n{QT_ACCESSIBILITY_ATSPI_LOGGING_RULE}"
-
-
-def setup_qt_logging() -> None:
-    """Install default Qt logging rules before QApplication starts."""
-    rules = qt_logging_rules_with_defaults(_os.environ.get("QT_LOGGING_RULES"))
-    _os.environ["QT_LOGGING_RULES"] = rules
-    QLoggingCategory.setFilterRules(rules)
 
 
 def _resolve_level(level: str) -> int:

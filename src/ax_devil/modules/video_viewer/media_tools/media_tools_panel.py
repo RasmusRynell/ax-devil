@@ -219,7 +219,7 @@ class MediaToolsPanel(QWidget):
         self._id_search = QLineEdit(self)
         self._id_search.setText(self.filter_model.id_query)
         self._id_search.setObjectName("entityIdSearch")
-        self._id_search.setPlaceholderText("Search id…")
+        self._id_search.setPlaceholderText("Search id")
         self._id_search.setClearButtonEnabled(True)
         self._id_search.textChanged.connect(self.filter_model.set_id_query)
         self._filter_button = self._popup_button("Filter", MediaToolsSection.FILTERS, self._filter_widget)

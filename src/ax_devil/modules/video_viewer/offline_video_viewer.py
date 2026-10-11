@@ -36,15 +36,15 @@ from ax_devil.modules.video_viewer.offline_viewer_runtime import (
     show_video_on_controls,
     video_details,
 )
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     ConsiderationQuery,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
 )
-from ax_devil.modules.workspace.content import OnScreenWorkspaceItem
-from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 logger = get_logger(__name__)
 
@@ -66,7 +66,7 @@ class _ViewerOverlayHost(QWidget):
         overlay.raise_()
 
 
-class OfflineVideoViewerWidget(WorkspaceWidget):
+class OfflineVideoViewerWidget(ViewerWidget):
     """Offline video viewer for local playback with multi-lane support."""
 
     current_entry_changed = Signal(int)
@@ -80,6 +80,7 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         consideration_query: ConsiderationQuery | None = None,
     ) -> None:
         self._content = content
+        self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
         self._navigation = OfflineViewerNavigation(content, consideration_query)
         self._current_index = self._navigation.normalize_entry_index(start_index)
@@ -465,7 +466,14 @@ class OfflineVideoViewerWidget(WorkspaceWidget):
         runtime.cleanup(blocking=blocking)
 
     def get_display_name(self) -> str:
-        return self._content.display_name
+        return self._display_name
+
+    def set_display_name(self, name: str) -> None:
+        """Show *name* in the header and on the next pane title, after the item is renamed."""
+        self._display_name = name
+        if self._runtime is not None:
+            self._runtime.set_display_name(name)
+        super().set_display_name(name)
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem:
         """Return the workspace item shown by this viewer."""

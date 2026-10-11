@@ -62,6 +62,9 @@ ax-devil live --host 192.168.1.100 --overlay rtsp --handler-type ONVIF_XML
 ax-devil playlist folder_pair /path/to/videos /path/to/annotations --handler-type CVAT
 ```
 
+**File → Save Workspace** saves what you opened as a `.ax-devil.workspace` file; `ax-devil open` reopens it, and a
+plain `ax-devil` picks up where you left off. [Workspaces →](https://github.com/RasmusRynell/ax-devil/blob/main/docs/usage.md#workspaces)
+
 Built-in formats: CVAT, MOT, UVG-VCM, Axis ADF, and ONVIF XML (`ax-devil list-handlers`). Live analytics can
 arrive over RTSP, MQTT, or Axis DataHub WebSocket.
 [Live connection options →](https://github.com/RasmusRynell/ax-devil/blob/main/docs/usage.md#live-cameras)
@@ -101,7 +104,7 @@ attributes. Built-in catalogs:
 | **Classic** | IDs above boxes, class names below, confidence bars, and movement symbols |
 
 To make your own, open **View → Render Catalogs** (`Ctrl+R`) or run `ax-devil catalog`, pick a catalog, and choose
-**New copy…**. Edit the JSON yourself or ask a coding agent. Changes show up when you save. [Catalog format →](https://github.com/RasmusRynell/ax-devil/blob/main/.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built)
+**New copy**. Edit the JSON yourself or ask a coding agent. Changes show up when you save. [Catalog format →](https://github.com/RasmusRynell/ax-devil/blob/main/.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built)
 
 ## Plugins
 

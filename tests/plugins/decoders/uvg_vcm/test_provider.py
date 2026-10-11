@@ -13,7 +13,7 @@ from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.filtering import FilterState
 from ax_devil.modules.plugin_system import get_file_decoder_factory
 from ax_devil.modules.scene.model import EntityId, Scene
-from ax_devil.modules.workspace import FileOverlaySourceSpec
+from ax_devil.modules.workspace.core import FileOverlaySourceSpec
 from ax_devil.plugins.decoders.uvg_vcm.plugin import UVG_VCM
 from ax_devil.plugins.decoders.uvg_vcm.provider import UVGVCMSceneDataProvider
 from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import build_playlist_contents, discover_folder_pairs

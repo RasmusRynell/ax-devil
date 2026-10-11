@@ -1,4 +1,4 @@
-"""The public ``ax-devil`` command builds the right startup content, or rejects bad input before launching."""
+"""The public ``ax-devil`` command builds the right startup items, or rejects bad input before launching."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from click.testing import CliRunner, Result
 from ax_devil import cli as cli_module
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.settings.config_manager import DEFAULT_CONFIG, ConfigManager
+from ax_devil.modules.workspace.core import OverlayFile
 
 ENTRY_POINTS = "ax_devil.modules.plugin_system.loader.importlib.metadata.entry_points"
 MOT_SEQINFO = (
@@ -29,13 +30,13 @@ from pathlib import Path
 import click
 
 from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
-from ax_devil.modules.workspace import ResolvedPlaylistStartup
+from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
 
 
 class ExternalGroupResolver(PlaylistResolverPlugin):
     @classmethod
     def required_api_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -56,9 +57,14 @@ class ExternalGroupResolver(PlaylistResolverPlugin):
         @click.option("--select", "selected_overlays", multiple=True)
         @click.pass_context
         def run(ctx: click.Context, simulator_root: Path, selected_overlays: tuple[str, ...]) -> None:
-            ctx.obj["run_with_startup_content"](ResolvedPlaylistStartup(playlists=()))
+            settings = {"root": str(simulator_root), "select": list(selected_overlays)}
+            item = PlaylistItem(label=cls.display_name(), resolver=cls.plugin_id(), settings=settings)
+            ctx.obj["run_with_items"]([item])
 
         return command
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        raise NotImplementedError
 
     def create_settings_widget(self) -> PlaylistResolverWidget:
         raise NotImplementedError
@@ -68,20 +74,29 @@ PLUGIN_CLASS = ExternalGroupResolver
 """
 
 
+class _Launches(list[Any]):
+    """The items a command would open, plus every keyword argument it gave the application."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.kwargs: dict[str, Any] = {}
+
+
 @pytest.fixture(autouse=True)
-def startups(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[Any]]:
-    """Record the startup content each command would open, without starting the application.
+def startups(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Launches]:
+    """Record the items each command would open, without starting the application.
 
     Commands reload plugins; only built-in ones are visible, and the built-in set is restored afterward.
     """
-    opened: list[Any] = []
+    opened = _Launches()
 
     class _App:
         def run(self) -> int:
             return 0
 
     def create_app(*args: Any, **kwargs: Any) -> _App:
-        opened.append(kwargs["startup_content"])
+        opened.kwargs = kwargs
+        opened.extend(kwargs["items"])
         return _App()
 
     monkeypatch.setattr(cli_module, "create_app", create_app)
@@ -168,17 +183,17 @@ def test_clear_cache_rejects_missing_explicit_config(tmp_path: Path) -> None:
     assert "Config file does not exist" in result.output
 
 
-def test_playlist_command_opens_resolved_playlists(tmp_path: Path, startups: list[Any]) -> None:
-    result = _invoke("playlist", "mot_challenge", str(_mot_dataset(tmp_path)))
+def test_playlist_command_opens_a_playlist_item(tmp_path: Path, startups: _Launches) -> None:
+    dataset = _mot_dataset(tmp_path)
+
+    result = _invoke("playlist", "mot_challenge", str(dataset))
 
     assert result.exit_code == 0, result.output
-    [startup] = startups
-    [playlist] = startup.playlists
-    assert playlist.display_name == "MOT Challenge"
-    assert len(playlist.entries) == 1
+    [item] = startups
+    assert (item.resolver, item.settings) == ("mot_challenge", {"root": str(dataset)})
 
 
-def test_playlist_command_rejects_missing_directory(tmp_path: Path, startups: list[Any]) -> None:
+def test_playlist_command_rejects_missing_directory(tmp_path: Path, startups: _Launches) -> None:
     result = _invoke("playlist", "mot_challenge", str(tmp_path / "does-not-exist"))
 
     assert result.exit_code != 0
@@ -244,18 +259,19 @@ def test_group_resolver_help_reaches_every_subcommand(monkeypatch: pytest.Monkey
 
 
 def test_group_resolver_subcommand_opens_its_playlists(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: list[Any]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches
 ) -> None:
     _install_group_resolver(monkeypatch, tmp_path)
 
     result = _invoke("playlist", "external_group", "run", str(tmp_path), "--select", "alpha")
 
     assert result.exit_code == 0, result.output
-    assert len(startups) == 1
+    [item] = startups
+    assert (item.resolver, item.settings) == ("external_group", {"root": str(tmp_path), "select": ["alpha"]})
 
 
-def test_live_reads_device_and_broker_from_environment(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: list[Any]
+def test_live_keeps_configured_credential_references_in_the_item(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches
 ) -> None:
     monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "camera.example")
     monkeypatch.setenv("AX_DEVIL_TARGET_USER", "operator")
@@ -267,14 +283,36 @@ def test_live_reads_device_and_broker_from_environment(
     result = _invoke("--config", _write_config(tmp_path, _default_config()), "live", "--overlay", "mqtt")
 
     assert result.exit_code == 0, result.output
-    [startup] = startups
-    assert (startup.host, startup.username, startup.password) == ("camera.example", "operator", "secret")
-    assert (startup.mqtt_host, startup.mqtt_username, startup.mqtt_password) == (
-        "mqtt.example",
-        "mqtt-user",
-        "mqtt-pass",
+    [item] = startups
+    assert (item.label, item.display_name) == ("", "camera.example"), "the shown host is expanded, never stored"
+    assert (item.host, item.username, item.password) == (
+        "$AX_DEVIL_TARGET_ADDR",
+        "$AX_DEVIL_TARGET_USER",
+        "$AX_DEVIL_TARGET_PASS",
     )
-    assert startup.overlay_mode.value == "mqtt"
+    assert (item.mqtt_host, item.mqtt_username, item.mqtt_password) == (
+        "$AX_DEVIL_MQTT_BROKER_ADDR",
+        "$AX_DEVIL_MQTT_BROKER_USER",
+        "$AX_DEVIL_MQTT_BROKER_PASS",
+    )
+    values = item.expanded()
+    assert (values.host, values.username, values.password) == ("camera.example", "operator", "secret")
+    assert (values.mqtt_host, values.mqtt_username, values.mqtt_password) == ("mqtt.example", "mqtt-user", "mqtt-pass")
+    assert item.overlay_mode.value == "mqtt"
+
+
+def test_live_takes_command_line_credentials_literally(tmp_path: Path, startups: _Launches) -> None:
+    config = _default_config()
+    config["defaults"]["live_stream"]["overlay_source"] = "none"
+
+    result = _invoke(
+        "--config", _write_config(tmp_path, config), "live", "--host", "camera.local", "--password", "pa$$word"
+    )
+
+    assert result.exit_code == 0, result.output
+    [item] = startups
+    assert (item.host, item.password) == ("camera.local", "pa$$word")
+    assert item.expanded().password == "pa$$word"
 
 
 _WEBSOCKET_FROM_CONFIG = {
@@ -316,7 +354,7 @@ _WEBSOCKET_FROM_CONFIG = {
 )
 def test_live_selects_handler_and_transport_settings(
     tmp_path: Path,
-    startups: list[Any],
+    startups: _Launches,
     configured_mode: str,
     arguments: list[str],
     expected_mode: str,
@@ -346,7 +384,7 @@ def test_live_selects_handler_and_transport_settings(
     "mode,expected", [("unset", (1, 1883, 1)), ("configured", (3, 2883, 4)), ("overridden", (9, 3883, 7))]
 )
 def test_live_resolves_numeric_references(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: list[Any], mode: str, expected: tuple[int, int, int]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches, mode: str, expected: tuple[int, int, int]
 ) -> None:
     """The live command handles unset numeric references, numeric strings and CLI precedence."""
     config = _default_config()
@@ -374,7 +412,7 @@ def test_live_resolves_numeric_references(
     assert (startup.camera_head, startup.mqtt_port, startup.websocket_channel_id) == expected
 
 
-def test_live_reports_invalid_config_overlay_mode(tmp_path: Path, startups: list[Any]) -> None:
+def test_live_reports_invalid_config_overlay_mode(tmp_path: Path, startups: _Launches) -> None:
     config = _default_config()
     config["defaults"]["live_stream"]["overlay_source"] = "invalid"
 
@@ -386,7 +424,7 @@ def test_live_reports_invalid_config_overlay_mode(tmp_path: Path, startups: list
 
 
 @pytest.mark.parametrize("with_overlay", [False, True], ids=["video-only", "video-and-overlay"])
-def test_local_opens_video_with_optional_overlay(tmp_path: Path, startups: list[Any], with_overlay: bool) -> None:
+def test_local_opens_video_with_optional_overlay(tmp_path: Path, startups: _Launches, with_overlay: bool) -> None:
     video_file = tmp_path / "test.mp4"
     video_file.write_bytes(b"\x00")
     overlay_file = tmp_path / "data.jsonl"
@@ -396,13 +434,12 @@ def test_local_opens_video_with_optional_overlay(tmp_path: Path, startups: list[
     result = _invoke("local", "--video", str(video_file), *overlay_arguments)
 
     assert result.exit_code == 0, result.output
-    [startup] = startups
-    assert startup.video_path == video_file
-    assert startup.overlay_path == (overlay_file if with_overlay else None)
-    assert startup.handler_type == ("ADF_BETA_FRAME" if with_overlay else None)
+    [item] = startups
+    assert (item.display_name, item.video) == ("test.mp4", video_file)
+    assert item.overlays == ((OverlayFile(overlay_file, "ADF_BETA_FRAME"),) if with_overlay else ())
 
 
-def test_local_overlay_requires_handler_type(tmp_path: Path, startups: list[Any]) -> None:
+def test_local_overlay_requires_handler_type(tmp_path: Path, startups: _Launches) -> None:
     video_file = tmp_path / "test.mp4"
     video_file.write_bytes(b"\x00")
     overlay_file = tmp_path / "data.jsonl"
@@ -413,3 +450,38 @@ def test_local_overlay_requires_handler_type(tmp_path: Path, startups: list[Any]
     assert result.exit_code != 0
     assert "--handler-type is required" in result.output
     assert startups == []
+
+
+@pytest.mark.parametrize("damaged", [False, True])
+def test_open_launches_a_saved_workspace_and_rejects_a_damaged_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches, damaged: bool
+) -> None:
+    workspace_file = tmp_path / "Lot.ax-devil.workspace"
+    workspace_file.write_text("{not json" if damaged else '{"version": 1, "items": []}', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    result = _invoke("open", workspace_file.name)
+
+    if damaged:
+        assert result.exit_code != 0
+        assert "Lot.ax-devil.workspace is not valid JSON" in result.output
+        assert startups.kwargs == {}
+    else:
+        assert result.exit_code == 0, result.output
+        assert startups.kwargs["workspace_file"] == workspace_file
+        assert startups == []
+
+
+@pytest.mark.parametrize("command", ["local", "open"])
+def test_group_options_reach_the_app_launched_by_a_command(tmp_path: Path, startups: _Launches, command: str) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    target = tmp_path / ("clip.mp4" if command == "local" else "Lot.ax-devil.workspace")
+    target.write_text('{"version": 1, "items": []}', encoding="utf-8")
+    arguments = ["--video", str(target)] if command == "local" else [str(target)]
+
+    result = _invoke("--debug", "--log-level", "DEBUG", "--config", str(config_path), command, *arguments)
+
+    assert result.exit_code == 0, result.output
+    kwargs = startups.kwargs
+    assert (kwargs["debug"], kwargs["log_level"], kwargs["config_path"]) == (True, "DEBUG", config_path)

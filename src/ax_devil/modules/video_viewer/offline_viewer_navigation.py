@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     ConsiderationQuery,
     PlaylistContent,

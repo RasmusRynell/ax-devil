@@ -1,12 +1,11 @@
 """Synchronization package facade.
 
-Exports the pure-Python sync engine and its Qt adapters.
+Exports the pure-Python sync engine; the Qt adapter lives in ``qt_adapter`` and is imported from there.
 """
 
 from __future__ import annotations
 
 from .engine import StreamSync, SyncResult, TimestampedData
-from .qt_adapter import QtStreamSync
 from .timestamp_matching import (
     TimestampFallbackMode,
     TimestampFallbackPolicy,
@@ -20,7 +19,6 @@ __all__ = [
     "StreamSync",
     "SyncResult",
     "TimestampedData",
-    "QtStreamSync",
     "TimestampFallbackMode",
     "TimestampFallbackPolicy",
     "TimestampMatchResult",

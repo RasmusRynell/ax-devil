@@ -16,8 +16,8 @@ Focused `uv run pytest ...` commands and the installation integration suite stay
 To run a specific test file or test:
 
 ```bash
-QT_QPA_PLATFORM=offscreen uv run pytest tests/modules/workspace/test_content.py
-QT_QPA_PLATFORM=offscreen uv run pytest tests/modules/workspace/test_content.py::test_specific_case -v
+QT_QPA_PLATFORM=offscreen uv run pytest tests/modules/workspace/core/test_content.py
+QT_QPA_PLATFORM=offscreen uv run pytest tests/modules/workspace/core/test_content.py::test_specific_case -v
 QT_QPA_PLATFORM=offscreen uv run pytest tests/ -k "keyword"
 ```
 
@@ -86,7 +86,7 @@ env -u WAYLAND_DISPLAY -u QT_QPA_PLATFORMTHEME -u QT_QUICK_BACKEND -u QSG_RHI_BA
   tests/modules/video_player/engine/test_image_renderer.py \
   tests/modules/video_player/test_quick_renderer.py \
   tests/modules/video_player/test_lane_fullscreen.py \
-  tests/modules/workspace/test_offline_playback.py
+  tests/modules/workspace/ui/test_offline_playback.py
 ```
 
 Run these groups together so catalog window teardown is followed by image export and renderer creation in the same

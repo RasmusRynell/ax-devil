@@ -234,7 +234,7 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(
         assert "Prepare overlays" in QApplication.clipboard().text()
         export = tmp_path / "diagnostics.json"
         monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_args: (str(export), ""))
-        button(window, "Export…").click()
+        button(window, "Export").click()
         serialized = json.loads(export.read_text(encoding="utf-8"))
         assert serialized["inspection"] == {"viewer_id": "spike", "sample_index": 1, "metric_key": "paint"}
         viewer = next(item for item in serialized["viewers"] if item["viewer_id"] == "spike")

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.cache.cache_manager import CacheManager
-from ax_devil.modules.data_sources import FileFrameSource
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import offline_entry_media
@@ -29,7 +29,7 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
 )
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,

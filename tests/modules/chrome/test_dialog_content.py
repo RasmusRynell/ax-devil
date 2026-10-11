@@ -10,8 +10,8 @@ from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
-from ax_devil.modules.workspace.item_info import WorkspaceItemInfo
-from ax_devil.modules.workspace.item_info_dialog import WorkspaceItemInfoDialog
+from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
+from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from tests.helpers.dialogs import content_scroll
 from tests.helpers.shortcuts import make_shortcut_manager
 
