@@ -325,6 +325,11 @@ class LiveVideoContent:
         """Return no items because live overlay consideration is unsupported."""
         return ()
 
+    @property
+    def bookmark_entries(self) -> tuple[str, ...]:
+        """Return no Bookmark Target entries: live video is never bookmarked."""
+        return ()
+
     def on_screen_item(self, entry_index: int = 0) -> OnScreenWorkspaceItem:
         """Return the workspace item a viewer shows for this video."""
         return OnScreenWorkspaceItem(kind="video", content_id=self.content_id)
@@ -379,6 +384,11 @@ class SeekableVideoContent:
     def entries(self) -> tuple[PlaylistEntry, ...]:
         """Return this video as a one-entry playlist of its standalone lanes."""
         return (PlaylistEntry(lanes=self.standalone_lanes(), default_considered=True),)
+
+    @property
+    def bookmark_entries(self) -> tuple[str, ...]:
+        """Return the Bookmark Target entry of the one entry: empty, since the target is the item itself."""
+        return ("",)
 
     def entry_consideration_ref(self, entry_index: int) -> None:
         """Return None because the single entry of a standalone video is always considered."""
@@ -514,6 +524,14 @@ class PlaylistContent:
                     for lane_index, lane in enumerate(entry.lanes)
                 )
         return tuple(items)
+
+    @property
+    def bookmark_entries(self) -> tuple[str, ...]:
+        """Return each entry's Bookmark Target entry, "<playlist name>/<entry label>", in entry order.
+
+        One Playlist Item may resolve to several playlists, so the label alone would not tell their entries apart.
+        """
+        return tuple(f"{self.display_name}/{entry.display_label(index)}" for index, entry in enumerate(self.entries))
 
     def entry_consideration_ref(self, entry_index: int) -> ConsiderationItemRef:
         """Return the reference that toggles one playlist entry."""

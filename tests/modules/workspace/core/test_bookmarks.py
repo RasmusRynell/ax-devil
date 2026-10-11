@@ -2,29 +2,35 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from ax_devil.modules.workspace.core import Bookmark, BookmarkKind, BookmarkTarget, entry_target, find_entry
+from ax_devil.modules.workspace.core import (
+    Bookmark,
+    BookmarkKind,
+    BookmarkTarget,
+    entry_target,
+    find_entry,
+    target_name,
+)
 from ax_devil.modules.workspace.core.content import (
     FileVideoSourceSpec,
+    LiveRTSPStreamSpec,
+    LiveVideoContent,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
 )
 
 
+def _video(name: str) -> SeekableVideoContent:
+    return SeekableVideoContent(display_name=name, source_spec=FileVideoSourceSpec(Path(name)))
+
+
 def _playlist(name: str, *videos: str) -> PlaylistContent:
-    entries = tuple(
-        PlaylistEntry(
-            lanes=SeekableVideoContent(
-                display_name=video, source_spec=FileVideoSourceSpec(Path(video))
-            ).standalone_lanes(),
-            default_considered=True,
-        )
-        for video in videos
-    )
+    entries = tuple(PlaylistEntry(lanes=_video(video).standalone_lanes(), default_considered=True) for video in videos)
     return PlaylistContent(display_name=name, entries=entries)
 
 
@@ -59,12 +65,26 @@ def test_entries_of_two_playlists_of_one_item_are_told_apart_even_when_they_shar
     train = _playlist("train", "a.mp4", "b.mp4")
     test = _playlist("test", "a.mp4")
 
-    assert entry_target("item", train, 0) != entry_target("item", test, 0)
-    assert find_entry([train, test], entry_target("item", test, 0)) == (test, 0)
-    assert find_entry([train, test], entry_target("item", train, 1)) == (train, 1)
+    assert entry_target(train, 0) != entry_target(test, 0)
+    assert find_entry([train, test], entry_target(test, 0)) == (test, 0)
+    assert find_entry([train, test], entry_target(train, 1)) == (train, 1)
 
 
 def test_an_entry_that_no_longer_exists_is_not_found() -> None:
-    old = entry_target("item", _playlist("train", "gone.mp4"), 0)
+    old = entry_target(_playlist("train", "gone.mp4"), 0)
 
     assert find_entry([_playlist("train", "a.mp4")], old) is None
+
+
+def test_a_video_is_its_own_target_and_live_video_has_none() -> None:
+    video = replace(_video("clip.mp4"), item_id="item")
+    live = LiveVideoContent(display_name="cam", source_spec=LiveRTSPStreamSpec(host="cam", username="", password=""))
+
+    assert entry_target(video, 0) == BookmarkTarget("item")
+    assert find_entry([live, video], BookmarkTarget("item")) == (video, 0)
+
+
+def test_a_target_is_named_by_its_item_and_its_entry_without_a_repeated_playlist_name() -> None:
+    assert target_name("clip.mp4", BookmarkTarget("item")) == "clip.mp4"
+    assert target_name("Night shift", BookmarkTarget("item", "Night shift/run_02")) == "Night shift › run_02"
+    assert target_name("Runs", BookmarkTarget("item", "train/a.mp4")) == "Runs › train/a.mp4"

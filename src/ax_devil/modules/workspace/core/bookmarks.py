@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TypeVar
 
-from ax_devil.modules.workspace.core.content import PlaylistContent
+from ax_devil.modules.workspace.core.content import Content
 from ax_devil.modules.workspace.core.items import _read, new_item_id
 
 _EntryT = TypeVar("_EntryT")
@@ -18,9 +18,9 @@ _EntryT = TypeVar("_EntryT")
 class BookmarkTarget:
     """One video that is reviewed: a Video Item (``entry`` empty) or one entry of a Playlist Item.
 
-    A playlist entry is named by its playlist's name and its own ``display_label`` (see ``entry_target``), since entries
-    have no id and their indexes shift when the resolver runs again. A target whose item or entry no longer exists is
-    orphaned and kept; only removing its item removes it.
+    A playlist entry is named by its playlist's name and its own ``display_label`` (see
+    ``PlaylistContent.bookmark_entries``), since entries have no id and their indexes shift when the resolver runs
+    again. A target whose item or entry no longer exists is orphaned and kept; only removing its item removes it.
     """
 
     item_id: str
@@ -36,25 +36,52 @@ class BookmarkTarget:
         return cls(_read(data, "item", str), _read(data, "entry", str, ""))
 
 
-def entry_target(item_id: str, playlist: PlaylistContent, entry_index: int) -> BookmarkTarget:
-    """Return the target for entry *entry_index* of *playlist*, which a Playlist Item *item_id* resolved to.
+def entry_target(content: Content, entry_index: int) -> BookmarkTarget:
+    """Return the target for entry *entry_index* of *content*, as its item resolved it.
 
-    One Playlist Item may resolve to several playlists, so the entry is named "<playlist name>/<entry label>".
+    The entry is the one the Content gives that entry in ``bookmark_entries``; live Content has none.
     """
-    label = playlist.entries[entry_index].display_label(entry_index)
-    return BookmarkTarget(item_id, f"{playlist.display_name}/{label}")
+    return BookmarkTarget(content.item_id, content.bookmark_entries[entry_index])
 
 
-def find_entry(playlists: Sequence[PlaylistContent], target: BookmarkTarget) -> tuple[PlaylistContent, int] | None:
-    """Return the playlist and entry index *target* names among *playlists*, or None when it no longer exists.
+def find_entry(contents: Sequence[Content], target: BookmarkTarget) -> tuple[Content, int] | None:
+    """Return the Content and entry index *target* names among *contents*, or None when it no longer exists.
 
-    *playlists* are the Content of the target's item. Entries that share a name resolve to the first of them.
+    *contents* are the Content of the target's item. Entries that share a name resolve to the first of them.
     """
-    for playlist in playlists:
-        for index in range(len(playlist.entries)):
-            if entry_target(target.item_id, playlist, index) == target:
-                return playlist, index
+    for content in contents:
+        if target.entry in content.bookmark_entries:
+            return content, content.bookmark_entries.index(target.entry)
     return None
+
+
+def entry_name(item_name: str, target: BookmarkTarget) -> str:
+    """Return how *target*'s entry is shown under its item named *item_name*: empty for a Video Item.
+
+    The entry's playlist name is left out when it is the item's name, as it is for an item with one playlist.
+    """
+    return target.entry.removeprefix(f"{item_name}/")
+
+
+def target_name(item_name: str, target: BookmarkTarget) -> str:
+    """Return how *target* is shown: the item's name, then the entry's (see ``entry_name``) for a playlist entry."""
+    entry = entry_name(item_name, target)
+    return f"{item_name} › {entry}" if entry else item_name
+
+
+@dataclass(frozen=True)
+class BookmarkPosition:
+    """The frame a viewer shows: which entry of which Content, the frame index, and the frame's time."""
+
+    content: Content
+    entry_index: int
+    frame: int
+    time_s: float
+
+    @property
+    def target(self) -> BookmarkTarget:
+        """Return the target a bookmark of this frame belongs to."""
+        return entry_target(self.content, self.entry_index)
 
 
 class BookmarkKind(Enum):
