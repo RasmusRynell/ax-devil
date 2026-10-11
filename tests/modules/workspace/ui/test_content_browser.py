@@ -25,6 +25,7 @@ from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.content_browser import (
     TREE_CONSIDERATION_COLUMN,
+    TREE_HIDDEN_COUNT_ROLE,
     TREE_LABEL_COLUMN,
     TREE_ROW_ROLE,
     ContentBrowserWidget,
@@ -165,7 +166,7 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
     assert "Open in a viewer" in child_item.toolTip(0)
 
 
-def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qtbot: QtBot) -> None:
+def test_a_section_row_is_not_selectable_or_openable_and_is_not_searchable(qtbot: QtBot) -> None:
     browser = _browser(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"))
     section = _tree(browser).topLevelItem(0)
     assert section is not None
@@ -178,10 +179,6 @@ def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qt
     _tree(browser).itemDoubleClicked.emit(section, 0)
     activated.assert_not_called()
     assert required_child(section, 0).text(0) == "clip.mp4"
-
-    section.setExpanded(False)
-
-    assert section.isExpanded()
 
     _search(browser).setText("videos")
 
@@ -626,3 +623,63 @@ def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
     )
 
     assert _context_menu(browser, _required_item_row(browser)) == {"Rename": False, "Remove": True}
+
+
+def test_clicking_a_section_folds_it_and_the_fold_survives_a_refresh(qtbot: QtBot) -> None:
+    row = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
+    browser = _browser(qtbot, row)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+
+    _tree(browser).itemClicked.emit(section, 0)
+
+    assert not section.isExpanded()
+
+    _set_rows(browser, (row,))
+
+    folded = _tree(browser).topLevelItem(0)
+    assert folded is not None
+    assert not folded.isExpanded()
+
+    _tree(browser).itemClicked.emit(folded, 0)
+
+    assert folded.isExpanded()
+
+
+def test_a_folded_section_unfolds_for_an_open_row_and_for_a_search_match(qtbot: QtBot) -> None:
+    row = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
+    browser = _browser(qtbot, row)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+    section.setExpanded(False)
+
+    _search(browser).setText("clip")
+
+    assert section.isExpanded()
+
+    _search(browser).clear()
+    section.setExpanded(False)
+    _set_rows(browser, (replace(row, is_open=True),))
+
+    reopened = _tree(browser).topLevelItem(0)
+    assert reopened is not None
+    assert reopened.isExpanded()
+
+
+def test_a_section_counts_the_excluded_items_the_list_hides(qtbot: QtBot) -> None:
+    excluded = WorkspaceBrowserRow(
+        row_id="entry",
+        label="Entry",
+        icon_kind="video",
+        consideration_ref=ConsiderationItemRef.playlist_entry("playlist-id", 0),
+        is_considered=False,
+    )
+    browser = _browser(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"), excluded)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+
+    assert section.data(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE) == 1
+
+    _show_excluded_toggle(browser).click()
+
+    assert section.data(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE) == 0

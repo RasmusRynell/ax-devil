@@ -14,6 +14,7 @@ from typing import cast
 from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QFontMetrics, QGuiApplication, QPainter, QPalette
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QStyle,
     QStyledItemDelegate,
+    QStyleOption,
     QStyleOptionViewItem,
     QToolButton,
     QTreeWidget,
@@ -34,9 +36,10 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.section_caption import paint_section_caption
 from ax_devil.modules.chrome.theme import KindColor, StatusColor
-from ax_devil.modules.chrome.tokens import Height, Space, TextRole
+from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Content
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.core.items import WorkspaceItem
@@ -54,9 +57,14 @@ TREE_CONSIDERATION_COLUMN = 1
 TREE_CONSIDERATION_COLUMN_WIDTH_PX = 24
 TREE_ROW_ROLE = Qt.ItemDataRole.UserRole
 TREE_SECTION_ROLE = Qt.ItemDataRole.UserRole + 1
+TREE_HIDDEN_COUNT_ROLE = Qt.ItemDataRole.UserRole + 2
+"""On a section row: how many excluded items its rows hide from the list."""
 
 
 _OPEN_EDGE_PX = 2
+_OPEN_TINT_ALPHA = 0.18
+_PRESSED_ALPHA = 0.7
+_SECTION_ARROW_PX = Space.L
 
 
 @dataclass(frozen=True)
@@ -100,7 +108,7 @@ class _RowDelegate(QStyledItemDelegate):
         """Draw the row."""
         section = index.data(TREE_SECTION_ROLE)
         if section is not None:
-            self._paint_section(painter, option, section)
+            self._paint_section(painter, option, section, index.data(TREE_HIDDEN_COUNT_ROLE) or 0)
             return
         row = _row_at(index)
         opt = QStyleOptionViewItem(option)
@@ -141,25 +149,44 @@ class _RowDelegate(QStyledItemDelegate):
         )
         painter.restore()
 
-    def _paint_section(self, painter: QPainter, option: QStyleOptionViewItem, section: WorkspaceBrowserSection) -> None:
-        """Draw a section caption: its kind's color mark, the title, the count, and a rule to the right edge."""
+    def _paint_section(
+        self, painter: QPainter, option: QStyleOptionViewItem, section: WorkspaceBrowserSection, hidden_count: int
+    ) -> None:
+        """Draw a section caption: an arrow, its kind's color mark, the title, the count with any hidden items, and a
+        rule to the right edge."""
         mark = _KIND_MARKS[section.kind.icon_kind].color(option.palette)
-        paint_section_caption(painter, option.rect, option.palette, f"{section.kind.title}  {len(section.rows)}", mark)
+        text = f"{section.kind.title}  {len(section.rows)}" + (f"  · {hidden_count} hidden" if hidden_count else "")
+        # The arrow is the one the tree draws beside rows that have children.
+        arrow = QStyleOption()
+        arrow.rect = QRect(option.rect.left(), option.rect.top(), _SECTION_ARROW_PX, option.rect.height())
+        arrow.palette = option.palette
+        arrow.state = QStyle.StateFlag.State_Children | QStyle.StateFlag.State_Enabled
+        if option.state & QStyle.StateFlag.State_Open:
+            arrow.state |= QStyle.StateFlag.State_Open
+        QApplication.style().drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorBranch, arrow, painter)
+        caption_rect = option.rect.adjusted(_SECTION_ARROW_PX - Space.S, 0, 0, 0)
+        paint_section_caption(painter, caption_rect, option.palette, text, mark)
 
 
 class _BrowserTree(QTreeWidget):
-    """The content tree; a row open in a viewer gets an accent edge along the left side."""
+    """The content tree; a row open in a viewer gets a faint accent tint and an accent edge along the left side."""
 
     def drawRow(  # noqa: N802
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
     ) -> None:
-        """Draw the row, then its open edge."""
+        """Draw the row with a faint tint behind it, then its open edge."""
+        is_open = index.data(TREE_SECTION_ROLE) is None and _row_at(index).is_open
+        # The application palette has the accent; this tree's stylesheet-resolved palette does not.
+        accent = QGuiApplication.palette().color(QPalette.ColorRole.Highlight)
+        if is_open:
+            tint = QColor(accent)
+            tint.setAlphaF(_OPEN_TINT_ALPHA)
+            painter.fillRect(option.rect, tint)
         super().drawRow(painter, option, index)
-        if index.data(TREE_SECTION_ROLE) is None and _row_at(index).is_open:
+        if is_open:
             rect = option.rect
             edge = QRect(0, rect.top() + Space.XS, _OPEN_EDGE_PX, rect.height() - 2 * Space.XS)
-            # The application palette has the accent; this tree's stylesheet-resolved palette does not.
-            painter.fillRect(edge, QGuiApplication.palette().color(QPalette.ColorRole.Highlight))
+            painter.fillRect(edge, accent)
 
 
 class _ConsiderationToggle(QToolButton):
@@ -241,6 +268,11 @@ class ContentBrowserWidget(QWidget):
 
     def set_browser_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
         """Render section headings and their explicit workspace item rows."""
+        collapsed = {
+            heading.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE).kind
+            for heading in self._section_headings()
+            if not heading.isExpanded()
+        }
         expansion = {
             self._row_data(item).row_id: (item.isExpanded(), self._row_data(item).is_open)
             for item in self._tree_items()
@@ -257,12 +289,12 @@ class ContentBrowserWidget(QWidget):
             heading.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self._tree.addTopLevelItem(heading)
             heading.setFirstColumnSpanned(True)
+            heading.setExpanded(section.kind not in collapsed)
             for row in section.rows:
                 item = self._create_tree_item(row)
                 heading.addChild(item)
                 self._install_tree_widgets(item)
                 self._reveal_open_and_describe(item)
-            heading.setExpanded(True)
         for item in self._tree_items():
             row = self._row_data(item)
             if row.row_id in expansion:
@@ -276,6 +308,21 @@ class ContentBrowserWidget(QWidget):
     def has_rows(self) -> bool:
         """Return whether the browser lists any workspace content."""
         return self._tree.topLevelItemCount() > 0
+
+    def _section_headings(self) -> Iterator[QTreeWidgetItem]:
+        """Iterate over the section rows."""
+        for index in range(self._tree.topLevelItemCount()):
+            heading = self._tree.topLevelItem(index)
+            if heading is not None:
+                yield heading
+
+    def _descendant_rows(self, parent: QTreeWidgetItem) -> Iterator[WorkspaceBrowserRow]:
+        """Iterate over the rows under *parent* at any depth."""
+        for index in range(parent.childCount()):
+            child = parent.child(index)
+            if child is not None:
+                yield self._row_data(child)
+                yield from self._descendant_rows(child)
 
     def _tree_items(self) -> Iterator[QTreeWidgetItem]:
         """Iterate over all rows, including hidden and collapsed descendants."""
@@ -303,10 +350,10 @@ class ContentBrowserWidget(QWidget):
         self._tree.setFrameShape(QFrame.Shape.NoFrame)
         self._tree.setIndentation(TREE_INDENTATION_PX)
         self._tree.setUniformRowHeights(True)
-        # Section rows sit undecorated at the root, so the rows under them indent as top-level rows used to. They
-        # cannot be collapsed: nothing would show that one was.
+        # Section rows sit undecorated at the root, so the rows under them indent as top-level rows used to; a section
+        # paints its own arrow and a click on it folds it.
         self._tree.setRootIsDecorated(False)
-        self._tree.itemCollapsed.connect(self._keep_section_expanded)
+        self._tree.itemClicked.connect(self._toggle_section)
         self._tree.setItemDelegateForColumn(TREE_LABEL_COLUMN, _RowDelegate(self._tree))
         self._tree.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         header = self._tree.header()
@@ -315,10 +362,10 @@ class ContentBrowserWidget(QWidget):
         header.setSectionResizeMode(TREE_CONSIDERATION_COLUMN, QHeaderView.ResizeMode.Fixed)
         self._tree.setColumnWidth(TREE_CONSIDERATION_COLUMN, TREE_CONSIDERATION_COLUMN_WIDTH_PX)
 
-    def _keep_section_expanded(self, item: QTreeWidgetItem) -> None:
-        """Expand a section row again when the keyboard collapses it."""
+    def _toggle_section(self, item: QTreeWidgetItem) -> None:
+        """Fold or unfold a clicked section row."""
         if item.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE) is not None:
-            item.setExpanded(True)
+            item.setExpanded(not item.isExpanded())
 
     def _create_show_excluded_toggle(self) -> QToolButton:
         """Create the global toggle for showing or hiding excluded items."""
@@ -327,36 +374,22 @@ class ContentBrowserWidget(QWidget):
         toggle.setCheckable(True)
         toggle.setChecked(self._show_excluded)
         toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle.setStyleSheet(
-            """
-            QToolButton {
-                border: none;
-                padding: 0px;
-                margin: 0px;
-                background: transparent;
-            }
-            QToolButton:hover {
-                background: transparent;
-            }
-            """
-        )
-        self._update_show_excluded_icon(toggle, self._show_excluded)
+        toggle.setIcon(Icon.HIDDEN.icon())
+        self._update_show_excluded_tooltip(toggle, self._show_excluded)
         toggle.toggled.connect(self._on_show_excluded_toggled)
         return toggle
 
-    def _update_show_excluded_icon(self, toggle: QToolButton, show: bool) -> None:
-        """Update the icon and tooltip of the show-excluded browser filter."""
+    def _update_show_excluded_tooltip(self, toggle: QToolButton, show: bool) -> None:
+        """Update the tooltip of the show-excluded browser filter."""
         if show:
-            toggle.setIcon(Icon.FILTER_OFF.icon())
             toggle.setToolTip("Showing excluded items. Click to hide them from this list.")
         else:
-            toggle.setIcon(Icon.FILTER.icon())
             toggle.setToolTip("Excluded items are hidden from this list. Click to show them.")
 
     def _on_show_excluded_toggled(self, show: bool) -> None:
         """Handle the global show-excluded toggle."""
         self._show_excluded = show
-        self._update_show_excluded_icon(self._show_excluded_toggle, show)
+        self._update_show_excluded_tooltip(self._show_excluded_toggle, show)
         self._apply_visibility_filters()
 
     def _on_search_text_changed(self, text: str) -> None:
@@ -376,6 +409,12 @@ class ContentBrowserWidget(QWidget):
                 if item is not None:
                     visible = self._apply_item_visibility(item, ancestor_matches=False) or visible
             heading.setHidden(not visible)
+            if visible and self._search_query:
+                heading.setExpanded(True)
+            excluded = sum(
+                1 for row in self._descendant_rows(heading) if row.consideration_ref and not row.is_considered
+            )
+            heading.setData(TREE_LABEL_COLUMN, TREE_HIDDEN_COUNT_ROLE, 0 if self._show_excluded else excluded)
 
     def _apply_item_visibility(self, item: QTreeWidgetItem, *, ancestor_matches: bool) -> bool:
         """Show or hide a single item and return whether it is visible."""
@@ -406,7 +445,15 @@ class ContentBrowserWidget(QWidget):
         return not self._search_query or self._search_query in self._row_data(item).search_text.casefold()
 
     def _apply_appearance(self) -> None:
-        """Recolor row text from the current palette."""
+        """Recolor row text and the pressed show-excluded button from the current palette."""
+        pressed = palette_color_css(self.palette(), QPalette.ColorRole.Highlight, alpha=_PRESSED_ALPHA)
+        self._show_excluded_toggle.setStyleSheet(
+            f"""
+            QToolButton {{ border: none; padding: 0px; margin: 0px; background: transparent; }}
+            QToolButton:hover {{ background: transparent; }}
+            QToolButton:checked {{ background: {pressed}; border-radius: {Radius.CONTROL}px; }}
+            """
+        )
         for item in self._tree_items():
             self._refresh_visual_state(item)
 

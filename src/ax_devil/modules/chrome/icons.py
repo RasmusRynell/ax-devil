@@ -34,8 +34,6 @@ class Icon(Enum):
     PINNED = ("pin", True)
     SHOWN = ("eye", False)
     HIDDEN = ("eye-off", False)
-    FILTER = ("funnel", False)
-    FILTER_OFF = ("funnel-x", False)
     VIDEO = ("square-play", False)
     LIVE_VIDEO = ("video", False)
     PLAYLIST = ("list-video", False)
