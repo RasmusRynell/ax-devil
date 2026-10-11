@@ -120,7 +120,10 @@ class SectionTree(QTreeWidget):
             for item, row in self._row_items():
                 if row.row_id in expansion:
                     was_expanded, was_open = expansion[row.row_id]
-                    if was_open or not row.is_open:
+                    if was_open and not row.is_open:
+                        # The viewer has moved on from this row, so it closes; the row it moved to was revealed above.
+                        item.setExpanded(False)
+                    elif was_open or not row.is_open:
                         item.setExpanded(was_expanded)
             self._apply_filter()
 
