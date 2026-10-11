@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QToolButton, QTreeWidgetItem
+from PySide6.QtWidgets import QLabel, QToolButton, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
@@ -265,3 +265,19 @@ def test_two_line_rows_keep_both_lines_and_their_action_inside_a_narrow_tree(qtb
         assert detail.geometry().top() >= name.geometry().bottom(), "the detail is the second line"
         assert widget.rect().contains(button.geometry()), "the action stays inside the row"
         assert button.width() >= button.sizeHint().width()
+
+
+def test_hovering_any_text_of_a_row_shows_the_rows_tooltip(qtbot: QtBot) -> None:
+    row = WorkspaceBrowserRow(
+        row_id="archive",
+        label="Archive",
+        icon_kind="unavailable",
+        unavailable_reason="Playlist resolver is not installed",
+        detail="Unavailable",
+    )
+    tree = _tree(qtbot, row)
+
+    widget = _widget(tree, _item(tree, 0))
+
+    assert "is not installed" in widget.toolTip()
+    assert [label.toolTip() for label in widget.findChildren(QLabel)] == [""] * len(widget.findChildren(QLabel))

@@ -6,7 +6,7 @@ from html import escape
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QGuiApplication, QPalette
-from PySide6.QtWidgets import QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
@@ -162,3 +162,5 @@ class SourceRow(ListRow):
             )
         lines = "".join(f"<br>{escape(line)}" for line in row.tooltip.splitlines())
         self.setToolTip(f"<b>{escape(row.label)}</b>{lines}")
+        for label in self.findChildren(QLabel):
+            label.setToolTip("")  # The name's and detail's own tooltips would hide the row's, which has the reason.
