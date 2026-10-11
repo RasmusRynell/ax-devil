@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QScrollArea, QWidget
+from PySide6.QtWidgets import QApplication, QScrollArea, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
@@ -18,6 +19,7 @@ from ax_devil.modules.workspace.core import (
     video_file_selections,
 )
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
+from ax_devil.modules.workspace.ui import start_panel
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
@@ -156,6 +158,43 @@ def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_works
     assert panel.open_button("app.add_live_stream").text() == manager.get_action("app.add_live_stream").text()
     assert [row.name_label.full_text() for row in rows] == ["Parking lot", "Exp 3"]
     assert requested == [recent[1]]
+
+
+def test_rebinding_updates_the_start_panel_and_activity_bar_tooltips(qtbot: QtBot) -> None:
+    """Buttons advertise a shortcut's current keys, not the keys it had when they were created."""
+    host = QWidget()
+    qtbot.addWidget(host)
+    manager = ShortcutManager()
+    manager.register_defaults()
+    manager.install(host)
+    panel = StartPanel(host)
+    panel.set_shortcut_manager(manager)
+    bar_button = QToolButton(host)
+    manager.bind_tooltip(bar_button, "app.settings")
+
+    manager.set_binding("app.open_workspace", QKeySequence("Ctrl+Alt+Shift+K"))
+    manager.set_binding("app.settings", QKeySequence("Ctrl+Alt+Shift+J"))
+
+    assert "Ctrl+Alt+Shift+K" in panel.open_button("app.open_workspace").toolTip()
+    assert "Ctrl+Alt+Shift+J" in bar_button.toolTip()
+
+
+def test_start_panel_recomputes_recent_dates_when_shown(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A panel left open across midnight shows correct relative dates once it is shown again."""
+    saved = _touch(tmp_path / "A.ax-devil.workspace")
+    modified = date.fromtimestamp(saved.stat().st_mtime)
+    monkeypatch.setattr(start_panel, "_today", lambda: modified)
+    panel = StartPanel()
+    qtbot.addWidget(panel)
+    panel.set_recent_workspaces([saved])
+    assert panel.recent_rows()[0].date_label.text() == "today"
+
+    monkeypatch.setattr(start_panel, "_today", lambda: modified + timedelta(days=30))
+    panel.show()
+
+    assert panel.recent_rows()[0].date_label.text() != "today"
 
 
 def test_start_panel_never_overflows_a_narrow_sidebar(qtbot: QtBot, tmp_path: Path) -> None:

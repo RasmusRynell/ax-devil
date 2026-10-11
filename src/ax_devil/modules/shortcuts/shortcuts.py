@@ -29,6 +29,21 @@ class ShortcutDefinition:
     """Whether the action targets the focused viewer, so it also works from lane fullscreen."""
 
 
+class _TooltipBinding(QObject):
+    """Keeps a widget's tooltip equal to its action's tooltip; lives and dies with the widget."""
+
+    def __init__(self, manager: ShortcutManager, widget: QWidget, action_id: str) -> None:
+        super().__init__(widget)
+        self._manager = manager
+        self._widget = widget
+        self._action_id = action_id
+        manager.get_action(action_id).changed.connect(self._refresh)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self._widget.setToolTip(self._manager.tooltip(self._action_id))
+
+
 # ---------------------------------------------------------------------------
 # Default shortcut definitions
 # ---------------------------------------------------------------------------
@@ -226,6 +241,10 @@ class ShortcutManager(QObject):
         name = self.get_definition(action_id).display_name
         keys = self.current_key_sequence(action_id)
         return f"{name} ({keys.toString(QKeySequence.SequenceFormat.NativeText)})" if keys is not None else name
+
+    def bind_tooltip(self, widget: QWidget, action_id: str) -> None:
+        """Show *action_id*'s tooltip on *widget* and keep its keys current when the action is rebound."""
+        _TooltipBinding(self, widget, action_id)
 
     # ------------------------------------------------------------------
     # Rebinding
