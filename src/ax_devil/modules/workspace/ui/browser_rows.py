@@ -158,7 +158,8 @@ def _with_location_hints(rows: tuple[WorkspaceBrowserRow, ...]) -> tuple[Workspa
     """
     same_label: defaultdict[str, list[int]] = defaultdict(list)
     for index, row in enumerate(rows):
-        same_label[row.label].append(index)
+        if row.icon_kind not in ("pending", "unavailable"):  # Their status is what they show; it is not a hint.
+            same_label[row.label].append(index)
     hints: dict[int, str] = {}
     for indexes in same_label.values():
         if len(indexes) > 1:

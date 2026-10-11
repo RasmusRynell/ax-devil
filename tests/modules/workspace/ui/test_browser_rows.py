@@ -421,6 +421,17 @@ def test_same_names_in_one_section_get_location_hints_while_other_sections_do_no
     assert [(row.label, row.detail) for row in live_section.children] == [("front.mp4", "camera.local")]
 
 
+def test_unavailable_items_with_the_same_name_keep_their_status_instead_of_numbered_hints() -> None:
+    store = _store_of_items(
+        UnreadableItem.from_raw({"kind": "future", "label": "same"}, "Unknown kind"),
+        UnreadableItem.from_raw({"kind": "future", "label": "same"}, "Unknown kind"),
+    )
+
+    (other,) = browser_rows(store)
+
+    assert [row.detail for row in other.children] == ["Unavailable", "Unavailable"]
+
+
 def test_a_live_rows_detail_is_its_host_unless_the_name_is_the_host() -> None:
     def live(name: str) -> LiveVideoContent:
         return LiveVideoContent(
