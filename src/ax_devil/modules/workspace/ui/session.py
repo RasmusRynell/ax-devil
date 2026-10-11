@@ -127,6 +127,12 @@ class WorkspaceSession(QObject):
         self._start_panel.recent_workspace_requested.connect(self._lifecycle.open_workspace)
         self._window.files_dropped.connect(self.open_files)
         self._workspace_store.state_changed.connect(self.state_changed)
+        self._workspace_store.state_changed.connect(self._show_workspace_state)
+        self._show_workspace_state()
+
+    def _show_workspace_state(self) -> None:
+        workspace = self._workspace_store.workspace
+        self._workspace_view.set_workspace(workspace.name, workspace.path, self._workspace_store.is_modified)
 
     def widget(self) -> ApplicationWindow:
         """Return the composed viewer widget tree."""

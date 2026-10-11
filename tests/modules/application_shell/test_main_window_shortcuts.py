@@ -247,12 +247,16 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
         assert action.shortcut().toString() == key
 
     def assert_titles(name: str, modified: bool) -> None:
-        title = f"{'● ' if modified else ''}{name} — ax-devil"
-        assert window.windowTitle() == title
+        assert window.windowTitle() == f"{'● ' if modified else ''}{name} — ax-devil"
         if use_custom_frame:
             title_label = window.findChild(QLabel, "AxDevilTitleLabel")
             assert title_label is not None
-            assert title_label.text() == title
+            assert title_label.text() == "ax-devil"
+        view = window._workspace_session._workspace_view
+        modified_marker = view.findChild(QLabel, "AxDevilWorkspaceModified")
+        assert modified_marker is not None
+        assert view.title() == name
+        assert (not modified_marker.isHidden()) == modified
 
     assert_titles("Untitled", modified=False)
     video = tmp_path / "lot.mp4"

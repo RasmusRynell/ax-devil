@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
@@ -32,7 +33,7 @@ class ViewPanel(QWidget):
         header_layout = QHBoxLayout(self._header)
         header_layout.setContentsMargins(Space.L, 0, Space.M, 0)
         header_layout.setSpacing(Space.M)
-        self._title = QLabel(title, self._header)
+        self._title = ElidedLabel(title, Qt.TextElideMode.ElideRight, self._header)
         TextRole.STRONG.apply(self._title)
         header_layout.addWidget(self._title, 1)
         if header_widget is not None:
@@ -44,6 +45,16 @@ class ViewPanel(QWidget):
         self.body.setSpacing(0)
         layout.addLayout(self.body, 1)
         follow_appearance(self, self._apply_appearance)
+
+    def title(self) -> str:
+        """Return the title in the header, before eliding."""
+        return self._title.full_text()
+
+    def set_title(self, title: str, tooltip: str = "") -> None:
+        """Show *title* in the header, elided to fit, with *tooltip* over it (the whole title when empty)."""
+        self._title.set_full_text(title)
+        if tooltip:
+            self._title.setToolTip(tooltip)
 
     def add(self, widget: QWidget, stretch: int = 0) -> None:
         """Append *widget* to the body, across its full width; with a *stretch*, it takes the room left over."""
