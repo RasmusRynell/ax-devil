@@ -53,10 +53,12 @@ While reviewing local videos and playlists, a user bookmarks frames and marks ea
 the Workspace, beside the items, so they are saved, kept between launches, and make the Workspace modified.
 
 - A Bookmark Target is an item id plus an entry key that Content gives itself (`bookmark_entries`): empty for a Video
-  Item, "<playlist name>/<entry label>" for a playlist entry. Entries have no id and their indexes shift when a
-  resolver runs again, so the key is the only thing that survives a re-run, and one Playlist Item can resolve to
-  several playlists. Entries with the same key share a target, and a renamed playlist or entry leaves its target
-  orphaned. Orphaned targets and their bookmarks are kept; only removing their item removes them.
+  Item, "<playlist name>/<entry title>" for a playlist entry. Entries have no id and their indexes shift when a
+  resolver runs again, so the key is the only thing that survives a re-run. The playlist name is the one its resolver
+  gave it (`PlaylistContent.source_name`), so renaming the item changes no key, and it tells the playlists of one
+  Playlist Item apart. An entry's title is its label, numbered when several entries share one. A renamed or removed
+  entry leaves its target orphaned. Orphaned targets and their bookmarks are kept; only removing their item removes
+  them.
 - A viewer reports the frame on screen as a `BookmarkPosition`, and opening a bookmark opens the Content at its entry
   and frame through `open_content(..., start_frame=)`, paused. Building the groups the Bookmarks view shows, their
   order, orphan detection and filtering are pure functions in `bookmark_rows.py`.

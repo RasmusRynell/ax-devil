@@ -42,9 +42,9 @@ def test_groups_follow_item_then_entry_order_with_orphaned_entries_last() -> Non
     )
     bookmarks = (
         _bookmark(BookmarkTarget(video.id)),
-        _bookmark(BookmarkTarget(playlist.id, "Runs/gone.mp4")),
-        _bookmark(BookmarkTarget(playlist.id, "Runs/b.mp4")),
-        _bookmark(BookmarkTarget(playlist.id, "Runs/a.mp4")),
+        _bookmark(BookmarkTarget(playlist.id, "runs/gone.mp4")),
+        _bookmark(BookmarkTarget(playlist.id, "runs/b.mp4")),
+        _bookmark(BookmarkTarget(playlist.id, "runs/a.mp4")),
     )
 
     groups = build_bookmark_groups(resolutions, bookmarks, {BookmarkTarget(video.id)})
@@ -52,7 +52,7 @@ def test_groups_follow_item_then_entry_order_with_orphaned_entries_last() -> Non
     assert [(group.title, group.missing, group.reviewed) for group in groups] == [
         ("Runs › a.mp4", False, False),
         ("Runs › b.mp4", False, False),
-        ("Runs › gone.mp4", True, False),
+        ("Runs › runs/gone.mp4", True, False),
         ("clip.mp4", False, True),
     ]
     assert groups[1].found is not None and groups[1].found[1] == 1

@@ -72,6 +72,7 @@ class ListRow(QFrame):
             line: QLabel
             if wrap:
                 line = QLabel(subtitle, self)
+                line.setTextFormat(Qt.TextFormat.PlainText)
                 line.setWordWrap(True)
             else:
                 line = ElidedLabel(subtitle, Qt.TextElideMode.ElideRight, self)

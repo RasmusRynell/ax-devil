@@ -29,10 +29,21 @@ def plugins() -> None:
 @plugins.command("install")
 @click.argument("specifications", nargs=-1, required=True)
 @click.option("--upgrade", is_flag=True, help="Also upgrade dependencies beyond the existing lockfile.")
+@click.option(
+    "--upgrade-package",
+    "upgrade_packages",
+    multiple=True,
+    metavar="NAME",
+    help="Upgrade only this package, and what it needs, beyond the existing lockfile.",
+)
 @click.option("--index", "indexes", multiple=True, metavar="NAME=URL", help="Add a package index to this installation.")
-def install_command(specifications: tuple[str, ...], upgrade: bool, indexes: tuple[str, ...]) -> None:
+def install_command(
+    specifications: tuple[str, ...], upgrade: bool, upgrade_packages: tuple[str, ...], indexes: tuple[str, ...]
+) -> None:
     """Install package requirements, wheels, or editable plugin directories."""
-    change_plugins(current_host(), install=specifications, upgrade=upgrade, indexes=indexes)
+    change_plugins(
+        current_host(), install=specifications, upgrade=upgrade, upgrade_packages=upgrade_packages, indexes=indexes
+    )
     click.echo("Plugins installed. Restart ax-devil to use them.")
 
 

@@ -20,7 +20,7 @@ class ChangeKind(Enum):
     """What a change does: the ``plugins`` command it runs and what is shown while it runs."""
 
     INSTALL = (("install",), "Installing…")
-    UPDATE = (("install", "--upgrade"), "Updating…")
+    UPDATE = (("install", "--upgrade-package"), "Updating…")
     REMOVE = (("remove",), "Removing…")
 
     def __init__(self, command: tuple[str, ...], progress: str) -> None:
@@ -61,7 +61,10 @@ class PluginChange:
 
         The target follows ``--``, so a source that starts with a dash is read as a requirement, never as an option.
         """
-        return (*self.kind.command, "--", self.target)
+        arguments = self.kind.command
+        if self.kind is ChangeKind.UPDATE:
+            arguments = (*arguments, self.name)  # Only this package may move, not the other plugins.
+        return (*arguments, "--", self.target)
 
 
 Installer = Callable[[PluginChange], None]

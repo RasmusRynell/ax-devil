@@ -14,9 +14,7 @@ from ax_devil.modules.workspace.core import (
     BookmarkTarget,
     Content,
     ItemResolution,
-    entry_name,
     find_entry,
-    target_name,
 )
 from ax_devil.modules.workspace.core.bookmark_csv import BookmarkCsvRow
 
@@ -55,14 +53,17 @@ class BookmarkGroup:
 
     target: BookmarkTarget
     item_name: str
+    entry: str
+    """The entry as shown under its item: empty for a Video Item, else its title, with its playlist's name only when
+    the item resolved to several playlists or the entry is gone."""
     reviewed: bool
     found: tuple[Content, int] | None
     rows: tuple[BookmarkRow, ...]
 
     @property
     def title(self) -> str:
-        """Return the target's name, as ``target_name`` gives it."""
-        return target_name(self.item_name, self.target)
+        """Return the target's name: the item's, then the entry's for a playlist entry."""
+        return f"{self.item_name} › {self.entry}" if self.entry else self.item_name
 
     @property
     def icon(self) -> Icon:
@@ -81,11 +82,10 @@ class BookmarkGroup:
 
     def csv_rows(self) -> tuple[BookmarkCsvRow, ...]:
         """Return this group's bookmarks as CSV rows."""
-        entry = entry_name(self.item_name, self.target)
         return tuple(
             BookmarkCsvRow(
                 self.item_name,
-                entry,
+                self.entry,
                 row.bookmark.frame,
                 row.bookmark.time_s,
                 row.bookmark.kind.label,
@@ -127,8 +127,17 @@ def build_bookmark_groups(
             rows = tuple(
                 BookmarkRow(bookmark, MISSING if found is None else bookmark_subtitle(bookmark)) for bookmark in marks
             )
-            groups.append(BookmarkGroup(target, item.display_name, target in reviewed, found, rows))
+            entry = _entry_shown(resolution.contents, target, found)
+            groups.append(BookmarkGroup(target, item.display_name, entry, target in reviewed, found, rows))
     return tuple(groups)
+
+
+def _entry_shown(contents: Sequence[Content], target: BookmarkTarget, found: tuple[Content, int] | None) -> str:
+    """Return how *target*'s entry is shown under its item: its title when the item has one playlist, else its key."""
+    if found is None or len(contents) != 1:
+        return target.entry
+    content, index = found
+    return content.bookmark_entry_titles[index]
 
 
 def filter_bookmark_groups(

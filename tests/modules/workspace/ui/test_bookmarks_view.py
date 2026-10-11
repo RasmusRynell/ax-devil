@@ -168,7 +168,7 @@ def _bookmark_both(session: WorkspaceSession) -> None:
     video, playlist, _live = _items(session)
     _add(session, BookmarkTarget(video), 30, BookmarkKind.ISSUE, "Car 8 deleted")
     _add(session, BookmarkTarget(video), 20, BookmarkKind.QUESTION, "Bicycle 6 disappears")
-    _add(session, BookmarkTarget(playlist, "Night shift/run_02.mp4"), 54, BookmarkKind.EXAMPLE, "Clean tracks")
+    _add(session, BookmarkTarget(playlist, "night/run_02.mp4"), 54, BookmarkKind.EXAMPLE, "Clean tracks")
 
 
 def test_bookmarks_are_listed_under_their_video_or_playlist_entry_in_frame_order(session: WorkspaceSession) -> None:
@@ -243,10 +243,10 @@ def test_a_bookmark_opens_its_entry_at_its_frame(session: WorkspaceSession) -> N
 
 def test_a_bookmark_whose_entry_is_gone_is_shown_missing_and_opens_nothing(session: WorkspaceSession) -> None:
     _video_id, playlist, _live = _items(session)
-    _add(session, BookmarkTarget(playlist, "Night shift/run_09.mp4"), 12, BookmarkKind.NOTE, "")
+    _add(session, BookmarkTarget(playlist, "night/run_09.mp4"), 12, BookmarkKind.NOTE, "")
     opened = session.focused_widget()
 
-    assert _listed(session) == [["Night shift › run_09.mp4"], ["Frame 12", "Missing"]]
+    assert _listed(session) == [["Night shift › night/run_09.mp4"], ["Frame 12", "Missing"]]
     assert _rows(session)[0].findChildren(Chip) == []
     _click(_rows(session)[1])
     assert session.focused_widget() is opened

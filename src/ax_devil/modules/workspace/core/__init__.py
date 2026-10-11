@@ -5,10 +5,8 @@ from ax_devil.modules.workspace.core.bookmarks import (
     BookmarkKind,
     BookmarkPosition,
     BookmarkTarget,
-    entry_name,
     entry_target,
     find_entry,
-    target_name,
 )
 from ax_devil.modules.workspace.core.content import (
     ConsiderationItem,
@@ -75,10 +73,8 @@ __all__ = [
     "BookmarkKind",
     "BookmarkPosition",
     "BookmarkTarget",
-    "entry_name",
     "entry_target",
     "find_entry",
-    "target_name",
     "ConsiderationItem",
     "ConsiderationItemRef",
     "ConsiderationQuery",

@@ -14,6 +14,7 @@ class ElidedLabel(QLabel):
         super().__init__(parent)
         self._full_text = ""
         self._elide = elide
+        self.setTextFormat(Qt.TextFormat.PlainText)  # Names come from files and devices, and are never markup.
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.set_full_text(text)
 

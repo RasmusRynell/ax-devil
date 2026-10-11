@@ -6,6 +6,7 @@ the answering address is fetched, the download is size-limited, and XML that dec
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import re
 import socket
@@ -34,6 +35,7 @@ _SEARCH_REQUEST = (
 ).encode("ascii")
 
 _FETCH_TIMEOUT_SECONDS = 2.0
+_FETCH_DEADLINE_SECONDS = 5.0  # For the whole download: a device that trickles bytes cannot hold a worker.
 _MAX_DESCRIPTION_BYTES = 64 * 1024
 _MAX_RESPONDERS = 128
 _FETCH_WORKERS = 16
@@ -95,14 +97,23 @@ class NetworkScanTransport:
         opener = OpenerDirector()
         for handler in (HTTPHandler(), HTTPDefaultErrorHandler(), HTTPErrorProcessor()):
             opener.add_handler(handler)
+        deadline = time.monotonic() + _FETCH_DEADLINE_SECONDS
+        chunks: list[bytes] = []
+        size = 0
         try:
             with opener.open(Request(url), timeout=_FETCH_TIMEOUT_SECONDS) as response:
-                body: bytes = response.read(_MAX_DESCRIPTION_BYTES + 1)
-        except URLError as exc:
+                while chunk := response.read1(
+                    min(8192, _MAX_DESCRIPTION_BYTES + 1 - size)
+                ):  # At most one network read.
+                    chunks.append(chunk)
+                    size += len(chunk)
+                    if size > _MAX_DESCRIPTION_BYTES:
+                        raise ValueError(f"{url} is larger than {_MAX_DESCRIPTION_BYTES} bytes")
+                    if time.monotonic() > deadline:
+                        raise OSError(f"{url} is too slow")
+        except (URLError, http.client.HTTPException) as exc:
             raise OSError(f"cannot fetch {url}: {exc}") from exc
-        if len(body) > _MAX_DESCRIPTION_BYTES:
-            raise ValueError(f"{url} is larger than {_MAX_DESCRIPTION_BYTES} bytes")
-        return body.decode("utf-8", errors="replace")
+        return b"".join(chunks).decode("utf-8", errors="replace")
 
 
 def scan_network(*, timeout: float = 3.0, transport: ScanTransport | None = None) -> list[DiscoveredCamera]:
@@ -159,7 +170,7 @@ def _describe(transport: ScanTransport, host: str, url: str) -> DiscoveredCamera
     """Fetch and parse one device description; ``None`` for anything that is not a readable Axis device."""
     try:
         return _parse_axis_description(host, transport.fetch(url))
-    except (OSError, ValueError, ET.ParseError) as exc:
+    except (OSError, ValueError, ET.ParseError, http.client.HTTPException) as exc:
         logger.debug(f"Network scan ignored {host}: {exc}")
         return None
 

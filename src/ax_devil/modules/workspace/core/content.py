@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -330,6 +331,11 @@ class LiveVideoContent:
         """Return no Bookmark Target entries: live video is never bookmarked."""
         return ()
 
+    @property
+    def bookmark_entry_titles(self) -> tuple[str, ...]:
+        """Return no entry titles, one per Bookmark Target entry."""
+        return ()
+
     def on_screen_item(self, entry_index: int = 0) -> OnScreenWorkspaceItem:
         """Return the workspace item a viewer shows for this video."""
         return OnScreenWorkspaceItem(kind="video", content_id=self.content_id)
@@ -388,6 +394,11 @@ class SeekableVideoContent:
     @property
     def bookmark_entries(self) -> tuple[str, ...]:
         """Return the Bookmark Target entry of the one entry: empty, since the target is the item itself."""
+        return ("",)
+
+    @property
+    def bookmark_entry_titles(self) -> tuple[str, ...]:
+        """Return the title of the one entry: empty, since the item's own name is its title."""
         return ("",)
 
     def entry_consideration_ref(self, entry_index: int) -> None:
@@ -489,11 +500,15 @@ class PlaylistContent:
     metadata: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
     content_id: str = ""
     item_id: str = ""
+    source_name: str = ""
+    """The name the resolver gave the playlist; ``display_name`` is renamed after the item's label, this never is."""
 
     def __post_init__(self) -> None:
-        """Reject empty playlists before they enter the Workspace."""
+        """Reject empty playlists before they enter the Workspace, and remember the resolver's name for the playlist."""
         if not self.entries:
             raise ValueError("Playlists require at least one entry.")
+        if not self.source_name:
+            object.__setattr__(self, "source_name", self.display_name)
 
     @property
     def source_location(self) -> None:
@@ -526,12 +541,27 @@ class PlaylistContent:
         return tuple(items)
 
     @property
-    def bookmark_entries(self) -> tuple[str, ...]:
-        """Return each entry's Bookmark Target entry, "<playlist name>/<entry label>", in entry order.
+    def bookmark_entry_titles(self) -> tuple[str, ...]:
+        """Return each entry's title in entry order: its label, numbered " (2)", " (3)" when entries share a label.
 
-        One Playlist Item may resolve to several playlists, so the label alone would not tell their entries apart.
+        Entries from one resolver run in a fixed order, so a title names the same entry on every run.
         """
-        return tuple(f"{self.display_name}/{entry.display_label(index)}" for index, entry in enumerate(self.entries))
+        seen: Counter[str] = Counter()
+        titles = []
+        for index, entry in enumerate(self.entries):
+            label = entry.display_label(index)
+            seen[label] += 1
+            titles.append(label if seen[label] == 1 else f"{label} ({seen[label]})")
+        return tuple(titles)
+
+    @property
+    def bookmark_entries(self) -> tuple[str, ...]:
+        """Return each entry's Bookmark Target entry, "<playlist name>/<entry title>", in entry order.
+
+        The playlist is named as its resolver named it, so renaming the item changes no key, and one Playlist Item may
+        resolve to several playlists, whose entries the playlist name tells apart.
+        """
+        return tuple(f"{self.source_name}/{title}" for title in self.bookmark_entry_titles)
 
     def entry_consideration_ref(self, entry_index: int) -> ConsiderationItemRef:
         """Return the reference that toggles one playlist entry."""

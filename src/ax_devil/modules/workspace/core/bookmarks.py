@@ -18,9 +18,10 @@ _EntryT = TypeVar("_EntryT")
 class BookmarkTarget:
     """One video that is reviewed: a Video Item (``entry`` empty) or one entry of a Playlist Item.
 
-    A playlist entry is named by its playlist's name and its own ``display_label`` (see
-    ``PlaylistContent.bookmark_entries``), since entries have no id and their indexes shift when the resolver runs
-    again. A target whose item or entry no longer exists is orphaned and kept; only removing its item removes it.
+    A playlist entry is named by the playlist's name as its resolver gave it and the entry's label, numbered when
+    several share one (see ``PlaylistContent.bookmark_entries``), since entries have no id and their indexes shift
+    when the resolver runs again. A target whose item or entry no longer exists is orphaned and kept; only removing
+    its item removes it.
     """
 
     item_id: str
@@ -53,20 +54,6 @@ def find_entry(contents: Sequence[Content], target: BookmarkTarget) -> tuple[Con
         if target.entry in content.bookmark_entries:
             return content, content.bookmark_entries.index(target.entry)
     return None
-
-
-def entry_name(item_name: str, target: BookmarkTarget) -> str:
-    """Return how *target*'s entry is shown under its item named *item_name*: empty for a Video Item.
-
-    The entry's playlist name is left out when it is the item's name, as it is for an item with one playlist.
-    """
-    return target.entry.removeprefix(f"{item_name}/")
-
-
-def target_name(item_name: str, target: BookmarkTarget) -> str:
-    """Return how *target* is shown: the item's name, then the entry's (see ``entry_name``) for a playlist entry."""
-    entry = entry_name(item_name, target)
-    return f"{item_name} › {entry}" if entry else item_name
 
 
 @dataclass(frozen=True)

@@ -34,7 +34,7 @@ def test_each_change_runs_the_matching_plugins_command(monkeypatch: pytest.Monke
 
     assert [command[2:] for command in commands] == [
         ["plugins", "install", "--", "/home/me/my-plugin"],
-        ["plugins", "install", "--upgrade", "--", "yolo-detections>=0.2"],
+        ["plugins", "install", "--upgrade-package", "yolo-detections", "--", "yolo-detections>=0.2"],
         ["plugins", "remove", "--", "yolo-detections"],
     ]
     assert {tuple(command[:2]) for command in commands} == {("/venv/bin/python", "/venv/bin/ax-devil")}

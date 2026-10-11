@@ -11,9 +11,10 @@ from ax_devil.modules.workspace.core import (
     Bookmark,
     BookmarkKind,
     BookmarkTarget,
+    ItemResolution,
+    PlaylistItem,
     entry_target,
     find_entry,
-    target_name,
 )
 from ax_devil.modules.workspace.core.content import (
     FileVideoSourceSpec,
@@ -84,7 +85,27 @@ def test_a_video_is_its_own_target_and_live_video_has_none() -> None:
     assert find_entry([live, video], BookmarkTarget("item")) == (video, 0)
 
 
-def test_a_target_is_named_by_its_item_and_its_entry_without_a_repeated_playlist_name() -> None:
-    assert target_name("clip.mp4", BookmarkTarget("item")) == "clip.mp4"
-    assert target_name("Night shift", BookmarkTarget("item", "Night shift/run_02")) == "Night shift › run_02"
-    assert target_name("Runs", BookmarkTarget("item", "train/a.mp4")) == "Runs › train/a.mp4"
+def test_renaming_an_item_keeps_the_keys_of_its_playlist_entries() -> None:
+    item = PlaylistItem(resolver="runs")
+    runs = replace(_playlist("runs", "a.mp4", "b.mp4"), item_id=item.id, content_id=f"{item.id}/0")
+    resolution = ItemResolution(item, by_default_name=(runs,))
+    target = entry_target(resolution.contents[0], 1)
+
+    renamed = resolution.renamed(item.with_label("My run"))
+
+    assert renamed.contents[0].display_name == "My run"
+    assert find_entry(renamed.contents, target) == (renamed.contents[0], 1)
+    assert entry_target(renamed.contents[0], 1) == target
+
+
+def test_entries_that_share_a_label_get_numbered_keys_so_each_has_its_own_target() -> None:
+    runs = _playlist("runs", "run1/video.mp4", "run2/video.mp4")
+    runs = replace(
+        runs,
+        entries=tuple(
+            PlaylistEntry(lanes=_video("video.mp4").standalone_lanes(), default_considered=True) for _ in range(2)
+        ),
+    )
+
+    assert runs.bookmark_entries == ("runs/video.mp4", "runs/video.mp4 (2)")
+    assert find_entry([runs], entry_target(runs, 1)) == (runs, 1)

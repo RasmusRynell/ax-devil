@@ -281,3 +281,51 @@ def test_search_sends_one_ssdp_discovery_and_collects_successful_answers(monkeyp
     assert b'MAN: "ssdp:discover"\r\n' in request
     assert b"ST: upnp:rootdevice\r\n" in request
     assert b"MX: 2\r\n" in request
+
+
+def test_a_responder_that_does_not_speak_http_does_not_hide_the_real_cameras() -> None:
+    import http.client
+
+    class Garbled(_FakeTransport):
+        def fetch(self, url: str) -> str:
+            if "192.168.0.10" in url:
+                raise http.client.BadStatusLine("not http")
+            return super().fetch(url)
+
+    urls = {"192.168.0.10": "http://192.168.0.10/d.xml", "192.168.0.90": "http://192.168.0.90/d.xml"}
+    transport = Garbled(
+        [SsdpResponse(host, url) for host, url in urls.items()], {urls["192.168.0.90"]: _description()}, None
+    )
+
+    assert [camera.host for camera in scan_network(transport=transport)] == ["192.168.0.90"]
+
+
+def test_fetch_gives_up_on_a_device_that_trickles_its_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from ax_devil.modules.data_sources.live import network_scan
+
+    class Trickle(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            self.send_response(200)
+            self.send_header("Content-Length", "1000")
+            self.end_headers()
+            for _ in range(100):
+                self.wfile.write(b"x")
+                self.wfile.flush()
+                time.sleep(0.05)
+
+        def log_message(self, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Trickle)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr(network_scan, "_FETCH_DEADLINE_SECONDS", 0.3)
+    try:
+        started = time.monotonic()
+        with pytest.raises(OSError, match="too slow"):
+            NetworkScanTransport().fetch(f"http://127.0.0.1:{server.server_address[1]}/")
+        assert time.monotonic() - started < 2.0
+    finally:
+        server.shutdown()
+        server.server_close()
