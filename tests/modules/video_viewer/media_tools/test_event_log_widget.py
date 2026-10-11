@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QListView
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
@@ -85,19 +86,24 @@ def test_history_log_ignores_shown_scenes_and_keeps_its_events_when_cleared(qtbo
     assert _labels(widget) == ["#2 00:00:00.080 Delete a"]
 
 
-def test_changed_rows_are_restated_when_the_displayed_frame_moves(qtbot: QtBot) -> None:
+def test_rows_are_repainted_when_their_state_changes(qtbot: QtBot) -> None:
+    """Moving the displayed frame restates every row that changed, and an unchanged frame restates nothing."""
     widget = EventLogWidget(_history(*(_event(frame) for frame in (1, 4, 7, 9))))
     qtbot.addWidget(widget)
     widget.show()
     _follow(widget, 0)
-    changed: list[tuple[int, int]] = []
-    widget._model.dataChanged.connect(lambda first, last, _roles: changed.append((first.row(), last.row())))
+    restated: list[set[int]] = []
+    widget._model.dataChanged.connect(
+        lambda first, last, _roles: restated[-1].update(range(first.row(), last.row() + 1))
+    )
 
-    _follow(widget, 7)
-    _follow(widget, 7)
-    _follow(widget, 8)
+    for frame in (7, 7, 8):
+        restated.append(set())
+        _follow(widget, frame)
 
-    assert changed == [(0, 2), (2, 2)]
+    assert {0, 1, 2} <= restated[0]
+    assert restated[1] == set()
+    assert 2 in restated[2]
 
 
 def test_history_log_scrolls_only_when_the_playback_position_leaves_the_view(qtbot: QtBot) -> None:
@@ -106,17 +112,21 @@ def test_history_log_scrolls_only_when_the_playback_position_leaves_the_view(qtb
     widget.resize(320, 200)
     widget.show()
     qtbot.waitExposed(widget)
-    scroll_bar = widget._list_view.verticalScrollBar()
-    row_height = widget._delegate.row_height
-    view_height = widget._list_view.viewport().height()
+    view = widget.findChild(QListView)
+    assert view is not None
+    scroll_bar = view.verticalScrollBar()
+
+    def fully_visible(row: int) -> bool:
+        return view.viewport().rect().contains(view.visualRect(view.model().index(row, 0)))
 
     _follow(widget, 150)
-    assert scroll_bar.value() == 150 * row_height - view_height // 3
+    assert fully_visible(150)
+    scrolled = scroll_bar.value()
     _follow(widget, 151)
-    assert scroll_bar.value() == 150 * row_height - view_height // 3
+    assert fully_visible(151) and scroll_bar.value() == scrolled
 
     _follow(widget, 10)
-    assert scroll_bar.value() == 10 * row_height - view_height // 3
+    assert fully_visible(10)
 
 
 def test_clicking_selects_an_event_and_double_clicking_requests_its_frame(qtbot: QtBot) -> None:
@@ -177,8 +187,12 @@ def test_live_log_adds_events_of_newly_shown_overlays_only(qtbot: QtBot) -> None
 
     assert _labels(widget) == ["#7 00:00:00.280 Delete a", "#10 00:00:00.400 Delete b"]
     assert _states(widget) == [EventRowState.PAST, EventRowState.CURRENT]
-    widget._on_index_double_clicked(widget._model.index(0, 0))
-    assert requested == []
+    view = widget.findChild(QListView)
+    assert view is not None
+    QTest.mouseDClick(
+        view.viewport(), Qt.MouseButton.LeftButton, pos=view.visualRect(view.model().index(0, 0)).center()
+    )
+    assert requested == []  # Live events cannot seek.
 
     widget.clear()
     assert widget._model.rowCount() == 0

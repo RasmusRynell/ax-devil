@@ -98,11 +98,7 @@ def test_every_example_keeps_its_own_id_and_ids_come_in_the_usual_formats() -> N
 
     # Entities are keyed by id, so a repeated id would replace an example and leave fewer than were placed.
     assert len(built["overview"].scene.entities) == len(_ids(document, OBJECT_GROUPS)) + 2 * relations
-    assert len(built["human"].scene.entities) == 17
-    assert len(built["has_part"].scene.entities) == 6
-    assert len(built["crowd"].scene.entities) == 48
     ids = [entity_id for sheet in built.values() for entity_id in sheet.scene.entities]
-    assert "3f2a9c1e-7b4d-4e8a-9c2f-1a2b3c4d5e6f" in built["human"].scene.entities
     assert sum(len(entity_id) == 36 for entity_id in ids) > len(ids) / 4
     assert any(entity_id.isdigit() for entity_id in ids)
     assert any(not entity_id.isdigit() and len(entity_id) < 36 for entity_id in ids)

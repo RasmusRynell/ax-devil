@@ -9,7 +9,7 @@ from ax_devil.modules.diagnostics.metrics_store import get_metrics_store, set_me
 from ax_devil.modules.diagnostics.paint_inspection import PaintInspection
 from ax_devil.modules.diagnostics.render_metrics import PaintObservation, RenderMetricsStore, ViewerSnapshot
 from ax_devil.modules.video_player.engine.data_types import DrawingBuildReason, DrawingPreparationMetrics
-from tests.modules.diagnostics.test_render_metrics import sample
+from tests.helpers.render_metrics import sample
 
 
 def _viewer(*observations: PaintObservation) -> ViewerSnapshot:

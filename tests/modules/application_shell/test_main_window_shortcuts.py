@@ -14,10 +14,10 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.workspace.core import VideoItem, WorkspaceBackup
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
+from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import DummyViewer, FakePrompts
 
 
@@ -77,18 +77,11 @@ class _RoutingSession:
         """Match the workspace session teardown API."""
 
 
-def _make_shortcut_manager() -> ShortcutManager:
-    """Return a registered shortcut manager for MainWindow tests."""
-    manager = ShortcutManager()
-    manager.register_defaults()
-    return manager
-
-
-def test_play_pause_shortcut_routes_to_focused_viewer_widget(
+def test_play_pause_shortcut_routes_to_focused_workspace_widget(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
-    manager = _make_shortcut_manager()
+    manager = make_shortcut_manager()
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
@@ -103,7 +96,7 @@ def test_offline_shortcuts_route_to_focused_offline_viewer(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
-    manager = _make_shortcut_manager()
+    manager = make_shortcut_manager()
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
@@ -122,7 +115,7 @@ def test_media_tools_action_is_in_view_menu_and_routes_to_focused_widget(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
-    manager = _make_shortcut_manager()
+    manager = make_shortcut_manager()
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
@@ -142,7 +135,7 @@ def test_render_catalogs_action_is_in_view_menu_and_opens_the_catalog_viewer(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
-    manager = _make_shortcut_manager()
+    manager = make_shortcut_manager()
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     action = manager.get_action("view.render_catalogs")
@@ -161,7 +154,7 @@ def test_zoom_actions_are_in_view_menu_and_route_to_focused_widget(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
-    manager = _make_shortcut_manager()
+    manager = make_shortcut_manager()
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
@@ -185,7 +178,7 @@ def test_view_display_preferences_save_and_follow_settings_changes(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
-    window = MainWindow(shortcut_manager=_make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
+    window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     settings = GlobalSettings()
     previous = settings.snapshot()
@@ -208,7 +201,7 @@ def test_view_display_preferences_save_and_follow_settings_changes(
 def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspace_and_unsaved_changes(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path, use_custom_frame: bool
 ) -> None:
-    manager = _make_shortcut_manager()
+    manager = make_shortcut_manager()
     window = MainWindow(
         shortcut_manager=manager, render_catalog_manager=render_catalog_manager, use_custom_frame=use_custom_frame
     )
@@ -250,7 +243,7 @@ def test_quitting_keeps_the_workspace_even_without_closing_the_window(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
     """Quitting after an unexpected error skips closing the window; unsaved edits are still kept."""
-    window = MainWindow(shortcut_manager=_make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
+    window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     session = window._workspace_session
     session.lifecycle._backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")

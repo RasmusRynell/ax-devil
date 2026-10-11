@@ -10,7 +10,6 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import (
     OverlayFile,
     VideoFileSelection,
@@ -20,8 +19,9 @@ from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, Works
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.split_view import SplitView
-from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeWidget
+from tests.helpers.shortcuts import make_shortcut_manager
+from tests.helpers.workspace import PlainViewerWidget
 
 
 class _OptionProvider:
@@ -34,14 +34,6 @@ class _OptionProvider:
 
     def live_overlay_decoder_options(self) -> tuple[WorkspaceDecoderOption, ...]:
         return ()
-
-
-class _PaneWidget(ViewerWidget):
-    def _setup_widget_ui(self) -> None:
-        pass
-
-    def get_display_name(self) -> str:
-        return "Pane"
 
 
 def _touch(path: Path) -> Path:
@@ -104,8 +96,7 @@ def test_clicking_welcome_rows_triggers_shortcut_actions_and_recent_workspaces(q
     """Welcome rows are buttons: shortcut rows trigger their action, recent rows request their workspace file."""
     host = QWidget()
     qtbot.addWidget(host)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(host)
     welcome = WelcomeWidget(host)
     welcome.resize(900, 700)
@@ -131,8 +122,7 @@ def test_welcome_actions_and_recents_remain_clickable_in_a_small_workspace(qtbot
     """A full recent list never clips actions out of reach in a supported small window."""
     center = SplitView()
     qtbot.addWidget(center)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(center)
     center.set_welcome_shortcut_manager(manager)
     recent = [tmp_path / f"run{index}.ax-devil.workspace" for index in range(8)]
@@ -191,7 +181,7 @@ def test_desktop_file_drops_reach_the_workspace_over_welcome_and_open_panes(qtbo
 
     assert _send_drop(center.welcome_widget(), [video, overlay])
     assert not _send_drop(center.welcome_widget(), [overlay])
-    pane = _PaneWidget()
+    pane = PlainViewerWidget()
     center.add_viewer_widget(pane)
     assert _send_drop(pane, [video])
 
