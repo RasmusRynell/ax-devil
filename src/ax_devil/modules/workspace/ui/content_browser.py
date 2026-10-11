@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QStyle,
     QStyledItemDelegate,
-    QStyleOption,
     QStyleOptionViewItem,
     QToolButton,
     QTreeWidget,
@@ -157,9 +156,8 @@ class _RowDelegate(QStyledItemDelegate):
         mark = _KIND_MARKS[section.kind.icon_kind].color(option.palette)
         text = f"{section.kind.title}  {len(section.rows)}" + (f"  · {hidden_count} hidden" if hidden_count else "")
         # The arrow is the one the tree draws beside rows that have children.
-        arrow = QStyleOption()
+        arrow = QStyleOptionViewItem(option)
         arrow.rect = QRect(option.rect.left(), option.rect.top(), _SECTION_ARROW_PX, option.rect.height())
-        arrow.palette = option.palette
         arrow.state = QStyle.StateFlag.State_Children | QStyle.StateFlag.State_Enabled
         if option.state & QStyle.StateFlag.State_Open:
             arrow.state |= QStyle.StateFlag.State_Open
