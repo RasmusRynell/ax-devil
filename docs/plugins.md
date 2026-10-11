@@ -23,8 +23,8 @@ uv run ax-devil
 ```
 
 The **Plugins** view in the app does the same from the running app: **Add plugin** is `plugins install`, **Update** is
-`plugins install --upgrade-package <package>`, which moves only that package and what it needs, and **Remove** is `plugins remove`. Each runs through the launcher, so
-the base app manages the plugins, and applies after a restart.
+`plugins install --upgrade-package <package>`, which moves only that package and what it needs, and **Remove** is
+`plugins remove`. Each runs through the launcher, so the base app manages the plugins, and applies after a restart.
 
 `plugins install` accepts one or more package requirements, local wheels, or editable source directories; `--upgrade`
 also upgrades every dependency beyond the existing lockfile, and `--upgrade-package NAME` only that package.
