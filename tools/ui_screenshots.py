@@ -9,14 +9,17 @@ Settings dialog does::
     PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/after uv run pytest -p tests.conftest tools/ui_screenshots.py -q
 
 Shots go to ``AX_DEVIL_UI_SHOTS`` (default ``/tmp/ax-devil-ui-shots``) as ``<theme>-<text size>-<surface>.png``.
+They are rendered at ``AX_DEVIL_UI_SHOTS_SCALE`` device pixels per logical pixel (default 2, as on a high-DPI screen).
 Dialogs larger than a window size get an extra ``-wide`` or ``-narrow`` shot clamped to it. Each run first deletes
 the theme's earlier shots there, so a folder reused across runs holds only current shots.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import tempfile
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -47,6 +50,17 @@ from ax_devil.modules.workspace import VideoFileStartup
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))
+SCALE = float(os.environ.get("AX_DEVIL_UI_SHOTS_SCALE", "2"))
+# Qt reads these when the application starts, which pytest-qt does after collecting this module. Dialogs fit
+# themselves to the screen, so the offscreen screen keeps its default 800x800 logical size at every scale.
+os.environ["QT_SCALE_FACTOR"] = str(SCALE)
+if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+    _SCREEN_CONFIG = Path(tempfile.gettempdir()) / "ax-devil-ui-shots-screen.json"
+    _SCREEN_CONFIG.write_text(
+        json.dumps({"screens": [{"name": "shots", "width": round(800 * SCALE), "height": round(800 * SCALE)}]}),
+        encoding="utf-8",
+    )
+    os.environ["QT_QPA_PLATFORM"] = f"offscreen:configfile={_SCREEN_CONFIG}"
 WINDOW_SIZES = {"wide": (1440, 900), "narrow": (1000, 640)}
 TEXT_SIZES = (TextSize.MEDIUM, TextSize.LARGER)
 CLIP_FPS = 30
