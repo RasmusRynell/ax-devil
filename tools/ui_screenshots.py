@@ -16,6 +16,7 @@ the theme's earlier shots there, so a folder reused across runs holds only curre
 
 from __future__ import annotations
 
+import atexit
 import json
 import math
 import os
@@ -70,11 +71,11 @@ SCALE = _shot_scale()
 # themselves to the screen, so the offscreen screen keeps its default 800x800 logical size at every scale.
 os.environ["QT_SCALE_FACTOR"] = str(SCALE)
 if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
-    _SCREEN_CONFIG = Path(tempfile.gettempdir()) / "ax-devil-ui-shots-screen.json"
-    _SCREEN_CONFIG.write_text(
-        json.dumps({"screens": [{"name": "shots", "width": round(800 * SCALE), "height": round(800 * SCALE)}]}),
-        encoding="utf-8",
-    )
+    # One file per run, so overlapping runs with different scales never read each other's screen.
+    with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="ax-devil-ui-shots-", delete=False) as config:
+        json.dump({"screens": [{"name": "shots", "width": round(800 * SCALE), "height": round(800 * SCALE)}]}, config)
+    _SCREEN_CONFIG = Path(config.name)
+    atexit.register(_SCREEN_CONFIG.unlink, missing_ok=True)
     os.environ["QT_QPA_PLATFORM"] = f"offscreen:configfile={_SCREEN_CONFIG}"
 WINDOW_SIZES = {"wide": (1440, 900), "narrow": (1000, 640)}
 TEXT_SIZES = (TextSize.MEDIUM, TextSize.LARGER)
