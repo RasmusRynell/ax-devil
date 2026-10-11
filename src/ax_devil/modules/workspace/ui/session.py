@@ -128,6 +128,7 @@ class WorkspaceSession(QObject):
         self._window.files_dropped.connect(self.open_files)
         self._workspace_store.state_changed.connect(self.state_changed)
         self._workspace_store.state_changed.connect(self._show_workspace_state)
+        self._workspace_view.title_edited.connect(self._workspace_store.rename_workspace)
         self._show_workspace_state()
 
     def _show_workspace_state(self) -> None:

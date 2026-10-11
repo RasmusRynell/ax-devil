@@ -67,13 +67,13 @@ def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path)
     )
     path = tmp_path / "work.ax-devil.workspace"
 
-    saved = save_workspace(Workspace(items=items), path)
+    saved = save_workspace(Workspace(name="Parking lot", items=items), path)
     loaded = load_workspace(path)
 
     assert loaded == saved
     assert loaded.items == items
     assert loaded.path == path
-    assert loaded.name == "work"
+    assert loaded.name == "Parking lot"  # Not the file's name, "work".
 
 
 @pytest.mark.parametrize("mode", list(LiveOverlayMode))
@@ -120,7 +120,11 @@ def test_dot_dot_segments_are_normalized_before_checking_the_folder(tmp_path: Pa
 def test_relative_paths_are_read_against_the_files_folder_wherever_it_moved(tmp_path: Path) -> None:
     path = _write(
         tmp_path / "w.ax-devil.workspace",
-        {"version": 1, "items": [{"kind": "video", "id": "v", "label": "Clip", "video": "clips/lot.mp4"}]},
+        {
+            "version": 1,
+            "name": "Lot",
+            "items": [{"kind": "video", "id": "v", "label": "Clip", "video": "clips/lot.mp4"}],
+        },
     )
 
     (item,) = load_workspace(path).items
@@ -142,7 +146,11 @@ def test_a_workspace_opened_through_a_symlink_reads_relative_paths_from_the_real
     link_folder.mkdir()
     real = _write(
         real_folder / "w.ax-devil.workspace",
-        {"version": 1, "items": [{"kind": "video", "id": "v", "label": "Clip", "video": "clips/lot.mp4"}]},
+        {
+            "version": 1,
+            "name": "Lot",
+            "items": [{"kind": "video", "id": "v", "label": "Clip", "video": "clips/lot.mp4"}],
+        },
     )
     link = _symlink(link_folder / "linked.ax-devil.workspace", real)
 
@@ -241,7 +249,7 @@ def test_items_that_cannot_be_read_stay_unresolvable_and_are_saved_back_unchange
     tmp_path: Path, raw: dict[str, Any]
 ) -> None:
     good = {"kind": "playlist", "id": "ok", "label": "Fine", "resolver": "r", "settings": {}}
-    path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "items": [raw, good]})
+    path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "name": "Lot", "items": [raw, good]})
 
     loaded = load_workspace(path)
 
@@ -256,7 +264,9 @@ def test_items_that_cannot_be_read_stay_unresolvable_and_are_saved_back_unchange
 
 
 def test_an_unreadable_item_without_id_or_label_gets_an_id_and_is_shown_by_its_kind(tmp_path: Path) -> None:
-    path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "items": [{"kind": "hologram"}, "junk"]})
+    path = _write(
+        tmp_path / "w.ax-devil.workspace", {"version": 1, "name": "Lot", "items": [{"kind": "hologram"}, "junk"]}
+    )
 
     first, second = load_workspace(path).items
 
@@ -266,7 +276,9 @@ def test_an_unreadable_item_without_id_or_label_gets_an_id_and_is_shown_by_its_k
 
 
 def test_an_unknown_kind_explains_itself_when_resolved(tmp_path: Path) -> None:
-    path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "items": [{"kind": "hologram", "id": "a"}]})
+    path = _write(
+        tmp_path / "w.ax-devil.workspace", {"version": 1, "name": "Lot", "items": [{"kind": "hologram", "id": "a"}]}
+    )
 
     (item,) = load_workspace(path).items
 
@@ -280,9 +292,11 @@ def test_an_unknown_kind_explains_itself_when_resolved(tmp_path: Path) -> None:
         {"items": []},
         {"version": 2, "items": []},
         {"version": 1},
-        {"version": 1, "items": {"a": 1}},
+        {"version": 1, "items": []},
+        {"version": 1, "name": 3, "items": []},
+        {"version": 1, "name": "Lot", "items": {"a": 1}},
         [],
-        {"version": 1, "items": [{"kind": "playlist", "id": "a", "label": "A", "resolver": "r"}] * 2},
+        {"version": 1, "name": "Lot", "items": [{"kind": "playlist", "id": "a", "label": "A", "resolver": "r"}] * 2},
     ],
 )
 def test_a_damaged_file_raises_one_error(tmp_path: Path, document: object) -> None:
@@ -316,7 +330,7 @@ def test_a_non_finite_number_fails_the_save_and_keeps_the_old_file(tmp_path: Pat
 def test_a_non_finite_number_in_a_file_fails_the_load(tmp_path: Path, token: str) -> None:
     path = tmp_path / "w.ax-devil.workspace"
     path.write_text(
-        '{"version": 1, "items": [{"kind": "playlist", "id": "p", "label": "P", "resolver": "r", '
+        '{"version": 1, "name": "Lot", "items": [{"kind": "playlist", "id": "p", "label": "P", "resolver": "r", '
         f'"settings": {{"threshold": {token}}}}}]}}',
         encoding="utf-8",
     )
@@ -376,7 +390,7 @@ def test_a_workspace_without_bookmarks_writes_empty_lists_and_files_without_them
     save_workspace(Workspace(items=(PlaylistItem(label="P", resolver="r"),)), path)
 
     written = _written(path)
-    old = _write(tmp_path / "old.ax-devil.workspace", {"version": 1, "items": written["items"]})
+    old = _write(tmp_path / "old.ax-devil.workspace", {"version": 1, "name": "Lot", "items": written["items"]})
 
     assert (written["bookmarks"], written["reviewed"]) == ([], [])
     assert load_workspace(old).bookmarks == ()
@@ -389,7 +403,7 @@ def test_bookmarks_on_an_unreadable_item_are_kept_and_saved_back(tmp_path: Path)
     reviewed = {"item": "h1", "entry": ""}
     path = _write(
         tmp_path / "w.ax-devil.workspace",
-        {"version": 1, "items": [raw], "bookmarks": [bookmark], "reviewed": [reviewed]},
+        {"version": 1, "name": "Lot", "items": [raw], "bookmarks": [bookmark], "reviewed": [reviewed]},
     )
 
     loaded = load_workspace(path)
@@ -404,7 +418,7 @@ def test_a_bookmark_entry_kind_and_note_may_be_left_out(tmp_path: Path) -> None:
     item = {"kind": "playlist", "id": "p", "label": "P", "resolver": "r"}
     path = _write(
         tmp_path / "w.ax-devil.workspace",
-        {"version": 1, "items": [item], "bookmarks": [{"id": "b", "item": "p", "frame": 3, "time": 1}]},
+        {"version": 1, "name": "Lot", "items": [item], "bookmarks": [{"id": "b", "item": "p", "frame": 3, "time": 1}]},
     )
 
     (bookmark,) = load_workspace(path).bookmarks
@@ -436,7 +450,7 @@ def test_a_malformed_bookmark_or_reviewed_target_fails_the_load_naming_it(
     tmp_path: Path, extra: dict[str, Any], message: str
 ) -> None:
     item = {"kind": "playlist", "id": "p", "label": "P", "resolver": "r"}
-    path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "items": [item], **extra})
+    path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "name": "Lot", "items": [item], **extra})
 
     with pytest.raises(WorkspaceFileError, match=message):
         load_workspace(path)

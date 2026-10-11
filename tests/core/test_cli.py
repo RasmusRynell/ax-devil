@@ -457,7 +457,9 @@ def test_open_launches_a_saved_workspace_and_rejects_a_damaged_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches, damaged: bool
 ) -> None:
     workspace_file = tmp_path / "Lot.ax-devil.workspace"
-    workspace_file.write_text("{not json" if damaged else '{"version": 1, "items": []}', encoding="utf-8")
+    workspace_file.write_text(
+        "{not json" if damaged else '{"version": 1, "name": "Lot", "items": []}', encoding="utf-8"
+    )
     monkeypatch.chdir(tmp_path)
 
     result = _invoke("open", workspace_file.name)
@@ -477,7 +479,7 @@ def test_group_options_reach_the_app_launched_by_a_command(tmp_path: Path, start
     config_path = tmp_path / "config.json"
     config_path.write_text("{}", encoding="utf-8")
     target = tmp_path / ("clip.mp4" if command == "local" else "Lot.ax-devil.workspace")
-    target.write_text('{"version": 1, "items": []}', encoding="utf-8")
+    target.write_text('{"version": 1, "name": "Lot", "items": []}', encoding="utf-8")
     arguments = ["--video", str(target)] if command == "local" else [str(target)]
 
     result = _invoke("--debug", "--log-level", "DEBUG", "--config", str(config_path), command, *arguments)

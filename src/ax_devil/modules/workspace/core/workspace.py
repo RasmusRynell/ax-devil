@@ -18,24 +18,27 @@ def workspace_file_path(path: Path) -> Path:
     return path if path.name.endswith(WORKSPACE_FILE_SUFFIX) else path.with_name(f"{path.name}{WORKSPACE_FILE_SUFFIX}")
 
 
-def workspace_name(path: Path | None) -> str:
-    """Return the name of the workspace saved at *path*: the file name without its extension, or "Untitled"."""
-    return path.name.removesuffix(WORKSPACE_FILE_SUFFIX) if path is not None else UNTITLED_NAME
+def workspace_file_stem(path: Path) -> str:
+    """Return the file name of the workspace file *path* without its extension."""
+    return path.name.removesuffix(WORKSPACE_FILE_SUFFIX)
 
 
 @dataclass(frozen=True)
 class Workspace:
-    """The items a user works with, and the file they are saved in; ``path`` is None until the first save.
+    """The items a user works with, the name they gave the workspace, and the file it is saved in.
 
-    Edits return a new value. Two workspaces are equal when their paths, items, bookmarks, and reviewed targets are, so
-    a store can tell unsaved edits by comparing the current value with the last saved one. Items may hold mappings, so
-    do not hash workspaces.
+    ``name`` is saved in the file and is independent of the file's name; ``path`` is None until the first save.
+
+    Edits return a new value. Two workspaces are equal when their names, paths, items, bookmarks, and reviewed targets
+    are, so a store can tell unsaved edits by comparing the current value with the last saved one. Items may hold
+    mappings, so do not hash workspaces.
 
     Bookmarks and reviewed targets refer to items in the Workspace, and removing an item removes them. Only a
     ``bookmarkable`` item takes new ones or review changes; ones a file already holds load whatever the item, so a
     bookmark on an item this version cannot read is kept and saved back.
     """
 
+    name: str = UNTITLED_NAME
     path: Path | None = None
     items: tuple[WorkspaceItem, ...] = ()
     bookmarks: tuple[Bookmark, ...] = ()
@@ -54,10 +57,9 @@ class Workspace:
         if missing:
             raise ValueError(f"Bookmarks or reviewed targets refer to items not in the workspace: {', '.join(missing)}")
 
-    @property
-    def name(self) -> str:
-        """Return the file name without the workspace extension, or "Untitled" before the first save."""
-        return workspace_name(self.path)
+    def renamed(self, name: str) -> Workspace:
+        """Return this workspace called *name* without surrounding whitespace; an empty *name* is "Untitled"."""
+        return replace(self, name=name.strip() or UNTITLED_NAME)
 
     def has_item(self, item_id: str) -> bool:
         """Return whether an item with *item_id* is in this workspace."""

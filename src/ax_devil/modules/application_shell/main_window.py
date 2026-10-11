@@ -27,7 +27,7 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.fullscreen import LaneFullscreenController
-from ax_devil.modules.workspace.core import WorkspaceItem, workspace_name
+from ax_devil.modules.workspace.core import WorkspaceItem, workspace_file_stem
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 
 if TYPE_CHECKING:
@@ -258,7 +258,7 @@ class MainWindow(ChromeWindow):
         menu = self._recent_menu
         menu.clear()
         for path in (entry.path for entry in self._workspace_session.lifecycle.recent_workspaces()):
-            action = menu.addAction(workspace_name(path))
+            action = menu.addAction(workspace_file_stem(path))
             action.setToolTip(str(path))
             action.triggered.connect(lambda _=False, path=path: self._workspace_session.lifecycle.open_workspace(path))
         if menu.isEmpty():

@@ -151,6 +151,11 @@ class WorkspaceStore(QObject):
         self._read_saved = None
         self._announce_state()
 
+    def rename_workspace(self, name: str) -> None:
+        """Call the Workspace *name*, which is saved with it; an empty *name* is "Untitled"."""
+        self._workspace = self._workspace.renamed(name)
+        self._announce_state()
+
     def add_items(self, items: Sequence[WorkspaceItem]) -> None:
         """Append *items* and resolve them in the background; an item that fails to resolve stays, with its error."""
         self._append(items)
