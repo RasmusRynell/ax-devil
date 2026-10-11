@@ -15,7 +15,7 @@ from ax_devil.modules.plugin_system import (
     RuntimePluginRegistry,
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
+from tests.helpers.shortcuts import make_shortcut_manager
 
 
 def test_startup_reports_failed_plugins(
@@ -24,8 +24,7 @@ def test_startup_reports_failed_plugins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Failed plug-ins are listed with their error in one dialog."""
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     failed = PluginRecord(

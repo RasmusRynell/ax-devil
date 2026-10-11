@@ -4,16 +4,17 @@ from typing import cast
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QPoint, QPointF, QRect, Qt
-from PySide6.QtGui import QAction, QImage, QScreen, QWheelEvent
+from PySide6.QtCore import QCoreApplication, QPointF, QRect, Qt
+from PySide6.QtGui import QAction, QImage, QScreen
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays
 from ax_devil.modules.video_player.orchestration.fullscreen import LaneFullscreenController, _FullscreenWindow
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
+from tests.helpers.qt_events import make_wheel_event
+from tests.helpers.shortcuts import make_shortcut_manager
 
 
 def test_lane_shortcuts_restore_layout_and_keep_shared_actions(qtbot: QtBot) -> None:
@@ -24,8 +25,7 @@ def test_lane_shortcuts_restore_layout_and_keep_shared_actions(qtbot: QtBot) -> 
     first, second = FrameDisplay(), FrameDisplay()
     layout.addWidget(first, 2)
     layout.addWidget(second, 3)
-    manager = ShortcutManager()
-    manager.register_defaults()
+    manager = make_shortcut_manager()
     manager.install(window)
     toggle = manager.get_action("view.toggle_lane_fullscreen")
     playback = manager.get_action("playback.play_pause")
@@ -155,17 +155,7 @@ def test_zoom_in_fullscreen_matches_peer_after_escape(qtbot: QtBot) -> None:
     qtbot.waitUntil(first.window().isActiveWindow)
     position = QPointF(first.viewport.width() * 0.7, first.viewport.height() * 0.4)
     for _ in range(6):
-        event = QWheelEvent(
-            position,
-            position,
-            QPoint(),
-            QPoint(0, 120),
-            Qt.MouseButton.NoButton,
-            Qt.KeyboardModifier.NoModifier,
-            Qt.ScrollPhase.NoScrollPhase,
-            False,
-        )
-        first.viewport.wheelEvent(event)
+        first.viewport.wheelEvent(make_wheel_event(position, 120))
     base = first.viewport.frame_display_rect()
     assert base is not None
     expected = first.viewport.viewport_state.to_normalized(base)

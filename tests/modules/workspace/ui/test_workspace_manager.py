@@ -67,28 +67,22 @@ def test_consideration_defaults_and_updates_are_owned_by_manager() -> None:
 
     state.set_item_considered(entry_ref, True)
     assert state.is_item_considered(entry_ref)
-    state.set_item_considered(entry_ref, True)
-
-
-def test_invalid_lane_ref_does_not_affect_valid_lanes() -> None:
-    state = WorkspaceManager()
-    playlist = make_playlist()
-    state.add_content(playlist)
-
-    invalid_lane_ref = ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 99)
-    state.set_item_considered(invalid_lane_ref, False)
-
-    valid_lane_ref = ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0)
-    assert state.is_item_considered(valid_lane_ref)
 
 
 def test_unknown_refs_are_ignored() -> None:
     state = WorkspaceManager()
-    lane_ref = ConsiderationItemRef.video_lane("nonexistent", 0)
+    playlist = make_playlist()
+    state.add_content(playlist)
+    unknown_refs = (
+        ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 99),
+        ConsiderationItemRef.video_lane("nonexistent", 0),
+    )
 
-    state.set_item_considered(lane_ref, False)
+    for ref in unknown_refs:
+        state.set_item_considered(ref, False)
 
-    assert state.is_item_considered(lane_ref)
+    assert all(state.is_item_considered(ref) for ref in unknown_refs)
+    assert state.is_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0))
 
 
 def test_live_content_logs_and_representations_exclude_credentials(caplog: pytest.LogCaptureFixture) -> None:

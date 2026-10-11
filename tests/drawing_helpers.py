@@ -191,6 +191,10 @@ class RecordingTarget:
         self.calls.extend(PolylineCall(_pairs(shape), paint.style(row)) for row, shape in enumerate(points))
 
 
+CONTEXT = RenderContext.create(800, 400)
+"""The render size most rendering tests draw at."""
+
+
 def _pairs(shape: Sequence[tuple[float, float]] | Numbers) -> Points:
     return tuple((float(x), float(y)) for x, y in shape)
 

@@ -15,10 +15,7 @@ from ax_devil.modules.scene.rendering.template_runtime.definitions import (
     validate_value,
 )
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
-from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.drawing_helpers import BoxCall, record_template
-
-CONTEXT = RenderContext.create(800, 400)
+from tests.drawing_helpers import CONTEXT, BoxCall, record_template
 
 
 def test_authoring_definitions_export_bounds_with_json_schema_names() -> None:

@@ -8,14 +8,13 @@ from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
+from tests.helpers.shortcuts import make_shortcut_manager
 
 
 @pytest.fixture
 def window(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> MainWindow:
     """Build a real main window using isolated configuration and catalogs."""
-    shortcuts = ShortcutManager()
-    shortcuts.register_defaults()
+    shortcuts = make_shortcut_manager()
     window = MainWindow(shortcut_manager=shortcuts, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     return window
@@ -62,12 +61,11 @@ def test_dialog_is_disposed_when_launch_fails(window: MainWindow, monkeypatch: p
 
 
 def test_about_dialog_is_destroyed_after_close(window: MainWindow) -> None:
-    """The nonblocking About dialog is released before the next one is opened."""
+    """The nonblocking About dialog is released, and reopening after a close opens a new one."""
     for _ in range(3):
         window._on_about()
-        dialog = window._about_dialog
-        assert dialog is not None
+        dialog = window.findChild(AboutDialog)
+        assert dialog is not None and dialog.isVisible()
         dialog.accept()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        assert window._about_dialog is None
         assert window.findChildren(AboutDialog) == []

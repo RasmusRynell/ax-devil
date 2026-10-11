@@ -2,21 +2,13 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from ax_devil.core.data_types import FrameIdentifier
-from ax_devil.modules.plugin_system import (
-    DECODER_PLUGIN_TYPE,
-    DecoderPluginDefinition,
-    FileToSceneDecoderDefinition,
-    PluginStatus,
-    RuntimePluginRegistry,
-)
-from ax_devil.modules.scene.model import EntityId, Scene
+from ax_devil.modules.plugin_system import get_file_decoder_factory
+from ax_devil.modules.scene.model import EntityId
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
-from ax_devil.plugins.decoders.onvif_xml.provider import ONVIFXMLDataProvider
 
 pytestmark = pytest.mark.usefixtures("isolated_cache")
 
@@ -45,22 +37,11 @@ NESTED_FRAME = (
 )
 
 
-def _get_file_decoder_definition(handler_type: str) -> FileToSceneDecoderDefinition:
-    for record in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE):
-        if record.status != PluginStatus.LOADED:
-            continue
-        definition = cast(DecoderPluginDefinition, record.definition)
-        for file_decoder in definition.file_to_scene_decoders:
-            if file_decoder.handler_type == handler_type:
-                return file_decoder
-    raise ValueError(f"Unsupported file-to-scene decoder type: {handler_type}")
-
-
-def test_onvif_xml_provider_reads_lines_and_decodes(tmp_path: Path) -> None:
-    """Ensure the provider reads non-empty XML lines and decodes them with the ONVIF decoder."""
+def test_registered_onvif_handler_reads_one_frame_per_xml_line(tmp_path: Path) -> None:
+    """Blank lines are skipped and each frame is found by its UTC time."""
     xml_file = tmp_path / "frames.xml"
     xml_file.write_text(f"{SIMPLE_FRAME}\n\n   \n{NESTED_FRAME}\n", encoding="utf-8")
-    provider = ONVIFXMLDataProvider(file_path=xml_file)
+    provider = get_file_decoder_factory(ONVIF_XML)(str(xml_file))
     try:
         assert provider.get_total_frames() == 2
         expected_ts_0 = 1_704_067_200_000_000
@@ -76,27 +57,5 @@ def test_onvif_xml_provider_reads_lines_and_decodes(tmp_path: Path) -> None:
         assert scene_1 is not None
         assert scene_1.time_slice.start == datetime(2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
         assert scene_1.entities == {}
-    finally:
-        provider.close()
-
-
-def test_onvif_xml_factory_creates_provider(tmp_path: Path) -> None:
-    """Factory lookup should construct a working ONVIF XML provider."""
-    xml_file = tmp_path / "sample.xml"
-    xml_file.write_text(f"{SIMPLE_FRAME}\n", encoding="utf-8")
-
-    handler_class = _get_file_decoder_definition(ONVIF_XML).factory
-
-    provider = handler_class(str(xml_file))
-    try:
-        assert isinstance(provider, ONVIFXMLDataProvider)
-        assert provider.get_total_frames() == 1
-
-        ts_expected = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1_000_000)
-        frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=float(ts_expected))
-        scene = provider.load_by_frame_id(frame_id)
-        assert isinstance(scene, Scene)
-        assert scene is not None
-        assert scene.time_slice.start == datetime(2024, 1, 1, tzinfo=timezone.utc)
     finally:
         provider.close()

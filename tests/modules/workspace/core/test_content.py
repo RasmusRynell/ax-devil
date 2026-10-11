@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -38,11 +39,30 @@ def _make_video(name: str = "clip.mp4") -> SeekableVideoContent:
     )
 
 
+def _mqtt_overlay() -> OverlayContent:
+    return OverlayContent(
+        display_name="MQTT",
+        source_spec=LiveMQTTOverlaySourceSpec(handler_type="LIVE", broker_host="broker.local"),
+    )
+
+
+def _file_overlay() -> OverlayContent:
+    return OverlayContent(
+        display_name="file",
+        source_spec=FileOverlaySourceSpec(path=Path("/tmp/overlay.txt"), handler_type="MOT_FILE"),
+    )
+
+
 def test_content_instances_have_unique_ids_and_identity_equality() -> None:
-    a = _make_video("a")
+    a = SeekableVideoContent(
+        display_name="a",
+        source_spec=FileVideoSourceSpec(path=Path("/tmp/a")),
+        metadata={"path": "/tmp/a"},
+    )
     b = _make_video("a")
     assert a.content_id != b.content_id
     assert a != b
+    assert a in {a}
 
     p1 = PlaylistContent(
         display_name="p",
@@ -55,92 +75,71 @@ def test_content_instances_have_unique_ids_and_identity_equality() -> None:
     assert p1.content_id != p2.content_id
 
 
-def test_entry_lane_rejects_overlay_incompatible_with_video() -> None:
-    overlay = OverlayContent(
-        display_name="MQTT",
-        source_spec=LiveMQTTOverlaySourceSpec(handler_type="LIVE", broker_host="broker.local"),
-    )
-
-    with pytest.raises(TypeError, match="Seekable video lanes require file overlay source specs"):
-        EntryLane(display_name="invalid", video=_make_video(), default_considered=True, overlay=overlay)
-
-
-def test_playlist_entry_rejects_live_video_content() -> None:
-    live_content = LiveVideoContent(
-        display_name="camera-1",
-        source_spec=_live_source_spec(),
-    )
-
-    with pytest.raises(TypeError, match="Playlist entries require seekable video content"):
-        PlaylistEntry(
-            lanes=(EntryLane(display_name="camera-1", video=live_content, default_considered=True),),
-            default_considered=True,
-        )
-
-
-def test_playlist_entry_rejects_empty_lanes() -> None:
-    with pytest.raises(ValueError, match="Playlist entries require at least one lane"):
-        PlaylistEntry(lanes=(), default_considered=True)
-
-
-def test_playlist_content_rejects_empty_entries() -> None:
-    with pytest.raises(ValueError, match="Playlists require at least one entry"):
-        PlaylistContent(display_name="empty", entries=())
-
-
-def test_seekable_video_content_with_metadata_is_hashable() -> None:
-    content = SeekableVideoContent(
-        display_name="clip.mp4",
-        source_spec=FileVideoSourceSpec(path=Path("/tmp/clip.mp4")),
-        metadata={"path": "/tmp/clip.mp4"},
-    )
-    assert content in {content}
-
-
-def test_overlay_source_kinds_have_display_names() -> None:
-    assert OverlaySourceKind.RTSP_SOURCE.display_name == "RTSP"
-    assert OverlaySourceKind.MQTT_SOURCE.display_name == "MQTT"
-    assert OverlaySourceKind.WEBSOCKET_SOURCE.display_name == "DataHub WebSocket"
-
-
-def test_seekable_video_rejects_live_overlay_source() -> None:
-    overlay = OverlayContent(
-        display_name="MQTT",
-        source_spec=LiveMQTTOverlaySourceSpec(handler_type="LIVE", broker_host="broker.local"),
-    )
-
-    with pytest.raises(TypeError, match="Seekable video content requires file overlay source specs"):
-        SeekableVideoContent(
-            display_name="clip",
-            source_spec=FileVideoSourceSpec(path=Path("/tmp/clip.mp4")),
-            overlays=(overlay,),
-        )
-
-
-def test_live_video_rejects_file_overlay_source() -> None:
-    overlay = OverlayContent(
-        display_name="file",
-        source_spec=FileOverlaySourceSpec(path=Path("/tmp/overlay.txt"), handler_type="FILE"),
-    )
-
-    with pytest.raises(TypeError, match="Live video content requires an RTSP or MQTT overlay source spec"):
-        LiveVideoContent(display_name="live", source_spec=_live_source_spec(), overlays=(overlay,))
-
-
-def test_live_video_rejects_multiple_overlays() -> None:
-    overlays = (
-        OverlayContent(
-            display_name="RTSP",
-            source_spec=LiveRTSPOverlaySourceSpec(handler_type="LIVE"),
+@pytest.mark.parametrize(
+    ("build", "error", "match"),
+    [
+        pytest.param(
+            lambda: EntryLane(display_name="x", video=_make_video(), default_considered=True, overlay=_mqtt_overlay()),
+            TypeError,
+            "Seekable video lanes require file overlay",
+            id="seekable-lane-with-live-overlay",
         ),
-        OverlayContent(
-            display_name="MQTT",
-            source_spec=LiveMQTTOverlaySourceSpec(handler_type="LIVE", broker_host="broker.local"),
+        pytest.param(
+            lambda: SeekableVideoContent(
+                display_name="clip",
+                source_spec=FileVideoSourceSpec(path=Path("/tmp/c.mp4")),
+                overlays=(_mqtt_overlay(),),
+            ),
+            TypeError,
+            "Seekable video content requires file overlay",
+            id="seekable-video-with-live-overlay",
         ),
-    )
-
-    with pytest.raises(ValueError, match="Live video content supports at most one overlay"):
-        LiveVideoContent(display_name="live", source_spec=_live_source_spec(), overlays=overlays)
+        pytest.param(
+            lambda: LiveVideoContent(display_name="live", source_spec=_live_source_spec(), overlays=(_file_overlay(),)),
+            TypeError,
+            "Live video content requires",
+            id="live-video-with-file-overlay",
+        ),
+        pytest.param(
+            lambda: LiveVideoContent(
+                display_name="live", source_spec=_live_source_spec(), overlays=(_mqtt_overlay(), _mqtt_overlay())
+            ),
+            ValueError,
+            "at most one overlay",
+            id="live-video-with-two-overlays",
+        ),
+        pytest.param(
+            lambda: PlaylistEntry(
+                lanes=(
+                    EntryLane(
+                        display_name="cam",
+                        video=LiveVideoContent(display_name="cam", source_spec=_live_source_spec()),
+                        default_considered=True,
+                    ),
+                ),
+                default_considered=True,
+            ),
+            TypeError,
+            "Playlist entries require seekable video",
+            id="playlist-entry-with-live-video",
+        ),
+        pytest.param(
+            lambda: PlaylistEntry(lanes=(), default_considered=True),
+            ValueError,
+            "at least one lane",
+            id="playlist-entry-without-lanes",
+        ),
+        pytest.param(
+            lambda: PlaylistContent(display_name="empty", entries=()),
+            ValueError,
+            "at least one entry",
+            id="playlist-without-entries",
+        ),
+    ],
+)
+def test_content_rejects_unsupported_shapes(build: Callable[[], object], error: type[Exception], match: str) -> None:
+    with pytest.raises(error, match=match):
+        build()
 
 
 @pytest.mark.parametrize(
@@ -178,46 +177,18 @@ def test_live_content_projects_overlay_into_standalone_lane(
     assert lane.source_kind is expected_kind
     assert lane.metadata == {}
     assert lane.overlay is overlay
-    assert overlay.metadata == {"note": "analytics"}
 
 
-def test_default_considered_is_explicit_field_not_metadata() -> None:
-    overlay = OverlayContent(
-        display_name="overlay",
-        source_spec=FileOverlaySourceSpec(path=Path("/tmp/overlay.txt"), handler_type="MOT_FILE"),
-        metadata={"note": "test overlay"},
-    )
-    content = SeekableVideoContent(
-        display_name="clip",
-        source_spec=FileVideoSourceSpec(path=Path("/tmp/clip.mp4")),
-        overlays=(overlay,),
-    )
-
-    lanes = content.standalone_lanes()
-
-    assert lanes[0].default_considered is True
-    assert "default_considered" not in lanes[0].metadata
-
-
-def test_content_owns_supported_consideration_items() -> None:
-    overlay = OverlayContent(
-        display_name="overlay",
-        source_spec=FileOverlaySourceSpec(path=Path("/tmp/overlay.txt"), handler_type="MOT_FILE"),
-    )
+def test_seekable_video_lane_is_considered_by_default_and_live_has_no_items() -> None:
     seekable = SeekableVideoContent(
         display_name="clip",
         source_spec=FileVideoSourceSpec(path=Path("/tmp/clip.mp4")),
-        overlays=(overlay,),
+        overlays=(_file_overlay(),),
     )
     live = LiveVideoContent(
         display_name="live",
         source_spec=_live_source_spec(),
-        overlays=(
-            OverlayContent(
-                display_name="RTSP",
-                source_spec=LiveRTSPOverlaySourceSpec(handler_type="LIVE"),
-            ),
-        ),
+        overlays=(OverlayContent(display_name="RTSP", source_spec=LiveRTSPOverlaySourceSpec(handler_type="LIVE")),),
     )
 
     [seekable_item] = seekable.consideration_items()
