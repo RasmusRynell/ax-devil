@@ -55,10 +55,8 @@ from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.workspace.core import (
     BookmarkKind,
-    BookmarkTarget,
     LiveStreamItem,
     OverlayFile,
-    PlaylistContent,
     PlaylistItem,
     RecentWorkspace,
     VideoItem,
@@ -191,9 +189,9 @@ def _fill_sidebar_views(
     store = session._workspace_store
     [playlist_item] = [item for item in store.workspace.items if isinstance(item, PlaylistItem)]
     [playlist] = store.resolution(playlist_item.id).contents
-    assert isinstance(playlist, PlaylistContent)
-    clip = BookmarkTarget(video_item_id)
-    run_two = entry_target(playlist_item.id, playlist, 1)
+    [video] = store.resolution(video_item_id).contents
+    clip = entry_target(video, 0)
+    run_two = entry_target(playlist, 1)
     for target, frame, kind, note in (
         (clip, 20, BookmarkKind.ISSUE, "Bicycle 6 disappears"),
         (clip, 25, BookmarkKind.QUESTION, "ID 3 renamed to 7 behind the car"),
