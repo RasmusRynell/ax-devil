@@ -24,6 +24,8 @@ from ax_devil.modules.workspace.core import (
     VideoItem,
     WorkspaceDecoderOption,
     WorkspaceIntake,
+    entry_target,
+    find_entry,
 )
 from tests.helpers.contents import make_video
 from tests.helpers.workspace import FakeResolutionContext, StaticDecoderOptions
@@ -214,6 +216,22 @@ def test_playlist_item_with_several_playlists_names_each_after_the_item() -> Non
     contents = PlaylistItem(label="Exp 3", resolver="runs").resolve(context)
 
     assert [content.display_name for content in contents] == ["Exp 3 / train", "Exp 3 / test"]
+
+
+def test_playlists_sharing_a_name_get_entries_with_distinct_bookmark_targets_that_stay_the_same_on_every_run() -> None:
+    context = FakeResolutionContext(
+        resolvers={"runs": _Resolver([_playlist("runs"), _playlist("runs"), _playlist("runs")])}
+    )
+    item = PlaylistItem(resolver="runs")
+
+    contents = item.resolve(context)
+    keys = [key for content in contents for key in content.bookmark_entries]
+
+    assert len(set(keys)) == len(keys) == 3
+    second = entry_target(contents[1], 0)
+    assert find_entry(contents, second) == (contents[1], 0)
+    assert find_entry(item.resolve(context), second) is not None
+    assert find_entry(item.with_label("Renamed").resolve(context), second) is not None
 
 
 @pytest.mark.parametrize(

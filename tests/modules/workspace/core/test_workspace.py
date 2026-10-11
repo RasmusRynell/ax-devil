@@ -123,6 +123,14 @@ def test_live_streams_and_unreadable_items_take_no_new_bookmarks_or_review_marks
         workspace.set_reviewed(target, True)
 
 
+def test_a_review_mark_an_unreadable_item_holds_can_be_cleared() -> None:
+    item = UnreadableItem.from_raw({"kind": "hologram", "id": "h1"}, "Unknown item kind")
+    target = BookmarkTarget(item.id)
+    workspace = Workspace(items=(item,), reviewed=frozenset({target}))
+
+    assert workspace.set_reviewed(target, False).reviewed == frozenset()
+
+
 def test_bookmarks_and_review_marks_need_an_item_in_the_workspace_and_unique_ids() -> None:
     video = _video("a.mp4")
     workspace = Workspace(items=(video,))
@@ -133,6 +141,8 @@ def test_bookmarks_and_review_marks_need_an_item_in_the_workspace_and_unique_ids
         workspace.add_bookmark(Bookmark(target=elsewhere, frame=0, time_s=0.0))
     with pytest.raises(ValueError):
         workspace.set_reviewed(elsewhere, True)
+    with pytest.raises(ValueError):
+        workspace.set_reviewed(elsewhere, False)
     with pytest.raises(ValueError, match="unique ids"):
         workspace.add_bookmark(bookmark).add_bookmark(bookmark)
     with pytest.raises(ValueError, match="not in the workspace"):

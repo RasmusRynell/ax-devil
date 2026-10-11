@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference, integer_default
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core.content import Content, LiveOverlayMode
+from ax_devil.modules.workspace.core.content import Content, LiveOverlayMode, numbered_when_shared
 from ax_devil.modules.workspace.core.intake import OverlayFile, WorkspaceIntake, is_video_file
 from ax_devil.modules.workspace.core.resolution import ItemResolutionError, PlaylistSettings, ResolutionContext
 
@@ -426,9 +426,14 @@ class PlaylistItem(WorkspaceItem):
         return self.resolver
 
     def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
-        """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings."""
+        """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings.
+
+        Playlists that share a name get it numbered " (2)", " (3)", so their entries' Bookmark Target keys differ.
+        """
         try:
-            return context.playlist_resolver(self.resolver).resolve(deepcopy(self.settings))
+            playlists = context.playlist_resolver(self.resolver).resolve(deepcopy(self.settings))
+            names = numbered_when_shared(playlist.source_name for playlist in playlists)
+            return [replace(playlist, source_name=name) for playlist, name in zip(playlists, names, strict=True)]
         except ItemResolutionError:
             raise
         except Exception as exc:  # A plugin may fail in any way; the item stays, with the reason.

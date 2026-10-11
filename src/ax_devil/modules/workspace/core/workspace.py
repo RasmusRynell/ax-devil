@@ -127,15 +127,23 @@ class Workspace:
     def set_reviewed(self, target: BookmarkTarget, reviewed: bool) -> Workspace:
         """Return this workspace with *target* marked reviewed or not.
 
-        Raises ``ValueError`` when the target's item is missing or not bookmarkable.
+        Raises ``ValueError`` when the target's item is missing, or not bookmarkable and *reviewed* is True: a mark an
+        item holds can always be cleared.
         """
-        self._check_bookmarkable(target)
+        if reviewed:
+            self._check_bookmarkable(target)
+        else:
+            self._item_of(target)
         return replace(self, reviewed=self.reviewed | {target} if reviewed else self.reviewed - {target})
+
+    def _item_of(self, target: BookmarkTarget) -> WorkspaceItem:
+        """Return *target*'s item, or raise ``ValueError`` when it is not in this workspace."""
+        if not self.has_item(target.item_id):
+            raise ValueError(f"No item {target.item_id} in the workspace.")
+        return self.item(target.item_id)
 
     def _check_bookmarkable(self, target: BookmarkTarget) -> None:
         """Raise ``ValueError`` unless *target*'s item is in this workspace and takes bookmarks."""
-        if not self.has_item(target.item_id):
-            raise ValueError(f"No item {target.item_id} in the workspace.")
-        item = self.item(target.item_id)
+        item = self._item_of(target)
         if not item.bookmarkable:
             raise ValueError(f"{item.display_name} cannot take bookmarks.")

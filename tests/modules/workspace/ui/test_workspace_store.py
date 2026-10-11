@@ -767,3 +767,46 @@ def test_rescanning_an_unknown_or_still_resolving_item_does_nothing(
     assert len(blocking.threads) == 1
     assert rescanned == []
     assert "unknown" in caplog.text
+
+
+class _ScriptedResolver:
+    """Resolve once at once, then hold each later request until the test finishes it with its own playlist name."""
+
+    def __init__(self) -> None:
+        self.requests: list[tuple[threading.Event, str]] = []
+        self._lock = threading.Lock()
+        self._first = True
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        with self._lock:
+            if self._first:
+                self._first = False
+                return [make_playlist("initial")]
+            release, name = threading.Event(), f"scan {len(self.requests) + 1}"
+            self.requests.append((release, name))
+        assert release.wait(timeout=5)
+        return [make_playlist(name)]
+
+
+def test_an_older_rescan_finishing_last_does_not_overwrite_the_newer_result(qtbot: QtBot) -> None:
+    scripted = _ScriptedResolver()
+    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": scripted}))
+    store = WorkspaceStore(resolver)
+    runs = PlaylistItem(resolver="runs")
+    store.add_items([runs])
+    qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
+    rescanned: list[ItemResolution] = []
+    store.item_rescanned.connect(rescanned.append)
+
+    store.rescan_item(runs.id)
+    qtbot.waitUntil(lambda: len(scripted.requests) == 1)
+    store.rescan_item(runs.id)
+    qtbot.waitUntil(lambda: len(scripted.requests) == 2)
+    (older_release, _), (newer_release, newer_name) = scripted.requests
+    newer_release.set()
+    qtbot.waitUntil(lambda: len(rescanned) == 1)
+    older_release.set()
+    qtbot.waitUntil(lambda: not resolver._batches)
+
+    assert [content.display_name for content in store.contents()] == [newer_name]
+    assert len(rescanned) == 1

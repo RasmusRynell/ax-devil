@@ -155,7 +155,7 @@ class BookmarksView(ViewPanel):
 
     def _group_row(self, group: BookmarkGroup) -> ListRow:
         trailing: list[QWidget] = []
-        if not group.missing:
+        if not group.missing or group.reviewed:
             chip = Chip(
                 "Reviewed" if group.reviewed else "To review",
                 ChipKind.OK if group.reviewed else ChipKind.NEUTRAL,

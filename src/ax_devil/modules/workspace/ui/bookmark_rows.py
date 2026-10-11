@@ -1,4 +1,4 @@
-"""The rows of the Bookmarks view: one group per bookmarked target, its bookmarks under it, filtered and searched."""
+"""The rows of the Bookmarks view: one group per bookmarked or reviewed target, filtered and searched."""
 
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ class BookmarkRow:
 
 @dataclass(frozen=True)
 class BookmarkGroup:
-    """A bookmarked target, where its video is now, and its bookmarks in frame order.
+    """A bookmarked or reviewed target, where its video is now, and its bookmarks in frame order, possibly none.
 
     *found* is the Content and entry index the target names now, or None when it is orphaned: its entry is gone or its
-    item did not resolve. An orphaned group's bookmarks do not open and its review state cannot change.
+    item did not resolve. An orphaned group's bookmarks do not open and its review mark can only be cleared.
     """
 
     target: BookmarkTarget
@@ -103,18 +103,17 @@ def bookmark_subtitle(bookmark: Bookmark) -> str:
 def build_bookmark_groups(
     resolutions: Sequence[ItemResolution], bookmarks: Sequence[Bookmark], reviewed: Set[BookmarkTarget]
 ) -> tuple[BookmarkGroup, ...]:
-    """Return a group per target with bookmarks, in item order, then entry order with orphaned entries last.
+    """Return a group per target with bookmarks or a review mark, in item order, then entry order with orphaned last.
 
-    *resolutions* are every item's, in Workspace order. Only bookmarkable items are listed, so live streams never are.
+    *resolutions* are every item's, in Workspace order. Every stored bookmark and review mark is listed, whatever its
+    item, so ones kept for an item this version cannot read stay visible and exportable; items without any are not.
     """
-    by_target: dict[BookmarkTarget, list[Bookmark]] = {}
+    by_target: dict[BookmarkTarget, list[Bookmark]] = {target: [] for target in reviewed}
     for bookmark in bookmarks:
         by_target.setdefault(bookmark.target, []).append(bookmark)
     groups: list[BookmarkGroup] = []
     for resolution in resolutions:
         item = resolution.item
-        if not item.bookmarkable:
-            continue
         entries = [entry for content in resolution.contents for entry in content.bookmark_entries]
         order = {entry: position for position, entry in reversed(list(enumerate(entries)))}
         targets = sorted(
@@ -145,7 +144,8 @@ def filter_bookmark_groups(
 ) -> tuple[BookmarkGroup, ...]:
     """Return *groups* with only the bookmarks of *kind* (any when None) whose label or group title holds *query*.
 
-    The search ignores case and surrounding spaces; groups left without bookmarks are dropped.
+    The search ignores case and surrounding spaces; groups left without bookmarks are dropped, except that a reviewed
+    target without bookmarks stays while no kind is chosen and the search matches its title.
     """
     needle = query.strip().casefold()
     filtered = []
@@ -157,6 +157,6 @@ def filter_bookmark_groups(
             if (kind is None or row.bookmark.kind is kind)
             and (title_matches or needle in row.bookmark.label.casefold())
         )
-        if rows:
+        if rows or (not group.rows and kind is None and title_matches):
             filtered.append(replace(group, rows=rows))
     return tuple(filtered)

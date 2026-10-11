@@ -230,6 +230,21 @@ def test_the_review_chip_marks_the_target_reviewed_and_back(session: WorkspaceSe
     assert _store(session).reviewed == frozenset()
 
 
+def test_a_reviewed_target_stays_listed_after_its_last_bookmark_is_removed_until_the_mark_is_cleared(
+    session: WorkspaceSession,
+) -> None:
+    video, _playlist, _live = _items(session)
+    bookmark = _add(session, BookmarkTarget(video), 30, BookmarkKind.ISSUE, "Car 8 deleted")
+    _click(_chip(_rows(session)[0], "To review"))
+
+    _store(session).remove_bookmark(bookmark.id)
+
+    assert _listed(session) == [["clip.mp4"]]
+    _click(_chip(_rows(session)[0], "Reviewed"))
+    assert _store(session).reviewed == frozenset()
+    assert _rows(session) == []
+
+
 def test_a_bookmark_opens_its_entry_at_its_frame(session: WorkspaceSession) -> None:
     _bookmark_both(session)
 

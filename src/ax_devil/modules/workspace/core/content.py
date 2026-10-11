@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -501,7 +502,10 @@ class PlaylistContent:
     content_id: str = ""
     item_id: str = ""
     source_name: str = ""
-    """The name the resolver gave the playlist; ``display_name`` is renamed after the item's label, this never is."""
+    """The name the resolver gave the playlist, numbered when its item resolved to several of that name.
+
+    ``display_name`` is renamed after the item's label, this never is.
+    """
 
     def __post_init__(self) -> None:
         """Reject empty playlists before they enter the Workspace, and remember the resolver's name for the playlist."""
@@ -546,13 +550,7 @@ class PlaylistContent:
 
         Entries from one resolver run in a fixed order, so a title names the same entry on every run.
         """
-        seen: Counter[str] = Counter()
-        titles = []
-        for index, entry in enumerate(self.entries):
-            label = entry.display_label(index)
-            seen[label] += 1
-            titles.append(label if seen[label] == 1 else f"{label} ({seen[label]})")
-        return tuple(titles)
+        return numbered_when_shared(entry.display_label(index) for index, entry in enumerate(self.entries))
 
     @property
     def bookmark_entries(self) -> tuple[str, ...]:
@@ -582,6 +580,16 @@ Content = SeekableVideoContent | LiveVideoContent | PlaylistContent
 Resolution sets ``item_id`` to the owning item's id and ``content_id`` to an id derived from it, so both stay the same
 every time the item resolves. Content built outside resolution, such as a playlist lane's video, leaves them empty.
 """
+
+
+def numbered_when_shared(labels: Iterable[str]) -> tuple[str, ...]:
+    """Return *labels* with the second and later of equal ones numbered " (2)", " (3)", so no two are equal."""
+    seen: Counter[str] = Counter()
+    numbered = []
+    for label in labels:
+        seen[label] += 1
+        numbered.append(label if seen[label] == 1 else f"{label} ({seen[label]})")
+    return tuple(numbered)
 
 
 def create_entry_lane(

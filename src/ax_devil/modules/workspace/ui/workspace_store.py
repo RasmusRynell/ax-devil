@@ -60,6 +60,8 @@ class WorkspaceStore(QObject):
         self._resolutions: dict[str, ItemResolution] = {}
         self._not_considered: set[ConsiderationItemRef] = set()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
+        self._rescan_count = 0  # numbers rescan requests
+        self._latest_rescan: dict[str, int] = {}  # each rescanning item's newest request, the only one that commits
         self._announced_state = self._state()
 
     @property
@@ -98,6 +100,7 @@ class WorkspaceStore(QObject):
         self._workspace = current
         self._saved_workspace = current if saved is None else saved
         self._resolutions = {item.id: ItemResolution.pending(item) for item in current.items}
+        self._latest_rescan = {}
         self._not_considered = set()
         self._generation += 1
         self._awaiting_saved = False
@@ -167,6 +170,7 @@ class WorkspaceStore(QObject):
         before = self._workspace
         self._workspace = self._workspace.remove_item(item_id)
         removed_ids = {content.content_id for content in self._resolutions.pop(item_id).contents}
+        self._latest_rescan.pop(item_id, None)
         self._not_considered = {ref for ref in self._not_considered if ref.content_id not in removed_ids}
         logger.debug(f"Item removed: {item.display_name} ({item_id})")
         self.item_removed.emit(item)
@@ -224,7 +228,7 @@ class WorkspaceStore(QObject):
         self._apply_bookmarks(workspace)
 
     def set_reviewed(self, target: BookmarkTarget, reviewed: bool) -> None:
-        """Mark *target* as reviewed or not; a target whose item is missing or not bookmarkable is ignored."""
+        """Mark *target* as reviewed or not; a missing item, or marking on a non-bookmarkable one, is ignored."""
         try:
             workspace = self._workspace.set_reviewed(target, reviewed)
         except ValueError as exc:
@@ -239,7 +243,8 @@ class WorkspaceStore(QObject):
         of Content that still exists stay, those of Content that is gone are dropped, and newly appeared Content starts
         from its defaults. Rescanning never opens a viewer and never changes what open viewers show, since they keep
         the immutable Content they opened; nor does it make the Workspace modified, as results are never saved. An item
-        that is still resolving is left to that resolution.
+        that is still resolving is left to that resolution. Rescanning an item again before the first rescan finishes
+        makes the latest request the one that counts: an earlier request's result is dropped, however late it arrives.
         """
         if not self._workspace.has_item(item_id):
             logger.warning(f"Attempted to rescan an item not in the workspace: {item_id}")
@@ -247,10 +252,13 @@ class WorkspaceStore(QObject):
         if self._resolutions[item_id].is_pending:
             return
         generation = self._generation
+        self._rescan_count += 1
+        request = self._rescan_count
+        self._latest_rescan[item_id] = request
         self._resolver.resolve(
             [self._workspace.item(item_id)],
-            partial(self._apply_rescan, generation),
-            lambda: generation == self._generation and self._workspace.has_item(item_id),
+            partial(self._apply_rescan, generation, request),
+            lambda: generation == self._generation and self._latest_rescan.get(item_id) == request,
         )
 
     def contents(self) -> tuple[Content, ...]:
@@ -354,12 +362,14 @@ class WorkspaceStore(QObject):
         if committed:
             self.items_resolved.emit(committed, added)
 
-    def _apply_rescan(self, generation: int, resolutions: tuple[ItemResolution, ...]) -> None:
-        """Replace an item's result with its rescanned one, unless the item or its Workspace is gone."""
+    def _apply_rescan(self, generation: int, request: int, resolutions: tuple[ItemResolution, ...]) -> None:
+        """Replace an item's result with its rescanned one, unless the item or its Workspace is gone or a newer rescan
+        of the item was requested."""
         [resolution] = resolutions
         item_id = resolution.item.id
-        if generation != self._generation or not self._workspace.has_item(item_id):
+        if generation != self._generation or self._latest_rescan.get(item_id) != request:
             return
+        del self._latest_rescan[item_id]
         current = resolution.renamed(self._workspace.item(item_id))
         if current.error is not None:
             logger.warning(f"Could not open {current.item.display_name}: {current.error}")
