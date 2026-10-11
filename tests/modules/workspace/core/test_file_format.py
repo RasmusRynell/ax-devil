@@ -304,6 +304,13 @@ def test_a_damaged_file_raises_one_error(tmp_path: Path, document: object) -> No
         load_workspace(_write(tmp_path / "w.ax-devil.workspace", document))
 
 
+def test_a_blank_or_padded_name_in_a_file_is_normalized(tmp_path: Path) -> None:
+    padded = _write(tmp_path / "a.ax-devil.workspace", {"version": 1, "name": " Lot ", "items": []})
+    blank = _write(tmp_path / "b.ax-devil.workspace", {"version": 1, "name": " ", "items": []})
+
+    assert (load_workspace(padded).name, load_workspace(blank).name) == ("Lot", "Untitled")
+
+
 @pytest.mark.parametrize("version", [True, 1.0, "1"])
 def test_a_version_that_is_not_the_integer_one_is_rejected(tmp_path: Path, version: object) -> None:
     path = _write(tmp_path / "w.ax-devil.workspace", {"version": version, "items": []})

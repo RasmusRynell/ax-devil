@@ -141,7 +141,7 @@ class WorkspaceSession(QObject):
 
     @property
     def workspace_name(self) -> str:
-        """Return the current Workspace's name: its file name without the extension, or "Untitled"."""
+        """Return the current Workspace's name, "Untitled" until it is named."""
         return self._workspace_store.workspace.name
 
     @property

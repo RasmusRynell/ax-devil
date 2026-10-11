@@ -59,7 +59,7 @@ class WorkspaceBackup:
         try:
             return kept, load_workspace(kept.path)
         except WorkspaceFileError as exc:
-            logger.warning(f"Restoring the kept workspace as Untitled: {exc}")
+            logger.warning(f"Restoring the kept workspace without its file: {exc}")
             return replace(kept, path=None), empty
 
     def _read(self) -> Workspace | None:

@@ -45,7 +45,11 @@ class Workspace:
     reviewed: frozenset[BookmarkTarget] = frozenset()
 
     def __post_init__(self) -> None:
-        """Reject two items or two bookmarks with the same id, and bookmarks or reviewed targets of missing items."""
+        """Strip the name, an empty one becoming "Untitled"; reject duplicate item or bookmark ids and orphans.
+
+        Bookmarks or reviewed targets of items not in the workspace are the orphans.
+        """
+        object.__setattr__(self, "name", self.name.strip() or UNTITLED_NAME)
         ids = [item.id for item in self.items]
         if len(set(ids)) != len(ids):
             raise ValueError("Workspace items must have unique ids.")
@@ -59,7 +63,12 @@ class Workspace:
 
     def renamed(self, name: str) -> Workspace:
         """Return this workspace called *name* without surrounding whitespace; an empty *name* is "Untitled"."""
-        return replace(self, name=name.strip() or UNTITLED_NAME)
+        return replace(self, name=name)
+
+    @property
+    def suggested_file_stem(self) -> str:
+        """Return the name as one file name component, for suggesting where to save or export."""
+        return self.name.replace("/", "-").replace("\\", "-")
 
     def has_item(self, item_id: str) -> bool:
         """Return whether an item with *item_id* is in this workspace."""
