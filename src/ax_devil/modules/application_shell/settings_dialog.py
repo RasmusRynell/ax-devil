@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QGroupBox,
     QLabel,
-    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -27,6 +26,7 @@ from ax_devil.modules.application_shell.configuration_preferences import (
     field_value,
 )
 from ax_devil.modules.chrome import BaseDialog
+from ax_devil.modules.chrome.choice_dialog import ask
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -284,14 +284,8 @@ class SettingsDialog(BaseDialog):
 
     def _ask_to_restart(self) -> bool:
         """Ask whether to restart now for the saved changes that need it; return True for now."""
-        box = QMessageBox(self)
-        box.setWindowTitle("Restart ax-devil?")
-        box.setText("Some changes take effect after a restart.")
-        restart = box.addButton("Restart Now", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(restart)
-        box.exec()
-        return box.clickedButton() is restart
+        choices = {"Restart Now": True, "Later": False}
+        return ask(self, "Restart ax-devil?", "Some changes take effect after a restart.", choices, True)
 
     def _saved_restart_values(self) -> tuple[object, ...]:
         """Return the saved values of every setting marked as needing a restart, as the next start reads them.

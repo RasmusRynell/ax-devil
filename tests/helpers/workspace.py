@@ -105,7 +105,7 @@ class FakePrompts:
 
     def __init__(
         self,
-        save_choice: SaveChoice = SaveChoice.CANCEL,
+        save_choice: SaveChoice = SaveChoice.SAVE,
         open_path: Path | None = None,
         save_path: Path | None = None,
         replace: bool = False,

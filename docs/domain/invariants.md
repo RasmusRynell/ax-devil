@@ -110,7 +110,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Only adding items opens a viewer. Opening, creating, or restoring a Workspace lists its items and opens and connects
   nothing.
 - Closing never prompts and keeps the current Workspace for the next launch. Replacing a modified Workspace asks
-  Save / Discard / Cancel first, and nothing is replaced unless the answer, including any Save As, completes.
+  Save / Don't Save first (a forced choice with no Cancel button), and nothing is replaced unless the answer, including any Save As, completes.
 
 ## Sidebar
 

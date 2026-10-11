@@ -1,10 +1,11 @@
 """Drive the Settings dialog through the controls and buttons the user sees."""
 
 import pytest
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QLabel, QLineEdit, QMessageBox
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QLabel, QLineEdit
 
 from ax_devil.modules.application_shell.configuration_editor import ConfigurationEditor
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
+from ax_devil.modules.chrome.choice_dialog import ChoiceDialog
 from tests.helpers.forms import form_field
 from tests.helpers.widgets import button
 
@@ -57,10 +58,12 @@ def answer_restart_prompt(monkeypatch: pytest.MonkeyPatch, answer: str) -> list[
     """Answer every restart question with the button labeled *answer*; return the questions asked."""
     asked: list[str] = []
 
-    def exec_(box: QMessageBox) -> int:
-        asked.append(box.text())
-        next(choice for choice in box.buttons() if choice.text() == answer).click()
+    def exec_(dialog: ChoiceDialog[bool]) -> int:
+        message = dialog.findChild(QLabel)
+        assert message is not None
+        asked.append(message.text())
+        button(dialog, answer).click()
         return 0
 
-    monkeypatch.setattr(QMessageBox, "exec", exec_)
+    monkeypatch.setattr(ChoiceDialog, "exec", exec_)
     return asked

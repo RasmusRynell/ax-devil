@@ -40,8 +40,10 @@ class BaseDialog(QDialog):
         modal: bool = True,
         *,
         scroll_content: bool = True,
+        closable: bool = True,
     ) -> None:
         super().__init__(parent)
+        self._closable = closable
         self.setMinimumSize(320, 200)
 
         self._logger = get_logger(__name__)
@@ -102,6 +104,8 @@ class BaseDialog(QDialog):
         self.setModal(modal)
         if self._use_custom_frame:
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        elif not self._closable:
+            self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
 
     def _setup_base_layout(self, *, scroll_content: bool) -> None:
         """Set up the base layout structure."""
@@ -116,6 +120,7 @@ class BaseDialog(QDialog):
                 show_menu_bar=False,
                 show_minimize=False,
                 show_maximize=False,
+                show_close=self._closable,
             )
             outer_layout.addWidget(self._title_bar)
 
