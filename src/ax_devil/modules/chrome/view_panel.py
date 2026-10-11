@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 
 
@@ -44,16 +45,18 @@ class ViewPanel(QWidget):
         layout.addLayout(self.body, 1)
         follow_appearance(self, self._apply_appearance)
 
-    def add(self, widget: QWidget) -> None:
-        """Append *widget* to the body, across its full width."""
-        self.body.addWidget(widget)
+    def add(self, widget: QWidget, stretch: int = 0) -> None:
+        """Append *widget* to the body, across its full width; with a *stretch*, it takes the room left over."""
+        self.body.addWidget(widget, stretch)
 
     def add_padded(self, widget: QWidget, *, top: int = Space.M, bottom: int = Space.S) -> QWidget:
         """Append *widget* to the body with the side margins rows have, and *top* and *bottom* room.
 
-        Return the padding around it, which is what to hide to hide the widget with its room.
+        Return the padding around it, which is what to hide to hide the widget with its room. The padding and the plain
+        containers in it let the panel's background through.
         """
         holder = QWidget(self)
+        holder.setStyleSheet(SEE_THROUGH)
         layout = QHBoxLayout(holder)
         layout.setContentsMargins(Space.M, top, Space.M, bottom)
         layout.setSpacing(Space.M)

@@ -9,12 +9,10 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QPalette
 from PySide6.QtWidgets import (
     QFileDialog,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMenu,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -23,6 +21,7 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.chip import Chip, ChipKind, ChoiceChips
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
+from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.tokens import Space
@@ -69,32 +68,16 @@ class BookmarksView(ViewPanel):
         self._search.textChanged.connect(self.search_changed)
         self._kind_chips = ChoiceChips(["All", *(kind.label for kind in KIND_FILTERS if kind is not None)], self)
         self._kind_chips.choice_changed.connect(lambda index: self.kind_filter_changed.emit(KIND_FILTERS[index]))
-        self._filters = QWidget(self)
-        filters = QVBoxLayout(self._filters)
-        filters.setContentsMargins(Space.M, Space.M, Space.M, Space.S)
-        filters.setSpacing(Space.S)
-        filters.addWidget(self._search)
-        filters.addWidget(self._kind_chips)
-        self.add(self._filters)
+        filters = QWidget(self)
+        filters_layout = QVBoxLayout(filters)
+        filters_layout.setContentsMargins(0, 0, 0, 0)
+        filters_layout.setSpacing(Space.S)
+        filters_layout.addWidget(self._search)
+        filters_layout.addWidget(self._kind_chips)
+        self._filters = self.add_padded(filters, top=Space.M, bottom=Space.S)
 
-        self._rows = QWidget()
-        self._rows_layout = QVBoxLayout(self._rows)
-        self._rows_layout.setContentsMargins(0, 0, 0, 0)
-        self._rows_layout.setSpacing(0)
-        self._scroll = QScrollArea(self)
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._scroll.setWidget(self._rows)
-        # The rows sit on the panel's own background, from edge to edge.
-        self._scroll.setObjectName("AxDevilBookmarkList")
-        self._rows.setObjectName("AxDevilBookmarkRows")
-        self._scroll.setStyleSheet(
-            "#AxDevilBookmarkList { background: transparent; border: none; margin: 0; }"
-            " #AxDevilBookmarkRows { background: transparent; }"
-        )
-        self._scroll.viewport().setAutoFillBackground(False)
-        self.add(self._scroll)
-        self.body.setStretchFactor(self._scroll, 1)
+        self._rows = RowList(self)
+        self.add(self._rows, 1)
 
         self._info_icon = QLabel(self)
         info_text = muted_label("For videos and playlists from files. Live streams can't be bookmarked.")
@@ -143,13 +126,9 @@ class BookmarksView(ViewPanel):
         muted = palette.color(QPalette.ColorRole.PlaceholderText)
         self._search_icon.setIcon(Icon.SEARCH.icon(muted))
         self._info_icon.setPixmap(Icon.INFO.icon(muted).pixmap(_ICON_PX, _ICON_PX))
-        while (child := self._rows_layout.takeAt(0)) is not None:
-            if (widget := child.widget()) is not None:
-                # Deleted later: the click that changed the rows may still be running in one of them.
-                widget.hide()
-                widget.deleteLater()
+        self._rows.clear()
         for group in self._groups:
-            self._rows_layout.addWidget(self._group_row(group))
+            self._rows.add(self._group_row(group))
             for row in group.rows:
                 bookmark_row = ListRow(
                     row.bookmark.label,
@@ -168,12 +147,11 @@ class BookmarksView(ViewPanel):
                         widget, bookmark, position
                     )
                 )
-                self._rows_layout.addWidget(bookmark_row)
+                self._rows.add(bookmark_row)
         if not self._groups:
             empty = muted_label(self._empty_text)
             empty.setContentsMargins(Space.L, Space.M, Space.M, Space.M)
-            self._rows_layout.addWidget(empty)
-        self._rows_layout.addStretch(1)
+            self._rows.add(empty)
 
     def _group_row(self, group: BookmarkGroup) -> ListRow:
         trailing: list[QWidget] = []

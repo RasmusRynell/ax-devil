@@ -5,25 +5,23 @@ from __future__ import annotations
 from collections.abc import Sequence
 from enum import Enum
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
+from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
 from ax_devil.modules.chrome.theme import KindColor, StatusColor
-from ax_devil.modules.chrome.tokens import Height, Space
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.chrome.view_panel import ViewPanel
 from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
 
 LIVE_VIEW_ID = "live"
-_SEE_THROUGH = "QWidget { background: transparent; }"
-"""Lets the panel's background through rows and their holders, which the application style would fill."""
 
 
 class CameraState(Enum):
@@ -77,38 +75,24 @@ class LiveView(ViewPanel):
         self._rows: tuple[WorkspaceBrowserRow, ...] = ()
         self._network: tuple[DiscoveredCamera, ...] | None = None
 
-        content = QWidget(self)
-        column = QVBoxLayout(content)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
-        self._workspace_section = QVBoxLayout()
-        self._workspace_section.setSpacing(0)
-        self._network_section = QVBoxLayout()
-        self._network_section.setSpacing(0)
-        column.addLayout(self._workspace_section)
-        column.addLayout(self._network_section)
+        rows = RowList(self)
+        self._workspace_section = rows.section()
+        self._network_section = rows.section()
         add_by_address = SmallButton("Add by address", Icon.ADD)
         add_by_address.clicked.connect(self.add_by_address_requested)
-        column.addWidget(_padded(add_by_address, Space.M, Space.S))
-        column.addStretch(1)
-        content.setStyleSheet(_SEE_THROUGH)
-        scroll = ContentScrollArea(content)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; }")
-        scroll.viewport().setAutoFillBackground(False)
-        self.body.addWidget(scroll, 1)
+        rows.add_padded(add_by_address, top=Space.M, bottom=Space.S)
+        self.add(rows, 1)
 
         self._scan_button = SmallButton("Scan network", Icon.SCAN)
         self._scan_button.clicked.connect(self.scan_requested)
         self._scan_status = muted_label("")
         footer = QWidget(self)
-        footer.setStyleSheet(_SEE_THROUGH)
         footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(Space.M, Space.S, Space.M, Space.M)
+        footer_layout.setContentsMargins(0, 0, 0, 0)
         footer_layout.setSpacing(Space.M)
         footer_layout.addWidget(self._scan_button)
         footer_layout.addWidget(self._scan_status, 1)
-        self.add(footer)
+        self.add_padded(footer, top=Space.S, bottom=Space.M)
         follow_appearance(self, self._render)
 
     def sidebar_view(self) -> SidebarView:
@@ -137,9 +121,9 @@ class LiveView(ViewPanel):
     def _render(self) -> None:
         """Rebuild both sections; icons in kind colors are drawn for the current palette."""
         palette = self.palette()
-        _clear(self._workspace_section)
+        self._workspace_section.clear()
         if self._rows:
-            self._workspace_section.addWidget(SectionCaption("In workspace", len(self._rows), KindColor.LIVE.color))
+            self._workspace_section.add(SectionCaption("In workspace", len(self._rows), KindColor.LIVE.color))
         for row in self._rows:
             state = CameraState.of(row)
             trailing: list[QWidget] = []
@@ -155,20 +139,20 @@ class LiveView(ViewPanel):
                 dim=state is not CameraState.CONNECTED,
             )
             item.setToolTip(row.tooltip)
-            self._workspace_section.addWidget(item)
+            self._workspace_section.add(item)
 
-        _clear(self._network_section)
+        self._network_section.clear()
         if self._network is None:
             return
         count = len(self._network) or None
-        self._network_section.addWidget(SectionCaption("On the network", count, KindColor.MUTED.color))
+        self._network_section.add(SectionCaption("On the network", count, KindColor.MUTED.color))
         if not self._network:
-            self._network_section.addWidget(_padded(muted_label("No new cameras"), Space.XS, Space.XS))
+            self._network_section.add_padded(muted_label("No new cameras"), top=Space.XS, bottom=Space.XS)
         for camera in self._network:
             add = SmallButton("Add", Icon.ADD, ButtonKind.PRIMARY)
             add.clicked.connect(lambda _=False, camera=camera: self.add_requested.emit(camera))
             details = (camera.host, camera.serial) if camera.serial else (camera.host,)
-            self._network_section.addWidget(
+            self._network_section.add(
                 ListRow(
                     camera.model or camera.host,
                     icon=Icon.LIVE_VIDEO.icon(KindColor.MUTED.color(palette)),
@@ -176,22 +160,3 @@ class LiveView(ViewPanel):
                     trailing=[add],
                 )
             )
-
-
-def _padded(widget: QWidget, top: int, bottom: int) -> QWidget:
-    """Return *widget* across a holder with the side margins rows have, *top* and *bottom* room, and a row's height."""
-    holder = QWidget()
-    layout = QHBoxLayout(holder)
-    layout.setContentsMargins(Space.M, top, Space.M, bottom)
-    layout.addWidget(widget, 1)
-    follow_appearance(holder, lambda: holder.setMinimumHeight(Height.ROW.px))
-    return holder
-
-
-def _clear(layout: QVBoxLayout) -> None:
-    """Remove every widget from *layout*; deletion waits, as a removed button may be the one being clicked."""
-    while (child := layout.takeAt(0)) is not None:
-        widget = child.widget()
-        if widget is not None:
-            widget.hide()
-            widget.deleteLater()

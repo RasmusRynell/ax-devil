@@ -8,11 +8,12 @@ from enum import Enum
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QShowEvent
-from PySide6.QtWidgets import QFrame, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
+from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import SmallButton
@@ -88,18 +89,8 @@ class PlaylistsView(ViewPanel):
         self._playlists: tuple[PlaylistListing, ...] = ()
         self._resolvers: tuple[ResolverListing, ...] = ()
         self._expanded: set[str] = set()
-        content = QWidget()
-        self._rows = QVBoxLayout(content)
-        self._rows.setContentsMargins(0, 0, 0, 0)
-        self._rows.setSpacing(0)
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
-        scroll.setWidget(content)
-        self.add(scroll)
-        self.body.setStretchFactor(scroll, 1)
+        self._rows = RowList(self)
+        self.add(self._rows, 1)
         self.add_padded(muted_label("More resolvers come from plugins."), top=Space.S, bottom=Space.M)
         follow_appearance(self, self._render)
 
@@ -125,33 +116,23 @@ class PlaylistsView(ViewPanel):
 
     def _render(self) -> None:
         """Rebuild the rows; icons are drawn for the palette at hand, so a theme change rebuilds them too."""
-        while (item := self._rows.takeAt(0)) is not None:
-            if (widget := item.widget()) is not None:
-                widget.hide()
-                widget.deleteLater()
+        self._rows.clear()
         self._count.setText(str(len(self._playlists)))
         self._count.setVisible(bool(self._playlists))
         palette = self.palette()
         if self._playlists:
-            self._add_row(SectionCaption("In workspace", len(self._playlists), KindColor.PLAYLIST.color))
+            self._rows.add(SectionCaption("In workspace", len(self._playlists), KindColor.PLAYLIST.color))
         for playlist in self._playlists:
             self._add_playlist(playlist)
         if self._resolvers:
-            self._add_row(SectionCaption("Add from", len(self._resolvers), KindColor.MUTED.color))
+            self._rows.add(SectionCaption("Add from", len(self._resolvers), KindColor.MUTED.color))
         resolver_icon = Icon.PLAYLIST.icon(KindColor.MUTED.color(palette))
         for resolver in self._resolvers:
             add = SmallButton("Add", Icon.ADD)
             add.clicked.connect(lambda _=False, resolver_id=resolver.resolver_id: self.add_requested.emit(resolver_id))
-            self._add_row(
+            self._rows.add(
                 ListRow(resolver.title, icon=resolver_icon, subtitle=resolver.description, trailing=[add], wrap=True)
             )
-        self._rows.addStretch(1)
-
-    def _add_row(self, widget: QWidget) -> None:
-        """Append *widget* shown at once; rows left to show later would be laid out as an empty list first, and the
-        list would lose its scroll position."""
-        self._rows.addWidget(widget)
-        widget.show()
 
     def _add_playlist(self, playlist: PlaylistListing) -> None:
         state = playlist.state
@@ -171,7 +152,7 @@ class PlaylistsView(ViewPanel):
         )
         if playlist.entries:
             row.activated.connect(lambda key=playlist.key: self._toggle(key))
-        self._add_row(row)
+        self._rows.add(row)
         if not expanded:
             return
         entry_icon = Icon.VIDEO.icon(KindColor.VIDEO.color(self.palette()))
@@ -180,10 +161,10 @@ class PlaylistsView(ViewPanel):
             entry_row.activated.connect(
                 lambda content=entry.content, index=entry.index: self.entry_requested.emit(content, index)
             )
-            self._add_row(entry_row)
+            self._rows.add(entry_row)
         hidden = len(playlist.entries) - SHOWN_ENTRIES
         if hidden > 0:
             # An empty icon keeps the text in line with the entry names above.
             more = ListRow(f"{hidden} more", icon=QIcon(), indent=Space.XL, dim=True)
             more.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
-            self._add_row(more)
+            self._rows.add(more)

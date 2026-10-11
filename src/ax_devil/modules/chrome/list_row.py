@@ -88,7 +88,7 @@ class ListRow(QFrame):
         # draws it, so a wrapped subtitle would get room for a line it never uses.
         self.setStyleSheet(
             f"""
-            #AxDevilListRow {{ border-left: 2px solid {edge}; }}
+            #AxDevilListRow {{ border-left: 2px solid {edge}; background: transparent; }}
             #AxDevilListRow:hover {{ background: palette(midlight); }}
             #AxDevilListRow QLabel {{ border: none; }}
             """

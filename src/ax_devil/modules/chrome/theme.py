@@ -14,6 +14,13 @@ from PySide6.QtWidgets import QApplication
 from ax_devil.modules.chrome.appearance import notify_text_size_changed
 from ax_devil.modules.chrome.tokens import Height, Space, body_px
 
+SEE_THROUGH = ".QWidget { background: transparent; }"
+"""Stylesheet that lets a surface's own background through the plain containers inside it.
+
+The application style fills every container with the window color. ``.QWidget`` matches plain containers only, so
+fields, buttons and the kit's own widgets keep their fills.
+"""
+
 # Keep overrides in the theme engine so widgets, icons, and QPalette agree.
 DARK_COLORS: dict[str, str] = {
     "background": "#121314",

@@ -7,13 +7,14 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPalette, QShowEvent
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QScrollArea, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QMenu, QToolButton, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
+from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import SmallButton
@@ -88,20 +89,8 @@ class PluginsView(ViewPanel):
         self._banner.action.clicked.connect(self.restart_requested)
         self._banner_holder = self.add_padded(self._banner, top=Space.M, bottom=Space.S)
 
-        self._rows = QWidget()
-        self._rows_layout = QVBoxLayout(self._rows)
-        self._rows_layout.setContentsMargins(0, 0, 0, 0)
-        self._rows_layout.setSpacing(0)
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setWidget(self._rows)
-        scroll.setStyleSheet("QScrollArea { background: transparent; }")
-        scroll.viewport().setAutoFillBackground(False)
-        self._rows.setAutoFillBackground(False)
-        self.add(scroll)
-        self.body.setStretchFactor(scroll, 1)
+        self._rows = RowList(self)
+        self.add(self._rows, 1)
 
         self._add_button = SmallButton("Add plugin", Icon.ADD)
         self._add_button.clicked.connect(self._add_plugin)
@@ -155,19 +144,14 @@ class PluginsView(ViewPanel):
 
     def _render(self) -> None:
         """List the sections read last, with the state of the change that is running or has failed."""
-        while (item := self._rows_layout.takeAt(0)) is not None:
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
-                widget.deleteLater()
+        self._rows.clear()
         self._change_buttons = [self._add_button, self._banner.action]
         for group in self._groups:
             look = _LOOKS[group.section]
             count = len(group.entries) if group.section.counted else None
-            self._rows_layout.addWidget(SectionCaption(group.section.title, count, look.mark))
+            self._rows.add(SectionCaption(group.section.title, count, look.mark))
             for entry in group.entries:
                 self._add_row(entry, look)
-        self._rows_layout.addStretch(1)
 
         running = self._changes.running
         for button in self._change_buttons:
@@ -188,11 +172,9 @@ class PluginsView(ViewPanel):
         if entry.requirement is not None:
             trailing.append(self._more_button(entry, entry.requirement))
         icon = look.icon.icon(look.color(self.palette()))
-        self._rows_layout.addWidget(
-            ListRow(entry.name, icon=icon, subtitle=subtitle, detail=entry.detail, trailing=trailing)
-        )
+        self._rows.add(ListRow(entry.name, icon=icon, subtitle=subtitle, detail=entry.detail, trailing=trailing))
         if self._failure is not None and self._failure[0].name == entry.name:
-            self._rows_layout.addWidget(self._failure_line(self._failure[1]))
+            self._rows.add(self._failure_line(self._failure[1]))
 
     def _more_button(self, entry: PluginEntry, requirement: str) -> QToolButton:
         button = QToolButton()

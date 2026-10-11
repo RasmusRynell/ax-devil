@@ -129,7 +129,8 @@ def test_updating_a_plugin_disables_changes_until_it_is_done_and_then_offers_a_r
 
     assert ("yolo-detections", "Updating…") in _rows(view)
     assert not _add_button(view).isEnabled()
-    assert not any(button.isEnabled() for button in view.findChildren(QToolButton) if button.menu() is not None)
+    more_buttons = [button for button in view.findChildren(QToolButton) if button.menu() and button.isVisibleTo(view)]
+    assert more_buttons and not any(button.isEnabled() for button in more_buttons)
     assert not _banner_shown(view)
 
     installer.release.set()
