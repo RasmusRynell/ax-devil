@@ -26,25 +26,29 @@ from ax_devil.modules.workspace.core import (
     VideoItem,
     WorkspaceItem,
 )
-from ax_devil.modules.workspace.core.items import UnreadableItem
-from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow, build_browser_rows
+from ax_devil.modules.workspace.core.items import ItemResolution, UnreadableItem
+from ax_devil.modules.workspace.ui.browser_rows import (
+    WorkspaceBrowserRow,
+    WorkspaceBrowserSection,
+    build_browser_sections,
+)
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_live_video, make_playlist, make_video
 from tests.helpers.workspace import FakeResolutionContext, content_item, inline_resolver, store_with
 
 
-def browser_rows(
+def browser_sections(
     store: WorkspaceStore, open_items: Set[OnScreenWorkspaceItem] = frozenset()
-) -> tuple[WorkspaceBrowserRow, ...]:
+) -> tuple[WorkspaceBrowserSection, ...]:
     """Project the store's items the way the workspace controller does."""
-    return build_browser_rows(store.resolutions(), store.is_item_considered, open_items)
+    return build_browser_sections(store.resolutions(), store.is_item_considered, open_items)
 
 
 def item_rows(
     store: WorkspaceStore, open_items: Set[OnScreenWorkspaceItem] = frozenset()
 ) -> tuple[WorkspaceBrowserRow, ...]:
-    """Return the item rows under the sections, in the order they were added."""
-    return tuple(row for section in browser_rows(store, open_items) for row in section.children)
+    """Return the item rows under the sections, in section order."""
+    return tuple(row for section in browser_sections(store, open_items) for row in section.rows)
 
 
 def _store(*contents: Content) -> WorkspaceStore:
@@ -336,35 +340,35 @@ def test_sections_group_rows_by_kind_in_a_fixed_order_with_counts(tmp_path: Path
         UnreadableItem.from_raw({"kind": "future"}, "Unknown kind"),
     )
 
-    sections = browser_rows(store)
+    sections = browser_sections(store)
 
-    assert [(s.row_id, s.label, s.summary, s.is_section) for s in sections] == [
-        ("section/live", "Live", "1", True),
-        ("section/videos", "Videos", "3", True),
-        ("section/playlists", "Playlists", "1", True),
-        ("section/other", "Other", "1", True),
+    assert [(s.kind.title, len(s.rows)) for s in sections] == [
+        ("Live", 1),
+        ("Videos", 3),
+        ("Playlists", 1),
+        ("Other", 1),
     ]
-    assert [[row.label for row in section.children] for section in sections] == [
+    assert [[row.label for row in section.rows] for section in sections] == [
         ["cam"],
         ["a.mp4", "b.mp4", "missing.mp4"],
         ["Suite"],
         ["future"],
     ]
-    missing = sections[1].children[2]
+    missing = sections[1].rows[2]
     assert (missing.detail, missing.unavailable_reason) == (
         "Unavailable",
         f"File not found: {tmp_path / 'missing.mp4'}",
     )
-    assert sections[3].children[0].detail == "Unavailable"
+    assert sections[3].rows[0].detail == "Unavailable"
 
 
 def test_sections_are_present_only_for_kinds_in_the_workspace(tmp_path: Path) -> None:
     (tmp_path / "a.mp4").write_bytes(b"")
 
-    sections = browser_rows(_store_of_items(PlaylistItem(resolver="fixed"), VideoItem(video=tmp_path / "a.mp4")))
+    sections = browser_sections(_store_of_items(PlaylistItem(resolver="fixed"), VideoItem(video=tmp_path / "a.mp4")))
 
-    assert [section.label for section in sections] == ["Videos", "Playlists"]
-    assert browser_rows(_store_of_items()) == ()
+    assert [section.kind.title for section in sections] == ["Videos", "Playlists"]
+    assert browser_sections(_store_of_items()) == ()
 
 
 def test_same_names_in_different_sections_get_no_location_hint(tmp_path: Path) -> None:
@@ -375,10 +379,10 @@ def test_same_names_in_different_sections_get_no_location_hint(tmp_path: Path) -
         LiveStreamItem(label="front.mp4", host="camera.local"),
     )
 
-    live_section, videos_section = browser_rows(store)
+    live_section, videos_section = browser_sections(store)
 
-    assert [(row.label, row.detail) for row in videos_section.children] == [("front.mp4", "")]
-    assert [(row.label, row.detail) for row in live_section.children] == [("front.mp4", "camera.local")]
+    assert [(row.label, row.detail) for row in videos_section.rows] == [("front.mp4", "")]
+    assert [(row.label, row.detail) for row in live_section.rows] == [("front.mp4", "camera.local")]
 
 
 def test_same_names_in_one_section_get_location_hints_while_other_sections_do_not_count(tmp_path: Path) -> None:
@@ -391,13 +395,13 @@ def test_same_names_in_one_section_get_location_hints_while_other_sections_do_no
         LiveStreamItem(label="front.mp4", host="camera.local"),
     )
 
-    live_section, videos_section = browser_rows(store)
+    live_section, videos_section = browser_sections(store)
 
-    assert [(row.label, row.detail) for row in videos_section.children] == [
+    assert [(row.label, row.detail) for row in videos_section.rows] == [
         ("front.mp4", "site_a"),
         ("front.mp4", "site_b"),
     ]
-    assert [(row.label, row.detail) for row in live_section.children] == [("front.mp4", "camera.local")]
+    assert [(row.label, row.detail) for row in live_section.rows] == [("front.mp4", "camera.local")]
 
 
 def test_unavailable_items_with_the_same_name_keep_their_status_instead_of_numbered_hints() -> None:
@@ -406,9 +410,9 @@ def test_unavailable_items_with_the_same_name_keep_their_status_instead_of_numbe
         UnreadableItem.from_raw({"kind": "future", "label": "same"}, "Unknown kind"),
     )
 
-    (other,) = browser_rows(store)
+    (other,) = browser_sections(store)
 
-    assert [row.detail for row in other.children] == ["Unavailable", "Unavailable"]
+    assert [row.detail for row in other.rows] == ["Unavailable", "Unavailable"]
 
 
 def test_a_live_rows_detail_is_its_host_unless_the_name_is_the_host() -> None:
@@ -424,7 +428,7 @@ def test_a_live_rows_detail_is_its_host_unless_the_name_is_the_host() -> None:
     assert (unnamed.label, unnamed.detail) == ("camera.local", "")
 
 
-def test_a_playlists_summary_counts_entries_and_those_left_out() -> None:
+def test_a_playlists_detail_counts_entries_and_those_left_out() -> None:
     playlist = PlaylistContent(
         display_name="Suite",
         entries=tuple(
@@ -442,11 +446,52 @@ def test_a_playlists_summary_counts_entries_and_those_left_out() -> None:
     assert row.tooltip.splitlines()[0] == "Playlist · 3 entries, 1 left out"
 
 
-def test_search_text_includes_the_detail_and_a_section_has_none() -> None:
+def test_search_text_includes_the_detail() -> None:
     live = LiveVideoContent(
         display_name="Gate", source_spec=LiveRTSPStreamSpec(host="camera.local", username="root", password="secret")
     )
-    (section,) = browser_rows(_store(live))
+    (section,) = browser_sections(_store(live))
 
-    assert section.search_text == ""
-    assert section.children[0].search_text == "Gate camera.local"
+    assert section.rows[0].search_text == "Gate camera.local"
+
+
+@pytest.mark.parametrize("head", [1, 2])
+def test_repeated_live_sources_keep_the_address_when_numbered(head: int) -> None:
+    def live() -> LiveVideoContent:
+        return LiveVideoContent(
+            display_name="Gate",
+            source_spec=LiveRTSPStreamSpec(host="camera.local", camera_head=head, username="root", password="secret"),
+        )
+
+    rows = item_rows(_store(live(), live()))
+
+    address = "camera.local" if head == 1 else "camera.local · head 2"
+    assert [row.detail for row in rows] == [f"{address} (1)", f"{address} (2)"]
+    assert all("camera.local" in row.search_text for row in rows)
+
+
+def test_playlist_count_is_visible_even_when_it_matches_the_name() -> None:
+    playlist = PlaylistContent(
+        display_name="1 entry",
+        entries=(PlaylistEntry(lanes=make_video("clip.mp4").standalone_lanes(), default_considered=True),),
+    )
+
+    (row,) = item_rows(_store(playlist))
+
+    assert row.detail == "1 entry"
+
+
+def test_resolution_status_is_visible_even_when_it_matches_the_name(tmp_path: Path) -> None:
+    store = _store_of_items(VideoItem(video=tmp_path / "missing.mp4", label="Unavailable"))
+
+    (row,) = item_rows(store)
+
+    assert row.detail == "Unavailable"
+
+
+def test_same_named_pending_items_keep_the_loading_status() -> None:
+    items = [LiveStreamItem(label="Loading…", host=host) for host in ("camera.local", "other.local")]
+
+    (section,) = build_browser_sections([ItemResolution.pending(item) for item in items], lambda _ref: True)
+
+    assert [row.detail for row in section.rows] == ["Loading…", "Loading…"]

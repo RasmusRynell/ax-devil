@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem
-from ax_devil.modules.workspace.ui.browser_rows import build_browser_rows
+from ax_devil.modules.workspace.ui.browser_rows import build_browser_sections
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
@@ -66,10 +66,10 @@ class WorkspaceController(QObject):
         open_items = frozenset(
             item for widget in self._widget_item_ids if (item := widget.current_on_screen_item()) is not None
         )
-        rows = build_browser_rows(
+        sections = build_browser_sections(
             self._workspace_store.resolutions(), self._workspace_store.is_item_considered, open_items
         )
-        self._content_browser.set_browser_rows(rows)
+        self._content_browser.set_browser_sections(sections)
 
     def _on_content_activated(self, content: Content, start_index: int = 0) -> None:
         """Open a double-clicked browser item in the preview pane."""

@@ -60,8 +60,8 @@ _SECTION_BY_ITEM_KIND = {
 class WorkspaceBrowserRow:
     """Explicit row data rendered by the content browser widget.
 
-    A row shows its label, and beside it a short muted detail: the location hint when a sibling shares the label,
-    otherwise its own summary, such as a camera's address. Hovering shows its facts, location, and state.
+    The projection resolves the final detail before publication; painting, search, and accessibility use the same text.
+    Hovering shows the row's facts, location, and state.
     """
 
     row_id: str
@@ -79,24 +79,15 @@ class WorkspaceBrowserRow:
     is_open: bool = False
     children: tuple[WorkspaceBrowserRow, ...] = ()
     location: str | None = None
-    location_hint: str = ""
-    summary: str = ""
-    """The detail shown beside the label when no location hint is needed; empty for none."""
+    detail: str = ""
+    """The final muted text shown beside the label; empty for none."""
     facts: tuple[str, ...] = ()
     """Lines that open the hover text, starting with what kind of row this is."""
-    is_section: bool = False
-    """Whether this row is a section heading over the top-level rows of one kind; its summary is their count."""
-
-    @property
-    def detail(self) -> str:
-        """Return the muted text shown beside the label: the location hint, else the summary unless it repeats the
-        label, as an unnamed camera's address does."""
-        return self.location_hint or (self.summary if self.summary != self.label else "")
 
     @property
     def search_text(self) -> str:
-        """Return the text the search field matches: the label and detail, or nothing for a section heading."""
-        return "" if self.is_section else f"{self.label} {self.detail}"
+        """Return the text the search field matches: the label and detail."""
+        return f"{self.label} {self.detail}"
 
     @property
     def tooltip(self) -> str:
@@ -111,6 +102,14 @@ class WorkspaceBrowserRow:
         return "\n".join(line for line in lines if line)
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceBrowserSection:
+    """One browser heading and the item rows it groups; the count comes from those rows."""
+
+    kind: BrowserSection
+    rows: tuple[WorkspaceBrowserRow, ...]
+
+
 def _counted(count: int, noun: str, plural: str = "") -> str:
     """Return *count* followed by *noun*, or by *plural* (default *noun* plus s) unless the count is one."""
     return f"{count} {noun}" if count == 1 else f"{count} {plural or f'{noun}s'}"
@@ -121,10 +120,14 @@ def _lane_fact(lane: EntryLane) -> str:
     return "Video" if lane.overlay is None else "Overlay"
 
 
-def _distinguishing_hints(locations: Sequence[str]) -> list[str]:
+def _distinguishing_hints(rows: Sequence[WorkspaceBrowserRow], file_paths: dict[str, PurePath]) -> list[str]:
     """Return a hint per location; repeated locations are numbered in order of appearance."""
+    locations = [row.location or "" for row in rows]
+    hint_by_location = {location: location for location in locations}
+    files = list(dict.fromkeys(str(file_paths[row.row_id]) for row in rows if row.row_id in file_paths))
+    if files:
+        hint_by_location.update(zip(files, _shortest_distinct_tails(files)))
     distinct = list(dict.fromkeys(locations))
-    hint_by_location = dict(zip(distinct, _shortest_distinct_tails(distinct)))
     if len(distinct) == len(locations):
         return [hint_by_location[location] for location in locations]
     totals = Counter(locations)
@@ -151,22 +154,23 @@ def _shortest_distinct_tails(locations: Sequence[str]) -> list[str]:
     return list(locations)
 
 
-def _with_location_hints(rows: tuple[WorkspaceBrowserRow, ...]) -> tuple[WorkspaceBrowserRow, ...]:
+def _with_details(
+    rows: tuple[WorkspaceBrowserRow, ...], file_paths: dict[str, PurePath]
+) -> tuple[WorkspaceBrowserRow, ...]:
     """Add location hints to sibling rows that share a label, recursing into children.
 
     Rows without a location, or with the same location, are told apart by occurrence number.
     """
     same_label: defaultdict[str, list[int]] = defaultdict(list)
     for index, row in enumerate(rows):
-        if row.icon_kind not in ("pending", "unavailable"):  # Their status is what they show; it is not a hint.
+        if row.activation_target is not None:  # Unresolved rows retain their status detail.
             same_label[row.label].append(index)
     hints: dict[int, str] = {}
     for indexes in same_label.values():
         if len(indexes) > 1:
-            locations = [rows[index].location or "" for index in indexes]
-            hints.update(zip(indexes, _distinguishing_hints(locations)))
+            hints.update(zip(indexes, _distinguishing_hints([rows[index] for index in indexes], file_paths)))
     return tuple(
-        replace(row, location_hint=hints.get(index, ""), children=_with_location_hints(row.children))
+        replace(row, detail=hints.get(index, row.detail), children=_with_details(row.children, file_paths))
         for index, row in enumerate(rows)
     )
 
@@ -176,11 +180,12 @@ class _RowProjection:
 
     def __init__(self, is_considered: Callable[[ConsiderationItemRef], bool]) -> None:
         self._is_considered = is_considered
+        self._file_paths: dict[str, PurePath] = {}  # Only file rows participate in folder disambiguation.
 
-    def rows(
+    def sections(
         self, resolutions: Sequence[ItemResolution], open_items: Set[OnScreenWorkspaceItem]
-    ) -> tuple[WorkspaceBrowserRow, ...]:
-        """Return a section row per kind of item present, holding a row per Content, or per unavailable or pending
+    ) -> tuple[WorkspaceBrowserSection, ...]:
+        """Return a section per kind of item present, holding a row per Content, or per unavailable or pending
         item, with hints for rows that look alike within a section."""
         rows = tuple(
             row
@@ -198,14 +203,7 @@ class _RowProjection:
             assert row.item is not None  # Top-level rows stand for an item.
             by_section[_SECTION_BY_ITEM_KIND.get(row.item.kind, BrowserSection.OTHER)].append(row)
         return tuple(
-            WorkspaceBrowserRow(
-                row_id=f"section/{section.name.lower()}",
-                label=section.title,
-                icon_kind=section.icon_kind,
-                summary=str(len(section_rows)),
-                is_section=True,
-                children=_with_location_hints(tuple(section_rows)),
-            )
+            WorkspaceBrowserSection(kind=section, rows=_with_details(tuple(section_rows), self._file_paths))
             for section, section_rows in by_section.items()
             if section_rows
         )
@@ -213,7 +211,7 @@ class _RowProjection:
     def _pending_row(self, item: WorkspaceItem) -> WorkspaceBrowserRow:
         """Build the single row of an item that is still resolving; it opens nothing until its Content arrives."""
         return WorkspaceBrowserRow(
-            row_id=item.id, label=item.display_name, icon_kind="pending", item=item, summary="Loading…"
+            row_id=item.id, label=item.display_name, icon_kind="pending", item=item, detail="Loading…"
         )
 
     def _unavailable_row(self, item: WorkspaceItem, reason: str) -> WorkspaceBrowserRow:
@@ -225,7 +223,7 @@ class _RowProjection:
             item=item,
             unavailable_reason=reason,
             information_factory=partial(build_unavailable_information, item.display_name, reason),
-            summary="Unavailable",
+            detail="Unavailable",
         )
 
     def _content_row(
@@ -240,6 +238,7 @@ class _RowProjection:
             total = len(children)
             taking_part = sum(child.is_considered for child in children)
             entries = _counted(total, "entry", "entries")
+            excluded = f", {total - taking_part} left out" if taking_part < total else ""
             return WorkspaceBrowserRow(
                 row_id=content.content_id,
                 label=content.display_name,
@@ -250,10 +249,12 @@ class _RowProjection:
                 is_open=self._is_content_open(content.content_id, open_items),
                 children=children,
                 location=content.source_location,
-                summary=entries if taking_part == total else f"{taking_part} of {entries}",
-                facts=(f"Playlist · {entries}" + (f", {total - taking_part} left out" if taking_part < total else ""),),
+                detail=entries if taking_part == total else f"{taking_part} of {entries}",
+                facts=(f"Playlist · {entries}{excluded}",),
             )
 
+        if not content.is_live:
+            self._file_paths[content.content_id] = PurePath(content.source_location)
         overlays = f" · {_counted(len(content.overlays), 'overlay')}" if content.overlays else ""
         return WorkspaceBrowserRow(
             row_id=content.content_id,
@@ -266,7 +267,9 @@ class _RowProjection:
             is_open=self._is_content_open(content.content_id, open_items),
             children=self._video_lane_rows(content),
             location=content.source_location,
-            summary=content.source_location if content.is_live else "",
+            detail=content.source_location
+            if content.is_live and content.source_location != content.display_name
+            else "",
             facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
         )
 
@@ -285,8 +288,11 @@ class _RowProjection:
                 self._playlist_lane_row(playlist, entry, entry_index, lane_index)
                 for lane_index in range(len(entry.lanes))
             )
+        row_id = f"{playlist.content_id}/entry/{entry_index}"
+        if entry.source_location is not None:
+            self._file_paths[row_id] = PurePath(entry.source_location)
         return WorkspaceBrowserRow(
-            row_id=f"{playlist.content_id}/entry/{entry_index}",
+            row_id=row_id,
             label=entry.display_label(entry_index),
             icon_kind=self._icon_kind_for_playlist_entry(entry),
             activation_target=(playlist, entry_index),
@@ -309,9 +315,12 @@ class _RowProjection:
                 continue
             lane_ref = ConsiderationItemRef.video_lane(video.content_id, lane_index)
             consideration_item = consideration_items.get(lane_ref)
+            row_id = f"{video.content_id}/lane/{lane_index}"
+            if not video.is_live:
+                self._file_paths[row_id] = PurePath(lane.source_location)
             rows.append(
                 WorkspaceBrowserRow(
-                    row_id=f"{video.content_id}/lane/{lane_index}",
+                    row_id=row_id,
                     label=lane.display_name,
                     icon_kind="overlay",
                     activation_target=(video, 0),
@@ -333,8 +342,10 @@ class _RowProjection:
     ) -> WorkspaceBrowserRow:
         """Build a row for one playlist lane."""
         lane = entry.lanes[lane_index]
+        row_id = f"{playlist.content_id}/entry/{entry_index}/lane/{lane_index}"
+        self._file_paths[row_id] = PurePath(lane.source_location)
         return WorkspaceBrowserRow(
-            row_id=f"{playlist.content_id}/entry/{entry_index}/lane/{lane_index}",
+            row_id=row_id,
             label=lane.display_name,
             icon_kind="overlay",
             activation_target=(playlist, entry_index),
@@ -371,14 +382,14 @@ class _RowProjection:
         return any(item.content_id == content_id for item in open_items)
 
 
-def build_browser_rows(
+def build_browser_sections(
     resolutions: Sequence[ItemResolution],
     is_considered: Callable[[ConsiderationItemRef], bool],
     open_items: Set[OnScreenWorkspaceItem] = frozenset(),
-) -> tuple[WorkspaceBrowserRow, ...]:
-    """Return the content-browser rows for the items' *resolutions*; an item that failed to resolve gets one row.
+) -> tuple[WorkspaceBrowserSection, ...]:
+    """Return the content-browser sections for the items' *resolutions*; an item that failed to resolve gets one row.
 
     *is_considered* answers whether a consideration item participates in navigation and layout; *open_items* are the
     items currently shown in a viewer.
     """
-    return _RowProjection(is_considered).rows(resolutions, open_items)
+    return _RowProjection(is_considered).sections(resolutions, open_items)

@@ -22,7 +22,7 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
-from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
+from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.content_browser import (
     TREE_CONSIDERATION_COLUMN,
     TREE_LABEL_COLUMN,
@@ -41,8 +41,12 @@ def _make_video(name: str = "test.mp4") -> SeekableVideoContent:
 def _browser(qtbot: QtBot, *rows: WorkspaceBrowserRow) -> ContentBrowserWidget:
     browser = ContentBrowserWidget()
     qtbot.addWidget(browser)
-    browser.set_browser_rows(rows)
+    _set_rows(browser, rows)
     return browser
+
+
+def _set_rows(browser: ContentBrowserWidget, rows: tuple[WorkspaceBrowserRow, ...]) -> None:
+    browser.set_browser_sections((WorkspaceBrowserSection(BrowserSection.VIDEOS, rows),))
 
 
 def _tree(browser: ContentBrowserWidget) -> QTreeWidget:
@@ -70,10 +74,10 @@ def _row_toggle(browser: ContentBrowserWidget, item: QTreeWidgetItem) -> QToolBu
     return toggle
 
 
-def _required_top_item(browser: ContentBrowserWidget, index: int = 0) -> QTreeWidgetItem:
-    item = _tree(browser).topLevelItem(index)
-    assert item is not None
-    return item
+def _required_item_row(browser: ContentBrowserWidget, index: int = 0) -> QTreeWidgetItem:
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+    return required_child(section, index)
 
 
 def _context_menu(
@@ -119,7 +123,7 @@ def test_renders_explicit_rows(qtbot: QtBot) -> None:
         ),
     )
 
-    top_item = _required_top_item(browser)
+    top_item = _required_item_row(browser)
     assert top_item.text(0) == "Suite"
     assert [required_child(top_item, index).text(0) for index in range(top_item.childCount())] == [
         "Entry 1",
@@ -134,13 +138,13 @@ def test_refresh_preserves_expansion_by_identity_after_reordering(qtbot: QtBot) 
         row_id="second", label="Same name", icon_kind="playlist", children=(replace(child, row_id="other-child"),)
     )
     browser = _browser(qtbot, first, second)
-    _required_top_item(browser, 0).setExpanded(False)
-    _required_top_item(browser, 1).setExpanded(True)
+    _required_item_row(browser, 0).setExpanded(False)
+    _required_item_row(browser, 1).setExpanded(True)
 
-    browser.set_browser_rows((second, replace(first, label="Renamed")))
+    _set_rows(browser, (second, replace(first, label="Renamed")))
 
-    assert _required_top_item(browser, 0).isExpanded()
-    assert not _required_top_item(browser, 1).isExpanded()
+    assert _required_item_row(browser, 0).isExpanded()
+    assert not _required_item_row(browser, 1).isExpanded()
 
 
 def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
@@ -154,7 +158,7 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
         ),
     )
 
-    top_item = _required_top_item(browser)
+    top_item = _required_item_row(browser)
     assert top_item.isExpanded()
     child_item = required_child(top_item, 0)
     assert child_item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE).is_open
@@ -162,22 +166,17 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
 
 
 def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qtbot: QtBot) -> None:
-    browser = _browser(
-        qtbot,
-        WorkspaceBrowserRow(
-            row_id="section/videos",
-            label="Videos",
-            icon_kind="video",
-            summary="1",
-            is_section=True,
-            children=(WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"),),
-        ),
-    )
-    section = _required_top_item(browser)
+    browser = _browser(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"))
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
 
     assert section.isExpanded()
     assert not section.flags() & Qt.ItemFlag.ItemIsSelectable
     assert section.toolTip(0) == ""
+    activated = Mock()
+    browser.content_activated.connect(activated)
+    _tree(browser).itemDoubleClicked.emit(section, 0)
+    activated.assert_not_called()
     assert required_child(section, 0).text(0) == "clip.mp4"
 
     section.setExpanded(False)
@@ -196,21 +195,21 @@ def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qt
 
 
 def test_tree_items_expose_their_detail_as_accessible_text(qtbot: QtBot) -> None:
-    browser = _browser(
-        qtbot,
-        WorkspaceBrowserRow(
-            row_id="section/live",
-            label="Live",
-            icon_kind="live_video",
-            summary="2",
-            is_section=True,
-            children=(
-                WorkspaceBrowserRow(row_id="a", label="Entrance", icon_kind="live_video", summary="192.0.2.10"),
-                WorkspaceBrowserRow(row_id="b", label="Plain", icon_kind="live_video"),
+    browser = ContentBrowserWidget()
+    qtbot.addWidget(browser)
+    browser.set_browser_sections(
+        (
+            WorkspaceBrowserSection(
+                BrowserSection.LIVE,
+                (
+                    WorkspaceBrowserRow(row_id="a", label="Entrance", icon_kind="live_video", detail="192.0.2.10"),
+                    WorkspaceBrowserRow(row_id="b", label="Plain", icon_kind="live_video"),
+                ),
             ),
-        ),
+        )
     )
-    section = _required_top_item(browser)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
 
     def accessible_text(item: QTreeWidgetItem) -> object:
         return item.data(TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole)
@@ -231,11 +230,11 @@ def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
     )
     browser = _browser(qtbot, *rows)
     _search(browser).setText("Match")
-    _required_top_item(browser).setExpanded(False)
+    _required_item_row(browser).setExpanded(False)
 
-    browser.set_browser_rows(rows)
+    _set_rows(browser, rows)
 
-    assert _required_top_item(browser).isExpanded()
+    assert _required_item_row(browser).isExpanded()
 
 
 def test_consideration_toggle_requests_the_change_for_its_row(qtbot: QtBot) -> None:
@@ -246,7 +245,7 @@ def test_consideration_toggle_requests_the_change_for_its_row(qtbot: QtBot) -> N
             row_id="row-3", label="Entry 1", icon_kind="video", consideration_ref=item_ref, is_considered=False
         ),
     )
-    toggle = _row_toggle(browser, _required_top_item(browser))
+    toggle = _row_toggle(browser, _required_item_row(browser))
     assert not toggle.isChecked()
 
     with qtbot.waitSignal(browser.item_consideration_change_requested, timeout=1000) as blocker:
@@ -263,13 +262,13 @@ def test_filter_waits_for_workspace_state_after_toggle_request(qtbot: QtBot) -> 
         consideration_ref=ConsiderationItemRef.playlist_entry("playlist", 0),
     )
     browser = _browser(qtbot, row)
-    _row_toggle(browser, _required_top_item(browser)).click()
+    _row_toggle(browser, _required_item_row(browser)).click()
     _search(browser).setText("Entry")
-    assert not _required_top_item(browser).isHidden()
+    assert not _required_item_row(browser).isHidden()
 
-    browser.set_browser_rows((replace(row, is_considered=False),))
+    _set_rows(browser, (replace(row, is_considered=False),))
 
-    assert _required_top_item(browser).isHidden()
+    assert _required_item_row(browser).isHidden()
 
 
 def test_excluded_rows_stay_hidden_through_search_until_shown(qtbot: QtBot) -> None:
@@ -283,13 +282,13 @@ def test_excluded_rows_stay_hidden_through_search_until_shown(qtbot: QtBot) -> N
             is_considered=False,
         ),
     )
-    assert _required_top_item(browser).isHidden()
+    assert _required_item_row(browser).isHidden()
 
     _search(browser).setText("warehouse")
-    assert _required_top_item(browser).isHidden()
+    assert _required_item_row(browser).isHidden()
 
     _show_excluded_toggle(browser).click()
-    assert not _required_top_item(browser).isHidden()
+    assert not _required_item_row(browser).isHidden()
 
 
 def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> None:
@@ -301,24 +300,24 @@ def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> Non
             label="cam.mp4",
             icon_kind="video",
             location="/data/site_a/cam.mp4",
-            location_hint="site_a",
+            detail="site_a",
         ),
     )
     search = _search(browser)
-    location_row = _required_top_item(browser, 1)
+    location_row = _required_item_row(browser, 1)
     assert location_row.text(0) == "cam.mp4"
     assert "/data/site_a/cam.mp4" in location_row.toolTip(0)
 
     search.setText("parking")
-    assert not _required_top_item(browser, 0).isHidden()
+    assert not _required_item_row(browser, 0).isHidden()
     assert location_row.isHidden()
 
     search.setText("site_a")
-    assert _required_top_item(browser, 0).isHidden()
+    assert _required_item_row(browser, 0).isHidden()
     assert not location_row.isHidden()
 
     search.clear()
-    assert not _required_top_item(browser, 0).isHidden()
+    assert not _required_item_row(browser, 0).isHidden()
     assert not location_row.isHidden()
 
 
@@ -338,7 +337,7 @@ def test_search_keeps_matching_playlist_children_reachable(qtbot: QtBot) -> None
 
     _search(browser).setText("warehouse")
 
-    top_item = _required_top_item(browser)
+    top_item = _required_item_row(browser)
     assert not top_item.isHidden()
     assert required_child(top_item, 0).isHidden()
     assert not required_child(top_item, 1).isHidden()
@@ -366,7 +365,7 @@ def test_double_click_opens_the_row_and_expands_it(qtbot: QtBot) -> None:
             children=(WorkspaceBrowserRow(row_id="row-14", label="Overlay", icon_kind="overlay"),),
         ),
     )
-    top_item = _required_top_item(browser)
+    top_item = _required_item_row(browser)
     top_item.setExpanded(False)
 
     with qtbot.waitSignal(browser.content_activated, timeout=1000) as blocker:
@@ -391,7 +390,7 @@ def test_double_click_consideration_column_does_not_activate(qtbot: QtBot) -> No
     activated = Mock()
     browser.content_activated.connect(activated)
 
-    _tree(browser).itemDoubleClicked.emit(_required_top_item(browser), TREE_CONSIDERATION_COLUMN)
+    _tree(browser).itemDoubleClicked.emit(_required_item_row(browser), TREE_CONSIDERATION_COLUMN)
 
     activated.assert_not_called()
 
@@ -405,7 +404,7 @@ def test_ctrl_double_click_opens_to_the_side(qtbot: QtBot) -> None:
     browser.content_activated.connect(activated)
     tree = _tree(browser)
     browser.show()
-    position = tree.visualItemRect(_required_top_item(browser)).center()
+    position = tree.visualItemRect(_required_item_row(browser)).center()
 
     with qtbot.waitSignal(browser.content_open_to_side_requested) as side:
         QTest.mouseClick(tree.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, pos=position)
@@ -434,7 +433,7 @@ def test_context_menu_shows_information_on_request_and_removes_only_top_level_it
             ),
         ),
     )
-    top_item = _required_top_item(browser)
+    top_item = _required_item_row(browser)
     top_item.setExpanded(True)
 
     assert list(_context_menu(browser, top_item)) == ["Information", "Rename", "Remove"]
@@ -469,10 +468,10 @@ def test_export_action_requests_the_open_item(qtbot: QtBot, is_open: bool) -> No
     exported = Mock()
     browser.export_requested.connect(exported)
 
-    [(label, enabled)] = _context_menu(browser, _required_top_item(browser)).items()
+    [(label, enabled)] = _context_menu(browser, _required_item_row(browser)).items()
     assert enabled is is_open
     if is_open:
-        _context_menu(browser, _required_top_item(browser), choose=label)
+        _context_menu(browser, _required_item_row(browser), choose=label)
         exported.assert_called_once_with(target)
 
 
@@ -485,7 +484,7 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
     )
     browser.show()
     tree = _tree(browser)
-    position = tree.visualItemRect(_required_top_item(browser)).center()
+    position = tree.visualItemRect(_required_item_row(browser)).center()
     destroyed = Mock()
 
     def close_menu() -> None:
@@ -510,7 +509,7 @@ def test_open_actions_open_in_preview_or_to_the_side(qtbot: QtBot) -> None:
     browser = _browser(
         qtbot, WorkspaceBrowserRow(row_id="video", label="Video", icon_kind="video", activation_target=(video, 0))
     )
-    item = _required_top_item(browser)
+    item = _required_item_row(browser)
 
     with qtbot.waitSignal(browser.content_open_to_side_requested) as side:
         _context_menu(browser, item, choose="Open to the Side")
@@ -560,7 +559,7 @@ def test_an_unavailable_row_shows_its_reason_instead_of_opening(qtbot: QtBot) ->
     )
     activated: list[object] = []
     browser.content_activated.connect(lambda content, index: activated.append(content))
-    tree_item = _required_top_item(browser)
+    tree_item = _required_item_row(browser)
 
     with patch("ax_devil.modules.workspace.ui.content_browser.QMessageBox.warning") as warning:
         _tree(browser).itemDoubleClicked.emit(tree_item, TREE_LABEL_COLUMN)
@@ -587,7 +586,7 @@ def test_rename_asks_for_a_name_and_requests_it(qtbot: QtBot, monkeypatch: pytes
 
     monkeypatch.setattr(RenameDialog, "exec", enter_name)
     with qtbot.waitSignal(browser.item_rename_requested) as renamed:
-        _context_menu(browser, _required_top_item(browser), choose="Rename")
+        _context_menu(browser, _required_item_row(browser), choose="Rename")
 
     assert shown == ["Gate"]
     assert renamed.args == [item.id, "North gate"]
@@ -611,7 +610,7 @@ def test_renaming_an_unlabeled_row_seeds_the_shown_name_and_keeping_it_clears_th
     for name, expected in ((shown_label, ""), ("North gate", "North gate")):
         entered.append(name)
         with qtbot.waitSignal(browser.item_rename_requested) as renamed:
-            _context_menu(browser, _required_top_item(browser), choose="Rename")
+            _context_menu(browser, _required_item_row(browser), choose="Rename")
         assert renamed.args == [item.id, expected]
 
     assert shown == [shown_label, shown_label]
@@ -626,4 +625,4 @@ def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
         ),
     )
 
-    assert _context_menu(browser, _required_top_item(browser)) == {"Rename": False, "Remove": True}
+    assert _context_menu(browser, _required_item_row(browser)) == {"Rename": False, "Remove": True}

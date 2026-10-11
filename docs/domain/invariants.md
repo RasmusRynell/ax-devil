@@ -97,7 +97,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   `WorkspaceStore`.
 - `WorkspaceStore` owns the current and last saved Workspace, each item's resolution, consideration refs, and mutation
   signals, and emits one notification per successful mutation; "modified" is `current != saved`.
-  `build_browser_rows` projects the resolved Content, with the open items, into browser rows. `state_changed` additionally
+  `build_browser_sections` projects the resolved Content, with the open items, into browser rows. `state_changed` additionally
   reports when the modified flag, name, or path changed; a failed `open_workspace` changes nothing.
 - Consideration refs identify current Workspace content, playlist entries, or lanes; orphan and out-of-range refs are
   ignored.

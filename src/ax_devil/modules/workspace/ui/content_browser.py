@@ -42,6 +42,7 @@ from ax_devil.modules.workspace.core.items import WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserIconKind,
     WorkspaceBrowserRow,
+    WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
@@ -51,6 +52,7 @@ TREE_LABEL_COLUMN = 0
 TREE_CONSIDERATION_COLUMN = 1
 TREE_CONSIDERATION_COLUMN_WIDTH_PX = 24
 TREE_ROW_ROLE = Qt.ItemDataRole.UserRole
+TREE_SECTION_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 _OPEN_EDGE_PX = 2
@@ -97,10 +99,11 @@ class _RowDelegate(QStyledItemDelegate):
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
     ) -> None:
         """Draw the row."""
-        row = _row_at(index)
-        if row.is_section:
-            self._paint_section(painter, option, row)
+        section = index.data(TREE_SECTION_ROLE)
+        if section is not None:
+            self._paint_section(painter, option, section)
             return
+        row = _row_at(index)
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
         widget = opt.widget
@@ -139,7 +142,7 @@ class _RowDelegate(QStyledItemDelegate):
         )
         painter.restore()
 
-    def _paint_section(self, painter: QPainter, option: QStyleOptionViewItem, row: WorkspaceBrowserRow) -> None:
+    def _paint_section(self, painter: QPainter, option: QStyleOptionViewItem, section: WorkspaceBrowserSection) -> None:
         """Draw a section caption: its kind's color mark, the title, the count, and a rule to the right edge."""
         rect = option.rect.adjusted(Space.S, 0, -Space.S, 0)
         palette = option.palette
@@ -148,13 +151,13 @@ class _RowDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         mark = QRectF(rect.left(), center_y - _SECTION_MARK_PX / 2 + 1, _SECTION_MARK_PX, _SECTION_MARK_PX)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(_KIND_MARKS[row.icon_kind].color(palette))
+        painter.setBrush(_KIND_MARKS[section.kind.icon_kind].color(palette))
         painter.drawRoundedRect(mark, Radius.CONTROL / 2, Radius.CONTROL / 2)
         font = TextRole.CAPTION.font()
         metrics = QFontMetrics(font)
         painter.setFont(font)
         painter.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
-        text = f"{row.label}  {row.summary}"
+        text = f"{section.kind.title}  {len(section.rows)}"
         text_left = rect.left() + _SECTION_MARK_PX + Space.S
         painter.drawText(
             QRect(text_left, rect.top(), rect.width(), rect.height()),
@@ -178,7 +181,7 @@ class _BrowserTree(QTreeWidget):
     ) -> None:
         """Draw the row, then its open edge."""
         super().drawRow(painter, option, index)
-        if _row_at(index).is_open:
+        if index.data(TREE_SECTION_ROLE) is None and _row_at(index).is_open:
             rect = option.rect
             edge = QRect(0, rect.top() + Space.XS, _OPEN_EDGE_PX, rect.height() - 2 * Space.XS)
             # The application palette has the accent; this tree's stylesheet-resolved palette does not.
@@ -231,7 +234,7 @@ class ContentBrowserWidget(QWidget):
     item_remove_requested = Signal(str)  # item id
     item_rename_requested = Signal(str, str)  # item id, new label; empty for the default name
     export_requested = Signal(object)  # OnScreenWorkspaceItem
-    rows_changed = Signal()  # After set_browser_rows; see has_rows
+    rows_changed = Signal()  # After set_browser_sections; see has_rows
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -262,28 +265,37 @@ class ContentBrowserWidget(QWidget):
         self.setStyleSheet("#AxDevilContentBrowser { background: palette(alternate-base); }")
         follow_appearance(self, self._apply_appearance)
 
-    def set_browser_rows(self, rows: tuple[WorkspaceBrowserRow, ...]) -> None:
-        """Render explicit workspace browser rows."""
+    def set_browser_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
+        """Render section headings and their explicit workspace item rows."""
         expansion = {
             self._row_data(item).row_id: (item.isExpanded(), self._row_data(item).is_open)
             for item in self._tree_items()
         }
         self._tree.clear()
-        for row in rows:
-            item = self._create_tree_item(row)
-            self._tree.addTopLevelItem(item)
-            self._install_tree_widgets(item)
-            self._refresh_visual_state(item)
-        self._reveal_open_rows_and_describe()
+        for section in sections:
+            heading = QTreeWidgetItem([section.kind.title, ""])
+            heading.setData(TREE_LABEL_COLUMN, TREE_SECTION_ROLE, section)
+            heading.setData(
+                TREE_LABEL_COLUMN,
+                Qt.ItemDataRole.AccessibleTextRole,
+                f"{section.kind.title}, {len(section.rows)}",
+            )
+            heading.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self._tree.addTopLevelItem(heading)
+            heading.setFirstColumnSpanned(True)
+            for row in section.rows:
+                item = self._create_tree_item(row)
+                heading.addChild(item)
+                self._install_tree_widgets(item)
+                self._reveal_open_and_describe(item)
+            heading.setExpanded(True)
         for item in self._tree_items():
             row = self._row_data(item)
-            if row.is_section:
-                item.setFirstColumnSpanned(True)
-                item.setExpanded(True)
-            elif row.row_id in expansion:
+            if row.row_id in expansion:
                 was_expanded, was_open = expansion[row.row_id]
                 if was_open or not row.is_open:
                     item.setExpanded(was_expanded)
+        self._apply_appearance()
         self._apply_visibility_filters()
         self.rows_changed.emit()
 
@@ -295,7 +307,8 @@ class ContentBrowserWidget(QWidget):
         """Iterate over all rows, including hidden and collapsed descendants."""
         iterator = QTreeWidgetItemIterator(self._tree)
         while (item := iterator.value()) is not None:
-            yield item
+            if item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE) is not None:
+                yield item
             iterator += 1
 
     def _create_search_edit(self) -> QLineEdit:
@@ -330,7 +343,7 @@ class ContentBrowserWidget(QWidget):
 
     def _keep_section_expanded(self, item: QTreeWidgetItem) -> None:
         """Expand a section row again when the keyboard collapses it."""
-        if self._row_data(item).is_section:
+        if item.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE) is not None:
             item.setExpanded(True)
 
     def _create_show_excluded_toggle(self) -> QToolButton:
@@ -380,9 +393,15 @@ class ContentBrowserWidget(QWidget):
     def _apply_visibility_filters(self) -> None:
         """Show or hide items based on the search field and excluded-item toggle."""
         for i in range(self._tree.topLevelItemCount()):
-            top_item = self._tree.topLevelItem(i)
-            if top_item is not None:
-                self._apply_item_visibility(top_item, ancestor_matches=False)
+            heading = self._tree.topLevelItem(i)
+            if heading is None:
+                continue
+            visible = False
+            for index in range(heading.childCount()):
+                item = heading.child(index)
+                if item is not None:
+                    visible = self._apply_item_visibility(item, ancestor_matches=False) or visible
+            heading.setHidden(not visible)
 
     def _apply_item_visibility(self, item: QTreeWidgetItem, *, ancestor_matches: bool) -> bool:
         """Show or hide a single item and return whether it is visible."""
@@ -414,22 +433,18 @@ class ContentBrowserWidget(QWidget):
 
     def _apply_appearance(self) -> None:
         """Recolor row text from the current palette."""
-        for index in range(self._tree.topLevelItemCount()):
-            item = self._tree.topLevelItem(index)
-            if item is not None:
-                self._refresh_visual_state(item)
+        for item in self._tree_items():
+            self._refresh_visual_state(item)
 
     def _create_tree_item(self, row: WorkspaceBrowserRow) -> QTreeWidgetItem:
         """Create a tree item for one explicit browser row."""
         item = QTreeWidgetItem([row.label, ""])
         item.setData(TREE_LABEL_COLUMN, TREE_ROW_ROLE, row)
         # The detail is painted beside the label; screen readers get it from here.
-        detail = row.summary if row.is_section else row.detail
+        detail = row.detail
         item.setData(
             TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole, f"{row.label}, {detail}" if detail else row.label
         )
-        if row.is_section:
-            item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         for child_row in row.children:
             item.addChild(self._create_tree_item(child_row))
         return item
@@ -437,8 +452,7 @@ class ContentBrowserWidget(QWidget):
     def _row_data(self, item: QTreeWidgetItem) -> WorkspaceBrowserRow:
         """Return the stored row metadata for one tree item."""
         row = item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE)
-        assert isinstance(row, WorkspaceBrowserRow)
-        return row
+        return cast(WorkspaceBrowserRow, row)
 
     def _install_tree_widgets(self, item: QTreeWidgetItem) -> None:
         """Install item widgets after the tree item has been attached."""
@@ -475,21 +489,15 @@ class ContentBrowserWidget(QWidget):
         if not row.is_considered or row.unavailable_reason is not None:
             color.setAlphaF(0.5)
         brush = QBrush(color)
-        if not row.is_section:
-            mark = _KIND_MARKS[row.icon_kind]
-            item.setIcon(TREE_LABEL_COLUMN, mark.icon.icon(mark.color(palette)))
+        mark = _KIND_MARKS[row.icon_kind]
+        item.setIcon(TREE_LABEL_COLUMN, mark.icon.icon(mark.color(palette)))
         item.setForeground(TREE_LABEL_COLUMN, brush)
         for column in range(1, self._tree.columnCount()):
             item.setForeground(column, brush)
 
-        for index in range(item.childCount()):
-            child = item.child(index)
-            if child is not None:
-                self._refresh_visual_state(child)
-
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         """Open the double-clicked item; Ctrl+double-click opens it to the side."""
-        if column == TREE_CONSIDERATION_COLUMN:
+        if column == TREE_CONSIDERATION_COLUMN or item.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE) is not None:
             return
         self._expand_item_path(item)
         row = self._row_data(item)
@@ -512,20 +520,12 @@ class ContentBrowserWidget(QWidget):
                 current.setExpanded(True)
             current = current.parent()
 
-    def _reveal_open_rows_and_describe(self) -> None:
-        """Apply open-item indicators to all visible tree rows."""
-        for i in range(self._tree.topLevelItemCount()):
-            item = self._tree.topLevelItem(i)
-            if item is not None:
-                self._reveal_open_and_describe(item)
-
     def _reveal_open_and_describe(self, item: QTreeWidgetItem) -> None:
         """Expand the path to an open row and give each row its hover text, then recurse into children."""
         row = self._row_data(item)
         is_open = row.is_open
-        if not row.is_section:
-            lines = "".join(f"<br>{escape(line)}" for line in row.tooltip.splitlines())
-            item.setToolTip(TREE_LABEL_COLUMN, f"<b>{escape(row.label)}</b>{lines}")
+        lines = "".join(f"<br>{escape(line)}" for line in row.tooltip.splitlines())
+        item.setToolTip(TREE_LABEL_COLUMN, f"<b>{escape(row.label)}</b>{lines}")
 
         if is_open:
             if item.childCount() > 0:
@@ -556,6 +556,8 @@ class ContentBrowserWidget(QWidget):
     def _build_context_menu(self, item: QTreeWidgetItem) -> QMenu:
         """Build the context menu for one tree item."""
         menu = QMenu(self)
+        if item.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE) is not None:
+            return menu
         activation_target = self._row_data(item).activation_target
         if activation_target is not None:
             self._add_open_actions(menu, *activation_target)

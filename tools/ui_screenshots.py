@@ -308,6 +308,7 @@ def test_screenshots(
     session.add_items(
         [
             LiveStreamItem(host="192.0.2.10", label="Entrance"),
+            LiveStreamItem(host="192.0.2.10", label="Entrance"),
             LiveStreamItem(host="192.0.2.11", camera_head=2, label="Parking north"),
             PlaylistItem(
                 resolver="folder_pair",
@@ -323,7 +324,8 @@ def test_screenshots(
         iterator = QTreeWidgetItemIterator(session._content_browser._tree)
         items = []
         while (item := iterator.value()) is not None:
-            items.append(item)
+            if item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE) is not None:
+                items.append(item)
             iterator += 1
         return items
 
@@ -336,9 +338,11 @@ def test_screenshots(
         item.setExpanded(item.isExpanded() or row_of(item).label == "Night shift")
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
-        window.resize(*WINDOW_SIZES["wide"])
-        qtbot.wait(500)
-        window.grab().save(str(OUT / f"{theme}-{text_size.value}-mixed-workspace.png"))
+        for size_name, size in WINDOW_SIZES.items():
+            window.resize(*size)
+            qtbot.wait(500)
+            suffix = "" if size_name == "wide" else f"-{size_name}"
+            window.grab().save(str(OUT / f"{theme}-{text_size.value}-mixed-workspace{suffix}.png"))
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

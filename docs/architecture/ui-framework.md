@@ -78,7 +78,7 @@ The welcome screen scrolls when its rows cannot fit, keeping its actions reachab
 
 `WorkspaceController` coordinates UI behavior between `ContentBrowserWidget`, `WorkspaceStore`, `SplitView`, and open `ViewerWidget` instances.
 
-It owns browser synchronization: Workspace mutations refresh the browser rows projected by `build_browser_rows` (`workspace/ui/browser_rows.py`), and browser intents are routed back to Workspace state or viewer behavior.
+It owns browser synchronization: Workspace mutations refresh the browser rows projected by `build_browser_sections` (`workspace/ui/browser_rows.py`), and browser intents are routed back to Workspace state or viewer behavior.
 
 Opening from the browser has two placements: replace the preview pane (`SplitView.replace_or_open`) or split the
 focused pane and open pinned (`SplitView.open_to_side`).
