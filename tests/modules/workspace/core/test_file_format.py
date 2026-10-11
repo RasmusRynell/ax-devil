@@ -6,12 +6,16 @@ import json
 import os
 import stat
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from ax_devil.modules.workspace.core import (
+    Bookmark,
+    BookmarkKind,
+    BookmarkTarget,
     ItemResolutionError,
     LiveOverlayMode,
     LiveStreamItem,
@@ -329,3 +333,110 @@ def test_invalid_json_and_missing_files_raise_the_same_error(tmp_path: Path) -> 
         load_workspace(broken)
     with pytest.raises(WorkspaceFileError):
         load_workspace(tmp_path / "missing.ax-devil.workspace")
+
+
+def _bookmarked_workspace(tmp_path: Path) -> Workspace:
+    video = VideoItem(label="Lot", video=tmp_path / "lot.mp4")
+    playlist = PlaylistItem(label="Exp 3", resolver="mot_challenge", settings={"root": "runs"})
+    entry = BookmarkTarget(playlist.id, "MOT17-02")
+    return Workspace(
+        items=(video, playlist),
+        bookmarks=(
+            Bookmark(target=entry, frame=120, time_s=4.0, kind=BookmarkKind.ISSUE, note="ID switch"),
+            Bookmark(target=BookmarkTarget(video.id), frame=0, time_s=0.0),
+        ),
+        reviewed=frozenset({entry, BookmarkTarget(playlist.id, "an entry the resolver no longer makes")}),
+    )
+
+
+def test_bookmarks_and_reviewed_targets_round_trip_in_order_with_orphans_kept(tmp_path: Path) -> None:
+    path = tmp_path / "w.ax-devil.workspace"
+    workspace = _bookmarked_workspace(tmp_path)
+
+    save_workspace(workspace, path)
+    loaded = load_workspace(path)
+
+    assert loaded.bookmarks == workspace.bookmarks
+    assert loaded.reviewed == workspace.reviewed
+    assert loaded == replace(workspace, path=path)
+    first = _written(path)["bookmarks"][0]
+    assert first == {
+        "id": workspace.bookmarks[0].id,
+        "item": workspace.items[1].id,
+        "entry": "MOT17-02",
+        "frame": 120,
+        "time": 4.0,
+        "kind": "issue",
+        "note": "ID switch",
+    }
+
+
+def test_a_workspace_without_bookmarks_writes_empty_lists_and_files_without_them_load(tmp_path: Path) -> None:
+    path = tmp_path / "w.ax-devil.workspace"
+    save_workspace(Workspace(items=(PlaylistItem(label="P", resolver="r"),)), path)
+
+    written = _written(path)
+    old = _write(tmp_path / "old.ax-devil.workspace", {"version": 1, "items": written["items"]})
+
+    assert (written["bookmarks"], written["reviewed"]) == ([], [])
+    assert load_workspace(old).bookmarks == ()
+    assert load_workspace(old).reviewed == frozenset()
+
+
+def test_bookmarks_on_an_unreadable_item_are_kept_and_saved_back(tmp_path: Path) -> None:
+    raw = {"kind": "hologram", "id": "h1", "label": "Future"}
+    bookmark = {"id": "b1", "item": "h1", "entry": "", "frame": 7, "time": 0.25, "kind": "note", "note": ""}
+    reviewed = {"item": "h1", "entry": ""}
+    path = _write(
+        tmp_path / "w.ax-devil.workspace",
+        {"version": 1, "items": [raw], "bookmarks": [bookmark], "reviewed": [reviewed]},
+    )
+
+    loaded = load_workspace(path)
+    resaved = tmp_path / "again.ax-devil.workspace"
+    save_workspace(loaded, resaved)
+
+    assert isinstance(loaded.items[0], UnreadableItem)
+    assert (_written(resaved)["bookmarks"], _written(resaved)["reviewed"]) == ([bookmark], [reviewed])
+
+
+def test_a_bookmark_entry_kind_and_note_may_be_left_out(tmp_path: Path) -> None:
+    item = {"kind": "playlist", "id": "p", "label": "P", "resolver": "r"}
+    path = _write(
+        tmp_path / "w.ax-devil.workspace",
+        {"version": 1, "items": [item], "bookmarks": [{"id": "b", "item": "p", "frame": 3, "time": 1}]},
+    )
+
+    (bookmark,) = load_workspace(path).bookmarks
+
+    assert bookmark == Bookmark(id="b", target=BookmarkTarget("p"), frame=3, time_s=1.0)
+
+
+_GOOD_BOOKMARK = {"id": "b", "item": "p", "entry": "", "frame": 3, "time": 0.1, "kind": "note", "note": ""}
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        ({"bookmarks": {"b": 1}}, "'bookmarks' must be a list"),
+        ({"bookmarks": ["junk"]}, "bookmark 1 is not a JSON object"),
+        ({"bookmarks": [_GOOD_BOOKMARK, {**_GOOD_BOOKMARK, "id": "c", "frame": -1}]}, "bookmark 2 is malformed"),
+        ({"bookmarks": [{**_GOOD_BOOKMARK, "frame": "3"}]}, "'frame' must be a int"),
+        ({"bookmarks": [{**_GOOD_BOOKMARK, "frame": True}]}, "'frame' must be a int"),
+        ({"bookmarks": [{**_GOOD_BOOKMARK, "time": "now"}]}, "'time' must be a number"),
+        ({"bookmarks": [{**_GOOD_BOOKMARK, "kind": "sticker"}]}, "sticker"),
+        ({"bookmarks": [{key: v for key, v in _GOOD_BOOKMARK.items() if key != "id"}]}, "missing 'id'"),
+        ({"bookmarks": [_GOOD_BOOKMARK, _GOOD_BOOKMARK]}, "unique ids"),
+        ({"bookmarks": [{**_GOOD_BOOKMARK, "item": "gone"}]}, "not in the workspace: gone"),
+        ({"reviewed": [{"entry": "a.mp4"}]}, "reviewed target 1 is malformed: missing 'item'"),
+        ({"reviewed": [{"item": "gone"}]}, "not in the workspace: gone"),
+    ],
+)
+def test_a_malformed_bookmark_or_reviewed_target_fails_the_load_naming_it(
+    tmp_path: Path, extra: dict[str, Any], message: str
+) -> None:
+    item = {"kind": "playlist", "id": "p", "label": "P", "resolver": "r"}
+    path = _write(tmp_path / "w.ax-devil.workspace", {"version": 1, "items": [item], **extra})
+
+    with pytest.raises(WorkspaceFileError, match=message):
+        load_workspace(path)

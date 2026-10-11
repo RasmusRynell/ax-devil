@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.workspace.core.bookmarks import bookmarks_from_json, bookmarks_to_json
 from ax_devil.modules.workspace.core.items import item_from_json
 from ax_devil.modules.workspace.core.workspace import Workspace
 
@@ -40,7 +41,8 @@ def _reject_constant(token: str) -> NoReturn:
 def load_workspace(path: Path) -> Workspace:
     """Return the Workspace saved in *path*, with its ``path`` set.
 
-    Items that cannot be read become unreadable items; only a damaged file as a whole raises ``WorkspaceFileError``.
+    Items that cannot be read become unreadable items. A damaged file as a whole, or a malformed bookmark or reviewed
+    target, raises ``WorkspaceFileError``, so bookmarks are never dropped silently.
     """
     path = path.absolute()
     backing = _backing_file(path)
@@ -59,7 +61,9 @@ def load_workspace(path: Path) -> Workspace:
     if not isinstance(entries, list):
         raise WorkspaceFileError(f"{path.name} has no list of items.")
     try:
-        return Workspace(path=path, items=tuple(item_from_json(entry, backing.parent) for entry in entries))
+        bookmarks, reviewed = bookmarks_from_json(document)
+        items = tuple(item_from_json(entry, backing.parent) for entry in entries)
+        return Workspace(path=path, items=items, bookmarks=bookmarks, reviewed=reviewed)
     except ValueError as exc:
         raise WorkspaceFileError(f"{path.name}: {exc}") from exc
 
@@ -71,6 +75,7 @@ def save_workspace(workspace: Workspace, path: Path) -> Workspace:
     document: dict[str, Any] = {
         "version": FORMAT_VERSION,
         "items": [item.to_json(backing.parent) for item in workspace.items],
+        **bookmarks_to_json(workspace.bookmarks, workspace.reviewed),
     }
     try:
         write_json_file(backing, document)

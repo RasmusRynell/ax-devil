@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from ax_devil.modules.workspace.core import (
+    Bookmark,
+    BookmarkTarget,
     LiveStreamItem,
     OverlayFile,
     RecentWorkspaces,
@@ -176,3 +178,20 @@ def test_a_file_whose_paths_hold_dot_dot_segments_is_restored_unmodified(tmp_pat
 
     assert current.items[0] == VideoItem(id="v", video=tmp_path / "clip.mp4")
     assert not _modified(current, saved)
+
+
+def test_unsaved_bookmarks_and_review_marks_are_kept_and_restored_as_modified(tmp_path: Path) -> None:
+    clip = VideoItem(video=tmp_path / "clips" / "a.mp4")
+    saved_workspace = save_workspace(Workspace(items=(clip,)), tmp_path / "Lot.ax-devil.workspace")
+    target = BookmarkTarget(clip.id)
+    edited = saved_workspace.add_bookmark(Bookmark(target=target, frame=9, time_s=0.3, note="Gate")).set_reviewed(
+        target, True
+    )
+    backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
+
+    backup.keep(edited)
+    current, saved = _restore(backup)
+
+    assert current == edited
+    assert saved == saved_workspace
+    assert _modified(current, saved)

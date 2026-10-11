@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.workspace.core.bookmarks import bookmarks_from_json, bookmarks_to_json
 from ax_devil.modules.workspace.core.file_format import WorkspaceFileError, load_workspace, write_json_file
 from ax_devil.modules.workspace.core.items import item_from_json
 from ax_devil.modules.workspace.core.workspace import Workspace
@@ -16,9 +17,10 @@ logger = get_logger(__name__)
 
 
 class WorkspaceBackup:
-    """Keep the current Workspace in one JSON file: its file path, or null, and its items with absolute paths.
+    """Keep the current Workspace in one JSON file: its file path, or null, its items with absolute paths, and its
+    bookmarks and reviewed targets.
 
-    Items use the workspace file's item JSON, so unreadable items survive a restart unchanged.
+    Items and bookmarks use the workspace file's JSON, so unreadable items survive a restart unchanged.
     """
 
     def __init__(self, path_provider: Callable[[], Path]) -> None:
@@ -29,6 +31,7 @@ class WorkspaceBackup:
         document = {
             "path": str(workspace.path) if workspace.path is not None else None,
             "items": [item.to_json(None) for item in workspace.items],
+            **bookmarks_to_json(workspace.bookmarks, workspace.reviewed),
         }
         try:
             write_json_file(self._path_provider(), document)
@@ -73,9 +76,12 @@ class WorkspaceBackup:
             return None
         path = document.get("path")
         try:
+            bookmarks, reviewed = bookmarks_from_json(document)
             return Workspace(
                 path=Path(path) if isinstance(path, str) else None,
                 items=tuple(item_from_json(entry, None) for entry in entries),
+                bookmarks=bookmarks,
+                reviewed=reviewed,
             )
         except ValueError as exc:
             logger.warning(f"Ignoring workspace backup {self._path_provider()}: {exc}")

@@ -13,6 +13,7 @@ it records *what* you work with, not where your cursor was.
 | Video Item | A video file with optional overlay files and decoders. |
 | Live Stream Item | A camera stream with optional live overlay settings. |
 | Playlist Item | A playlist resolver id plus that resolver's settings. Opening the workspace runs the resolver again; it may produce one or more playlists. |
+| Bookmark | A frame the user marked in a Video Item or a playlist entry, with a kind and a note. Saved with the items, as are the targets marked reviewed. |
 | Content | What an item resolves to, one or more per item: the immutable description a viewer opens. Rebuilt on every load, never saved. |
 | Viewer Widget | An open inspection surface in the UI that shows Content. Not part of the Workspace. |
 
@@ -26,8 +27,8 @@ Workspace file (JSON)  <->  Workspace + Workspace Items   ->  Content   ->  View
 - Items are the saved truth. Content is derived from items and is never written to disk. Runtime sources are created
   only when a viewer opens Content.
 - Session state — open panes, splits, current frame, play state, exclusions, window geometry — is not part of the
-  Workspace, and a Workspace never depends on it. Exclusions are therefore not saved, so the file stays a pure list of
-  recipes and nothing needs keys that survive a resolver re-run.
+  Workspace, and a Workspace never depends on it. Exclusions are therefore not saved and need no keys that survive a
+  resolver re-run. Bookmarks are saved, and pay that cost; see [Bookmarks](#bookmarks).
 - `workspace/core` holds the model and the file format; `workspace/ui` is one Qt interface on top of it. The import
   rule between them is in [invariants](../domain/invariants.md#content-model).
 
@@ -45,6 +46,18 @@ file format, and the store do not branch on kind.
   config's rule only while resolving.
 - `UnreadableItem` stands in for an item this version cannot read. It never resolves, cannot be renamed, and is
   written back unchanged, so saving never loses it.
+
+## Bookmarks
+
+While reviewing local videos and playlists, a user bookmarks frames and marks each video reviewed. Both are part of
+the Workspace, beside the items, so they are saved, kept between launches, and make the Workspace modified.
+
+- A Bookmark Target is an item id plus an entry: empty for a Video Item, the entry's `display_label` for a playlist
+  entry. Entries have no id and their indexes shift when a resolver runs again, so the label is the only key that
+  survives a re-run. Entries with the same label share a target, and a renamed entry leaves its target orphaned.
+  Orphaned targets and their bookmarks are kept; only removing their item removes them.
+- Bookmarks never apply to live streams. Only an item whose `bookmarkable` is true takes new bookmarks or review
+  changes; bookmarks a file already holds load whatever their item, so ones on an `UnreadableItem` are saved back.
 
 ## Resolution
 
@@ -91,7 +104,12 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
      "username": "$AX_DEVIL_TARGET_USER", "password": "$AX_DEVIL_TARGET_PASS", "camera_head": 1},
     {"kind": "playlist", "id": "c04d…", "label": "Exp 3", "resolver": "mot_challenge",
      "settings": {"root": "/data/runs/exp3"}}
-  ]
+  ],
+  "bookmarks": [
+    {"id": "5b2e…", "item": "c04d…", "entry": "MOT17-02", "frame": 120, "time": 4.0, "kind": "issue",
+     "note": "ID switch"}
+  ],
+  "reviewed": [{"item": "8f3c…", "entry": ""}]
 }
 ```
 
@@ -107,6 +125,8 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
   user.
 - An item that cannot be read — an unknown kind or malformed JSON — never fails the load; it becomes an
   `UnreadableItem`.
+- A malformed bookmark or reviewed target, or one naming an item the file does not hold, fails the load instead of
+  being dropped. Files without `bookmarks` or `reviewed` read them as empty.
 
 ## Playlist Resolver Contract
 

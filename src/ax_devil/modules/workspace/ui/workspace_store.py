@@ -1,4 +1,4 @@
-"""The current Workspace, what its items resolved to, and exclusions, with Qt change signals."""
+"""The current Workspace, what its items resolved to, exclusions, and bookmarks, with Qt change signals."""
 
 from __future__ import annotations
 
@@ -11,6 +11,9 @@ from PySide6.QtCore import QObject, Signal
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import (
+    Bookmark,
+    BookmarkKind,
+    BookmarkTarget,
     ConsiderationItemRef,
     Content,
     ItemResolution,
@@ -32,7 +35,8 @@ class WorkspaceStore(QObject):
     Workspace replaced this one, is dropped; one arriving after a rename is named after the new label. Exclusions are
     session state and are never part of the Workspace. Every successful mutation emits exactly one signal about the
     items, then ``items_resolved`` when their results arrive, plus ``state_changed`` when it changes whether the
-    Workspace is modified or what it is called.
+    Workspace is modified or what it is called. A change to bookmarks or reviewed targets emits ``bookmarks_changed``
+    once, also when removing an item removed some of them and whenever another Workspace replaces this one.
     """
 
     items_added = Signal(list)  # list[WorkspaceItem]; they may still be resolving
@@ -41,6 +45,7 @@ class WorkspaceStore(QObject):
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
     workspace_replaced = Signal()  # another Workspace was opened, created, or restored; every item may be new
+    bookmarks_changed = Signal()  # bookmarks or reviewed targets changed
     state_changed = Signal()  # is_modified, the name, or the path changed
 
     def __init__(self, resolver: ItemResolver, parent: QObject | None = None) -> None:
@@ -59,6 +64,16 @@ class WorkspaceStore(QObject):
     def workspace(self) -> Workspace:
         """Return the current Workspace."""
         return self._workspace
+
+    @property
+    def bookmarks(self) -> tuple[Bookmark, ...]:
+        """Return the current Workspace's bookmarks, in the order they were made."""
+        return self._workspace.bookmarks
+
+    @property
+    def reviewed(self) -> frozenset[BookmarkTarget]:
+        """Return the targets of the current Workspace marked as reviewed."""
+        return self._workspace.reviewed
 
     @property
     def is_modified(self) -> bool:
@@ -86,6 +101,7 @@ class WorkspaceStore(QObject):
         self._awaiting_saved = False
         self._read_saved = None
         self.workspace_replaced.emit()
+        self.bookmarks_changed.emit()
         self._announce_state()
         self._resolve(current.items, added=False)
 
@@ -141,16 +157,19 @@ class WorkspaceStore(QObject):
         self._commit(self._generation, tuple(resolutions), added=True)
 
     def remove_item(self, item_id: str) -> None:
-        """Remove the item with *item_id*, its Content, and its exclusions."""
+        """Remove the item with *item_id*, its Content, its exclusions, and its bookmarks and reviewed targets."""
         if not self._workspace.has_item(item_id):
             logger.warning(f"Attempted to remove an item not in the workspace: {item_id}")
             return
         item = self._workspace.item(item_id)
+        before = self._workspace
         self._workspace = self._workspace.remove_item(item_id)
         removed_ids = {content.content_id for content in self._resolutions.pop(item_id).contents}
         self._not_considered = {ref for ref in self._not_considered if ref.content_id not in removed_ids}
         logger.debug(f"Item removed: {item.display_name} ({item_id})")
         self.item_removed.emit(item)
+        if _bookmark_state(before) != _bookmark_state(self._workspace):
+            self.bookmarks_changed.emit()
         self._announce_state()
 
     def rename_item(self, item_id: str, label: str) -> None:
@@ -166,6 +185,50 @@ class WorkspaceStore(QObject):
         self._resolutions[item_id] = self._resolutions[item_id].renamed(item)
         self.item_renamed.emit(item)
         self._announce_state()
+
+    def add_bookmark(
+        self, target: BookmarkTarget, frame: int, time_s: float, kind: BookmarkKind = BookmarkKind.NOTE, note: str = ""
+    ) -> Bookmark | None:
+        """Bookmark *frame* of *target* and return the new bookmark.
+
+        Returns None and changes nothing when the target's item is missing or not bookmarkable, or the frame or time
+        is invalid.
+        """
+        try:
+            bookmark = Bookmark(target=target, frame=frame, time_s=time_s, kind=kind, note=note)
+            workspace = self._workspace.add_bookmark(bookmark)
+        except ValueError as exc:
+            logger.warning(f"Ignoring a bookmark that cannot be added: {exc}")
+            return None
+        self._apply_bookmarks(workspace)
+        return bookmark
+
+    def remove_bookmark(self, bookmark_id: str) -> None:
+        """Remove the bookmark with *bookmark_id*."""
+        try:
+            workspace = self._workspace.remove_bookmark(bookmark_id)
+        except KeyError:
+            logger.warning(f"Attempted to remove a bookmark not in the workspace: {bookmark_id}")
+            return
+        self._apply_bookmarks(workspace)
+
+    def edit_bookmark(self, bookmark_id: str, *, note: str | None = None, kind: BookmarkKind | None = None) -> None:
+        """Replace the note and kind of the bookmark with *bookmark_id* where given."""
+        try:
+            workspace = self._workspace.edit_bookmark(bookmark_id, note=note, kind=kind)
+        except KeyError:
+            logger.warning(f"Attempted to edit a bookmark not in the workspace: {bookmark_id}")
+            return
+        self._apply_bookmarks(workspace)
+
+    def set_reviewed(self, target: BookmarkTarget, reviewed: bool) -> None:
+        """Mark *target* as reviewed or not; a target whose item is missing or not bookmarkable is ignored."""
+        try:
+            workspace = self._workspace.set_reviewed(target, reviewed)
+        except ValueError as exc:
+            logger.warning(f"Ignoring a review change that cannot be made: {exc}")
+            return
+        self._apply_bookmarks(workspace)
 
     def contents(self) -> tuple[Content, ...]:
         """Return the Content of every resolved item, in item order."""
@@ -207,6 +270,14 @@ class WorkspaceStore(QObject):
         if state != self._announced_state:
             self._announced_state = state
             self.state_changed.emit()
+
+    def _apply_bookmarks(self, workspace: Workspace) -> None:
+        """Make *workspace*, which differs from the current one at most in bookmarks, current when it changed them."""
+        if _bookmark_state(workspace) == _bookmark_state(self._workspace):
+            return
+        self._workspace = workspace
+        self.bookmarks_changed.emit()
+        self._announce_state()
 
     def _append(self, items: Sequence[WorkspaceItem]) -> None:
         """Append *items*, each pending until its result is committed."""
@@ -264,3 +335,8 @@ class WorkspaceStore(QObject):
             committed.append(current)
         if committed:
             self.items_resolved.emit(committed, added)
+
+
+def _bookmark_state(workspace: Workspace) -> tuple[tuple[Bookmark, ...], frozenset[BookmarkTarget]]:
+    """Return what ``bookmarks_changed`` reports on: the Workspace's bookmarks and reviewed targets."""
+    return workspace.bookmarks, workspace.reviewed

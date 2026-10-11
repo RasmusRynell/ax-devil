@@ -85,6 +85,8 @@ class WorkspaceItem(ABC):
     kind: ClassVar[str]
     renamable: ClassVar[bool] = True
     """Whether a new label survives saving; an item written back unchanged cannot be renamed."""
+    bookmarkable: ClassVar[bool] = False
+    """Whether new bookmarks and review marks may be made on the item's videos; live streams never take them."""
     label: str = ""
     id: str = field(default_factory=new_item_id)
 
@@ -171,6 +173,7 @@ class VideoItem(WorkspaceItem):
     """A video file with optional overlay files, each read by a file decoder."""
 
     kind: ClassVar[str] = "video"
+    bookmarkable: ClassVar[bool] = True
     video: Path
     overlays: tuple[OverlayFile, ...] = ()
 
@@ -319,6 +322,7 @@ class PlaylistItem(WorkspaceItem):
     """A playlist resolver id plus that resolver's JSON-serializable settings."""
 
     kind: ClassVar[str] = "playlist"
+    bookmarkable: ClassVar[bool] = True
     resolver: str
     settings: PlaylistSettings = field(default_factory=dict)
 

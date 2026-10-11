@@ -12,6 +12,9 @@ from PySide6.QtCore import QCoreApplication, QEvent
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.core import (
+    Bookmark,
+    BookmarkKind,
+    BookmarkTarget,
     ConsiderationItemRef,
     Content,
     EntryLane,
@@ -539,3 +542,105 @@ def test_a_saved_state_arriving_after_the_workspace_was_replaced_or_saved_is_dro
 
     qtbot.wait(200)
     assert store.workspace.name == "Mine" and not store.is_modified
+
+
+def _recording_bookmark_signals(store: WorkspaceStore) -> list[str]:
+    signals: list[str] = []
+    store.bookmarks_changed.connect(lambda: signals.append("bookmarks"))
+    store.state_changed.connect(lambda: signals.append("state"))
+    return signals
+
+
+def test_each_bookmark_edit_signals_once_and_marks_the_workspace_modified(tmp_path: Path) -> None:
+    store = _store()
+    runs = PlaylistItem(label="Runs", resolver="runs")
+    store.add_items([runs])
+    store.save_workspace(tmp_path / "w.ax-devil.workspace")
+    target = BookmarkTarget(runs.id, "a.mp4")
+    signals = _recording_bookmark_signals(store)
+
+    bookmark = store.add_bookmark(target, 30, 1.0, BookmarkKind.ISSUE, "Missed box")
+    assert bookmark is not None
+    store.edit_bookmark(bookmark.id, note="Missed person")
+    store.set_reviewed(target, True)
+    store.remove_bookmark(bookmark.id)
+    store.set_reviewed(target, False)
+
+    assert signals == ["bookmarks", "state", "bookmarks", "bookmarks", "bookmarks", "bookmarks", "state"]
+    assert not store.is_modified
+    assert (store.bookmarks, store.reviewed) == ((), frozenset())
+
+
+def test_bookmarks_are_saved_with_the_workspace_and_read_back(tmp_path: Path) -> None:
+    store = _store()
+    runs = PlaylistItem(label="Runs", resolver="runs")
+    store.add_items([runs])
+    target = BookmarkTarget(runs.id, "b.mp4")
+    bookmark = store.add_bookmark(target, 12, 0.5, note="Gate")
+    store.set_reviewed(target, True)
+    path = tmp_path / "w.ax-devil.workspace"
+
+    store.save_workspace(path)
+    reopened = _store()
+    reopened.open_workspace(path)
+
+    assert reopened.bookmarks == (bookmark,)
+    assert reopened.reviewed == {target}
+    assert not reopened.is_modified
+
+
+def test_requests_that_cannot_apply_change_nothing_and_signal_nothing() -> None:
+    store = _store()
+    runs, live = PlaylistItem(label="Runs", resolver="runs"), LiveStreamItem(label="Cam", host="camera")
+    store.add_items([runs, live])
+    target = BookmarkTarget(runs.id)
+    store.set_reviewed(target, True)
+    before = store.workspace
+    signals = _recording_bookmark_signals(store)
+
+    added = [
+        store.add_bookmark(BookmarkTarget(live.id), 0, 0.0),
+        store.add_bookmark(BookmarkTarget("missing"), 0, 0.0),
+        store.add_bookmark(target, -1, 0.0),
+    ]
+    store.set_reviewed(BookmarkTarget(live.id), True)
+    store.set_reviewed(target, True)
+    store.remove_bookmark("missing")
+    store.edit_bookmark("missing", note="x")
+
+    assert added == [None, None, None]
+    assert store.workspace == before
+    assert signals == []
+
+
+def test_removing_an_item_signals_bookmarks_only_when_it_had_some() -> None:
+    store = _store()
+    marked, plain = PlaylistItem(label="A", resolver="runs"), PlaylistItem(label="B", resolver="runs")
+    store.add_items([marked, plain])
+    store.add_bookmark(BookmarkTarget(marked.id, "a.mp4"), 3, 0.1)
+    store.set_reviewed(BookmarkTarget(plain.id, "b.mp4"), True)
+    store.set_reviewed(BookmarkTarget(plain.id, "b.mp4"), False)
+    changes: list[None] = []
+    store.bookmarks_changed.connect(lambda: changes.append(None))
+
+    store.remove_item(plain.id)
+    assert changes == []
+    store.remove_item(marked.id)
+
+    assert changes == [None]
+    assert store.bookmarks == ()
+
+
+def test_replacing_the_workspace_signals_that_bookmarks_changed(tmp_path: Path) -> None:
+    store = _store()
+    runs = PlaylistItem(label="Runs", resolver="runs")
+    bookmark = Bookmark(target=BookmarkTarget(runs.id, "a.mp4"), frame=1, time_s=0.0)
+    path = tmp_path / "w.ax-devil.workspace"
+    save_workspace(Workspace(items=(runs,), bookmarks=(bookmark,)), path)
+    changes: list[tuple[Bookmark, ...]] = []
+    store.bookmarks_changed.connect(lambda: changes.append(store.bookmarks))
+
+    store.open_workspace(path)
+    store.replace_workspace(Workspace())
+
+    assert changes == [(bookmark,), ()]

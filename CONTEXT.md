@@ -18,6 +18,8 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Video Item | A Workspace Item for a video file with optional overlay files and decoders. | Video file request |
 | Live Stream Item | A Workspace Item for a camera stream with optional live overlay settings; credentials are kept as entered. | Live startup |
 | Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. | Resolved playlist |
+| Bookmark | A frame of a local video or playlist entry that the user marked while reviewing, with a kind and an optional note; saved in the Workspace with each Bookmark Target's reviewed mark. Never on live streams. | Marker, annotation, flag |
+| Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item named by its label. | Entry index, content id |
 | Content | What a Workspace Item resolves to: Seekable Video, Live Video, or Playlist Content. Rebuilt on every resolution, never saved. | Startup content, resolved item |
 | Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |
 | Viewer Widget | The `ViewerWidget` base class every Viewer extends: pane frame, header, pin and close, and the lifecycle contract. | Workspace widget, pane |
