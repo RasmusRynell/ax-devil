@@ -256,6 +256,8 @@ def _text_size_at(label: QLabel, role: TextRole) -> Callable[[int], QSize]:
 class QuickSetupDialog(BaseDialog):
     """Pick theme and text size, with the running app as the live preview."""
 
+    refit_on_text_size = False  # picking a text size here must not resize the dialog; it opens with room for them all
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent, title="Quick Setup", modal=True)
         self._settings = GlobalSettings()

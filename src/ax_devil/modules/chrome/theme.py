@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
-from ax_devil.modules.chrome.appearance import notify_text_size_changed
+from ax_devil.modules.chrome.appearance import notify_text_size_applied, notify_text_size_changed
 from ax_devil.modules.chrome.tokens import Height, Space, body_px
 
 SEE_THROUGH = ".QWidget { background: transparent; }"
@@ -119,6 +119,7 @@ def apply_text_size(size_px: int) -> None:
     # Re-polishes widgets, which keep a stylesheet-polished font until the stylesheet is applied again.
     _install_stylesheet(app)
     notify_text_size_changed()
+    notify_text_size_applied()
 
 
 _TEXT_SIZE_RULES = "\n/* ax-devil: rules sized from the body text */\n"

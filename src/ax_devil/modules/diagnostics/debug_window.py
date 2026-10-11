@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.diagnostics.dashboard_snapshot import DashboardSnapshot, DashboardSnapshotService
@@ -116,7 +117,12 @@ class DebugWindow(ChromeWindow):
         reset.clicked.connect(self._reset)
         self.freeze_button = QPushButton("Freeze view")
         self.freeze_button.setCheckable(True)
-        self.freeze_button.setMinimumWidth(self.freeze_button.fontMetrics().horizontalAdvance("Resume live view") + 32)
+        follow_appearance(
+            self.freeze_button,
+            lambda: self.freeze_button.setMinimumWidth(
+                self.freeze_button.fontMetrics().horizontalAdvance("Resume live view") + 32
+            ),
+        )
         self.freeze_button.setToolTip(
             "Hold this snapshot for inspection. Playback and measurement collection continue."
         )
