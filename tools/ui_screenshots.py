@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import os
 import shutil
-import time
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
 
@@ -56,6 +55,7 @@ from ax_devil.modules.workspace.core import (
     LiveStreamItem,
     OverlayFile,
     PlaylistItem,
+    RecentWorkspace,
     VideoItem,
     new_item_id,
 )
@@ -201,14 +201,10 @@ def test_screenshots(
     window.show()
     qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
     monkeypatch.setattr(Path, "home", lambda: tmp_path)  # Recent folders show as ~/..., as on a real machine.
-    recent = []
+    recent: list[RecentWorkspace] = []
     for days_ago, name in ((0, "Parking lot"), (2, "Entrance cameras"), (40, "Exp 3")):
         path = tmp_path / "reviews" / f"{name}.ax-devil.workspace"
-        path.parent.mkdir(exist_ok=True)
-        path.touch()
-        stamp = time.time() - days_ago * 86400
-        os.utime(path, (stamp, stamp))
-        recent.append(path)
+        recent.append(RecentWorkspace(path, datetime.now() - timedelta(days=days_ago)))
     window._workspace_session._start_panel.set_recent_workspaces(recent)
     for text_size in TEXT_SIZES:
         settings.text_size = text_size

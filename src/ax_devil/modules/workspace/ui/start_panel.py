@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,7 +26,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css, qcolor_to_css
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import DEFAULT_SHORTCUTS
-from ax_devil.modules.workspace.core import workspace_name
+from ax_devil.modules.workspace.core import RecentWorkspace, workspace_name
 
 if TYPE_CHECKING:
     from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
@@ -39,16 +39,16 @@ def _today() -> date:
     return date.today()
 
 
-def recent_date(modified: date, today: date) -> str:
-    """Return how the start panel shows when a recent workspace was last saved: today, a weekday, or a date."""
-    days = (today - modified).days
+def recent_date(used: date, today: date) -> str:
+    """Return how the start panel shows when a recent workspace was last opened or saved: today, weekday, or date."""
+    days = (today - used).days
     if days <= 0:
         return "today"
     if days <= _RECENT_DAYS_AS_WEEKDAY:
-        return modified.strftime("%a")
-    if modified.year == today.year:
-        return f"{modified.strftime('%b')} {modified.day}"
-    return f"{modified.strftime('%b')} {modified.day} {modified.year}"
+        return used.strftime("%a")
+    if used.year == today.year:
+        return f"{used.strftime('%b')} {used.day}"
+    return f"{used.strftime('%b')} {used.day} {used.year}"
 
 
 def _home_relative(folder: Path) -> str:
@@ -60,14 +60,14 @@ def _home_relative(folder: Path) -> str:
 
 
 class _RecentRow(QFrame):
-    """One recent workspace: its name and folder, and when it was last saved; clicking it opens it."""
+    """One recent workspace: its name and folder, and when it was last opened or saved; clicking it opens it."""
 
     clicked = Signal()
 
-    def __init__(self, path: Path, today: date, parent: QWidget | None = None) -> None:
+    def __init__(self, path: Path, used: date, today: date, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.path = path
-        self._modified: date | None = None
+        self._used = used
         self.setObjectName("AxDevilRecentRow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
@@ -92,17 +92,13 @@ class _RecentRow(QFrame):
 
         self.date_label = QLabel(self)
         TextRole.SMALL.apply(self.date_label)
-        try:
-            self._modified = datetime.fromtimestamp(path.stat().st_mtime).date()
-        except OSError:
-            pass
         self.refresh_date(today)
         layout.addWidget(self.date_label, 0, Qt.AlignmentFlag.AlignTop)
         follow_appearance(self, self._apply_appearance)
 
     def refresh_date(self, today: date) -> None:
-        """Show how long before *today* the workspace was saved; blank when its file cannot be read."""
-        self.date_label.setText("" if self._modified is None else recent_date(self._modified, today))
+        """Show how long before *today* the workspace was last opened or saved."""
+        self.date_label.setText(recent_date(self._used, today))
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Open this workspace on a left click."""
@@ -193,13 +189,13 @@ class StartPanel(QWidget):
         for action_id, button in self._open_buttons.items():
             manager.bind_tooltip(button, action_id)
 
-    def set_recent_workspaces(self, paths: Sequence[Path]) -> None:
-        """List workspace files *paths*, newest first; clicking one emits ``recent_workspace_requested``."""
+    def set_recent_workspaces(self, recents: Sequence[RecentWorkspace]) -> None:
+        """List the *recents*, newest first; clicking one emits ``recent_workspace_requested``."""
         for row in self._recent_rows:
             self._recent_list.removeWidget(row)
             row.deleteLater()
         today = _today()
-        self._recent_rows = [_RecentRow(path, today, self) for path in paths]
+        self._recent_rows = [_RecentRow(recent.path, recent.used.date(), today, self) for recent in recents]
         for row in self._recent_rows:
             row.clicked.connect(lambda path=row.path: self.recent_workspace_requested.emit(path))
             self._recent_list.addWidget(row)

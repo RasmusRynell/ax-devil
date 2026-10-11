@@ -97,7 +97,7 @@ def test_saving_an_untitled_workspace_asks_where_appends_the_extension_and_remem
     saved = tmp_path / "reviews" / "Lot.ax-devil.workspace"
     assert load_workspace(saved).items == launch.store.workspace.items
     assert (launch.store.workspace.name, launch.store.is_modified) == ("Lot", False)
-    assert launch.lifecycle.recent_workspaces() == (saved,)
+    assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [saved]
 
 
 def test_a_restored_saved_workspace_is_modified_only_when_it_had_unsaved_edits(
@@ -167,7 +167,7 @@ def test_opening_a_workspace_asks_about_unsaved_changes_and_adds_its_items_witho
         assert launch.store.workspace.items == other.items
         assert (launch.store.workspace.name, launch.store.is_modified) == ("Other", False)
         assert added == [False]
-        assert launch.lifecycle.recent_workspaces() == (other.path,)
+        assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [other.path]
     else:
         assert launch.store.workspace.items == (clip,)
         assert added == []
@@ -286,7 +286,7 @@ def test_a_recent_workspace_that_cannot_be_opened_is_forgotten(launches: _Launch
     save_workspace(Workspace(), saved)
     launch = launches.new(FakePrompts())
     assert launch.lifecycle.open_workspace(saved)
-    assert launch.lifecycle.recent_workspaces() == (saved,)
+    assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [saved]
     saved.unlink()
 
     assert not launch.lifecycle.open_workspace(saved)
@@ -304,7 +304,7 @@ def test_a_launch_with_a_workspace_file_opens_it(launches: _Launches, tmp_path: 
     assert launch.store.workspace.items == saved.items
     assert (launch.store.workspace.name, launch.store.is_modified) == ("Lot", False)
     assert added == [False]
-    assert launch.lifecycle.recent_workspaces() == (saved.path,)
+    assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [saved.path]
 
 
 @pytest.mark.parametrize("replace", [False, True])
