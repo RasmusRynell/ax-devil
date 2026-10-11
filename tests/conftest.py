@@ -4,6 +4,7 @@ Shared test fixtures and configuration for all tests. The run's own home folder 
 the session hooks here fail the run if the user's real ax-devil folders changed anyway.
 """
 
+import gc
 import json
 import shutil
 from collections.abc import Callable, Generator, Iterator
@@ -14,6 +15,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
 
+from ax_devil.app import _collect_due_generation
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import (
@@ -54,6 +56,19 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     _USER_FILES_BEFORE.update(_user_files())
 
 
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """Freeze the collected tests out of later collections and turn automatic cyclic GC off, as the app does.
+
+    Left on, a collection started by any allocation, including one inside a Qt callback such as an event filter or an
+    icon engine's paint, can destroy widgets that earlier tests left in reference cycles while Qt is still iterating
+    or painting them, and crash the run. The teardown hook collects instead. Under xdist this runs in each worker,
+    not in the controller, which runs no tests.
+    """
+    gc.collect()
+    gc.freeze()
+    gc.disable()
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Fail the run when anything in the user's ax-devil folders was created, changed or deleted.
 
@@ -80,12 +95,14 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_teardown() -> Generator[None, None, None]:
-    """Finish pytest-qt's deferred widget deletions before the next test starts."""
+    """Finish pytest-qt's deferred widget deletions and collect garbage before the next test starts."""
     yield
     # pytest-qt closes widgets with deleteLater(); processEvents() alone does not
-    # drain DeferredDelete events. Destroy them here, on the GUI thread, before
-    # later worker-thread allocations can trigger Python garbage collection.
+    # drain DeferredDelete events. Destroy them here, on the GUI thread.
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    # Automatic collection is off (see pytest_collection_finish). No Qt code is running here, so collect as the app's
+    # timer does.
+    _collect_due_generation()
 
 
 @pytest.fixture(scope="session", autouse=True)

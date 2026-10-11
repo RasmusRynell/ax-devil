@@ -131,7 +131,7 @@ def test_client_request_timeout_is_not_extended_by_notifications(monkeypatch: py
         asyncio.run(client._request(method="data-hub_v1:listTopics", params={}))
 
 
-def test_client_reports_last_notification_when_request_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_reports_last_notification_when_request_times_out() -> None:
     client = DataHubWebSocketClient(
         host="camera.local",
         username="root",
@@ -140,14 +140,9 @@ def test_client_reports_last_notification_when_request_times_out(monkeypatch: py
         topic=None,
         channel_id=None,
     )
-    client._websocket = _FakeWebSocket([])
+    # The notification arrives at once and the response never does, so the timeout always follows the notification.
+    client._websocket = _FakeWebSocket([{"method": "data-hub_v1:status"}])
     client._request_timeout = 0.001
-
-    async def receive_notification() -> dict[str, object]:
-        await asyncio.sleep(0)
-        return {"method": "data-hub_v1:status"}
-
-    monkeypatch.setattr(client, "_receive_json", receive_notification)
 
     with pytest.raises(DataHubWebSocketError, match="Last server notification: data-hub_v1:status"):
         asyncio.run(client._request(method="data-hub_v1:listTopics", params={}))
