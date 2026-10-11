@@ -12,7 +12,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from ax_devil.modules.workspace.intake import default_workspace_intake
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtTest import QTest
@@ -30,13 +29,7 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_viewer.export.encoder import CompressionPreset, VideoEncoder
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
-from ax_devil.modules.workspace import (
-    EntryLane,
-    PlaylistContent,
-    PlaylistEntry,
-    ResolvedPlaylistStartup,
-    VideoFileStartup,
-)
+from ax_devil.modules.workspace.core import OverlayFile, VideoItem
 
 logger = get_logger(__name__)
 
@@ -110,22 +103,16 @@ def wipe(first: QImage, second: QImage, area: QRect, progress: float) -> QImage:
     return image
 
 
-def _startup(args: argparse.Namespace) -> VideoFileStartup | ResolvedPlaylistStartup:
-    if args.recipe != "compare":
-        return VideoFileStartup(args.video, args.overlay, args.handler)
-    second: Path = args.compare_overlay or args.output / "simulated-det.json"
+def _item(args: argparse.Namespace) -> VideoItem:
+    """Describe the video to open; a comparison puts two overlays on it, one lane each, named after their files."""
+    paths: list[Path] = [] if args.overlay is None else [args.overlay]
     if args.simulate_det:
-        simulate_detection(args.overlay, second)
-    intake = default_workspace_intake()
-    video = intake.create_seekable_video(video_path=args.video)
-    lanes = []
-    labels = ("DET (simulated)", "GT") if args.simulate_det else ("Overlay A", "Overlay B")
-    overlays = (second, args.overlay) if args.simulate_det else (args.overlay, second)
-    for label, overlay in zip(labels, overlays, strict=True):
-        annotated = intake.create_seekable_video(video_path=args.video, overlay_path=overlay, handler_type=args.handler)
-        lanes.append(EntryLane(label, video, True, annotated.overlays[0]))
-    playlist = PlaylistContent("Overlay comparison", (PlaylistEntry(tuple(lanes), True),))
-    return ResolvedPlaylistStartup((playlist,))
+        simulated = args.output / "DET (simulated).json"
+        simulate_detection(args.overlay, simulated)
+        paths.insert(0, simulated)
+    elif args.compare_overlay is not None:
+        paths.append(args.compare_overlay)
+    return VideoItem(video=args.video, overlays=tuple(OverlayFile(path, args.handler) for path in paths))
 
 
 def capture(args: argparse.Namespace) -> None:
@@ -157,10 +144,10 @@ def capture(args: argparse.Namespace) -> None:
         QApplication.processEvents()
         window.resize(args.width, args.height)
         window.move(0, 0)
-        session.load_startup_content(_startup(args))
+        session.add_items([_item(args)])
+        wait_until(lambda: session.focused_offline_viewer() is not None, "the video to open")
         viewer = session.focused_offline_viewer()
-        if viewer is None:
-            raise RuntimeError("The recording did not open a viewer")
+        assert viewer is not None
         wait_until(lambda: viewer._runtime is not None, "video and overlays to open")
         runtime = viewer._runtime
         assert runtime is not None

@@ -63,7 +63,7 @@ uv run python -m tools.demo_recorder capture \
   --output downloads/demos/compare
 ```
 
-The generated file is `simulated-det.json`, separate from the original annotations, and the lane is labelled
+The generated file is `DET (simulated).json` in the take folder, separate from the original annotations, and the lane is named
 **DET (simulated)**. It drops some boxes and perturbs their positions; it is not a model evaluation.
 For real comparison data, replace `--simulate-det` with `--compare-overlay PATH`. Both overlays use `--handler`.
 The comparison recipe leaves both media-tools panels closed.
