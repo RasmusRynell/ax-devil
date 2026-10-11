@@ -40,18 +40,16 @@ def test_parse_timestamp_rejects_invalid_values() -> None:
         parse_timestamp("not-a-timestamp")
 
 
-def test_parse_bounding_box_accepts_lowercase_keys() -> None:
-    bbox = parse_bounding_box({"left": 0.1, "top": 0.2, "right": 0.7, "bottom": 0.8})
-
-    assert bbox is not None
-    assert bbox.top_left.x == 0.1
-    assert bbox.top_left.y == 0.2
-    assert bbox.bottom_right.x == 0.7
-    assert bbox.bottom_right.y == 0.8
-
-
-def test_parse_bounding_box_accepts_uppercase_keys() -> None:
-    bbox = parse_bounding_box({"Left": "0.1", "Top": "0.2", "Right": "0.7", "Bottom": "0.8"})
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"left": 0.1, "top": 0.2, "right": 0.7, "bottom": 0.8},
+        {"Left": "0.1", "Top": "0.2", "Right": "0.7", "Bottom": "0.8"},
+    ],
+    ids=["lowercase", "uppercase-strings"],
+)
+def test_parse_bounding_box_accepts_either_key_case(payload: dict[str, object]) -> None:
+    bbox = parse_bounding_box(payload)
 
     assert bbox is not None
     assert bbox.top_left.x == 0.1

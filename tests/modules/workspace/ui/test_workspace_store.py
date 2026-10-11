@@ -166,6 +166,7 @@ def test_unknown_and_out_of_range_refs_are_ignored() -> None:
         store.set_item_considered(ref, False)
         assert store.is_item_considered(ref)
     assert changes == []
+    assert store.is_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0))
 
 
 class _CountingResolver:

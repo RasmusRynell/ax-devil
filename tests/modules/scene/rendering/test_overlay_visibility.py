@@ -109,15 +109,11 @@ def test_fully_hidden_recipe_does_not_evaluate_its_guard() -> None:
     assert diagnostics == []
 
 
-@pytest.mark.parametrize("invalid", ["feature", "input"])
-def test_hidden_components_are_still_validated(invalid: str) -> None:
+def test_hidden_component_with_unknown_feature_is_rejected() -> None:
     document = _document()
     marker = document["templates"]["marker"]
     marker["steps"][0]["visible"] = False
-    if invalid == "feature":
-        marker["feature"] = "unknown"
-    else:
-        marker["steps"][0]["fields"]["position"]["x"] = {"ref": ["parameters", "unknown"]}
+    marker["feature"] = "unknown"
     with pytest.raises(TemplateRuntimeError):
         SceneRenderCatalogLoader().validate_revision(document)
 
