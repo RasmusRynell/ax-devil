@@ -424,6 +424,21 @@ def test_secondary_video_shows_only_the_current_primary_frame(qtbot: QtBot) -> N
     assert displays[0].frame_ids() == [9, 10, 14]
 
 
+def test_presented_frame_stays_the_frame_on_screen_while_a_seek_is_pending(qtbot: QtBot) -> None:
+    """A bookmark taken after a seek request but before its frame arrives marks the frame the user sees."""
+    session, _display, source = _make_primary_session(qtbot)
+    assert session.presented_frame is None
+    source.deliver(7)
+
+    session.jump_to_frame(40)
+
+    assert session.presented_frame == (7, pytest.approx(0.007))
+
+    source.deliver(40)
+
+    assert session.presented_frame == (40, pytest.approx(0.04))
+
+
 def test_seek_drops_frames_decoded_before_it(qtbot: QtBot) -> None:
     """Frames queued from the old position are skipped until the seek target arrives; frames without a position
     generation are always shown."""

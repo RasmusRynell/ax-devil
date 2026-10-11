@@ -89,9 +89,14 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
         self._navigation = OfflineViewerNavigation(content, consideration_query)
-        self._current_index = self._navigation.normalize_entry_index(start_index)
-        # A start frame belongs to the requested entry; when that entry is skipped, the one shown starts at frame 0.
-        self._start_frame = start_frame if self._current_index == start_index else None
+        # A start frame belongs to the requested entry, which opens even when the workspace excludes it, so the frame
+        # is never moved to another video. Without one, an excluded entry gives way to the next considered one.
+        self._current_index = (
+            self._navigation.normalize_entry_index(start_index)
+            if start_frame is None
+            else self._navigation.bound_entry_index(start_index)
+        )
+        self._start_frame = start_frame
         self._runtime: OfflineSession | None = None
         self._viewer_host: _ViewerOverlayHost | None = None
         self._viewer_host_layout: QGridLayout | None = None
@@ -328,8 +333,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
     def _sync_global_current_frame(self, frame: int) -> None:
         if self._has_active_global_controls() and self._global_controls is not None:
-            seconds = self._runtime.current_frame_seconds if self._runtime is not None else None
-            self._global_controls.set_current_frame(frame, seconds)
+            presented = self._runtime.presented_frame if self._runtime is not None else None
+            self._global_controls.set_current_frame(frame, presented.seconds if presented is not None else None)
 
     def _sync_global_playback_state(self, playing: bool) -> None:
         if self._has_active_global_controls() and self._global_controls is not None:
@@ -493,11 +498,10 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the entry and frame on screen, or None before the entry shows its first frame."""
-        runtime = self._runtime
-        seconds = runtime.current_frame_seconds if runtime is not None else None
-        if runtime is None or seconds is None:
+        presented = self._runtime.presented_frame if self._runtime is not None else None
+        if presented is None:
             return None
-        return BookmarkPosition(self._content, self._current_index, runtime.current_frame, seconds)
+        return BookmarkPosition(self._content, self._current_index, presented.frame, presented.seconds)
 
     def get_contents(self) -> list[SeekableVideoContent]:
         entries = self._get_entries()

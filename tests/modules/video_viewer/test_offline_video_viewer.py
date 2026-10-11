@@ -641,6 +641,23 @@ class TestOfflineVideoViewerWidget:
 
         assert widget.current_on_screen_item().entry_index == 1
 
+    def test_a_bookmark_opens_its_entry_at_its_frame_even_when_the_entry_is_excluded(self, qtbot: QtBot) -> None:
+        """Opening a bookmark of an excluded entry shows that entry, not the next considered one."""
+        playlist = _playlist("A", "B")
+        workspace_store, playlist = store_with(playlist)
+        workspace_store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
+        widget = OfflineVideoViewerWidget(
+            playlist,
+            consideration_query=workspace_store,
+            render_catalog_manager=self._render_catalog_manager,
+            start_index=0,
+            start_frame=5,
+        )
+        _attach_offline_widget(qtbot, widget)
+
+        assert widget.current_on_screen_item().entry_index == 0
+        assert widget._runtime is not None and widget._runtime.current_frame == 5
+
     def test_excluding_current_playlist_entry_navigates_to_next_considered(self, qtbot: QtBot) -> None:
         playlist = _playlist("A", "B")
         workspace_store, playlist = store_with(playlist)

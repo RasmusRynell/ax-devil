@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from functools import partial
+from typing import NamedTuple
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QWidget
@@ -244,6 +245,13 @@ class OfflineLane:
         self.display.cleanup()
 
 
+class PresentedFrame(NamedTuple):
+    """A frame shown on screen: its index in the video and its decoded time."""
+
+    frame: int
+    seconds: float
+
+
 @dataclass(slots=True, eq=False)
 class _PooledVideoSource:
     """One source-pool entry shared by lanes that reference the same seekable video."""
@@ -311,7 +319,7 @@ class OfflineSession(QObject):
         self._media = media
         self._source_pool = source_pool
         self._is_playing = False
-        self._current_frame_seconds: float | None = None
+        self._presented_frame: PresentedFrame | None = None
         self._min_valid_primary_generation: int | None = None
         self._secondary_frame_relay = _SecondaryFrameRelay(self)
         self._secondary_frame_relay.frameReady.connect(self._display_secondary_frame)
@@ -385,9 +393,13 @@ class OfflineSession(QObject):
         return self._current_frame
 
     @property
-    def current_frame_seconds(self) -> float | None:
-        """Return the decoded time of the primary frame on screen, or None before the first frame."""
-        return self._current_frame_seconds
+    def presented_frame(self) -> PresentedFrame | None:
+        """Return the primary frame on screen, or None before the first frame.
+
+        Unlike ``current_frame``, which moves to a seek target at once, it stays the frame last shown until the
+        requested one arrives.
+        """
+        return self._presented_frame
 
     @property
     def is_playing(self) -> bool:
@@ -835,7 +847,9 @@ class OfflineSession(QObject):
 
         if source_index == 0:
             self._current_frame = self._bounded_frame(frame_data.frame_id.sequence_id)
-            self._current_frame_seconds = frame_data.frame_id.timestamp_monotime_us / 1_000_000
+            self._presented_frame = PresentedFrame(
+                self._current_frame, frame_data.frame_id.timestamp_monotime_us / 1_000_000
+            )
             self.currentFrameChanged.emit(self.current_frame)
         for lane in self.lanes:
             if lane.source_index == source_index:
