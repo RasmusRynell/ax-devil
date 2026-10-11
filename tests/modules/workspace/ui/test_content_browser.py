@@ -679,6 +679,45 @@ def test_a_folded_section_unfolds_for_an_open_row(qtbot: QtBot) -> None:
     assert reopened.isExpanded()
 
 
+def test_a_folded_section_folds_again_when_its_open_row_closes(qtbot: QtBot) -> None:
+    row = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
+    browser = _browser(qtbot, row)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+    section.setExpanded(False)
+
+    _set_rows(browser, (replace(row, is_open=True),))
+    _set_rows(browser, (replace(row, is_open=True),))
+
+    kept_open = _tree(browser).topLevelItem(0)
+    assert kept_open is not None
+    assert kept_open.isExpanded()
+
+    _set_rows(browser, (row,))
+
+    closed = _tree(browser).topLevelItem(0)
+    assert closed is not None
+    assert not closed.isExpanded()
+
+
+def test_a_search_matching_only_an_excluded_item_keeps_its_section_listed(qtbot: QtBot) -> None:
+    excluded = WorkspaceBrowserRow(
+        row_id="entry",
+        label="Entry",
+        icon_kind="video",
+        consideration_ref=ConsiderationItemRef.playlist_entry("playlist-id", 0),
+        is_considered=False,
+    )
+    browser = _browser(qtbot, excluded)
+    section = _tree(browser).topLevelItem(0)
+    assert section is not None
+
+    _search(browser).setText("entry")
+
+    assert not section.isHidden()
+    assert _required_item_row(browser).isHidden()
+
+
 def test_a_section_counts_the_excluded_items_the_list_hides(qtbot: QtBot) -> None:
     excluded = WorkspaceBrowserRow(
         row_id="entry",

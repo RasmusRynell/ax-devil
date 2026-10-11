@@ -251,6 +251,9 @@ class ContentBrowserWidget(QWidget):
         self._excluded_hidden = 0
         self._folded: set[BrowserSection] = set()
         """The sections the user folded; a search unfolds them only while it is active."""
+        self._revealed: set[BrowserSection] = set()
+        """The folded sections an open row keeps unfolded, until that row closes or the user folds the section."""
+        self._open_sections: set[BrowserSection] = set()
         self._applying_folds = False
 
         layout = QVBoxLayout(self)
@@ -281,6 +284,8 @@ class ContentBrowserWidget(QWidget):
             self._row_data(item).row_id: (item.isExpanded(), self._row_data(item).is_open)
             for item in self._tree_items()
         }
+        open_before = self._open_sections
+        self._open_sections = {section.kind for section in sections if _has_open_row(section.rows)}
         self._tree.clear()
         for section in sections:
             heading = QTreeWidgetItem([section.kind.title, ""])
@@ -293,10 +298,12 @@ class ContentBrowserWidget(QWidget):
             heading.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self._tree.addTopLevelItem(heading)
             heading.setFirstColumnSpanned(True)
-            if _has_open_row(section.rows):
-                self._folded.discard(section.kind)
+            if not _has_open_row(section.rows):
+                self._revealed.discard(section.kind)
+            elif section.kind not in open_before:
+                self._revealed.add(section.kind)
             with self._programmatic_folds():
-                heading.setExpanded(section.kind not in self._folded)
+                heading.setExpanded(section.kind not in self._folded or section.kind in self._revealed)
             for row in section.rows:
                 item = self._create_tree_item(row)
                 heading.addChild(item)
@@ -382,6 +389,7 @@ class ContentBrowserWidget(QWidget):
             self._folded.discard(section.kind)
         else:
             self._folded.add(section.kind)
+            self._revealed.discard(section.kind)
 
     def _toggle_section(self, item: QTreeWidgetItem) -> None:
         """Fold or unfold a clicked section row."""
@@ -430,10 +438,13 @@ class ContentBrowserWidget(QWidget):
                 item = heading.child(index)
                 if item is not None:
                     visible = self._apply_item_visibility(item, ancestor_matches=False) or visible
-            heading.setHidden(not visible)
+            # A search matching only excluded items keeps the heading, so its hidden count points to them.
+            heading.setHidden(not visible and not self._excluded_hidden)
             kind = heading.data(TREE_LABEL_COLUMN, TREE_SECTION_ROLE).kind
             with self._programmatic_folds():
-                heading.setExpanded(bool(visible and self._search_query) or kind not in self._folded)
+                heading.setExpanded(
+                    bool(visible and self._search_query) or kind not in self._folded or kind in self._revealed
+                )
             self._set_hidden_count(heading, 0 if self._show_excluded else self._excluded_hidden)
 
     def _apply_item_visibility(self, item: QTreeWidgetItem, *, ancestor_matches: bool) -> bool:
