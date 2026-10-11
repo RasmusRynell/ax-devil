@@ -33,9 +33,9 @@ def test_each_change_runs_the_matching_plugins_command(monkeypatch: pytest.Monke
     run_plugins_command(PluginChange.remove("yolo-detections"))
 
     assert [command[2:] for command in commands] == [
-        ["plugins", "install", "/home/me/my-plugin"],
-        ["plugins", "install", "--upgrade", "yolo-detections>=0.2"],
-        ["plugins", "remove", "yolo-detections"],
+        ["plugins", "install", "--", "/home/me/my-plugin"],
+        ["plugins", "install", "--upgrade", "--", "yolo-detections>=0.2"],
+        ["plugins", "remove", "--", "yolo-detections"],
     ]
     assert {tuple(command[:2]) for command in commands} == {("/venv/bin/python", "/venv/bin/ax-devil")}
 
@@ -116,3 +116,20 @@ def test_a_second_change_is_refused_while_one_runs(qtbot: QtBot) -> None:
     with qtbot.waitSignal(changes.finished, timeout=5000):
         assert changes.start(second)
     assert made == [first, second]
+
+
+def test_a_source_that_looks_like_an_option_is_installed_as_a_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    """What the user types in Add plugin reaches the installer as a requirement, whatever it starts with."""
+    from click.testing import CliRunner
+
+    from ax_devil.modules.plugin_installation import cli
+
+    installed: list[tuple[str, ...]] = []
+    monkeypatch.setattr(cli, "current_host", lambda: object())
+    monkeypatch.setattr(cli, "change_plugins", lambda _host, *, install, **_kwargs: installed.append(install))
+
+    change = PluginChange.install("--index=evil=https://example.invalid")
+    result = CliRunner().invoke(cli.plugins, list(change.arguments))
+
+    assert result.exit_code == 0, result.output
+    assert installed == [("--index=evil=https://example.invalid",)]

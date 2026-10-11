@@ -57,8 +57,11 @@ class PluginChange:
 
     @property
     def arguments(self) -> tuple[str, ...]:
-        """Return the arguments of ``ax-devil plugins`` that make this change."""
-        return (*self.kind.command, self.target)
+        """Return the arguments of ``ax-devil plugins`` that make this change.
+
+        The target follows ``--``, so a source that starts with a dash is read as a requirement, never as an option.
+        """
+        return (*self.kind.command, "--", self.target)
 
 
 Installer = Callable[[PluginChange], None]
