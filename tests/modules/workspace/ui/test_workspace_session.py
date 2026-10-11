@@ -184,6 +184,30 @@ def test_removing_content_in_the_sidebar_closes_every_viewer_of_its_item(
     assert _tree(workspace_session).topLevelItemCount() == 0
 
 
+def test_views_follow_the_rows_and_open_and_close_content_through_the_controller(
+    workspace_session: WorkspaceSession,
+) -> None:
+    """A view of part of the workspace reads the same rows as the browser and can open and close an item's viewers."""
+    controller = workspace_session._workspace_controller
+    announced: list[object] = []
+    controller.sections_changed.connect(announced.append)
+
+    with patch(_OFFLINE_VIEWER, DummyViewer):
+        workspace_session.add_items([content_item(_make_video("clip"))])
+        assert announced and announced[-1] == controller.sections()
+        [row] = [row for section in controller.sections() for row in section.rows]
+        assert row.is_open
+
+        controller.close_item_viewers(row.item.id if row.item else "")
+        assert _center(workspace_session).get_widget_count() == 0
+        [row] = [row for section in controller.sections() for row in section.rows]
+        assert not row.is_open
+
+        assert row.activation_target is not None
+        controller.open_content(*row.activation_target)
+        assert _center(workspace_session).get_widget_count() == 1
+
+
 class _TwoPlaylists:
     def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
         return [_make_playlist("train"), _make_playlist("test")]

@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem
-from ax_devil.modules.workspace.ui.browser_rows import build_browser_sections
+from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserSection, build_browser_sections
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
@@ -22,7 +22,13 @@ if TYPE_CHECKING:
 
 
 class WorkspaceController(QObject):
-    """Coordinate workspace UI state across the tree, center area, and viewers."""
+    """Coordinate workspace UI state across the tree, center area, and viewers.
+
+    Views of part of the workspace read ``sections`` and follow ``sections_changed``, which reports every change to
+    the rows, including which Content is open in a viewer, and act through ``open_content`` and ``close_item_viewers``.
+    """
+
+    sections_changed = Signal(object)  # tuple[WorkspaceBrowserSection, ...]
 
     def __init__(
         self,
@@ -43,8 +49,28 @@ class WorkspaceController(QObject):
         # The id of the item whose Content each open viewer shows.
         self._widget_item_ids: dict[ViewerWidget, str] = {}
 
+        self._sections: tuple[WorkspaceBrowserSection, ...] = ()
+
         self._connect_signals()
         self._sync_content_browser()
+
+    def sections(self) -> tuple[WorkspaceBrowserSection, ...]:
+        """Return the rows of every item, grouped as the content browser shows them."""
+        return self._sections
+
+    def open_content(self, content: Content, start_index: int = 0, *, to_side: bool = False) -> None:
+        """Open *content*, from its playlist entry *start_index*, as a double click in the browser does.
+
+        It replaces the preview pane, or opens in a new split with *to_side*; open viewers pause.
+        """
+        place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
+        self._open_browser_content(content, start_index, place)
+
+    def close_item_viewers(self, item_id: str) -> None:
+        """Close every viewer showing Content of the item *item_id*."""
+        for widget, widget_item_id in tuple(self._widget_item_ids.items()):
+            if widget_item_id == item_id:
+                self._center_area.remove_viewer_widget(widget)
 
     def _connect_signals(self) -> None:
         self._content_browser.content_activated.connect(self._on_content_activated)
@@ -66,18 +92,19 @@ class WorkspaceController(QObject):
         open_items = frozenset(
             item for widget in self._widget_item_ids if (item := widget.current_on_screen_item()) is not None
         )
-        sections = build_browser_sections(
+        self._sections = build_browser_sections(
             self._workspace_store.resolutions(), self._workspace_store.is_item_considered, open_items
         )
-        self._content_browser.set_browser_sections(sections)
+        self._content_browser.set_browser_sections(self._sections)
+        self.sections_changed.emit(self._sections)
 
     def _on_content_activated(self, content: Content, start_index: int = 0) -> None:
         """Open a double-clicked browser item in the preview pane."""
-        self._open_browser_content(content, start_index, self._center_area.replace_or_open)
+        self.open_content(content, start_index)
 
     def _on_content_open_to_side_requested(self, content: Content, start_index: int = 0) -> None:
         """Open a browser item in a new split without replacing any pane."""
-        self._open_browser_content(content, start_index, self._center_area.open_to_side)
+        self.open_content(content, start_index, to_side=True)
 
     def _open_browser_content(
         self,
