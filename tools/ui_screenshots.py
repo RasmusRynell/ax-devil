@@ -17,6 +17,7 @@ the theme's earlier shots there, so a folder reused across runs holds only curre
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -50,7 +51,21 @@ from ax_devil.modules.workspace import VideoFileStartup
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))
-SCALE = float(os.environ.get("AX_DEVIL_UI_SHOTS_SCALE", "2"))
+
+
+def _shot_scale() -> float:
+    """Return the device pixels per logical pixel chosen with ``AX_DEVIL_UI_SHOTS_SCALE``, 2 by default."""
+    value = os.environ.get("AX_DEVIL_UI_SHOTS_SCALE", "2")
+    try:
+        scale = float(value)
+    except ValueError:
+        scale = math.nan
+    if not (math.isfinite(scale) and scale > 0):
+        raise pytest.UsageError(f"AX_DEVIL_UI_SHOTS_SCALE must be a positive number such as 1 or 2, not {value!r}")
+    return scale
+
+
+SCALE = _shot_scale()
 # Qt reads these when the application starts, which pytest-qt does after collecting this module. Dialogs fit
 # themselves to the screen, so the offscreen screen keeps its default 800x800 logical size at every scale.
 os.environ["QT_SCALE_FACTOR"] = str(SCALE)
