@@ -401,7 +401,7 @@ def test_screenshots(
 
     def tree_items() -> list[QTreeWidgetItem]:
         """Return every row of the content browser, depth first."""
-        iterator = QTreeWidgetItemIterator(session._content_browser._tree)
+        iterator = QTreeWidgetItemIterator(session._content_browser.tree)
         items = []
         while (item := iterator.value()) is not None:
             if item.data(0, ROW_ROLE) is not None:

@@ -113,6 +113,22 @@ def test_expanded_rows_stay_expanded_with_their_rows_across_updates(qtbot: QtBot
     ]
 
 
+def test_the_list_keeps_its_scroll_position_when_the_rows_change(qtbot: QtBot) -> None:
+    """Opening an entry far down the list refreshes the rows; the list must not jump back to the top."""
+    playlists = tuple(_playlist(1, f"playlist-{index}") for index in range(40))
+    tree = _tree(qtbot, *playlists)
+    tree.resize(300, 300)
+    scroll_bar = tree.verticalScrollBar()
+    qtbot.waitUntil(lambda: scroll_bar.maximum() > 0)
+    position = scroll_bar.maximum() // 2
+    scroll_bar.setValue(position)
+
+    tree.set_sections((WorkspaceBrowserSection(BrowserSection.PLAYLISTS, playlists),))
+    qtbot.wait(10)
+
+    assert scroll_bar.value() == position
+
+
 def test_a_section_caption_heads_its_rows_and_never_collapses(qtbot: QtBot) -> None:
     tree = _tree(qtbot, _playlist(1))
     section = _item(tree)

@@ -10,16 +10,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
-from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QComboBox, QLabel, QScrollArea
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QComboBox
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
-from ax_devil.modules.chrome.elided_label import ElidedLabel
-from ax_devil.modules.chrome.list_row import ListRow
-from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.plugin_system import (
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
     PluginDefinitionBase,
@@ -38,9 +34,10 @@ from ax_devil.modules.workspace.core import (
     WorkspaceBackup,
 )
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
-from ax_devil.modules.workspace.ui.playlists_view import PlaylistListing, PlaylistState, PlaylistsView
+from ax_devil.modules.workspace.ui.playlists_view import PlaylistsView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.contents import make_video
+from tests.helpers.section_tree import captions, double_click, expand, press, row, row_action, row_texts, titles
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext
 
@@ -90,43 +87,24 @@ def _view(session: WorkspaceSession) -> PlaylistsView:
     return view
 
 
-def _rows(view: PlaylistsView) -> list[ListRow]:
-    """Return the rows the view lists now, top to bottom."""
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    return view.findChildren(ListRow)
+def _texts(view: PlaylistsView, title: str) -> list[str]:
+    return row_texts(row(view.tree, title))
 
 
-def _texts(row: ListRow) -> list[str]:
-    """Return the text a row shows, title first."""
-    return [
-        label.full_text() if isinstance(label, ElidedLabel) else label.text()
-        for label in row.findChildren(QLabel)
-        if isinstance(label, ElidedLabel) or label.text()
-    ]
+def _resolvers() -> list[PluginRecord]:
+    return RuntimePluginRegistry.get_plugins(PLAYLIST_RESOLVER_PLUGIN_TYPE)
 
 
-def _row(view: PlaylistsView, title: str) -> ListRow:
-    return next(row for row in _rows(view) if _texts(row)[0] == title)
+def _resolver_names() -> list[str]:
+    return [record.definition.display_name for record in _resolvers()]
 
 
-def _titles(view: PlaylistsView) -> list[str]:
-    return [_texts(row)[0] for row in _rows(view)]
-
-
-def _click(row: ListRow) -> None:
-    QTest.mouseClick(row, Qt.MouseButton.LeftButton, pos=QPoint(row.width() // 3, row.height() // 2))
-
-
-def _buttons(row: ListRow) -> list[SmallButton]:
-    return row.findChildren(SmallButton)
-
-
-def test_playlists_list_their_resolver_and_entries_and_expand_on_click(
+def test_playlists_list_their_entries_once_expanded(
     qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=_Folder(3), mot_challenge=_Folder(1))
     view = _view(session)
-    assert "Night shift" not in _titles(view)
+    assert captions(view.tree) == [f"Add from, {len(_resolver_names())}"]
 
     with patch(_OFFLINE_VIEWER, DummyViewer):
         session.add_items(
@@ -136,44 +114,28 @@ def test_playlists_list_their_resolver_and_entries_and_expand_on_click(
             ]
         )
 
-    assert _texts(_row(view, "Night shift")) == ["Night shift", "Folder Pair · 3 entries"]
-    assert _texts(_row(view, "MOT")) == ["MOT", "MOT Challenge · 1 entry"]
-    assert "run_00.mp4" not in _titles(view)
+    assert captions(view.tree)[0] == "Playlists, 2"
+    assert _texts(view, "Night shift") == ["Night shift", "3 entries"]
+    assert _texts(view, "MOT") == ["MOT", "1 entry"]
+    shown = titles(view.tree)
+    assert "run_02.mp4" in shown, "the playlist that opened on adding shows its entries"
+    assert shown[shown.index("MOT") + 1] == _resolver_names()[0], "the other one keeps them in until expanded"
 
-    _click(_row(view, "Night shift"))
-    assert _titles(view)[1:4] == ["run_00.mp4", "run_01.mp4", "run_02.mp4"]
-    assert _texts(_row(view, "run_00.mp4")) == ["run_00.mp4", "2 lanes"]
-    assert _texts(_row(view, "run_01.mp4")) == ["run_01.mp4"]
+    expand(view.tree, "MOT")
 
-    _click(_row(view, "Night shift"))
-    assert "run_00.mp4" not in _titles(view)
-
-
-def test_an_expanded_playlist_lists_twenty_entries_and_counts_the_rest(
-    qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
-) -> None:
-    session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=_Folder(23))
-    view = _view(session)
-    with patch(_OFFLINE_VIEWER, DummyViewer):
-        session.add_items([PlaylistItem(label="Day shift", resolver="folder_pair")])
-
-    _click(_row(view, "Day shift"))
-
-    titles = _titles(view)
-    entries = [title for title in titles if title.startswith("run_")]
-    assert entries == [f"run_{index:02d}.mp4" for index in range(20)]
-    assert titles[titles.index("run_19.mp4") + 1] == "3 more"
+    shown = titles(view.tree)
+    assert shown[shown.index("MOT") + 1] == "run_00.mp4"
 
 
-def test_clicking_an_entry_opens_its_playlist_at_that_entry(
+def test_double_clicking_an_entry_opens_its_playlist_at_that_entry(
     qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=_Folder(3))
     view = _view(session)
     with patch(_OFFLINE_VIEWER, DummyViewer):
         session.add_items([PlaylistItem(label="Night shift", resolver="folder_pair")])
-        _click(_row(view, "Night shift"))
-        _click(_row(view, "run_02.mp4"))
+        expand(view.tree, "Night shift")
+        double_click(view.tree, "run_02.mp4")
 
     viewer = session.focused_widget()
     assert isinstance(viewer, DummyViewer)
@@ -193,15 +155,14 @@ def test_rescan_picks_up_new_entries_without_opening_or_changing_a_viewer(
         assert isinstance(viewer, DummyViewer)
         shown = viewer.payload
         folder.count = 4
-        [rescan] = _buttons(_row(view, "Night shift"))
-        assert rescan.toolTip() == "Rescan"
-        rescan.click()
+        assert row_action(row(view.tree, "Night shift")) == "Rescan"
+        press(view.tree, "Night shift")
 
-    assert _texts(_row(view, "Night shift")) == ["Night shift", "Folder Pair · 4 entries"]
+    assert _texts(view, "Night shift") == ["Night shift", "4 entries"]
     assert session.focused_widget() is viewer and viewer.payload is shown
 
 
-def test_a_playlist_that_failed_shows_why_and_can_only_be_rescanned(
+def test_a_playlist_that_failed_says_why_on_hover_and_can_only_be_rescanned(
     qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager)
@@ -209,34 +170,10 @@ def test_a_playlist_that_failed_shows_why_and_can_only_be_rescanned(
     with patch("PySide6.QtWidgets.QMessageBox.warning"):
         session.add_items([PlaylistItem(label="Archive", resolver="folder_pair")])
 
-    row = _row(view, "Archive")
-    assert _texts(row) == ["Archive", "Playlist resolver 'folder_pair' is not installed."]
-    assert len(_buttons(row)) == 1
-    _click(row)
-    assert _titles(view).index("Archive") + 1 == _titles(view).index("Folder Pair")
-
-
-def test_the_list_keeps_its_scroll_position_when_the_rows_change(qtbot: QtBot) -> None:
-    """Opening an entry far down the list refreshes the rows; the list must not jump back to the top."""
-    view = PlaylistsView()
-    qtbot.addWidget(view)
-    view.resize(300, 300)
-    view.show()
-    playlists = [
-        PlaylistListing(str(index), str(index), f"Run {index}", "", PlaylistState.READY) for index in range(40)
-    ]
-    view.set_listings(playlists, [])
-    scroll = view.findChild(QScrollArea)
-    assert scroll is not None
-    scroll_bar = scroll.verticalScrollBar()
-    qtbot.waitUntil(lambda: scroll_bar.maximum() > 0)
-    position = scroll_bar.maximum() // 2
-    scroll_bar.setValue(position)
-
-    view.set_listings(playlists, [])
-    qtbot.waitUntil(lambda: scroll_bar.maximum() > 0 and all(row.isVisible() for row in _rows(view)))
-
-    assert scroll_bar.value() == position
+    failed = row(view.tree, "Archive")
+    assert row_texts(failed) == ["Archive", "Unavailable"]
+    assert "is not installed" in failed.toolTip()
+    assert row_action(failed) == "Rescan"
 
 
 class _Blocking:
@@ -265,12 +202,11 @@ def test_a_playlist_still_resolving_shows_loading_and_no_actions(
 
     session.add_items([PlaylistItem(label="Night shift", resolver="folder_pair")])
 
-    row = _row(view, "Night shift")
-    assert _texts(row) == ["Night shift", "Loading…"]
-    assert _buttons(row) == []
+    assert _texts(view, "Night shift") == ["Night shift", "Loading…"]
+    assert row_action(row(view.tree, "Night shift")) == ""
     with patch(_OFFLINE_VIEWER, DummyViewer):
         blocking.release.set()
-        qtbot.waitUntil(lambda: _texts(_row(view, "Night shift"))[1] == "Folder Pair · 1 entry")
+        qtbot.waitUntil(lambda: _texts(view, "Night shift") == ["Night shift", "1 entry"])
 
 
 def _external_resolver() -> PluginRecord:
@@ -289,17 +225,22 @@ def test_add_from_lists_the_loaded_resolvers_whenever_the_view_is_shown(
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager)
     view = _view(session)
-    builtins = RuntimePluginRegistry.get_plugins(PLAYLIST_RESOLVER_PLUGIN_TYPE)
-    assert _titles(view) == [record.definition.display_name for record in builtins]
+    builtins = _resolver_names()
+    assert titles(view.tree) == builtins
 
-    loaded = [*builtins, _external_resolver(), _failed_resolver()]
+    loaded = [*_resolvers(), _external_resolver(), _failed_resolver()]
     monkeypatch.setattr(RuntimePluginRegistry, "get_plugins", lambda _plugin_type: loaded)
     session.show_sidebar_view("workspace")
     session.show_sidebar_view("playlists")
 
-    assert _titles(view) == [*(record.definition.display_name for record in builtins), "Experiment Runs"]
-    assert _texts(_row(view, "Experiment Runs"))[1] == "From lab-experiments. Open each run."
-    assert _texts(_row(view, "Folder Pair"))[1] == "Match videos and overlays from two folders by file name."
+    assert titles(view.tree) == [*builtins, "Experiment Runs"]
+    assert {title: row_action(row(view.tree, title)) for title in titles(view.tree)} == dict.fromkeys(
+        titles(view.tree), "Add"
+    )
+    external = row(view.tree, "Experiment Runs")
+    assert row_texts(external) == ["Experiment Runs", "Open each run."]
+    assert "From lab-experiments." in external.toolTip()
+    assert _texts(view, "Folder Pair")[1] == "Match videos and overlays from two folders by file name."
 
 
 def test_add_opens_the_add_playlist_dialog_with_that_resolver_chosen(
@@ -320,11 +261,7 @@ def test_add_opens_the_add_playlist_dialog_with_that_resolver_chosen(
         QTimer.singleShot(0, dialog.reject)
         return original_exec(dialog)
 
-    requested: list[str] = []
-    view.add_requested.connect(requested.append)
     with patch.object(BaseDialog, "exec", note_choice):
-        [add] = _buttons(_row(view, "MOT Challenge"))
-        add.click()
+        press(view.tree, "MOT Challenge")
 
-    assert requested == ["mot_challenge"]
     assert chosen == ["MOT Challenge"]

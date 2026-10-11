@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
@@ -182,7 +182,7 @@ def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qt
     assert not section.flags() & Qt.ItemFlag.ItemIsSelectable
     assert section.toolTip(0) == ""
     activated = Mock()
-    browser.content_activated.connect(activated)
+    browser.tree.row_activated.connect(activated)
     _tree(browser).itemDoubleClicked.emit(section, 0)
     activated.assert_not_called()
     assert _row(required_child(section, 0)).label == "clip.mp4"
@@ -256,7 +256,7 @@ def test_consideration_toggle_requests_the_change_for_its_row(qtbot: QtBot) -> N
     toggle = _row_toggle(browser, _required_item_row(browser))
     assert not toggle.isChecked()
 
-    with qtbot.waitSignal(browser.item_consideration_change_requested, timeout=1000) as blocker:
+    with qtbot.waitSignal(browser.tree.row_consideration_changed, timeout=1000) as blocker:
         toggle.click()
 
     assert blocker.args == [item_ref, True]
@@ -361,8 +361,8 @@ def _double_click(
     QTest.mouseDClick(widget, Qt.MouseButton.LeftButton, modifier, pos=position)
 
 
-def test_double_click_opens_the_row_and_expands_it(qtbot: QtBot) -> None:
-    """Double-clicking a collapsed row opens its content and leaves its children visible instead of toggling them."""
+def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
+    """Double-clicking a collapsed row asks to open it and leaves its children visible instead of toggling them."""
     video = _make_video()
     browser = _browser(
         qtbot,
@@ -378,10 +378,10 @@ def test_double_click_opens_the_row_and_expands_it(qtbot: QtBot) -> None:
     top_item = _required_item_row(browser)
     top_item.setExpanded(False)
 
-    with qtbot.waitSignal(browser.content_activated, timeout=1000) as blocker:
+    with qtbot.waitSignal(browser.tree.row_activated, timeout=1000) as blocker:
         _double_click(_row_widget(browser, top_item))
 
-    assert blocker.args == [video, 0]
+    assert blocker.args == [_row(top_item), False]
     assert top_item.isExpanded()
 
 
@@ -398,28 +398,12 @@ def test_double_clicking_the_eye_toggle_does_not_open_the_row(qtbot: QtBot) -> N
         ),
     )
     activated = Mock()
-    browser.content_activated.connect(activated)
+    browser.tree.row_activated.connect(activated)
     browser.show()
     toggle = _row_toggle(browser, _required_item_row(browser))
 
     _double_click(toggle, position=toggle.rect().center())
 
-    activated.assert_not_called()
-
-
-def test_ctrl_double_click_opens_to_the_side(qtbot: QtBot) -> None:
-    video = _make_video()
-    browser = _browser(
-        qtbot, WorkspaceBrowserRow(row_id="video", label="Video", icon_kind="video", activation_target=(video, 0))
-    )
-    activated = Mock()
-    browser.content_activated.connect(activated)
-    browser.show()
-
-    with qtbot.waitSignal(browser.content_open_to_side_requested) as side:
-        _double_click(_row_widget(browser, _required_item_row(browser)), Qt.KeyboardModifier.ControlModifier)
-
-    assert side.args == [video, 0]
     activated.assert_not_called()
 
 
@@ -554,7 +538,7 @@ def test_workspace_item_info_dialog_fits_screen_and_is_resizable(qtbot: QtBot) -
     assert required_child(top, 2).text(0) == "Overlay 1"
 
 
-def test_an_unavailable_row_shows_its_reason_instead_of_opening(qtbot: QtBot) -> None:
+def test_an_unavailable_row_shows_its_reason_and_can_only_be_renamed_or_removed(qtbot: QtBot) -> None:
     item = VideoItem(video=Path("/missing/lot.mp4"))
     browser = _browser(
         qtbot,
@@ -566,16 +550,8 @@ def test_an_unavailable_row_shows_its_reason_instead_of_opening(qtbot: QtBot) ->
             unavailable_reason="File not found: /missing/lot.mp4",
         ),
     )
-    activated: list[object] = []
-    browser.content_activated.connect(lambda content, index: activated.append(content))
     tree_item = _required_item_row(browser)
 
-    with patch("ax_devil.modules.workspace.ui.content_browser.QMessageBox.warning") as warning:
-        _tree(browser).itemDoubleClicked.emit(tree_item, 0)
-
-    assert activated == []
-    [(_, _, message)] = [call.args for call in warning.call_args_list]
-    assert message == "lot.mp4: File not found: /missing/lot.mp4"
     assert "File not found: /missing/lot.mp4" in _row_widget(browser, tree_item).toolTip()
     assert list(_context_menu(browser, tree_item)) == ["Rename", "Remove"]
     with qtbot.waitSignal(browser.item_remove_requested) as removed:

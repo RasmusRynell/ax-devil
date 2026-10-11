@@ -449,6 +449,12 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
     row = _row(_required_item_row(workspace_session))
     assert (row.label, row.unavailable_reason) == ("Clip", message.removeprefix("Clip: "))
 
+    with patch("PySide6.QtWidgets.QMessageBox.warning") as again:
+        _tree(workspace_session).itemDoubleClicked.emit(_required_item_row(workspace_session), 0)
+
+    assert [call.args[1:] for call in again.call_args_list] == [("Open Content", message)], "a double click says why"
+    assert _center(workspace_session).get_widget_count() == 0
+
 
 def test_adding_live_content_auto_opens_live_viewer(
     workspace_session: WorkspaceSession,
@@ -539,7 +545,7 @@ def test_replaced_viewer_stops_receiving_consideration_updates(
 
     stored_second = _store(workspace_session).contents()[1]
     item_ref = ConsiderationItemRef.video_lane(stored_second.content_id, 0)
-    _browser(workspace_session).item_consideration_change_requested.emit(item_ref, False)
+    _browser(workspace_session).tree.row_consideration_changed.emit(item_ref, False)
 
     assert first_widget.cleaned_up
     assert first_widget.refresh_calls == []

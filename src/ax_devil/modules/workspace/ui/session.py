@@ -107,9 +107,9 @@ class WorkspaceSession(QObject):
         self._playlists_view = PlaylistsView()
         self._window.add_view(self._playlists_view.sidebar_view())
         self._playlists_controller = PlaylistsViewController(
-            self._playlists_view, self._workspace_controller, self._workspace_store, parent=self
+            self._playlists_view, self._workspace_controller, parent=self
         )
-        self._playlists_view.add_requested.connect(self.add_playlist_requested)
+        self._playlists_controller.add_requested.connect(self.add_playlist_requested)
         self._bookmarks_view = BookmarksView()
         self._bookmarks = BookmarksViewController(
             self._bookmarks_view, self._workspace_store, self._workspace_controller, parent=self

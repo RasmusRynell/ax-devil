@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 
 from PySide6.QtCore import QObject
 
@@ -11,7 +12,12 @@ from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera, pa
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import WorkspaceItem, live_stream_item_from_defaults
-from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserSection
+from ax_devil.modules.workspace.ui.browser_rows import (
+    BrowserSection,
+    RowAction,
+    WorkspaceBrowserRow,
+    WorkspaceBrowserSection,
+)
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
@@ -47,13 +53,32 @@ def _workspace_hosts(items: Sequence[WorkspaceItem]) -> frozenset[str]:
     return frozenset(host for item in items for host in item.hosts)
 
 
-class LiveViewController(QObject):
-    """Feed *view* the workspace's live stream rows and the cameras found on the network that it does not hold yet.
+def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceBrowserRow:
+    """Return the row of a *camera* the scan found, named by its model, whose Add does *add*."""
+    return WorkspaceBrowserRow(
+        row_id=f"network/{camera.host}",
+        label=camera.model or camera.host,
+        icon_kind="live_video",
+        detail=" · ".join(part for part in (camera.host, camera.serial) if part),
+        facts=("Camera on the network",),
+        action=RowAction.ADD,
+        add=add,
+    )
 
-    Connect and Disconnect are the rows' actions, which *workspace* carries out. Nothing touches the network
-    until the user asks for a scan of the IP range in the view, which starts as the Settings' default and searches the
-    local network when empty; *scan* runs through *resolver* away from the GUI thread, and its result is dropped once
-    the view is gone. Add puts the camera in *store* with the user's stream defaults.
+
+def _add_camera(store: WorkspaceStore, camera: DiscoveredCamera) -> None:
+    """Add *camera* to *store* with the stream defaults; like any added item, it opens once resolved."""
+    store.add_items([live_stream_item_from_defaults(host=camera.host, label=camera.model)])
+
+
+class LiveViewController(QObject):
+    """Feed *view* the workspace's Live section and, once a scan has run, the cameras it found that the workspace
+    does not hold yet.
+
+    *workspace* carries out what the rows ask for. Nothing touches the network until the user asks for a scan of the
+    IP range in the view, which starts as the Settings' default and searches the local network when empty; *scan* runs
+    through *resolver* away from the GUI thread, and its result is dropped once the view is gone. A found camera's Add
+    puts it in *store* with the user's stream defaults.
     """
 
     def __init__(
@@ -75,8 +100,7 @@ class LiveViewController(QObject):
         view.set_scan_range(self._given_range)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan finishes
         self._scanning = False
-        view.camera_action_requested.connect(workspace.perform_row_action)
-        view.add_requested.connect(self._on_add)
+        workspace.connect_tree(view.tree)
         view.scan_requested.connect(self.scan)
         view.destroyed.connect(self._forget_view)
         workspace.sections_changed.connect(self._show)
@@ -116,18 +140,21 @@ class LiveViewController(QObject):
         self._show(self._workspace.sections())
 
     def _show(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
-        """Show the live stream rows, and the cameras found that the workspace does not hold."""
+        """Show the Live section, how many of its cameras are connected, and the cameras found that the workspace
+        does not hold."""
         if self._view is None:
             return
-        rows = next((section.rows for section in sections if section.kind is BrowserSection.LIVE), ())
-        self._view.set_cameras(rows)
+        shown = tuple(section for section in sections if section.kind is BrowserSection.LIVE)
+        connected = sum(row.action is RowAction.DISCONNECT for section in shown for row in section.rows)
         if self._found is not None:
             held = _workspace_hosts(self._store.workspace.items)
-            self._view.set_network([camera for camera in self._found if camera.host not in held])
-
-    def _on_add(self, camera: DiscoveredCamera) -> None:
-        """Add *camera* to the workspace with the stream defaults; like any added item, it opens once resolved."""
-        self._store.add_items([live_stream_item_from_defaults(host=camera.host, label=camera.model)])
+            found = tuple(
+                _network_row(camera, partial(_add_camera, self._store, camera))
+                for camera in self._found
+                if camera.host not in held
+            )
+            shown += (WorkspaceBrowserSection(BrowserSection.NETWORK, found),)
+        self._view.set_sections(shown, f"{connected} connected" if connected else "")
 
     def _forget_view(self) -> None:
         self._view = None

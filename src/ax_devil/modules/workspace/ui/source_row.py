@@ -6,13 +6,14 @@ from html import escape
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QToolButton, QWidget
+from PySide6.QtWidgets import QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.list_row import ListRow
+from ax_devil.modules.chrome.list_row import ListRow, muted_label
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
-from ax_devil.modules.chrome.theme import KindColor, StatusColor
+from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.ui.browser_rows import (
     RowAction,
     WorkspaceBrowserIconKind,
@@ -30,11 +31,26 @@ _KIND_MARKS: dict[WorkspaceBrowserIconKind, tuple[Icon, KindColor | StatusColor]
 }
 
 
-def section_caption(section: WorkspaceBrowserSection) -> SectionCaption:
-    """Return the caption that heads *section*: its title and row count, marked in its kind's color or muted."""
+def section_caption(section: WorkspaceBrowserSection, text_indent: int) -> QWidget:
+    """Return the caption that heads *section*: its title and row count, marked in its kind's color or muted.
+
+    A section without rows has no count, and says its kind's empty text under the caption, *text_indent* in.
+    """
     kind = section.kind
     mark = KindColor.MUTED if kind.addable else _KIND_MARKS[kind.icon_kind][1]
-    return SectionCaption(kind.title, len(section.rows), mark.color)
+    caption = SectionCaption(kind.title, len(section.rows) or None, mark.color)
+    if section.rows or not kind.empty_text:
+        return caption
+    heading = QWidget()
+    heading.setStyleSheet(SEE_THROUGH)
+    layout = QVBoxLayout(heading)
+    layout.setContentsMargins(0, 0, 0, Space.S)
+    layout.setSpacing(0)
+    layout.addWidget(caption)
+    note = muted_label(kind.empty_text)
+    note.setContentsMargins(text_indent, 0, 0, 0)
+    layout.addWidget(note)
+    return heading
 
 
 class _ConsiderationToggle(QToolButton):

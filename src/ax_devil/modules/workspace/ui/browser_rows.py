@@ -44,21 +44,23 @@ class BrowserSection(Enum):
     """A titled group of top-level rows, in the order the browser lists them, with the icon kind it is marked by.
 
     An *addable* section lists things the Workspace does not hold yet, which its rows' Add adds; its mark is muted.
+    A section listed without rows says its *empty_text* under its caption, or is hidden when it has none.
     """
 
     LIVE = ("Live", "live_video", False)
     VIDEOS = ("Videos", "video", False)
     PLAYLISTS = ("Playlists", "playlist", False)
     OTHER = ("Other", "unavailable", False)
-    NETWORK = ("On the network", "live_video", True)
+    NETWORK = ("On the network", "live_video", True, "No new cameras")
     """Cameras a network scan found."""
     ADD_FROM = ("Add from", "playlist", True)
     """The playlist resolvers that can add playlists."""
 
-    def __init__(self, title: str, icon_kind: WorkspaceBrowserIconKind, addable: bool) -> None:
+    def __init__(self, title: str, icon_kind: WorkspaceBrowserIconKind, addable: bool, empty_text: str = "") -> None:
         self.title = title
         self.icon_kind = icon_kind
         self.addable = addable
+        self.empty_text = empty_text
 
 
 class RowAction(Enum):
@@ -118,6 +120,8 @@ class WorkspaceBrowserRow:
     """Lines that open the hover text, starting with what kind of row this is."""
     action: RowAction | None = None
     """The action the row offers, if any."""
+    add: Callable[[], None] | None = None
+    """What the Add action of a row for something the Workspace does not hold does: add it, or ask how."""
     idle: bool = False
     """Whether the row's thing is not running: a camera no viewer shows, or an item still loading."""
 

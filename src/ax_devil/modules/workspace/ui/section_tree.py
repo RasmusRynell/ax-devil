@@ -23,7 +23,8 @@ RowPredicate = Callable[[WorkspaceBrowserRow], bool]
 class SectionTree(QTreeWidget):
     """Show browser sections, and report what the user does with their rows.
 
-    Sections always stay expanded; rows expand and collapse with Qt's branch arrows, and keep that state across
+    Sections always stay expanded; one with no row shown is hidden, unless it has no rows at all and its kind has an
+    empty text to say instead. Rows expand and collapse with Qt's branch arrows, and keep that state across
     ``set_sections`` by row id. A row that turns open is revealed. Row widgets are built when their row can first be
     seen, so a long playlist builds its entries' widgets only once it is expanded; filtering reads row data, never
     widgets.
@@ -90,7 +91,8 @@ class SectionTree(QTreeWidget):
             heading.setData(0, Qt.ItemDataRole.AccessibleTextRole, f"{section.kind.title}, {len(section.rows)}")
             heading.addChildren([self._tree_item(row) for row in section.rows])
             self.addTopLevelItem(heading)
-            self.setItemWidget(heading, 0, section_caption(section))
+            # The empty text starts where the rows a section would hold start, at their side margin.
+            self.setItemWidget(heading, 0, section_caption(section, self.indentation() + Space.M))
             heading.setExpanded(True)
             self._install_children(heading)
         for item, row in self._row_items():
@@ -146,12 +148,13 @@ class SectionTree(QTreeWidget):
             item.setExpanded(True)
 
     def _apply_filter(self) -> None:
-        """Show or hide every row by the filter, and each section by whether any of its rows is shown."""
-        for index in range(self.topLevelItemCount()):
+        """Show or hide every row by the filter, and each section by whether any of its rows is shown, or it has no
+        rows and says so."""
+        for index, section in enumerate(self._sections):
             heading = self.topLevelItem(index)
             if heading is None:
                 continue
-            shown = False
+            shown = not section.rows and bool(section.kind.empty_text)
             for child_index in range(heading.childCount()):
                 child = heading.child(child_index)
                 if child is not None:

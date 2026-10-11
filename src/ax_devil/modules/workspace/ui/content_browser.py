@@ -1,13 +1,13 @@
 """The Workspace view's content browser: a search field and an excluded-items filter over the section tree.
 
-Double-clicking a row opens it (Ctrl+double-click opens it to the side); right-clicking offers its menu.
+Right-clicking a row offers its menu; what the tree's rows do otherwise is the workspace controller's to carry out.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMenu, QMessageBox, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMenu, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
@@ -25,8 +25,6 @@ class ContentBrowserWidget(QWidget):
 
     content_activated = Signal(object, int)
     content_open_to_side_requested = Signal(object, int)
-    item_consideration_change_requested = Signal(object, bool)
-    item_action_requested = Signal(object)  # WorkspaceBrowserRow whose action was pressed
     item_remove_requested = Signal(str)  # item id
     item_rename_requested = Signal(str, str)  # item id, new label; empty for the default name
     export_requested = Signal(object)  # OnScreenWorkspaceItem
@@ -52,24 +50,22 @@ class ContentBrowserWidget(QWidget):
         toolbar.addWidget(self._show_excluded_toggle)
         layout.addLayout(toolbar)
 
-        self._tree = SectionTree()
-        layout.addWidget(self._tree)
+        self.tree = SectionTree()
+        """The rows, whose double-clicks, actions, and eyes the workspace controller carries out."""
+        layout.addWidget(self.tree)
 
-        self._tree.row_activated.connect(self._on_row_activated)
-        self._tree.row_action_requested.connect(self.item_action_requested)
-        self._tree.row_consideration_changed.connect(self.item_consideration_change_requested)
-        self._tree.context_menu_requested.connect(self._show_context_menu)
+        self.tree.context_menu_requested.connect(self._show_context_menu)
         self._apply_visibility_filters()
         self.setStyleSheet("#AxDevilContentBrowser { background: palette(alternate-base); }")
 
     def set_browser_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
         """Render section headings and their explicit workspace item rows."""
-        self._tree.set_sections(sections)
+        self.tree.set_sections(sections)
         self.rows_changed.emit()
 
     def has_rows(self) -> bool:
         """Return whether the browser lists any workspace content."""
-        return self._tree.has_rows()
+        return self.tree.has_rows()
 
     def _create_search_edit(self) -> QLineEdit:
         """Create the content-name search field."""
@@ -126,22 +122,10 @@ class ContentBrowserWidget(QWidget):
     def _apply_visibility_filters(self) -> None:
         """Hide excluded rows unless they are to be shown, and while searching, rows that do not match the search."""
         query = self._search_query
-        self._tree.set_filter(
+        self.tree.set_filter(
             lambda row: row.consideration_ref is None or row.is_considered or self._show_excluded,
             (lambda row: query in row.search_text.casefold()) if query else None,
         )
-
-    def _on_row_activated(self, row: WorkspaceBrowserRow, to_side: bool) -> None:
-        """Open a double-clicked row, to the side when asked; an unavailable row says why it cannot open instead."""
-        if row.unavailable_reason is not None:
-            QMessageBox.warning(self, "Open Content", f"{row.label}: {row.unavailable_reason}")
-            return
-        if row.activation_target is None:
-            return
-        if to_side:
-            self.content_open_to_side_requested.emit(*row.activation_target)
-        else:
-            self.content_activated.emit(*row.activation_target)
 
     def _show_context_menu(self, row: WorkspaceBrowserRow, position: QPoint) -> None:
         """Show the menu of *row* at the screen *position*."""
