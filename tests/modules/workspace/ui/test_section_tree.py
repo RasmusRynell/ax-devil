@@ -71,6 +71,15 @@ def _playlist(entries: int, row_id: str = "playlist") -> WorkspaceBrowserRow:
     )
 
 
+def _with_open_entry(playlist: WorkspaceBrowserRow, index: int) -> WorkspaceBrowserRow:
+    """Return *playlist* as the viewer shows it: open, with only the entry at *index* open."""
+    return replace(
+        playlist,
+        is_open=True,
+        children=tuple(replace(entry, is_open=position == index) for position, entry in enumerate(playlist.children)),
+    )
+
+
 def test_entries_get_row_widgets_only_once_their_playlist_is_expanded(qtbot: QtBot) -> None:
     tree = _tree(qtbot, _playlist(300))
     playlist = _item(tree, 0)
@@ -111,6 +120,16 @@ def test_expanded_rows_stay_expanded_with_their_rows_across_updates(qtbot: QtBot
         "run_002",
         "run_003",
     ]
+
+
+def test_moving_the_open_entry_collapses_the_previous_entry_and_expands_the_new_one(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _with_open_entry(_playlist(3), 0))
+
+    tree.set_sections(_sections(_with_open_entry(_playlist(3), 1)))
+
+    assert _item(tree, 0).isExpanded()
+    assert not _item(tree, 0, 0).isExpanded()
+    assert _item(tree, 0, 1).isExpanded()
 
 
 def test_the_list_keeps_its_scroll_position_when_the_rows_change(qtbot: QtBot) -> None:
