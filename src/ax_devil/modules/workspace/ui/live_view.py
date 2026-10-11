@@ -15,7 +15,7 @@ from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
-from ax_devil.modules.chrome.theme import KindColor, StatusColor
+from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.chrome.view_panel import ViewPanel
 from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera
@@ -115,6 +115,7 @@ class LiveView(ViewPanel):
         controls_layout.addWidget(self._scan_progress)
         controls_layout.addWidget(self._scan_status)
         footer = QWidget(self)
+        footer.setStyleSheet(SEE_THROUGH)
         footer_layout = QVBoxLayout(footer)
         footer_layout.setContentsMargins(0, Space.S, 0, Space.M)
         footer_layout.setSpacing(Space.XS)

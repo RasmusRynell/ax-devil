@@ -304,7 +304,7 @@ def test_a_scan_searches_the_ip_range_in_the_field_and_the_field_starts_as_the_s
     live.button("Rescan").click()
     live.scans.finish()
 
-    assert live.scanner.targets == ("10.0.0.5", "10.0.0.1", "10.0.0.2")
+    assert live.scanner.targets == ("10.0.0.1", "10.0.0.2", "10.0.0.5")
 
 
 def test_an_empty_ip_range_scans_the_local_network(live: _Live) -> None:

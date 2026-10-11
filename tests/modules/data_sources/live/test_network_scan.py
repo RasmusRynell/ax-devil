@@ -353,6 +353,24 @@ def test_search_asks_each_target_and_hears_only_them(monkeypatch: pytest.MonkeyP
     assert [b"HOST: 192.168.0.90:1900\r\n" in request for request, _destination in fake.sent] == [True, False]
 
 
+def test_search_goes_on_after_a_windows_connection_reset(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Reset(_FakeUdpSocket):
+        resets = 2
+
+        def recvfrom(self, size: int) -> tuple[bytes, tuple[str, int]]:
+            if self.resets:
+                self.resets -= 1
+                raise ConnectionResetError
+            return super().recvfrom(size)
+
+    answer = b"HTTP/1.1 200 OK\r\nLOCATION: http://192.168.0.90/d.xml\r\n\r\n"
+    monkeypatch.setattr(socket, "socket", lambda *args: Reset([(answer, ("192.168.0.90", 1900))]))
+
+    responses = NetworkScanTransport().search(timeout=5.0, targets=["192.168.0.90", "192.168.0.91"])
+
+    assert [response.address for response in responses] == ["192.168.0.90"]
+
+
 def test_search_skips_a_target_it_cannot_reach_but_fails_when_none_can_be_asked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -389,7 +407,7 @@ def test_scan_searches_the_targets_it_is_given() -> None:
 
 def test_scan_targets_are_addresses_and_ranges_without_repeats() -> None:
     assert parse_scan_targets("") == ()
-    assert parse_scan_targets("10.0.0.5, 10.0.0.0/30 10.0.0.5") == ("10.0.0.5", "10.0.0.1", "10.0.0.2")
+    assert parse_scan_targets("10.0.0.5, 10.0.0.0/30 10.0.0.5") == ("10.0.0.1", "10.0.0.2", "10.0.0.5")
     assert parse_scan_targets("10.0.0.7/32") == ("10.0.0.7",)
     assert len(parse_scan_targets("192.168.1.0/24")) == 254
 
@@ -398,6 +416,13 @@ def test_ranges_are_counted_before_they_are_expanded() -> None:
     assert len(parse_scan_targets(" ".join(["10.0.0.0/20"] * 100_000))) == 4094
     with pytest.raises(ValueError, match="at most"):
         parse_scan_targets("10.0.0.0/20 10.1.0.0/24")
+
+
+def test_overlapping_ranges_count_their_addresses_once() -> None:
+    assert len(parse_scan_targets("10.0.0.0/20 10.0.0.0/21 10.0.0.9")) == 4094
+    assert parse_scan_targets("10.0.0.0/24 10.0.0.0") == tuple(f"10.0.0.{i}" for i in range(0, 255)), (
+        "an address named on its own is scanned even where a range leaves it out"
+    )
 
 
 @pytest.mark.parametrize("text", ["camera", "10.0.0.256", "10.0.0.0/33", "fe80::1", "10.0.0.0/8"])

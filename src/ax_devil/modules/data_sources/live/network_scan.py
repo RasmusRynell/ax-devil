@@ -70,29 +70,30 @@ class SsdpResponse:
 
 
 def parse_scan_targets(text: str) -> tuple[str, ...]:
-    """Return the IPv4 addresses *text* names, in order and without repeats; empty text names none.
+    """Return the IPv4 addresses *text* names, in address order and without repeats; empty text names none.
 
-    *text* is addresses and CIDR ranges such as ``192.168.1.0/24`` (its host addresses), separated by commas or
-    spaces. Raise ``ValueError`` for anything else, or when the distinct ranges add up to more than
-    ``MAX_SCAN_TARGETS`` addresses; that is checked before any range is expanded, so pasting a huge list is cheap.
+    *text* is addresses and CIDR ranges such as ``192.168.1.0/24`` (its host addresses, not the network and broadcast
+    addresses), separated by commas or spaces. Raise ``ValueError`` for anything else, or when the addresses named
+    add up to more than ``MAX_SCAN_TARGETS``; ranges are merged and counted before any is expanded, so pasting a huge
+    list is cheap.
     """
-    networks: dict[ipaddress.IPv4Network, None] = {}
-    size = 0
+    spans: set[tuple[int, int]] = set()  # First and last address of each token, as integers.
     for token in text.replace(",", " ").split():
         try:
             network = ipaddress.IPv4Network(token, strict=False)
         except (ipaddress.AddressValueError, ipaddress.NetmaskValueError):
             raise ValueError(f"{token} is not an IPv4 address or range such as 192.168.1.0/24.") from None
-        if network not in networks:
-            networks[network] = None
-            size += network.num_addresses
-            if size > MAX_SCAN_TARGETS:
-                raise ValueError(f"Enter at most {MAX_SCAN_TARGETS} addresses.")
-    targets: dict[str, None] = {}
-    for network in networks:
-        for host in network.hosts():
-            targets[str(host)] = None
-    return tuple(targets)
+        hosts = network.prefixlen >= 31
+        spans.add((int(network[0]) + (not hosts), int(network[-1]) - (not hosts)))
+    merged: list[list[int]] = []
+    for first, last in sorted(spans):
+        if merged and first <= merged[-1][1] + 1:
+            merged[-1][1] = max(merged[-1][1], last)
+        else:
+            merged.append([first, last])
+    if sum(last - first + 1 for first, last in merged) > MAX_SCAN_TARGETS:
+        raise ValueError(f"Enter at most {MAX_SCAN_TARGETS} addresses.")
+    return tuple(str(ipaddress.IPv4Address(address)) for first, last in merged for address in range(first, last + 1))
 
 
 class ScanTransport(Protocol):
@@ -141,6 +142,8 @@ class NetworkScanTransport:
                     data, (address, _port) = sock.recvfrom(8192)
                 except TimeoutError:
                     break
+                except ConnectionResetError:  # Windows reports an unreachable target's ICMP error on the next read.
+                    continue
                 location = _location_header(data)
                 if location is None or address in responses or not _is_own_http_url(location, address):
                     continue
