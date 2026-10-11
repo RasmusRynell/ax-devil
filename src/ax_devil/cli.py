@@ -33,7 +33,7 @@ from ax_devil.modules.workspace.core import (
 )
 
 from .app import create_app
-from .cli_options import CONFIG_OPTION, DEBUG_OPTION, LOG_LEVEL_OPTION, apply_run_options
+from .cli_options import CONFIG_OPTION, apply_run_options
 
 
 def _require_existing_config_path(config: Path | None) -> None:
@@ -375,9 +375,6 @@ def list_handlers() -> None:
 
 
 @cli.command()
-@LOG_LEVEL_OPTION
-@CONFIG_OPTION
-@DEBUG_OPTION
 @click.option(
     "--video",
     type=click.Path(exists=True, path_type=Path, dir_okay=False),
@@ -394,9 +391,6 @@ def list_handlers() -> None:
 @click.pass_context
 def local(
     ctx: click.Context,
-    log_level: str,
-    config: Path | None,
-    debug: bool,
     video: Path,
     overlay: Path | None,
     handler_type: str | None,
@@ -409,7 +403,7 @@ def local(
       ax-devil local --video recording.mp4
       ax-devil local --video recording.mp4 --overlay data.jsonl --handler-type ADF_BETA_FRAME
     """
-    effective_config = config or (ctx.obj.get("config") if isinstance(ctx.obj, dict) else None)
+    runtime = ctx.obj
 
     if overlay and not handler_type:
         raise click.ClickException("--handler-type is required when --overlay is set.")
@@ -418,29 +412,28 @@ def local(
         video=video.resolve(),
         overlays=(OverlayFile(overlay.resolve(), handler_type),) if overlay and handler_type else (),
     )
-    _run_app(log_level=log_level, config=effective_config, debug=debug, items=[item])
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
 
 
 @cli.command("open")
-@LOG_LEVEL_OPTION
-@CONFIG_OPTION
-@DEBUG_OPTION
 @click.argument("workspace_file", type=click.Path(exists=True, path_type=Path, dir_okay=False))
 @click.pass_context
-def open_workspace(ctx: click.Context, log_level: str, config: Path | None, debug: bool, workspace_file: Path) -> None:
+def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
     """Open a saved .ax-devil.workspace file."""
-    effective_config = config or (ctx.obj.get("config") if isinstance(ctx.obj, dict) else None)
+    runtime = ctx.obj
     try:
         load_workspace(workspace_file)
     except WorkspaceFileError as exc:
         raise click.ClickException(str(exc)) from exc
-    _run_app(log_level=log_level, config=effective_config, debug=debug, workspace_file=workspace_file.absolute())
+    _run_app(
+        log_level=runtime["log_level"],
+        config=runtime["config"],
+        debug=runtime["debug"],
+        workspace_file=workspace_file.absolute(),
+    )
 
 
 @cli.command()
-@LOG_LEVEL_OPTION
-@CONFIG_OPTION
-@DEBUG_OPTION
 @click.option("--host", default=None, help="Device host (default: config/env)")
 @click.option("--username", default=None, help="Device username (default: config/env)")
 @click.option("--password", default=None, help="Device password (default: config/env)")
@@ -476,9 +469,6 @@ def open_workspace(ctx: click.Context, log_level: str, config: Path | None, debu
 @click.pass_context
 def live(
     ctx: click.Context,
-    log_level: str,
-    config: Path | None,
-    debug: bool,
     host: str | None,
     username: str | None,
     password: str | None,
@@ -511,8 +501,8 @@ def live(
     """
     setup_logging(console_log_level="WARNING", console_only=True)
 
-    effective_config = config or (ctx.obj.get("config") if isinstance(ctx.obj, dict) else None)
-    _apply_cli_config_and_reload_plugins(effective_config)
+    runtime = ctx.obj
+    _apply_cli_config_and_reload_plugins(runtime["config"])
     try:
         item = _live_item_from_config(
             host=host,
@@ -562,12 +552,7 @@ def live(
         if values.websocket_channel_id < 1:
             raise click.ClickException("--channel-id must be a positive integer.")
 
-    _run_app(
-        log_level=log_level,
-        config=effective_config,
-        debug=debug,
-        items=[item],
-    )
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
 
 
 cli.add_command(plugins)

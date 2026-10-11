@@ -868,3 +868,36 @@ def test_cli_open_launches_a_saved_workspace_and_rejects_a_damaged_one(
         assert result.exit_code == 0
         assert captured["workspace_file"] == workspace_file
         assert captured.get("items", ()) == ()
+
+
+@pytest.mark.parametrize("command", ["local", "open"])
+def test_cli_group_options_reach_the_app_launched_by_a_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command: str
+) -> None:
+    monkeypatch.syspath_prepend(str(_repo_root() / "src"))
+    captured: dict[str, Any] = {}
+    app_module = ModuleType("ax_devil.app")
+
+    class DummyApp:
+        def run(self) -> int:
+            return 0
+
+    def _create_app(*args: Any, **kwargs: Any) -> DummyApp:
+        captured.update(kwargs)
+        return DummyApp()
+
+    setattr(app_module, "create_app", _create_app)
+    monkeypatch.setitem(sys.modules, "ax_devil.app", app_module)
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    target = tmp_path / ("clip.mp4" if command == "local" else "Lot.ax-devil.workspace")
+    target.write_text('{"version": 1, "items": []}', encoding="utf-8")
+    arguments = ["--video", str(target)] if command == "local" else [str(target)]
+
+    result = CliRunner().invoke(
+        _import_cli_module(monkeypatch).cli,
+        ["--debug", "--log-level", "DEBUG", "--config", str(config_path), command, *arguments],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (captured["debug"], captured["log_level"], captured["config_path"]) == (True, "DEBUG", config_path)
