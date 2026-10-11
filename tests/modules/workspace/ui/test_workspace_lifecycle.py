@@ -258,6 +258,29 @@ def test_a_launch_with_a_workspace_file_asks_about_the_kept_workspace_edits_even
     assert store.workspace.path == saved.path and store.is_modified
 
 
+@pytest.mark.parametrize("action", ["new", "open"])
+def test_replacing_a_workspace_still_being_restored_asks_about_its_edits_even_when_reading_is_slow(
+    tmp_path: Path, action: str
+) -> None:
+    class _NeverRuns(ItemResolver):
+        def run(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = bool) -> None:
+            """Leave background work unfinished, as a slow filesystem does."""
+
+    saved = save_workspace(Workspace(items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace")
+    backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
+    backup.keep(saved.add_items([_video(tmp_path, "unsaved.mp4")]))
+    other = save_workspace(Workspace(), tmp_path / "Other.ax-devil.workspace")
+    prompts = FakePrompts(SaveChoice.CANCEL, open_path=other.path)
+    store = WorkspaceStore(_NeverRuns(FakeResolutionContext(), in_background=False))
+    lifecycle = WorkspaceLifecycle(store, prompts, backup, RecentWorkspaces(lambda: tmp_path / "recent.json"))
+    lifecycle.launch()
+
+    assert not (lifecycle.new_workspace() if action == "new" else lifecycle.open_workspace())
+
+    assert prompts.asked_to_save == ["Lot"]
+    assert store.workspace.path == saved.path and store.is_modified
+
+
 def test_a_launch_with_a_workspace_file_opens_it(launches: _Launches, tmp_path: Path) -> None:
     saved = save_workspace(Workspace(items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace")
     launch = launches.new()

@@ -126,6 +126,7 @@ class WorkspaceLifecycle(QObject):
 
     def _settle_unsaved_changes(self) -> bool:
         """Return whether the current Workspace may be replaced, asking to save it first when it is modified."""
+        self._store.finish_restore()
         if not self._store.is_modified:
             return True
         choice = self._prompts.ask_save_changes(self._store.workspace.name)
