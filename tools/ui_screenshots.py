@@ -70,6 +70,9 @@ SCALE = _shot_scale()
 # Qt reads these when the application starts, which pytest-qt does after collecting this module. Dialogs fit
 # themselves to the screen, so the offscreen screen keeps its default 800x800 logical size at every scale.
 os.environ["QT_SCALE_FACTOR"] = str(SCALE)
+# Qt multiplies these into the scale, or turns it off, when the calling shell sets them.
+for _inherited in ("QT_SCREEN_SCALE_FACTORS", "QT_AUTO_SCREEN_SCALE_FACTOR", "QT_ENABLE_HIGHDPI_SCALING"):
+    os.environ.pop(_inherited, None)
 if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
     # One file per run, so overlapping runs with different scales never read each other's screen.
     with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="ax-devil-ui-shots-", delete=False) as config:
