@@ -14,10 +14,7 @@ from ax_devil.modules.chrome.palette_css import palette_color_css, qcolor_to_css
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 
-_FILL_ALPHA = 0.08
-_HOVER_ALPHA = 0.16
-_DANGER_FILL_ALPHA = 0.12
-_DANGER_HOVER_ALPHA = 0.24
+_HOVER_ALPHA = 0.08
 
 
 class ButtonKind(Enum):
@@ -31,7 +28,8 @@ class ButtonKind(Enum):
 class SmallButton(QPushButton):
     """A button one row high, with an optional icon; give an empty *text* for an icon-only button.
 
-    Its outline is always the color of its fill, hovered or not, so the button reads as one shape.
+    A plain or danger button has no fill at rest, so it takes the color behind it; hovering tints it. The outline is
+    always the color of the fill, so the button reads as one shape.
     """
 
     def __init__(
@@ -49,7 +47,7 @@ class SmallButton(QPushButton):
         palette = QGuiApplication.palette()
         self.setFixedHeight(Height.ROW.px)
         text = palette.color(QPalette.ColorRole.Text)
-        fill = palette_color_css(palette, QPalette.ColorRole.Text, alpha=_FILL_ALPHA)
+        fill = "transparent"
         hover_fill = palette_color_css(palette, QPalette.ColorRole.Text, alpha=_HOVER_ALPHA)
         if self._kind is ButtonKind.PRIMARY:
             text = palette.color(QPalette.ColorRole.HighlightedText)
@@ -57,8 +55,7 @@ class SmallButton(QPushButton):
             hover_fill = qcolor_to_css(palette.color(QPalette.ColorRole.Highlight).lighter(112))
         elif self._kind is ButtonKind.DANGER:
             text = StatusColor.ERROR.color(palette)
-            fill = qcolor_to_css(text, alpha=_DANGER_FILL_ALPHA)
-            hover_fill = qcolor_to_css(text, alpha=_DANGER_HOVER_ALPHA)
+            hover_fill = qcolor_to_css(text, alpha=_HOVER_ALPHA)
         padding = Space.S if not self.text() else Space.M
         self.setStyleSheet(
             f"""
