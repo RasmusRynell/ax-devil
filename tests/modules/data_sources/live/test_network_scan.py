@@ -350,6 +350,7 @@ def test_search_asks_each_target_and_hears_only_them(monkeypatch: pytest.MonkeyP
 
     assert [response.address for response in responses] == ["192.168.0.90"]
     assert [destination for _request, destination in fake.sent] == [("192.168.0.90", 1900), ("192.168.0.91", 1900)]
+    assert [b"HOST: 192.168.0.90:1900\r\n" in request for request, _destination in fake.sent] == [True, False]
 
 
 def test_search_skips_a_target_it_cannot_reach_but_fails_when_none_can_be_asked(
@@ -391,6 +392,12 @@ def test_scan_targets_are_addresses_and_ranges_without_repeats() -> None:
     assert parse_scan_targets("10.0.0.5, 10.0.0.0/30 10.0.0.5") == ("10.0.0.5", "10.0.0.1", "10.0.0.2")
     assert parse_scan_targets("10.0.0.7/32") == ("10.0.0.7",)
     assert len(parse_scan_targets("192.168.1.0/24")) == 254
+
+
+def test_ranges_are_counted_before_they_are_expanded() -> None:
+    assert len(parse_scan_targets(" ".join(["10.0.0.0/20"] * 100_000))) == 4094
+    with pytest.raises(ValueError, match="at most"):
+        parse_scan_targets("10.0.0.0/20 10.1.0.0/24")
 
 
 @pytest.mark.parametrize("text", ["camera", "10.0.0.256", "10.0.0.0/33", "fe80::1", "10.0.0.0/8"])

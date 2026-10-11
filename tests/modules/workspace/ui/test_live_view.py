@@ -338,9 +338,10 @@ def test_a_changed_default_reaches_the_field_unless_the_user_typed_another(live:
         assert live.ip_range().text() == "10.1.0.0/24"
 
         live.ip_range().setText("10.2.0.0/24")
-        defaults["network_scan"]["ip_range"] = "10.3.0.0/24"
-        controller.refresh_default_range()
-        assert live.ip_range().text() == "10.2.0.0/24"
+        for changed in ("10.2.0.0/24", "10.3.0.0/24"):  # Even a default equal to what was typed is not theirs to take.
+            defaults["network_scan"]["ip_range"] = changed
+            controller.refresh_default_range()
+            assert live.ip_range().text() == "10.2.0.0/24"
     finally:
         defaults["network_scan"]["ip_range"] = default
         config.set("defaults", defaults)

@@ -71,8 +71,8 @@ class LiveViewController(QObject):
         self._store = store
         self._resolver = resolver
         self._scan = scan
-        self._default_range = _default_ip_range()
-        view.set_scan_range(self._default_range)
+        self._given_range = _default_ip_range()  # What the view's field was last set to by default.
+        view.set_scan_range(self._given_range)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan finishes
         self._scanning = False
         view.camera_action_requested.connect(self._on_camera_action)
@@ -83,11 +83,10 @@ class LiveViewController(QObject):
         self._show(workspace.sections())
 
     def refresh_default_range(self) -> None:
-        """Take the Settings' default IP range, unless the user has typed another in the view."""
-        default = _default_ip_range()
-        if self._view is not None and self._view.scan_range() == self._default_range:
-            self._view.set_scan_range(default)
-        self._default_range = default
+        """Give the view the Settings' default IP range, unless the user has typed another in its field."""
+        if self._view is not None and self._view.scan_range() == self._given_range:
+            self._given_range = _default_ip_range()
+            self._view.set_scan_range(self._given_range)
 
     def scan(self, ip_range: str) -> None:
         """Search *ip_range*, or the local network if it is empty, for cameras, unless a search is already running."""

@@ -14,7 +14,7 @@ import socket
 import threading
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.error import URLError
@@ -27,14 +27,19 @@ logger = get_logger(__name__)
 
 SSDP_GROUP = "239.255.255.250"
 SSDP_PORT = 1900
-_SEARCH_REQUEST = (
-    "M-SEARCH * HTTP/1.1\r\n"
-    f"HOST: {SSDP_GROUP}:{SSDP_PORT}\r\n"
-    'MAN: "ssdp:discover"\r\n'
-    "MX: 2\r\n"
-    "ST: upnp:rootdevice\r\n"
-    "\r\n"
-).encode("ascii")
+
+
+def _search_request(destination: str) -> bytes:
+    """Return the M-SEARCH for *destination*, whose address and port the HOST header must carry."""
+    return (
+        "M-SEARCH * HTTP/1.1\r\n"
+        f"HOST: {destination}:{SSDP_PORT}\r\n"
+        'MAN: "ssdp:discover"\r\n'
+        "MX: 2\r\n"
+        "ST: upnp:rootdevice\r\n"
+        "\r\n"
+    ).encode("ascii")
+
 
 _FETCH_TIMEOUT_SECONDS = 2.0
 _FETCH_DEADLINE_SECONDS = 5.0  # For the whole download: a device that trickles bytes cannot hold a worker.
@@ -68,20 +73,25 @@ def parse_scan_targets(text: str) -> tuple[str, ...]:
     """Return the IPv4 addresses *text* names, in order and without repeats; empty text names none.
 
     *text* is addresses and CIDR ranges such as ``192.168.1.0/24`` (its host addresses), separated by commas or
-    spaces. Raise ``ValueError`` for anything else, or for more than ``MAX_SCAN_TARGETS`` addresses.
+    spaces. Raise ``ValueError`` for anything else, or when the distinct ranges add up to more than
+    ``MAX_SCAN_TARGETS`` addresses; that is checked before any range is expanded, so pasting a huge list is cheap.
     """
-    targets: dict[str, None] = {}
+    networks: dict[ipaddress.IPv4Network, None] = {}
+    size = 0
     for token in text.replace(",", " ").split():
         try:
-            hosts: Iterable[ipaddress.IPv4Address] = (
-                ipaddress.IPv4Network(token, strict=False).hosts() if "/" in token else [ipaddress.IPv4Address(token)]
-            )
-            for host in hosts:
-                targets[str(host)] = None
-                if len(targets) > MAX_SCAN_TARGETS:
-                    raise ValueError(f"Enter at most {MAX_SCAN_TARGETS} addresses.")
+            network = ipaddress.IPv4Network(token, strict=False)
         except (ipaddress.AddressValueError, ipaddress.NetmaskValueError):
             raise ValueError(f"{token} is not an IPv4 address or range such as 192.168.1.0/24.") from None
+        if network not in networks:
+            networks[network] = None
+            size += network.num_addresses
+            if size > MAX_SCAN_TARGETS:
+                raise ValueError(f"Enter at most {MAX_SCAN_TARGETS} addresses.")
+    targets: dict[str, None] = {}
+    for network in networks:
+        for host in network.hosts():
+            targets[str(host)] = None
     return tuple(targets)
 
 
@@ -119,7 +129,7 @@ class NetworkScanTransport:
             failure: OSError | None = None
             for destination in destinations:
                 try:
-                    sock.sendto(_SEARCH_REQUEST, (destination, SSDP_PORT))
+                    sock.sendto(_search_request(destination), (destination, SSDP_PORT))
                     sent += 1
                 except OSError as exc:
                     failure = exc
