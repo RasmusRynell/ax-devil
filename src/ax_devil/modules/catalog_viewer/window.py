@@ -29,10 +29,10 @@ from PySide6.QtWidgets import (
 from ax_devil.modules.catalog_viewer.sheets import Sheet, drawing_errors, sheet_frame, sheets
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.choice_dialog import ask
 from ax_devil.modules.chrome.chrome_window import ChromeWindow, window_uses_custom_frame
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.form_layout import FormLayout
-from ax_devil.modules.chrome.message_box import Button, ask
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.scene.rendering import (
@@ -364,10 +364,10 @@ class CatalogViewerWindow(ChromeWindow):
             self,
             "Delete Catalog",
             f"Delete {listing.label(self._path)}?\n\n{self._path}\n\nThe file is deleted permanently.{default_note}",
-            Button.Yes | Button.No,
-            Button.No,
+            {"Delete": True, "Cancel": False},
+            False,
         )
-        if answer != Button.Yes:
+        if not answer:
             return
         try:
             self._manager.delete_catalog(self._path)

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QTabBar
+from PySide6.QtWidgets import QLabel, QPushButton, QTabBar
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
@@ -262,7 +262,7 @@ def test_delete_removes_the_catalog_after_asking_and_shows_the_default(
     catalog = render_catalog_manager.create_catalog("Review", base_catalog_path=small_catalog_path)
     render_catalog_manager.set_default_catalog(catalog.path)
     window = _viewer(qtbot, render_catalog_manager, catalog.path)
-    answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
+    answers = [False, True]
     monkeypatch.setattr("ax_devil.modules.catalog_viewer.window.ask", lambda *_args: answers.pop(0))
 
     _button(window, "catalogViewerDelete").click()

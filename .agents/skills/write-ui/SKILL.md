@@ -27,7 +27,7 @@ choosing its own sizes and colors.
 | Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
 | Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
-| Question with buttons to answer | `ask(...)` or `ChromeMessageBox`, never `QMessageBox(...)` or `QMessageBox.question` | `modules/chrome/message_box.py` |
+| Question with a few labeled answers | `ask(...)`, never `QMessageBox` | `modules/chrome/choice_dialog.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 

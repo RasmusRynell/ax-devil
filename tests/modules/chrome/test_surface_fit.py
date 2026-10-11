@@ -20,7 +20,7 @@ from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDial
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
 from ax_devil.modules.chrome import BaseDialog, ChromeWindow
-from ax_devil.modules.chrome.message_box import ChromeMessageBox
+from ax_devil.modules.chrome.choice_dialog import ChoiceDialog
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
 from ax_devil.modules.plugin_manager.add_plugin_dialog import AddPluginDialog
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
@@ -29,25 +29,8 @@ from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import Add
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
-from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice  # noqa: F401 - keeps the prompts module imported
 from tests.helpers.clipping import clipped_text_widgets
 from tests.helpers.shortcuts import make_shortcut_manager
-
-
-def _save_box() -> QWidget:
-    """The unsaved-changes question; some desktop themes label Discard "Close without Saving", which is pinned here."""
-    buttons = ChromeMessageBox.StandardButton
-    box = ChromeMessageBox(
-        ChromeMessageBox.Icon.Question,
-        "Save Workspace",
-        "Save changes to Quarterly review of the north entrance cameras, second pass?",
-        buttons.Save | buttons.Discard | buttons.Cancel,
-    )
-    discard = box.button(buttons.Discard)
-    assert discard is not None
-    discard.setText("Close without Saving")
-    return box
-
 
 SURFACES: dict[type[QWidget], Callable[[], QWidget]] = {
     AboutDialog: AboutDialog,
@@ -60,7 +43,12 @@ SURFACES: dict[type[QWidget], Callable[[], QWidget]] = {
     SettingsDialog: SettingsDialog,
     ShortcutsDialog: lambda: ShortcutsDialog(make_shortcut_manager()),
     WorkspaceItemInfoDialog: lambda: WorkspaceItemInfoDialog(WorkspaceItemInfo("Information", (("Field", "Value"),))),
-    ChromeMessageBox: _save_box,
+    ChoiceDialog: lambda: ChoiceDialog(
+        "Save Workspace",
+        "Save changes to Quarterly review of the north entrance cameras, second pass?",
+        {"Save": 1, "Close without Saving": 2, "Cancel": 3},
+        1,
+    ),
 }
 
 EXEMPT = {
@@ -108,12 +96,15 @@ def test_every_window_is_checked_or_exempt() -> None:
     assert _window_classes() - known == set(), "add the new window to SURFACES or give it an EXEMPT reason"
 
 
-def test_questions_use_the_chrome_message_box() -> None:
-    """`QMessageBox` questions are cut off by the theme's button padding; only `ChromeMessageBox` may ask."""
+def test_questions_use_the_choice_dialog() -> None:
+    """A `QMessageBox` squeezes its buttons under the theme's padding; questions are asked with `choice_dialog.ask`.
+
+    The last-resort error box in `exception_handler` stays a plain `QMessageBox` so it needs none of the app's chrome.
+    """
     source = Path(ax_devil.__file__).parent
     offenders = []
     for path in source.rglob("*.py"):
-        if path.name == "message_box.py":
+        if path.name == "exception_handler.py":
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.Call):
