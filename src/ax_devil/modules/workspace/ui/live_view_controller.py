@@ -11,7 +11,7 @@ from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera, pa
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import WorkspaceItem, live_stream_item_from_defaults
-from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
+from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
@@ -50,7 +50,7 @@ def _workspace_hosts(items: Sequence[WorkspaceItem]) -> frozenset[str]:
 class LiveViewController(QObject):
     """Feed *view* the workspace's live stream rows and the cameras found on the network that it does not hold yet.
 
-    Connect opens a camera's viewer and Disconnect closes its viewers, through *workspace*. Nothing touches the network
+    Connect and Disconnect are the rows' actions, which *workspace* carries out. Nothing touches the network
     until the user asks for a scan of the IP range in the view, which starts as the Settings' default and searches the
     local network when empty; *scan* runs through *resolver* away from the GUI thread, and its result is dropped once
     the view is gone. Add puts the camera in *store* with the user's stream defaults.
@@ -75,7 +75,7 @@ class LiveViewController(QObject):
         view.set_scan_range(self._given_range)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan finishes
         self._scanning = False
-        view.camera_action_requested.connect(self._on_camera_action)
+        view.camera_action_requested.connect(workspace.perform_row_action)
         view.add_requested.connect(self._on_add)
         view.scan_requested.connect(self.scan)
         view.destroyed.connect(self._forget_view)
@@ -124,17 +124,6 @@ class LiveViewController(QObject):
         if self._found is not None:
             held = _workspace_hosts(self._store.workspace.items)
             self._view.set_network([camera for camera in self._found if camera.host not in held])
-
-    def _on_camera_action(self, row: WorkspaceBrowserRow) -> None:
-        """Disconnect a camera with an open viewer by closing its viewers; connect any other by opening it.
-
-        A camera connects beside the open viewers, never in place of one, so connecting never disconnects another.
-        """
-        assert row.item is not None  # Top-level rows stand for an item.
-        if row.is_open:
-            self._workspace.close_item_viewers(row.item.id)
-        elif row.activation_target is not None:
-            self._workspace.open_content(*row.activation_target, to_side=True)
 
     def _on_add(self, camera: DiscoveredCamera) -> None:
         """Add *camera* to the workspace with the stream defaults; like any added item, it opens once resolved."""

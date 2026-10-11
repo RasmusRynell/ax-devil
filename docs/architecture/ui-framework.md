@@ -110,6 +110,12 @@ and follows `sections_changed`, the same rows the content browser shows, acts th
 directly or reach into the content browser. The widgets are built from the chrome kit (`ViewPanel`, `SectionCaption`,
 `ListRow`, `SmallButton`, `Chip`, `Banner`) so spacing, text size and theme follow the rest of the app.
 
+Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Connect,
+Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
+(`section_tree.py`) lists sections of them with captions, building a row's widget only once its parent is expanded.
+`WorkspaceController.perform_row_action` carries out Connect, Disconnect and Rescan for every view; Add rows stand for
+things the Workspace does not hold, so the view that lists them adds them.
+
 ## Workspace Controller
 
 `WorkspaceController` coordinates UI behavior between `ContentBrowserWidget`, `WorkspaceStore`, `SplitView`, and open `ViewerWidget` instances.

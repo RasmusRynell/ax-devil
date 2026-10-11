@@ -1,4 +1,8 @@
-"""Content-browser row projection over Workspace items, their Content, consideration state, and open items."""
+"""Content-browser row projection over Workspace items, their Content, consideration state, and open items.
+
+The rows also carry what every sidebar view shows of them, the action a row offers and whether it is idle, so the
+views render one look without deciding it again.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ from functools import partial
 from pathlib import PurePath
 from typing import Literal
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.workspace.core.content import (
     ConsiderationItemRef,
     Content,
@@ -32,20 +37,43 @@ from ax_devil.modules.workspace.core.item_info import (
 )
 from ax_devil.modules.workspace.core.items import ItemResolution, LiveStreamItem, PlaylistItem, VideoItem, WorkspaceItem
 
-WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay", "unavailable", "pending"]
+WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay", "unavailable"]
 
 
 class BrowserSection(Enum):
-    """A titled group of top-level rows, in the order the browser lists them, with the icon kind it is marked by."""
+    """A titled group of top-level rows, in the order the browser lists them, with the icon kind it is marked by.
 
-    LIVE = ("Live", "live_video")
-    VIDEOS = ("Videos", "video")
-    PLAYLISTS = ("Playlists", "playlist")
-    OTHER = ("Other", "unavailable")
+    An *addable* section lists things the Workspace does not hold yet, which its rows' Add adds; its mark is muted.
+    """
 
-    def __init__(self, title: str, icon_kind: WorkspaceBrowserIconKind) -> None:
+    LIVE = ("Live", "live_video", False)
+    VIDEOS = ("Videos", "video", False)
+    PLAYLISTS = ("Playlists", "playlist", False)
+    OTHER = ("Other", "unavailable", False)
+    NETWORK = ("On the network", "live_video", True)
+    """Cameras a network scan found."""
+    ADD_FROM = ("Add from", "playlist", True)
+    """The playlist resolvers that can add playlists."""
+
+    def __init__(self, title: str, icon_kind: WorkspaceBrowserIconKind, addable: bool) -> None:
         self.title = title
         self.icon_kind = icon_kind
+        self.addable = addable
+
+
+class RowAction(Enum):
+    """The one action a row offers at its right: its button text, icon, hover text, and whether it is the main one."""
+
+    CONNECT = ("Connect", None, "", False)
+    DISCONNECT = ("Disconnect", None, "", False)
+    RESCAN = ("", Icon.REFRESH, "Rescan", False)
+    ADD = ("Add", Icon.ADD, "", True)
+
+    def __init__(self, label: str, icon: Icon | None, tooltip: str, primary: bool) -> None:
+        self.label = label
+        self.icon = icon
+        self.tooltip = tooltip
+        self.primary = primary
 
 
 _SECTION_BY_ITEM_KIND = {
@@ -56,12 +84,17 @@ _SECTION_BY_ITEM_KIND = {
 """The section of each item kind; any other kind, such as an unreadable item, goes under Other."""
 
 
+def _section_of(item: WorkspaceItem) -> BrowserSection:
+    """Return the section that lists *item*'s rows."""
+    return _SECTION_BY_ITEM_KIND.get(item.kind, BrowserSection.OTHER)
+
+
 @dataclass(frozen=True, slots=True)
 class WorkspaceBrowserRow:
     """Explicit row data rendered by the content browser widget.
 
-    The projection resolves the final detail before publication; painting, search, and accessibility use the same text.
-    Hovering shows the row's facts, location, and state.
+    The projection resolves the final detail before publication; the second line, search, and accessibility use the
+    same text. Hovering shows the row's facts, location, and state.
     """
 
     row_id: str
@@ -80,9 +113,28 @@ class WorkspaceBrowserRow:
     children: tuple[WorkspaceBrowserRow, ...] = ()
     location: str | None = None
     detail: str = ""
-    """The final muted text shown beside the label; empty for none."""
+    """The final muted text shown under the label; empty for none, which keeps the row one line high."""
     facts: tuple[str, ...] = ()
     """Lines that open the hover text, starting with what kind of row this is."""
+    action: RowAction | None = None
+    """The action the row offers, if any."""
+    idle: bool = False
+    """Whether the row's thing is not running: a camera no viewer shows, or an item still loading."""
+
+    @property
+    def is_available(self) -> bool:
+        """Return whether the row stands for something the Workspace does not hold yet, which its Add adds."""
+        return self.action is RowAction.ADD
+
+    @property
+    def is_mark_muted(self) -> bool:
+        """Return whether the row's kind mark is drawn muted instead of in its kind's color."""
+        return self.idle or self.is_available
+
+    @property
+    def is_dimmed(self) -> bool:
+        """Return whether the row's name is dimmed: it is idle, left out of playback, or cannot open."""
+        return self.idle or not self.is_considered or self.unavailable_reason is not None
 
     @property
     def search_text(self) -> str:
@@ -198,10 +250,12 @@ class _RowProjection:
                 else [self._content_row(resolution.item, content, open_items) for content in resolution.contents]
             )
         )
-        by_section: dict[BrowserSection, list[WorkspaceBrowserRow]] = {section: [] for section in BrowserSection}
+        by_section: dict[BrowserSection, list[WorkspaceBrowserRow]] = {
+            section: [] for section in BrowserSection if not section.addable
+        }
         for row in rows:
             assert row.item is not None  # Top-level rows stand for an item.
-            by_section[_SECTION_BY_ITEM_KIND.get(row.item.kind, BrowserSection.OTHER)].append(row)
+            by_section[_section_of(row.item)].append(row)
         return tuple(
             WorkspaceBrowserSection(kind=section, rows=_with_details(tuple(section_rows), self._file_paths))
             for section, section_rows in by_section.items()
@@ -211,7 +265,12 @@ class _RowProjection:
     def _pending_row(self, item: WorkspaceItem) -> WorkspaceBrowserRow:
         """Build the single row of an item that is still resolving; it opens nothing until its Content arrives."""
         return WorkspaceBrowserRow(
-            row_id=item.id, label=item.display_name, icon_kind="pending", item=item, detail="Loading…"
+            row_id=item.id,
+            label=item.display_name,
+            icon_kind=_section_of(item).icon_kind,
+            item=item,
+            detail="Loading…",
+            idle=True,
         )
 
     def _unavailable_row(self, item: WorkspaceItem, reason: str) -> WorkspaceBrowserRow:
@@ -224,6 +283,8 @@ class _RowProjection:
             unavailable_reason=reason,
             information_factory=partial(build_unavailable_information, item.display_name, reason),
             detail="Unavailable",
+            # A playlist that failed may resolve once its files are back; nothing else can be resolved again.
+            action=RowAction.RESCAN if _section_of(item) is BrowserSection.PLAYLISTS else None,
         )
 
     def _content_row(
@@ -251,11 +312,13 @@ class _RowProjection:
                 location=content.source_location,
                 detail=entries if taking_part == total else f"{taking_part} of {entries}",
                 facts=(f"Playlist · {entries}{excluded}",),
+                action=RowAction.RESCAN,
             )
 
         if not content.is_live:
             self._file_paths[content.content_id] = PurePath(content.source_location)
         overlays = f" · {_counted(len(content.overlays), 'overlay')}" if content.overlays else ""
+        is_open = self._is_content_open(content.content_id, open_items)
         return WorkspaceBrowserRow(
             row_id=content.content_id,
             label=content.display_name,
@@ -264,13 +327,15 @@ class _RowProjection:
             item=item,
             information_factory=partial(build_video_information, content),
             export_target=None if content.is_live else content.on_screen_item(),
-            is_open=self._is_content_open(content.content_id, open_items),
+            is_open=is_open,
             children=self._video_lane_rows(content),
             location=content.source_location,
             detail=content.source_location
             if content.is_live and content.source_location != content.display_name
             else "",
             facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
+            action=(RowAction.DISCONNECT if is_open else RowAction.CONNECT) if content.is_live else None,
+            idle=content.is_live and not is_open,
         )
 
     def _playlist_entry_row(

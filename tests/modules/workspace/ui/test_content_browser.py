@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLineEdit, QMenu, QToolButton, QTreeWidget, QTreeWidgetItem
+from PySide6.QtWidgets import QApplication, QLineEdit, QMenu, QToolButton, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.core import (
@@ -23,14 +24,11 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
-from ax_devil.modules.workspace.ui.content_browser import (
-    TREE_CONSIDERATION_COLUMN,
-    TREE_LABEL_COLUMN,
-    TREE_ROW_ROLE,
-    ContentBrowserWidget,
-)
+from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
+from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
+from ax_devil.modules.workspace.ui.source_row import SourceRow
 from tests.helpers.widgets import required_child
 
 
@@ -68,9 +66,19 @@ def _show_excluded_toggle(browser: ContentBrowserWidget) -> QToolButton:
     return toggle
 
 
+def _row(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
+    return cast(WorkspaceBrowserRow, item.data(0, ROW_ROLE))
+
+
+def _row_widget(browser: ContentBrowserWidget, item: QTreeWidgetItem) -> SourceRow:
+    widget = _tree(browser).itemWidget(item, 0)
+    assert isinstance(widget, SourceRow)
+    return widget
+
+
 def _row_toggle(browser: ContentBrowserWidget, item: QTreeWidgetItem) -> QToolButton:
-    toggle = _tree(browser).itemWidget(item, TREE_CONSIDERATION_COLUMN)
-    assert isinstance(toggle, QToolButton)
+    toggle = _row_widget(browser, item).findChild(QToolButton)
+    assert toggle is not None
     return toggle
 
 
@@ -124,8 +132,8 @@ def test_renders_explicit_rows(qtbot: QtBot) -> None:
     )
 
     top_item = _required_item_row(browser)
-    assert top_item.text(0) == "Suite"
-    assert [required_child(top_item, index).text(0) for index in range(top_item.childCount())] == [
+    assert _row(top_item).label == "Suite"
+    assert [_row(required_child(top_item, index)).label for index in range(top_item.childCount())] == [
         "Entry 1",
         "Entry 2",
     ]
@@ -161,8 +169,8 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
     top_item = _required_item_row(browser)
     assert top_item.isExpanded()
     child_item = required_child(top_item, 0)
-    assert child_item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE).is_open
-    assert "Open in a viewer" in child_item.toolTip(0)
+    assert _row(child_item).is_open
+    assert "Open in a viewer" in _row_widget(browser, child_item).toolTip()
 
 
 def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qtbot: QtBot) -> None:
@@ -177,7 +185,7 @@ def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qt
     browser.content_activated.connect(activated)
     _tree(browser).itemDoubleClicked.emit(section, 0)
     activated.assert_not_called()
-    assert required_child(section, 0).text(0) == "clip.mp4"
+    assert _row(required_child(section, 0)).label == "clip.mp4"
 
     section.setExpanded(False)
 
@@ -212,7 +220,7 @@ def test_tree_items_expose_their_detail_as_accessible_text(qtbot: QtBot) -> None
     assert section is not None
 
     def accessible_text(item: QTreeWidgetItem) -> object:
-        return item.data(TREE_LABEL_COLUMN, Qt.ItemDataRole.AccessibleTextRole)
+        return item.data(0, Qt.ItemDataRole.AccessibleTextRole)
 
     assert accessible_text(section) == "Live, 2"
     assert accessible_text(required_child(section, 0)) == "Entrance, 192.0.2.10"
@@ -305,8 +313,8 @@ def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> Non
     )
     search = _search(browser)
     location_row = _required_item_row(browser, 1)
-    assert location_row.text(0) == "cam.mp4"
-    assert "/data/site_a/cam.mp4" in location_row.toolTip(0)
+    assert _row(location_row).label == "cam.mp4"
+    assert "/data/site_a/cam.mp4" in _row_widget(browser, location_row).toolTip()
 
     search.setText("parking")
     assert not _required_item_row(browser, 0).isHidden()
@@ -344,12 +352,13 @@ def test_search_keeps_matching_playlist_children_reachable(qtbot: QtBot) -> None
     assert top_item.isExpanded()
 
 
-def _double_click(browser: ContentBrowserWidget, item: QTreeWidgetItem, column: int = 0) -> None:
-    tree = _tree(browser)
-    browser.show()
-    position = tree.visualRect(tree.indexFromItem(item, column)).center()
-    QTest.mouseClick(tree.viewport(), Qt.MouseButton.LeftButton, pos=position)
-    QTest.mouseDClick(tree.viewport(), Qt.MouseButton.LeftButton, pos=position)
+def _double_click(
+    widget: QWidget, modifier: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier, position: QPoint | None = None
+) -> None:
+    """Double-click *widget*, a row or a control on one, as the user does: a click, then a double click."""
+    position = position or QPoint(widget.width() // 3, widget.height() // 2)
+    QTest.mouseClick(widget, Qt.MouseButton.LeftButton, modifier, pos=position)
+    QTest.mouseDClick(widget, Qt.MouseButton.LeftButton, modifier, pos=position)
 
 
 def test_double_click_opens_the_row_and_expands_it(qtbot: QtBot) -> None:
@@ -365,17 +374,18 @@ def test_double_click_opens_the_row_and_expands_it(qtbot: QtBot) -> None:
             children=(WorkspaceBrowserRow(row_id="row-14", label="Overlay", icon_kind="overlay"),),
         ),
     )
+    browser.show()
     top_item = _required_item_row(browser)
     top_item.setExpanded(False)
 
     with qtbot.waitSignal(browser.content_activated, timeout=1000) as blocker:
-        _double_click(browser, top_item)
+        _double_click(_row_widget(browser, top_item))
 
     assert blocker.args == [video, 0]
     assert top_item.isExpanded()
 
 
-def test_double_click_consideration_column_does_not_activate(qtbot: QtBot) -> None:
+def test_double_clicking_the_eye_toggle_does_not_open_the_row(qtbot: QtBot) -> None:
     video = _make_video()
     browser = _browser(
         qtbot,
@@ -389,8 +399,10 @@ def test_double_click_consideration_column_does_not_activate(qtbot: QtBot) -> No
     )
     activated = Mock()
     browser.content_activated.connect(activated)
+    browser.show()
+    toggle = _row_toggle(browser, _required_item_row(browser))
 
-    _tree(browser).itemDoubleClicked.emit(_required_item_row(browser), TREE_CONSIDERATION_COLUMN)
+    _double_click(toggle, position=toggle.rect().center())
 
     activated.assert_not_called()
 
@@ -402,13 +414,10 @@ def test_ctrl_double_click_opens_to_the_side(qtbot: QtBot) -> None:
     )
     activated = Mock()
     browser.content_activated.connect(activated)
-    tree = _tree(browser)
     browser.show()
-    position = tree.visualItemRect(_required_item_row(browser)).center()
 
     with qtbot.waitSignal(browser.content_open_to_side_requested) as side:
-        QTest.mouseClick(tree.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, pos=position)
-        QTest.mouseDClick(tree.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, pos=position)
+        _double_click(_row_widget(browser, _required_item_row(browser)), Qt.KeyboardModifier.ControlModifier)
 
     assert side.args == [video, 0]
     activated.assert_not_called()
@@ -562,12 +571,12 @@ def test_an_unavailable_row_shows_its_reason_instead_of_opening(qtbot: QtBot) ->
     tree_item = _required_item_row(browser)
 
     with patch("ax_devil.modules.workspace.ui.content_browser.QMessageBox.warning") as warning:
-        _tree(browser).itemDoubleClicked.emit(tree_item, TREE_LABEL_COLUMN)
+        _tree(browser).itemDoubleClicked.emit(tree_item, 0)
 
     assert activated == []
     [(_, _, message)] = [call.args for call in warning.call_args_list]
     assert message == "lot.mp4: File not found: /missing/lot.mp4"
-    assert "File not found: /missing/lot.mp4" in tree_item.toolTip(TREE_LABEL_COLUMN)
+    assert "File not found: /missing/lot.mp4" in _row_widget(browser, tree_item).toolTip()
     assert list(_context_menu(browser, tree_item)) == ["Rename", "Remove"]
     with qtbot.waitSignal(browser.item_remove_requested) as removed:
         _context_menu(browser, tree_item, choose="Remove")

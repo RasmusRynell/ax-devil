@@ -69,7 +69,7 @@ from ax_devil.modules.workspace.core import (
     new_item_id,
 )
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
-from ax_devil.modules.workspace.ui.content_browser import TREE_LABEL_COLUMN, TREE_ROW_ROLE
+from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 from tests.helpers.workspace import DummyViewer
@@ -404,16 +404,20 @@ def test_screenshots(
         iterator = QTreeWidgetItemIterator(session._content_browser._tree)
         items = []
         while (item := iterator.value()) is not None:
-            if item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE) is not None:
+            if item.data(0, ROW_ROLE) is not None:
                 items.append(item)
             iterator += 1
         return items
 
     def row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
         """Return the row an item shows."""
-        return cast(WorkspaceBrowserRow, item.data(TREE_LABEL_COLUMN, TREE_ROW_ROLE))
+        return cast(WorkspaceBrowserRow, item.data(0, ROW_ROLE))
 
-    qtbot.waitUntil(lambda: all(row_of(item).icon_kind != "pending" for item in tree_items()), timeout=10000)
+    def is_loading(row: WorkspaceBrowserRow) -> bool:
+        """Return whether *row* stands for an item still resolving."""
+        return row.item is not None and row.activation_target is None and row.unavailable_reason is None
+
+    qtbot.waitUntil(lambda: not any(is_loading(row_of(item)) for item in tree_items()), timeout=10000)
     for item in tree_items():
         item.setExpanded(item.isExpanded() or row_of(item).label == "Night shift")
     for text_size in TEXT_SIZES:

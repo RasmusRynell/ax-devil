@@ -28,6 +28,7 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.core.items import ItemResolution, UnreadableItem
 from ax_devil.modules.workspace.ui.browser_rows import (
+    RowAction,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
     build_browser_sections,
@@ -495,3 +496,45 @@ def test_same_named_pending_items_keep_the_loading_status() -> None:
     (section,) = build_browser_sections([ItemResolution.pending(item) for item in items], lambda _ref: True)
 
     assert [row.detail for row in section.rows] == ["Loading…", "Loading…"]
+
+
+def test_cameras_offer_connect_while_idle_and_disconnect_while_a_viewer_shows_them(tmp_path: Path) -> None:
+    store = _store_of_items(LiveStreamItem(host="192.0.2.10", label="Gate"))
+    [live] = store.contents()
+
+    closed = item_rows(store)[0]
+    opened = item_rows(store, frozenset({OnScreenWorkspaceItem(kind="video", content_id=live.content_id)}))[0]
+
+    assert (closed.action, closed.idle, closed.is_dimmed) == (RowAction.CONNECT, True, True)
+    assert (opened.action, opened.idle, opened.is_dimmed) == (RowAction.DISCONNECT, False, False)
+
+
+def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_action(tmp_path: Path) -> None:
+    store = _store_of_items(
+        PlaylistItem(resolver="fixed"),
+        PlaylistItem(label="Broken", resolver="missing"),
+        VideoItem(video=tmp_path / "missing.mp4"),
+    )
+    store.add_items([content_item(make_video("clip.mp4", overlay_count=1))])
+
+    rows = {row.label: row for row in item_rows(store)}
+
+    assert rows["Suite"].action is RowAction.RESCAN
+    assert rows["Broken"].action is RowAction.RESCAN and rows["Broken"].unavailable_reason is not None
+    assert rows["missing.mp4"].action is None
+    assert rows["clip.mp4"].action is None and not rows["clip.mp4"].idle
+    nested = [child for row in rows.values() for child in row.children]
+    nested += [lane for row in nested for lane in row.children]
+    assert nested and all(child.action is None for child in nested)
+
+
+def test_an_item_still_loading_is_idle_and_marked_with_its_kind() -> None:
+    items = [LiveStreamItem(host="192.0.2.10"), PlaylistItem(resolver="fixed")]
+
+    sections = build_browser_sections([ItemResolution.pending(item) for item in items], lambda _ref: True)
+
+    rows = [row for section in sections for row in section.rows]
+    assert [(row.icon_kind, row.idle, row.action) for row in rows] == [
+        ("live_video", True, None),
+        ("playlist", True, None),
+    ]
