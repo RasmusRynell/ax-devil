@@ -23,7 +23,7 @@ class ChromeMessageBox(QMessageBox):
         if visible:
             buttons = self.buttons()
             row = sum(button.sizeHint().width() for button in buttons) + _BUTTON_GAP * len(buttons)
-            self.setStyleSheet(f"QLabel {{ min-width: {row}px; }}")
+            self.setStyleSheet(f"QLabel#qt_msgbox_label {{ min-width: {row}px; }}")
         super().setVisible(visible)
 
 

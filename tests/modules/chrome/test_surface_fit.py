@@ -40,7 +40,7 @@ def _save_box() -> QWidget:
     box = ChromeMessageBox(
         ChromeMessageBox.Icon.Question,
         "Save Workspace",
-        "Save changes to Untitled Workspace?",
+        "Save changes to Quarterly review of the north entrance cameras, second pass?",
         buttons.Save | buttons.Discard | buttons.Cancel,
     )
     discard = box.button(buttons.Discard)
