@@ -6,6 +6,7 @@ import threading
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
@@ -644,3 +645,125 @@ def test_replacing_the_workspace_signals_that_bookmarks_changed(tmp_path: Path) 
     store.replace_workspace(Workspace())
 
     assert changes == [(bookmark,), ()]
+
+
+class _Folder:
+    """A resolver over a folder the test changes: one playlist with an entry per clip, or an error once it is empty.
+
+    Clips named ``hidden…`` are left out by default.
+    """
+
+    def __init__(self, *clips: str) -> None:
+        self.clips = list(clips)
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        if not self.clips:
+            raise OSError("Folder not found: /runs")
+        entries = tuple(
+            PlaylistEntry(make_video(clip).standalone_lanes(), default_considered=not clip.startswith("hidden"))
+            for clip in self.clips
+        )
+        return [PlaylistContent(display_name="Runs", entries=entries)]
+
+
+def _entry_names(store: WorkspaceStore) -> list[str]:
+    playlists = [cast(PlaylistContent, content) for content in store.contents()]
+    return [entry.display_label(index) for playlist in playlists for index, entry in enumerate(playlist.entries)]
+
+
+def test_rescanning_follows_the_folder_and_keeps_exclusions_only_of_what_still_exists(tmp_path: Path) -> None:
+    folder = _Folder("a.mp4", "b.mp4", "c.mp4")
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})))
+    runs = PlaylistItem(label="Runs", resolver="folder")
+    store.add_items([runs])
+    store.save_workspace(tmp_path / "runs.ax-devil.workspace")
+    [playlist] = store.contents()
+
+    def considered(index: int) -> bool:
+        return store.is_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, index))
+
+    store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
+    store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 2), False)
+    rescanned: list[ItemResolution] = []
+    state_changes: list[None] = []
+    store.item_rescanned.connect(rescanned.append)
+    store.state_changed.connect(lambda: state_changes.append(None))
+
+    folder.clips = ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "hidden.mp4"]
+    store.rescan_item(runs.id)
+    assert _entry_names(store) == ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "hidden.mp4"]
+    assert [considered(index) for index in range(5)] == [False, True, False, True, False]
+
+    folder.clips = ["a.mp4", "b.mp4"]
+    store.rescan_item(runs.id)
+    assert _entry_names(store) == ["a.mp4", "b.mp4"]
+    folder.clips = ["a.mp4", "b.mp4", "c.mp4"]
+    store.rescan_item(runs.id)
+    assert [considered(index) for index in range(3)] == [False, True, True]
+
+    assert len(rescanned) == 3 and rescanned[-1] == store.resolution(runs.id)
+    assert [content.display_name for content in store.contents()] == ["Runs"]
+    assert not store.is_modified and state_changes == []
+
+
+def test_a_rescan_that_fails_shows_the_item_as_unavailable_until_it_resolves_again() -> None:
+    folder = _Folder("a.mp4")
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})))
+    runs = PlaylistItem(label="Runs", resolver="folder")
+    store.add_items([runs])
+
+    folder.clips = []
+    store.rescan_item(runs.id)
+    error = store.resolution(runs.id).error
+    assert error is not None and "Folder not found" in str(error)
+    assert store.contents() == ()
+
+    folder.clips = ["b.mp4"]
+    store.rescan_item(runs.id)
+    assert store.resolution(runs.id).error is None
+    assert _entry_names(store) == ["b.mp4"]
+
+
+def test_rescan_results_for_a_removed_item_or_a_replaced_workspace_are_dropped(
+    qtbot: QtBot, blocking: _BlockingResolver
+) -> None:
+    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": blocking, "quick": _TwoPlaylists()}))
+    store = WorkspaceStore(resolver)
+    resolved_at_once = FakeResolutionContext(resolvers={"runs": _TwoPlaylists()})
+    removed, replaced = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
+    store.add_resolved([ItemResolution.of(removed, resolved_at_once), ItemResolution.of(replaced, resolved_at_once)])
+    rescanned: list[ItemResolution] = []
+    store.item_rescanned.connect(rescanned.append)
+    store.rescan_item(removed.id)
+    store.rescan_item(replaced.id)
+    qtbot.waitUntil(lambda: len(blocking.threads) == 2)
+
+    store.remove_item(removed.id)
+    kept = PlaylistItem(id=replaced.id, label="Kept", resolver="quick")
+    store.replace_workspace(Workspace(items=(kept,)))
+    blocking.release.set()
+
+    qtbot.waitUntil(lambda: not resolver._batches)
+    assert rescanned == []
+    assert [content.display_name for content in store.contents()] == ["Kept / train", "Kept / test"]
+
+
+def test_rescanning_an_unknown_or_still_resolving_item_does_nothing(
+    qtbot: QtBot, blocking: _BlockingResolver, caplog: pytest.LogCaptureFixture
+) -> None:
+    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": blocking}))
+    store = WorkspaceStore(resolver)
+    runs = PlaylistItem(resolver="runs")
+    store.add_items([runs])
+    rescanned: list[ItemResolution] = []
+    store.item_rescanned.connect(rescanned.append)
+
+    store.rescan_item("unknown")
+    store.rescan_item(runs.id)
+    blocking.release.set()
+
+    qtbot.waitUntil(lambda: not resolver._batches)
+    assert not store.resolution(runs.id).is_pending
+    assert len(blocking.threads) == 1
+    assert rescanned == []
+    assert "unknown" in caplog.text

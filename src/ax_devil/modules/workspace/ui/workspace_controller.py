@@ -81,6 +81,7 @@ class WorkspaceController(QObject):
         self._content_browser.export_requested.connect(self._on_export_requested)
         self._workspace_store.items_added.connect(self._sync_content_browser)
         self._workspace_store.items_resolved.connect(self._on_items_resolved)
+        self._workspace_store.item_rescanned.connect(self._sync_content_browser)
         self._workspace_store.item_removed.connect(self._close_orphaned_viewers)
         self._workspace_store.workspace_replaced.connect(self._close_all_viewers)
         self._workspace_store.item_renamed.connect(self._on_item_renamed)

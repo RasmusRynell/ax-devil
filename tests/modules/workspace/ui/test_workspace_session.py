@@ -218,6 +218,36 @@ class _NamedPlaylist:
         return [_make_playlist(str(settings["name"]))]
 
 
+class _GrowingPlaylist:
+    """A playlist that gains an entry on every resolve."""
+
+    def __init__(self) -> None:
+        self.clips = ["first.mp4"]
+
+    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        entries = tuple(PlaylistEntry(_make_video(clip).standalone_lanes(), True) for clip in self.clips)
+        self.clips.append(f"clip{len(self.clips)}.mp4")
+        return [PlaylistContent(display_name="Runs", entries=entries)]
+
+
+def test_a_rescan_updates_the_rows_and_leaves_open_viewers_as_they_are(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    session = _session(render_catalog_manager, tmp_path, FakeResolutionContext(resolvers={"runs": _GrowingPlaylist()}))
+    qtbot.addWidget(session.widget())
+    runs = PlaylistItem(label="Runs", resolver="runs")
+
+    with patch(_OFFLINE_VIEWER, DummyViewer):
+        session.add_items([runs])
+        viewer = _focused(session)
+        shown = viewer.payload
+        _store(session).rescan_item(runs.id)
+
+    assert _center(session).get_widget_count() == 1
+    assert viewer.payload is shown
+    assert _required_item_row(session).childCount() == 2
+
+
 def test_replacing_the_workspace_closes_viewers_even_when_an_item_id_is_kept(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:

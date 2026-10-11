@@ -36,7 +36,8 @@ class WorkspaceStore(QObject):
     session state and are never part of the Workspace. Every successful mutation emits exactly one signal about the
     items, then ``items_resolved`` when their results arrive, plus ``state_changed`` when it changes whether the
     Workspace is modified or what it is called. A change to bookmarks or reviewed targets emits ``bookmarks_changed``
-    once, also when removing an item removed some of them and whenever another Workspace replaces this one.
+    once, also when removing an item removed some of them and whenever another Workspace replaces this one. A rescan
+    emits ``item_rescanned`` when its result is applied.
     """
 
     items_added = Signal(list)  # list[WorkspaceItem]; they may still be resolving
@@ -44,6 +45,7 @@ class WorkspaceStore(QObject):
     item_removed = Signal(object)  # WorkspaceItem
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
+    item_rescanned = Signal(object)  # ItemResolution, the item's new result
     workspace_replaced = Signal()  # another Workspace was opened, created, or restored; every item may be new
     bookmarks_changed = Signal()  # bookmarks or reviewed targets changed
     state_changed = Signal()  # is_modified, the name, or the path changed
@@ -230,6 +232,27 @@ class WorkspaceStore(QObject):
             return
         self._apply_bookmarks(workspace)
 
+    def rescan_item(self, item_id: str) -> None:
+        """Resolve the item with *item_id* again in the background and replace its result when the new one arrives.
+
+        The new result, an error included, applies only while the item and the Workspace are still current. Exclusions
+        of Content that still exists stay, those of Content that is gone are dropped, and newly appeared Content starts
+        from its defaults. Rescanning never opens a viewer and never changes what open viewers show, since they keep
+        the immutable Content they opened; nor does it make the Workspace modified, as results are never saved. An item
+        that is still resolving is left to that resolution.
+        """
+        if not self._workspace.has_item(item_id):
+            logger.warning(f"Attempted to rescan an item not in the workspace: {item_id}")
+            return
+        if self._resolutions[item_id].is_pending:
+            return
+        generation = self._generation
+        self._resolver.resolve(
+            [self._workspace.item(item_id)],
+            partial(self._apply_rescan, generation),
+            lambda: generation == self._generation and self._workspace.has_item(item_id),
+        )
+
     def contents(self) -> tuple[Content, ...]:
         """Return the Content of every resolved item, in item order."""
         return tuple(content for item in self._workspace.items for content in self._resolutions[item.id].contents)
@@ -326,17 +349,36 @@ class WorkspaceStore(QObject):
             if current.error is not None:
                 logger.warning(f"Could not open {current.item.display_name}: {current.error}")
             self._resolutions[current.item.id] = current
-            self._not_considered.update(
-                consideration.ref
-                for content in current.contents
-                for consideration in content.consideration_items()
-                if not consideration.default_considered
-            )
+            self._not_considered.update(ref for ref, considered in _defaults(current).items() if not considered)
             committed.append(current)
         if committed:
             self.items_resolved.emit(committed, added)
+
+    def _apply_rescan(self, generation: int, resolutions: tuple[ItemResolution, ...]) -> None:
+        """Replace an item's result with its rescanned one, unless the item or its Workspace is gone."""
+        [resolution] = resolutions
+        item_id = resolution.item.id
+        if generation != self._generation or not self._workspace.has_item(item_id):
+            return
+        current = resolution.renamed(self._workspace.item(item_id))
+        if current.error is not None:
+            logger.warning(f"Could not open {current.item.display_name}: {current.error}")
+        before, after = _defaults(self._resolutions[item_id]), _defaults(current)
+        self._resolutions[item_id] = current
+        self._not_considered = {ref for ref in self._not_considered if ref not in before or ref in after}
+        self._not_considered.update(ref for ref, considered in after.items() if ref not in before and not considered)
+        self.item_rescanned.emit(current)
 
 
 def _bookmark_state(workspace: Workspace) -> tuple[tuple[Bookmark, ...], frozenset[BookmarkTarget]]:
     """Return what ``bookmarks_changed`` reports on: the Workspace's bookmarks and reviewed targets."""
     return workspace.bookmarks, workspace.reviewed
+
+
+def _defaults(resolution: ItemResolution) -> dict[ConsiderationItemRef, bool]:
+    """Return whether each consideration item of *resolution*'s Content is considered by default, by its ref."""
+    return {
+        consideration.ref: consideration.default_considered
+        for content in resolution.contents
+        for consideration in content.consideration_items()
+    }
