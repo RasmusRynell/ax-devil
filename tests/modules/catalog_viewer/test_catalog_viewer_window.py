@@ -263,7 +263,7 @@ def test_delete_removes_the_catalog_after_asking_and_shows_the_default(
     render_catalog_manager.set_default_catalog(catalog.path)
     window = _viewer(qtbot, render_catalog_manager, catalog.path)
     answers = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
-    monkeypatch.setattr(QMessageBox, "question", lambda *_args: answers.pop(0))
+    monkeypatch.setattr("ax_devil.modules.catalog_viewer.window.ask", lambda *_args: answers.pop(0))
 
     _button(window, "catalogViewerDelete").click()
     assert catalog.path.exists()

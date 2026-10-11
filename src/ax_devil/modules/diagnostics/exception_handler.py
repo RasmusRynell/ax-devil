@@ -19,6 +19,7 @@ from typing import Any
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from ax_devil.modules.chrome.message_box import ChromeMessageBox
 from ax_devil.modules.settings.logging_config import get_logger
 
 ExceptHook = Callable[[type[BaseException], BaseException, TracebackType | None], Any]
@@ -92,7 +93,7 @@ class ExceptionHandler(QObject):
                 return
 
             # Create error dialog
-            dialog = QMessageBox()
+            dialog = ChromeMessageBox()
             dialog.setIcon(QMessageBox.Icon.Critical)
             dialog.setWindowTitle("Application Error")
 

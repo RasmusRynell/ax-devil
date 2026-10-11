@@ -22,6 +22,8 @@ How to build UI with it is in the [write-ui skill](../../../../.agents/skills/wr
 - Temporary modal dialogs are opened with `with SomeDialog(...) as dialog:`, which deletes the dialog when the block
   ends; `done()` runs `cleanup()` but never schedules deletion, so a parented dialog opened without the block lives
   until its parent dies.
+- Questions with buttons are asked through `message_box.py`. A plain `QMessageBox` fixes its width from the text and
+  ignores the theme's button padding, so its buttons are squeezed and their text cut off; a test rejects direct use.
 - Main-window placement belongs to the desktop: `ChromeWindow` restores size and maximized state only, and never
   selects a screen or persists coordinates.
 - Button and chrome icons come from `icons.py`, never Qt standard pixmaps or text glyphs; status text such as

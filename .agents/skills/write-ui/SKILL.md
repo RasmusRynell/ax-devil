@@ -27,6 +27,7 @@ choosing its own sizes and colors.
 | Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
 | Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
+| Question with buttons to answer | `ask(...)` or `ChromeMessageBox`, never `QMessageBox(...)` or `QMessageBox.question` | `modules/chrome/message_box.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 
@@ -98,5 +99,8 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
    when nothing is clipped, overlapping or unreadable and the new UI matches its neighbours' sizes and spacing.
    To read one image instead of two, join a before and after shot with ImageMagick:
    `montage /tmp/ui-before/X.png /tmp/ui-after/X.png -tile 2x1 -geometry +4+0 /tmp/X-compare.png`.
-3. Test behavior, and test cut-offs and overlaps that a size change could bring back. Leave fonts, colors and
+3. Add the window or dialog to `SURFACES` in `tests/modules/chrome/test_surface_fit.py`, which checks that no button
+   or label text is cut off in both themes at a small and a large text size. A guard test fails until a new
+   `BaseDialog` or `ChromeWindow` subclass is there or in `EXEMPT` with the reason it is covered elsewhere.
+4. Test behavior, and test cut-offs and overlaps that a size change could bring back. Leave fonts, colors and
    paddings untested; the screenshots cover them.

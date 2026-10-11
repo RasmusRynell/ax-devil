@@ -32,6 +32,7 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.chrome_window import ChromeWindow, window_uses_custom_frame
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.message_box import Button, ask
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.scene.rendering import (
@@ -359,14 +360,14 @@ class CatalogViewerWindow(ChromeWindow):
             if self._path == listing.default_path
             else ""
         )
-        answer = QMessageBox.question(
+        answer = ask(
             self,
             "Delete Catalog",
             f"Delete {listing.label(self._path)}?\n\n{self._path}\n\nThe file is deleted permanently.{default_note}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            Button.Yes | Button.No,
+            Button.No,
         )
-        if answer != QMessageBox.StandardButton.Yes:
+        if answer != Button.Yes:
             return
         try:
             self._manager.delete_catalog(self._path)

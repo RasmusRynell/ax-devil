@@ -29,6 +29,7 @@ from ax_devil.modules.application_shell.configuration_preferences import (
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.message_box import ChromeMessageBox
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
@@ -284,7 +285,7 @@ class SettingsDialog(BaseDialog):
 
     def _ask_to_restart(self) -> bool:
         """Ask whether to restart now for the saved changes that need it; return True for now."""
-        box = QMessageBox(self)
+        box = ChromeMessageBox(self)
         box.setWindowTitle("Restart ax-devil?")
         box.setText("Some changes take effect after a restart.")
         restart = box.addButton("Restart Now", QMessageBox.ButtonRole.AcceptRole)

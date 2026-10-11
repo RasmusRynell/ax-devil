@@ -8,6 +8,7 @@ from typing import Protocol
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
+from ax_devil.modules.chrome.message_box import Button, ask
 from ax_devil.modules.workspace.core import WORKSPACE_FILE_SUFFIX
 
 _FILE_FILTER = f"Workspaces (*{WORKSPACE_FILE_SUFFIX})"
@@ -53,15 +54,14 @@ class DialogPrompts:
 
     def ask_save_changes(self, workspace_name: str) -> SaveChoice:
         """Ask Save / Discard / Cancel about the modified workspace."""
-        buttons = QMessageBox.StandardButton
-        answer = QMessageBox.question(
+        answer = ask(
             self._parent,
             "Save Workspace",
             f"Save changes to {workspace_name}?",
-            buttons.Save | buttons.Discard | buttons.Cancel,
-            buttons.Save,
+            Button.Save | Button.Discard | Button.Cancel,
+            Button.Save,
         )
-        return {buttons.Save: SaveChoice.SAVE, buttons.Discard: SaveChoice.DISCARD}.get(answer, SaveChoice.CANCEL)
+        return {Button.Save: SaveChoice.SAVE, Button.Discard: SaveChoice.DISCARD}.get(answer, SaveChoice.CANCEL)
 
     def choose_workspace_to_open(self) -> Path | None:
         """Show an open dialog filtered to workspace files."""
@@ -75,11 +75,10 @@ class DialogPrompts:
 
     def confirm_replace(self, path: Path) -> bool:
         """Ask whether to replace *path*."""
-        buttons = QMessageBox.StandardButton
-        answer = QMessageBox.question(
-            self._parent, "Save Workspace As", f"Replace {path.name}?", buttons.Yes | buttons.No, buttons.No
+        return (
+            ask(self._parent, "Save Workspace As", f"Replace {path.name}?", Button.Yes | Button.No, Button.No)
+            == Button.Yes
         )
-        return answer == buttons.Yes
 
     def show_error(self, message: str) -> None:
         """Show *message* as a warning."""
