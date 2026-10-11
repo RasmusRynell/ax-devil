@@ -25,7 +25,7 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import stream_media_controller
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     LiveMQTTOverlaySourceSpec,
     LiveRTSPOverlaySourceSpec,
     LiveRTSPStreamSpec,
@@ -95,8 +95,10 @@ def live_transports(monkeypatch: pytest.MonkeyPatch) -> LiveTransports:
         return overlays[-1]
 
     monkeypatch.setattr(stream_media_controller, "RTSPSource", open_video)
-    monkeypatch.setattr("ax_devil.modules.data_sources.MQTTOverlaySource", open_overlay)
-    monkeypatch.setattr("ax_devil.modules.data_sources.WebSocketOverlaySource", open_overlay)
+    monkeypatch.setattr("ax_devil.modules.data_sources.live.mqtt_overlay_source.MQTTOverlaySource", open_overlay)
+    monkeypatch.setattr(
+        "ax_devil.modules.data_sources.live.websocket_overlay_source.WebSocketOverlaySource", open_overlay
+    )
     monkeypatch.setattr(stream_media_controller, "get_payload_decoder", lambda handler: f"decoder:{handler}")
     monkeypatch.setattr(stream_media_controller, "get_payload_filter_factory", lambda handler: f"filters:{handler}")
     return videos, overlays

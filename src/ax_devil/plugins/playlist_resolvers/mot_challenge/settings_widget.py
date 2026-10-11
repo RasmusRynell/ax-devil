@@ -1,7 +1,7 @@
 """Settings widget for the MOT Challenge playlist resolver.
 
 Provides a directory browser that auto-discovers MOT sequences, displays them
-in a checkable list, and emits playlist contents.
+in a checkable list, and submits the root and the checked sequence names.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import PlaylistResolverWidget
 from ax_devil.modules.settings.logging_config import get_logger
 
-from .resolver import SequenceInfo, build_playlist_contents, discover_sequences
+from .resolver import SequenceInfo, discover_sequences
 
 logger = get_logger(__name__)
 
@@ -35,12 +35,13 @@ logger = get_logger(__name__)
 class MOTChallengeSettingsWidget(PlaylistResolverWidget):
     """Settings widget for the MOT Challenge resolver.
 
-    Emits ``playlist_resolved(list[PlaylistContent])`` when the user clicks "Load Playlist".
+    Submits ``{"root": ..., "sequences": [...]}`` when the user clicks "Load Playlist".
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._sequences: list[SequenceInfo] = []
+        self._scanned_root = Path()
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -98,6 +99,7 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
 
         try:
             self._sequences = discover_sequences(root)
+            self._scanned_root = root.resolve()
         except Exception as exc:
             logger.warning(f"Failed to scan MOT directory: {exc}")
             self._status_label.setText(f"Scan failed: {exc}")
@@ -131,4 +133,4 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             self._status_label.setText("No sequences selected.")
             return
 
-        self.emit_playlists(build_playlist_contents(selected))
+        self.submit_settings({"root": str(self._scanned_root), "sequences": [sequence.name for sequence in selected]})

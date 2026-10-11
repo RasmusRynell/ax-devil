@@ -14,6 +14,13 @@ from PySide6.QtWidgets import QApplication
 from ax_devil.modules.chrome.appearance import notify_text_size_changed
 from ax_devil.modules.chrome.tokens import Height, Space, body_px
 
+SEE_THROUGH = ".QWidget { background: transparent; }"
+"""Stylesheet that lets a surface's own background through the plain containers inside it.
+
+The application style fills every container with the window color. ``.QWidget`` matches plain containers only, so
+fields, buttons and the kit's own widgets keep their fills.
+"""
+
 # Keep overrides in the theme engine so widgets, icons, and QPalette agree.
 DARK_COLORS: dict[str, str] = {
     "background": "#121314",
@@ -61,7 +68,7 @@ LIGHT_COLORS: dict[str, str] = {
     "foreground": "#263445",
     "foreground>icon": "#526477",
     "foreground>disabled": "#7c8794",
-    "foreground>input.placeholder": "#65768a",
+    "foreground>input.placeholder": "#5a6a7d",
     "border": "#d5dee8",
     "border>input": "#7b8d9f",
     "input.background": "#ffffff",
@@ -163,6 +170,12 @@ def _sync_palette(_palette: QPalette) -> None:
         _install_stylesheet(app)
 
 
+def _pick(palette: QPalette, dark_and_light: tuple[str, str]) -> QColor:
+    """Return the dark or the light color of a pair, by the surface *palette* belongs to."""
+    dark = palette.color(QPalette.ColorRole.Text).lightnessF() > 0.5
+    return QColor(dark_and_light[0 if dark else 1])
+
+
 class StatusColor(Enum):
     """Semantic foreground colors with contrast on light and dark surfaces."""
 
@@ -172,9 +185,26 @@ class StatusColor(Enum):
 
     def color(self, palette: QPalette) -> QColor:
         """Return the foreground appropriate to the surface's palette."""
-        dark = palette.color(QPalette.ColorRole.Text).lightnessF() > 0.5
-        return QColor(self.value[0 if dark else 1])
+        return _pick(palette, self.value)
 
     def css(self, palette: QPalette) -> str:
         """Return the stylesheet declaration that colors text with this status on the surface's palette."""
         return f"color: {self.color(palette).name()};"
+
+
+class KindColor(Enum):
+    """Accent colors that tell kinds of things apart, with contrast on light and dark surfaces.
+
+    Live streams, videos and playlists each keep one color wherever they are marked, so they read apart everywhere.
+    """
+
+    LIVE = ("#e5534b", "#c4362e")
+    VIDEO = ("#a8b3bf", "#526477")
+    PLAYLIST = ("#b18cf0", "#6f45c2")
+    OVERLAY = ("#8f9aa6", "#607080")
+    INFO = ("#6db3f0", "#1f6fb5")
+    MUTED = ("#858585", "#5a6a7d")
+
+    def color(self, palette: QPalette) -> QColor:
+        """Return the accent appropriate to the surface's palette."""
+        return _pick(palette, self.value)

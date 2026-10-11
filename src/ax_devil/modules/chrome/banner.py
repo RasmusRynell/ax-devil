@@ -1,0 +1,49 @@
+"""A strip that tells the user something needs attention, with the one action that deals with it."""
+
+from __future__ import annotations
+
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
+
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import StatusColor
+from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
+
+_FILL_ALPHA = 0.12
+
+
+class Banner(QFrame):
+    """A warning-colored message with an action button; connect to ``action`` to react to a click."""
+
+    def __init__(self, message: str, action_text: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("AxDevilBanner")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(Space.M, Space.S, Space.M, Space.S)
+        layout.setSpacing(Space.M)
+        self._icon = QLabel(self)
+        layout.addWidget(self._icon)
+        text = QLabel(message, self)
+        TextRole.SMALL.apply(text)
+        text.setWordWrap(True)
+        layout.addWidget(text, 1)
+        self.action = SmallButton(action_text, parent=self)
+        layout.addWidget(self.action)
+        follow_appearance(self, self._apply_appearance)
+
+    def _apply_appearance(self) -> None:
+        warning = StatusColor.WARNING.color(self.palette())
+        fill = QColor(warning)
+        fill.setAlphaF(_FILL_ALPHA)
+        self.setStyleSheet(
+            f"""
+            #AxDevilBanner {{
+                border: 1px solid {warning.name()};
+                border-radius: {Radius.CONTROL}px;
+                background: {fill.name(QColor.NameFormat.HexArgb)};
+            }}
+            """
+        )
+        self._icon.setPixmap(Icon.WARNING.icon(warning).pixmap(16, 16))

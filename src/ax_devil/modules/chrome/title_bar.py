@@ -65,12 +65,16 @@ class _DragAwareMenuBar(QMenuBar):
 
 
 class TitleBar(QWidget):
-    """Compact frameless title bar with system-native drag, menus, and window controls."""
+    """Compact frameless title bar with system-native drag, menus, and window controls.
+
+    It shows the window title, or a fixed *title* when the window keeps its title for the desktop's task switcher.
+    """
 
     def __init__(
         self,
         window: QWidget,
         *,
+        title: str | None = None,
         show_menu_bar: bool = True,
         show_minimize: bool = True,
         show_maximize: bool = True,
@@ -91,19 +95,20 @@ class TitleBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        self._build_ui()
-        window.windowTitleChanged.connect(self._title_label.setText)
+        self._build_ui(title)
+        if title is None:
+            window.windowTitleChanged.connect(self._title_label.setText)
         self.sync_buttons()
         follow_appearance(self, self._apply_appearance)
 
     # -- Construction -------------------------------------------------------
 
-    def _build_ui(self) -> None:
+    def _build_ui(self, title: str | None) -> None:
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._title_label = QLabel(self._window.windowTitle(), self)
+        self._title_label = QLabel(self._window.windowTitle() if title is None else title, self)
         self._title_label.setObjectName("AxDevilTitleLabel")
         self._title_label.setContentsMargins(Space.M, 0, Space.S, 0)
         self._title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)

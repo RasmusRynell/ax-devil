@@ -26,3 +26,9 @@ How to build UI with it is in the [write-ui skill](../../../../.agents/skills/wr
   selects a screen or persists coordinates.
 - Button and chrome icons come from `icons.py`, never Qt standard pixmaps or text glyphs; status text such as
   `● Live` may still carry a glyph.
+- Sidebar views are `SidebarView` values (`sidebar_view.py`) built from `ViewPanel`, `RowList`, `SectionCaption`,
+  `ListRow`, `SmallButton`, `Chip` and `Banner`, which follow the theme and text size on their own. The app style fills
+  every plain container with the window color and gives every `QLabel` a border. `RowList` and `ViewPanel.add_padded`
+  make the plain containers in them see-through and `ListRow` is see-through itself, so views write no transparency
+  stylesheets; a plain container placed with `ViewPanel.add` still needs `background: transparent`, and a label in a
+  wrapped layout needs `border: none`.

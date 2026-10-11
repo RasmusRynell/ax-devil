@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import TypeVar
 from unittest.mock import MagicMock
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.cache.cache_manager import CacheManager
-from ax_devil.modules.data_sources import FileFrameSource
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import offline_entry_media
@@ -29,7 +30,8 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
 )
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
+    BookmarkTarget,
     EntryLane,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
@@ -314,3 +316,25 @@ def test_viewer_opens_a_real_video_without_waiting_and_stops_its_workers_on_clos
     widget.cleanup()
 
     assert not any(worker.is_alive() for worker in video_workers)
+
+
+def test_a_viewer_opened_at_a_frame_shows_it_paused_and_reports_it_as_the_bookmark_position(
+    qtbot: QtBot, video_file_factory: Callable[[float, int], Path], render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    """A bookmark opens at its frame, and that frame, not the first, is the first one the viewer shows."""
+    video = replace(
+        SeekableVideoContent(display_name="video", source_spec=FileVideoSourceSpec(path=video_file_factory(1.0, 10))),
+        item_id="item",
+    )
+    widget = OfflineVideoViewerWidget(video, render_catalog_manager=render_catalog_manager, start_frame=6)
+    qtbot.addWidget(widget)
+
+    widget.on_workspace_attached()
+    qtbot.waitUntil(lambda: widget.bookmark_position() is not None)
+
+    position = widget.bookmark_position()
+    assert position is not None
+    assert (position.target, position.frame) == (BookmarkTarget("item"), 6)
+    assert position.time_s == pytest.approx(0.6, abs=0.01)  # The time of the frame on screen: frame 6, never 0.
+    assert widget._runtime is not None and not widget._runtime.is_playing
+    widget.cleanup()

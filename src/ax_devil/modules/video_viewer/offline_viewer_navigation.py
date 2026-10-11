@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     ConsiderationQuery,
     PlaylistContent,
@@ -44,12 +44,15 @@ class OfflineViewerNavigation:
         """Return playlist entry indices that should participate in stepping."""
         return [index for index in range(len(self.get_entries())) if self.is_entry_considered(index)]
 
+    def bound_entry_index(self, index: int) -> int:
+        """Return *index* limited to the playlist entries, whether or not the entry is considered."""
+        return min(max(index, 0), max(len(self.get_entries()) - 1, 0))
+
     def normalize_entry_index(self, index: int) -> int:
         """Choose a valid starting index, preferring considered playlist entries."""
-        entries = self.get_entries()
-        if not entries:
+        if not self.get_entries():
             return 0
-        bounded_index = min(max(index, 0), len(entries) - 1)
+        bounded_index = self.bound_entry_index(index)
         considered_indices = self.considered_entry_indices()
         if not considered_indices:
             return bounded_index

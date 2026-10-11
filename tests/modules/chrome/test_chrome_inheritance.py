@@ -9,7 +9,6 @@ from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.chrome import BaseDialog, ChromeWindow, window_uses_custom_frame
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
-from ax_devil.modules.diagnostics.plugin_window import PluginWindow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
 from tests.helpers.shortcuts import make_shortcut_manager
@@ -41,10 +40,9 @@ def test_dialog_and_tool_windows_share_parent_chrome_policy(
     qtbot.addWidget(window)
     dialog = BaseDialog(parent=window, title="Shared Chrome")
     debug_window = DebugWindow(parent=window, use_custom_frame=window_uses_custom_frame(window))
-    plugin_window = PluginWindow(parent=window, use_custom_frame=window_uses_custom_frame(window))
     assert not window.shows_custom_frame_border
     assert _direct_window_border(window) is None
-    for child in (dialog, debug_window, plugin_window):
+    for child in (dialog, debug_window):
         assert bool(child.windowFlags() & Qt.WindowType.FramelessWindowHint) is custom_frame
         assert child.shows_custom_frame_border is custom_frame
         assert (child.findChild(QWidget, "AxDevilTitleBar") is not None) is custom_frame

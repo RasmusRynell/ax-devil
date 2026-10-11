@@ -3,6 +3,51 @@
 Details behind the [README](../README.md) walkthrough. Commands are shown as `ax-devil`; from a source checkout,
 prefix them with `uv run`.
 
+## Workspaces
+
+The **Workspace** view of the sidebar lists the workspace under **Live**, **Videos**, and **Playlists**. Beside a camera is its address, beside
+a playlist how many entries take part, and beside two items with the same name the folder that tells them apart; hover
+an item for more. An accent edge marks what is open in a viewer. While the workspace is empty the sidebar shows
+buttons to open content and your recent workspaces instead. **File → Save Workspace**
+(`Ctrl+S`) saves it as a `.ax-devil.workspace` file. **File → Open Workspace** (`Ctrl+O`), **File → Open Recent**, the
+sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The title bar shows the workspace name, with
+`●` while it has unsaved changes.
+
+Closing never asks. The workspace, unsaved changes included, is kept in the storage folder and reopened by the next
+plain `ax-devil` launch, with its items listed and nothing opened or connected. Opening or creating another workspace
+while the current one has unsaved changes asks whether to save them first. `ax-devil local`, `live`, and `playlist`
+start a new Untitled workspace with what they open.
+
+A workspace saves what you added, not how you looked at it: file paths (relative to the workspace file when they are
+in its folder), live stream settings, and playlist resolver settings. Open viewers, layouts, playback positions, and
+hidden entries are not saved. Camera and broker hosts and credentials are written as entered: a `$VARIABLE` reference
+stays a reference, and a typed password is written as plain text, so share such files with care.
+
+Right-click an item to rename or remove it; an empty name returns to its default name, such as the file name or the
+camera host. An item that cannot open, such as a missing file or a missing plugin, stays in the list with a warning
+icon; hover it for the reason. The details are in [Workspace](architecture/workspace.md#lifecycle).
+
+## Sidebar views
+
+You are always in a workspace. The strip along the left edge has two parts. The top buttons are the workspace: the
+first shows everything in it, and the others show one part of it, with their own actions. The bottom buttons are the
+application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
+
+- **Live** lists the workspace's cameras with **Connect** and **Disconnect**; a camera is connected while its viewer is
+  open. **Scan network** looks for Axis cameras on the local network, only when you press it, and **Add** puts one in
+  the workspace with the **Settings → Stream defaults**. **Add by address** opens the Add Live Stream dialog.
+- **Playlists** lists the workspace's playlists. **Rescan** reads a playlist's folders again, for example after adding
+  files; open viewers keep what they show. **Add from** lists the playlist resolvers, including those from plugins;
+  **Add** opens the Add Playlist dialog with that resolver chosen.
+- **Bookmarks** lists the frames you marked in local videos and playlists, grouped by video or playlist entry.
+  **View → Add Bookmark** (`M`) marks the frame on screen. Click a bookmark to open it paused at its frame; right-click
+  to rename it, change its kind (Note, Issue, Example, Question) or remove it. The chips and the search filter the
+  list, and a group's **Reviewed** / **To review** mark toggles when clicked. **Export CSV** writes every bookmark.
+  Bookmarks and review marks are saved in the workspace file, and live streams cannot be bookmarked.
+- **Plugins** shows which plugins loaded, which failed and why, and which are built in. **Add plugin** installs a
+  package, wheel or folder; the `…` menu of an installed plugin updates or removes it; **Reload** loads plugins again.
+  Installs, updates and removals apply after a restart, which a banner offers. **Debug → Plug-ins** also opens it.
+
 ## Video and overlays
 
 `ax-devil local --help` lists file-opening options. `--overlay` requires `--handler-type`;
@@ -10,7 +55,8 @@ prefix them with `uv run`.
 
 The **media tools panel** holds filtering, object inspection, the event log, the render catalog choice and export.
 Open it with **View → Media Tools Panel** (`Ctrl+B`) or by double-clicking or dragging the handle on the right edge of the video.
-**View → Sidebar** (`Ctrl+\`) hides or shows the list of opened content on the left.
+**View → Sidebar** (`Ctrl+\`), or the button of the view on screen in the strip along the left edge, hides or shows the
+sidebar. The same strip opens the render catalogs and Settings.
 
 Press **F** on a lane to show it fullscreen; **F** or **Esc** restores it, and **F11** toggles the application
 window. Playback shortcuts can be changed in **Settings → General**.

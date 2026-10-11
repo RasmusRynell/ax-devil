@@ -42,6 +42,18 @@ class Icon(Enum):
     OVERLAY = ("layers", False)
     WARNING = ("triangle-alert", False)
     BROWSE = ("folder", False)
+    SETTINGS = ("settings", False)
+    CATALOGS = ("palette", False)
+    WORKSPACE = ("layout-list", False)
+    BOOKMARK = ("bookmark", False)
+    PLUGIN = ("plug", False)
+    REFRESH = ("refresh-cw", False)
+    ADD = ("plus", False)
+    CHECK = ("check", False)
+    SEARCH = ("search", False)
+    REMOVE = ("trash-2", False)
+    INFO = ("info", False)
+    SCAN = ("wifi", False)
 
     def __init__(self, file_stem: str, filled: bool) -> None:
         self.file_stem = file_stem

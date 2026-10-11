@@ -61,7 +61,7 @@ class ExternalDecoder(DecoderPlugin):
 
     @classmethod
     def required_api_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
     def scene_model_version(cls) -> tuple[int, int] | None:
@@ -81,7 +81,7 @@ class ExternalResolver(PlaylistResolverPlugin):
 
     @classmethod
     def required_api_version(cls) -> int:
-        return 1
+        return 2
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -90,6 +90,9 @@ class ExternalResolver(PlaylistResolverPlugin):
     @classmethod
     def display_name(cls) -> str:
         return "External Resolver"
+
+    def resolve(self, settings: Any) -> Any:
+        raise NotImplementedError
 
     def create_settings_widget(self) -> Any:
         raise NotImplementedError
@@ -105,6 +108,12 @@ class FutureApi(ExternalDecoder):
     @classmethod
     def required_api_version(cls) -> int:
         return 999
+
+
+class PreviousApi(ExternalDecoder):
+    @classmethod
+    def required_api_version(cls) -> int:
+        return 1
 
 
 class WrongType(ExternalDecoder):
@@ -162,7 +171,8 @@ def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.Mon
         pytest.param(object, "PLUGIN_CLASS missing or invalid", id="not-a-plugin"),
         pytest.param(UndeclaredApi, "must explicitly declare required_api_version", id="undeclared-api"),
         pytest.param(BrokenApiDeclaration, "plugin validation failed: broken API declaration", id="raising-api"),
-        pytest.param(FutureApi, "requires plugin API 999, host provides 1", id="future-api"),
+        pytest.param(FutureApi, "requires plugin API 999, host provides 2", id="future-api"),
+        pytest.param(PreviousApi, "requires plugin API 1, host provides 2", id="previous-api"),
         pytest.param(WrongType, "expected 'decoder'", id="wrong-family"),
         pytest.param(UndeclaredSceneModel, "must explicitly declare scene_model_version", id="no-scene-model"),
         pytest.param(NewerSceneMajor, f"built for Scene model {SCENE_MODEL_VERSION[0] + 1}.0", id="scene-major"),
@@ -182,6 +192,32 @@ def test_rejected_plugin_is_recorded_with_its_reason(monkeypatch: pytest.MonkeyP
     assert resolver.status is PluginStatus.LOADED
     decoders = RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE)
     assert any(other.origin == "builtin" and other.status is PluginStatus.LOADED for other in decoders)
+
+
+def test_resolver_without_headless_resolve_fails_to_load_and_says_why(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A resolver written for the widget-only contract is reported at startup instead of failing when used."""
+
+    class WidgetOnlyResolver(PlaylistResolverPlugin):
+        @classmethod
+        def required_api_version(cls) -> int:
+            return 2
+
+        @classmethod
+        def plugin_id(cls) -> str:
+            return "widget-only"
+
+        @classmethod
+        def display_name(cls) -> str:
+            return "Widget Only"
+
+        def create_settings_widget(self) -> Any:
+            raise NotImplementedError
+
+    _load_installed(monkeypatch, resolvers=[_entry_point(WidgetOnlyResolver, name="widget-only")])
+
+    record = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "widget-only")
+    assert record.status is PluginStatus.FAILED
+    assert record.error == "does not implement resolve"
 
 
 def test_registration_failure_is_recorded_under_the_plugin_id(monkeypatch: pytest.MonkeyPatch) -> None:

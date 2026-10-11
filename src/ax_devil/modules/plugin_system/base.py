@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .registry import RuntimePluginRegistry
 
-PLUGIN_API_VERSION = 1
+PLUGIN_API_VERSION = 2
 
 
 @dataclass(frozen=True)

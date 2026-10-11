@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from functools import partial
+from typing import NamedTuple
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QWidget
@@ -13,7 +14,8 @@ from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QW
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.chrome.tokens import Radius, Space
-from ax_devil.modules.data_sources import FileFrameSource, FileOverlaySource
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
+from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import (
@@ -46,7 +48,12 @@ from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     OverlayAlignmentIndicator,
     TimingDiagnosticsWidget,
 )
-from ax_devil.modules.workspace import EntryLane, SeekableVideoContent
+from ax_devil.modules.workspace.core import EntryLane, SeekableVideoContent
+
+
+def _diagnostics_label(item_name: str, lane_name: str) -> str:
+    """Return the render diagnostics label of a lane: its workspace item's name and the lane's content name."""
+    return f"{item_name} · {lane_name}"
 
 
 def show_video_on_controls(controls: SeekableVideoControlPanel, source: FileFrameSource) -> None:
@@ -238,6 +245,13 @@ class OfflineLane:
         self.display.cleanup()
 
 
+class PresentedFrame(NamedTuple):
+    """A frame shown on screen: its index in the video and its decoded time."""
+
+    frame: int
+    seconds: float
+
+
 @dataclass(slots=True, eq=False)
 class _PooledVideoSource:
     """One source-pool entry shared by lanes that reference the same seekable video."""
@@ -305,7 +319,7 @@ class OfflineSession(QObject):
         self._media = media
         self._source_pool = source_pool
         self._is_playing = False
-        self._current_frame_seconds: float | None = None
+        self._presented_frame: PresentedFrame | None = None
         self._min_valid_primary_generation: int | None = None
         self._secondary_frame_relay = _SecondaryFrameRelay(self)
         self._secondary_frame_relay.frameReady.connect(self._display_secondary_frame)
@@ -341,6 +355,11 @@ class OfflineSession(QObject):
         """Return all active lane displays in presentation order."""
         return tuple(lane.display for lane in self.lanes)
 
+    def set_display_name(self, name: str) -> None:
+        """Relabel every lane's render diagnostics with the renamed workspace item *name*."""
+        for lane in self.lanes:
+            lane.display.viewport.set_diagnostics_label(_diagnostics_label(name, lane.name))
+
     def focused_display(self) -> FrameDisplay | None:
         """Return the display of the focused lane, or the first lane's when focus is outside the displays."""
         displays = self.displays
@@ -374,9 +393,13 @@ class OfflineSession(QObject):
         return self._current_frame
 
     @property
-    def current_frame_seconds(self) -> float | None:
-        """Return the decoded time of the primary frame on screen, or None before the first frame."""
-        return self._current_frame_seconds
+    def presented_frame(self) -> PresentedFrame | None:
+        """Return the primary frame on screen, or None before the first frame.
+
+        Unlike ``current_frame``, which moves to a seek target at once, it stays the frame last shown until the
+        requested one arrives.
+        """
+        return self._presented_frame
 
     @property
     def is_playing(self) -> bool:
@@ -528,7 +551,7 @@ class OfflineSession(QObject):
         video = opened.video
         display = FrameDisplay()
         rollback.callback(display.cleanup)
-        display.viewport.set_diagnostics_label(f"{video.display_name} · {lane_content.display_name}")
+        display.viewport.set_diagnostics_label(_diagnostics_label(pane_title, lane_content.display_name))
         controls = SeekableVideoControlPanel(display.viewport) if use_lane_controls else None
         if controls is not None:
             display.mount_overlay(controls, position=OverlayPosition.BOTTOM_FULL_WIDTH)
@@ -824,7 +847,9 @@ class OfflineSession(QObject):
 
         if source_index == 0:
             self._current_frame = self._bounded_frame(frame_data.frame_id.sequence_id)
-            self._current_frame_seconds = frame_data.frame_id.timestamp_monotime_us / 1_000_000
+            self._presented_frame = PresentedFrame(
+                self._current_frame, frame_data.frame_id.timestamp_monotime_us / 1_000_000
+            )
             self.currentFrameChanged.emit(self.current_frame)
         for lane in self.lanes:
             if lane.source_index == source_index:

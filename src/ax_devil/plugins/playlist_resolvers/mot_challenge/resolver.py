@@ -7,15 +7,16 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder import ImageSequenceConfig
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
     OverlayContent,
     PlaylistContent,
     PlaylistEntry,
+    PlaylistSettings,
     SeekableVideoContent,
     create_entry_lane,
 )
@@ -38,6 +39,29 @@ class SequenceInfo:
     frame_count: int
     im_dir: str
     im_ext: str
+
+
+def resolve_settings(settings: PlaylistSettings) -> list[PlaylistContent]:
+    """Return the playlist for ``{"root": ..., "sequences": [...]}`` settings.
+
+    ``sequences`` names the sequences to include; without it, every sequence found under ``root`` is included.
+    """
+    root = settings.get("root")
+    if not isinstance(root, str) or not root:
+        raise ValueError("MOT Challenge setting 'root' must be a non-empty string.")
+    sequences = discover_sequences(Path(root))
+    names = settings.get("sequences")
+    if names is not None:
+        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+            raise ValueError("MOT Challenge setting 'sequences' must be a list of sequence names.")
+        missing = set(names) - {sequence.name for sequence in sequences}
+        if missing:
+            logger.warning(f"MOT sequences not found in {root}: {', '.join(sorted(missing))}")
+        sequences = [sequence for sequence in sequences if sequence.name in names]
+    playlists = build_playlist_contents(sequences)
+    if not playlists:
+        raise ValueError(f"No MOT sequences found in '{root}'.")
+    return playlists
 
 
 def parse_seqinfo(ini_path: Path) -> dict[str, str]:

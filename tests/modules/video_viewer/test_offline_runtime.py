@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
-from ax_devil.modules.data_sources import FileFrameSource
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.scene.model import Scene, TimeSlice
@@ -27,7 +27,7 @@ from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
-from ax_devil.modules.workspace import (
+from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     LiveMQTTOverlaySourceSpec,
     OverlayContent,
@@ -424,6 +424,21 @@ def test_secondary_video_shows_only_the_current_primary_frame(qtbot: QtBot) -> N
     assert displays[0].frame_ids() == [9, 10, 14]
 
 
+def test_presented_frame_stays_the_frame_on_screen_while_a_seek_is_pending(qtbot: QtBot) -> None:
+    """A bookmark taken after a seek request but before its frame arrives marks the frame the user sees."""
+    session, _display, source = _make_primary_session(qtbot)
+    assert session.presented_frame is None
+    source.deliver(7)
+
+    session.jump_to_frame(40)
+
+    assert session.presented_frame == (7, pytest.approx(0.007))
+
+    source.deliver(40)
+
+    assert session.presented_frame == (40, pytest.approx(0.04))
+
+
 def test_seek_drops_frames_decoded_before_it(qtbot: QtBot) -> None:
     """Frames queued from the old position are skipped until the seek target arrives; frames without a position
     generation are always shown."""
@@ -580,3 +595,24 @@ def test_lane_retains_a_recent_overlay_at_its_original_sample_time() -> None:
         assert shown.metadata["overlay_opacity"] == 0.4
     assert display.frames[1].overlays is None
     assert display.frames[3].overlays is None
+
+
+class _LabelRecordingViewport:
+    """Viewport test double recording the render diagnostics labels it is given."""
+
+    def __init__(self) -> None:
+        self.labels: list[str] = []
+
+    def set_diagnostics_label(self, label: str) -> None:
+        """Record the label."""
+        self.labels.append(label)
+
+
+def test_renamed_item_relabels_existing_lane_diagnostics(qtbot: QtBot) -> None:
+    session, display, _source = _make_primary_session(qtbot)
+    viewport = _LabelRecordingViewport()
+    display.viewport = viewport  # type: ignore[attr-defined]
+
+    session.set_display_name("Renamed item")
+
+    assert viewport.labels == ["Renamed item · lane"]

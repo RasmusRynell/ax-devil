@@ -1,23 +1,31 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
-from PySide6.QtWidgets import QMenu
+import pytest
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QPushButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
+from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
+from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-from ax_devil.modules.workspace.session import WorkspaceSession
+from ax_devil.modules.workspace.core import RecentWorkspaces, VideoItem, WorkspaceBackup
+from ax_devil.modules.workspace.ui.live_view import LiveView
+from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.shortcuts import make_shortcut_manager
+from tests.helpers.workspace import DummyViewer, FakePrompts
 
 
 class _FocusedWidget:
-    """Focused workspace widget test double."""
+    """Focused viewer widget test double."""
 
     def __init__(self) -> None:
         self.toggle_count = 0
@@ -59,14 +67,19 @@ class _RoutingSession:
     def __init__(self, focused_widget: _FocusedWidget | None, offline_viewer: _OfflineViewer | None) -> None:
         self._focused_widget = focused_widget
         self._offline_viewer = offline_viewer
+        self.bookmark_requests = 0
 
     def focused_widget(self) -> _FocusedWidget | None:
-        """Return the focused workspace widget."""
+        """Return the focused viewer widget."""
         return self._focused_widget
 
     def focused_offline_viewer(self) -> _OfflineViewer | None:
         """Return the focused offline viewer."""
         return self._offline_viewer
+
+    def bookmark_focused_viewer(self) -> None:
+        """Record a request to bookmark the focused viewer's frame."""
+        self.bookmark_requests += 1
 
     def cleanup(self) -> None:
         """Match the workspace session teardown API."""
@@ -124,6 +137,25 @@ def test_media_tools_action_is_in_view_menu_and_routes_to_focused_widget(
     action.trigger()
 
     assert focused_widget.media_tools_toggle_count == 1
+
+
+def test_add_bookmark_is_in_view_menu_on_m_and_bookmarks_the_focused_viewer(
+    qtbot: QtBot,
+    render_catalog_manager: SceneRenderCatalogManager,
+) -> None:
+    manager = make_shortcut_manager()
+    window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    session = _RoutingSession(_FocusedWidget(), None)
+    window._workspace_session = cast(WorkspaceSession, session)
+    action = manager.get_action("view.add_bookmark")
+
+    assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["View"]
+    assert action.shortcut().toString() == "M"
+
+    action.trigger()
+
+    assert session.bookmark_requests == 1
 
 
 def test_render_catalogs_action_is_in_view_menu_and_opens_the_catalog_viewer(
@@ -190,3 +222,132 @@ def test_view_display_preferences_save_and_follow_settings_changes(
         assert all(actions[preference.label].isChecked() for preference in OverlayPreference)
     finally:
         settings.apply_snapshot(previous)
+
+
+@pytest.mark.parametrize("use_custom_frame", [False, True])
+def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspace_and_unsaved_changes(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path, use_custom_frame: bool
+) -> None:
+    manager = make_shortcut_manager()
+    window = MainWindow(
+        shortcut_manager=manager, render_catalog_manager=render_catalog_manager, use_custom_frame=use_custom_frame
+    )
+    qtbot.addWidget(window)
+    session = window._workspace_session
+    session.lifecycle._prompts = FakePrompts(save_path=tmp_path / "Parking lot")
+    expected_keys = {
+        "app.new_workspace": "",
+        "app.open_workspace": "Ctrl+O",
+        "app.save_workspace": "Ctrl+S",
+        "app.save_workspace_as": "Ctrl+Shift+S",
+    }
+    for action_id, key in expected_keys.items():
+        action = manager.get_action(action_id)
+        assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["File"]
+        assert action.shortcut().toString() == key
+
+    def assert_titles(name: str, modified: bool) -> None:
+        assert window.windowTitle() == f"{'● ' if modified else ''}{name} — ax-devil"
+        if use_custom_frame:
+            title_label = window.findChild(QLabel, "AxDevilTitleLabel")
+            assert title_label is not None
+            assert title_label.text() == "ax-devil"
+        view = window._workspace_session._workspace_view
+        modified_marker = view.findChild(QLabel, "AxDevilWorkspaceModified")
+        assert modified_marker is not None
+        assert view.title() == name
+        assert (not modified_marker.isHidden()) == modified
+
+    assert_titles("Untitled", modified=False)
+    video = tmp_path / "lot.mp4"
+    video.write_bytes(b"")
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([VideoItem(video=video)])
+        qtbot.waitUntil(lambda: session.focused_widget() is not None)  # Items resolve in the background.
+    assert_titles("Untitled", modified=True)
+
+    manager.get_action("app.save_workspace").trigger()
+
+    assert_titles("Parking lot", modified=False)
+
+
+def test_add_by_address_in_the_live_view_opens_the_add_live_stream_dialog(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    opened: list[str] = []
+
+    def cancel(dialog: BaseDialog) -> int:
+        opened.append(dialog.windowTitle())
+        return BaseDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(BaseDialog, "exec", cancel)
+    window._workspace_session.show_sidebar_view("live")
+    view = window.findChild(LiveView)
+    assert view is not None
+    [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add by address"]
+
+    button.click()
+
+    assert opened == ["Add Live Stream"]
+
+
+def test_quitting_keeps_the_workspace_even_without_closing_the_window(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    """Quitting after an unexpected error skips closing the window; unsaved edits are still kept."""
+    window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    session = window._workspace_session
+    session.lifecycle._backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
+    video = tmp_path / "lot.mp4"
+    video.write_bytes(b"")
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([VideoItem(video=video)])
+        qtbot.waitUntil(lambda: session.focused_widget() is not None)  # Items resolve in the background.
+
+    app = QApplication.instance()
+    assert app is not None
+    app.aboutToQuit.emit()
+
+    current = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json").restore()
+    assert current.items == session._workspace_store.workspace.items
+
+
+def test_changing_storage_in_settings_refreshes_the_start_panels_recent_workspaces(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    """Deferring restart keeps the start panel and File menu on the same saved history."""
+    config = ConfigManager()
+    old_folder, new_folder = tmp_path / "old", tmp_path / "new"
+    old_file, new_file = tmp_path / "Old.ax-devil.workspace", tmp_path / "New.ax-devil.workspace"
+    RecentWorkspaces(lambda: old_folder / "recent-workspaces.json").record(old_file)
+    RecentWorkspaces(lambda: new_folder / "recent-workspaces.json").record(new_file)
+    storage = config.get_saved("storage")
+    storage["base_dir"] = str(old_folder)
+    config.set("storage", storage)
+    config.activate_storage()
+    manager = make_shortcut_manager()
+    window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    session = window._workspace_session
+    assert [row.path for row in session._start_panel.recent_rows()] == [old_file]
+
+    def save_settings(dialog: SettingsDialog) -> int:
+        for field, editor in dialog._configuration_editors.items():
+            if field.path == "storage.base_dir":
+                edit = editor.findChild(QLineEdit)
+                assert edit is not None
+                edit.setText(str(new_folder))
+        dialog._on_ok()
+        return int(dialog.result())
+
+    with (
+        patch.object(SettingsDialog, "exec", save_settings),
+        patch.object(SettingsDialog, "_ask_to_restart", return_value=False),
+    ):
+        manager.get_action("app.settings").trigger()
+
+    assert [entry.path for entry in session.lifecycle.recent_workspaces()] == [new_file]
+    assert [row.path for row in session._start_panel.recent_rows()] == [new_file]

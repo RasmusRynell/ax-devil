@@ -5,10 +5,10 @@ The code is organized around concept-owned modules. Workspace content describes 
 ## Layers
 
 ```
-CLI (`cli.py`)                 -> Click commands and startup requests
+CLI (`cli.py`)                 -> Click commands that build Workspace Items
 Application (`app.py`)         -> logging, config, settings, plugins, Qt event loop
 Application Shell              -> MainWindow, menus, app-wide dialogs including Settings
-Workspace                      -> content, intake, state, browser rows, split panes, viewer hosting
+Workspace                      -> core: Workspace, items, content, intake (Qt-free); ui: store, browser rows, panes, viewers
 Video Viewer                   -> live/offline workflows, media tools, Scene presentation, catalog viewer
 Video Player                   -> reusable frame display, viewport, drawing preparation
 Runtime Modules                -> Scene, filtering, data sources, synchronization, cache, plugins
@@ -21,7 +21,7 @@ Modules import downward. Settings imports nothing above it, so every module may 
 upward imports are deliberate, and none forms an import-time cycle:
 
 - `scene.rendering` imports the drawing contract from `video_player.engine`; see the rendering README.
-- Viewers are Workspace widgets, and the Workspace viewer factory constructs them, so `video_viewer` and `workspace`
+- Viewers are `ViewerWidget`s, and the Workspace viewer factory constructs them, so `video_viewer` and `workspace`
   depend on each other.
 - Plugins speak the host's types: playlist resolvers return Workspace content and decoders return data-source
   factories.
@@ -33,7 +33,7 @@ For code placement, see [Module Map](module-map.md). For UI framework boundaries
 
 ## Workspace Content
 
-Workspace content lives in `ax_devil.modules.workspace.content`. Content objects are immutable descriptions of what the user added, not running sources.
+Workspace content lives in `ax_devil.modules.workspace.core.content`. Content objects are immutable descriptions of what the user added, not running sources.
 
 | Type | Role |
 |------|------|
@@ -52,21 +52,21 @@ Content also declares its supported consideration items. Playlist entries, visib
 
 `PlaylistEntry.__post_init__()` rejects live video lanes. Playlists are offline comparison/navigation workflows.
 
-## Startup Requests And Intake
+## Workspace Items And Intake
 
-Bare `ax-devil` launch opens an empty workspace without a startup request.
+Bare `ax-devil` launch reopens the workspace kept at the last close; `ax-devil open` opens a saved one. Everything
+that adds content — `ax-devil local`, `ax-devil live`, resolver commands, the Add dialogs, and desktop file drops —
+creates Workspace Items
+(`VideoItem`, `LiveStreamItem`, `PlaylistItem` in `workspace/core/items.py`); the store resolves them into Content. The
+item model, Content identity, and the playlist resolver contract are described in [Workspace](workspace.md).
 
-Startup request types live in `ax_devil.modules.workspace.startup_request`:
-
-- `VideoFileStartup` for `ax-devil local --video ...`, and for videos opened from the Add Video dialog, desktop file
-  drops, and the welcome screen's recent list
-- `LiveStreamStartup` for `ax-devil live ...`
-- `ResolvedPlaylistStartup` for resolver-provided playlists
-
-Video and live startup requests construct their content through `WorkspaceIntake`; resolver playlists arrive
-already built. What intake guarantees is in the [Content Model invariants](../domain/invariants.md#content-model).
-Intake adapts plugin decoder definitions into `WorkspaceDecoderOption` records; a file decoder's `file_extensions`
-let the Add Video dialog and file drops pick the handler when exactly one matches.
+`WorkspaceIntake` validates decoder selections and constructs video Content for items. `workspace/ui/plugin_intake.py`
+supplies the production intake, which adapts plugin decoder definitions into `WorkspaceDecoderOption` records, and the
+production resolution context, which also looks up playlist resolver plugins. File decoders may declare
+`file_extensions`; `WorkspaceIntake.file_decoder_options_for(path)` returns the decoders that may read an overlay file,
+and the Add Video dialog and file drops pick the handler when exactly one matches. Live entry points convert persisted
+overlay strings into `LiveOverlayMode` at their boundaries. Intake also validates the device host, camera head, and MQTT
+and WebSocket connection settings so dialog, CLI, and saved items share the same content requirements.
 
 ## Opening Content
 
@@ -76,17 +76,23 @@ let the Add Video dialog and file drops pick the handler when exactly one matche
 - `PlaylistContent` -> `OfflineVideoViewerWidget`
 - `LiveVideoContent` -> `LiveVideoViewerWidget`
 
-The factory returns the constructed widget, its content dependencies, and a status message. Offline viewers receive the read-only `ConsiderationQuery` contract, while `WorkspaceManager` remains the mutable state owner. `WorkspaceController` inserts the widget into `SplitView`, tracks its content dependencies, wires lifecycle signals, and handles removal side effects.
+The factory returns the constructed widget and a status message. Offline viewers receive the read-only `ConsiderationQuery` contract, while `WorkspaceStore` remains the mutable state owner. `WorkspaceController` inserts the widget into `SplitView`, tracks which item its Content came from, wires lifecycle signals, and closes the widget when that item is removed.
 
 ## Workspace State
 
-`WorkspaceManager` owns the mutable workspace facts and their Qt mutation signals:
+`WorkspaceStore` (`workspace/ui/workspace_store.py`) owns the mutable workspace facts and their Qt mutation signals:
 
-- content list
-- consideration refs
-- derived `WorkspaceBrowserRow` values
+- the current Workspace and the last saved one, with `open_workspace` and `save_workspace` reading and writing files
+  (see [Workspace](workspace.md#file-format))
+- what each item resolved to: its Content, the reason it could not resolve, or that it is still resolving in the
+  background (see [Workspace](workspace.md#resolution))
+- consideration refs (exclusions)
 
-Open-row identity is supplied when browser rows are projected from the current items reported by hosted viewer widgets. `ContentBrowserWidget` renders explicit browser rows and emits activation, removal, and consideration intents. It does not decide playlist expansion, lane expansion, open-row identity, or information payloads.
+It signals item changes, `workspace_replaced` when another Workspace is opened, created, or restored, and
+`state_changed` when the modified flag, name, or path changes.
+
+`build_browser_sections` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query, and the open
+items into `WorkspaceBrowserSection` values containing `WorkspaceBrowserRow` items. Open-row identity is supplied from the current items reported by hosted viewer widgets. The package split is described in [Workspace](workspace.md). `ContentBrowserWidget` renders explicit browser rows and emits activation, removal, and consideration intents. It does not decide playlist expansion, lane expansion, open-row identity, or information payloads.
 
 ## Data Sources
 
@@ -151,7 +157,7 @@ user's Retry, which reopens every transport from the same content. A video feed 
 stalled and also needs Retry.
 
 `data_sources/live/datahub_client.py` and `data_sources/live/mqtt_discovery.py` own the DataHub and MQTT protocol
-clients shared by Workspace discovery (`workspace/add_content/analytics_discovery.py`) and the runtime sources.
+clients shared by Workspace discovery (`workspace/ui/add_content/analytics_discovery.py`) and the runtime sources.
 
 ## Synchronization
 
@@ -245,10 +251,10 @@ Built-in playlist resolver bundles:
 
 ## UI Structure
 
-The main UI is a workspace shell: content browser on the left, drag-to-split viewer area in the center, and application actions in `MainWindow`.
+The main UI is a workspace shell: an activity bar and a sidebar (one of the [sidebar views](ui-framework.md#sidebar-views)) on the left, drag-to-split viewer area in the center, and application actions in `MainWindow`.
 
 [UI Framework Structure](ui-framework.md) describes its owners: `MainWindow`, `WorkspaceSession`, `SplitView`,
-`WorkspaceWidget` and the display stack.
+`ViewerWidget` and the display stack.
 
 Application appearance is owned by `modules/chrome/theme.py`: shared light and dark color overrides feed QDarkTheme,
 theme setup completes Qt's application palette so custom painters receive matching surfaces, borders and selection

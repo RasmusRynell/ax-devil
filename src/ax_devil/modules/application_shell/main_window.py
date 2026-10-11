@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.configuration_preferences import save_overlay_preference
@@ -16,7 +17,7 @@ from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.diagnostics.metrics_store import metrics_enabled, set_metrics_enabled
-from ax_devil.modules.diagnostics.plugin_window import PluginWindow
+from ax_devil.modules.plugin_manager.plugins_view import PLUGINS_VIEW_ID, PluginsView
 from ax_devil.modules.plugin_system import PluginStatus, RuntimePluginRegistry
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -26,12 +27,20 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.fullscreen import LaneFullscreenController
-from ax_devil.modules.workspace import StartupContent
-from ax_devil.modules.workspace.session import WorkspaceSession
+from ax_devil.modules.workspace.core import WorkspaceItem, workspace_name
+from ax_devil.modules.workspace.ui.session import WorkspaceSession
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
-    from ax_devil.modules.workspace.viewer_host import WorkspaceWidget
+    from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
+
+
+APP_NAME = "ax-devil"
+
+
+def window_title(name: str, modified: bool) -> str:
+    """Return the main window title for the workspace called *name*, marked when it has unsaved changes."""
+    return f"{'● ' if modified else ''}{name} — {APP_NAME}"
 
 
 class MainWindow(ChromeWindow):
@@ -51,7 +60,13 @@ class MainWindow(ChromeWindow):
         render_catalog_manager: SceneRenderCatalogManager,
         use_custom_frame: bool = False,
     ) -> None:
-        super().__init__(use_custom_frame=use_custom_frame, show_custom_frame_border=False, remember_size=True)
+        # The sidebar shows the workspace name; the desktop's task switcher still gets it from the window title.
+        super().__init__(
+            use_custom_frame=use_custom_frame,
+            show_custom_frame_border=False,
+            remember_size=True,
+            title_bar_title=APP_NAME,
+        )
 
         self._composition_host = QQuickWidget(self)  # see the class docstring
         self._composition_host.hide()
@@ -60,15 +75,25 @@ class MainWindow(ChromeWindow):
         self._render_catalog_manager = render_catalog_manager
 
         self._debug_window: DebugWindow | None = None
-        self._plugin_window: PluginWindow | None = None
         self._about_dialog: AboutDialog | None = None
         self._workspace_session = WorkspaceSession(self, render_catalog_manager=self._render_catalog_manager)
+        self._plugins_view = PluginsView()
+        self._plugins_view.restart_requested.connect(lambda: restart_application(self))
+        self._workspace_session.add_sidebar_view(self._plugins_view.sidebar_view())
 
         self._setup_window()
         self._shortcut_manager.install(self)
-        self._workspace_session.set_welcome_shortcut_manager(self._shortcut_manager)
+        self._workspace_session.set_shortcut_manager(self._shortcut_manager)
         self._setup_menu_bar()
         self._setup_central_widget()
+        self._workspace_session.state_changed.connect(self._update_title)
+        self._workspace_session.add_live_stream_requested.connect(self._on_add_live_stream)
+        self._workspace_session.add_playlist_requested.connect(self._on_add_playlist)
+        self._update_title()
+        # Every way of quitting passes here, including quitting after an error without closing this window.
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._workspace_session.lifecycle.keep_workspace)
         self._lane_fullscreen = LaneFullscreenController(
             self,
             [
@@ -95,7 +120,11 @@ class MainWindow(ChromeWindow):
     def _setup_window(self) -> None:
         """Configure basic window properties."""
         self.setObjectName("AxDevilMainWindow")
-        self.setWindowTitle("ax-devil")
+        self.setWindowTitle(APP_NAME)
+
+    def _update_title(self) -> None:
+        """Show the workspace name and whether it has unsaved changes in the title."""
+        self.setWindowTitle(window_title(self._workspace_session.workspace_name, self._workspace_session.is_modified))
 
     def _setup_menu_bar(self) -> None:
         """Create and configure the menu bar with File, View, Debug, and Help menus."""
@@ -107,6 +136,29 @@ class MainWindow(ChromeWindow):
         file_menu = menu_bar.addMenu("File")
         assert file_menu is not None
 
+        session = self._workspace_session
+        new_workspace_action = sm.get_action("app.new_workspace")
+        new_workspace_action.triggered.connect(lambda: session.lifecycle.new_workspace())
+        file_menu.addAction(new_workspace_action)
+
+        open_workspace_action = sm.get_action("app.open_workspace")
+        open_workspace_action.triggered.connect(lambda: session.lifecycle.open_workspace())
+        file_menu.addAction(open_workspace_action)
+
+        self._recent_menu = file_menu.addMenu("Open Recent")
+        assert self._recent_menu is not None
+        self._recent_menu.aboutToShow.connect(self._fill_recent_menu)
+
+        save_workspace_action = sm.get_action("app.save_workspace")
+        save_workspace_action.triggered.connect(lambda: session.lifecycle.save_workspace())
+        file_menu.addAction(save_workspace_action)
+
+        save_workspace_as_action = sm.get_action("app.save_workspace_as")
+        save_workspace_as_action.triggered.connect(lambda: session.lifecycle.save_workspace_as())
+        file_menu.addAction(save_workspace_as_action)
+
+        file_menu.addSeparator()
+
         add_video_action = sm.get_action("app.add_video")
         add_video_action.triggered.connect(self._on_add_video)
         file_menu.addAction(add_video_action)
@@ -116,7 +168,7 @@ class MainWindow(ChromeWindow):
         file_menu.addAction(add_live_action)
 
         add_playlist_action = sm.get_action("app.add_playlist")
-        add_playlist_action.triggered.connect(self._on_add_playlist)
+        add_playlist_action.triggered.connect(lambda: self._on_add_playlist())  # Not ``checked`` as the resolver id.
         file_menu.addAction(add_playlist_action)
 
         file_menu.addSeparator()
@@ -162,6 +214,8 @@ class MainWindow(ChromeWindow):
         settings.overlay_preference_changed.connect(self._on_overlay_preference_changed)
         view_menu.addAction(sm.get_action("view.toggle_info"))
         view_menu.addSeparator()
+        view_menu.addAction(sm.get_action("view.add_bookmark"))
+        view_menu.addSeparator()
         render_catalogs_action = sm.get_action("view.render_catalogs")
         render_catalogs_action.setObjectName("renderCatalogsAction")
         render_catalogs_action.triggered.connect(self.show_catalog_viewer)
@@ -175,9 +229,9 @@ class MainWindow(ChromeWindow):
         open_debug_action.triggered.connect(self.show_debug_window)
         debug_menu.addAction(open_debug_action)
 
-        open_plugin_action = QAction("Open Plug-ins Window", self)
-        open_plugin_action.triggered.connect(self.show_plugin_window)
-        debug_menu.addAction(open_plugin_action)
+        plugins_action = QAction("Plug-ins", self)
+        plugins_action.triggered.connect(self.show_plugins)
+        debug_menu.addAction(plugins_action)
 
         debug_menu.addSeparator()
 
@@ -198,6 +252,17 @@ class MainWindow(ChromeWindow):
         about_action = QAction("About", self)
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
+
+    def _fill_recent_menu(self) -> None:
+        """List the recent workspace files; choosing one opens it."""
+        menu = self._recent_menu
+        menu.clear()
+        for path in (entry.path for entry in self._workspace_session.lifecycle.recent_workspaces()):
+            action = menu.addAction(workspace_name(path))
+            action.setToolTip(str(path))
+            action.triggered.connect(lambda _=False, path=path: self._workspace_session.lifecycle.open_workspace(path))
+        if menu.isEmpty():
+            menu.addAction("None").setEnabled(False)
 
     def _setup_central_widget(self) -> None:
         """Set up the central widget with the application workspace."""
@@ -240,6 +305,7 @@ class MainWindow(ChromeWindow):
         sm.get_action("view.toggle_media_tools").triggered.connect(
             lambda: self._route_to_focused_widget(lambda widget: widget.toggle_media_tools())
         )
+        sm.get_action("view.add_bookmark").triggered.connect(lambda: self._workspace_session.bookmark_focused_viewer())
         sm.get_action("view.toggle_fullscreen").triggered.connect(self._toggle_fullscreen)
         sm.get_action("view.toggle_sidebar").triggered.connect(self._workspace_session.widget().toggle_sidebar)
         for action_id, step in (
@@ -259,8 +325,8 @@ class MainWindow(ChromeWindow):
         else:
             self.showFullScreen()
 
-    def _route_to_focused_widget(self, action: Callable[["WorkspaceWidget"], None]) -> None:
-        """Run *action* against the focused workspace widget when one exists."""
+    def _route_to_focused_widget(self, action: Callable[["ViewerWidget"], None]) -> None:
+        """Run *action* against the focused viewer widget when one exists."""
         widget = self._workspace_session.focused_widget()
         if widget is not None:
             action(widget)
@@ -285,48 +351,49 @@ class MainWindow(ChromeWindow):
         with SettingsDialog(parent=self, shortcut_manager=self._shortcut_manager) as dialog:
             dialog.exec()
             restart = dialog.restart_requested
+        self._workspace_session.refresh_recent_workspaces()
         if restart:
             restart_application(self)
 
     def _on_add_video(self) -> None:
         """Handle File -> Add Video action."""
-        from ax_devil.modules.workspace.add_content.add_video_dialog import AddVideoDialog
+        from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 
         with AddVideoDialog(self) as dialog:
             if dialog.exec() == AddVideoDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
-                    self._workspace_session.open_video(result)
+                    self._workspace_session.add_items([result])
 
     def _on_add_live_stream(self) -> None:
         """Handle File -> Add Live Stream action."""
-        from ax_devil.modules.workspace.add_content.add_live_stream_dialog import AddLiveStreamDialog
+        from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 
         with AddLiveStreamDialog(self) as dialog:
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
-                    self._workspace_session.add_content(result)
-                    self._logger.info(f"Added live stream: {result.display_name}")
+                    self._workspace_session.add_resolved([result])
+                    self._logger.info(f"Added live stream: {result.item.display_name}")
 
-    def _on_add_playlist(self) -> None:
-        """Handle File -> Add Playlist action."""
-        from ax_devil.modules.workspace.add_content.add_playlist_dialog import AddPlaylistDialog
+    def _on_add_playlist(self, resolver_id: str | None = None) -> None:
+        """Handle File -> Add Playlist, or Add on a resolver in the Playlists view, which opens with *resolver_id*."""
+        from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 
-        with AddPlaylistDialog(self) as dialog:
+        with AddPlaylistDialog(self._workspace_session.resolver, self, resolver_id=resolver_id) as dialog:
             if dialog.exec() == AddPlaylistDialog.DialogCode.Accepted:
-                results = dialog.get_result()
-                if results:
-                    self._workspace_session.add_contents(results)
-                    self._logger.info(f"Added {len(results)} playlist(s)")
+                result = dialog.get_result()
+                if result is not None:
+                    self._workspace_session.add_resolved([result])
+                    self._logger.info(f"Added playlist: {result.item.display_name}")
 
     def show_catalog_viewer(self) -> None:
         """Show the render catalog viewer, as View → Render Catalogs does."""
         show_catalog_viewer(self._render_catalog_manager, parent=self)
 
-    def load_startup_content(self, startup: StartupContent) -> None:
-        """Load resolved startup content into the workspace."""
-        self._workspace_session.load_startup_content(startup)
+    def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
+        """Restore the kept workspace, then open what the command line asked for; see ``WorkspaceSession.launch``."""
+        self._workspace_session.lifecycle.launch(items, workspace_file)
 
     def show_quick_setup(self) -> None:
         """Show Quick Setup for theme and text size, as on first start and from Help → Quick Setup."""
@@ -362,9 +429,6 @@ class MainWindow(ChromeWindow):
         if self._debug_window is not None:
             self._debug_window.close()
             self._debug_window = None
-        if self._plugin_window is not None:
-            self._plugin_window.close()
-            self._plugin_window = None
         if self._about_dialog is not None:
             self._about_dialog.close()
             self._about_dialog = None
@@ -388,19 +452,9 @@ class MainWindow(ChromeWindow):
         """Reset reference when the debug window is closed."""
         self._debug_window = None
 
-    def show_plugin_window(self) -> None:
-        """Show the plug-in inspection window."""
-        if self._plugin_window is None:
-            self._plugin_window = PluginWindow(parent=self, use_custom_frame=self.uses_custom_frame)
-            self._plugin_window.destroyed.connect(self._on_plugin_window_destroyed)
-
-        self._plugin_window.show()
-        self._plugin_window.raise_()
-        self._plugin_window.activateWindow()
-
-    def _on_plugin_window_destroyed(self, _obj: QObject | None = None) -> None:
-        """Reset reference when the plug-in window is closed."""
-        self._plugin_window = None
+    def show_plugins(self) -> None:
+        """Show the Plugins view in the sidebar."""
+        self._workspace_session.show_sidebar_view(PLUGINS_VIEW_ID)
 
     def report_failed_plugins(self) -> None:
         """Show one dialog listing plug-ins that failed to load, if any."""
@@ -415,11 +469,11 @@ class MainWindow(ChromeWindow):
             label.setWordWrap(True)
             dialog.add_content_widget(label)
 
-            def open_plugin_window() -> None:
+            def show_plugins() -> None:
                 dialog.accept()
-                self.show_plugin_window()
+                self.show_plugins()
 
-            dialog.add_button("Open Plug-ins Window", open_plugin_window)
+            dialog.add_button("Show Plug-ins", show_plugins)
             dialog.add_standard_buttons(include_cancel=False)
             dialog.exec()
 

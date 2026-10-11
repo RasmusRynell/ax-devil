@@ -159,6 +159,7 @@ def change_plugins(
     install: tuple[str, ...] = (),
     remove: tuple[str, ...] = (),
     upgrade: bool = False,
+    upgrade_packages: tuple[str, ...] = (),
     clear: bool = False,
     indexes: tuple[str, ...] = (),
     refresh: bool = False,
@@ -246,6 +247,8 @@ def change_plugins(
             ]
             if upgrade:
                 command.append("--upgrade")
+            for package in upgrade_packages:
+                command.extend(["--upgrade-package", package])
             subprocess.run(command, env=environment, check=True)
             subprocess.run(
                 [

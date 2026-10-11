@@ -32,6 +32,11 @@ class PluginRecord:
     plugin_class: type[PluginBase] | None = None
     error: str | None = None
 
+    @property
+    def package(self) -> str | None:
+        """Return the installed distribution the plugin came from, or None for a built-in plugin."""
+        return self.origin.removeprefix("package:") if self.origin.startswith("package:") else None
+
 
 class RuntimePluginRegistry:
     """Generic registry that only tracks plugin definitions."""

@@ -29,6 +29,21 @@ class ShortcutDefinition:
     """Whether the action targets the focused viewer, so it also works from lane fullscreen."""
 
 
+class _TooltipBinding(QObject):
+    """Keeps a widget's tooltip equal to its action's tooltip; lives and dies with the widget."""
+
+    def __init__(self, manager: ShortcutManager, widget: QWidget, action_id: str) -> None:
+        super().__init__(widget)
+        self._manager = manager
+        self._widget = widget
+        self._action_id = action_id
+        manager.get_action(action_id).changed.connect(self._refresh)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self._widget.setToolTip(self._manager.tooltip(self._action_id))
+
+
 # ---------------------------------------------------------------------------
 # Default shortcut definitions
 # ---------------------------------------------------------------------------
@@ -73,7 +88,19 @@ DEFAULT_SHORTCUTS: tuple[ShortcutDefinition, ...] = (
     ShortcutDefinition("view.zoom_out", "Zoom Out", "View", QKeySequence("Ctrl+-"), acts_on_viewer=True),
     ShortcutDefinition("view.reset_zoom", "Reset Zoom", "View", QKeySequence("Ctrl+0"), acts_on_viewer=True),
     ShortcutDefinition("view.render_catalogs", "Render Catalogs", "View", QKeySequence("Ctrl+R")),
+    ShortcutDefinition("view.add_bookmark", "Add Bookmark", "View", QKeySequence("M"), acts_on_viewer=True),
     # Application
+    ShortcutDefinition("app.new_workspace", "New Workspace", "Application"),
+    ShortcutDefinition(
+        "app.open_workspace",
+        "Open Workspace",
+        "Application",
+        QKeySequence("Ctrl+O"),
+        show_on_welcome=True,
+        welcome_group="Open",
+    ),
+    ShortcutDefinition("app.save_workspace", "Save Workspace", "Application", QKeySequence("Ctrl+S")),
+    ShortcutDefinition("app.save_workspace_as", "Save Workspace As", "Application", QKeySequence("Ctrl+Shift+S")),
     ShortcutDefinition(
         "app.add_video",
         "Add Video",
@@ -209,6 +236,16 @@ class ShortcutManager(QObject):
             seq = self._actions[action_id].shortcut()
             return seq if not seq.isEmpty() else None
         return self._resolve_key_sequence(action_id)
+
+    def tooltip(self, action_id: str) -> str:
+        """Return *action_id*'s name followed by its current keys, as in ``Open Workspace (Ctrl+O)``."""
+        name = self.get_definition(action_id).display_name
+        keys = self.current_key_sequence(action_id)
+        return f"{name} ({keys.toString(QKeySequence.SequenceFormat.NativeText)})" if keys is not None else name
+
+    def bind_tooltip(self, widget: QWidget, action_id: str) -> None:
+        """Show *action_id*'s tooltip on *widget* and keep its keys current when the action is rebound."""
+        _TooltipBinding(self, widget, action_id)
 
     # ------------------------------------------------------------------
     # Rebinding

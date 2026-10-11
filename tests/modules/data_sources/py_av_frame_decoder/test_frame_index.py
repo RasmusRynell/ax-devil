@@ -9,11 +9,11 @@ from pathlib import Path
 import av
 import pytest
 
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder import FrameIndex
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_index import (
     _CACHE_MAGIC,
     _HEADER_SIZE,
     _STRUCT_FMT,
+    FrameIndex,
 )
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.pyav_abstraction import PyAvAbstraction
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import VideoOpenConfig

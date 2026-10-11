@@ -29,7 +29,9 @@ class ChromeWindow(QMainWindow):
         use_custom_frame: bool = False,
         show_custom_frame_border: bool = False,
         remember_size: bool = False,
+        title_bar_title: str | None = None,
     ) -> None:
+        """Create the window; a custom frame's title bar shows *title_bar_title*, or the window title when None."""
         super().__init__(parent)
         self._remember_size = remember_size
         self._positioned = False
@@ -42,7 +44,7 @@ class ChromeWindow(QMainWindow):
         self._frame_controller: WindowFrameController | None = None
         self._configure_window_flags()
         if self._use_custom_frame:
-            self._title_bar = TitleBar(self)
+            self._title_bar = TitleBar(self, title=title_bar_title)
             self.setMenuWidget(self._title_bar)
             self._frame_controller = WindowFrameController(self, show_border=self._show_custom_frame_border)
             self._frame_controller.initialize()

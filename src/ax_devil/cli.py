@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import sys
 import traceback
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import click
 
@@ -18,16 +19,21 @@ from ax_devil.modules.plugin_system import (
     PluginStatus,
     RuntimePluginRegistry,
 )
-from ax_devil.modules.settings.config_manager import ConfigManager, integer_default
+from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
-from ax_devil.modules.workspace import LiveOverlayMode, LiveStreamStartup
+from ax_devil.modules.workspace.core import (
+    LiveOverlayMode,
+    OverlayFile,
+    VideoItem,
+    WorkspaceFileError,
+    WorkspaceItem,
+    live_stream_item_from_defaults,
+    load_workspace,
+)
 
 from .app import create_app
-from .cli_options import CONFIG_OPTION, DEBUG_OPTION, LOG_LEVEL_OPTION, apply_run_options
-
-if TYPE_CHECKING:
-    from ax_devil.modules.workspace import StartupContent
+from .cli_options import CONFIG_OPTION, apply_run_options
 
 
 def _require_existing_config_path(config: Path | None) -> None:
@@ -46,74 +52,12 @@ def _apply_cli_config_and_reload_plugins(config: Path | None) -> None:
     ApplicationPluginLoader.reload_plugins()
 
 
-def _live_startup_from_config(
-    *,
-    host: str | None = None,
-    username: str | None = None,
-    password: str | None = None,
-    camera_head: int | None = None,
-    resolution: str | None = None,
-    overlay: str | None = None,
-    handler_type: str | None = None,
-    mqtt_host: str | None = None,
-    mqtt_port: int | None = None,
-    mqtt_username: str | None = None,
-    mqtt_password: str | None = None,
-    analytics_data_source_key: str | None = None,
-    device_api_protocol: str | None = None,
-    websocket_topic: str | None = None,
-    websocket_channel_id: int | None = None,
-) -> LiveStreamStartup:
-    """Build a ``LiveStreamStartup`` from config defaults, with optional CLI overrides."""
-    cfg = ConfigManager()
-    defaults = cfg.get("defaults", {}) or {}
-    device = defaults.get("device", {}) or {}
-    live = defaults.get("live_stream", {}) or {}
-    rtsp = live.get("rtsp", {}) or {}
-    mqtt = live.get("analytics-mqtt", {}) or {}
-    websocket = live.get("analytics-websocket", {}) or {}
-
-    resolved_overlay = LiveOverlayMode.from_value(overlay or str(live.get("overlay_source", "none")))
-    resolved_handler = handler_type
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.RTSP:
-        resolved_handler = rtsp.get("data_stream_handler")
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.MQTT:
-        resolved_handler = mqtt.get("data_stream_handler")
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.WEBSOCKET:
-        resolved_handler = websocket.get("data_stream_handler")
-
-    configured_protocol = mqtt.get("device_api_protocol", "https")
-    if resolved_overlay is LiveOverlayMode.WEBSOCKET:
-        configured_protocol = websocket.get("device_api_protocol", "https")
-
-    return LiveStreamStartup(
-        host=host or device.get("host", ""),
-        username=username or device.get("username", ""),
-        password=password or device.get("password", ""),
-        camera_head=camera_head if camera_head is not None else integer_default(rtsp.get("camera_head", 1), 1),
-        resolution=resolution or rtsp.get("resolution", "1280x720"),
-        overlay_mode=resolved_overlay,
-        handler_type=resolved_handler,
-        mqtt_host=mqtt_host or mqtt.get("broker_host", ""),
-        mqtt_port=mqtt_port if mqtt_port is not None else integer_default(mqtt.get("broker_port", 1883), 1883),
-        mqtt_username=mqtt_username or mqtt.get("broker_username", ""),
-        mqtt_password=mqtt_password or mqtt.get("broker_password", ""),
-        analytics_data_source_key=analytics_data_source_key or mqtt.get("data_source_key", ""),
-        device_api_protocol=device_api_protocol or configured_protocol,
-        websocket_topic=websocket_topic or websocket.get("topic", ""),
-        websocket_channel_id=(
-            websocket_channel_id
-            if websocket_channel_id is not None
-            else integer_default(websocket.get("channel_id", 1), 1)
-        ),
-    )
-
-
 def _run_app(
     log_level: str,
     config: Path | None,
     debug: bool,
-    startup_content: StartupContent | None = None,
+    items: Sequence[WorkspaceItem] = (),
+    workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
 ) -> None:
     """Helper function to run the application with consistent error handling."""
@@ -124,7 +68,8 @@ def _run_app(
             log_level=log_level,
             config_path=config,
             debug=debug,
-            startup_content=startup_content,
+            items=items,
+            workspace_file=workspace_file,
             open_catalog_viewer=open_catalog_viewer,
         )
 
@@ -147,11 +92,11 @@ def _build_runtime_context(log_level: str, config: Path | None, debug: bool) -> 
         "log_level": log_level,
         "config": config,
         "debug": debug,
-        "run_with_startup_content": lambda startup_content: _run_app(
+        "run_with_items": lambda items: _run_app(
             log_level=log_level,
             config=config,
             debug=debug,
-            startup_content=startup_content,
+            items=items,
         ),
         "run_catalog_viewer": lambda: _run_app(
             log_level=log_level,
@@ -181,7 +126,7 @@ def cli(
 ) -> None:
     """View video, live Axis cameras, and analytics overlays.
 
-    Run without a command to open the workspace.
+    Run without a command to reopen the last workspace.
     """
     setup_logging(console_log_level="WARNING", console_only=True)
     ctx.obj = _build_runtime_context(log_level=log_level, config=config, debug=debug)
@@ -361,9 +306,6 @@ def list_handlers() -> None:
 
 
 @cli.command()
-@LOG_LEVEL_OPTION
-@CONFIG_OPTION
-@DEBUG_OPTION
 @click.option(
     "--video",
     type=click.Path(exists=True, path_type=Path, dir_okay=False),
@@ -380,9 +322,6 @@ def list_handlers() -> None:
 @click.pass_context
 def local(
     ctx: click.Context,
-    log_level: str,
-    config: Path | None,
-    debug: bool,
     video: Path,
     overlay: Path | None,
     handler_type: str | None,
@@ -395,25 +334,37 @@ def local(
       ax-devil local --video recording.mp4
       ax-devil local --video recording.mp4 --overlay data.jsonl --handler-type ADF_BETA_FRAME
     """
-    from ax_devil.modules.workspace import VideoFileStartup
-
-    effective_config = config or (ctx.obj.get("config") if isinstance(ctx.obj, dict) else None)
+    runtime = ctx.obj
 
     if overlay and not handler_type:
         raise click.ClickException("--handler-type is required when --overlay is set.")
 
-    startup = VideoFileStartup(
-        video_path=video,
-        overlay_path=overlay,
-        handler_type=handler_type,
+    item = VideoItem(
+        video=video.resolve(),
+        overlays=(OverlayFile(overlay.resolve(), handler_type),) if overlay and handler_type else (),
     )
-    _run_app(log_level=log_level, config=effective_config, debug=debug, startup_content=startup)
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
+
+
+@cli.command("open")
+@click.argument("workspace_file", type=click.Path(exists=True, path_type=Path, dir_okay=False))
+@click.pass_context
+def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
+    """Open a saved .ax-devil.workspace file."""
+    runtime = ctx.obj
+    try:
+        load_workspace(workspace_file)
+    except WorkspaceFileError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _run_app(
+        log_level=runtime["log_level"],
+        config=runtime["config"],
+        debug=runtime["debug"],
+        workspace_file=workspace_file.absolute(),
+    )
 
 
 @cli.command()
-@LOG_LEVEL_OPTION
-@CONFIG_OPTION
-@DEBUG_OPTION
 @click.option("--host", default=None, help="Device host (default: config/env)")
 @click.option("--username", default=None, help="Device username (default: config/env)")
 @click.option("--password", default=None, help="Device password (default: config/env)")
@@ -449,9 +400,6 @@ def local(
 @click.pass_context
 def live(
     ctx: click.Context,
-    log_level: str,
-    config: Path | None,
-    debug: bool,
     host: str | None,
     username: str | None,
     password: str | None,
@@ -484,10 +432,10 @@ def live(
     """
     setup_logging(console_log_level="WARNING", console_only=True)
 
-    effective_config = config or (ctx.obj.get("config") if isinstance(ctx.obj, dict) else None)
-    _apply_cli_config_and_reload_plugins(effective_config)
+    runtime = ctx.obj
+    _apply_cli_config_and_reload_plugins(runtime["config"])
     try:
-        startup = _live_startup_from_config(
+        item = live_stream_item_from_defaults(
             host=host,
             username=username,
             password=password,
@@ -507,39 +455,35 @@ def live(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    if not startup.host:
+    values = item.expanded()
+    if not values.host:
         raise click.ClickException(
             "No device host configured. Set AX_DEVIL_TARGET_ADDR, use --host, or configure defaults.device.host."
         )
 
-    if startup.overlay_mode.requires_handler and not startup.handler_type:
+    if values.overlay_mode.requires_handler and not values.handler_type:
         raise click.ClickException("--handler-type is required when overlay mode is set.")
 
-    if startup.overlay_mode is LiveOverlayMode.MQTT:
-        if not startup.mqtt_host:
+    if values.overlay_mode is LiveOverlayMode.MQTT:
+        if not values.mqtt_host:
             raise click.ClickException(
                 "No MQTT broker host configured. Set AX_DEVIL_MQTT_BROKER_ADDR, use --mqtt-host, "
                 "or configure defaults.live_stream.analytics-mqtt.broker_host."
             )
-        if not startup.analytics_data_source_key:
+        if not values.analytics_data_source_key:
             raise click.ClickException(
                 "No analytics data source configured. Use --data-source or configure it in the config file."
             )
-    if startup.overlay_mode is LiveOverlayMode.WEBSOCKET:
-        if not startup.websocket_topic:
+    if values.overlay_mode is LiveOverlayMode.WEBSOCKET:
+        if not values.websocket_topic:
             raise click.ClickException(
                 "No DataHub WebSocket topic configured. Use --topic or configure "
                 "defaults.live_stream.analytics-websocket.topic."
             )
-        if startup.websocket_channel_id < 1:
+        if values.websocket_channel_id < 1:
             raise click.ClickException("--channel-id must be a positive integer.")
 
-    _run_app(
-        log_level=log_level,
-        config=effective_config,
-        debug=debug,
-        startup_content=startup,
-    )
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
 
 
 cli.add_command(plugins)

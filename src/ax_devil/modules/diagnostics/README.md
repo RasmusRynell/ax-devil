@@ -12,7 +12,7 @@ This package owns rendering diagnostics, source metrics, performance recording, 
 - `history_chart.py` plots timing operations with spatial selection and keyboard navigation.
 - `paint_inspection.py` builds evidence and preceding-paint comparisons; `paint_inspector.py` presents that evidence.
 - `trace_recorder.py` / `trace_controls.py` own independent Python stack sampling and export.
-- `exception_handler.py` and `plugin_window.py` own exception reporting and plugin diagnostics.
+- `exception_handler.py` owns exception reporting.
 
 How to use the window, investigate a spike and record a timeline: [Diagnostics runbook](../../../../docs/runbooks/diagnostics.md).
 

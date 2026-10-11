@@ -31,7 +31,7 @@ from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_viewer.media_tools.entity_list_widget import EntityListWidget
 from ax_devil.modules.video_viewer.media_tools.event_log_widget import EventLogWidget
 from ax_devil.modules.video_viewer.media_tools.object_history_widget import ObjectCard
-from ax_devil.modules.workspace.content_browser import ContentBrowserWidget
+from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 
 
 def _foreground_pixels(image: QImage, rect: QRect, *, dark: bool) -> int:
