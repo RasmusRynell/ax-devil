@@ -25,6 +25,8 @@ from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoD
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
+from ax_devil.modules.workspace.ui.live_view import LiveView
+from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
@@ -56,6 +58,7 @@ class WorkspaceSession(QObject):
     """
 
     state_changed = Signal()  # The Workspace's name or modified flag changed.
+    add_live_stream_requested = Signal()  # The Live view asked to add a camera by its address.
 
     def __init__(
         self,
@@ -90,6 +93,12 @@ class WorkspaceSession(QObject):
             render_catalog_manager=self._render_catalog_manager,
             parent=self._window,
         )
+        self._live_view = LiveView()
+        self._live_view_controller = LiveViewController(
+            self._live_view, self._workspace_controller, self._workspace_store, self._resolver, parent=self
+        )
+        self._window.add_view(self._live_view.sidebar_view())
+        self._live_view.add_by_address_requested.connect(self.add_live_stream_requested)
         self._lifecycle = WorkspaceLifecycle(
             self._workspace_store,
             prompts or DialogPrompts(self._window),

@@ -19,16 +19,16 @@ from ax_devil.modules.plugin_system import (
     PluginStatus,
     RuntimePluginRegistry,
 )
-from ax_devil.modules.settings.config_manager import ConfigManager, integer_default
+from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
 from ax_devil.modules.workspace.core import (
     LiveOverlayMode,
-    LiveStreamItem,
     OverlayFile,
     VideoItem,
     WorkspaceFileError,
     WorkspaceItem,
+    live_stream_item_from_defaults,
     load_workspace,
 )
 
@@ -50,75 +50,6 @@ def _apply_cli_config_and_reload_plugins(config: Path | None) -> None:
     target = config if config is not None else DEFAULT_CONFIG_PATH
     config_manager.set_config_path(target, create_if_missing=config is None)
     ApplicationPluginLoader.reload_plugins()
-
-
-def _live_item_from_config(
-    *,
-    host: str | None = None,
-    username: str | None = None,
-    password: str | None = None,
-    camera_head: int | None = None,
-    resolution: str | None = None,
-    overlay: str | None = None,
-    handler_type: str | None = None,
-    mqtt_host: str | None = None,
-    mqtt_port: int | None = None,
-    mqtt_username: str | None = None,
-    mqtt_password: str | None = None,
-    analytics_data_source_key: str | None = None,
-    device_api_protocol: str | None = None,
-    websocket_topic: str | None = None,
-    websocket_channel_id: int | None = None,
-) -> LiveStreamItem:
-    """Build a ``LiveStreamItem`` from config defaults, with optional CLI overrides.
-
-    Device and MQTT broker connection defaults are taken as written in the config, so a ``$VARIABLE`` reference stays
-    a reference in the item.
-    """
-    cfg = ConfigManager()
-    defaults = cfg.get("defaults", {}) or {}
-    live = defaults.get("live_stream", {}) or {}
-    rtsp = live.get("rtsp", {}) or {}
-    mqtt = live.get("analytics-mqtt", {}) or {}
-    websocket = live.get("analytics-websocket", {}) or {}
-    raw_defaults = cfg.get_raw("defaults", {}) or {}
-    device = raw_defaults.get("device", {}) or {}
-    raw_mqtt = (raw_defaults.get("live_stream", {}) or {}).get("analytics-mqtt", {}) or {}
-
-    resolved_overlay = LiveOverlayMode.from_value(overlay or str(live.get("overlay_source", "none")))
-    resolved_handler = handler_type
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.RTSP:
-        resolved_handler = rtsp.get("data_stream_handler")
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.MQTT:
-        resolved_handler = mqtt.get("data_stream_handler")
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.WEBSOCKET:
-        resolved_handler = websocket.get("data_stream_handler")
-
-    configured_protocol = mqtt.get("device_api_protocol", "https")
-    if resolved_overlay is LiveOverlayMode.WEBSOCKET:
-        configured_protocol = websocket.get("device_api_protocol", "https")
-
-    return LiveStreamItem(
-        host=host or str(device.get("host") or ""),
-        username=username or str(device.get("username") or ""),
-        password=password or str(device.get("password") or ""),
-        camera_head=camera_head if camera_head is not None else integer_default(rtsp.get("camera_head", 1), 1),
-        resolution=resolution or rtsp.get("resolution", "1280x720"),
-        overlay_mode=resolved_overlay,
-        handler_type=resolved_handler,
-        mqtt_host=mqtt_host or str(raw_mqtt.get("broker_host") or ""),
-        mqtt_port=mqtt_port if mqtt_port is not None else integer_default(mqtt.get("broker_port", 1883), 1883),
-        mqtt_username=mqtt_username or str(raw_mqtt.get("broker_username") or ""),
-        mqtt_password=mqtt_password or str(raw_mqtt.get("broker_password") or ""),
-        analytics_data_source_key=analytics_data_source_key or mqtt.get("data_source_key", ""),
-        device_api_protocol=device_api_protocol or configured_protocol,
-        websocket_topic=websocket_topic or websocket.get("topic", ""),
-        websocket_channel_id=(
-            websocket_channel_id
-            if websocket_channel_id is not None
-            else integer_default(websocket.get("channel_id", 1), 1)
-        ),
-    )
 
 
 def _run_app(
@@ -504,7 +435,7 @@ def live(
     runtime = ctx.obj
     _apply_cli_config_and_reload_plugins(runtime["config"])
     try:
-        item = _live_item_from_config(
+        item = live_stream_item_from_defaults(
             host=host,
             username=username,
             password=password,

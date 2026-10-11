@@ -48,6 +48,7 @@ from ax_devil.modules.workspace.core.items import (
     VideoItem,
     WorkspaceItem,
     item_from_json,
+    live_stream_item_from_defaults,
     new_item_id,
     video_file_selections,
 )
@@ -117,6 +118,7 @@ __all__ = [
     "WorkspaceItem",
     "create_entry_lane",
     "item_from_json",
+    "live_stream_item_from_defaults",
     "load_workspace",
     "new_item_id",
     "save_workspace",

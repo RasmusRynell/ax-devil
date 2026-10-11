@@ -79,6 +79,7 @@ class MainWindow(ChromeWindow):
         self._setup_menu_bar()
         self._setup_central_widget()
         self._workspace_session.state_changed.connect(self._update_title)
+        self._workspace_session.add_live_stream_requested.connect(self._on_add_live_stream)
         self._update_title()
         # Every way of quitting passes here, including quitting after an error without closing this window.
         app = QApplication.instance()

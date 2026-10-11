@@ -5,18 +5,20 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
-from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QPushButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
+from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.workspace.core import RecentWorkspaces, VideoItem, WorkspaceBackup
+from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import DummyViewer, FakePrompts
@@ -239,6 +241,28 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
     manager.get_action("app.save_workspace").trigger()
 
     assert_titles("Parking lot", modified=False)
+
+
+def test_add_by_address_in_the_live_view_opens_the_add_live_stream_dialog(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    opened: list[str] = []
+
+    def cancel(dialog: BaseDialog) -> int:
+        opened.append(dialog.windowTitle())
+        return BaseDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(BaseDialog, "exec", cancel)
+    window._workspace_session.show_sidebar_view("live")
+    view = window.findChild(LiveView)
+    assert view is not None
+    [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add by address"]
+
+    button.click()
+
+    assert opened == ["Add Live Stream"]
 
 
 def test_quitting_keeps_the_workspace_even_without_closing_the_window(
