@@ -5,9 +5,10 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
@@ -116,3 +117,21 @@ def test_a_click_on_a_row_activates_it_but_a_click_on_its_button_does_not(qtbot:
     assert clicks == ["button"]
     QTest.mouseClick(row, Qt.MouseButton.LeftButton, pos=QPoint(row.width() // 2, row.height() // 2))
     assert clicks == ["button", "row"]
+
+
+def test_a_list_short_of_room_scrolls_instead_of_cutting_its_rows_text(qtbot: QtBot) -> None:
+    rows = QWidget()
+    layout = QVBoxLayout(rows)
+    for index in range(10):
+        layout.addWidget(ListRow(f"Bookmark {index}", subtitle="0:01.00 · frame 30 · Issue"))
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setWidget(rows)
+    qtbot.addWidget(area)
+    area.resize(300, 120)
+    area.show()
+    qtbot.waitExposed(area)
+
+    labels = [label for row in rows.findChildren(ListRow) for label in row.findChildren(ElidedLabel)]
+    assert all(label.height() >= label.sizeHint().height() for label in labels)
+    assert area.verticalScrollBar().maximum() > 0

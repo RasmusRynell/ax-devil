@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QMouseEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
@@ -93,7 +93,18 @@ class ListRow(QFrame):
             #AxDevilListRow QLabel {{ border: none; }}
             """
         )
-        follow_appearance(self, lambda: self.setMinimumHeight(Height.ROW.px))
+        follow_appearance(self, self.updateGeometry)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        """Return the size the content needs, at least a row high."""
+        return super().sizeHint().expandedTo(QSize(0, Height.ROW.px))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Return the smallest size that shows the content uncut, at least a row high.
+
+        A hint rather than a minimum height, which would let a list short of room squeeze the text instead of scroll.
+        """
+        return super().minimumSizeHint().expandedTo(QSize(0, Height.ROW.px))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Report a left click on the row, wherever no trailing widget took it."""
