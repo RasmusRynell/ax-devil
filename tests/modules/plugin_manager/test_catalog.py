@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import Mock
 
-from ax_devil.modules.plugin_manager.catalog import PluginEntry, PluginGroup, Section, plugin_catalog
+from ax_devil.modules.plugin_manager.catalog import (
+    PluginEntry,
+    PluginGroup,
+    PluginPart,
+    Reads,
+    Section,
+    plugin_catalog,
+)
 from ax_devil.modules.plugin_system import (
     DECODER_PLUGIN_TYPE,
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
+    DecoderPluginDefinition,
+    FileToSceneDecoderDefinition,
+    PayloadToSceneDecoderDefinition,
     PluginDefinitionBase,
     PluginRecord,
     PluginStatus,
@@ -16,15 +27,48 @@ from ax_devil.modules.plugin_system import (
 VERSIONS = {"yolo-detections": "0.2.1", "lab-experiments": "1.0.0"}
 
 
+def _file_handler(handler_type: str, name: str, description: str | None = None) -> FileToSceneDecoderDefinition:
+    return FileToSceneDecoderDefinition(handler_type, Mock(), name, description=description)
+
+
+def _payload_handler(handler_type: str, name: str) -> PayloadToSceneDecoderDefinition:
+    return PayloadToSceneDecoderDefinition(handler_type, Mock(), name)
+
+
 def _record(
-    plugin_id: str, origin: str, plugin_type: str = DECODER_PLUGIN_TYPE, error: str | None = None
+    plugin_id: str,
+    origin: str,
+    *,
+    files: tuple[FileToSceneDecoderDefinition, ...] = (),
+    payloads: tuple[PayloadToSceneDecoderDefinition, ...] = (),
+    error: str | None = None,
 ) -> PluginRecord:
     return PluginRecord(
-        definition=PluginDefinitionBase(plugin_type=plugin_type, plugin_id=plugin_id, display_name=plugin_id),
+        definition=DecoderPluginDefinition(
+            plugin_type=DECODER_PLUGIN_TYPE,
+            plugin_id=plugin_id,
+            display_name=plugin_id,
+            file_to_scene_decoders=files,
+            payload_to_scene_decoders=payloads,
+        ),
         entrypoint=Path(f"/plugins/{plugin_id}"),
         origin=origin,
         status=PluginStatus.FAILED if error else PluginStatus.LOADED,
         error=error,
+    )
+
+
+def _resolver(plugin_id: str, origin: str, description: str | None = None) -> PluginRecord:
+    return PluginRecord(
+        definition=PluginDefinitionBase(
+            plugin_type=PLAYLIST_RESOLVER_PLUGIN_TYPE,
+            plugin_id=plugin_id,
+            display_name=plugin_id,
+            description=description,
+        ),
+        entrypoint=Path(f"/plugins/{plugin_id}"),
+        origin=origin,
+        status=PluginStatus.LOADED,
     )
 
 
@@ -35,10 +79,9 @@ def _section(groups: tuple[PluginGroup, ...], section: Section) -> tuple[PluginE
 def test_records_are_grouped_into_failed_installed_and_built_in() -> None:
     groups = plugin_catalog(
         [
-            _record("mot", "builtin"),
-            _record("cvat", "builtin"),
-            _record("folder_pair", "builtin", PLAYLIST_RESOLVER_PLUGIN_TYPE),
-            _record("yolo", "package:yolo-detections"),
+            _record("mot", "builtin", files=(_file_handler("MOT_FILE", "mot"),)),
+            _resolver("folder_pair", "builtin"),
+            _record("yolo", "package:yolo-detections", files=(_file_handler("YOLO", "yolo"),)),
             _record("old", "package:old-model-decoder", error="requires plugin API 1, host provides 2"),
         ],
         {"yolo-detections": "yolo-detections>=0.2", "old-model-decoder": "old-model-decoder"},
@@ -54,32 +97,70 @@ def test_records_are_grouped_into_failed_installed_and_built_in() -> None:
             requirement="old-model-decoder",
         ),
     )
-    assert _section(groups, Section.INSTALLED) == (
-        PluginEntry(
-            Section.INSTALLED, "yolo-detections", subtitle="0.2.1 · Decoder", requirement="yolo-detections>=0.2"
-        ),
+    assert [(entry.name, entry.detail, entry.requirement) for entry in _section(groups, Section.INSTALLED)] == [
+        ("yolo-detections", "0.2.1", "yolo-detections>=0.2")
+    ]
+    assert [entry.name for entry in _section(groups, Section.BUILT_IN)] == ["mot", "folder_pair"]
+
+
+def test_a_plugin_with_one_decoder_is_a_single_row_that_names_the_decoder_only_when_it_differs() -> None:
+    groups = plugin_catalog(
+        [
+            _record("mot", "builtin", files=(_file_handler("MOT_FILE", "MOT Annotations"),)),
+            _record("uvg", "builtin", files=(_file_handler("UVG", "uvg", "Detections with polygons"),)),
+            _resolver("folder_pair", "builtin", "Match videos and overlays by file name."),
+        ],
+        {},
+        VERSIONS.get,
     )
-    assert [(entry.name, entry.detail) for entry in _section(groups, Section.BUILT_IN)] == [
-        ("Decoders", "2"),
-        ("Playlist resolvers", "1"),
+
+    assert [(entry.name, entry.subtitle, entry.reads, entry.resolver, entry.parts) for entry in groups[0].entries] == [
+        ("mot", "MOT Annotations", (Reads.FILE,), False, ()),
+        ("uvg", "Detections with polygons", (Reads.FILE,), False, ()),
+        ("folder_pair", "Match videos and overlays by file name.", (), True, ()),
     ]
 
 
-def test_a_package_lists_everything_it_provides_once_and_an_editable_source_is_marked() -> None:
+def test_a_decoder_that_reads_files_and_live_messages_under_one_handler_type_is_one_part_reading_both() -> None:
     groups = plugin_catalog(
         [
-            _record("lab_runs", "package:Lab_Experiments", PLAYLIST_RESOLVER_PLUGIN_TYPE),
-            _record("lab_tracks", "package:Lab_Experiments"),
-            _record("lab_boxes", "package:Lab_Experiments"),
+            _record(
+                "adf",
+                "builtin",
+                files=(_file_handler("ADF_FRAME", "ADF Frame"), _file_handler("ADF_TRACKS", "ADF Tracks")),
+                payloads=(_payload_handler("ADF_FRAME", "ADF Frame"), _payload_handler("ADF_LIVE_ONLY", "ADF Live")),
+            )
+        ],
+        {},
+        VERSIONS.get,
+    )
+
+    (entry,) = _section(groups, Section.BUILT_IN)
+    assert entry.parts == (
+        PluginPart("ADF Frame", reads=(Reads.FILE, Reads.LIVE)),
+        PluginPart("ADF Tracks", reads=(Reads.FILE,)),
+        PluginPart("ADF Live", reads=(Reads.LIVE,)),
+    )
+
+
+def test_a_package_lists_everything_it_provides_under_one_row_with_its_version() -> None:
+    groups = plugin_catalog(
+        [
+            _resolver("lab_runs", "package:Lab_Experiments", "Load lab runs."),
+            _record("lab_tracks", "package:Lab_Experiments", files=(_file_handler("LAB", "Lab tracks"),)),
+            _record("lab_boxes", "package:Lab_Experiments", files=(_file_handler("BOX", "Lab boxes"),)),
         ],
         {"lab-experiments": "/home/me/lab-experiments"},
         VERSIONS.get,
     )
 
     (entry,) = _section(groups, Section.INSTALLED)
-    assert entry.name == "lab-experiments"
-    assert entry.subtitle == "1.0.0 · 2 Decoders · Playlist resolver · Editable"
-    assert entry.requirement == "/home/me/lab-experiments"
+    assert (entry.name, entry.detail, entry.requirement) == ("lab-experiments", "1.0.0", "/home/me/lab-experiments")
+    assert entry.parts == (
+        PluginPart("lab_runs", "Load lab runs.", resolver=True),
+        PluginPart("Lab tracks", reads=(Reads.FILE,)),
+        PluginPart("Lab boxes", reads=(Reads.FILE,)),
+    )
 
 
 def test_a_package_with_a_failed_part_is_listed_as_failed_with_the_first_reason() -> None:

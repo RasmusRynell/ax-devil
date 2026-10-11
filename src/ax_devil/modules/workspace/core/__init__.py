@@ -64,7 +64,7 @@ from ax_devil.modules.workspace.core.workspace import (
     WORKSPACE_FILE_SUFFIX,
     Workspace,
     workspace_file_path,
-    workspace_name,
+    workspace_file_stem,
 )
 from ax_devil.modules.workspace.core.workspace_backup import WorkspaceBackup
 
@@ -126,5 +126,5 @@ __all__ = [
     "save_workspace",
     "video_file_selections",
     "workspace_file_path",
-    "workspace_name",
+    "workspace_file_stem",
 ]

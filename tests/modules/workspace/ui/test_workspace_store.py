@@ -255,7 +255,7 @@ def test_renaming_an_unresolved_item_only_relabels_it() -> None:
 
 def _saved_file(tmp_path: Path, *items: WorkspaceItem, name: str = "saved") -> Path:
     path = tmp_path / f"{name}.ax-devil.workspace"
-    save_workspace(Workspace(items=items), path)
+    save_workspace(Workspace(name=name, items=items), path)
     return path
 
 
@@ -297,16 +297,17 @@ def test_a_failed_open_leaves_the_store_unchanged(tmp_path: Path) -> None:
     assert signals == []
 
 
-def test_saving_names_the_workspace_and_clears_modified(tmp_path: Path) -> None:
+def test_saving_keeps_the_name_and_clears_modified(tmp_path: Path) -> None:
     store = _store()
     item = PlaylistItem(label="Runs", resolver="runs")
     store.add_items([item])
     assert store.is_modified
-    path = tmp_path / "mine.ax-devil.workspace"
+    store.rename_workspace("Mine")
+    path = tmp_path / "lot.ax-devil.workspace"
 
     store.save_workspace(path)
 
-    assert store.workspace.path == path and store.workspace.name == "mine"
+    assert store.workspace.path == path and store.workspace.name == "Mine"
     assert not store.is_modified
     store.rename_item(item.id, "Renamed")
     assert store.is_modified
@@ -330,13 +331,27 @@ def test_state_changed_fires_once_per_change_of_modified_name_or_path(tmp_path: 
 
     store.add_items([first])
     store.add_items([second])
+    store.rename_workspace("w")
     store.save_workspace(tmp_path / "w.ax-devil.workspace")
     store.rename_item(first.id, "A2")
     store.remove_item(second.id)
     store.save_workspace()
     store.open_workspace(tmp_path / "w.ax-devil.workspace")
 
-    assert states == [(True, "Untitled"), (False, "w"), (True, "w"), (False, "w")]
+    assert states == [(True, "Untitled"), (True, "w"), (False, "w"), (True, "w"), (False, "w")]
+
+
+def test_renaming_the_workspace_is_an_unsaved_change_until_the_old_name_returns(tmp_path: Path) -> None:
+    store = _store()
+    store.save_workspace(tmp_path / "w.ax-devil.workspace")
+    states: list[tuple[bool, str]] = []
+    store.state_changed.connect(lambda: states.append((store.is_modified, store.workspace.name)))
+
+    store.rename_workspace("Parking lot")
+    store.rename_workspace(" Parking lot ")
+    store.rename_workspace("")
+
+    assert states == [(True, "Parking lot"), (False, "Untitled")]
 
 
 def test_removing_what_was_just_added_returns_to_unmodified() -> None:
@@ -542,7 +557,7 @@ def test_a_saved_state_arriving_after_the_workspace_was_replaced_or_saved_is_dro
     saved_slow.release.set()
 
     qtbot.wait(200)
-    assert store.workspace.name == "Mine" and not store.is_modified
+    assert store.workspace.path == tmp_path / "Mine.ax-devil.workspace" and not store.is_modified
 
 
 def _recording_bookmark_signals(store: WorkspaceStore) -> list[str]:

@@ -97,7 +97,7 @@ class WorkspaceLifecycle(QObject):
         return True
 
     def save_workspace(self) -> bool:
-        """Save the Workspace to its file, or ask where when it is Untitled; return whether it was saved."""
+        """Save the Workspace to its file, or ask where when it has none; return whether it was saved."""
         path = self._store.workspace.path
         return self.save_workspace_as() if path is None else self._save_to(path)
 
@@ -108,7 +108,9 @@ class WorkspaceLifecycle(QObject):
         is asked here.
         """
         workspace = self._store.workspace
-        chosen = self._prompts.choose_save_path(workspace.path or workspace_file_path(Path.home() / workspace.name))
+        chosen = self._prompts.choose_save_path(
+            workspace.path or workspace_file_path(Path.home() / workspace.suggested_file_stem)
+        )
         if chosen is None:
             return False
         path = workspace_file_path(chosen)

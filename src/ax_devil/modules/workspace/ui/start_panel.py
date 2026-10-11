@@ -26,7 +26,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css, qcolor_to_css
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import DEFAULT_SHORTCUTS
-from ax_devil.modules.workspace.core import RecentWorkspace, workspace_name
+from ax_devil.modules.workspace.core import RecentWorkspace, workspace_file_stem
 
 if TYPE_CHECKING:
     from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
@@ -83,7 +83,7 @@ class _RecentRow(QFrame):
         text = QVBoxLayout()
         text.setContentsMargins(0, 0, 0, 0)
         text.setSpacing(0)
-        self.name_label = ElidedLabel(workspace_name(path), Qt.TextElideMode.ElideRight, self)
+        self.name_label = ElidedLabel(workspace_file_stem(path), Qt.TextElideMode.ElideRight, self)
         self.folder_label = ElidedLabel(_home_relative(path.parent), Qt.TextElideMode.ElideMiddle, self)
         TextRole.MONO_SMALL.apply(self.folder_label)
         text.addWidget(self.name_label)

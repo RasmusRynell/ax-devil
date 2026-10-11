@@ -57,7 +57,7 @@ def test_an_untitled_workspace_is_kept_with_absolute_paths_and_restored_as_modif
 def test_a_saved_workspace_is_restored_with_its_file_as_the_saved_state(tmp_path: Path) -> None:
     folder = tmp_path / "reviews"
     clip = VideoItem(video=folder / "clips" / "a.mp4")
-    saved_file = save_workspace(Workspace(items=(clip,)), folder / "Lot.ax-devil.workspace")
+    saved_file = save_workspace(Workspace(name="Lot", items=(clip,)), folder / "Lot.ax-devil.workspace")
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
 
     backup.keep(saved_file)
@@ -156,7 +156,7 @@ def test_an_unreadable_recent_workspaces_file_is_ignored(tmp_path: Path, content
 
 def test_unreadable_items_without_an_id_do_not_make_a_reopened_workspace_modified(tmp_path: Path) -> None:
     path = tmp_path / "Lot.ax-devil.workspace"
-    path.write_text(json.dumps({"version": 1, "items": [{"kind": "radar"}, {"kind": "radar"}, "junk"]}))
+    path.write_text(json.dumps({"version": 1, "name": "Lot", "items": [{"kind": "radar"}, {"kind": "radar"}, "junk"]}))
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
 
     opened = load_workspace(path)
@@ -169,7 +169,13 @@ def test_unreadable_items_without_an_id_do_not_make_a_reopened_workspace_modifie
 def test_a_file_whose_paths_hold_dot_dot_segments_is_restored_unmodified(tmp_path: Path) -> None:
     path = tmp_path / "lot.ax-devil.workspace"
     path.write_text(
-        json.dumps({"version": 1, "items": [{"kind": "video", "id": "v", "label": "", "video": "sub/../clip.mp4"}]})
+        json.dumps(
+            {
+                "version": 1,
+                "name": "Lot",
+                "items": [{"kind": "video", "id": "v", "label": "", "video": "sub/../clip.mp4"}],
+            }
+        )
     )
     backup = WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json")
     backup.keep(load_workspace(path))
@@ -195,3 +201,14 @@ def test_unsaved_bookmarks_and_review_marks_are_kept_and_restored_as_modified(tm
     assert current == edited
     assert saved == saved_workspace
     assert _modified(current, saved)
+
+
+def test_the_name_given_to_a_workspace_is_kept_with_it_and_a_backup_without_one_is_ignored(tmp_path: Path) -> None:
+    backup_file = tmp_path / "workspace-backup.json"
+    backup = WorkspaceBackup(lambda: backup_file)
+    backup.keep(Workspace(name="Parking lot"))
+
+    assert backup.restore().name == "Parking lot"
+
+    backup_file.write_text(json.dumps({"path": None, "items": []}))
+    assert backup.restore() == Workspace()

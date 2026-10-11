@@ -141,14 +141,20 @@ class WorkspaceStore(QObject):
     def save_workspace(self, path: Path | None = None) -> None:
         """Save the Workspace to *path*, or to its own file when None, and mark it as saved.
 
-        Raises ``ValueError`` for an Untitled Workspace without a *path*, and ``WorkspaceFileError`` when writing fails.
+        Raises ``ValueError`` for a Workspace without a file when there is no *path*, and ``WorkspaceFileError`` when
+        writing fails.
         """
         target = path or self._workspace.path
         if target is None:
-            raise ValueError("An Untitled workspace needs a path to be saved.")
+            raise ValueError("A workspace without a file needs a path to be saved.")
         self._workspace = self._saved_workspace = save_workspace(self._workspace, target)
         self._awaiting_saved = False
         self._read_saved = None
+        self._announce_state()
+
+    def rename_workspace(self, name: str) -> None:
+        """Call the Workspace *name*, which is saved with it; an empty *name* is "Untitled"."""
+        self._workspace = self._workspace.renamed(name)
         self._announce_state()
 
     def add_items(self, items: Sequence[WorkspaceItem]) -> None:

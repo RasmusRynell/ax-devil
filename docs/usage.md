@@ -10,13 +10,14 @@ a playlist how many entries take part, and beside two items with the same name t
 an item for more. An accent edge marks what is open in a viewer. While the workspace is empty the sidebar shows
 buttons to open content and your recent workspaces instead. **File → Save Workspace**
 (`Ctrl+S`) saves it as a `.ax-devil.workspace` file. **File → Open Workspace** (`Ctrl+O`), **File → Open Recent**, the
-sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The title bar shows the workspace name, with
-`●` while it has unsaved changes.
+sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The Workspace view's header shows the
+workspace name, with `●` while it has unsaved changes; click the name to change it. The name is saved in the workspace
+file and is separate from the file's name, which is what the recent lists show.
 
 Closing never asks. The workspace, unsaved changes included, is kept in the storage folder and reopened by the next
 plain `ax-devil` launch, with its items listed and nothing opened or connected. Opening or creating another workspace
 while the current one has unsaved changes asks whether to save them first. `ax-devil local`, `live`, and `playlist`
-start a new Untitled workspace with what they open.
+start a new Untitled workspace with what they open. A workspace is called Untitled until you name it.
 
 A workspace saves what you added, not how you looked at it: file paths (relative to the workspace file when they are
 in its folder), live stream settings, and playlist resolver settings. Open viewers, layouts, playback positions, and
@@ -44,8 +45,10 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   to rename it, change its kind (Note, Issue, Example, Question) or remove it. The chips and the search filter the
   list, and a group's **Reviewed** / **To review** mark toggles when clicked. **Export CSV** writes every bookmark.
   Bookmarks and review marks are saved in the workspace file, and live streams cannot be bookmarked.
-- **Plugins** shows which plugins loaded, which failed and why, and which are built in. **Add plugin** installs a
-  package, wheel or folder; the `…` menu of an installed plugin updates or removes it; **Reload** loads plugins again.
+- **Plugins** shows which plugins loaded, which failed and why, and which are built in, and under each plugin the
+  decoders and playlist resolvers it gives you, with whether a decoder reads overlay files, live messages or both.
+  **Add** installs a package, wheel or folder; the `…` menu of an installed plugin updates or removes it; the reload
+  button next to **Add** loads plugins again.
   Installs, updates and removals apply after a restart, which a banner offers. **Debug → Plug-ins** also opens it.
 
 ## Video and overlays

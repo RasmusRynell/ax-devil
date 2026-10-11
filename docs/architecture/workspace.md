@@ -8,7 +8,7 @@ it records *what* you work with, not where your cursor was.
 
 | Term | Meaning |
 |------|---------|
-| Workspace | An ordered collection of Workspace Items. Exactly one is open at a time. It is *Untitled* until saved; once saved, its name is its file name. |
+| Workspace | An ordered collection of Workspace Items. Exactly one is open at a time. It is *Untitled* until the user names it; the name is saved in the file and is not the file's name. |
 | Workspace Item | A recipe for one thing to work with: enough to rebuild it, never the rebuilt result. Each item has a stable id and a kind. |
 | Video Item | A video file with optional overlay files and decoders. |
 | Live Stream Item | A camera stream with optional live overlay settings. |
@@ -93,14 +93,15 @@ the store; it asks the user through `WorkspacePrompts` and builds no widgets.
   storage folder saved at that time. Credentials are kept as entered, as in a workspace file.
 - Every launch first restores the kept Workspace at once. The file at its kept path, read again on a worker thread so a
   slow filesystem cannot freeze the window, is the saved state, so unsaved edits are still marked modified once it
-  arrives; when the file can no longer be read, the items stay as an Untitled Workspace.
+  arrives; when the file can no longer be read, the items stay, without a file.
 - Restored, opened, and new Workspaces list their items and open and connect nothing; only adding items opens a viewer.
   A CLI launch with content then starts an Untitled Workspace with those items, and `ax-devil open <file>` opens a
   saved one, each after the usual question.
-- Replacing a modified Workspace asks Save / Don't Save, with no way to dismiss it. Saving an Untitled Workspace goes through Save As, and
-  cancelling that cancels the whole action. A file that cannot be read or written is reported and changes nothing.
+- Replacing a modified Workspace asks Save / Don't Save, with no way to dismiss it. Saving a Workspace that has no file
+  goes through Save As, and cancelling that cancels the whole action. A file that cannot be read or written is reported and changes nothing.
 - Opened and saved files are listed as recent workspaces under the path the user chose; symlinks are not followed.
-  Each recent keeps the time it was last opened or saved, so listing and dating recents never reads their files.
+  Each recent keeps the time it was last opened or saved, so listing and dating recents never reads their files; for
+  the same reason a recent is labelled with its file's name, not the name saved inside it.
 
 ## File Format
 
@@ -109,6 +110,7 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
 ```json
 {
   "version": 1,
+  "name": "Parking lots",
   "items": [
     {"kind": "video", "id": "8f3c…", "label": "Parking lot", "video": "clips/lot.mp4",
      "overlays": [{"path": "clips/lot.json", "decoder": "adf-v1"}]},
