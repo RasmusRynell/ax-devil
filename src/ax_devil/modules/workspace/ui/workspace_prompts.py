@@ -25,8 +25,8 @@ class SaveChoice(Enum):
 class WorkspacePrompts(Protocol):
     """Ask the user about workspace files; tests replace the dialogs with fixed answers."""
 
-    def ask_save_changes(self, workspace_name: str) -> SaveChoice:
-        """Return whether to save the modified workspace before it is replaced."""
+    def ask_save_changes(self, workspace_name: str, next_step: str) -> SaveChoice:
+        """Return whether to save the modified workspace before *next_step* (such as "opening Cameras") replaces it."""
         ...
 
     def choose_workspace_to_open(self) -> Path | None:
@@ -52,10 +52,11 @@ class DialogPrompts:
     def __init__(self, parent: QWidget) -> None:
         self._parent = parent
 
-    def ask_save_changes(self, workspace_name: str) -> SaveChoice:
-        """Ask Save / Discard / Cancel about the modified workspace."""
+    def ask_save_changes(self, workspace_name: str, next_step: str) -> SaveChoice:
+        """Ask Save / Don't Save / Cancel about the modified workspace that *next_step* would close."""
         choices = {"Save": SaveChoice.SAVE, "Don't Save": SaveChoice.DISCARD, "Cancel": SaveChoice.CANCEL}
-        answer = ask(self._parent, "Save Workspace", f"Save changes to {workspace_name}?", choices, SaveChoice.SAVE)
+        text = f"{workspace_name} has unsaved changes.\nSave them before {next_step}?"
+        answer = ask(self._parent, "Unsaved Changes", text, choices, SaveChoice.SAVE)
         return answer or SaveChoice.CANCEL
 
     def choose_workspace_to_open(self) -> Path | None:

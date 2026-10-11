@@ -116,11 +116,13 @@ class FakePrompts:
         self.open_path = open_path
         self.save_path = save_path
         self.asked_to_save: list[str] = []
+        self.next_steps: list[str] = []
         self.suggested_save_paths: list[Path] = []
         self.errors: list[str] = []
 
-    def ask_save_changes(self, workspace_name: str) -> SaveChoice:
+    def ask_save_changes(self, workspace_name: str, next_step: str) -> SaveChoice:
         self.asked_to_save.append(workspace_name)
+        self.next_steps.append(next_step)
         return self.save_choice
 
     def choose_workspace_to_open(self) -> Path | None:
