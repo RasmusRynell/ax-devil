@@ -245,3 +245,13 @@ def test_playlist_item_keeps_its_own_copy_of_the_settings_from_the_caller_and_th
     item.resolve(FakeResolutionContext(resolvers={"mot": _MutatingResolver()}))
 
     assert item.settings == {"root": "/runs/exp3"}
+
+
+def test_only_live_streams_have_hosts_and_a_reference_lists_the_expanded_one_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("TEST_CAMERA_ADDR", "10.0.0.7")
+
+    assert LiveStreamItem(host="$TEST_CAMERA_ADDR").hosts == ("$TEST_CAMERA_ADDR", "10.0.0.7")
+    assert LiveStreamItem(host="192.0.2.10").hosts == ("192.0.2.10",)
+    assert VideoItem(video=tmp_path / "clip.mp4").hosts == ()

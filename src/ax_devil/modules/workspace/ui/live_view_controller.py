@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject
 
 from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera, scan_network
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core import LiveStreamItem, WorkspaceItem, live_stream_item_from_defaults
+from ax_devil.modules.workspace.core import WorkspaceItem, live_stream_item_from_defaults
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
@@ -37,13 +37,8 @@ def _scan_outcome(scan: Callable[[], Sequence[DiscoveredCamera]]) -> _ScanOutcom
 
 
 def _workspace_hosts(items: Sequence[WorkspaceItem]) -> frozenset[str]:
-    """Return the hosts of the workspace's live streams, as entered and with any ``$VARIABLE`` expanded."""
-    return frozenset(
-        host
-        for item in items
-        if isinstance(item, LiveStreamItem)  # Only live streams have a host.
-        for host in (item.host, item.expanded().host)
-    )
+    """Return the hosts the workspace's items connect to, as entered and with any ``$VARIABLE`` expanded."""
+    return frozenset(host for item in items for host in item.hosts)
 
 
 class LiveViewController(QObject):

@@ -100,6 +100,11 @@ class WorkspaceItem(ABC):
         """Return the label, or the default name when the label is empty."""
         return self.label or self.default_name
 
+    @property
+    def hosts(self) -> tuple[str, ...]:
+        """Return the network hosts the item connects to, as entered and expanded; none for items that do not."""
+        return ()
+
     def with_label(self: _ItemT, label: str) -> _ItemT:
         """Return this item renamed to *label*, keeping its id.
 
@@ -278,6 +283,11 @@ class LiveStreamItem(WorkspaceItem):
     def default_name(self) -> str:
         """Return the device host, with an environment reference expanded for display only."""
         return expand_environment_reference(self.host) or "Live stream"
+
+    @property
+    def hosts(self) -> tuple[str, ...]:
+        """Return the camera host as entered and, when it is a ``$VARIABLE`` reference, as expanded."""
+        return tuple(dict.fromkeys((self.host, self.expanded().host)))
 
     def expanded(self) -> LiveStreamItem:
         """Return this item with its environment references replaced by their current values."""
