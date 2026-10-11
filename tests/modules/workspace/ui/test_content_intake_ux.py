@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -14,6 +14,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.core import (
     OverlayFile,
+    RecentWorkspace,
     VideoFileSelection,
     video_file_selections,
 )
@@ -127,8 +128,8 @@ def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_works
     manager.install(host)
     panel = StartPanel(host)
     panel.set_shortcut_manager(manager)
-    recent = [_touch(tmp_path / f"{name}.ax-devil.workspace") for name in ("Parking lot", "Exp 3")]
-    panel.set_recent_workspaces(recent)
+    recent = [tmp_path / f"{name}.ax-devil.workspace" for name in ("Parking lot", "Exp 3")]
+    panel.set_recent_workspaces([RecentWorkspace(path, datetime.now()) for path in recent])
     panel.resize(320, 600)
     host.show()
     triggered: list[str] = []
@@ -168,22 +169,21 @@ def test_rebinding_updates_the_start_panel_and_activity_bar_tooltips(qtbot: QtBo
     assert "Ctrl+Alt+Shift+J" in bar_button.toolTip()
 
 
-def test_start_panel_recomputes_recent_dates_when_shown(
+def test_start_panel_dates_recents_by_last_use_without_their_files_and_recomputes_when_shown(
     qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A panel left open across midnight shows correct relative dates once it is shown again."""
-    saved = _touch(tmp_path / "A.ax-devil.workspace")
-    modified = date.fromtimestamp(saved.stat().st_mtime)
-    monkeypatch.setattr(start_panel, "_today", lambda: modified)
+    """A recent on an unreachable mount still shows its date; a panel left open across midnight updates on show."""
+    used = datetime(2026, 10, 10, 9, 30)
+    monkeypatch.setattr(start_panel, "_today", lambda: used.date())
     panel = StartPanel()
     qtbot.addWidget(panel)
-    panel.set_recent_workspaces([saved])
+    panel.set_recent_workspaces([RecentWorkspace(tmp_path / "unmounted" / "A.ax-devil.workspace", used)])
     assert panel.recent_rows()[0].date_label.text() == "today"
 
-    monkeypatch.setattr(start_panel, "_today", lambda: modified + timedelta(days=30))
+    monkeypatch.setattr(start_panel, "_today", lambda: used.date() + timedelta(days=30))
     panel.show()
 
-    assert panel.recent_rows()[0].date_label.text() != "today"
+    assert panel.recent_rows()[0].date_label.text() == "Oct 10"
 
 
 def test_start_panel_never_overflows_a_narrow_sidebar(qtbot: QtBot, tmp_path: Path) -> None:
@@ -192,7 +192,8 @@ def test_start_panel_never_overflows_a_narrow_sidebar(qtbot: QtBot, tmp_path: Pa
     qtbot.addWidget(panel)
     folder = tmp_path / ("very-long-folder-name-" * 6)
     folder.mkdir()
-    panel.set_recent_workspaces([_touch(folder / f"{'Long workspace name ' * 6}.ax-devil.workspace")])
+    long_name = folder / f"{'Long workspace name ' * 6}.ax-devil.workspace"
+    panel.set_recent_workspaces([RecentWorkspace(long_name, datetime.now())])
     panel.resize(160, 400)
     panel.show()
     QApplication.processEvents()

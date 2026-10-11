@@ -251,7 +251,7 @@ class MainWindow(ChromeWindow):
         """List the recent workspace files; choosing one opens it."""
         menu = self._recent_menu
         menu.clear()
-        for path in self._workspace_session.lifecycle.recent_workspaces():
+        for path in (entry.path for entry in self._workspace_session.lifecycle.recent_workspaces()):
             action = menu.addAction(workspace_name(path))
             action.setToolTip(str(path))
             action.triggered.connect(lambda _=False, path=path: self._workspace_session.lifecycle.open_workspace(path))

@@ -634,7 +634,7 @@ def test_saved_workspace_is_listed_on_the_start_panel(
     assert session.lifecycle.save_workspace()
 
     saved = tmp_path / "Lot.ax-devil.workspace"
-    assert session.lifecycle.recent_workspaces() == (saved,)
+    assert [entry.path for entry in session.lifecycle.recent_workspaces()] == [saved]
     assert [row.path for row in session._start_panel.recent_rows()] == [saved]
 
 

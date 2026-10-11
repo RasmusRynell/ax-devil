@@ -75,6 +75,7 @@ the store; it asks the user through `WorkspacePrompts` and builds no widgets.
 - Replacing a modified Workspace asks Save / Discard / Cancel. Saving an Untitled Workspace goes through Save As, and
   cancelling that cancels the whole action. A file that cannot be read or written is reported and changes nothing.
 - Opened and saved files are listed as recent workspaces under the path the user chose; symlinks are not followed.
+  Each recent keeps the time it was last opened or saved, so listing and dating recents never reads their files.
 
 ## File Format
 

@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, Signal
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import (
+    RecentWorkspace,
     RecentWorkspaces,
     Workspace,
     WorkspaceBackup,
@@ -46,7 +47,7 @@ class WorkspaceLifecycle(QObject):
         self._backup = backup
         self._recent_workspaces = recent_workspaces
 
-    def recent_workspaces(self) -> tuple[Path, ...]:
+    def recent_workspaces(self) -> tuple[RecentWorkspace, ...]:
         """Return the recently opened or saved workspace files, newest first; their files are not checked."""
         return self._recent_workspaces.entries()
 

@@ -44,7 +44,7 @@ from ax_devil.modules.workspace.core.items import (
     new_item_id,
     video_file_selections,
 )
-from ax_devil.modules.workspace.core.recent_workspaces import RecentWorkspaces
+from ax_devil.modules.workspace.core.recent_workspaces import RecentWorkspace, RecentWorkspaces
 from ax_devil.modules.workspace.core.resolution import (
     ItemResolutionError,
     PlaylistResolver,
@@ -88,6 +88,7 @@ __all__ = [
     "PlaylistItem",
     "PlaylistResolver",
     "PlaylistSettings",
+    "RecentWorkspace",
     "RecentWorkspaces",
     "ResolutionContext",
     "SeekableVideoContent",

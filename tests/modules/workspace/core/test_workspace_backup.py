@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -104,11 +105,12 @@ def test_recent_workspaces_are_newest_first_limited_and_forgotten_on_request(
     monkeypatch.chdir(tmp_path)
     recent.record(Path(files[1].name))
 
-    assert RecentWorkspaces(lambda: store, limit=3).entries() == (files[1], files[3], files[2])
+    reloaded = RecentWorkspaces(lambda: store, limit=3)
+    assert [entry.path for entry in reloaded.entries()] == [files[1], files[3], files[2]]
     recent.forget(files[3])
-    assert recent.entries() == (files[1], files[2])
+    assert [entry.path for entry in recent.entries()] == [files[1], files[2]]
     recent.record(files[0])
-    assert recent.entries() == (files[0], files[1], files[2])
+    assert [entry.path for entry in recent.entries()] == [files[0], files[1], files[2]]
 
 
 def test_recent_workspaces_keep_the_path_the_user_chose_not_its_symlink_target(tmp_path: Path) -> None:
@@ -124,10 +126,25 @@ def test_recent_workspaces_keep_the_path_the_user_chose_not_its_symlink_target(t
 
     recent.record(link)
 
-    assert recent.entries() == (link,)
+    assert [entry.path for entry in recent.entries()] == [link]
 
 
-@pytest.mark.parametrize("content", ["{not json", "{}", "[3, null]"])
+def test_recent_workspaces_remember_when_each_was_last_used_without_reading_its_file(tmp_path: Path) -> None:
+    store = tmp_path / "recent-workspaces.json"
+    missing = tmp_path / "unmounted" / "w.ax-devil.workspace"
+    before = datetime.now()
+    RecentWorkspaces(lambda: store).record(missing)
+
+    (entry,) = RecentWorkspaces(lambda: store).entries()
+
+    assert entry.path == missing
+    assert before <= entry.used <= datetime.now()
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["{not json", "{}", "[3, null]", '["/old/list/of/paths.ax-devil.workspace"]', '[{"path": "/w", "used": "never"}]'],
+)
 def test_an_unreadable_recent_workspaces_file_is_ignored(tmp_path: Path, content: str) -> None:
     path = tmp_path / "recent-workspaces.json"
     path.write_text(content)
