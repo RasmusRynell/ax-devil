@@ -17,7 +17,7 @@ from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.diagnostics.metrics_store import metrics_enabled, set_metrics_enabled
-from ax_devil.modules.diagnostics.plugin_window import PluginWindow
+from ax_devil.modules.plugin_manager.plugins_view import PLUGINS_VIEW_ID, PluginsView
 from ax_devil.modules.plugin_system import PluginStatus, RuntimePluginRegistry
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -69,9 +69,11 @@ class MainWindow(ChromeWindow):
         self._render_catalog_manager = render_catalog_manager
 
         self._debug_window: DebugWindow | None = None
-        self._plugin_window: PluginWindow | None = None
         self._about_dialog: AboutDialog | None = None
         self._workspace_session = WorkspaceSession(self, render_catalog_manager=self._render_catalog_manager)
+        self._plugins_view = PluginsView()
+        self._plugins_view.restart_requested.connect(lambda: restart_application(self))
+        self._workspace_session.add_sidebar_view(self._plugins_view.sidebar_view())
 
         self._setup_window()
         self._shortcut_manager.install(self)
@@ -219,9 +221,9 @@ class MainWindow(ChromeWindow):
         open_debug_action.triggered.connect(self.show_debug_window)
         debug_menu.addAction(open_debug_action)
 
-        open_plugin_action = QAction("Open Plug-ins Window", self)
-        open_plugin_action.triggered.connect(self.show_plugin_window)
-        debug_menu.addAction(open_plugin_action)
+        plugins_action = QAction("Plug-ins", self)
+        plugins_action.triggered.connect(self.show_plugins)
+        debug_menu.addAction(plugins_action)
 
         debug_menu.addSeparator()
 
@@ -418,9 +420,6 @@ class MainWindow(ChromeWindow):
         if self._debug_window is not None:
             self._debug_window.close()
             self._debug_window = None
-        if self._plugin_window is not None:
-            self._plugin_window.close()
-            self._plugin_window = None
         if self._about_dialog is not None:
             self._about_dialog.close()
             self._about_dialog = None
@@ -444,19 +443,9 @@ class MainWindow(ChromeWindow):
         """Reset reference when the debug window is closed."""
         self._debug_window = None
 
-    def show_plugin_window(self) -> None:
-        """Show the plug-in inspection window."""
-        if self._plugin_window is None:
-            self._plugin_window = PluginWindow(parent=self, use_custom_frame=self.uses_custom_frame)
-            self._plugin_window.destroyed.connect(self._on_plugin_window_destroyed)
-
-        self._plugin_window.show()
-        self._plugin_window.raise_()
-        self._plugin_window.activateWindow()
-
-    def _on_plugin_window_destroyed(self, _obj: QObject | None = None) -> None:
-        """Reset reference when the plug-in window is closed."""
-        self._plugin_window = None
+    def show_plugins(self) -> None:
+        """Show the Plugins view in the sidebar."""
+        self._workspace_session.show_sidebar_view(PLUGINS_VIEW_ID)
 
     def report_failed_plugins(self) -> None:
         """Show one dialog listing plug-ins that failed to load, if any."""
@@ -471,11 +460,11 @@ class MainWindow(ChromeWindow):
             label.setWordWrap(True)
             dialog.add_content_widget(label)
 
-            def open_plugin_window() -> None:
+            def show_plugins() -> None:
                 dialog.accept()
-                self.show_plugin_window()
+                self.show_plugins()
 
-            dialog.add_button("Open Plug-ins Window", open_plugin_window)
+            dialog.add_button("Show Plug-ins", show_plugins)
             dialog.add_standard_buttons(include_cancel=False)
             dialog.exec()
 

@@ -39,6 +39,7 @@ class ElidedLabel(QLabel):
             self._update_text()
 
     def _update_text(self) -> None:
-        text = self.fontMetrics().elidedText(self._full_text, self._elide, max(0, self.width()))
+        # The contents width: a stylesheet may give the label a frame the text cannot draw on.
+        text = self.fontMetrics().elidedText(self._full_text, self._elide, max(0, self.contentsRect().width()))
         if text != self.text():
             self.setText(text)

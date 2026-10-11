@@ -1,0 +1,219 @@
+"""The Plugins view: what loaded, what failed and why, and adding, updating, removing and reloading plugins."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPalette, QShowEvent
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QScrollArea, QToolButton, QVBoxLayout, QWidget
+
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.banner import Banner
+from ax_devil.modules.chrome.elided_label import ElidedLabel
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.list_row import ListRow, muted_label
+from ax_devil.modules.chrome.section_caption import SectionCaption
+from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
+from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import KindColor, StatusColor
+from ax_devil.modules.chrome.tokens import Space, TextRole
+from ax_devil.modules.chrome.view_panel import ViewPanel
+from ax_devil.modules.plugin_manager.add_plugin_dialog import AddPluginDialog
+from ax_devil.modules.plugin_manager.catalog import PluginEntry, PluginGroup, Section, current_catalog
+from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChanges
+from ax_devil.modules.plugin_system import ApplicationPluginLoader
+
+PLUGINS_VIEW_ID = "plugins"
+
+_ICON_PX = 16
+_ROW_EDGE_PX = 2  # The accent edge left of a ListRow's content.
+
+
+def _muted(palette: QPalette) -> QColor:
+    return palette.color(QPalette.ColorRole.PlaceholderText)
+
+
+def _muted_line(text: str) -> ElidedLabel:
+    """Return a small muted line that elides *text* to its width; the tooltip has it whole."""
+    line = ElidedLabel(text, Qt.TextElideMode.ElideRight)
+    TextRole.SMALL.apply(line)
+    line.setStyleSheet("color: palette(placeholder-text);")
+    return line
+
+
+@dataclass(frozen=True)
+class _Look:
+    """How a section's rows are marked: their icon in its color, and the color of the section's caption mark."""
+
+    icon: Icon
+    color: Callable[[QPalette], QColor]
+    mark: Callable[[QPalette], QColor]
+
+
+_LOOKS = {
+    Section.FAILED: _Look(Icon.WARNING, StatusColor.WARNING.color, StatusColor.WARNING.color),
+    Section.INSTALLED: _Look(Icon.PLUGIN, StatusColor.SUCCESS.color, KindColor.INFO.color),
+    Section.BUILT_IN: _Look(Icon.PLUGIN, _muted, KindColor.MUTED.color),
+}
+
+
+class PluginsView(ViewPanel):
+    """List the plugins by section and run plugin changes; the list is read again whenever the view is shown.
+
+    Changes apply when the app restarts: once one succeeds, a banner offers the restart, which ``restart_requested``
+    asks the window for.
+    """
+
+    restart_requested = Signal()
+
+    def __init__(
+        self,
+        changes: PluginChanges | None = None,
+        catalog: Callable[[], tuple[PluginGroup, ...]] = current_catalog,
+        reload: Callable[[], None] = ApplicationPluginLoader.reload_plugins,
+        parent: QWidget | None = None,
+    ) -> None:
+        reload_button = SmallButton("Reload", Icon.REFRESH)
+        super().__init__("Plugins", header_widget=reload_button, parent=parent)
+        self._changes = changes if changes is not None else PluginChanges(parent=self)
+        self._catalog = catalog
+        self._reload = reload
+        self._groups: tuple[PluginGroup, ...] = ()
+        self._failure: tuple[PluginChange, str] | None = None
+        self._change_buttons: list[QWidget] = []
+
+        self._banner = Banner("Restart to apply the plugin changes", "Restart")
+        self._banner.action.clicked.connect(self.restart_requested)
+        self._banner_holder = self.add_padded(self._banner, top=Space.M, bottom=Space.S)
+
+        self._rows = QWidget()
+        self._rows_layout = QVBoxLayout(self._rows)
+        self._rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._rows_layout.setSpacing(0)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(self._rows)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        scroll.viewport().setAutoFillBackground(False)
+        self._rows.setAutoFillBackground(False)
+        self.add(scroll)
+        self.body.setStretchFactor(scroll, 1)
+
+        self._add_button = SmallButton("Add plugin", Icon.ADD)
+        self._add_button.clicked.connect(self._add_plugin)
+        buttons = QWidget()
+        buttons_layout = QHBoxLayout(buttons)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.addWidget(self._add_button)
+        buttons_layout.addStretch(1)
+        self.add_padded(buttons, top=Space.S, bottom=Space.S)
+        self._install_status = _muted_line("")
+        self._install_status_holder = self.add_padded(self._install_status, top=0, bottom=Space.S)
+        self.add_padded(muted_label("Installs and updates apply after a restart."), top=0, bottom=Space.M)
+
+        reload_button.clicked.connect(self._reload_plugins)
+        self._changes.started.connect(self._on_change_started)
+        self._changes.finished.connect(self._on_change_finished)
+        follow_appearance(self, self._render)
+
+    def sidebar_view(self) -> SidebarView:
+        """Return this view as an application view of the sidebar."""
+        return SidebarView(PLUGINS_VIEW_ID, "Plugins", Icon.PLUGIN, ViewGroup.APP, self)
+
+    def refresh(self) -> None:
+        """Read the plugins again and list them."""
+        self._groups = self._catalog()
+        self._render()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        """List the plugins as they are now, including failures recorded since the view was last shown."""
+        super().showEvent(event)
+        self.refresh()
+
+    def _reload_plugins(self) -> None:
+        self._reload()
+        self.refresh()
+
+    def _add_plugin(self) -> None:
+        with AddPluginDialog(self) as dialog:
+            if dialog.exec() != AddPluginDialog.DialogCode.Accepted or not dialog.source():
+                return
+            source = dialog.source()
+        self._changes.start(PluginChange.install(source))
+
+    def _on_change_started(self) -> None:
+        self._failure = None
+        self._render()
+
+    def _on_change_finished(self, change: PluginChange, reason: str) -> None:
+        self._failure = (change, reason) if reason else None
+        self.refresh()
+
+    def _render(self) -> None:
+        """List the sections read last, with the state of the change that is running or has failed."""
+        while (item := self._rows_layout.takeAt(0)) is not None:
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self._change_buttons = [self._add_button, self._banner.action]
+        for group in self._groups:
+            look = _LOOKS[group.section]
+            count = len(group.entries) if group.section.counted else None
+            self._rows_layout.addWidget(SectionCaption(group.section.title, count, look.mark))
+            for entry in group.entries:
+                self._add_row(entry, look)
+        self._rows_layout.addStretch(1)
+
+        running = self._changes.running
+        for button in self._change_buttons:
+            button.setEnabled(running is None)
+        self._banner_holder.setVisible(self._changes.restart_needed)
+        install_status = ""
+        if running is not None and not running.name:
+            install_status = running.kind.progress
+        elif self._failure is not None and not self._failure[0].name:
+            install_status = self._failure[1]
+        self._install_status.set_full_text(install_status)
+        self._install_status_holder.setVisible(bool(install_status))
+
+    def _add_row(self, entry: PluginEntry, look: _Look) -> None:
+        running = self._changes.running
+        subtitle = running.kind.progress if running is not None and running.name == entry.name else entry.subtitle
+        trailing: list[QWidget] = []
+        if entry.requirement is not None:
+            trailing.append(self._more_button(entry, entry.requirement))
+        icon = look.icon.icon(look.color(self.palette()))
+        self._rows_layout.addWidget(
+            ListRow(entry.name, icon=icon, subtitle=subtitle, detail=entry.detail, trailing=trailing)
+        )
+        if self._failure is not None and self._failure[0].name == entry.name:
+            self._rows_layout.addWidget(self._failure_line(self._failure[1]))
+
+    def _more_button(self, entry: PluginEntry, requirement: str) -> QToolButton:
+        button = QToolButton()
+        menu = QMenu(button)
+        menu.addAction("Update", lambda: self._changes.start(PluginChange.update(entry.name, requirement)))
+        menu.addAction("Remove", lambda: self._changes.start(PluginChange.remove(entry.name)))
+        button.setIcon(Icon.MORE.icon())
+        button.setAutoRaise(True)
+        button.setToolTip("Update or remove")
+        button.setAccessibleName(f"Update or remove {entry.name}")
+        button.setMenu(menu)
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        button.setStyleSheet("QToolButton::menu-indicator { image: none; }")
+        self._change_buttons.append(button)
+        return button
+
+    def _failure_line(self, reason: str) -> QWidget:
+        """Return *reason* as a muted line under a row, lined up with the row's title."""
+        line = _muted_line(reason)
+        holder = QWidget()
+        layout = QHBoxLayout(holder)
+        layout.setContentsMargins(_ROW_EDGE_PX + Space.M + _ICON_PX + Space.M, 0, Space.M, Space.XS)
+        layout.addWidget(line)
+        return holder
