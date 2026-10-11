@@ -418,3 +418,13 @@ def test_default_ip_range_must_name_addresses_or_a_small_range() -> None:
         ip_range.parse("camera")
     with pytest.raises(ValueError, match="at most"):
         ip_range.parse("10.0.0.0/8")
+
+
+def test_default_ip_range_environment_reference_must_resolve_to_a_valid_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    ip_range = ConfigField("defaults.network_scan.ip_range", "Default IP range")
+    monkeypatch.setenv("AX_TEST_RANGE", "10.0.4.0/24")
+    assert ip_range.parse("$AX_TEST_RANGE") == "$AX_TEST_RANGE"
+
+    monkeypatch.setenv("AX_TEST_RANGE", "camera")
+    with pytest.raises(ValueError, match="not an IPv4 address or range"):
+        ip_range.parse("$AX_TEST_RANGE")

@@ -37,6 +37,8 @@ class ConfigField:
         if reference:
             if self.directory and not os.getenv(value[1:], "").strip():
                 raise ValueError(f"{self.label}: the environment reference must resolve to a non-empty folder path.")
+            if self.path.endswith(".ip_range"):
+                parse_scan_targets(os.getenv(value[1:], ""))
             if self.minimum is None:
                 return value
             numeric_value = os.getenv(value[1:], "")
