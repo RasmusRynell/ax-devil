@@ -38,8 +38,11 @@ show one part of it, with their own actions.
 - **Playlists** lists the workspace's playlists. **Rescan** reads a playlist's folders again, for example after adding
   files; open viewers keep what they show. **Add from** lists the playlist resolvers, including those from plugins;
   **Add** opens the Add Playlist dialog with that resolver chosen.
-- **Bookmarks** lists the frames you marked in local videos and playlists, grouped by video, with a **Reviewed** mark
-  per video. Live streams cannot be bookmarked. They are saved in the workspace file.
+- **Bookmarks** lists the frames you marked in local videos and playlists, grouped by video or playlist entry.
+  **View → Add Bookmark** (`M`) marks the frame on screen. Click a bookmark to open it paused at its frame; right-click
+  to rename it, change its kind (Note, Issue, Example, Question) or remove it. The chips and the search filter the
+  list, and a group's **Reviewed** / **To review** mark toggles when clicked. **Export CSV** writes every bookmark.
+  Bookmarks and review marks are saved in the workspace file, and live streams cannot be bookmarked.
 - **Plugins** shows which plugins loaded, which failed and why, and which are built in. **Add plugin** installs a
   package, wheel or folder; the `…` menu of an installed plugin updates or removes it; **Reload** loads plugins again.
   Installs, updates and removals apply after a restart, which a banner offers. **Debug → Plug-ins** also opens it.
