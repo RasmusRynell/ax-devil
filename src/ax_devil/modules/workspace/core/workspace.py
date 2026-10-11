@@ -68,7 +68,8 @@ class Workspace:
     @property
     def suggested_file_stem(self) -> str:
         """Return the name as one file name component, for suggesting where to save or export."""
-        return self.name.replace("/", "-").replace("\\", "-")
+        stem = self.name.replace("/", "-").replace("\\", "-")
+        return stem if stem.strip(".") else "-"  # "." and ".." would walk the path instead of naming a file.
 
     def has_item(self, item_id: str) -> bool:
         """Return whether an item with *item_id* is in this workspace."""

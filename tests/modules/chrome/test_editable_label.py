@@ -22,47 +22,54 @@ def _label(qtbot: QtBot) -> tuple[EditableLabel, list[str]]:
     return label, edited
 
 
-def _click(label: EditableLabel) -> QLineEdit:
+def _click(qtbot: QtBot, label: EditableLabel) -> QLineEdit:
     QTest.mouseClick(label, Qt.MouseButton.LeftButton)
     field = label.findChild(QLineEdit)
     assert field is not None and field.isVisible()
+    qtbot.waitUntil(field.hasFocus)
     return field
 
 
-def test_a_click_edits_the_text_and_enter_reports_it(qtbot: QtBot) -> None:
+def test_a_click_edits_the_text_in_place_and_reports_it_as_it_is_typed(qtbot: QtBot) -> None:
     label, edited = _label(qtbot)
 
-    field = _click(label)
+    field = _click(qtbot, label)
     assert field.text() == "Untitled" and field.selectedText() == "Untitled"
-    QTest.keyClicks(field, "Parking lot")
+    QTest.keyClicks(field, "Lot")
+    assert edited == ["L", "Lo", "Lot"]  # A save at any moment sees the name typed so far.
     QTest.keyClick(field, Qt.Key.Key_Return)
 
-    assert edited == ["Parking lot"]
+    assert edited[-1] == "Lot"
     assert not field.isVisible()
     assert label.full_text() == "Untitled"  # The owner decides what is shown.
 
 
-def test_escape_and_an_unchanged_text_report_nothing(qtbot: QtBot) -> None:
+def test_escape_puts_back_the_text_the_label_had(qtbot: QtBot) -> None:
     label, edited = _label(qtbot)
 
-    field = _click(label)
-    QTest.keyClicks(field, "Parking lot")
+    field = _click(qtbot, label)
+    QTest.keyClicks(field, "Lot")
     QTest.keyClick(field, Qt.Key.Key_Escape)
+
+    assert edited[-1] == "Untitled"
     assert not field.isVisible()
 
-    field = _click(label)
-    QTest.keyClick(field, Qt.Key.Key_Return)
+
+def test_ending_an_edit_without_typing_reports_nothing(qtbot: QtBot) -> None:
+    label, edited = _label(qtbot)
+
+    QTest.keyClick(_click(qtbot, label), Qt.Key.Key_Return)
+    QTest.keyClick(_click(qtbot, label), Qt.Key.Key_Escape)
 
     assert edited == []
 
 
-def test_leaving_the_field_keeps_what_was_typed(qtbot: QtBot) -> None:
+def test_leaving_the_field_ends_the_edit_and_keeps_what_was_typed(qtbot: QtBot) -> None:
     label, edited = _label(qtbot)
 
-    field = _click(label)
-    qtbot.waitUntil(field.hasFocus)
+    field = _click(qtbot, label)
     QTest.keyClicks(field, "Lot")
     field.clearFocus()
 
-    assert edited == ["Lot"]
+    assert edited[-1] == "Lot"
     assert not field.isVisible()

@@ -25,8 +25,9 @@ class _EscapableLineEdit(QLineEdit):
 class EditableLabel(ElidedLabel):
     """An elided label whose text is edited in place once it is clicked.
 
-    Enter or leaving the field ends the edit and emits ``edited`` with the entered text when it changed; Escape ends
-    it without. The label shows the new text only when its owner sets it, so a refused edit leaves the old one.
+    ``edited`` carries the text as it is typed, so whatever acts meanwhile, such as a save, sees it; Enter or leaving
+    the field ends the edit, and Escape ends it by emitting the text the label had. The label shows the new text only
+    when its owner sets it, so a refused edit leaves the old one.
     """
 
     edited = Signal(str)
@@ -36,15 +37,18 @@ class EditableLabel(ElidedLabel):
         self.setCursor(Qt.CursorShape.IBeamCursor)
         self._field = _EscapableLineEdit(self)
         self._field.hide()
-        self._field.editingFinished.connect(self._finish)
-        self._field.escaped.connect(self._field.hide)
+        self._field.textEdited.connect(self.edited)
+        self._field.editingFinished.connect(self._field.hide)
+        self._field.escaped.connect(self._cancel)
+        self._original = ""
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Start editing on a left click."""
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
-        self._field.setText(self.full_text())
+        self._original = self.full_text()
+        self._field.setText(self._original)
         self._field.setGeometry(self.rect())
         self._field.show()
         self._field.setFocus()
@@ -55,11 +59,7 @@ class EditableLabel(ElidedLabel):
         super().resizeEvent(event)
         self._field.setGeometry(self.rect())
 
-    def _finish(self) -> None:
-        # Hiding the field also takes its focus and finishes it again, by when it is hidden and this returns.
-        if not self._field.isVisible():
-            return
-        text = self._field.text()
+    def _cancel(self) -> None:
         self._field.hide()
-        if text.strip() != self.full_text():
-            self.edited.emit(text)
+        if self._field.text() != self._original:
+            self.edited.emit(self._original)

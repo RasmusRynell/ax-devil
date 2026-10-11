@@ -34,6 +34,8 @@ def test_workspace_is_untitled_until_named_and_its_file_does_not_name_it() -> No
 def test_a_name_with_path_separators_suggests_one_file_name() -> None:
     assert Workspace(name="Parking/Lot \\ 2").suggested_file_stem == "Parking-Lot - 2"
     assert Workspace(name="/tmp/Lot").suggested_file_stem == "-tmp-Lot"
+    assert [Workspace(name=name).suggested_file_stem for name in (".", "..", "...")] == ["-", "-", "-"]
+    assert Workspace(name=".hidden").suggested_file_stem == ".hidden"
 
 
 def test_edits_return_new_workspaces_and_leave_the_original_unchanged() -> None:
