@@ -187,4 +187,5 @@ class WorkspaceSession(QObject):
         self._start_panel.set_shortcut_manager(manager)
         activity_bar = self._window.activity_bar()
         for action_id, icon in (("view.render_catalogs", Icon.CATALOGS), ("app.settings", Icon.SETTINGS)):
-            activity_bar.add_action(icon, manager.tooltip(action_id), manager.get_action(action_id).trigger)
+            button = activity_bar.add_action(icon, "", manager.get_action(action_id).trigger)
+            manager.bind_tooltip(button, action_id)

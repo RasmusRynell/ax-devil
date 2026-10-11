@@ -53,9 +53,15 @@ class WorkspaceLifecycle(QObject):
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
         """Restore the kept Workspace, then open *workspace_file* or start a new Workspace with *items*, if given.
 
-        The restored Workspace lists its items and opens nothing. When the user cancels replacing it, it stays.
+        The restored Workspace lists its items and opens nothing; its saved file is read in the background.
+        When the user cancels replacing it, it stays.
         """
-        self._store.replace_workspace(*self._backup.restore())
+        kept = self._backup.restore()
+        if workspace_file is None and not items and kept.path is not None:
+            self._store.restore_workspace(kept, self._backup.load_saved)
+        else:
+            # Replacing the kept workspace asks about its unsaved edits, so its saved state is needed now.
+            self._store.replace_workspace(*self._backup.load_saved(kept))
         if workspace_file is not None:
             self.open_workspace(workspace_file)
         elif items and not self.new_workspace(items):

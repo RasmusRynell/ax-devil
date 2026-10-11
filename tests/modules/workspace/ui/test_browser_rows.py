@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Set
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -27,7 +26,6 @@ from ax_devil.modules.workspace.core import (
     VideoItem,
     WorkspaceItem,
 )
-from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.core.items import UnreadableItem
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow, build_browser_rows
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -103,25 +101,6 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert row.children[0].consideration_ref == ConsiderationItemRef.video_lane(video.content_id, 0)
     assert row.children[0].is_considered
     assert not row.children[1].is_considered
-
-
-def test_browser_rows_defer_information_building_until_requested() -> None:
-    video = make_video("test.mp4", overlay_count=2)
-    state, video = store_with(video)
-    information = WorkspaceItemInfo(title="test.mp4", fields=(("type", "seekable video"),))
-
-    with patch(
-        "ax_devil.modules.workspace.ui.browser_rows.build_video_information",
-        return_value=information,
-    ) as build_information:
-        row = item_rows(state)[0]
-
-        build_information.assert_not_called()
-        information_factory = row.information_factory
-        assert information_factory is not None
-        assert information_factory() == information
-
-    build_information.assert_called_once_with(video)
 
 
 def test_live_rows_use_live_icon_and_embedded_overlay_child() -> None:

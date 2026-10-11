@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
@@ -47,6 +48,7 @@ class WorkspaceStore(QObject):
         self._resolver = resolver
         self._workspace = Workspace()
         self._saved_workspace = self._workspace
+        self._awaiting_saved = False  # a restored Workspace's saved state is still being read
         self._resolutions: dict[str, ItemResolution] = {}
         self._not_considered: set[ConsiderationItemRef] = set()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
@@ -80,9 +82,28 @@ class WorkspaceStore(QObject):
         self._resolutions = {item.id: ItemResolution.pending(item) for item in current.items}
         self._not_considered = set()
         self._generation += 1
+        self._awaiting_saved = False
         self.workspace_replaced.emit()
         self._announce_state()
         self._resolve(current.items, added=False)
+
+    def restore_workspace(
+        self, kept: Workspace, load_saved: Callable[[Workspace], tuple[Workspace, Workspace]]
+    ) -> None:
+        """Make *kept* the Workspace now and publish its saved state when *load_saved* has read it in the background.
+
+        Until then *kept* counts as saved. *load_saved* returns ``(current, saved)`` and may take long; when it reports
+        a different path, the Workspace takes that path. Its result is dropped when another Workspace replaced this one
+        or the user saved meanwhile.
+        """
+        self.replace_workspace(kept)
+        self._awaiting_saved = True
+        generation = self._generation
+        self._resolver.run(
+            partial(load_saved, kept),
+            partial(self._publish_saved, generation),
+            lambda: generation == self._generation and self._awaiting_saved,
+        )
 
     def save_workspace(self, path: Path | None = None) -> None:
         """Save the Workspace to *path*, or to its own file when None, and mark it as saved.
@@ -93,6 +114,7 @@ class WorkspaceStore(QObject):
         if target is None:
             raise ValueError("An Untitled workspace needs a path to be saved.")
         self._workspace = self._saved_workspace = save_workspace(self._workspace, target)
+        self._awaiting_saved = False
         self._announce_state()
 
     def add_items(self, items: Sequence[WorkspaceItem]) -> None:
@@ -180,6 +202,16 @@ class WorkspaceStore(QObject):
         self._workspace = self._workspace.add_items(items)
         self._resolutions.update((item.id, ItemResolution.pending(item)) for item in items)
         self.items_added.emit(list(items))
+        self._announce_state()
+
+    def _publish_saved(self, generation: int, loaded: tuple[Workspace, Workspace]) -> None:
+        """Take the saved state read for a restored Workspace, unless the Workspace was replaced or saved since."""
+        if generation != self._generation or not self._awaiting_saved:
+            return
+        current, saved = loaded
+        self._awaiting_saved = False
+        self._workspace = replace(self._workspace, path=current.path)
+        self._saved_workspace = saved
         self._announce_state()
 
     def _resolve(self, items: Sequence[WorkspaceItem], *, added: bool) -> None:

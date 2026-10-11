@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QGuiApplication, QMouseEvent
+from PySide6.QtGui import QGuiApplication, QMouseEvent, QShowEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -33,6 +33,10 @@ if TYPE_CHECKING:
 
 _RECENT_DAYS_AS_WEEKDAY = 6
 _ACTION_NAMES = {definition.action_id: definition.display_name for definition in DEFAULT_SHORTCUTS}
+
+
+def _today() -> date:
+    return date.today()
 
 
 def recent_date(modified: date, today: date) -> str:
@@ -63,6 +67,7 @@ class _RecentRow(QFrame):
     def __init__(self, path: Path, today: date, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.path = path
+        self._modified: date | None = None
         self.setObjectName("AxDevilRecentRow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
@@ -88,11 +93,16 @@ class _RecentRow(QFrame):
         self.date_label = QLabel(self)
         TextRole.SMALL.apply(self.date_label)
         try:
-            self.date_label.setText(recent_date(datetime.fromtimestamp(path.stat().st_mtime).date(), today))
+            self._modified = datetime.fromtimestamp(path.stat().st_mtime).date()
         except OSError:
-            self.date_label.clear()
+            pass
+        self.refresh_date(today)
         layout.addWidget(self.date_label, 0, Qt.AlignmentFlag.AlignTop)
         follow_appearance(self, self._apply_appearance)
+
+    def refresh_date(self, today: date) -> None:
+        """Show how long before *today* the workspace was saved; blank when its file cannot be read."""
+        self.date_label.setText("" if self._modified is None else recent_date(self._modified, today))
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Open this workspace on a left click."""
@@ -181,19 +191,26 @@ class StartPanel(QWidget):
         """Trigger *manager*'s actions from the open buttons and show their keys in the tooltips."""
         self._shortcut_manager = manager
         for action_id, button in self._open_buttons.items():
-            button.setToolTip(manager.tooltip(action_id))
+            manager.bind_tooltip(button, action_id)
 
     def set_recent_workspaces(self, paths: Sequence[Path]) -> None:
         """List workspace files *paths*, newest first; clicking one emits ``recent_workspace_requested``."""
         for row in self._recent_rows:
             self._recent_list.removeWidget(row)
             row.deleteLater()
-        today = date.today()
+        today = _today()
         self._recent_rows = [_RecentRow(path, today, self) for path in paths]
         for row in self._recent_rows:
             row.clicked.connect(lambda path=row.path: self.recent_workspace_requested.emit(path))
             self._recent_list.addWidget(row)
         self._recent_heading.setVisible(bool(self._recent_rows))
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        """Recompute the relative dates, which go stale while the app stays open across midnight."""
+        super().showEvent(event)
+        today = _today()
+        for row in self._recent_rows:
+            row.refresh_date(today)
 
     def recent_rows(self) -> list[_RecentRow]:
         """Return the recent workspace rows, newest first."""

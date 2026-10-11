@@ -35,24 +35,28 @@ class WorkspaceBackup:
         except (OSError, TypeError, ValueError) as exc:
             logger.warning(f"Could not keep the workspace in {self._path_provider()}: {exc}")
 
-    def restore(self) -> tuple[Workspace, Workspace]:
-        """Return the kept Workspace and its last saved state, as ``(current, saved)``.
+    def restore(self) -> Workspace:
+        """Return the kept Workspace, or the empty Untitled Workspace without a usable backup.
 
-        The saved state is the kept file's content, or the empty Untitled Workspace when the workspace was never saved.
-        When that file can no longer be read, the kept items stay as an Untitled Workspace. Without a usable backup,
-        both are the empty Untitled Workspace.
+        Only the backup file is read; ``load_saved`` reads the kept workspace file, which may be slow to reach.
+        """
+        return self._read() or Workspace()
+
+    @staticmethod
+    def load_saved(kept: Workspace) -> tuple[Workspace, Workspace]:
+        """Return *kept* and its last saved state, as ``(current, saved)``; this reads the kept workspace file.
+
+        The saved state is the file's content, or the empty Untitled Workspace when *kept* was never saved. When that
+        file can no longer be read, the kept items stay as an Untitled Workspace.
         """
         empty = Workspace()
-        current = self._read()
-        if current is None:
-            return empty, empty
-        if current.path is None:
-            return current, empty
+        if kept.path is None:
+            return kept, empty
         try:
-            return current, load_workspace(current.path)
+            return kept, load_workspace(kept.path)
         except WorkspaceFileError as exc:
             logger.warning(f"Restoring the kept workspace as Untitled: {exc}")
-            return replace(current, path=None), empty
+            return replace(kept, path=None), empty
 
     def _read(self) -> Workspace | None:
         """Return the kept Workspace, or None when there is no backup or it cannot be read."""

@@ -14,13 +14,15 @@ from ax_devil.modules.settings.logging_config import get_logger
 
 def test_startup_heap_is_frozen_and_automatic_collection_disabled(qtbot: QtBot) -> None:
     parent = QObject()
+    # The suite already runs without automatic collection and with a frozen heap; start from the app's state at launch.
+    gc.unfreeze()
+    gc.enable()
     try:
         _collect_garbage_on_gui_thread(parent, get_logger(__name__))
         assert gc.get_freeze_count() > 0
         assert not gc.isenabled()
     finally:
-        gc.enable()
-        gc.unfreeze()
+        gc.disable()
 
 
 @pytest.mark.parametrize(
