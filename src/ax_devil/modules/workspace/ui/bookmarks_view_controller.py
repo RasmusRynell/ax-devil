@@ -103,7 +103,7 @@ class BookmarksViewController(QObject):
     def _on_export_requested(self) -> None:
         workspace = self._store.workspace
         folder = workspace.path.parent if workspace.path is not None else Path.home()
-        path = self._view.choose_export_path(folder / f"{workspace.name} bookmarks.csv")
+        path = self._view.choose_export_path(folder / f"{workspace.suggested_file_stem} bookmarks.csv")
         if path is not None:
             self.export_csv(path)
 

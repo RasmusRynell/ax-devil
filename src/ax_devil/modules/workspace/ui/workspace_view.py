@@ -18,7 +18,7 @@ WORKSPACE_VIEW_ID = "workspace"
 class WorkspaceView(ViewPanel):
     """Show the start panel while the workspace is empty, and the content browser once it lists anything.
 
-    The header carries the workspace's name, and a mark while it has unsaved changes.
+    The header carries the workspace's name, which a click edits, and a mark while it has unsaved changes.
     """
 
     def __init__(
@@ -29,7 +29,7 @@ class WorkspaceView(ViewPanel):
         self._modified_label.setToolTip("Unsaved changes")
         self._modified_label.setStyleSheet("color: palette(placeholder-text);")
         self._modified_label.hide()
-        super().__init__("", header_widget=self._modified_label, parent=parent)
+        super().__init__("", header_widget=self._modified_label, parent=parent, editable_title=True)
         self._content_browser = content_browser
         self._start_panel = start_panel
         self._pages = QStackedWidget(self)

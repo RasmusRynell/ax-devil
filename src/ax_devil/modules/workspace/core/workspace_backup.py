@@ -17,8 +17,8 @@ logger = get_logger(__name__)
 
 
 class WorkspaceBackup:
-    """Keep the current Workspace in one JSON file: its file path, or null, its items with absolute paths, and its
-    bookmarks and reviewed targets.
+    """Keep the current Workspace in one JSON file: its name, its file path, or null, its items with absolute paths,
+    and its bookmarks and reviewed targets.
 
     Items and bookmarks use the workspace file's JSON, so unreadable items survive a restart unchanged.
     """
@@ -29,6 +29,7 @@ class WorkspaceBackup:
     def keep(self, workspace: Workspace) -> None:
         """Write *workspace* to the backup file; a failure is logged, since closing must not be stopped by it."""
         document = {
+            "name": workspace.name,
             "path": str(workspace.path) if workspace.path is not None else None,
             "items": [item.to_json(None) for item in workspace.items],
             **bookmarks_to_json(workspace.bookmarks, workspace.reviewed),
@@ -50,7 +51,7 @@ class WorkspaceBackup:
         """Return *kept* and its last saved state, as ``(current, saved)``; this reads the kept workspace file.
 
         The saved state is the file's content, or the empty Untitled Workspace when *kept* was never saved. When that
-        file can no longer be read, the kept items stay as an Untitled Workspace.
+        file can no longer be read, the kept Workspace stays without a file.
         """
         empty = Workspace()
         if kept.path is None:
@@ -58,7 +59,7 @@ class WorkspaceBackup:
         try:
             return kept, load_workspace(kept.path)
         except WorkspaceFileError as exc:
-            logger.warning(f"Restoring the kept workspace as Untitled: {exc}")
+            logger.warning(f"Restoring the kept workspace without its file: {exc}")
             return replace(kept, path=None), empty
 
     def _read(self) -> Workspace | None:
@@ -71,13 +72,14 @@ class WorkspaceBackup:
             logger.warning(f"Ignoring unreadable workspace backup {self._path_provider()}: {exc}")
             return None
         entries = document.get("items") if isinstance(document, dict) else None
-        if not isinstance(entries, list):
-            logger.warning(f"Ignoring workspace backup without a list of items: {self._path_provider()}")
+        if not isinstance(entries, list) or not isinstance(document.get("name"), str):
+            logger.warning(f"Ignoring workspace backup without a name and a list of items: {self._path_provider()}")
             return None
         path = document.get("path")
         try:
             bookmarks, reviewed = bookmarks_from_json(document)
             return Workspace(
+                name=document["name"],
                 path=Path(path) if isinstance(path, str) else None,
                 items=tuple(item_from_json(entry, None) for entry in entries),
                 bookmarks=bookmarks,

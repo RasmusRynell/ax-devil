@@ -57,13 +57,16 @@ def load_workspace(path: Path) -> Workspace:
     found = document.get("version")
     if type(found) is not int or found != FORMAT_VERSION:
         raise WorkspaceFileError(f"{path.name} has workspace file version {found!r}; this app reads {FORMAT_VERSION}.")
+    name = document.get("name")
+    if not isinstance(name, str):
+        raise WorkspaceFileError(f"{path.name} has no name.")
     entries = document.get("items")
     if not isinstance(entries, list):
         raise WorkspaceFileError(f"{path.name} has no list of items.")
     try:
         bookmarks, reviewed = bookmarks_from_json(document)
         items = tuple(item_from_json(entry, backing.parent) for entry in entries)
-        return Workspace(path=path, items=items, bookmarks=bookmarks, reviewed=reviewed)
+        return Workspace(name=name, path=path, items=items, bookmarks=bookmarks, reviewed=reviewed)
     except ValueError as exc:
         raise WorkspaceFileError(f"{path.name}: {exc}") from exc
 
@@ -74,6 +77,7 @@ def save_workspace(workspace: Workspace, path: Path) -> Workspace:
     backing = _backing_file(path)
     document: dict[str, Any] = {
         "version": FORMAT_VERSION,
+        "name": workspace.name,
         "items": [item.to_json(backing.parent) for item in workspace.items],
         **bookmarks_to_json(workspace.bookmarks, workspace.reviewed),
     }

@@ -91,12 +91,14 @@ def test_saving_an_untitled_workspace_asks_where_appends_the_extension_and_remem
 ) -> None:
     launch = launches.new(FakePrompts(save_path=tmp_path / "reviews" / "Lot"))
     launch.store.add_items([_video(tmp_path, "lot.mp4")])
+    launch.store.rename_workspace("Parking lot")
 
     assert launch.lifecycle.save_workspace()
 
     saved = tmp_path / "reviews" / "Lot.ax-devil.workspace"
     assert load_workspace(saved).items == launch.store.workspace.items
-    assert (launch.store.workspace.name, launch.store.is_modified) == ("Lot", False)
+    assert (launch.store.workspace.name, launch.store.is_modified) == ("Parking lot", False)
+    assert load_workspace(saved).name == "Parking lot"
     assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [saved]
 
 
@@ -105,6 +107,7 @@ def test_a_restored_saved_workspace_is_modified_only_when_it_had_unsaved_edits(
 ) -> None:
     saving = launches.new(FakePrompts(save_path=tmp_path / "Lot.ax-devil.workspace"))
     saving.store.add_items([_video(tmp_path, "a.mp4")])
+    saving.store.rename_workspace("Lot")
     saving.lifecycle.save_workspace()
     saving.lifecycle.keep_workspace()
 
@@ -155,7 +158,9 @@ def test_new_workspace_asks_about_unsaved_changes_first(
 def test_opening_a_workspace_asks_about_unsaved_changes_and_adds_its_items_without_resolving_them_as_added(
     launches: _Launches, tmp_path: Path, choice: SaveChoice, opened: bool
 ) -> None:
-    other = save_workspace(Workspace(items=(_video(tmp_path, "other.mp4"),)), tmp_path / "Other.ax-devil.workspace")
+    other = save_workspace(
+        Workspace(name="Other", items=(_video(tmp_path, "other.mp4"),)), tmp_path / "Other.ax-devil.workspace"
+    )
     prompts = FakePrompts(choice, open_path=other.path)
     launch, clip = _modified_launch(launches, tmp_path, prompts)
     added = _record_added_flags(launch.store)
@@ -244,7 +249,9 @@ def test_a_launch_with_a_workspace_file_asks_about_the_kept_workspace_edits_even
         def run(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = bool) -> None:
             """Leave background work unfinished, as a slow filesystem does."""
 
-    saved = save_workspace(Workspace(items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace")
+    saved = save_workspace(
+        Workspace(name="Lot", items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace"
+    )
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     backup.keep(saved.add_items([_video(tmp_path, "unsaved.mp4")]))
     other = save_workspace(Workspace(), tmp_path / "Other.ax-devil.workspace")
@@ -266,7 +273,9 @@ def test_replacing_a_workspace_still_being_restored_asks_about_its_edits_even_wh
         def run(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = bool) -> None:
             """Leave background work unfinished, as a slow filesystem does."""
 
-    saved = save_workspace(Workspace(items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace")
+    saved = save_workspace(
+        Workspace(name="Lot", items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace"
+    )
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     backup.keep(saved.add_items([_video(tmp_path, "unsaved.mp4")]))
     other = save_workspace(Workspace(), tmp_path / "Other.ax-devil.workspace")
@@ -295,7 +304,9 @@ def test_a_recent_workspace_that_cannot_be_opened_is_forgotten(launches: _Launch
 
 
 def test_a_launch_with_a_workspace_file_opens_it(launches: _Launches, tmp_path: Path) -> None:
-    saved = save_workspace(Workspace(items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace")
+    saved = save_workspace(
+        Workspace(name="Lot", items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace"
+    )
     launch = launches.new()
     added = _record_added_flags(launch.store)
 

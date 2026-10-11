@@ -234,7 +234,7 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
     )
     qtbot.addWidget(window)
     session = window._workspace_session
-    session.lifecycle._prompts = FakePrompts(save_path=tmp_path / "Parking lot")
+    session.lifecycle._prompts = FakePrompts(save_path=tmp_path / "lot")
     expected_keys = {
         "app.new_workspace": "",
         "app.open_workspace": "Ctrl+O",
@@ -265,6 +265,8 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
         session.add_items([VideoItem(video=video)])
         qtbot.waitUntil(lambda: session.focused_widget() is not None)  # Items resolve in the background.
     assert_titles("Untitled", modified=True)
+    session._workspace_view.title_edited.emit("Parking lot")
+    assert_titles("Parking lot", modified=True)
 
     manager.get_action("app.save_workspace").trigger()
 
