@@ -16,7 +16,6 @@ from ax_devil.modules.workspace.core import (
     WorkspaceFileError,
     WorkspaceItem,
     workspace_file_path,
-    workspace_name,
 )
 from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice, WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -75,7 +74,7 @@ class WorkspaceLifecycle(QObject):
 
     def new_workspace(self, items: Sequence[WorkspaceItem] = ()) -> bool:
         """Replace the Workspace with a new Untitled one holding *items*; return False when the user cancels."""
-        if not self._settle_unsaved_changes("starting a new workspace"):
+        if not self._settle_unsaved_changes():
             return False
         self._store.replace_workspace(Workspace())
         self._store.add_items(items)
@@ -84,7 +83,7 @@ class WorkspaceLifecycle(QObject):
     def open_workspace(self, path: Path | None = None) -> bool:
         """Open the workspace saved in *path*, or in a file the user picks; return whether it opened."""
         path = path or self._prompts.choose_workspace_to_open()
-        if path is None or not self._settle_unsaved_changes(f"opening {workspace_name(path)}"):
+        if path is None or not self._settle_unsaved_changes():
             return False
         try:
             self._store.open_workspace(path)
@@ -128,15 +127,12 @@ class WorkspaceLifecycle(QObject):
         self._remember(path)
         return True
 
-    def _settle_unsaved_changes(self, next_step: str) -> bool:
-        """Return whether the current Workspace may be replaced, asking to save it first when it is modified.
-
-        *next_step* says what replaces it, such as "opening Cameras", so the question names the Workspace being left.
-        """
+    def _settle_unsaved_changes(self) -> bool:
+        """Return whether the current Workspace may be replaced, asking to save it first when it is modified."""
         self._store.finish_restore()
         if not self._store.is_modified:
             return True
-        choice = self._prompts.ask_save_changes(self._store.workspace.name, next_step)
+        choice = self._prompts.ask_save_changes(self._store.workspace.name)
         return choice is SaveChoice.DISCARD or (choice is SaveChoice.SAVE and self.save_workspace())
 
     def _remember(self, path: Path) -> None:

@@ -145,7 +145,6 @@ def test_new_workspace_asks_about_unsaved_changes_first(
     assert launch.lifecycle.new_workspace() is replaced
 
     assert prompts.asked_to_save == ["Untitled"]
-    assert prompts.next_steps == ["starting a new workspace"]
     assert launch.store.workspace.items == (() if replaced else (clip,))
     if save_to:
         assert load_workspace(tmp_path / save_to).items == (clip,)
@@ -164,7 +163,6 @@ def test_opening_a_workspace_asks_about_unsaved_changes_and_adds_its_items_witho
     assert launch.lifecycle.open_workspace() is opened
 
     assert prompts.asked_to_save == ["Untitled"]
-    assert prompts.next_steps == ["opening Other"]
     if opened:
         assert launch.store.workspace.items == other.items
         assert (launch.store.workspace.name, launch.store.is_modified) == ("Other", False)
