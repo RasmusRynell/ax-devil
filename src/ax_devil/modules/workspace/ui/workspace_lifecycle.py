@@ -47,7 +47,7 @@ class WorkspaceLifecycle(QObject):
         self._recent_workspaces = recent_workspaces
 
     def recent_workspaces(self) -> tuple[Path, ...]:
-        """Return the recently opened or saved workspace files that still exist, newest first."""
+        """Return the recently opened or saved workspace files, newest first; their files are not checked."""
         return self._recent_workspaces.entries()
 
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
@@ -88,6 +88,8 @@ class WorkspaceLifecycle(QObject):
             self._store.open_workspace(path)
         except (WorkspaceFileError, OSError) as exc:
             logger.warning(f"Could not open workspace {path}: {exc}")
+            self._recent_workspaces.forget(path)
+            self.recent_workspaces_changed.emit()
             self._prompts.show_error(str(exc))
             return False
         self._remember(path)
@@ -126,6 +128,7 @@ class WorkspaceLifecycle(QObject):
 
     def _settle_unsaved_changes(self) -> bool:
         """Return whether the current Workspace may be replaced, asking to save it first when it is modified."""
+        self._store.finish_restore()
         if not self._store.is_modified:
             return True
         choice = self._prompts.ask_save_changes(self._store.workspace.name)

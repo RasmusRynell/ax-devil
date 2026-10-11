@@ -93,12 +93,10 @@ def test_a_missing_or_unusable_backup_restores_the_empty_untitled_workspace(
     assert _restore(WorkspaceBackup(lambda: path)) == (Workspace(), Workspace())
 
 
-def test_recent_workspaces_are_newest_first_limited_and_drop_files_that_are_gone(
+def test_recent_workspaces_are_newest_first_limited_and_forgotten_on_request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     files = [tmp_path / f"w{index}.ax-devil.workspace" for index in range(4)]
-    for file in files:
-        file.write_text("{}")
     store = tmp_path / "state" / "recent-workspaces.json"
     recent = RecentWorkspaces(lambda: store, limit=3)
     for file in files:
@@ -107,7 +105,7 @@ def test_recent_workspaces_are_newest_first_limited_and_drop_files_that_are_gone
     recent.record(Path(files[1].name))
 
     assert RecentWorkspaces(lambda: store, limit=3).entries() == (files[1], files[3], files[2])
-    files[3].unlink()
+    recent.forget(files[3])
     assert recent.entries() == (files[1], files[2])
     recent.record(files[0])
     assert recent.entries() == (files[0], files[1], files[2])
