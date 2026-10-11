@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QMenu, QWidge
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.browse_button import BrowseButton
-from ax_devil.modules.chrome.tokens import Space
+from ax_devil.modules.chrome.tokens import Space, keep_minimum_chars
 
 
 class AddPluginDialog(BaseDialog):
@@ -17,7 +17,7 @@ class AddPluginDialog(BaseDialog):
         self.setMinimumHeight(0)
         self._source_edit = QLineEdit()
         self._source_edit.setPlaceholderText("Package, wheel or folder")
-        self._source_edit.setMinimumWidth(self._source_edit.fontMetrics().averageCharWidth() * 40)
+        keep_minimum_chars(self._source_edit, 40)
         self._browse_menu = QMenu(self)
         self._browse_menu.addAction("Folder", self._choose_folder)
         self._browse_menu.addAction("Wheel", self._choose_wheel)

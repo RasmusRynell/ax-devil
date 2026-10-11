@@ -14,6 +14,7 @@ from PySide6.QtCore import QEvent, QObject, Qt, Signal
 
 class _TextSizeNotifier(QObject):
     changed = Signal()
+    applied = Signal()
 
 
 _text_size_notifier = _TextSizeNotifier()
@@ -74,3 +75,13 @@ def notify_text_size_changed() -> None:
     widgets such as a spin box's text field; after it, so the fonts it puts back are replaced again.
     """
     _text_size_notifier.changed.emit()
+
+
+def notify_text_size_applied() -> None:
+    """Tell windows that the new text size has reached every widget, so they can refit their size to it."""
+    _text_size_notifier.applied.emit()
+
+
+def on_text_size_applied(callback: Callable[[], None]) -> None:
+    """Run *callback* after each text-size change has settled; pass a bound method of a QObject to stop with it."""
+    _text_size_notifier.applied.connect(callback)

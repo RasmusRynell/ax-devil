@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QPainter, QPaintEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.appearance import on_text_size_applied
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 
@@ -93,6 +94,7 @@ class FrameViewport(VideoFrameRenderer):
         self._overlay_visible: bool = False
         self._stats: dict[str, Any] = {}
         self._overlays: list[_ManagedOverlay] = []
+        on_text_size_applied(self._refit_overlays)
         self._info_hud = _InfoHud(self)
         self._info_hud.setGeometry(self.rect())
         self.viewportChanged.connect(self._on_viewport_changed)
@@ -276,6 +278,16 @@ class FrameViewport(VideoFrameRenderer):
         overlay.setParent(None)
         if delete_widget:
             overlay.deleteLater()
+
+    def _refit_overlays(self) -> None:
+        """Resize the overlays for the new text size once Qt has relaid out their content; nothing else resizes them."""
+        QTimer.singleShot(0, self, self._resize_overlays)
+
+    def _resize_overlays(self) -> None:
+        for managed in self._overlays:
+            managed.widget.adjustSize()
+        if self._can_position_overlays():
+            self.position_overlays()
 
     def _on_viewport_changed(self, _viewport: NormalizedViewport) -> None:
         self._update_overlay_visibility()

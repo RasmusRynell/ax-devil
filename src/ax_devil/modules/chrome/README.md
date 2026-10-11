@@ -17,6 +17,10 @@ How to build UI with it is in the [write-ui skill](../../../../.agents/skills/wr
   bounded to the screen and a comfortable maximum, and only the user resizes it afterwards; a dialog whose own
   controls change its content size declares `opening_size_hint` for its largest content. Content that changes with a
   selection lives in `QStackedWidget` pages built up front, so the preferred size already covers every choice.
+- A text-size change reaches open windows too: `BaseDialog` refits itself to its opening size, and `FrameViewport`
+  resizes its overlays, both through `appearance.on_text_size_applied`. Never size a widget once from `fontMetrics()`
+  in a constructor; use `follow_appearance`, or `tokens.keep_minimum_chars` and `tokens.reserve_line` for the common
+  cases. `tests/modules/chrome/test_live_text_size.py` fails when a window differs from one opened at the new size.
 - A dialog with its own scrolling view passes `scroll_content=False` and gives that view layout stretch; nested
   scrolling containers are avoided.
 - Temporary modal dialogs are opened with `with SomeDialog(...) as dialog:`, which deletes the dialog when the block
