@@ -60,7 +60,7 @@ def test_viewer_factory_selects_live_viewer_for_live_video(
     assert opened.widget.render_catalog_manager is render_catalog_manager
 
 
-def test_viewer_factory_opens_playlist_at_the_requested_entry(
+def test_viewer_factory_opens_playlist_at_the_requested_entry_and_frame(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
@@ -78,12 +78,12 @@ def test_viewer_factory_opens_playlist_at_the_requested_entry(
     store = WorkspaceStore(inline_resolver(FakeResolutionContext()))
 
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
-        opened = viewer_factory.open(playlist, start_index=2, consideration_query=store)
+        opened = viewer_factory.open(playlist, start_index=2, consideration_query=store, start_frame=41)
 
     qtbot.addWidget(opened.widget)
     assert isinstance(opened.widget, DummyViewer)
     assert opened.widget.payload is playlist
-    assert opened.widget.start_index == 2
+    assert (opened.widget.start_index, opened.widget.start_frame) == (2, 41)
     assert opened.widget.consideration_query is store
     assert opened.widget.render_catalog_manager is render_catalog_manager
 

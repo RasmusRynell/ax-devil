@@ -19,6 +19,7 @@ HEADER_ICON_SIZE_PX = 16
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
+    from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition
     from ax_devil.modules.workspace.core.content import ConsiderationItemRef, OnScreenWorkspaceItem
 
 
@@ -257,6 +258,10 @@ class ViewerWidget(QFrame):
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
         """Return the workspace item currently visible in the widget."""
+        return None
+
+    def bookmark_position(self) -> BookmarkPosition | None:
+        """Return the frame on screen as a bookmark would mark it, or None when nothing on screen can be bookmarked."""
         return None
 
     def refresh_item_consideration(self, item_ref: ConsiderationItemRef, considered: bool) -> None:

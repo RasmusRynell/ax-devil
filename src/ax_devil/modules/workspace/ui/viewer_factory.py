@@ -35,8 +35,9 @@ class WorkspaceViewerFactory:
         start_index: int = 0,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
+        start_frame: int | None = None,
     ) -> WorkspaceViewerFactoryResult:
-        """Construct the viewer for *content*."""
+        """Construct the viewer for *content*, at its entry *start_index* and, for seekable video, *start_frame*."""
         if isinstance(content, LiveVideoContent):
             from ax_devil.modules.video_viewer.live_video_viewer import LiveVideoViewerWidget
 
@@ -50,6 +51,7 @@ class WorkspaceViewerFactory:
                 start_index if 0 <= start_index < len(content.entries) else 0,
                 parent,
                 consideration_query=consideration_query,
+                start_frame=start_frame,
             )
         return WorkspaceViewerFactoryResult(
             widget=widget,

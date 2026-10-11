@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.workspace.core import (
+    BookmarkPosition,
     ConsiderationItemRef,
     ConsiderationQuery,
     Content,
@@ -159,9 +160,12 @@ class DummyViewer(ViewerWidget):
         start_index: int = 0,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
+        start_frame: int | None = None,
     ) -> None:
         self.payload = payload
         self.start_index = start_index
+        self.start_frame = start_frame
+        self.position: BookmarkPosition | None = None
         self.consideration_query = consideration_query
         self.render_catalog_manager = render_catalog_manager
         self.cleaned_up = False
@@ -186,6 +190,10 @@ class DummyViewer(ViewerWidget):
                 entry_index=self.start_index,
             )
         return None
+
+    def bookmark_position(self) -> BookmarkPosition | None:
+        """Return the position a test gave, as the frame on screen."""
+        return self.position
 
     def cleanup(self) -> None:
         """Record that the workspace disposed this viewer."""

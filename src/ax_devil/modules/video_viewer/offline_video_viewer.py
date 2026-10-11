@@ -37,6 +37,7 @@ from ax_devil.modules.video_viewer.offline_viewer_runtime import (
     video_details,
 )
 from ax_devil.modules.workspace.core import (
+    BookmarkPosition,
     ConsiderationItemRef,
     ConsiderationQuery,
     PlaylistContent,
@@ -67,7 +68,11 @@ class _ViewerOverlayHost(QWidget):
 
 
 class OfflineVideoViewerWidget(ViewerWidget):
-    """Offline video viewer for local playback with multi-lane support."""
+    """Offline video viewer for local playback with multi-lane support.
+
+    It opens at entry *start_index* and plays it, or shows its frame *start_frame* paused when given; later entries
+    start at their first frame.
+    """
 
     current_entry_changed = Signal(int)
 
@@ -78,12 +83,15 @@ class OfflineVideoViewerWidget(ViewerWidget):
         start_index: int = 0,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
+        start_frame: int | None = None,
     ) -> None:
         self._content = content
         self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
         self._navigation = OfflineViewerNavigation(content, consideration_query)
         self._current_index = self._navigation.normalize_entry_index(start_index)
+        # A start frame belongs to the requested entry; when that entry is skipped, the one shown starts at frame 0.
+        self._start_frame = start_frame if self._current_index == start_index else None
         self._runtime: OfflineSession | None = None
         self._viewer_host: _ViewerOverlayHost | None = None
         self._viewer_host_layout: QGridLayout | None = None
@@ -132,7 +140,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         """Start the initial entry load once the viewer is visible in the workspace."""
         if self._initial_entry_loaded or not self._get_entries():
             return
-        self._open_entry(self._current_index)
+        self._open_entry(self._current_index, self._start_frame)
 
     def _build_navigation_controls(self) -> QWidget:
         navigation = QWidget(self)
@@ -160,11 +168,11 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
         return navigation
 
-    def _open_entry(self, index: int) -> None:
+    def _open_entry(self, index: int, start_frame: int | None = None) -> None:
         """Show entry *index*: drop any entry still opening, release the shown one, and open *index* in the background.
 
         The only way an entry is shown. The viewer stays responsive while sources open, and a newer request simply
-        replaces an older one.
+        replaces an older one. The entry plays from its first frame, or shows *start_frame* paused.
         """
         if self._is_cleaned_up:
             return
@@ -183,11 +191,13 @@ class OfflineVideoViewerWidget(ViewerWidget):
             lane_index for lane_index in range(len(entry.lanes)) if self._is_lane_considered(index, lane_index)
         )
         indicator = self._show_loading_indicator()
-        opening = EntryOpening(on_status=indicator.set_message, on_opened=partial(self._on_entry_opened, index))
+        opening = EntryOpening(
+            on_status=indicator.set_message, on_opened=partial(self._on_entry_opened, index, start_frame)
+        )
         self._opening = opening
         opening.start(entry, lane_indices)
 
-    def _on_entry_opened(self, index: int, media: EntryMedia) -> None:
+    def _on_entry_opened(self, index: int, start_frame: int | None, media: EntryMedia) -> None:
         self._opening = None
         self._hide_loading_indicator()
         error = media.error
@@ -209,7 +219,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
             release_media(media)
             QMessageBox.warning(self, "Offline Viewer", f"Failed to load entry {index + 1}: {error}")
             return
-        self._install_entry(runtime)
+        self._install_entry(runtime, start_frame)
 
     def _show_loading_indicator(self) -> LoadingIndicator:
         if self._loading_indicator is None:
@@ -231,7 +241,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         indicator.stop()
         indicator.deleteLater()
 
-    def _install_entry(self, runtime: OfflineSession) -> None:
+    def _install_entry(self, runtime: OfflineSession, start_frame: int | None) -> None:
         self._runtime = runtime
         runtime.currentFrameChanged.connect(self._sync_global_current_frame)
         runtime.playbackStateChanged.connect(self._sync_global_playback_state)
@@ -264,8 +274,10 @@ class OfflineVideoViewerWidget(ViewerWidget):
         sources = runtime.iter_video_sources()
         self.set_header_details(video_details(sources[0]) if len(sources) == 1 else "")
 
-        self._jump_to_frame(0)
-        self._start_playback()
+        # The first frame shown is the one asked for, so a start frame never flashes frame 0 first.
+        self._jump_to_frame(start_frame or 0)
+        if start_frame is None:
+            self._start_playback()
 
     def _has_active_global_controls(self) -> bool:
         return self._use_global_controls and self._global_controls is not None
@@ -478,6 +490,14 @@ class OfflineVideoViewerWidget(ViewerWidget):
     def current_on_screen_item(self) -> OnScreenWorkspaceItem:
         """Return the workspace item shown by this viewer."""
         return self._content.on_screen_item(self._current_index)
+
+    def bookmark_position(self) -> BookmarkPosition | None:
+        """Return the entry and frame on screen, or None before the entry shows its first frame."""
+        runtime = self._runtime
+        seconds = runtime.current_frame_seconds if runtime is not None else None
+        if runtime is None or seconds is None:
+            return None
+        return BookmarkPosition(self._content, self._current_index, runtime.current_frame, seconds)
 
     def get_contents(self) -> list[SeekableVideoContent]:
         entries = self._get_entries()

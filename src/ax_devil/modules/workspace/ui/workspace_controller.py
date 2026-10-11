@@ -58,13 +58,17 @@ class WorkspaceController(QObject):
         """Return the rows of every item, grouped as the content browser shows them."""
         return self._sections
 
-    def open_content(self, content: Content, start_index: int = 0, *, to_side: bool = False) -> None:
+    def open_content(
+        self, content: Content, start_index: int = 0, *, to_side: bool = False, start_frame: int | None = None
+    ) -> None:
         """Open *content*, from its playlist entry *start_index*, as a double click in the browser does.
 
-        It replaces the preview pane, or opens in a new split with *to_side*; open viewers pause.
+        It replaces the preview pane, or opens in a new split with *to_side*; open viewers pause. With *start_frame*,
+        the entry opens paused at that frame instead of playing from the start.
         """
         place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
-        self._open_browser_content(content, start_index, place)
+        self._pause_all_viewers()
+        self._open_content(content, start_index=start_index, place=place, start_frame=start_frame)
 
     def close_item_viewers(self, item_id: str) -> None:
         """Close every viewer showing Content of the item *item_id*."""
@@ -106,16 +110,6 @@ class WorkspaceController(QObject):
     def _on_content_open_to_side_requested(self, content: Content, start_index: int = 0) -> None:
         """Open a browser item in a new split without replacing any pane."""
         self.open_content(content, start_index, to_side=True)
-
-    def _open_browser_content(
-        self,
-        content: Content,
-        start_index: int,
-        place: Callable[[ViewerWidget], None],
-    ) -> None:
-        """Pause open viewers and open browser content with the requested pane placement."""
-        self._pause_all_viewers()
-        self._open_content(content, start_index=start_index, place=place)
 
     def _on_export_requested(self, item: object) -> None:
         """Export from the viewer currently showing the item."""
@@ -180,6 +174,7 @@ class WorkspaceController(QObject):
         *,
         start_index: int = 0,
         place: Callable[[ViewerWidget], None] | None = None,
+        start_frame: int | None = None,
     ) -> None:
         """Open Workspace content using the Workspace viewer factory.
 
@@ -191,6 +186,7 @@ class WorkspaceController(QObject):
                 start_index=start_index,
                 parent=self._window_parent(),
                 consideration_query=self._workspace_store,
+                start_frame=start_frame,
             )
         except Exception as exc:
             message = str(exc)
