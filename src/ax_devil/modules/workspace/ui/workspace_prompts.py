@@ -8,17 +8,17 @@ from typing import Protocol
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
+from ax_devil.modules.chrome.choice_dialog import ask
 from ax_devil.modules.workspace.core import WORKSPACE_FILE_SUFFIX
 
 _FILE_FILTER = f"Workspaces (*{WORKSPACE_FILE_SUFFIX})"
 
 
 class SaveChoice(Enum):
-    """The answer to whether unsaved changes should be saved before they are replaced."""
+    """The answer to whether unsaved changes should be saved before they are replaced; there is no cancelling."""
 
     SAVE = "save"
     DISCARD = "discard"
-    CANCEL = "cancel"
 
 
 class WorkspacePrompts(Protocol):
@@ -52,16 +52,10 @@ class DialogPrompts:
         self._parent = parent
 
     def ask_save_changes(self, workspace_name: str) -> SaveChoice:
-        """Ask Save / Discard / Cancel about the modified workspace."""
-        buttons = QMessageBox.StandardButton
-        answer = QMessageBox.question(
-            self._parent,
-            "Save Workspace",
-            f"Save changes to {workspace_name}?",
-            buttons.Save | buttons.Discard | buttons.Cancel,
-            buttons.Save,
-        )
-        return {buttons.Save: SaveChoice.SAVE, buttons.Discard: SaveChoice.DISCARD}.get(answer, SaveChoice.CANCEL)
+        """Ask Save / Don't Save about the modified workspace being replaced."""
+        choices = {"Save": SaveChoice.SAVE, "Don't Save": SaveChoice.DISCARD}
+        text = f"{workspace_name} has unsaved changes.\nSave them, or they are lost."
+        return ask(self._parent, "Save Previous Workspace", text, choices, SaveChoice.SAVE)
 
     def choose_workspace_to_open(self) -> Path | None:
         """Show an open dialog filtered to workspace files."""
@@ -75,11 +69,9 @@ class DialogPrompts:
 
     def confirm_replace(self, path: Path) -> bool:
         """Ask whether to replace *path*."""
-        buttons = QMessageBox.StandardButton
-        answer = QMessageBox.question(
-            self._parent, "Save Workspace As", f"Replace {path.name}?", buttons.Yes | buttons.No, buttons.No
+        return ask(
+            self._parent, "Save Workspace As", f"Replace {path.name}?", {"Replace": True, "Cancel": False}, False
         )
-        return answer == buttons.Yes
 
     def show_error(self, message: str) -> None:
         """Show *message* as a warning."""

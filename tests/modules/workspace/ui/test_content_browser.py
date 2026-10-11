@@ -29,6 +29,7 @@ from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDial
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
 from ax_devil.modules.workspace.ui.source_row import SourceRow
+from tests.helpers.section_tree import caption, captions, titles
 from tests.helpers.widgets import required_child
 
 
@@ -173,7 +174,7 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
     assert "Open in a viewer" in _row_widget(browser, child_item).toolTip()
 
 
-def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qtbot: QtBot) -> None:
+def test_a_section_row_is_not_selectable_or_openable_and_is_not_searchable(qtbot: QtBot) -> None:
     browser = _browser(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"))
     section = _tree(browser).topLevelItem(0)
     assert section is not None
@@ -186,10 +187,6 @@ def test_a_section_row_stays_expanded_is_not_selectable_and_is_not_searchable(qt
     _tree(browser).itemDoubleClicked.emit(section, 0)
     activated.assert_not_called()
     assert _row(required_child(section, 0)).label == "clip.mp4"
-
-    section.setExpanded(False)
-
-    assert section.isExpanded()
 
     _search(browser).setText("videos")
 
@@ -611,3 +608,61 @@ def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
     )
 
     assert _context_menu(browser, _required_item_row(browser)) == {"Rename": False, "Remove": True}
+
+
+def _excluded(label: str, children: tuple[WorkspaceBrowserRow, ...] = ()) -> WorkspaceBrowserRow:
+    """Return a playlist entry row left out of playback."""
+    ref = ConsiderationItemRef.playlist_entry("playlist-id", 0)
+    return WorkspaceBrowserRow(
+        row_id=label, label=label, icon_kind="video", consideration_ref=ref, is_considered=False, children=children
+    )
+
+
+def test_a_search_matching_only_an_excluded_item_keeps_its_section_listed(qtbot: QtBot) -> None:
+    browser = _browser(qtbot, _excluded("Entry"))
+
+    _search(browser).setText("entry")
+
+    assert captions(browser.tree) == ["Videos, 1, 1 hidden"]
+    assert titles(browser.tree) == []
+
+
+def test_a_section_counts_the_excluded_items_the_list_hides(qtbot: QtBot) -> None:
+    clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
+    browser = _browser(qtbot, clip, _excluded("Entry"))
+
+    assert caption(browser.tree, "Videos").text() == "Videos  2  · 1 hidden"
+    assert captions(browser.tree) == ["Videos, 2, 1 hidden"]
+
+    _show_excluded_toggle(browser).click()
+
+    assert caption(browser.tree, "Videos").text() == "Videos  2"
+    assert captions(browser.tree) == ["Videos, 2"]
+
+
+def test_a_section_counts_only_excluded_items_the_search_would_otherwise_show(qtbot: QtBot) -> None:
+    clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
+    browser = _browser(qtbot, clip, _excluded("Entry"))
+
+    _search(browser).setText("clip")
+
+    assert captions(browser.tree) == ["Videos, 2"]
+
+    _search(browser).setText("entry")
+
+    assert captions(browser.tree) == ["Videos, 2, 1 hidden"]
+
+
+def test_a_section_counts_an_excluded_entry_revealed_with_its_excluded_lane_matching_a_search(qtbot: QtBot) -> None:
+    lane = WorkspaceBrowserRow(
+        row_id="lane",
+        label="Overlay lane",
+        icon_kind="overlay",
+        consideration_ref=ConsiderationItemRef.playlist_lane("playlist-id", 0, 0),
+        is_considered=False,
+    )
+    browser = _browser(qtbot, _excluded("Entry", (lane,)))
+
+    _search(browser).setText("lane")
+
+    assert captions(browser.tree) == ["Videos, 1, 2 hidden"]

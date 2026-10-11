@@ -7,6 +7,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
+from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.workspace.ui.section_tree import SectionTree
 from ax_devil.modules.workspace.ui.source_row import SourceRow
@@ -82,6 +83,38 @@ def double_click(tree: SectionTree, title: str) -> None:
     position = QPoint(widget.width() // 3, widget.height() // 2)
     QTest.mouseClick(widget, Qt.MouseButton.LeftButton, pos=position)
     QTest.mouseDClick(widget, Qt.MouseButton.LeftButton, pos=position)
+
+
+def _section(tree: SectionTree, title: str) -> QTreeWidgetItem:
+    """Return the item of the section titled *title*."""
+    headings = [tree.topLevelItem(index) for index in range(tree.topLevelItemCount())]
+    [found] = [
+        heading
+        for heading in headings
+        if heading is not None and str(heading.data(0, Qt.ItemDataRole.AccessibleTextRole)).startswith(f"{title}, ")
+    ]
+    return found
+
+
+def caption(tree: SectionTree, title: str) -> SectionCaption:
+    """Return the caption shown over the section titled *title*."""
+    widget = tree.itemWidget(_section(tree, title), 0)
+    assert widget is not None, "a section has its caption"
+    found = widget if isinstance(widget, SectionCaption) else widget.findChild(SectionCaption)
+    assert found is not None
+    return found
+
+
+def click_caption(tree: SectionTree, title: str) -> None:
+    """Click the caption of the section titled *title*, once the tree has placed it."""
+    QApplication.processEvents()
+    widget = caption(tree, title)
+    QTest.mouseClick(widget, Qt.MouseButton.LeftButton, pos=widget.rect().center())
+
+
+def is_folded(tree: SectionTree, title: str) -> bool:
+    """Return whether the section titled *title* is folded, so none of its rows is listed."""
+    return not _section(tree, title).isExpanded()
 
 
 def captions(tree: SectionTree) -> list[str]:

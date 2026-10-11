@@ -96,6 +96,16 @@ class TextRole(Enum):
         follow_appearance(widget, lambda: widget.setFont(self.font()))
 
 
+def keep_minimum_chars(widget: QWidget, chars: int) -> None:
+    """Keep *widget* at least *chars* average characters wide, now and at every text size."""
+    follow_appearance(widget, lambda: widget.setMinimumWidth(widget.fontMetrics().averageCharWidth() * chars))
+
+
+def reserve_line(widget: QWidget) -> None:
+    """Keep *widget* at least one line of text tall, now and at every text size, so a message never moves the layout."""
+    follow_appearance(widget, lambda: widget.setMinimumHeight(widget.fontMetrics().lineSpacing()))
+
+
 def _fixed_font() -> QFont:
     # The generic family rich text also uses, so lists and hover cards show one monospace face.
     font = QFont("monospace")

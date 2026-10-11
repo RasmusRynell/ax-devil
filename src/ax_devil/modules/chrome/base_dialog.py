@@ -8,10 +8,11 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import TypeVar
 
-from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import on_text_size_applied
 from ax_devil.modules.chrome.chrome_window import window_uses_custom_frame
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.title_bar import TitleBar
@@ -31,7 +32,12 @@ class BaseDialog(QDialog):
     - Standard window properties and behavior
     - Common button layouts and handling
     - Proper parent-child relationships
+
+    An open dialog resizes to its opening size when the text size changes, unless `refit_on_text_size` is False: a
+    dialog that opens with room for every text size, because its own controls change the size, keeps its size.
     """
+
+    refit_on_text_size = True
 
     def __init__(
         self,
@@ -40,8 +46,10 @@ class BaseDialog(QDialog):
         modal: bool = True,
         *,
         scroll_content: bool = True,
+        closable: bool = True,
     ) -> None:
         super().__init__(parent)
+        self._closable = closable
         self.setMinimumSize(320, 200)
 
         self._logger = get_logger(__name__)
@@ -50,6 +58,7 @@ class BaseDialog(QDialog):
         self._frame_controller: WindowFrameController | None = None
 
         self._positioned = False
+        on_text_size_applied(self._refit_to_text_size)
         self._setup_window_properties(title, modal)
         self._setup_base_layout(scroll_content=scroll_content)
         if self._use_custom_frame:
@@ -102,6 +111,8 @@ class BaseDialog(QDialog):
         self.setModal(modal)
         if self._use_custom_frame:
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        elif not self._closable:
+            self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
 
     def _setup_base_layout(self, *, scroll_content: bool) -> None:
         """Set up the base layout structure."""
@@ -116,6 +127,7 @@ class BaseDialog(QDialog):
                 show_menu_bar=False,
                 show_minimize=False,
                 show_maximize=False,
+                show_close=self._closable,
             )
             outer_layout.addWidget(self._title_bar)
 
@@ -148,15 +160,26 @@ class BaseDialog(QDialog):
         if visible and not self._positioned:
             self._positioned = True
             self.ensurePolished()
-            metrics = self.fontMetrics()
-            fit_window(
-                self,
-                self.opening_size_hint(),
-                center=True,
-                parent_size_fraction=None,
-                maximum_size=QSize(120 * metrics.averageCharWidth(), 48 * metrics.lineSpacing()),
-            )
+            self._fit_to_content(center=True)
         super().setVisible(visible)
+
+    def _fit_to_content(self, *, center: bool) -> None:
+        metrics = self.fontMetrics()
+        fit_window(
+            self,
+            self.opening_size_hint(),
+            center=center,
+            parent_size_fraction=None,
+            maximum_size=QSize(120 * metrics.averageCharWidth(), 48 * metrics.lineSpacing()),
+        )
+
+    def _refit_to_text_size(self) -> None:
+        """Resize a shown dialog to its opening size for the new text size, once Qt has relaid out its content."""
+        QTimer.singleShot(0, self, self._refit_when_laid_out)
+
+    def _refit_when_laid_out(self) -> None:
+        if self.refit_on_text_size and self.isVisible() and not (self.isMaximized() or self.isFullScreen()):
+            self._fit_to_content(center=False)
 
     def opening_size_hint(self) -> QSize:
         """Return the size to open at; a dialog whose own controls change its content's size returns the largest."""

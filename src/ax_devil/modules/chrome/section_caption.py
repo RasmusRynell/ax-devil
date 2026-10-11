@@ -6,12 +6,13 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPalette
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 
 _MARK_PX = 8
+_ARROW_PX = Space.L
 _RULE_ALPHA = 0.12
 
 
@@ -45,15 +46,47 @@ def paint_section_caption(painter: QPainter, rect: QRect, palette: QPalette, tex
 
 
 class SectionCaption(QWidget):
-    """A caption widget: *title*, with *count* after it when given, marked in the color *mark* gives for the palette."""
+    """A caption widget: *title*, with *count* after it when given and then *note*, marked in the color *mark* gives
+    for the palette.
 
-    def __init__(self, title: str, count: int | None, mark: Callable[[QPalette], QColor]) -> None:
+    A caption over rows that fold is given *folded*, and leads with the arrow a tree draws beside rows with children.
+    """
+
+    def __init__(
+        self,
+        title: str,
+        count: int | None,
+        mark: Callable[[QPalette], QColor],
+        *,
+        note: str = "",
+        folded: bool | None = None,
+    ) -> None:
         super().__init__()
-        self._text = title if count is None else f"{title}  {count}"
+        counted = title if count is None else f"{title}  {count}"
+        self._text = f"{counted}  · {note}" if note else counted
         self._mark = mark
+        self._folded = folded
+        if folded is not None:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
         follow_appearance(self, lambda: self.setFixedHeight(Height.ROW.px))
 
+    def text(self) -> str:
+        """Return the text the caption shows."""
+        return self._text
+
     def paintEvent(self, _event: object) -> None:  # noqa: N802
-        """Draw the caption."""
+        """Draw the caption, after its arrow when it folds."""
         painter = QPainter(self)
-        paint_section_caption(painter, self.rect(), self.palette(), self._text, self._mark(self.palette()))
+        rect = self.rect()
+        if self._folded is not None:
+            # The style draws the arrow only for a view item's option.
+            arrow = QStyleOptionViewItem()
+            arrow.initFrom(self)
+            arrow.rect = QRect(rect.left(), rect.top(), _ARROW_PX, rect.height())
+            arrow.state = QStyle.StateFlag.State_Children | QStyle.StateFlag.State_Enabled
+            if not self._folded:
+                arrow.state |= QStyle.StateFlag.State_Open
+            self.style().drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorBranch, arrow, painter, self)
+            # The caption keeps its own inset before the mark; the arrow stands in most of it.
+            rect = rect.adjusted(_ARROW_PX - Space.S, 0, 0, 0)
+        paint_section_caption(painter, rect, self.palette(), self._text, self._mark(self.palette()))

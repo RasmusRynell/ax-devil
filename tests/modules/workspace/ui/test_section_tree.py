@@ -23,6 +23,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
 )
 from ax_devil.modules.workspace.ui.section_tree import SectionTree
 from ax_devil.modules.workspace.ui.source_row import SourceRow
+from tests.helpers.section_tree import caption, click_caption, is_folded, texts, titles
 
 
 def _tree(qtbot: QtBot, *rows: WorkspaceBrowserRow, kind: BrowserSection = BrowserSection.PLAYLISTS) -> SectionTree:
@@ -129,15 +130,74 @@ def test_the_list_keeps_its_scroll_position_when_the_rows_change(qtbot: QtBot) -
     assert scroll_bar.value() == position
 
 
-def test_a_section_caption_heads_its_rows_and_never_collapses(qtbot: QtBot) -> None:
+def _sections(*rows: WorkspaceBrowserRow) -> tuple[WorkspaceBrowserSection, ...]:
+    return (WorkspaceBrowserSection(BrowserSection.PLAYLISTS, rows),)
+
+
+def test_clicking_a_caption_folds_its_section_and_the_fold_survives_an_update(qtbot: QtBot) -> None:
     tree = _tree(qtbot, _playlist(1))
-    section = _item(tree)
 
-    section.setExpanded(False)
+    click_caption(tree, "Playlists")
 
-    assert section.isExpanded()
-    assert tree.itemWidget(section, 0) is not None
-    assert not isinstance(tree.itemWidget(section, 0), SourceRow)
+    assert is_folded(tree, "Playlists")
+    assert titles(tree) == []
+
+    tree.set_sections(_sections(_playlist(1)))
+
+    assert is_folded(tree, "Playlists")
+
+    click_caption(tree, "Playlists")
+
+    assert titles(tree) == ["Night shift"]
+
+
+def test_a_folded_section_unfolds_for_a_search_and_folds_again_after_it(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _playlist(1))
+    click_caption(tree, "Playlists")
+
+    tree.set_filter(lambda _row: True, lambda row: row.label == "Night shift")
+
+    assert not is_folded(tree, "Playlists")
+
+    tree.set_sections(_sections(_playlist(1)))
+    tree.set_filter(lambda _row: True)
+
+    assert is_folded(tree, "Playlists")
+
+
+def test_a_folded_section_unfolds_for_an_open_row_and_folds_again_when_it_closes(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _playlist(1))
+    click_caption(tree, "Playlists")
+    opened = replace(_playlist(1), is_open=True)
+
+    tree.set_sections(_sections(opened))
+    tree.set_sections(_sections(opened))
+
+    assert not is_folded(tree, "Playlists")
+
+    tree.set_sections(_sections(_playlist(1)))
+
+    assert is_folded(tree, "Playlists")
+
+
+def test_folding_a_section_keeps_it_folded_while_its_row_stays_open(qtbot: QtBot) -> None:
+    opened = replace(_playlist(1), is_open=True)
+    tree = _tree(qtbot, opened)
+
+    click_caption(tree, "Playlists")
+    tree.set_sections(_sections(opened))
+
+    assert is_folded(tree, "Playlists")
+
+
+def test_a_section_without_rows_says_so_and_does_not_fold(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, kind=BrowserSection.NETWORK)
+
+    click_caption(tree, "On the network")
+
+    assert not is_folded(tree, "On the network")
+    assert "No new cameras" in texts(tree)
+    assert caption(tree, "On the network").text() == "On the network"
 
 
 def test_a_double_click_on_a_row_reports_it_to_the_side_with_ctrl(qtbot: QtBot) -> None:

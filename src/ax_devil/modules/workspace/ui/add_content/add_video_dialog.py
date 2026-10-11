@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
-from ax_devil.modules.chrome.tokens import Space
+from ax_devil.modules.chrome.tokens import Space, keep_minimum_chars, reserve_line
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.intake import VIDEO_FILE_SUFFIXES
 from ax_devil.modules.workspace.core.items import VideoFileSelection, VideoItem
@@ -76,7 +76,7 @@ class AddVideoDialog(BaseDialog):
         self._message_label = QLabel()
         self._message_label.setWordWrap(True)
         self._message_label.setForegroundRole(QPalette.ColorRole.PlaceholderText)
-        self._message_label.setMinimumHeight(self._message_label.fontMetrics().height())
+        reserve_line(self._message_label)
         form_layout.addRow(self._message_label)
 
         self.add_content_widget(form)
@@ -87,7 +87,7 @@ class AddVideoDialog(BaseDialog):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(Space.XS)
-        edit.setMinimumWidth(edit.fontMetrics().averageCharWidth() * 36)
+        keep_minimum_chars(edit, 36)
         layout.addWidget(edit, 1)
         layout.addWidget(BrowseButton(what, browse))
         return row

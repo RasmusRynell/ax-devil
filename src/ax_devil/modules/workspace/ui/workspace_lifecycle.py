@@ -27,7 +27,7 @@ class WorkspaceLifecycle(QObject):
     """Decide when the Workspace in *store* is replaced, saved, kept, and remembered; build no widgets.
 
     The lifecycle works like VS Code: quitting never asks and keeps the current Workspace in *backup*; launching
-    restores it. Replacing a modified Workspace asks Save / Discard / Cancel through *prompts* first. Opened and saved
+    restores it. Replacing a modified Workspace asks Save / Don't Save through *prompts* first. Opened and saved
     files join *recent_workspaces*.
     """
 

@@ -6,11 +6,13 @@ Right-clicking a row offers its menu; what the tree's rows do otherwise is the w
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QGuiApplication, QPalette
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMenu, QToolButton, QVBoxLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Space
+from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.workspace.core.content import Content
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.core.items import WorkspaceItem
@@ -18,6 +20,8 @@ from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow, Work
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 from ax_devil.modules.workspace.ui.section_tree import SectionTree
+
+_PRESSED_ALPHA = 0.7
 
 
 class ContentBrowserWidget(QWidget):
@@ -82,36 +86,35 @@ class ContentBrowserWidget(QWidget):
         toggle.setCheckable(True)
         toggle.setChecked(self._show_excluded)
         toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle.setStyleSheet(
-            """
-            QToolButton {
-                border: none;
-                padding: 0px;
-                margin: 0px;
-                background: transparent;
-            }
-            QToolButton:hover {
-                background: transparent;
-            }
-            """
-        )
-        self._update_show_excluded_icon(toggle, self._show_excluded)
+        # The crossed eye an excluded row shows; the button is tinted while excluded items are shown.
+        toggle.setIcon(Icon.HIDDEN.icon())
+        follow_appearance(toggle, lambda: self._style_show_excluded_toggle(toggle))
+        self._update_show_excluded_tooltip(toggle, self._show_excluded)
         toggle.toggled.connect(self._on_show_excluded_toggled)
         return toggle
 
-    def _update_show_excluded_icon(self, toggle: QToolButton, show: bool) -> None:
-        """Update the icon and tooltip of the show-excluded browser filter."""
+    def _style_show_excluded_toggle(self, toggle: QToolButton) -> None:
+        """Style the show-excluded button bare, with an accent background while it is pressed."""
+        pressed = palette_color_css(QGuiApplication.palette(), QPalette.ColorRole.Highlight, alpha=_PRESSED_ALPHA)
+        toggle.setStyleSheet(
+            f"""
+            QToolButton {{ border: none; padding: 0px; margin: 0px; background: transparent; }}
+            QToolButton:hover {{ background: transparent; }}
+            QToolButton:checked {{ background: {pressed}; border-radius: {Radius.CONTROL}px; }}
+            """
+        )
+
+    def _update_show_excluded_tooltip(self, toggle: QToolButton, show: bool) -> None:
+        """Update the tooltip of the show-excluded browser filter."""
         if show:
-            toggle.setIcon(Icon.FILTER_OFF.icon())
             toggle.setToolTip("Showing excluded items. Click to hide them from this list.")
         else:
-            toggle.setIcon(Icon.FILTER.icon())
             toggle.setToolTip("Excluded items are hidden from this list. Click to show them.")
 
     def _on_show_excluded_toggled(self, show: bool) -> None:
         """Handle the global show-excluded toggle."""
         self._show_excluded = show
-        self._update_show_excluded_icon(self._show_excluded_toggle, show)
+        self._update_show_excluded_tooltip(self._show_excluded_toggle, show)
         self._apply_visibility_filters()
 
     def _on_search_text_changed(self, text: str) -> None:

@@ -133,7 +133,6 @@ def _modified_launch(launches: _Launches, tmp_path: Path, prompts: FakePrompts) 
 @pytest.mark.parametrize(
     ("choice", "save_to", "replaced"),
     [
-        (SaveChoice.CANCEL, None, False),
         (SaveChoice.DISCARD, None, True),
         (SaveChoice.SAVE, "Kept.ax-devil.workspace", True),
         (SaveChoice.SAVE, None, False),  # Cancelling Save As cancels the whole action.
@@ -154,7 +153,7 @@ def test_new_workspace_asks_about_unsaved_changes_first(
     assert launch.store.is_modified is not replaced
 
 
-@pytest.mark.parametrize(("choice", "opened"), [(SaveChoice.DISCARD, True), (SaveChoice.CANCEL, False)])
+@pytest.mark.parametrize(("choice", "opened"), [(SaveChoice.DISCARD, True), (SaveChoice.SAVE, False)])
 def test_opening_a_workspace_asks_about_unsaved_changes_and_adds_its_items_without_resolving_them_as_added(
     launches: _Launches, tmp_path: Path, choice: SaveChoice, opened: bool
 ) -> None:
@@ -204,7 +203,7 @@ def test_a_workspace_file_that_cannot_be_read_is_reported_and_changes_nothing(
     assert launch.store.workspace.items == (clip,) and launch.store.is_modified
 
 
-@pytest.mark.parametrize(("choice", "replaced"), [(SaveChoice.CANCEL, False), (SaveChoice.DISCARD, True)])
+@pytest.mark.parametrize(("choice", "replaced"), [(SaveChoice.SAVE, False), (SaveChoice.DISCARD, True)])
 def test_a_launch_with_content_starts_a_new_workspace_after_asking_about_the_kept_one(
     launches: _Launches, tmp_path: Path, choice: SaveChoice, replaced: bool
 ) -> None:
@@ -230,7 +229,7 @@ def test_a_launch_with_content_starts_a_new_workspace_after_asking_about_the_kep
 def test_a_launch_with_content_replaces_an_unmodified_kept_workspace_without_asking(
     launches: _Launches, tmp_path: Path
 ) -> None:
-    prompts = FakePrompts(SaveChoice.CANCEL)
+    prompts = FakePrompts(SaveChoice.SAVE)
     launched = launches.new(prompts)
     added = _record_added_flags(launched.store)
     from_cli = _video(tmp_path, "cli.mp4")
@@ -255,14 +254,14 @@ def test_a_launch_with_a_workspace_file_asks_about_the_kept_workspace_edits_even
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     backup.keep(saved.add_items([_video(tmp_path, "unsaved.mp4")]))
     other = save_workspace(Workspace(), tmp_path / "Other.ax-devil.workspace")
-    prompts = FakePrompts(SaveChoice.CANCEL)
+    prompts = FakePrompts(SaveChoice.DISCARD)
     store = WorkspaceStore(_NeverRuns(FakeResolutionContext(), in_background=False))
     lifecycle = WorkspaceLifecycle(store, prompts, backup, RecentWorkspaces(lambda: tmp_path / "recent.json"))
 
     lifecycle.launch(workspace_file=other.path)
 
     assert prompts.asked_to_save == ["Lot"]
-    assert store.workspace.path == saved.path and store.is_modified
+    assert store.workspace.path == other.path and not store.is_modified
 
 
 @pytest.mark.parametrize("action", ["new", "open"])
@@ -279,15 +278,15 @@ def test_replacing_a_workspace_still_being_restored_asks_about_its_edits_even_wh
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     backup.keep(saved.add_items([_video(tmp_path, "unsaved.mp4")]))
     other = save_workspace(Workspace(), tmp_path / "Other.ax-devil.workspace")
-    prompts = FakePrompts(SaveChoice.CANCEL, open_path=other.path)
+    prompts = FakePrompts(SaveChoice.DISCARD, open_path=other.path)
     store = WorkspaceStore(_NeverRuns(FakeResolutionContext(), in_background=False))
     lifecycle = WorkspaceLifecycle(store, prompts, backup, RecentWorkspaces(lambda: tmp_path / "recent.json"))
     lifecycle.launch()
 
-    assert not (lifecycle.new_workspace() if action == "new" else lifecycle.open_workspace())
+    assert lifecycle.new_workspace() if action == "new" else lifecycle.open_workspace()
 
     assert prompts.asked_to_save == ["Lot"]
-    assert store.workspace.path == saved.path and store.is_modified
+    assert store.workspace.path == (None if action == "new" else other.path)
 
 
 def test_a_recent_workspace_that_cannot_be_opened_is_forgotten(launches: _Launches, tmp_path: Path) -> None:

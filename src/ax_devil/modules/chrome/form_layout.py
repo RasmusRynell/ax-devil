@@ -3,6 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFormLayout, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space
 
 
@@ -26,6 +27,14 @@ def align_label_columns(*forms: QFormLayout) -> None:
     """Give separate forms one label column, so stacked option pages line up with the rows around them."""
     items = [form.itemAt(row, QFormLayout.ItemRole.LabelRole) for form in forms for row in range(form.rowCount())]
     labels = [label for item in items if item is not None and (label := item.widget()) is not None]
-    width = max((label.sizeHint().width() for label in labels), default=0)
-    for label in labels:
-        label.setMinimumWidth(width)
+    if not labels:
+        return
+
+    def apply() -> None:
+        for label in labels:
+            label.setMinimumWidth(0)
+        width = max(label.sizeHint().width() for label in labels)
+        for label in labels:
+            label.setMinimumWidth(width)
+
+    follow_appearance(labels[0], apply)

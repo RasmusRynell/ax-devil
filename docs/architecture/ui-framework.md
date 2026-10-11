@@ -66,7 +66,7 @@ flowchart TD
 
 Callers use the session to add Workspace Items (`add_items`, `add_resolved`, `open_files`), reach the workspace
 lifecycle (`session.lifecycle`), route to the focused widget, configure shortcuts, and tear down. The lifecycle
-— the kept workspace, the Save / Discard / Cancel question, and recent workspaces — is described in
+— the kept workspace, the Save / Don't Save question, and recent workspaces — is described in
 [Workspace](workspace.md#lifecycle). The session re-emits the store's
 `state_changed`, and `MainWindow` sets its window title from `workspace_name` and `is_modified`, and its custom `TitleBar` follows the
 window title, so the name and the unsaved mark sit at the top whichever sidebar view is on screen. The store, browser, split view, and controller are composed implementation details rather than
@@ -112,7 +112,8 @@ content browser. The widgets are built from the chrome kit (`ViewPanel`, `Sectio
 
 Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Connect,
 Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
-(`section_tree.py`) lists sections of them with captions, building a row's widget only once its parent is expanded.
+(`section_tree.py`) lists sections of them under captions that fold on a click, building a row's widget only once
+its parent is expanded.
 The content browser, Live and Playlists each show one `SectionTree`, which `WorkspaceController.connect_tree` serves,
 so a row behaves the same in all three: a double-click opens it, its action runs through `perform_row_action`, and its
 eye includes or excludes it. Live and Playlists are `SectionsView`s (`sections_view.py`): a header summary over the

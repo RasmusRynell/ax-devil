@@ -18,7 +18,7 @@ from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
-from ax_devil.modules.chrome.theme import KindColor, StatusColor
+from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.chrome.view_panel import ViewPanel
 from ax_devil.modules.plugin_manager.add_plugin_dialog import AddPluginDialog
@@ -92,6 +92,7 @@ class PluginsView(ViewPanel):
         self._add_button = SmallButton("Add", Icon.ADD, ButtonKind.PRIMARY)
         self._add_button.setToolTip("Add plugin")
         header_buttons = QWidget()
+        header_buttons.setStyleSheet(SEE_THROUGH)
         header_layout = QHBoxLayout(header_buttons)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(Space.S)
