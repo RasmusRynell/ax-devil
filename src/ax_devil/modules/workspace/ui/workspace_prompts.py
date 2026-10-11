@@ -53,8 +53,8 @@ class DialogPrompts:
         self._parent = parent
 
     def ask_save_changes(self, workspace_name: str, next_step: str) -> SaveChoice:
-        """Ask Save / Don't Save / Cancel about the modified workspace that *next_step* would close."""
-        choices = {"Save": SaveChoice.SAVE, "Don't Save": SaveChoice.DISCARD, "Cancel": SaveChoice.CANCEL}
+        """Ask Save / Don't Save about the modified workspace that *next_step* would close; closing the box cancels."""
+        choices = {"Save": SaveChoice.SAVE, "Don't Save": SaveChoice.DISCARD}
         text = f"{workspace_name} has unsaved changes.\nSave them before {next_step}?"
         answer = ask(self._parent, "Unsaved Changes", text, choices, SaveChoice.SAVE)
         return answer or SaveChoice.CANCEL
