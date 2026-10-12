@@ -447,6 +447,19 @@ def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live
     assert list(live.rows()) == ["AXIS Q1656", "AXIS C1310-E"]
 
 
+def test_the_filter_hides_held_cameras_by_what_the_scan_learned_too(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
+
+    _scan(
+        live,
+        DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", product_type="Box Camera"),
+        DiscoveredCamera("192.0.2.11", "AXIS C1310-E", "", product_type="Network Speaker"),
+    )
+    live.choose("Filter", "Network Speaker")
+
+    assert list(live.rows()) == ["Entrance"]
+
+
 def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that_worked(
     live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

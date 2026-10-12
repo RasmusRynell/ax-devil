@@ -104,7 +104,12 @@ def _with_scan(row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera]) 
     if camera is None:
         return row
     facts = (camera.model, *_camera_facts(camera)) if camera.model else _camera_facts(camera)
-    return replace(row, facts=(*row.facts, *facts), search_terms=_camera_search_terms(camera))
+    return replace(
+        row,
+        facts=(*row.facts, *facts),
+        search_terms=_camera_search_terms(camera),
+        facets=row.facets | frozenset(Facet(group, value) for group, value in camera.facets),
+    )
 
 
 def _camera_facts(camera: DiscoveredCamera) -> tuple[str, ...]:

@@ -24,7 +24,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
 | Render catalog viewer: example sheets, the live viewer window, the `ax-devil catalog` commands and the generated language reference | `src/ax_devil/modules/catalog_viewer/` |
 | Frame sources, overlay sources, file providers, transport/runtime source plumbing | `src/ax_devil/modules/data_sources/` |
-| The on-request network scan that finds Axis devices on IP ranges, without sending credentials | `src/ax_devil/modules/device_discovery/` |
+| The on-request network scan that finds Axis devices on IP ranges by what they give without login, and signs in with HTTP Digest only when asked | `src/ax_devil/modules/device_discovery/` |
 | Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
 | Session filtering, shared filter configs, state, predicates, and whole-file history filtering | `src/ax_devil/modules/filtering/` |
 | Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |

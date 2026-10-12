@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from ax_devil_device_api import DeviceConfig
+from ax_devil_device_api.core.config import AuthMethod
 
 from ax_devil.modules.device_discovery import network_scan
 from ax_devil.modules.device_discovery.network_scan import (
@@ -35,13 +36,14 @@ _ALL = {**_UNRESTRICTED, "Architecture": "aarch64", "Soc": "Ambarella CV25"}
 
 
 class _Device:
-    """A loopback web server that answers as an Axis device would, or 404 to everything if *axis* is false.
+    """A loopback web server that answers as an Axis device would, with *properties* unrestricted, or 404 to
+    everything if *axis* is false.
 
     Signed-in requests are challenged for HTTP Digest; a Digest answer for the user *accepts* is accepted, after the
     first *turned_away* answers are turned away with HTTP 429, as a device limiting sign-in attempts does.
     """
 
-    def __init__(self, axis: bool, accepts: str | None, turned_away: int) -> None:
+    def __init__(self, axis: bool, accepts: str | None, turned_away: int, properties: dict[str, str]) -> None:
         self.authorizations: list[str] = []
         device = self
         turn_away = [turned_away]
@@ -57,7 +59,7 @@ class _Device:
                 elif self.path == "/axis-cgi/systemready.cgi":
                     self._answer(200, {"data": {"systemready": "yes", "uptime": "93600"}})
                 elif request.get("method") == "getAllUnrestrictedProperties":
-                    self._answer(200, {"data": {"propertyList": _UNRESTRICTED}})
+                    self._answer(200, {"data": {"propertyList": properties}})
                 elif authorization.startswith("Digest ") and turn_away[0] > 0:
                     turn_away[0] -= 1
                     self._answer(429, {})
@@ -96,8 +98,10 @@ def serve(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., _Device]]:
     monkeypatch.setattr(network_scan, "_PORT_CONFIGS", ports)
     monkeypatch.setattr(network_scan, "_RATE_LIMIT_RETRY_SECONDS", (0.0, 0.0))
 
-    def start(*, axis: bool, accepts: str | None = "root", turned_away: int = 0) -> _Device:
-        device = _Device(axis, accepts, turned_away)
+    def start(
+        *, axis: bool, accepts: str | None = "root", turned_away: int = 0, properties: dict[str, str] = _UNRESTRICTED
+    ) -> _Device:
+        device = _Device(axis, accepts, turned_away, properties)
         devices.append(device)
         ports[device.port] = partial(DeviceConfig.http, port=device.port)
         return device
@@ -202,6 +206,48 @@ def test_another_web_server_is_not_listed_and_does_not_hide_the_axis_one(serve: 
 
     serve(axis=True)
     assert [camera.model for camera in scan_network(targets=["127.0.0.1"])] == ["AXIS P3265-LVE"]
+
+
+@pytest.mark.parametrize(
+    "properties", [{k: v for k, v in _UNRESTRICTED.items() if k != "Brand"}, {**_UNRESTRICTED, "Brand": "Other"}]
+)
+def test_a_device_that_does_not_say_it_is_axis_is_not_listed_or_signed_in_to(
+    serve: Callable[..., _Device], properties: dict[str, str]
+) -> None:
+    device = serve(axis=True, properties=properties)
+
+    assert scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")]) == []
+    assert device.authorizations == []
+
+
+def test_signing_in_over_https_asks_for_digest_not_basic(monkeypatch: pytest.MonkeyPatch) -> None:
+    methods: list[AuthMethod] = []
+
+    class _Client:
+        def __init__(self, config: DeviceConfig) -> None:
+            methods.append(config.auth_method)
+            self.device = self
+
+        def __enter__(self) -> _Client:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def get_info_auth(self) -> dict[str, str]:
+            return _ALL
+
+    monkeypatch.setattr(network_scan, "Client", _Client)
+
+    camera = network_scan._signed_in(
+        DiscoveredCamera("127.0.0.1", "", "", ""),
+        lambda user, password: DeviceConfig.https("127.0.0.1", user, password),
+        [Login("root", "secret")],
+        threading.Event(),
+    )
+
+    assert camera.sign_in is SignIn.SIGNED_IN
+    assert methods == [AuthMethod.DIGEST]
 
 
 def test_credentials_go_only_to_identified_axis_devices_and_only_when_given(serve: Callable[..., _Device]) -> None:
