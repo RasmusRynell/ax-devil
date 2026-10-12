@@ -29,9 +29,10 @@ from ax_devil.modules.plugin_manager.catalog import (
     Reads,
     Section,
     current_catalog,
+    plugin_catalog,
 )
 from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChanges
-from ax_devil.modules.plugin_system import ApplicationPluginLoader
+from ax_devil.modules.plugin_system import ApplicationPluginLoader, RuntimePluginRegistry
 
 PLUGINS_VIEW_ID = "plugins"
 
@@ -142,8 +143,8 @@ class PluginsView(ViewPanel):
         )
 
     def warning(self) -> str:
-        """Return how many plugins failed to load, or an empty string when none did."""
-        return _failed_warning(self._catalog())
+        """Return how many plugins failed to load, or an empty string when none did; reads no files."""
+        return _failed_warning(plugin_catalog(RuntimePluginRegistry.list_plugins(), {}, lambda _name: None))
 
     def refresh(self) -> None:
         """Read the plugins again and list them."""

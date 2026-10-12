@@ -165,8 +165,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - The launcher tells the plugin interpreter how to start the app again and where this installation keeps its plugin
   selection (`AX_DEVIL_LAUNCH_COMMAND`, `AX_DEVIL_PLUGIN_ROOT`). Restarting and changing plugins from the running app go
   through that command, so management stays in the base app and a restart picks up the current selection.
-- Plugin load failures must not stop the application. External load, validation and registration failures are
-  recorded in `RuntimePluginRegistry`; a built-in import failure may only be logged.
+- Plugin load failures must not stop the application. Load, validation and registration failures, including a
+  built-in plugin that fails to import, are recorded in `RuntimePluginRegistry` and listed in the Plugins view.
 - `ax-devil` selects the prepared plugin interpreter before importing application code; management stays in base.
   Plugin dependencies live in a separate locked uv project constrained to the app's exact dependency closure; plugin
   upgrades never upgrade the app, and installation activates a prepared project only after validation.

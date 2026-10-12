@@ -293,7 +293,7 @@ FileFrameSource -> FileFrameDelivery -> PyAV frame decoder/cache
 
 ## Infrastructure
 
-- `ConfigManager`: config file I/O, version validation, default merging, unsupported-key warnings with raw config preservation, runtime path/env expansion, and storage directory creation.
+- `ConfigManager`: config file I/O, version validation, default merging, unsupported-key diagnostics (debug level) with raw config preservation, runtime path/env expansion, and storage directory creation.
 - `GlobalSettings`: reactive runtime settings singleton backed by config on load/save.
 - `ShortcutManager`: default shortcut registration, `QAction` installation, override-only persistence, conflict detection, and rebinding.
 - `CacheManager`: hash-based cache path generation and cache clearing.

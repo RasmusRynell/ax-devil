@@ -26,6 +26,7 @@ from ax_devil.modules.plugin_system import (
     FileToSceneDecoderDefinition,
     PluginRecord,
     PluginStatus,
+    RuntimePluginRegistry,
 )
 
 
@@ -143,6 +144,17 @@ def test_the_view_warns_while_a_plugin_has_failed_to_load(qtbot: QtBot, records:
         view.refresh()
 
     assert (failed.args, healthy.args) == (["1 failed to load"], [""])
+
+
+def test_the_initial_warning_comes_from_loaded_plugins_without_reading_the_catalog(
+    qtbot: QtBot, records: list[PluginRecord], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
+    unread = Mock(side_effect=AssertionError("the plugin selection must not be read at startup"))
+    view = PluginsView(PluginChanges(FakeInstaller()), unread, lambda: None)
+    qtbot.addWidget(view)
+
+    assert view.warning() == "1 failed to load"
 
 
 def test_updating_a_plugin_disables_changes_until_it_is_done_and_then_offers_a_restart(
