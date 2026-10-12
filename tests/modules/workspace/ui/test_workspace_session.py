@@ -180,10 +180,10 @@ def test_removing_content_in_the_sidebar_closes_every_viewer_of_its_item(
     with patch(_OFFLINE_VIEWER, DummyViewer):
         workspace_session.add_items([content_item(_make_video("duplicate"))])
         [content] = _store(workspace_session).contents()
-        browser.content_open_to_side_requested.emit(content, 0)
+        browser.tree.content_open_to_side_requested.emit(content, 0)
         assert _center(workspace_session).get_widget_count() == 2
 
-        browser.item_remove_requested.emit(content.item_id)
+        browser.tree.item_remove_requested.emit(content.item_id)
 
     assert _center(workspace_session).get_widget_count() == 0
     assert _store(workspace_session).workspace.items == ()
@@ -289,7 +289,7 @@ def test_removing_one_content_of_an_item_removes_the_whole_item(
     with patch(_OFFLINE_VIEWER, DummyViewer):
         session.add_items([PlaylistItem(label="Runs", resolver="runs"), kept])
         assert len(_item_rows(session)) == 3
-        _browser(session).item_remove_requested.emit(_store(session).contents()[1].item_id)
+        _browser(session).tree.item_remove_requested.emit(_store(session).contents()[1].item_id)
 
     assert _store(session).workspace.items == (kept,)
     assert len(_item_rows(session)) == 1
@@ -569,13 +569,13 @@ def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_previ
         assert shown_names() == ["second.mp4"]
 
         stored_first = _store(workspace_session).contents()[0]
-        browser.content_open_to_side_requested.emit(stored_first, 0)
+        browser.tree.content_open_to_side_requested.emit(stored_first, 0)
         assert shown_names() == ["first.mp4", "second.mp4"]
 
-        browser.content_activated.emit(stored_first, 0)
+        browser.tree.content_activated.emit(stored_first, 0)
 
     assert shown_names() == ["first.mp4", "first.mp4"]
-    browser.item_remove_requested.emit(stored_first.item_id)
+    browser.tree.item_remove_requested.emit(stored_first.item_id)
     assert _center(workspace_session).get_widget_count() == 0
 
 
@@ -715,13 +715,13 @@ def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: Wor
     viewer = _focused(workspace_session)
     browser = _browser(workspace_session)
 
-    browser.item_rename_requested.emit(clip.id, "North gate")
+    browser.tree.item_rename_requested.emit(clip.id, "North gate")
 
     assert viewer._title_label.text() == "North gate"
     assert _row(_required_item_row(workspace_session)).label == "North gate"
     assert _store(workspace_session).is_modified
 
-    browser.item_rename_requested.emit(clip.id, "")
+    browser.tree.item_rename_requested.emit(clip.id, "")
 
     assert viewer._title_label.text() == "lot.mp4"
     assert _row(_required_item_row(workspace_session)).label == "lot.mp4"

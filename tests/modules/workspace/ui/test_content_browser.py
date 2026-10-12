@@ -443,7 +443,7 @@ def test_context_menu_shows_information_on_request_and_removes_only_top_level_it
     information_factory.assert_called_once_with()
     assert len(shown) == 1
 
-    with qtbot.waitSignal(browser.item_remove_requested) as removed:
+    with qtbot.waitSignal(browser.tree.item_remove_requested) as removed:
         _context_menu(browser, top_item, choose="Remove")
     assert removed.args == [item.id]
 
@@ -456,7 +456,7 @@ def test_export_action_requests_the_open_item(qtbot: QtBot, is_open: bool) -> No
         WorkspaceBrowserRow(row_id="video", label="Video", icon_kind="video", export_target=target, is_open=is_open),
     )
     exported = Mock()
-    browser.export_requested.connect(exported)
+    browser.tree.export_requested.connect(exported)
 
     [(label, enabled)] = _context_menu(browser, _required_item_row(browser)).items()
     assert enabled is is_open
@@ -501,9 +501,9 @@ def test_open_actions_open_in_preview_or_to_the_side(qtbot: QtBot) -> None:
     )
     item = _required_item_row(browser)
 
-    with qtbot.waitSignal(browser.content_open_to_side_requested) as side:
+    with qtbot.waitSignal(browser.tree.content_open_to_side_requested) as side:
         _context_menu(browser, item, choose="Open to the Side")
-    with qtbot.waitSignal(browser.content_activated) as preview:
+    with qtbot.waitSignal(browser.tree.content_activated) as preview:
         _context_menu(browser, item, choose="Open")
 
     assert side.args == [video, 0]
@@ -551,7 +551,7 @@ def test_an_unavailable_row_shows_its_reason_and_can_only_be_renamed_or_removed(
 
     assert "File not found: /missing/lot.mp4" in _row_widget(browser, tree_item).toolTip()
     assert list(_context_menu(browser, tree_item)) == ["Rename", "Remove"]
-    with qtbot.waitSignal(browser.item_remove_requested) as removed:
+    with qtbot.waitSignal(browser.tree.item_remove_requested) as removed:
         _context_menu(browser, tree_item, choose="Remove")
     assert removed.args == [item.id]
 
@@ -567,7 +567,7 @@ def test_rename_asks_for_a_name_and_requests_it(qtbot: QtBot, monkeypatch: pytes
         return RenameDialog.DialogCode.Accepted
 
     monkeypatch.setattr(RenameDialog, "exec", enter_name)
-    with qtbot.waitSignal(browser.item_rename_requested) as renamed:
+    with qtbot.waitSignal(browser.tree.item_rename_requested) as renamed:
         _context_menu(browser, _required_item_row(browser), choose="Rename")
 
     assert shown == ["Gate"]
@@ -591,7 +591,7 @@ def test_renaming_an_unlabeled_row_seeds_the_shown_name_and_keeping_it_clears_th
     monkeypatch.setattr(RenameDialog, "exec", enter_name)
     for name, expected in ((shown_label, ""), ("North gate", "North gate")):
         entered.append(name)
-        with qtbot.waitSignal(browser.item_rename_requested) as renamed:
+        with qtbot.waitSignal(browser.tree.item_rename_requested) as renamed:
             _context_menu(browser, _required_item_row(browser), choose="Rename")
         assert renamed.args == [item.id, expected]
 

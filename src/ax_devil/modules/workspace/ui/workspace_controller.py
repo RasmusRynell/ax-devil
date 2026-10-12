@@ -78,11 +78,16 @@ class WorkspaceController(QObject):
         self._open_content(content, start_index=start_index, place=place, start_frame=start_frame)
 
     def connect_tree(self, tree: SectionTree) -> None:
-        """Carry out what the user does with the rows of *tree*: double-clicks open, actions run, and eyes include
-        or exclude."""
+        """Carry out what the user does with the rows of *tree*: double-clicks open, actions run, eyes include or
+        exclude, and its menu opens, exports, renames and removes."""
         tree.row_activated.connect(self.open_row)
         tree.row_action_requested.connect(self.perform_row_action)
         tree.row_consideration_changed.connect(self._workspace_store.set_item_considered)
+        tree.content_activated.connect(self._on_content_activated)
+        tree.content_open_to_side_requested.connect(self._on_content_open_to_side_requested)
+        tree.item_remove_requested.connect(self._workspace_store.remove_item)
+        tree.item_rename_requested.connect(self._workspace_store.rename_item)
+        tree.export_requested.connect(self._on_export_requested)
 
     def open_row(self, row: WorkspaceBrowserRow, to_side: bool = False) -> None:
         """Open what *row* opens, in a new split with *to_side*; a row that cannot open says why instead."""
@@ -114,12 +119,7 @@ class WorkspaceController(QObject):
                 self._center_area.remove_viewer_widget(widget)
 
     def _connect_signals(self) -> None:
-        self._content_browser.content_activated.connect(self._on_content_activated)
-        self._content_browser.content_open_to_side_requested.connect(self._on_content_open_to_side_requested)
         self.connect_tree(self._content_browser.tree)
-        self._content_browser.item_remove_requested.connect(self._workspace_store.remove_item)
-        self._content_browser.item_rename_requested.connect(self._workspace_store.rename_item)
-        self._content_browser.export_requested.connect(self._on_export_requested)
         self._workspace_store.items_added.connect(self._sync_content_browser)
         self._workspace_store.items_resolved.connect(self._on_items_resolved)
         self._workspace_store.item_rescanned.connect(self._sync_content_browser)

@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ax_devil.modules.data_sources.live.network_scan import parse_scan_targets
+from ax_devil.modules.device_discovery.network_scan import parse_scan_targets
 from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings, SettingsState

@@ -34,10 +34,16 @@ first shows everything in it, and the others show one part of it, with their own
 application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
 
 - **Live** lists the workspace's cameras with **Connect** and **Disconnect**; a camera is connected while its viewer is
-  open. **Scan settings**, at the bottom, takes the IP addresses to search: addresses and ranges such as
-  `192.168.1.0/24`, separated by commas. **Rescan** looks for Axis cameras there, only when you press it, or on the
-  local network when the field is empty. **Add** puts a found camera in the workspace with the **Settings → Stream
-  defaults**. **Add manually** opens the Add Live Stream dialog, as **File → Add Live Stream** does.
+  open. Right-click a camera for the same menu as in the Workspace view, such as **Rename** and **Remove**. The search
+  at the top matches every camera, and found cameras also by serial number and firmware; **Sort** and **Filter** order
+  and narrow the cameras the scan found. **Scan settings**, at the bottom, takes the IP addresses to search: addresses
+  and ranges such as `192.168.1.0/24`, separated by commas. **Rescan** looks for Axis cameras there, only when you
+  press it, or on this computer's `/24` network when the field is empty, and lists each camera as soon as it answers.
+  With **Sign in to found cameras**, the scan also signs in, with the username and password you enter or else the
+  **Settings → Stream defaults**, to read more such as the SoC and to tell whether the credentials work. They go only
+  to devices that answered as Axis devices, over HTTPS, or over HTTP as a Digest answer, never as a plain password.
+  **Add** puts a found camera in the workspace with the **Settings → Stream defaults**, and with the scan's credentials
+  when they signed in to it. **Add manually** opens the Add Live Stream dialog, as **File → Add Live Stream** does.
 - **Playlists** lists the workspace's playlists. **Rescan** reads a playlist's folders again, for example after adding
   files; open viewers keep what they show. **Add from** lists the playlist resolvers, including those from plugins;
   **Add** opens the Add Playlist dialog with that resolver chosen.

@@ -115,8 +115,8 @@ Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListR
 (`section_tree.py`) lists sections of them under captions that fold on a click, building a row's widget only once
 its parent is expanded.
 The content browser, Live and Playlists each show one `SectionTree`, which `WorkspaceController.connect_tree` serves,
-so a row behaves the same in all three: a double-click opens it, its action runs through `perform_row_action`, and its
-eye includes or excludes it. Live and Playlists are `SectionsView`s (`sections_view.py`): a header summary over the
+so a row behaves the same in all three: a double-click opens it, its action runs through `perform_row_action`, its
+eye includes or excludes it, and its right-click menu (owned by `SectionTree`) opens, renames and removes it. Live and Playlists are `SectionsView`s (`sections_view.py`): a header summary over the
 tree, plus their own extras. Their controllers add rows for things the Workspace does not hold, cameras a scan found
 and playlist resolvers, whose Add runs the row's `add`.
 

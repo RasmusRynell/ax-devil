@@ -124,6 +124,8 @@ class WorkspaceBrowserRow:
     """What the Add action of a row for something the Workspace does not hold does: add it, or ask how."""
     idle: bool = False
     """Whether the row's thing is not running: a camera no viewer shows, or an item still loading."""
+    search_terms: str = ""
+    """More text the search matches beyond what the row shows, such as a found camera's serial number."""
 
     @property
     def is_available(self) -> bool:
@@ -142,8 +144,8 @@ class WorkspaceBrowserRow:
 
     @property
     def search_text(self) -> str:
-        """Return the text the search field matches: the label and detail."""
-        return f"{self.label} {self.detail}"
+        """Return the text the search field matches: the label, detail and search terms."""
+        return " ".join(part for part in (self.label, self.detail, self.search_terms) if part)
 
     @property
     def tooltip(self) -> str:

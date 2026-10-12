@@ -186,9 +186,9 @@ class WorkspaceSession(QObject):
         """Add items a dialog already resolved, without resolving them again, and open the first."""
         self._workspace_store.add_resolved(resolutions)
 
-    def refresh_scan_range(self) -> None:
-        """Show the Settings' default IP range in the Live view, unless the user typed another."""
-        self._live_view_controller.refresh_default_range()
+    def refresh_scan_defaults(self) -> None:
+        """Give the Live view the Settings' default IP range, unless the user typed another, and sign-in defaults."""
+        self._live_view_controller.refresh_defaults()
 
     def refresh_recent_workspaces(self) -> None:
         """Show the recent workspace files on the start panel."""
