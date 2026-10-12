@@ -233,7 +233,7 @@ def test_playlist_command_does_not_warn_for_unread_env_bound_defaults(
         monkeypatch.delenv(env_var, raising=False)
     config_module = importlib.import_module("ax_devil.modules.settings.config_manager")
     warnings: list[str] = []
-    monkeypatch.setattr(config_module.logger, "warning", warnings.append)
+    monkeypatch.setattr(config_module.logger, "info", warnings.append)
 
     result = _invoke(
         "--config", _write_config(tmp_path, _default_config()), "playlist", "mot_challenge", str(_mot_dataset(tmp_path))

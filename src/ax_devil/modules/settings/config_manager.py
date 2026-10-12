@@ -119,7 +119,7 @@ def _resolve_runtime_value(value: Any, *, expand_user_paths: bool) -> Any:
     resolved_value = _resolve_nested(value)
     if missing_env_vars:
         missing_env_var_list = ", ".join(sorted(missing_env_vars))
-        logger.warning(
+        logger.info(
             f"Config references unset environment variables ({missing_env_var_list}). "
             "Using empty strings for those values."
         )
@@ -184,7 +184,7 @@ def _unsupported_config_key_paths(config: Mapping[str, Any]) -> tuple[str, ...]:
 
 
 def _warn_for_unsupported_keys(config: Mapping[str, Any]) -> None:
-    """Log a single concise warning when unsupported keys are present."""
+    """Log a single concise line when unsupported keys are present."""
     unsupported_paths = _unsupported_config_key_paths(config)
     if not unsupported_paths:
         return
@@ -192,7 +192,7 @@ def _warn_for_unsupported_keys(config: Mapping[str, Any]) -> None:
     displayed_paths = unsupported_paths[:MAX_UNSUPPORTED_CONFIG_PATHS_TO_LOG]
     remaining_count = len(unsupported_paths) - len(displayed_paths)
     suffix = f" (+{remaining_count} more)" if remaining_count > 0 else ""
-    logger.warning(
+    logger.debug(
         "Config contains unsupported keys that are preserved but ignored by this version: "
         f"{', '.join(displayed_paths)}{suffix}"
     )

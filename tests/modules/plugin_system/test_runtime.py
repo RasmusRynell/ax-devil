@@ -259,6 +259,33 @@ def test_a_builtin_that_fails_to_import_is_listed_as_failed(monkeypatch: pytest.
     assert any(r.status is PluginStatus.LOADED for r in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE))
 
 
+def test_a_package_whose_plugins_fail_is_warned_about_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(WARNING, logger="ax_devil.ax_devil.modules.plugin_system.loader")
+
+    class FirstFuture(FutureApi):
+        @classmethod
+        def plugin_id(cls) -> str:
+            return "first"
+
+    class SecondFuture(FutureApi):
+        @classmethod
+        def plugin_id(cls) -> str:
+            return "second"
+
+    _load_installed(
+        monkeypatch,
+        decoders=[
+            _entry_point(FirstFuture, name="first", distribution="suite"),
+            _entry_point(SecondFuture, name="second", distribution="suite"),
+        ],
+    )
+
+    warnings = [message for message in caplog.messages if "failed to load" in message]
+    assert len(warnings) == 1 and "2 plugin(s) from package:suite" in warnings[0]
+
+
 def test_valid_plugin_replaces_failed_same_id(monkeypatch: pytest.MonkeyPatch) -> None:
     _load_installed(
         monkeypatch,

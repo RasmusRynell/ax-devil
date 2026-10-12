@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 from dataclasses import dataclass
-from logging import DEBUG
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,7 +13,7 @@ from ax_devil.modules.settings.logging_config import get_logger
 from .base import PLUGIN_API_VERSION, PluginBase
 from .decoder_plugins import DECODER_PLUGIN_TYPE, DecoderPlugin
 from .playlist_resolvers import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverPlugin
-from .registry import PluginStatus, RuntimePluginRegistry
+from .registry import PluginRecord, PluginStatus, RuntimePluginRegistry
 
 logger = get_logger(__name__)
 AX_DEVIL_ROOT = Path(__file__).resolve().parents[2]
@@ -61,6 +60,7 @@ class ApplicationPluginLoader:
         for family in cls.PLUGIN_FAMILIES:
             cls._load_builtins(family)
             cls._load_family_from_entrypoints(family)
+        cls._warn_about_failures()
 
     @classmethod
     def reload_plugins(cls) -> None:
@@ -214,15 +214,23 @@ class ApplicationPluginLoader:
         reason: str,
         exc: Exception | None = None,
     ) -> None:
-        """Log one line for a plugin that cannot load and record it for the Plugins view.
-
-        The traceback of *exc* is logged only at DEBUG; the reason already says what failed.
-        """
-        logger.warning(
-            f"Plugin {family.plugin_type}:{plugin_id} from {origin} failed to load: {reason}",
-            exc_info=exc if logger.isEnabledFor(DEBUG) else None,
-        )
+        """Record a plugin that cannot load; ``_warn_about_failures`` reports it once per origin."""
+        logger.debug(f"Plugin {family.plugin_type}:{plugin_id} from {origin} failed to load: {reason}", exc_info=exc)
         RuntimePluginRegistry.mark_failed(family.plugin_type, plugin_id, entrypoint, origin, reason)
+
+    @staticmethod
+    def _warn_about_failures() -> None:
+        """Log one warning per origin whose plugins failed to load, naming the first failure."""
+        failed_by_origin: dict[str, list[PluginRecord]] = {}
+        for record in RuntimePluginRegistry.list_plugins():
+            if record.status is PluginStatus.FAILED:
+                failed_by_origin.setdefault(record.origin, []).append(record)
+        for origin, records in failed_by_origin.items():
+            first = records[0].definition
+            logger.warning(
+                f"{len(records)} plugin(s) from {origin} failed to load, e.g. "
+                f"{first.plugin_type}:{first.plugin_id}: {records[0].error} (see the Plugins view)"
+            )
 
     @staticmethod
     def _entrypoint_path(entrypoint: importlib.metadata.EntryPoint) -> Path:

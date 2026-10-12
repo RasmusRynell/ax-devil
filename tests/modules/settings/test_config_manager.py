@@ -209,7 +209,7 @@ def test_config_manager_logs_single_warning_for_all_missing_vars(
     cfg = ConfigManager()
     cfg.set_config_path(config_path, create_if_missing=False)
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         resolved_defaults = cast(dict[str, Any], cfg.get("defaults", {}))
 
     resolved_device = cast(dict[str, Any], resolved_defaults["device"])
@@ -217,9 +217,13 @@ def test_config_manager_logs_single_warning_for_all_missing_vars(
     assert resolved_device["username"] == ""
     assert resolved_device["password"] == ""
 
-    warning_messages = [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+    warning_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "Config references unset environment variables" in record.getMessage()
+    ]
     assert len(warning_messages) == 1
-    assert "Config references unset environment variables" in warning_messages[0]
+    assert all(record.levelname != "WARNING" for record in caplog.records)
     assert "AX_DEVIL_TARGET_ADDR" in warning_messages[0]
     assert "AX_DEVIL_TARGET_USER" in warning_messages[0]
     assert "AX_DEVIL_TARGET_PASS" in warning_messages[0]
@@ -244,13 +248,13 @@ def test_config_manager_deduplicates_missing_vars(
     cfg = ConfigManager()
     cfg.set_config_path(config_path, create_if_missing=False)
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         _ = cfg.get("defaults", {})
 
     warning_messages = [
         record.getMessage()
         for record in caplog.records
-        if record.levelname == "WARNING" and "Config references unset environment variables" in record.getMessage()
+        if record.levelname == "INFO" and "Config references unset environment variables" in record.getMessage()
     ]
     assert len(warning_messages) == 1
     assert warning_messages[0].count("AX_DEVIL_TARGET_ADDR") == 1
@@ -269,7 +273,7 @@ def test_set_config_path_unchanged_keeps_unsaved_changes(tmp_path: Path) -> None
     assert json.loads(config_path.read_text(encoding="utf-8"))["ui"] == DEFAULT_CONFIG["ui"]
 
 
-def test_load_config_warns_once_for_unsupported_keys(
+def test_load_config_logs_unsupported_keys_once_at_debug(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "10.0.0.1")
@@ -286,7 +290,7 @@ def test_load_config_warns_once_for_unsupported_keys(
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("DEBUG"):
         _ = load_config(config_path)
 
     unsupported_warnings = [
