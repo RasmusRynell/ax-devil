@@ -180,6 +180,19 @@ def test_signing_in_over_https_asks_for_digest_not_basic(monkeypatch: pytest.Mon
     assert methods == [AuthMethod.DIGEST]
 
 
+def test_signing_in_goes_through_the_endpoint_that_identified_the_device(
+    serve: Callable[..., _Device], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    axis, broken = serve(axis=True), serve(axis=False)
+    ports = network_scan._PORT_CONFIGS
+    monkeypatch.setitem(ports, broken.port, partial(DeviceConfig.https, port=broken.port))  # TLS to a plain server
+
+    [camera] = scan_network(targets=["127.0.0.1"], username="root", password="secret")
+
+    assert camera.sign_in is SignIn.SIGNED_IN
+    assert axis.authorizations
+
+
 def test_credentials_go_only_to_identified_axis_devices_and_only_when_given(serve: Callable[..., _Device]) -> None:
     other, axis = serve(axis=False), serve(axis=True)
 

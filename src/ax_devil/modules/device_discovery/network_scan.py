@@ -2,7 +2,7 @@
 
 A scan identifies devices from what they give without login: the unrestricted ``basicdeviceinfo.cgi`` properties and
 ``systemready.cgi``. Only when asked to sign in does it send credentials, and only to devices that already answered as
-Axis devices, over HTTPS when the device has it and otherwise as an HTTP Digest answer, never as a plain password.
+Axis devices, through the endpoint that identified them, as an HTTP Digest answer and never as a plain password.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from enum import Enum
 from typing import Any
 
 from ax_devil_device_api import Client, DeviceConfig
-from ax_devil_device_api.core.config import AuthMethod, Protocol
+from ax_devil_device_api.core.config import AuthMethod
 from ax_devil_device_api.utils.errors import AuthenticationError
 
 from ax_devil.modules.settings.logging_config import get_logger
@@ -261,8 +261,7 @@ def _identify(host: str, ports: Collection[int], username: str, password: str) -
             continue
         if not username:
             return camera
-        secure = [config for config in configs if config.protocol is Protocol.HTTPS]
-        return _signed_in(camera, secure[0] if secure else config)
+        return _signed_in(camera, config)
     return None
 
 
