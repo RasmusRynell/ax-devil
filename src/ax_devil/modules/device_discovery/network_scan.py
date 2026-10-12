@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 MAX_SCAN_TARGETS = 4096
 # Tried in this order on a device with both open; plain HTTP answers faster and needs no credentials here.
 _PORT_CONFIGS: dict[int, Callable[[str, str, str], Any]] = {80: DeviceConfig.http, 443: DeviceConfig.https}
+_AXIS_BRAND = "AXIS"
 _CONNECT_TIMEOUT_SECONDS = 0.5
 _MAX_OPEN_SOCKETS = 256
 _CONNECT_IN_PROGRESS = frozenset((errno.EINPROGRESS, errno.EALREADY, errno.EWOULDBLOCK))
@@ -244,6 +245,9 @@ def _identify(host: str, ports: Collection[int], username: str, password: str) -
         try:
             with Client(config) as client:
                 info: Mapping[str, Any] = client.device.get_info_no_auth()
+                if _text(info, "Brand").upper() != _AXIS_BRAND:
+                    logger.debug(f"Network scan: {host} over {config.protocol.value} does not say it is an Axis device")
+                    continue
                 camera = DiscoveredCamera(
                     host=host,
                     model=_text(info, "ProdShortName") or _text(info, "ProdFullName") or _text(info, "ProdNbr"),
