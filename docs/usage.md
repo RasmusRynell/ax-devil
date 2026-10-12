@@ -44,11 +44,12 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   them by type and sign-in. **Scan settings**, at the bottom, takes the IP addresses to search: addresses
   and ranges such as `192.168.1.0/24`, separated by commas. **Rescan** looks for Axis cameras there, only when you
   press it, or on this computer's `/24` network when the field is empty, and lists each camera as soon as it answers.
-  With **Sign in to found cameras**, the scan also signs in, with the username and password you enter or else the
-  **Settings → Stream defaults**, to read more such as the SoC and to tell whether the credentials work. They go only
-  to devices that answered as Axis devices, and only as an HTTP Digest answer, never as a plain password.
-  **Add** puts a found camera in the workspace with the **Settings → Stream defaults**, and with the scan's credentials
-  when they signed in to it. **Add manually** opens the Add Live Stream dialog, as **File → Add Live Stream** does.
+  With **Try to sign in to found cameras**, the scan also tries the saved sign-in logins on each camera, in order,
+  until one works, to read more such as the SoC and to tell which login works. Ticking it shows the logins under it,
+  with buttons to add and remove them; they are the same list as **Settings → Network scan**. They go only to devices that answered as Axis devices, and only as an
+  HTTP Digest answer, never as a plain password. **Add** puts a found camera in the workspace with the **Settings →
+  Stream defaults**, and with the login that signed in to it. **Add manually** opens the Add Live Stream dialog, as
+  **File → Add Live Stream** does.
 - **Offline** lists the workspace's data from files: its videos, with or without overlays, and its playlists.
   **Rescan** reads a playlist's folders again, for example after adding files; open viewers keep what they show.
   **Add from** lists the playlist resolvers, including those from plugins; **Add** opens the Add Playlist dialog with

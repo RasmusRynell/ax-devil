@@ -77,7 +77,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
             },
             "overlay_source": "websocket",
         },
-        "network_scan": {"ip_range": "192.168.1.0/24"},
+        "network_scan": {
+            "ip_range": "192.168.1.0/24",
+            "credentials": [{"username": "$AX_DEVIL_TARGET_USER", "password": "$AX_DEVIL_TARGET_PASS"}],
+        },
     },
 }
 

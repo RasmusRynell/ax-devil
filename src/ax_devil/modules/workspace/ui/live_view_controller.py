@@ -11,11 +11,12 @@ from PySide6.QtCore import QObject, Signal
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
     DiscoveredCamera,
+    Login,
     SignIn,
     parse_scan_targets,
     scan_network,
 )
-from ax_devil.modules.settings.config_manager import ConfigManager, default_hint, expand_environment_reference
+from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import WorkspaceItem, live_stream_item_from_defaults
 from ax_devil.modules.workspace.ui.browser_rows import (
@@ -34,12 +35,12 @@ from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 logger = get_logger(__name__)
 
 Found = Callable[[DiscoveredCamera], None]
-Scan = Callable[[tuple[str, ...], str, str, Found], Sequence[DiscoveredCamera]]
-"""Search addresses, signing in with a username and password unless the username is empty, and report each find."""
+Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found], Sequence[DiscoveredCamera]]
+"""Search addresses, trying the logins in order on each device found, and report each find."""
 
 
-def _scan_network(targets: tuple[str, ...], username: str, password: str, found: Found) -> list[DiscoveredCamera]:
-    return scan_network(targets=targets, username=username, password=password, found=found)
+def _scan_network(targets: tuple[str, ...], logins: tuple[Login, ...], found: Found) -> list[DiscoveredCamera]:
+    return scan_network(targets=targets, logins=logins, found=found)
 
 
 @dataclass(frozen=True)
@@ -65,12 +66,10 @@ class _Finds(QObject):
     found = Signal(object)  # DiscoveredCamera
 
 
-def _defaults() -> tuple[str, str, str]:
-    """Return the Settings' IP range for scans, and the stream defaults' username and password as written."""
+def _defaults() -> tuple[str, tuple[Login, ...]]:
+    """Return the Settings' IP range for scans, and the logins they try."""
     config = ConfigManager()
-    device = (config.get_raw("defaults", {}) or {}).get("device", {}) or {}
-    ip_range = str(config.get("defaults", {}).get("network_scan", {}).get("ip_range", ""))
-    return ip_range, str(device.get("username") or ""), str(device.get("password") or "")
+    return str(config.get("defaults", {}).get("network_scan", {}).get("ip_range", "")), Login.saved(config)
 
 
 def _workspace_hosts(items: Sequence[WorkspaceItem]) -> frozenset[str]:
@@ -141,14 +140,17 @@ def _connected(sections: Sections) -> str:
     return f"{count} connected" if count else ""
 
 
-def _add_camera(store: WorkspaceStore, camera: DiscoveredCamera, login: tuple[str, str]) -> None:
-    """Add *camera* to *store* with the stream defaults, and with *login* when the scan signed in with it; like any
+def _add_camera(store: WorkspaceStore, camera: DiscoveredCamera) -> None:
+    """Add *camera* to *store* with the stream defaults, and with the login that signed in to it if one did; like any
     added item, it opens once resolved."""
-    username, password = login if camera.sign_in is SignIn.SIGNED_IN else ("", "")
+    login = camera.login
     store.add_items(
         [
             live_stream_item_from_defaults(
-                host=camera.host, label=camera.model, username=username or None, password=password or None
+                host=camera.host,
+                label=camera.model,
+                username=login.username if login is not None else None,
+                password=login.password if login is not None else None,
             )
         ]
     )
@@ -180,15 +182,15 @@ class LiveViewController(QObject):
         self._store = store
         self._resolver = resolver
         self._scan = scan
-        self._given = _defaults()  # What the view's fields were last given by default.
-        view.set_scan_range(self._given[0])
-        view.set_login_hints(default_hint(self._given[1]), default_hint(self._given[2], mask=True))
+        self._given_range, self._logins = _defaults()  # The range is what the view's field was last given by default.
+        view.set_scan_range(self._given_range)
+        view.set_logins(self._logins)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan starts
-        self._login = ("", "")  # The credentials of the last scan, as written.
         self._finds: _Finds | None = None
         self._scanning = False
         self._order = DeviceOrder.ADDRESS
         view.scan_requested.connect(self.scan)
+        view.logins_edited.connect(self._save_logins)
         view.order_chosen.connect(self._sort)
         view.destroyed.connect(self._forget_view)
         self._listing = SectionsViewController(
@@ -197,16 +199,14 @@ class LiveViewController(QObject):
 
     def refresh_defaults(self) -> None:
         """Give the view the Settings' default IP range, unless the user has typed another in its field, and the
-        stream defaults' credentials as what empty sign-in fields stand for."""
+        logins a scan tries."""
         if self._view is None:
             return
-        ip_range, username, password = _defaults()
-        if self._view.scan_range() == self._given[0]:
+        ip_range, self._logins = _defaults()
+        if self._view.scan_range() == self._given_range:
+            self._given_range = ip_range
             self._view.set_scan_range(ip_range)
-        else:
-            ip_range = self._given[0]  # The user's range stays theirs, even once a default equals it.
-        self._given = (ip_range, username, password)
-        self._view.set_login_hints(default_hint(username), default_hint(password, mask=True))
+        self._view.set_logins(self._logins)
 
     def scan(self, ip_range: str) -> None:
         """Search *ip_range*, or the local network if it is empty, for cameras, unless a search is already running."""
@@ -217,9 +217,7 @@ class LiveViewController(QObject):
         except ValueError as exc:
             self._view.set_scan_status(ScanStatus.INVALID, str(exc))
             return
-        typed = self._view.scan_login()
-        self._login = (typed[0] or self._given[1], typed[1] or self._given[2]) if typed is not None else ("", "")
-        username, password = (expand_environment_reference(value) for value in self._login)
+        logins = self._logins if self._view.sign_in_wanted() else ()
         self._scanning = True
         self._found = ()
         self._view.set_scan_status(ScanStatus.SCANNING)
@@ -228,10 +226,16 @@ class LiveViewController(QObject):
         finds.found.connect(self._on_found)
         scan = self._scan
         self._resolver.run(
-            lambda: _scan_outcome(lambda: scan(targets, username, password, finds.found.emit)),
+            lambda: _scan_outcome(lambda: scan(targets, logins, finds.found.emit)),
             self._on_scanned,
             lambda: self._view is not None,
         )
+
+    def _save_logins(self, logins: tuple[Login, ...]) -> None:
+        """Keep the logins the user edited in the view as the ones scans try, shared with Settings."""
+        if logins != self._logins:
+            self._logins = logins
+            Login.save(ConfigManager(), logins)
 
     def _on_found(self, camera: DiscoveredCamera) -> None:
         if self._found is not None and self._scanning:
@@ -266,7 +270,7 @@ class LiveViewController(QObject):
         held = tuple(replace(section, rows=tuple(_with_scan(row, by_host) for row in section.rows)) for section in held)
         hosts = _workspace_hosts(self._store.workspace.items)
         found = tuple(
-            _network_row(camera, partial(_add_camera, self._store, camera, self._login))
+            _network_row(camera, partial(_add_camera, self._store, camera))
             for camera in self._order.sorted(self._found)
             if camera.host not in hosts
         )

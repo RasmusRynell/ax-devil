@@ -1,8 +1,8 @@
 """Find Axis devices on IPv4 addresses: a TCP probe for the web ports, then Axis's device information on each open one.
 
 A scan identifies devices from what they give without login: the unrestricted ``basicdeviceinfo.cgi`` properties and
-``systemready.cgi``. Only when asked to sign in does it send credentials, and only to devices that already answered as
-Axis devices, over HTTPS when the device has it and otherwise as an HTTP Digest answer, never as a plain password.
+``systemready.cgi``. Only when given logins does it send credentials, and only to devices that already answered as
+Axis devices, and only as HTTP Digest answers, never as a plain password: the scan cannot verify any certificate.
 """
 
 from __future__ import annotations
@@ -19,12 +19,14 @@ import time
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
+from functools import partial
 from typing import Any
 
 from ax_devil_device_api import Client, DeviceConfig
-from ax_devil_device_api.core.config import AuthMethod, Protocol
+from ax_devil_device_api.core.config import AuthMethod
 from ax_devil_device_api.utils.errors import AuthenticationError
 
+from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -38,6 +40,47 @@ _CONNECT_IN_PROGRESS = frozenset((errno.EINPROGRESS, errno.EALREADY, errno.EWOUL
 _REQUEST_TIMEOUT_SECONDS = 2.0
 _IDENTIFY_WORKERS = 32
 _IDENTIFY_DEADLINE_SECONDS = 20.0  # For the requests still running once the probe has finished.
+_RATE_LIMIT_RETRY_SECONDS = (1.0, 2.0)  # Waits before trying a login again that a device turned away for now.
+_HTTP_STATUS = re.compile(r"\bHTTP\s+(\d{3})\b")
+
+
+@dataclass(frozen=True)
+class Login:
+    """A username and password to sign in with, as written, so a ``$VARIABLE`` reference stays one until used."""
+
+    username: str
+    password: str
+
+    @staticmethod
+    def saved(config: ConfigManager) -> tuple[Login, ...]:
+        """Return the logins Settings gives the network scan to try, in order."""
+        return Login.from_config(config.get_raw("defaults")["network_scan"].get("credentials"))
+
+    @staticmethod
+    def save(config: ConfigManager, logins: Iterable[Login]) -> None:
+        """Make *logins* the ones the network scan tries, and save the config."""
+        defaults = config.get_raw("defaults")
+        defaults["network_scan"]["credentials"] = Login.config_value(logins)
+        config.set("defaults", defaults)
+        config.save()
+
+    @staticmethod
+    def from_config(value: object) -> tuple[Login, ...]:
+        """Return the logins a config list of ``{"username", "password"}`` objects holds, skipping any malformed one."""
+        entries = value if isinstance(value, list) else []
+        return tuple(
+            Login(entry["username"], entry.get("password", ""))
+            for entry in entries
+            if isinstance(entry, dict)
+            and isinstance(entry.get("username"), str)
+            and entry["username"]
+            and isinstance(entry.get("password", ""), str)
+        )
+
+    @staticmethod
+    def config_value(logins: Iterable[Login]) -> list[dict[str, str]]:
+        """Return *logins* as the config stores them."""
+        return [{"username": login.username, "password": login.password} for login in logins]
 
 
 class SignIn(Enum):
@@ -56,7 +99,8 @@ class SignIn(Enum):
 
 @dataclass(frozen=True)
 class DiscoveredCamera:
-    """An Axis device that answered the network scan; architecture and SoC are known only once signed in."""
+    """An Axis device that answered the network scan; architecture and SoC are known only once signed in, and *login*
+    is the one the device accepted."""
 
     host: str
     model: str
@@ -67,6 +111,7 @@ class DiscoveredCamera:
     architecture: str = ""
     soc: str = ""
     sign_in: SignIn = SignIn.NOT_TRIED
+    login: Login | None = None
 
     @property
     def uptime(self) -> str:
@@ -148,14 +193,14 @@ def parse_scan_targets(text: str) -> tuple[str, ...]:
 def scan_network(
     *,
     targets: Sequence[str] = (),
-    username: str = "",
-    password: str = "",
+    logins: Sequence[Login] = (),
     found: Callable[[DiscoveredCamera], None] = lambda _camera: None,
 ) -> list[DiscoveredCamera]:
     """Return the Axis devices at *targets*, or on this computer's /24 network if there are none, sorted by address.
 
     Each device is handed to *found*, on a worker thread, as soon as it is identified, and never after the scan
-    returns. With a *username*, the scan also signs in to each device for what only a signed-in user may read.
+    returns. With *logins*, the scan also tries them in order on each device until one signs in, for what only a
+    signed-in user may read.
 
     Blocks for up to half a second per 128 addresses plus the device requests, so call it from a worker thread. Raise
     ``OSError`` if the local network cannot be worked out or the probe cannot open sockets.
@@ -168,7 +213,7 @@ def scan_network(
 
     def work() -> None:
         while not finished.is_set() and (job := pending.get()) is not None:
-            camera = _identify(*job, username, password)
+            camera = _identify(*job, logins)
             with lock:
                 if camera is not None and not finished.is_set():
                     cameras.append(camera)
@@ -234,13 +279,14 @@ def _open_ports(hosts: Sequence[str]) -> dict[str, set[int]]:
     return found
 
 
-def _identify(host: str, ports: Collection[int], username: str, password: str) -> DiscoveredCamera | None:
-    """Return the Axis device at *host* from what it gives without login, signed in to with *username* if one is
-    given, or ``None`` if no Axis device answers."""
-    configs = [make(host, username, password) for port, make in _PORT_CONFIGS.items() if port in ports]
-    for config in configs:
+def _identify(host: str, ports: Collection[int], logins: Sequence[Login]) -> DiscoveredCamera | None:
+    """Return the Axis device at *host* from what it gives without login, signed in to with the first of *logins* it
+    accepts, or ``None`` if no Axis device answers."""
+    for port, make in _PORT_CONFIGS.items():
+        if port not in ports:
+            continue
+        config = make(host, "", "")
         config.timeout = _REQUEST_TIMEOUT_SECONDS
-    for config in configs:
         try:
             with Client(config) as client:
                 info: Mapping[str, Any] = client.device.get_info_no_auth()
@@ -255,28 +301,43 @@ def _identify(host: str, ports: Collection[int], username: str, password: str) -
         except Exception as exc:  # Anything on the range can answer, in any shape; none of that is an Axis device.
             logger.debug(f"Network scan could not identify {host} over {config.protocol.value}: {exc}")
             continue
-        if not username:
-            return camera
-        secure = [config for config in configs if config.protocol is Protocol.HTTPS]
-        return _signed_in(camera, secure[0] if secure else config)
+        return _signed_in(camera, partial(make, host), logins) if logins else camera
     return None
 
 
-def _signed_in(camera: DiscoveredCamera, config: Any) -> DiscoveredCamera:
-    """Return *camera* with what signing in through *config* tells; only a Digest answer is sent, since the scan
-    cannot verify any device's certificate."""
-    config.auth_method = AuthMethod.DIGEST
-    try:
-        with Client(config) as client:
-            info: Mapping[str, Any] = client.device.get_info_auth()
-            return replace(
-                camera, architecture=_text(info, "Architecture"), soc=_text(info, "Soc"), sign_in=SignIn.SIGNED_IN
-            )
-    except AuthenticationError:
-        return replace(camera, sign_in=SignIn.REFUSED)
-    except Exception as exc:
-        logger.debug(f"Network scan could not sign in to {camera.host}: {exc}")
-        return replace(camera, sign_in=SignIn.FAILED)
+def _signed_in(camera: DiscoveredCamera, make: Callable[[str, str], Any], logins: Sequence[Login]) -> DiscoveredCamera:
+    """Return *camera* with what signing in through configs from *make* tells, with the first of *logins* it accepts.
+
+    A login the device turns away for now, as Axis devices do after failed attempts, is tried again after a wait. Any
+    other failure ends the attempt, so a broken device is not asked again and again.
+    """
+    refusals = 0
+    for login in logins:
+        for wait in (*_RATE_LIMIT_RETRY_SECONDS, None):
+            config = make(expand_environment_reference(login.username), expand_environment_reference(login.password))
+            config.timeout = _REQUEST_TIMEOUT_SECONDS
+            config.auth_method = AuthMethod.DIGEST
+            try:
+                with Client(config) as client:
+                    info: Mapping[str, Any] = client.device.get_info_auth()
+                architecture, soc = _text(info, "Architecture"), _text(info, "Soc")
+                return replace(camera, architecture=architecture, soc=soc, sign_in=SignIn.SIGNED_IN, login=login)
+            except AuthenticationError:
+                refusals += 1
+                break
+            except Exception as exc:
+                if wait is None or not _rate_limited(exc, refusals):
+                    logger.debug(f"Network scan could not sign in to {camera.host}: {exc}")
+                    return replace(camera, sign_in=SignIn.FAILED)
+                time.sleep(wait)
+    return replace(camera, sign_in=SignIn.REFUSED)
+
+
+def _rate_limited(error: Exception, refusals: int) -> bool:
+    """Return whether a failed sign-in looks like the device turning logins away for now."""
+    match = _HTTP_STATUS.search(str(error))
+    status = int(match.group(1)) if match else None
+    return status == 429 or (status == 403 and refusals > 0)
 
 
 def _uptime_seconds(client: Any) -> float | None:

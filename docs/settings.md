@@ -4,14 +4,19 @@
 
 - **General:** theme, text size, window title bar, graphics acceleration, video cache memory, overlay interaction, and
   keyboard shortcuts.
-- **Stream defaults:** device credentials and defaults for RTSP, MQTT, and DataHub connections.
+- **Stream defaults:** device credentials and RTSP defaults for new live streams.
+- **Analytics:** defaults for MQTT and DataHub overlay connections.
+- **Network scan:** the Live view's default IP range and the logins its scan tries.
 - **Storage:** window state, cache, log, and render catalog folders.
 - **Advanced:** the active configuration's location and version.
 
 **OK** saves all pages and closes, and **Cancel** discards the changes. When a saved change needs a restart, ax-devil
 asks whether to restart now or later.
 Stream defaults apply to newly opened live-stream dialogs. **Default IP range** (`defaults.network_scan.ip_range`) is the
-addresses the Live view's **Scan settings** start with, such as `192.168.1.0/24`.
+addresses the Live view's **Scan settings** start with, such as `192.168.1.0/24`. **Sign-in logins**
+(`defaults.network_scan.credentials`, a list of `username` and `password` pairs) are what **Try to sign in to found
+cameras** tries on each camera, in order; **Add login** adds one, and a row without a username is dropped on save. The
+Live view shows the same list under that choice, and saves its edits at once.
 Theme and text size changes apply immediately; storage, title bar, and graphics changes need a restart. Changing storage locations does not move existing files.
 Keyboard shortcuts are confirmed in their own dialog.
 
