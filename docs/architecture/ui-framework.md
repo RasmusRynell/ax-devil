@@ -113,9 +113,6 @@ not hold. Live and Offline show their kinds, and their controllers (`LiveViewCon
 compose what is their own into them: cameras a scan found, what the scan learned about held cameras, and playlist
 resolvers, whose Add runs the row's `add`. Their buttons, such as the scan settings, stay theirs.
 
-Every `SectionsView` has the same header summary, search and Filter. The Filter is general but its data is not:
-whoever builds a row gives it `facets`, such as a found camera's type, and `LEFT_OUT` marks rows left out of playback.
-
 Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Connect,
 Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
 (`section_tree.py`) lists sections of them under captions that fold on a click, building a row's widget only once
