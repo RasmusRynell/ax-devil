@@ -2,7 +2,7 @@
 
 A scan identifies devices from what they give without login: the unrestricted ``basicdeviceinfo.cgi`` properties and
 ``systemready.cgi``. Only when given logins does it send credentials, and only to devices that already answered as
-Axis devices, and only as HTTP Digest answers, never as a plain password: the scan cannot verify any certificate.
+Axis devices, through the endpoint that identified them, as an HTTP Digest answer and never as a plain password.
 """
 
 from __future__ import annotations
@@ -310,8 +310,7 @@ def _identify(
             continue
         if not logins:
             return camera
-        secure = _PORT_CONFIGS[443] if 443 in ports else make  # Credentials go over HTTPS whenever the device has it.
-        return _signed_in(camera, partial(secure, host), logins, cancelled)
+        return _signed_in(camera, partial(make, host), logins, cancelled)
     return None
 
 
