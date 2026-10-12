@@ -11,13 +11,14 @@ def bounded_window_size(
     *,
     screen: QScreen | None = None,
     maximum_size: QSize | None = None,
+    screen_margin: int | None = None,
 ) -> QSize:
     """Bound an opening or restored size without changing desktop placement."""
     screen = screen or window.screen()
     size = preferred_size.expandedTo(window.minimumSizeHint()).expandedTo(window.minimumSize())
     if screen is None:
         return size
-    margin = window.fontMetrics().height()
+    margin = window.fontMetrics().height() if screen_margin is None else screen_margin
     bounds = screen.availableGeometry().adjusted(margin, margin, -margin, -margin)
     decorations = (window.frameGeometry().size() - window.size()).expandedTo(QSize(0, 0))
     limit = bounds.size() - decorations
@@ -36,6 +37,7 @@ def fit_window(
     center: bool,
     parent_size_fraction: float | None = 0.85,
     maximum_size: QSize | None = None,
+    screen_margin: int | None = None,
 ) -> None:
     """Fit a window to its screen, optionally sizing it relative to its parent."""
     parent = window.parentWidget()
@@ -49,10 +51,10 @@ def fit_window(
     if screen is None:
         return
     available = screen.availableGeometry()
-    margin = window.fontMetrics().height()
+    margin = window.fontMetrics().height() if screen_margin is None else screen_margin
     bounds = available.adjusted(margin, margin, -margin, -margin)
     decorations = (window.frameGeometry().size() - window.size()).expandedTo(QSize(0, 0))
-    size = bounded_window_size(window, preferred_size, screen=screen, maximum_size=maximum_size)
+    size = bounded_window_size(window, preferred_size, screen=screen, maximum_size=maximum_size, screen_margin=margin)
     window.resize(size)
     if parent is None:
         return

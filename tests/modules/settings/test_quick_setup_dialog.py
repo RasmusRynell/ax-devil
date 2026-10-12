@@ -16,6 +16,7 @@ from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
+from tests.helpers.clipping import clipped_text_on_every_page
 
 
 @pytest.fixture(autouse=True)
@@ -81,6 +82,10 @@ def test_larger_text_fits_without_resizing_the_window(qtbot: QtBot, settings: Gl
         assert dialog.size() == opened
         needed = dialog.sizeHint()
         assert needed.width() <= opened.width() and needed.height() <= opened.height()
+        assert clipped_text_on_every_page(dialog) == []
+        screen = dialog.screen()
+        assert screen is not None
+        assert screen.availableGeometry().contains(dialog.frameGeometry())
         scrollbars = [
             bar
             for area in dialog.findChildren(QAbstractScrollArea)

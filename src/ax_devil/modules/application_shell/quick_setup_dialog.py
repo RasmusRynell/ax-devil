@@ -259,7 +259,8 @@ class QuickSetupDialog(BaseDialog):
     refit_on_text_size = False  # picking a text size here must not resize the dialog; it opens with room for them all
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent=parent, title="Quick Setup", modal=True)
+        super().__init__(parent=parent, title="Quick Setup", modal=True, scroll_content=False)
+        self._main_layout.setContentsMargins(Space.XL, Space.M, Space.XL, Space.M)
         self._settings = GlobalSettings()
         self._config = ConfigManager()
         self._opened_with = self._settings.snapshot()
@@ -278,8 +279,16 @@ class QuickSetupDialog(BaseDialog):
         height = sum(new.height() - old.height() for old, new in sizes)
         line_growth = QFontMetrics(TextRole.BODY.font_at(largest)).height() - self.fontMetrics().height()
         height += (largest - current) + line_growth
-        # Layouts round each part separately; a little slack keeps that rounding from reaching a scrollbar.
-        return self.sizeHint() + QSize(max(0, width) + Space.S, max(0, height) + Space.S)
+        # Allow for per-part size-hint rounding so every option fits without scrolling.
+        return self.sizeHint() + QSize(max(0, width) + Space.XS, max(0, height) + Space.XS)
+
+    def _maximum_opening_size(self) -> QSize | None:
+        """Quick Setup opens at its full content size without the shared comfort cap."""
+        return None
+
+    def _screen_margin(self) -> int:
+        """Use the full screen for this compact, non-scrolling dialog."""
+        return 0
 
     def _setup_content(self) -> None:
         self._block = block = QWidget()
