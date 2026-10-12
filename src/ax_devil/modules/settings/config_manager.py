@@ -123,6 +123,16 @@ def expand_environment_reference(value: str) -> str:
     return cast(str, _resolve_runtime_value(value, expand_user_paths=False))
 
 
+def default_hint(raw_value: str, *, mask: bool = False) -> str:
+    """Return the placeholder that shows a default field value: the value, masked with *mask*, followed by the
+    ``$VARIABLE`` it comes from, such as ``172.20.1.1  (via $AX_DEVIL_TARGET_ADDR)``; empty when it has no value."""
+    value = expand_environment_reference(raw_value)
+    if not value:
+        return ""
+    display = "*" * len(value) if mask else value
+    return f"{display}  (via {raw_value})" if is_environment_reference(raw_value) else display
+
+
 def integer_default(value: object, default: int) -> int:
     """Read a resolved numeric default, falling back if its environment value is missing or invalid."""
     try:

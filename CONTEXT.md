@@ -20,7 +20,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. | Resolved playlist |
 | Bookmark | A frame of a local video or playlist entry that the user marked while reviewing, with a kind and an optional note; saved in the Workspace with each Bookmark Target's reviewed mark. Never on live streams. | Marker, annotation, flag |
 | Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item named by its label. | Entry index, content id |
-| Sidebar View | What the sidebar shows, chosen from the activity bar. Workspace zone (top): Workspace, Live, Playlists, Bookmarks, the Workspace or one part of it. App zone (bottom): Plugins, about the application rather than the Workspace. Built from a `SidebarView` value; its group sets where its button sits. | Panel, tab, page |
+| Sidebar View | What the sidebar shows, chosen from the activity bar. Workspace zone (top): Workspace, Live, Offline, Bookmarks, the Workspace or one part of it. App zone (bottom): Plugins, about the application rather than the Workspace. Built from a `SidebarView` value; its group sets where its button sits. | Panel, tab, page |
 | Content | What a Workspace Item resolves to: Seekable Video, Live Video, or Playlist Content. Rebuilt on every resolution, never saved. | Startup content, resolved item |
 | Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |
 | Viewer Widget | The `ViewerWidget` base class every Viewer extends: pane frame, header, pin and close, and the lifecycle contract. | Workspace widget, pane |

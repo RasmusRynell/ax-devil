@@ -21,9 +21,9 @@ from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
 from ax_devil.modules.chrome.tokens import reserve_line
 from ax_devil.modules.settings.config_manager import (
     ConfigManager,
+    default_hint,
     expand_environment_reference,
     integer_default,
-    is_environment_reference,
 )
 from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
@@ -35,23 +35,10 @@ from ax_devil.modules.workspace.ui.add_content.analytics_discovery import (
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 
 
-def _apply_env_hint(edit: QLineEdit, raw_value: str, resolved_value: str, *, mask: bool = False) -> None:
-    """Show the resolved default as placeholder text with its raw env binding.
-
-    When the user leaves the field empty the caller should fall back to
-    *resolved_value*.  If the value came from an env var, the placeholder
-    shows e.g. ``"172.20.1.1 (via $AX_DEVIL_TARGET_ADDR)"``.  Otherwise it
-    just shows the resolved value itself.
-
-    Set *mask* for password fields so the value displays as asterisks.
-    """
-    if not resolved_value:
-        return
-    display = "*" * len(resolved_value) if mask else resolved_value
-    if is_environment_reference(raw_value):
-        edit.setPlaceholderText(f"{display}  (via {raw_value})")
-    else:
-        edit.setPlaceholderText(display)
+def _apply_env_hint(edit: QLineEdit, raw_value: str, *, mask: bool = False) -> None:
+    """Show the default *raw_value* stands for as placeholder text; the caller falls back to it for an empty field."""
+    if hint := default_hint(raw_value, mask=mask):
+        edit.setPlaceholderText(hint)
 
 
 class AddLiveStreamDialog(BaseDialog):
@@ -96,7 +83,6 @@ class AddLiveStreamDialog(BaseDialog):
         raw_device_defaults = self._raw_defaults["device"]
         raw_live_defaults = self._raw_defaults["live_stream"]
         raw_mqtt_defaults = raw_live_defaults.get("analytics-mqtt", {}) or {}
-        device_defaults = self._defaults["device"]
         live_defaults = self._defaults["live_stream"]
         rtsp_defaults = live_defaults.get("rtsp", {}) or {}
         mqtt_defaults = live_defaults.get("analytics-mqtt", {}) or {}
@@ -113,7 +99,7 @@ class AddLiveStreamDialog(BaseDialog):
 
         self._host_edit = QLineEdit()
         self._host_edit.setPlaceholderText("e.g. 192.168.1.100")
-        hint(self._host_edit, str(raw_device_defaults.get("host", "")), device_defaults.get("host", ""))
+        hint(self._host_edit, str(raw_device_defaults.get("host", "")))
         self._host_edit.textChanged.connect(self._on_host_changed)
         connection_layout.addRow("Host", self._host_edit)
 
@@ -121,7 +107,6 @@ class AddLiveStreamDialog(BaseDialog):
         hint(
             self._username_edit,
             str(raw_device_defaults.get("username", "")),
-            device_defaults.get("username", ""),
         )
         connection_layout.addRow("Username", self._username_edit)
 
@@ -129,7 +114,6 @@ class AddLiveStreamDialog(BaseDialog):
         hint(
             self._password_edit,
             str(raw_device_defaults.get("password", "")),
-            device_defaults.get("password", ""),
             mask=True,
         )
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -190,7 +174,6 @@ class AddLiveStreamDialog(BaseDialog):
         hint(
             self._mqtt_host_edit,
             str(raw_mqtt_defaults.get("broker_host", "")),
-            mqtt_defaults.get("broker_host", ""),
         )
         mqtt_layout.addRow("MQTT Host", self._mqtt_host_edit)
 
@@ -198,7 +181,6 @@ class AddLiveStreamDialog(BaseDialog):
         hint(
             self._mqtt_username_edit,
             str(raw_mqtt_defaults.get("broker_username", "")),
-            mqtt_defaults.get("broker_username", ""),
         )
         mqtt_layout.addRow("MQTT Username", self._mqtt_username_edit)
 
@@ -206,7 +188,6 @@ class AddLiveStreamDialog(BaseDialog):
         hint(
             self._mqtt_password_edit,
             str(raw_mqtt_defaults.get("broker_password", "")),
-            mqtt_defaults.get("broker_password", ""),
             mask=True,
         )
         self._mqtt_password_edit.setEchoMode(QLineEdit.EchoMode.Password)

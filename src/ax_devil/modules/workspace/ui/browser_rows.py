@@ -1,4 +1,4 @@
-"""Content-browser row projection over Workspace items, their Content, consideration state, and open items.
+"""Sidebar row projection over Workspace items, their Content, consideration state, and open items.
 
 The rows also carry what every sidebar view shows of them, the action a row offers and whether it is idle, so the
 views render one look without deciding it again.
@@ -63,6 +63,26 @@ class BrowserSection(Enum):
         self.empty_text = empty_text
 
 
+HELD_SECTIONS = frozenset(section for section in BrowserSection if not section.addable)
+"""The sections of what the Workspace holds."""
+
+
+@dataclass(frozen=True, slots=True)
+class Facet:
+    """Something the Filter can hide rows by: a *value* in a *group*, such as Network Speaker under Type.
+
+    Rows with a facet *hidden_at_first* stay hidden until the user shows them.
+    """
+
+    group: str
+    value: str
+    hidden_at_first: bool = False
+
+
+LEFT_OUT = Facet("Playback", "Left out", hidden_at_first=True)
+"""The facet of a row left out of playback."""
+
+
 class RowAction(Enum):
     """The one action a row offers at its right: its button text, icon, hover text, and whether it is the main one."""
 
@@ -93,7 +113,7 @@ def _section_of(item: WorkspaceItem) -> BrowserSection:
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceBrowserRow:
-    """Explicit row data rendered by the content browser widget.
+    """Explicit row data rendered by every sidebar view's section tree.
 
     The projection resolves the final detail before publication; the second line, search, and accessibility use the
     same text. Hovering shows the row's facts, location, and state.
@@ -124,6 +144,16 @@ class WorkspaceBrowserRow:
     """What the Add action of a row for something the Workspace does not hold does: add it, or ask how."""
     idle: bool = False
     """Whether the row's thing is not running: a camera no viewer shows, or an item still loading."""
+    search_terms: str = ""
+    """More text the search matches beyond what the row shows, such as a found camera's serial number."""
+    facets: frozenset[Facet] = frozenset()
+    """What the Filter can hide the row by, besides being left out of playback."""
+
+    @property
+    def filter_facets(self) -> frozenset[Facet]:
+        """Return every facet the Filter can hide the row by: its own, and ``LEFT_OUT`` while it is left out."""
+        left_out = self.consideration_ref is not None and not self.is_considered
+        return self.facets | {LEFT_OUT} if left_out else self.facets
 
     @property
     def is_available(self) -> bool:
@@ -142,8 +172,8 @@ class WorkspaceBrowserRow:
 
     @property
     def search_text(self) -> str:
-        """Return the text the search field matches: the label and detail."""
-        return f"{self.label} {self.detail}"
+        """Return the text the search field matches: the label, detail and search terms."""
+        return " ".join(part for part in (self.label, self.detail, self.search_terms) if part)
 
     @property
     def tooltip(self) -> str:
@@ -453,7 +483,7 @@ def build_browser_sections(
     is_considered: Callable[[ConsiderationItemRef], bool],
     open_items: Set[OnScreenWorkspaceItem] = frozenset(),
 ) -> tuple[WorkspaceBrowserSection, ...]:
-    """Return the content-browser sections for the items' *resolutions*; an item that failed to resolve gets one row.
+    """Return the sidebar sections for the items' *resolutions*; an item that failed to resolve gets one row.
 
     *is_considered* answers whether a consideration item participates in navigation and layout; *open_items* are the
     items currently shown in a viewer.

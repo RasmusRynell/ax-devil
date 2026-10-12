@@ -350,7 +350,7 @@ class MainWindow(ChromeWindow):
             dialog.exec()
             restart = dialog.restart_requested
         self._workspace_session.refresh_recent_workspaces()
-        self._workspace_session.refresh_scan_range()
+        self._workspace_session.refresh_scan_defaults()
         if restart:
             restart_application(self)
 
@@ -376,7 +376,7 @@ class MainWindow(ChromeWindow):
                     self._logger.info(f"Added live stream: {result.item.display_name}")
 
     def _on_add_playlist(self, resolver_id: str | None = None) -> None:
-        """Handle File -> Add Playlist, or Add on a resolver in the Playlists view, which opens with *resolver_id*."""
+        """Handle File -> Add Playlist, or Add on a resolver in the Offline view, which opens with *resolver_id*."""
         from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 
         with AddPlaylistDialog(self._workspace_session.resolver, self, resolver_id=resolver_id) as dialog:

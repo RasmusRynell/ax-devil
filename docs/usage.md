@@ -27,6 +27,10 @@ Right-click an item to rename or remove it; an empty name returns to its default
 camera host. An item that cannot open, such as a missing file or a missing plugin, stays in the list with a warning
 icon; hover it for the reason. The details are in [Workspace](architecture/workspace.md#lifecycle).
 
+The Workspace, Live and Offline views have a search at the top, which matches what a row shows, and a **Filter**,
+which shows or hides rows by what they are, such as a found camera's type. Rows left out of playback start hidden;
+check **Left out** in the **Filter** to list them.
+
 ## Sidebar views
 
 You are always in a workspace. The strip along the left edge has two parts. The top buttons are the workspace: the
@@ -34,13 +38,21 @@ first shows everything in it, and the others show one part of it, with their own
 application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
 
 - **Live** lists the workspace's cameras with **Connect** and **Disconnect**; a camera is connected while its viewer is
-  open. **Scan settings**, at the bottom, takes the IP addresses to search: addresses and ranges such as
-  `192.168.1.0/24`, separated by commas. **Rescan** looks for Axis cameras there, only when you press it, or on the
-  local network when the field is empty. **Add** puts a found camera in the workspace with the **Settings → Stream
-  defaults**. **Add manually** opens the Add Live Stream dialog, as **File → Add Live Stream** does.
-- **Playlists** lists the workspace's playlists. **Rescan** reads a playlist's folders again, for example after adding
-  files; open viewers keep what they show. **Add from** lists the playlist resolvers, including those from plugins;
-  **Add** opens the Add Playlist dialog with that resolver chosen.
+  open. Right-click a camera for the same menu as in the Workspace view, such as **Rename** and **Remove**. The search
+  matches found cameras also by serial number and firmware, and the cameras in the workspace too once a scan found
+  them, which then show what it learned on hover. **Sort** orders the cameras the scan found, and **Filter** narrows
+  them by type and sign-in. **Scan settings**, at the bottom, takes the IP addresses to search: addresses
+  and ranges such as `192.168.1.0/24`, separated by commas. **Rescan** looks for Axis cameras there, only when you
+  press it, or on this computer's `/24` network when the field is empty, and lists each camera as soon as it answers.
+  With **Sign in to found cameras**, the scan also signs in, with the username and password you enter or else the
+  **Settings → Stream defaults**, to read more such as the SoC and to tell whether the credentials work. They go only
+  to devices that answered as Axis devices, and only as an HTTP Digest answer, never as a plain password.
+  **Add** puts a found camera in the workspace with the **Settings → Stream defaults**, and with the scan's credentials
+  when they signed in to it. **Add manually** opens the Add Live Stream dialog, as **File → Add Live Stream** does.
+- **Offline** lists the workspace's data from files: its videos, with or without overlays, and its playlists.
+  **Rescan** reads a playlist's folders again, for example after adding files; open viewers keep what they show.
+  **Add from** lists the playlist resolvers, including those from plugins; **Add** opens the Add Playlist dialog with
+  that resolver chosen.
 - **Bookmarks** lists the frames you marked in local videos and playlists, grouped by video or playlist entry.
   **View → Add Bookmark** (`M`) marks the frame on screen. Click a bookmark to open it paused at its frame; right-click
   to rename it, change its kind (Note, Issue, Example, Question) or remove it. The chips and the search filter the

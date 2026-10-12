@@ -18,21 +18,18 @@ flowchart TD
     WorkspaceLifecycle --> WorkspaceStore
     WorkspaceSession --> ApplicationWindow["ApplicationWindow<br/>central widget"]
     WorkspaceSession --> WorkspaceController["WorkspaceController<br/>UI coordinator"]
-    WorkspaceSession --> ContentBrowser["ContentBrowserWidget<br/>workspace tree"]
 
     ApplicationWindow --> ActivityBar["ActivityBar<br/>left-edge icon strip"]
     ApplicationWindow --> HorizontalSplitter["QSplitter<br/>sidebar + center"]
     HorizontalSplitter --> SidebarPanel["SidebarPanel<br/>one SidebarView at a time"]
-    SidebarPanel --> WorkspaceView["WorkspaceView<br/>start panel or content tree"]
-    WorkspaceView --> StartPanel["StartPanel<br/>open actions, recent workspaces"]
-    WorkspaceView --> ContentBrowser
-    SidebarPanel --> SourceViews["LiveView, PlaylistsView"]
+    SidebarPanel --> SectionsViews["SectionsView: WorkspaceView,<br/>LiveView, OfflineView"]
+    SectionsViews --> StartPanel["StartPanel<br/>Workspace view while empty"]
     SidebarPanel --> BookmarksView
     HorizontalSplitter --> SplitView["SplitView<br/>viewer widget host"]
 
     WorkspaceController --> SplitView
     WorkspaceController --> WorkspaceStore
-    WorkspaceController --> ContentBrowser
+    WorkspaceController --> SectionsViews
 
     SplitView --> LeafContainer["LeafContainer<br/>one viewer widget per leaf"]
     LeafContainer --> ViewerWidget["ViewerWidget<br/>base class"]
@@ -59,17 +56,17 @@ flowchart TD
 
 - `ItemResolver` and `WorkspaceStore`
 - `WorkspaceLifecycle`
-- `ContentBrowserWidget`
 - `SplitView`
 - `ApplicationWindow`
 - `WorkspaceController`
+- the Workspace, Live and Offline views with their controllers
 
 Callers use the session to add Workspace Items (`add_items`, `add_resolved`, `open_files`), reach the workspace
 lifecycle (`session.lifecycle`), route to the focused widget, configure shortcuts, and tear down. The lifecycle
 — the kept workspace, the Save / Don't Save question, and recent workspaces — is described in
 [Workspace](workspace.md#lifecycle). The session re-emits the store's
 `state_changed`, and `MainWindow` sets its window title from `workspace_name` and `is_modified`, and its custom `TitleBar` follows the
-window title, so the name and the unsaved mark sit at the top whichever sidebar view is on screen. The store, browser, split view, and controller are composed implementation details rather than
+window title, so the name and the unsaved mark sit at the top whichever sidebar view is on screen. The store, views, split view, and controller are composed implementation details rather than
 separate session APIs.
 
 `ApplicationWindow` is the static central shell. It lays out the `ActivityBar`, the `SidebarPanel`, and `SplitView` in the center area. It owns only whether the sidebar shows, how wide it is and which view is on screen, not workspace state, teardown, or viewer behavior. The sidebar shows unless the user hid it with **View → Sidebar** (`Ctrl+\`), by clicking the button of the view on screen, or by dragging it closed; it always appears at the width the user last dragged it to. `ApplicationWindow` accepts desktop file drags that contain a video and emits `files_dropped`; the session pairs the files into `VideoFileSelection`s, turns them into Video Items, and asks for the data handler in a prefilled Add Video dialog only when several decoders may read the overlay. Pane drags carry their own MIME type and are accepted by `LeafContainer` before they reach this widget.
@@ -88,9 +85,9 @@ The window is always in a Workspace. The activity bar has two zones, set apart b
 
 | View | Zone | Group | Shows |
 |------|------|-------|-------|
-| Workspace | Workspace | Workspace | Everything the Workspace holds (`WorkspaceView`: the start panel while empty, else the content browser). |
+| Workspace | Workspace | Workspace | Everything the Workspace holds (`WorkspaceView`: the start panel while empty). |
 | Live | Workspace | Sources | The Workspace's cameras with Connect and Disconnect, and cameras found by a scan of an IP range on request. |
-| Playlists | Workspace | Sources | The Workspace's playlists with Rescan, and the playlist resolvers that can add more. |
+| Offline | Workspace | Sources | The Workspace's videos and playlists, and the playlist resolvers that can add more. |
 | Bookmarks | Workspace | Review | The moments marked in local videos and playlists, with each target's review state. |
 | Plugins | App | App | What loaded, what failed, and adding, updating, removing and reloading plugins. |
 
@@ -104,27 +101,32 @@ zone, and the `APP` group is the app zone, at the bottom of the bar above the ap
 button of the view on screen hides the sidebar; any other button shows that view.
 
 Views follow one pattern. The widget is thin: it renders plain data it is given and emits signals. A controller beside
-it (`LiveViewController`, `PlaylistsViewController`, the bookmarks controller) reads `WorkspaceController.sections()`
-and follows `sections_changed`, the same rows the content browser shows, acts through `WorkspaceController`, and
-changes items through `WorkspaceStore`. Views of part of the Workspace never read the store directly or reach into the
-content browser. The widgets are built from the chrome kit (`ViewPanel`, `SectionCaption`, `ListRow`, `SmallButton`,
-`Chip`, `Banner`) so spacing, text size and theme follow the rest of the app.
+it reads `WorkspaceController.sections()` and follows `sections_changed`, acts through `WorkspaceController`, and
+changes items through `WorkspaceStore`; views never read the store directly. The widgets are built from the chrome kit
+(`ViewPanel`, `SectionCaption`, `ListRow`, `SmallButton`, `Chip`, `Banner`) so spacing, text size and theme follow
+the rest of the app.
+
+The Workspace, Live and Offline views are one `SectionsView` (`sections_view.py`) each, fed by one
+`SectionsViewController` (`sections_view_controller.py`); a view is the Workspace's sections of the kinds it is about,
+plus what its concept adds. Workspace shows every section the Workspace holds (`HELD_SECTIONS`) and nothing it does
+not hold. Live and Offline show their kinds, and their controllers (`LiveViewController`, `OfflineViewController`)
+compose what is their own into them: cameras a scan found, what the scan learned about held cameras, and playlist
+resolvers, whose Add runs the row's `add`. Their buttons, such as the scan settings, stay theirs.
 
 Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Connect,
 Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
 (`section_tree.py`) lists sections of them under captions that fold on a click, building a row's widget only once
-its parent is expanded.
-The content browser, Live and Playlists each show one `SectionTree`, which `WorkspaceController.connect_tree` serves,
-so a row behaves the same in all three: a double-click opens it, its action runs through `perform_row_action`, and its
-eye includes or excludes it. Live and Playlists are `SectionsView`s (`sections_view.py`): a header summary over the
-tree, plus their own extras. Their controllers add rows for things the Workspace does not hold, cameras a scan found
-and playlist resolvers, whose Add runs the row's `add`.
+its parent is expanded. `WorkspaceController.connect_tree` serves every view's tree, so a row behaves the same in all
+of them: a double-click opens it, its action runs through `perform_row_action`, its eye includes or excludes it, and
+its right-click menu (owned by `SectionTree`) opens, renames and removes it.
 
 ## Workspace Controller
 
-`WorkspaceController` coordinates UI behavior between `ContentBrowserWidget`, `WorkspaceStore`, `SplitView`, and open `ViewerWidget` instances.
+`WorkspaceController` coordinates UI behavior between the sidebar views, `WorkspaceStore`, `SplitView`, and open `ViewerWidget` instances.
 
-It owns browser synchronization: Workspace mutations refresh the browser rows projected by `build_browser_sections` (`workspace/ui/browser_rows.py`), and browser intents are routed back to Workspace state or viewer behavior.
+It owns the rows: Workspace mutations publish the rows projected by `build_browser_sections`
+(`workspace/ui/browser_rows.py`) through `sections_changed`, and row intents are routed back to Workspace state or
+viewer behavior.
 
 Opening from the browser has two placements: replace the preview pane (`SplitView.replace_or_open`) or split the
 focused pane and open pinned (`SplitView.open_to_side`).
