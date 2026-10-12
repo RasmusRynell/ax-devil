@@ -259,7 +259,7 @@ class QuickSetupDialog(BaseDialog):
     refit_on_text_size = False  # picking a text size here must not resize the dialog; it opens with room for them all
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent=parent, title="Quick Setup", modal=True, scroll_content=False)
+        super().__init__(parent=parent, title="Quick Setup", modal=True)
         self._main_layout.setContentsMargins(Space.XL, Space.M, Space.XL, Space.M)
         self._settings = GlobalSettings()
         self._config = ConfigManager()

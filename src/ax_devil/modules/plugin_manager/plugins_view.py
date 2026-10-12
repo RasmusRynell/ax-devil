@@ -29,10 +29,9 @@ from ax_devil.modules.plugin_manager.catalog import (
     Reads,
     Section,
     current_catalog,
-    plugin_catalog,
 )
 from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChanges
-from ax_devil.modules.plugin_system import ApplicationPluginLoader, RuntimePluginRegistry
+from ax_devil.modules.plugin_system import ApplicationPluginLoader, PluginStatus, RuntimePluginRegistry
 
 PLUGINS_VIEW_ID = "plugins"
 
@@ -69,11 +68,6 @@ _LOOKS = {
     Section.BUILT_IN: _Look(Icon.PLUGIN, _muted, KindColor.MUTED.color),
 }
 _RESOLVER_LOOK = {section: _Look(Icon.PLAYLIST, look.color, look.mark) for section, look in _LOOKS.items()}
-
-
-def _failed_warning(groups: tuple[PluginGroup, ...]) -> str:
-    failed = sum(len(group.entries) for group in groups if group.section is Section.FAILED)
-    return f"{failed} failed to load" if failed else ""
 
 
 class PluginsView(ViewPanel):
@@ -144,13 +138,14 @@ class PluginsView(ViewPanel):
 
     def warning(self) -> str:
         """Return how many plugins failed to load, or an empty string when none did; reads no files."""
-        return _failed_warning(plugin_catalog(RuntimePluginRegistry.list_plugins(), {}, lambda _name: None))
+        failed = sum(record.status is PluginStatus.FAILED for record in RuntimePluginRegistry.list_plugins())
+        return f"{failed} failed to load" if failed else ""
 
     def refresh(self) -> None:
         """Read the plugins again and list them."""
         self._groups = self._catalog()
         self._render()
-        self.warning_changed.emit(_failed_warning(self._groups))
+        self.warning_changed.emit(self.warning())
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """List the plugins as they are now, including failures recorded since the view was last shown."""
