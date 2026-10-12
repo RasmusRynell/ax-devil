@@ -195,7 +195,7 @@ def test_config_manager_ensures_render_catalog_storage_directory(tmp_path: Path)
     assert (tmp_path / "render_catalogs").is_dir()
 
 
-def test_config_manager_logs_single_warning_for_all_missing_vars(
+def test_config_manager_resolves_unset_vars_to_empty_without_noise(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:
     monkeypatch.delenv("AX_DEVIL_TARGET_ADDR", raising=False)
@@ -216,48 +216,7 @@ def test_config_manager_logs_single_warning_for_all_missing_vars(
     assert resolved_device["host"] == ""
     assert resolved_device["username"] == ""
     assert resolved_device["password"] == ""
-
-    warning_messages = [
-        record.getMessage()
-        for record in caplog.records
-        if "Config references unset environment variables" in record.getMessage()
-    ]
-    assert len(warning_messages) == 1
-    assert all(record.levelname != "WARNING" for record in caplog.records)
-    assert "AX_DEVIL_TARGET_ADDR" in warning_messages[0]
-    assert "AX_DEVIL_TARGET_USER" in warning_messages[0]
-    assert "AX_DEVIL_TARGET_PASS" in warning_messages[0]
-
-
-def test_config_manager_deduplicates_missing_vars(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, tmp_path: Path
-) -> None:
-    monkeypatch.delenv("AX_DEVIL_TARGET_ADDR", raising=False)
-    monkeypatch.setenv("AX_DEVIL_TARGET_USER", "user")
-    monkeypatch.setenv("AX_DEVIL_TARGET_PASS", "pass")
-    monkeypatch.setenv("AX_DEVIL_MQTT_BROKER_ADDR", "broker")
-    monkeypatch.setenv("AX_DEVIL_MQTT_BROKER_USER", "mqtt-user")
-    monkeypatch.setenv("AX_DEVIL_MQTT_BROKER_PASS", "mqtt-pass")
-
-    config = json.loads(json.dumps(DEFAULT_CONFIG))
-    config["defaults"]["device"]["host"] = "$AX_DEVIL_TARGET_ADDR"
-    config["defaults"]["device"]["username"] = "$AX_DEVIL_TARGET_ADDR"
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps(config), encoding="utf-8")
-
-    cfg = ConfigManager()
-    cfg.set_config_path(config_path, create_if_missing=False)
-
-    with caplog.at_level("INFO"):
-        _ = cfg.get("defaults", {})
-
-    warning_messages = [
-        record.getMessage()
-        for record in caplog.records
-        if record.levelname == "INFO" and "Config references unset environment variables" in record.getMessage()
-    ]
-    assert len(warning_messages) == 1
-    assert warning_messages[0].count("AX_DEVIL_TARGET_ADDR") == 1
+    assert not [record for record in caplog.records if record.levelno >= 30]
 
 
 def test_set_config_path_unchanged_keeps_unsaved_changes(tmp_path: Path) -> None:

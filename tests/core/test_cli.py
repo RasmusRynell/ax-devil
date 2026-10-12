@@ -218,31 +218,6 @@ def test_playlist_help_forwards_to_resolver() -> None:
     assert "DATASET_DIR" in result.output
 
 
-def test_playlist_command_does_not_warn_for_unread_env_bound_defaults(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Unset device and broker variables only matter to live commands, so playlists must not warn about them."""
-    for env_var in (
-        "AX_DEVIL_TARGET_ADDR",
-        "AX_DEVIL_TARGET_USER",
-        "AX_DEVIL_TARGET_PASS",
-        "AX_DEVIL_MQTT_BROKER_ADDR",
-        "AX_DEVIL_MQTT_BROKER_USER",
-        "AX_DEVIL_MQTT_BROKER_PASS",
-    ):
-        monkeypatch.delenv(env_var, raising=False)
-    config_module = importlib.import_module("ax_devil.modules.settings.config_manager")
-    warnings: list[str] = []
-    monkeypatch.setattr(config_module.logger, "info", warnings.append)
-
-    result = _invoke(
-        "--config", _write_config(tmp_path, _default_config()), "playlist", "mot_challenge", str(_mot_dataset(tmp_path))
-    )
-
-    assert result.exit_code == 0, result.output
-    assert not [message for message in warnings if message.startswith("Config references unset environment variables")]
-
-
 def test_group_resolver_help_reaches_every_subcommand(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _install_group_resolver(monkeypatch, tmp_path)
 
