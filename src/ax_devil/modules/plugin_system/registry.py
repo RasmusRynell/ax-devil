@@ -93,9 +93,17 @@ class RuntimePluginRegistry:
         origin: str,
         error_message: str,
     ) -> None:
-        """Record a failed plugin import."""
+        """Record a failed plugin import.
+
+        A failure whose id is already taken by a failure from another origin is kept under ``id (origin)``, so every
+        broken package stays listed.
+        """
         plugins = cls._plugins_by_type.setdefault(plugin_type, {})
-        if plugin_id in plugins:
+        existing = plugins.get(plugin_id)
+        if existing is not None and existing.status is PluginStatus.FAILED and existing.origin != origin:
+            plugin_id = f"{plugin_id} ({origin})"
+            existing = plugins.get(plugin_id)
+        if existing is not None:
             logger.warning(f"Refusing to overwrite existing plugin record for failed plugin {plugin_type}:{plugin_id}")
             return
 

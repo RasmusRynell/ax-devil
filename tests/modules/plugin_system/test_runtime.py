@@ -286,6 +286,20 @@ def test_a_package_whose_plugins_fail_is_warned_about_once(
     assert len(warnings) == 1 and "2 plugin(s) from package:suite" in warnings[0]
 
 
+def test_failures_sharing_a_plugin_id_are_all_kept(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(WARNING, logger="ax_devil.ax_devil.modules.plugin_system.loader")
+    _load_installed(
+        monkeypatch,
+        decoders=[_entry_point(FutureApi, distribution="one"), _entry_point(FutureApi, distribution="two")],
+    )
+
+    failed = [r for r in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE) if r.status is PluginStatus.FAILED]
+    assert sorted(r.origin for r in failed) == ["package:one", "package:two"]
+    assert len([m for m in caplog.messages if "failed to load" in m]) == 2
+
+
 def test_valid_plugin_replaces_failed_same_id(monkeypatch: pytest.MonkeyPatch) -> None:
     _load_installed(
         monkeypatch,
