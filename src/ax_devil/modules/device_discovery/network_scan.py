@@ -7,6 +7,7 @@ Axis devices, and only as HTTP Digest answers, never as a plain password: the sc
 
 from __future__ import annotations
 
+import copy
 import errno
 import ipaddress
 import math
@@ -59,7 +60,7 @@ class Login:
     @staticmethod
     def save(config: ConfigManager, logins: Iterable[Login]) -> None:
         """Make *logins* the ones the network scan tries, and save the config."""
-        defaults = config.get_raw("defaults")
+        defaults = copy.deepcopy(config.get_raw("defaults"))  # So a failed save leaves the live config untouched.
         defaults["network_scan"]["credentials"] = Login.config_value(logins)
         config.set("defaults", defaults)
         config.save()
@@ -213,7 +214,7 @@ def scan_network(
 
     def work() -> None:
         while not finished.is_set() and (job := pending.get()) is not None:
-            camera = _identify(*job, logins)
+            camera = _identify(*job, logins, finished)
             with lock:
                 if camera is not None and not finished.is_set():
                     cameras.append(camera)
@@ -279,7 +280,9 @@ def _open_ports(hosts: Sequence[str]) -> dict[str, set[int]]:
     return found
 
 
-def _identify(host: str, ports: Collection[int], logins: Sequence[Login]) -> DiscoveredCamera | None:
+def _identify(
+    host: str, ports: Collection[int], logins: Sequence[Login], cancelled: threading.Event
+) -> DiscoveredCamera | None:
     """Return the Axis device at *host* from what it gives without login, signed in to with the first of *logins* it
     accepts, or ``None`` if no Axis device answers."""
     for port, make in _PORT_CONFIGS.items():
@@ -301,20 +304,34 @@ def _identify(host: str, ports: Collection[int], logins: Sequence[Login]) -> Dis
         except Exception as exc:  # Anything on the range can answer, in any shape; none of that is an Axis device.
             logger.debug(f"Network scan could not identify {host} over {config.protocol.value}: {exc}")
             continue
-        return _signed_in(camera, partial(make, host), logins) if logins else camera
+        if not logins:
+            return camera
+        secure = _PORT_CONFIGS[443] if 443 in ports else make  # Credentials go over HTTPS whenever the device has it.
+        return _signed_in(camera, partial(secure, host), logins, cancelled)
     return None
 
 
-def _signed_in(camera: DiscoveredCamera, make: Callable[[str, str], Any], logins: Sequence[Login]) -> DiscoveredCamera:
+def _signed_in(
+    camera: DiscoveredCamera, make: Callable[[str, str], Any], logins: Sequence[Login], cancelled: threading.Event
+) -> DiscoveredCamera:
     """Return *camera* with what signing in through configs from *make* tells, with the first of *logins* it accepts.
+
+    A login whose username expands to nothing is skipped, and no login is sent once *cancelled* is set.
 
     A login the device turns away for now, as Axis devices do after failed attempts, is tried again after a wait. Any
     other failure ends the attempt, so a broken device is not asked again and again.
     """
     refusals = 0
+    tried = False
     for login in logins:
+        username = expand_environment_reference(login.username)
+        if not username:
+            continue
+        tried = True
         for wait in (*_RATE_LIMIT_RETRY_SECONDS, None):
-            config = make(expand_environment_reference(login.username), expand_environment_reference(login.password))
+            if cancelled.is_set():
+                return camera
+            config = make(username, expand_environment_reference(login.password))
             config.timeout = _REQUEST_TIMEOUT_SECONDS
             config.auth_method = AuthMethod.DIGEST
             try:
@@ -329,8 +346,8 @@ def _signed_in(camera: DiscoveredCamera, make: Callable[[str, str], Any], logins
                 if wait is None or not _rate_limited(exc, refusals):
                     logger.debug(f"Network scan could not sign in to {camera.host}: {exc}")
                     return replace(camera, sign_in=SignIn.FAILED)
-                time.sleep(wait)
-    return replace(camera, sign_in=SignIn.REFUSED)
+                cancelled.wait(wait)
+    return replace(camera, sign_in=SignIn.REFUSED) if tried else camera
 
 
 def _rate_limited(error: Exception, refusals: int) -> bool:

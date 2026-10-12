@@ -513,6 +513,17 @@ def test_up_to_five_logins_show_at_once_and_more_scroll(qtbot: QtBot, count: int
     assert (scroll.verticalScrollBar().maximum() > 0) is scrolls
 
 
+def test_an_empty_login_list_takes_no_room(qtbot: QtBot) -> None:
+    editor = LoginsEditor([Login("root", "pass")])
+    qtbot.addWidget(editor)
+
+    editor.set_logins(())
+
+    scroll = editor.findChild(QScrollArea)
+    assert scroll is not None
+    assert scroll.height() == 0
+
+
 def test_right_click_remove_takes_a_camera_out_of_the_workspace(live: _Live) -> None:
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
     live.press("Entrance")

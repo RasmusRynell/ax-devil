@@ -168,6 +168,34 @@ def test_refused_credentials_still_list_the_device(serve: Callable[..., _Device]
     )
 
 
+def test_a_login_whose_username_is_an_unset_variable_is_never_sent(
+    serve: Callable[..., _Device], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    device = serve(axis=True)
+    monkeypatch.delenv("AX_DEVIL_TEST_UNSET_USER", raising=False)
+
+    [camera] = scan_network(targets=["127.0.0.1"], logins=[Login("$AX_DEVIL_TEST_UNSET_USER", "x")])
+
+    assert camera.sign_in is SignIn.NOT_TRIED
+    assert device.authorizations == []
+
+
+def test_no_login_is_sent_once_the_scan_is_cancelled(serve: Callable[..., _Device]) -> None:
+    device = serve(axis=True)
+    cancelled = threading.Event()
+    cancelled.set()
+
+    camera = network_scan._signed_in(
+        DiscoveredCamera("127.0.0.1", "m", "s"),
+        lambda user, password: DeviceConfig.http("127.0.0.1", user, password, port=device.port),
+        [Login("root", "secret")],
+        cancelled,
+    )
+
+    assert camera.sign_in is SignIn.NOT_TRIED
+    assert device.authorizations == []
+
+
 def test_another_web_server_is_not_listed_and_does_not_hide_the_axis_one(serve: Callable[..., _Device]) -> None:
     serve(axis=False)
     assert scan_network(targets=["127.0.0.1"]) == []

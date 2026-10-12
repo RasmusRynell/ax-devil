@@ -63,6 +63,7 @@ class LoginsEditor(QWidget):
         self._rows = []
         for login in logins:
             self._add_row(login)
+        self._fit_rows()
 
     def _fit_rows(self) -> None:
         """Make the list as high as its rows, up to five."""

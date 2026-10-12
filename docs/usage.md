@@ -81,7 +81,8 @@ window. Playback shortcuts can be changed in **Settings → General**.
 
 ## Live cameras
 
-New connections use the credentials, overlay mode, and decoder from **Settings → Stream defaults**;
+New connections use the credentials from **Settings → Stream defaults** and the overlay mode and decoder from
+**Settings → Analytics**;
 `ax-devil live --help` lists explicit overrides.
 
 By default, credentials come from environment variables, which keeps them out of the configuration file:
@@ -96,7 +97,7 @@ export AX_DEVIL_TARGET_ADDR=192.168.1.100 AX_DEVIL_TARGET_USER=root AX_DEVIL_TAR
 ax-devil live
 ```
 
-Any **Stream defaults** text field accepts a `$VARIABLE` reference in place of a value. Command-line options override
+Any **Stream defaults** or **Analytics** text field accepts a `$VARIABLE` reference in place of a value. Command-line options override
 both.
 
 DataHub defaults to HTTPS/WSS with certificate verification disabled: traffic is encrypted, but the device

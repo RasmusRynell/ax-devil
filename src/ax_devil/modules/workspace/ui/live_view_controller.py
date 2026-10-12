@@ -233,9 +233,16 @@ class LiveViewController(QObject):
 
     def _save_logins(self, logins: tuple[Login, ...]) -> None:
         """Keep the logins the user edited in the view as the ones scans try, shared with Settings."""
-        if logins != self._logins:
-            self._logins = logins
+        if logins == self._logins:
+            return
+        try:
             Login.save(ConfigManager(), logins)
+        except Exception as exc:
+            logger.warning(f"Could not save the network scan logins: {exc}")
+            if self._view is not None:
+                self._view.set_logins(self._logins)
+            return
+        self._logins = logins
 
     def _on_found(self, camera: DiscoveredCamera) -> None:
         if self._found is not None and self._scanning:
