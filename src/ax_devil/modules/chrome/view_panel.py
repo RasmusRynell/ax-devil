@@ -77,9 +77,8 @@ class ViewPanel(QWidget):
         """Append *widget* to the body, across its full width; with a *stretch*, it takes the room left over."""
         self.body.addWidget(widget, stretch)
 
-    def add_padded(self, widget: QWidget, *, top: int = Space.M, bottom: int = Space.S, index: int = -1) -> QWidget:
-        """Append *widget* to the body, or put it at *index*, with the side margins rows have, and *top* and *bottom*
-        room.
+    def add_padded(self, widget: QWidget, *, top: int = Space.M, bottom: int = Space.S) -> QWidget:
+        """Append *widget* to the body with the side margins rows have, and *top* and *bottom* room.
 
         Return the padding around it, which is what to hide to hide the widget with its room. The padding and the plain
         containers in it let the panel's background through.
@@ -90,7 +89,7 @@ class ViewPanel(QWidget):
         layout.setContentsMargins(Space.M, top, Space.M, bottom)
         layout.setSpacing(Space.M)
         layout.addWidget(widget, 1)
-        self.body.insertWidget(index, holder)
+        self.body.addWidget(holder)
         return holder
 
     def add_stretch(self) -> None:

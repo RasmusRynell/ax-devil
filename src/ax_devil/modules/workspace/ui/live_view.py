@@ -1,9 +1,8 @@
-"""The Live view: search, sort and filter over the cameras in the workspace and on the network, then the settings of
-the network scan."""
+"""The Live view: the cameras in the workspace and on the network, with their order, then the settings of the network
+scan."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from enum import Enum
 
 from PySide6.QtCore import Signal
@@ -22,8 +21,6 @@ from ax_devil.modules.device_discovery.network_scan import DeviceOrder
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
 LIVE_VIEW_ID = "live"
-Facet = tuple[str, str]
-"""A group a found camera can be filtered by, and its value there, such as ``("Type", "Network Camera")``."""
 
 
 class ScanStatus(Enum):
@@ -36,27 +33,19 @@ class ScanStatus(Enum):
 
 
 class LiveView(SectionsView):
-    """Search, sort and filter, the sections it is given, then Add manually and the scan settings; it decides nothing
-    itself.
+    """The sections it is given, with a Sort beside the search, then Add manually and the scan settings; it decides
+    nothing itself.
 
     ``scan_requested`` carries the IP range as typed, ``add_manually_requested`` that the user wants to enter a
-    camera's details, ``search_changed`` the search text, ``order_chosen`` the ``DeviceOrder`` picked, and
-    ``hidden_facets_changed`` the set of facets whose found cameras the user hid.
+    camera's details, and ``order_chosen`` the ``DeviceOrder`` picked.
     """
 
     scan_requested = Signal(str)
     add_manually_requested = Signal()
-    search_changed = Signal(str)
     order_chosen = Signal(object)  # DeviceOrder
-    hidden_facets_changed = Signal(object)  # frozenset[Facet]
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(LIVE_VIEW_ID, "Live", Icon.LIVE_VIDEO, parent)
-        self._search = QLineEdit(self)
-        self._search.setPlaceholderText("Search cameras")
-        self._search.setClearButtonEnabled(True)
-        self._search.addAction(Icon.SEARCH.icon(), QLineEdit.ActionPosition.LeadingPosition)
-        self._search.textChanged.connect(self.search_changed)
+        super().__init__(LIVE_VIEW_ID, "Live", Icon.LIVE_VIDEO, search_placeholder="Search cameras", parent=parent)
         order_menu = QMenu(self)
         orders = QActionGroup(order_menu)
         for order in DeviceOrder:
@@ -67,20 +56,7 @@ class LiveView(SectionsView):
             action.triggered.connect(lambda _checked=False, order=order: self.order_chosen.emit(order))
         sort = MenuButton("Sort", order_menu)
         sort.setToolTip("The order of the cameras found on the network")
-        self._filter_menu = QMenu(self)
-        self._filter = MenuButton("Filter", self._filter_menu)
-        self._filter.setToolTip("Show or hide found cameras by type and sign-in")
-        self._filter.setEnabled(False)
-        self._filter_groups: tuple[tuple[str, tuple[str, ...]], ...] = ()
-        self._hidden: set[Facet] = set()
-        toolbar = QWidget(self)
-        toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(Space.S)
-        toolbar_layout.addWidget(self._search, 1)
-        toolbar_layout.addWidget(sort)
-        toolbar_layout.addWidget(self._filter)
-        self.add_padded(toolbar, top=Space.S, bottom=Space.XS, index=0)
+        self.add_tool(sort)
 
         add_manually = SmallButton("Add manually", Icon.ADD)
         add_manually.clicked.connect(self.add_manually_requested)
@@ -92,7 +68,7 @@ class LiveView(SectionsView):
         self._sign_in = QCheckBox("Sign in to found cameras", self)
         self._sign_in.setToolTip(
             "Read more about each camera, and add it with the credentials that worked.\n"
-            "They go only to Axis devices, over HTTPS or as an HTTP Digest answer."
+            "They go only to Axis devices, over HTTPS, or as an HTTP Digest answer."
         )
         TextRole.SMALL.apply(self._sign_in)
         self._username = QLineEdit(self)
@@ -163,37 +139,6 @@ class LiveView(SectionsView):
     def scan_login(self) -> tuple[str, str] | None:
         """Return the username and password as typed, empty where left to the defaults, or None without sign-in."""
         return (self._username.text(), self._password.text()) if self._sign_in.isChecked() else None
-
-    def set_filter_choices(self, facets: Sequence[Facet]) -> None:
-        """Offer to hide found cameras by *facets*, grouped, in each group that has a choice to make."""
-        values: dict[str, list[str]] = {}
-        for group, value in facets:
-            values.setdefault(group, []).append(value)
-        groups = tuple(
-            (group, tuple(names))
-            for group, names in values.items()
-            # A group with one value is no choice, unless the user hid it and needs to show it again.
-            if len(names) > 1 or any((group, name) in self._hidden for name in names)
-        )
-        if groups == self._filter_groups:
-            return
-        self._filter_groups = groups
-        self._filter_menu.clear()
-        for group, names in groups:
-            self._filter_menu.addSection(group)
-            for name in names:
-                action = self._filter_menu.addAction(name)
-                action.setCheckable(True)
-                action.setChecked((group, name) not in self._hidden)
-                action.toggled.connect(lambda shown, facet=(group, name): self._show_facet(facet, shown))
-        self._filter.setEnabled(bool(groups))
-
-    def _show_facet(self, facet: Facet, shown: bool) -> None:
-        if shown:
-            self._hidden.discard(facet)
-        else:
-            self._hidden.add(facet)
-        self.hidden_facets_changed.emit(frozenset(self._hidden))
 
     def set_scan_status(self, status: ScanStatus, reason: str = "") -> None:
         """Show *status* under the scan settings, with *reason* on hover; the button waits while a scan runs."""

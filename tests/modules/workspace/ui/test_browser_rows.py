@@ -1,4 +1,4 @@
-"""Tests for the content-browser row projection."""
+"""Tests for the sidebar row projection."""
 
 from __future__ import annotations
 

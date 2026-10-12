@@ -1,4 +1,4 @@
-"""The Playlists view: the playlists in the workspace, and the resolvers that can add more."""
+"""The Offline view: the workspace's data from files, its videos and playlists, and the resolvers that add playlists."""
 
 from __future__ import annotations
 
@@ -11,16 +11,16 @@ from ax_devil.modules.chrome.list_row import muted_label
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
-PLAYLISTS_VIEW_ID = "playlists"
+OFFLINE_VIEW_ID = "offline"
 
 
-class PlaylistsView(SectionsView):
+class OfflineView(SectionsView):
     """The sections it is given, with a note on where more resolvers come from; ``shown`` reports it came on screen."""
 
     shown = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(PLAYLISTS_VIEW_ID, "Playlists", Icon.PLAYLIST, parent)
+        super().__init__(OFFLINE_VIEW_ID, "Offline", Icon.VIDEO, search_placeholder="Search files", parent=parent)
         self.add_padded(muted_label("More resolvers come from plugins."), top=Space.S, bottom=Space.M)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802

@@ -18,7 +18,6 @@ from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Sig
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem, Workspace, WorkspaceItem
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
@@ -147,7 +146,7 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
     scans.hold = True
     store = WorkspaceStore(resolutions)
     center = SplitView()
-    workspace = WorkspaceController(store, ContentBrowserWidget(), center, render_catalog_manager)
+    workspace = WorkspaceController(store, center, render_catalog_manager)
     host = QWidget()  # Holds the view, so a test can delete the view alone.
     qtbot.addWidget(host)
     view = LiveView(host)
@@ -260,6 +259,18 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: _Live, monk
 
     assert list(live.rows())[2:] == []
     assert "No new cameras" in live.texts()
+
+
+def test_a_held_camera_the_scan_found_shows_and_is_found_by_what_the_scan_learned(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
+
+    _scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "ACCC8E000001", "11.11.73"))
+
+    hover = row(live.view.tree, "Entrance").toolTip()
+    assert all(fact in hover for fact in ("AXIS Q1656", "ACCC8E000001", "11.11.73"))
+    assert "AXIS Q1656" not in row(live.view.tree, "192.0.2.11").toolTip()
+    live.search("q1656")
+    assert list(live.rows()) == ["Entrance"]
 
 
 def test_add_puts_the_camera_in_the_workspace_with_the_stream_defaults(

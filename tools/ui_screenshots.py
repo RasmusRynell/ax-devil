@@ -411,8 +411,8 @@ def test_screenshots(
     )
 
     def tree_items() -> list[QTreeWidgetItem]:
-        """Return every row of the content browser, depth first."""
-        iterator = QTreeWidgetItemIterator(session._content_browser.tree)
+        """Return every row of the Workspace view, depth first."""
+        iterator = QTreeWidgetItemIterator(session._workspace_view.tree)
         items = []
         while (item := iterator.value()) is not None:
             if item.data(0, ROW_ROLE) is not None:
@@ -446,7 +446,7 @@ def test_screenshots(
         for size_name, size in WINDOW_SIZES.items():
             window.resize(*size)
             suffix = "" if size_name == "wide" else f"-{size_name}"
-            for view_id in ("live", "playlists", "bookmarks", "plugins"):
+            for view_id in ("live", "offline", "bookmarks", "plugins"):
                 session.show_sidebar_view(view_id)
                 qtbot.wait(500)
                 window.grab().save(str(OUT / f"{theme}-{text_size.value}-view-{view_id}{suffix}.png"))

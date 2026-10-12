@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from functools import partial
 
 from PySide6.QtCore import QObject, Signal
@@ -20,12 +20,14 @@ from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import WorkspaceItem, live_stream_item_from_defaults
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
+    Facet,
     RowAction,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
-from ax_devil.modules.workspace.ui.live_view import Facet, LiveView, ScanStatus
+from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
+from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
@@ -82,26 +84,61 @@ def _network_row_id(camera: DiscoveredCamera) -> str:
 
 def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceBrowserRow:
     """Return the row of a *camera* the scan found, named by its model with its address and sign-in under it, whose
-    Add does *add*; what else the scan learned shows on hover, and the search finds it by."""
+    Add does *add*; what else the scan learned shows on hover, the search finds it by, and the Filter can hide it by."""
     signed = (camera.sign_in.label,) if camera.sign_in is not SignIn.NOT_TRIED else ()
-    platform = " · ".join(part for part in (camera.architecture, camera.soc) if part)
-    facts = (
-        f"Serial {camera.serial}" if camera.serial else "",
-        f"Firmware {camera.firmware}" if camera.firmware else "",
-        camera.product_type,
-        f"Up {camera.uptime}" if camera.uptime else "",
-        platform,
-    )
     return WorkspaceBrowserRow(
         row_id=_network_row_id(camera),
         label=camera.model or camera.host,
         icon_kind="live_video",
         detail=" · ".join((camera.host, *signed)) if camera.model else " · ".join(signed),
-        facts=("Camera on the network", *(fact for fact in facts if fact)),
+        facts=("Camera on the network", *_camera_facts(camera)),
         action=RowAction.ADD,
         add=add,
-        search_terms=" ".join((camera.host, camera.serial, camera.firmware, camera.product_type, platform)),
+        search_terms=_camera_search_terms(camera),
+        facets=frozenset(Facet(group, value) for group, value in camera.facets),
     )
+
+
+def _with_scan(row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera]) -> WorkspaceBrowserRow:
+    """Return the row of a camera the workspace holds with what a scan learned about it, as a found camera shows it."""
+    camera = next((found[host] for host in row.item.hosts if host in found), None) if row.item is not None else None
+    if camera is None:
+        return row
+    facts = (camera.model, *_camera_facts(camera)) if camera.model else _camera_facts(camera)
+    return replace(row, facts=(*row.facts, *facts), search_terms=_camera_search_terms(camera))
+
+
+def _camera_facts(camera: DiscoveredCamera) -> tuple[str, ...]:
+    """Return the lines a camera's row shows on hover of what a scan learned about it."""
+    facts = (
+        f"Serial {camera.serial}" if camera.serial else "",
+        f"Firmware {camera.firmware}" if camera.firmware else "",
+        camera.product_type,
+        f"Up {camera.uptime}" if camera.uptime else "",
+        _platform(camera),
+    )
+    return tuple(fact for fact in facts if fact)
+
+
+def _camera_search_terms(camera: DiscoveredCamera) -> str:
+    """Return what the search finds a camera's row by of what a scan learned about it."""
+    parts = (camera.host, camera.model, camera.serial, camera.firmware, camera.product_type, _platform(camera))
+    return " ".join(part for part in parts if part)
+
+
+def _platform(camera: DiscoveredCamera) -> str:
+    return " · ".join(part for part in (camera.architecture, camera.soc) if part)
+
+
+def _connected(sections: Sections) -> str:
+    """Return how many of the workspace's cameras *sections* list as connected, or nothing for none."""
+    count = sum(
+        row.action is RowAction.DISCONNECT
+        for section in sections
+        if section.kind is BrowserSection.LIVE
+        for row in section.rows
+    )
+    return f"{count} connected" if count else ""
 
 
 def _add_camera(store: WorkspaceStore, camera: DiscoveredCamera, login: tuple[str, str]) -> None:
@@ -124,9 +161,9 @@ class LiveViewController(QObject):
     *workspace* carries out what the rows ask for, the right-click menu included. Nothing touches the network until the
     user asks for a scan of the IP range in the view, which starts as the Settings' default and searches the local
     network when empty, signing in when the view asks to; *scan* runs through *resolver* away from the GUI thread, and
-    what it finds is dropped once the view is gone. The search matches every row; the order and the filter apply to
-    the found cameras. A found camera's Add puts it in *store* with the user's stream defaults, and with the
-    credentials that signed in to it.
+    what it finds is dropped once the view is gone. A camera the workspace holds shows what the scan learned about it
+    as a found camera does; the order applies to the found cameras. A found camera's Add puts it in *store* with the
+    user's stream defaults, and with the credentials that signed in to it.
     """
 
     def __init__(
@@ -140,7 +177,6 @@ class LiveViewController(QObject):
     ) -> None:
         super().__init__(parent)
         self._view: LiveView | None = view
-        self._workspace = workspace
         self._store = store
         self._resolver = resolver
         self._scan = scan
@@ -152,18 +188,12 @@ class LiveViewController(QObject):
         self._finds: _Finds | None = None
         self._scanning = False
         self._order = DeviceOrder.ADDRESS
-        self._hidden: frozenset[Facet] = frozenset()
-        self._filtered_out: frozenset[str] = frozenset()  # Row ids of found cameras the filter hides.
-        self._query = ""
-        workspace.connect_tree(view.tree)
         view.scan_requested.connect(self.scan)
-        view.search_changed.connect(self._search)
         view.order_chosen.connect(self._sort)
-        view.hidden_facets_changed.connect(self._filter)
         view.destroyed.connect(self._forget_view)
-        workspace.sections_changed.connect(self._show)
-        self._apply_filter()
-        self._show(workspace.sections())
+        self._listing = SectionsViewController(
+            view, workspace, {BrowserSection.LIVE}, compose=self._with_found, summary=_connected
+        )
 
     def refresh_defaults(self) -> None:
         """Give the view the Settings' default IP range, unless the user has typed another in its field, and the
@@ -193,7 +223,7 @@ class LiveViewController(QObject):
         self._scanning = True
         self._found = ()
         self._view.set_scan_status(ScanStatus.SCANNING)
-        self._show(self._workspace.sections())
+        self._refresh()
         finds = self._finds = _Finds()
         finds.found.connect(self._on_found)
         scan = self._scan
@@ -206,7 +236,7 @@ class LiveViewController(QObject):
     def _on_found(self, camera: DiscoveredCamera) -> None:
         if self._found is not None and self._scanning:
             self._found += (camera,)
-            self._show(self._workspace.sections())
+            self._refresh()
 
     def _on_scanned(self, outcome: _ScanOutcome) -> None:
         self._scanning = False
@@ -217,50 +247,30 @@ class LiveViewController(QObject):
             return
         self._view.set_scan_status(ScanStatus.IDLE)
         self._found = outcome.cameras
-        self._show(self._workspace.sections())
-
-    def _search(self, text: str) -> None:
-        self._query = text.strip().casefold()
-        self._apply_filter()
+        self._refresh()
 
     def _sort(self, order: DeviceOrder) -> None:
         self._order = order
-        self._show(self._workspace.sections())
+        self._refresh()
 
-    def _filter(self, hidden: frozenset[Facet]) -> None:
-        self._hidden = hidden
-        self._show(self._workspace.sections())
+    def _refresh(self) -> None:
+        if self._view is not None:
+            self._listing.refresh()
 
-    def _show(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
-        """Show the Live section, how many of its cameras are connected, and the cameras found that the workspace
-        does not hold, in the chosen order, filtered and searched."""
-        if self._view is None:
-            return
-        shown = tuple(section for section in sections if section.kind is BrowserSection.LIVE)
-        connected = sum(row.action is RowAction.DISCONNECT for section in shown for row in section.rows)
-        if self._found is not None:
-            held = _workspace_hosts(self._store.workspace.items)
-            cameras = [camera for camera in self._order.sorted(self._found) if camera.host not in held]
-            found = tuple(
-                _network_row(camera, partial(_add_camera, self._store, camera, self._login)) for camera in cameras
-            )
-            shown += (WorkspaceBrowserSection(BrowserSection.NETWORK, found),)
-            self._view.set_filter_choices(sorted({facet for camera in self._found for facet in camera.facets}))
-            self._filtered_out = frozenset(
-                _network_row_id(camera) for camera in cameras if self._hidden.intersection(camera.facets)
-            )
-        self._view.set_sections(shown, f"{connected} connected" if connected else "")
-
-    def _apply_filter(self) -> None:
-        """Have the tree hide the found cameras the filter leaves out, now and whenever it rebuilds, and while
-        searching, the rows that do not match."""
-        if self._view is None:
-            return
-        query = self._query
-        self._view.tree.set_filter(
-            lambda row: row.row_id not in self._filtered_out,
-            (lambda row: query in row.search_text.casefold()) if query else None,
+    def _with_found(self, held: Sections) -> Sections:
+        """Return *held* with what the scan learned about its cameras, then the cameras found that the workspace does
+        not hold, in the chosen order; only *held* before any scan."""
+        if self._found is None:
+            return held
+        by_host = {camera.host: camera for camera in self._found}
+        held = tuple(replace(section, rows=tuple(_with_scan(row, by_host) for row in section.rows)) for section in held)
+        hosts = _workspace_hosts(self._store.workspace.items)
+        found = tuple(
+            _network_row(camera, partial(_add_camera, self._store, camera, self._login))
+            for camera in self._order.sorted(self._found)
+            if camera.host not in hosts
         )
+        return (*held, WorkspaceBrowserSection(BrowserSection.NETWORK, found))
 
     def _forget_view(self) -> None:
         self._view = None

@@ -37,7 +37,6 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
@@ -45,6 +44,7 @@ from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.modules.workspace.ui.split_view import LeafContainer, SplitView
 from ax_devil.modules.workspace.ui.workspace_prompts import WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
+from ax_devil.modules.workspace.ui.workspace_view import WorkspaceView
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.widgets import required_child
 from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, content_item, inline_resolver
@@ -70,8 +70,8 @@ def _center(session: WorkspaceSession) -> SplitView:
     return center
 
 
-def _browser(session: WorkspaceSession) -> ContentBrowserWidget:
-    browser = session.widget().findChild(ContentBrowserWidget)
+def _browser(session: WorkspaceSession) -> WorkspaceView:
+    browser = session.widget().findChild(WorkspaceView)
     assert browser is not None
     return browser
 
@@ -586,19 +586,19 @@ def _sidebar_splitter(workspace_session: WorkspaceSession) -> QSplitter:
 
 
 def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspace_session: WorkspaceSession) -> None:
-    """The sidebar shows the start panel while empty and the content browser with content; the user can hide it."""
+    """The sidebar shows the start panel while empty and the workspace's rows with content; the user can hide it."""
     window = workspace_session.widget()
     window.resize(1200, 700)
     window.show()
     QCoreApplication.processEvents()
     splitter = _sidebar_splitter(workspace_session)
-    sidebar = workspace_session._workspace_view
-    assert window.is_sidebar_shown() and sidebar.showing_start_panel()
+    start_panel = workspace_session._start_panel
+    assert window.is_sidebar_shown() and start_panel.isVisible()
 
     with patch(_OFFLINE_VIEWER, DummyViewer):
         workspace_session.add_items([content_item(_make_video("a"))])
     QCoreApplication.processEvents()
-    assert window.is_sidebar_shown() and not sidebar.showing_start_panel()
+    assert window.is_sidebar_shown() and not start_panel.isVisible()
     width = splitter.sizes()[0]
     assert 0 < width < 1200 // 2
 
