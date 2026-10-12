@@ -131,7 +131,6 @@ class Application:
         assert self.main_window is not None
         if not GlobalSettings().quick_setup_done:
             self.main_window.show_quick_setup()
-        self.main_window.report_failed_plugins()
         if self.open_catalog_viewer:
             self.main_window.show_catalog_viewer()
 

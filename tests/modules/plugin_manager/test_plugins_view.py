@@ -26,6 +26,7 @@ from ax_devil.modules.plugin_system import (
     FileToSceneDecoderDefinition,
     PluginRecord,
     PluginStatus,
+    RuntimePluginRegistry,
 )
 
 
@@ -128,6 +129,46 @@ def test_the_view_lists_failed_installed_and_built_in_plugins(qtbot: QtBot, reco
         ("mot-extra", ""),
     ]
     assert not _banner_shown(view)
+
+
+def test_the_view_warns_while_a_plugin_has_failed_to_load(
+    qtbot: QtBot, records: list[PluginRecord], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
+    view = PluginsView(
+        PluginChanges(FakeInstaller()), lambda: plugin_catalog(records, SELECTION, lambda _: None), lambda: None
+    )
+    qtbot.addWidget(view)
+
+    with qtbot.waitSignal(view.warning_changed) as failed:
+        view.refresh()
+    records.pop()
+    with qtbot.waitSignal(view.warning_changed) as healthy:
+        view.refresh()
+
+    assert (failed.args, healthy.args) == (["1 failed to load"], [""])
+
+
+def test_the_initial_warning_comes_from_loaded_plugins_without_reading_the_catalog(
+    qtbot: QtBot, records: list[PluginRecord], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
+    unread = Mock(side_effect=AssertionError("the plugin selection must not be read at startup"))
+    view = PluginsView(PluginChanges(FakeInstaller()), unread, lambda: None)
+    qtbot.addWidget(view)
+
+    assert view.warning() == "1 failed to load"
+
+
+def test_the_warning_counts_every_failed_plugin_of_a_package(
+    qtbot: QtBot, records: list[PluginRecord], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    records.append(_record("old-two", "package:old-model-decoder", error="requires plugin API 1, host provides 2"))
+    monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
+    view = PluginsView(PluginChanges(FakeInstaller()), lambda: (), lambda: None)
+    qtbot.addWidget(view)
+
+    assert view.warning() == "2 failed to load"
 
 
 def test_updating_a_plugin_disables_changes_until_it_is_done_and_then_offers_a_restart(

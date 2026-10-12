@@ -96,7 +96,6 @@ def is_environment_reference(value: str) -> bool:
 
 def _resolve_runtime_value(value: Any, *, expand_user_paths: bool) -> Any:
     """Return a runtime projection with ``$VARIABLE_NAME`` references, and ``~`` folders when asked, expanded."""
-    missing_env_vars: set[str] = set()
 
     def _resolve_nested(current: Any) -> Any:
         if isinstance(current, dict):
@@ -108,7 +107,7 @@ def _resolve_runtime_value(value: Any, *, expand_user_paths: bool) -> Any:
                 env_var = current[1:]
                 current = os.getenv(env_var, "")
                 if not current:
-                    missing_env_vars.add(env_var)
+                    logger.debug(f"Env var ${env_var} is unset; using an empty value")
                     return ""
                 logger.debug(f"Resolved env var ${env_var}")
             if expand_user_paths and current.startswith("~"):
@@ -116,14 +115,7 @@ def _resolve_runtime_value(value: Any, *, expand_user_paths: bool) -> Any:
                 return str(Path(current).expanduser().resolve(strict=False))
         return current
 
-    resolved_value = _resolve_nested(value)
-    if missing_env_vars:
-        missing_env_var_list = ", ".join(sorted(missing_env_vars))
-        logger.warning(
-            f"Config references unset environment variables ({missing_env_var_list}). "
-            "Using empty strings for those values."
-        )
-    return resolved_value
+    return _resolve_nested(value)
 
 
 def expand_environment_reference(value: str) -> str:
@@ -184,7 +176,7 @@ def _unsupported_config_key_paths(config: Mapping[str, Any]) -> tuple[str, ...]:
 
 
 def _warn_for_unsupported_keys(config: Mapping[str, Any]) -> None:
-    """Log a single concise warning when unsupported keys are present."""
+    """Log a single concise line when unsupported keys are present."""
     unsupported_paths = _unsupported_config_key_paths(config)
     if not unsupported_paths:
         return
@@ -192,7 +184,7 @@ def _warn_for_unsupported_keys(config: Mapping[str, Any]) -> None:
     displayed_paths = unsupported_paths[:MAX_UNSUPPORTED_CONFIG_PATHS_TO_LOG]
     remaining_count = len(unsupported_paths) - len(displayed_paths)
     suffix = f" (+{remaining_count} more)" if remaining_count > 0 else ""
-    logger.warning(
+    logger.debug(
         "Config contains unsupported keys that are preserved but ignored by this version: "
         f"{', '.join(displayed_paths)}{suffix}"
     )

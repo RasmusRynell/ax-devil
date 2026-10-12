@@ -164,14 +164,23 @@ class BaseDialog(QDialog):
         super().setVisible(visible)
 
     def _fit_to_content(self, *, center: bool) -> None:
-        metrics = self.fontMetrics()
         fit_window(
             self,
             self.opening_size_hint(),
             center=center,
             parent_size_fraction=None,
-            maximum_size=QSize(120 * metrics.averageCharWidth(), 48 * metrics.lineSpacing()),
+            maximum_size=self._maximum_opening_size(),
+            screen_margin=self._screen_margin(),
         )
+
+    def _maximum_opening_size(self) -> QSize | None:
+        """Return the comfortable opening-size cap, or None when content should use all available space."""
+        metrics = self.fontMetrics()
+        return QSize(120 * metrics.averageCharWidth(), 48 * metrics.lineSpacing())
+
+    def _screen_margin(self) -> int:
+        """Return the breathing room to reserve around an opening dialog."""
+        return self.fontMetrics().height()
 
     def _refit_to_text_size(self) -> None:
         """Resize a shown dialog to its opening size for the new text size, once Qt has relaid out its content."""

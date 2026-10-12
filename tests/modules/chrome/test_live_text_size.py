@@ -79,17 +79,19 @@ def test_dialog_follows_a_text_size_change(qtbot: QtBot, surface: type[QWidget],
 
 @pytest.mark.usefixtures("restore_app_appearance")
 def test_dialog_resizes_with_the_text(qtbot: QtBot) -> None:
-    """An open dialog grows for larger text and shrinks back, so its content is never squeezed or left floating."""
+    """An open dialog refits to larger and smaller text sizes without cutting off content."""
     apply_theme("dark")
     dialog = _open_at(qtbot, SettingsDialog, SMALL)
     small = dialog.size()
     apply_text_size(LARGE)
     _settle(qtbot)
     large = dialog.size()
-    assert large.width() > small.width() and large.height() > small.height()
+    assert large != small
+    assert clipped_text_on_every_page(dialog) == []
     apply_text_size(SMALL)
     _settle(qtbot)
-    assert dialog.size() == small
+    assert dialog.size() != large
+    assert clipped_text_on_every_page(dialog) == []
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

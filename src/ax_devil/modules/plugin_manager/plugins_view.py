@@ -31,7 +31,7 @@ from ax_devil.modules.plugin_manager.catalog import (
     current_catalog,
 )
 from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChanges
-from ax_devil.modules.plugin_system import ApplicationPluginLoader
+from ax_devil.modules.plugin_system import ApplicationPluginLoader, PluginStatus, RuntimePluginRegistry
 
 PLUGINS_VIEW_ID = "plugins"
 
@@ -74,10 +74,11 @@ class PluginsView(ViewPanel):
     """List the plugins by section and run plugin changes; the list is read again whenever the view is shown.
 
     Changes apply when the app restarts: once one succeeds, a banner offers the restart, which ``restart_requested``
-    asks the window for.
+    asks the window for. ``warning_changed`` carries what to flag on the view's button: the failed plugins, or empty.
     """
 
     restart_requested = Signal()
+    warning_changed = Signal(str)
 
     def __init__(
         self,
@@ -125,12 +126,26 @@ class PluginsView(ViewPanel):
 
     def sidebar_view(self) -> SidebarView:
         """Return this view as an application view of the sidebar."""
-        return SidebarView(PLUGINS_VIEW_ID, "Plugins", Icon.PLUGIN, ViewGroup.APP, self)
+        return SidebarView(
+            PLUGINS_VIEW_ID,
+            "Plugins",
+            Icon.PLUGIN,
+            ViewGroup.APP,
+            self,
+            warning=self.warning,
+            warning_changed=self.warning_changed,
+        )
+
+    def warning(self) -> str:
+        """Return how many plugins failed to load, or an empty string when none did; reads no files."""
+        failed = sum(record.status is PluginStatus.FAILED for record in RuntimePluginRegistry.list_plugins())
+        return f"{failed} failed to load" if failed else ""
 
     def refresh(self) -> None:
         """Read the plugins again and list them."""
         self._groups = self._catalog()
         self._render()
+        self.warning_changed.emit(self.warning())
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """List the plugins as they are now, including failures recorded since the view was last shown."""

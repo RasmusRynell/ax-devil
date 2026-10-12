@@ -151,7 +151,7 @@ class DataHubWebSocketClient:
         self._session = session
         try:
             if self._protocol == "https":
-                logger.warning(
+                logger.info(
                     "DataHub HTTPS/WSS certificate verification is disabled; use this tool only on trusted networks."
                 )
             token_url = f"{self._protocol}://{self._host}/axis-cgi/wssession.cgi"

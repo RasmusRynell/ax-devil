@@ -51,6 +51,7 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   **Add** installs a package, wheel or folder; the `…` menu of an installed plugin updates or removes it; the reload
   button next to **Add** loads plugins again.
   Installs, updates and removals apply after a restart, which a banner offers. **Debug → Plug-ins** also opens it.
+  A small warning triangle appears on the button's icon while a plugin has failed to load.
 
 ## Video and overlays
 

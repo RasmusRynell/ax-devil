@@ -7,18 +7,16 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.configuration_preferences import save_overlay_preference
 from ax_devil.modules.application_shell.restart import restart_application
 from ax_devil.modules.catalog_viewer import close_catalog_viewer, show_catalog_viewer
-from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.diagnostics.metrics_store import metrics_enabled, set_metrics_enabled
 from ax_devil.modules.plugin_manager.plugins_view import PLUGINS_VIEW_ID, PluginsView
-from ax_devil.modules.plugin_system import PluginStatus, RuntimePluginRegistry
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
@@ -456,27 +454,6 @@ class MainWindow(ChromeWindow):
     def show_plugins(self) -> None:
         """Show the Plugins view in the sidebar."""
         self._workspace_session.show_sidebar_view(PLUGINS_VIEW_ID)
-
-    def report_failed_plugins(self) -> None:
-        """Show one dialog listing plug-ins that failed to load, if any."""
-        failed = [record for record in RuntimePluginRegistry.list_plugins() if record.status is PluginStatus.FAILED]
-        if not failed:
-            return
-
-        with BaseDialog(parent=self, title="Plug-ins failed to load") as dialog:
-            label = QLabel("\n".join(f"{record.definition.plugin_id}: {record.error}" for record in failed))
-            label.setTextFormat(Qt.TextFormat.PlainText)
-            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            label.setWordWrap(True)
-            dialog.add_content_widget(label)
-
-            def show_plugins() -> None:
-                dialog.accept()
-                self.show_plugins()
-
-            dialog.add_button("Show Plug-ins", show_plugins)
-            dialog.add_standard_buttons(include_cancel=False)
-            dialog.exec()
 
     def _on_metrics_toggled(self, enabled: bool) -> None:
         """Turn debug metrics collection on or off."""
