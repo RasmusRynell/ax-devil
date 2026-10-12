@@ -68,7 +68,7 @@ class LiveView(SectionsView):
         self._sign_in = QCheckBox("Sign in to found cameras", self)
         self._sign_in.setToolTip(
             "Read more about each camera, and add it with the credentials that worked.\n"
-            "They go only to Axis devices, over HTTPS, or as an HTTP Digest answer."
+            "They go only to Axis devices, and only as an HTTP Digest answer."
         )
         TextRole.SMALL.apply(self._sign_in)
         self._username = QLineEdit(self)

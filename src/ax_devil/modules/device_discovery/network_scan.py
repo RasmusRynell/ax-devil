@@ -263,9 +263,9 @@ def _identify(host: str, ports: Collection[int], username: str, password: str) -
 
 
 def _signed_in(camera: DiscoveredCamera, config: Any) -> DiscoveredCamera:
-    """Return *camera* with what signing in through *config* tells; over HTTP, only a Digest answer is sent."""
-    if config.protocol is not Protocol.HTTPS:
-        config.auth_method = AuthMethod.DIGEST
+    """Return *camera* with what signing in through *config* tells; only a Digest answer is sent, since the scan
+    cannot verify any device's certificate."""
+    config.auth_method = AuthMethod.DIGEST
     try:
         with Client(config) as client:
             info: Mapping[str, Any] = client.device.get_info_auth()

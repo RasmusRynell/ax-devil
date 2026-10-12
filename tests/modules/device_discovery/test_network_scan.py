@@ -113,7 +113,7 @@ def test_an_axis_device_is_found_with_what_it_gives_without_login(serve: Callabl
     assert cameras[0].uptime == "1d 2h"
 
 
-def test_signing_in_reads_more_and_sends_only_a_digest_answer_over_http(serve: Callable[..., _Device]) -> None:
+def test_signing_in_reads_more_and_sends_only_a_digest_answer(serve: Callable[..., _Device]) -> None:
     device = serve(axis=True)
 
     [camera] = scan_network(targets=["127.0.0.1"], username="root", password="secret")

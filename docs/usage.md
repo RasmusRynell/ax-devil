@@ -46,7 +46,7 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   press it, or on this computer's `/24` network when the field is empty, and lists each camera as soon as it answers.
   With **Sign in to found cameras**, the scan also signs in, with the username and password you enter or else the
   **Settings → Stream defaults**, to read more such as the SoC and to tell whether the credentials work. They go only
-  to devices that answered as Axis devices, over HTTPS, or over HTTP as a Digest answer, never as a plain password.
+  to devices that answered as Axis devices, and only as an HTTP Digest answer, never as a plain password.
   **Add** puts a found camera in the workspace with the **Settings → Stream defaults**, and with the scan's credentials
   when they signed in to it. **Add manually** opens the Add Live Stream dialog, as **File → Add Live Stream** does.
 - **Offline** lists the workspace's data from files: its videos, with or without overlays, and its playlists.
