@@ -4,17 +4,47 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QPainter, QPaintEvent
 from PySide6.QtWidgets import QFrame, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
+from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Space
 
 _ICON_STROKE = 1.75  # A little heavier than the default, so the small icons stay crisp on the bar.
 _GROUP_ORDER = tuple(ViewGroup)
+_BADGE_SCALE = 0.6  # The warning badge's side, as a share of the icon's.
+
+
+class _BarButton(QToolButton):
+    """A button that can carry a small badge on the lower right corner of its icon."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._badge: QIcon | None = None
+
+    def set_badge(self, badge: QIcon | None) -> None:
+        """Show *badge* over the icon, or nothing."""
+        self._badge = badge
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Draw the button, then its badge."""
+        super().paintEvent(event)
+        if self._badge is None:
+            return
+        icon = self.iconSize()
+        side = round(icon.width() * _BADGE_SCALE)
+        corner = self.rect().center() + QPoint(icon.width() // 2, icon.height() // 2)
+        badge_rect = QRect(0, 0, side, side)
+        badge_rect.moveCenter(corner - QPoint(side // 4, side // 4))
+        painter = QPainter(self)
+        self._badge.paint(painter, badge_rect)
+        painter.end()
 
 
 class ActivityBar(QWidget):
@@ -23,6 +53,7 @@ class ActivityBar(QWidget):
     Views are grouped by their ``ViewGroup``, a rule between groups, in the groups' order; the ``APP`` group sits at
     the bottom above the actions. The button of the view on screen is checked, which the owner reports through
     ``set_current_view``; a click on any view button is reported as ``view_requested`` and changes nothing else.
+    A view with a warning shows a small warning triangle on its icon, and the warning in its tooltip.
     """
 
     view_requested = Signal(str)  # view_id
@@ -31,8 +62,9 @@ class ActivityBar(QWidget):
         super().__init__(parent)
         self.setObjectName("AxDevilActivityBar")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._views: list[tuple[SidebarView, QToolButton]] = []
-        self._action_buttons: list[QToolButton] = []
+        self._views: list[tuple[SidebarView, _BarButton]] = []
+        self._warnings: dict[str, str] = {}
+        self._action_buttons: list[_BarButton] = []
         self._dividers: list[QFrame] = []
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, Space.XS, 0, Space.XS)
@@ -54,6 +86,9 @@ class ActivityBar(QWidget):
         button = self._new_button(view.icon, view.title, lambda: self.view_requested.emit(view.view_id))
         button.setCheckable(True)
         self._views.append((view, button))
+        self._set_warning(view, button, view.warning())
+        if view.warning_changed is not None:
+            view.warning_changed.connect(lambda warning: self._set_warning(view, button, warning))
         self._arrange_views()
         return button
 
@@ -73,8 +108,8 @@ class ActivityBar(QWidget):
         """Return the button of the view with *view_id*."""
         return next(button for view, button in self._views if view.view_id == view_id)
 
-    def _new_button(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> QToolButton:
-        button = QToolButton(self)
+    def _new_button(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> _BarButton:
+        button = _BarButton(self)
         button.setAutoRaise(True)
         button.setIcon(icon.icon(stroke=_ICON_STROKE))
         button.setToolTip(tooltip)
@@ -82,6 +117,20 @@ class ActivityBar(QWidget):
         button.clicked.connect(lambda _checked=False: activate())
         self._size_button(button)
         return button
+
+    def _set_warning(self, view: SidebarView, button: _BarButton, warning: str) -> None:
+        self._warnings[view.view_id] = warning
+        self._show_look(view, button)
+
+    def _show_look(self, view: SidebarView, button: _BarButton) -> None:
+        """Give *button* the view's title, with a warning badge and the warning while the view has one."""
+        warning = self._warnings.get(view.view_id, "")
+        if warning:
+            button.set_badge(Icon.WARNING.icon(StatusColor.WARNING.color(self.palette()), stroke=2.5))
+            button.setToolTip(f"{view.title}: {warning}")
+        else:
+            button.set_badge(None)
+            button.setToolTip(view.title)
 
     def _arrange_views(self) -> None:
         """Lay the view buttons out by group, with a rule between the groups of each column."""
@@ -118,6 +167,8 @@ class ActivityBar(QWidget):
     def _apply_appearance(self) -> None:
         for button in (*(button for _, button in self._views), *self._action_buttons):
             self._size_button(button)
+        for view, button in self._views:
+            self._show_look(view, button)
         palette = self.palette()
         text = palette.ColorRole.WindowText
         border = palette_color_css(palette, palette.ColorRole.Mid, alpha=0.5)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Generator
 from importlib import metadata
 from logging import WARNING
@@ -168,6 +169,11 @@ def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.Mon
     ("plugin", "reason"),
     [
         pytest.param(ImportError("No module named 'missing'"), "entry-point discovery failed", id="import-error"),
+        pytest.param(
+            ImportError("cannot import name 'Gone'", name="ax_devil.modules.workspace"),
+            "incompatible with this ax-devil version: cannot import name 'Gone'",
+            id="host-name-missing",
+        ),
         pytest.param(object, "PLUGIN_CLASS missing or invalid", id="not-a-plugin"),
         pytest.param(UndeclaredApi, "must explicitly declare required_api_version", id="undeclared-api"),
         pytest.param(BrokenApiDeclaration, "plugin validation failed: broken API declaration", id="raising-api"),
@@ -233,6 +239,24 @@ def test_registration_failure_is_recorded_under_the_plugin_id(monkeypatch: pytes
     record = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "external-resolver")
     assert record.status is PluginStatus.FAILED
     assert record.error == "registration failed"
+
+
+def test_a_builtin_that_fails_to_import_is_listed_as_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A broken built-in shows in the Plugins view like any other failed plugin, and the rest still load."""
+    import_module = importlib.import_module
+
+    def broken_mot(name: str) -> Any:
+        if name.endswith("decoders.mot.plugin"):
+            raise ImportError("mot is broken")
+        return import_module(name)
+
+    monkeypatch.setattr(importlib, "import_module", broken_mot)
+    _load_installed(monkeypatch)
+
+    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "mot")
+    assert (record.status, record.origin) == (PluginStatus.FAILED, "builtin")
+    assert record.error is not None and "mot is broken" in record.error
+    assert any(r.status is PluginStatus.LOADED for r in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE))
 
 
 def test_valid_plugin_replaces_failed_same_id(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QObject, QPoint, Qt, Signal
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
@@ -21,6 +21,10 @@ from ax_devil.modules.workspace.ui.split_view import SplitView
 
 def _view(view_id: str, group: ViewGroup) -> SidebarView:
     return SidebarView(view_id, view_id.title(), Icon.INFO, group, QLabel(view_id))
+
+
+class _WarningSource(QObject):
+    warning = Signal(str)
 
 
 @pytest.fixture
@@ -93,6 +97,34 @@ def test_showing_a_view_reveals_a_hidden_sidebar(window: ApplicationWindow) -> N
     assert not window.is_sidebar_shown()
     window.show_view("workspace")
     assert window.is_sidebar_shown() and window.activity_bar().view_button("workspace").isChecked()
+
+
+def test_a_view_warning_shows_in_its_button_tooltip_until_it_is_cleared(qtbot: QtBot) -> None:
+    bar = ActivityBar()
+    qtbot.addWidget(bar)
+    source = QLabel()
+    signal_owner = _WarningSource()
+    bar.add_view(
+        SidebarView("plugins", "Plugins", Icon.PLUGIN, ViewGroup.APP, source, warning_changed=signal_owner.warning)
+    )
+    button = bar.view_button("plugins")
+    bar.show()
+    plain = button.grab().toImage()
+
+    signal_owner.warning.emit("2 failed to load")
+    assert button.toolTip() == "Plugins: 2 failed to load"
+    assert button.grab().toImage() != plain  # The warning triangle is drawn on the icon.
+
+    signal_owner.warning.emit("")
+    assert button.toolTip() == "Plugins"
+    assert button.grab().toImage() == plain
+
+
+def test_a_view_that_already_has_a_warning_when_added_shows_it(qtbot: QtBot) -> None:
+    bar = ActivityBar()
+    qtbot.addWidget(bar)
+    bar.add_view(SidebarView("plugins", "Plugins", Icon.PLUGIN, ViewGroup.APP, QLabel(), warning=lambda: "1 failed"))
+    assert bar.view_button("plugins").toolTip() == "Plugins: 1 failed"
 
 
 def test_a_second_view_with_the_same_id_is_refused(qtbot: QtBot) -> None:

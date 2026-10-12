@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 
+from PySide6.QtCore import SignalInstance
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.chrome.icons import Icon
@@ -36,7 +38,9 @@ class ViewGroup(Enum):
 class SidebarView:
     """A view the sidebar can show: what its button looks like, where it sits, and the widget it shows.
 
-    The owner of the concept builds the widget; the window only hosts it. Views have a unique *view_id*.
+    The owner of the concept builds the widget; the window only hosts it. Views have a unique *view_id*. A view that
+    can need attention gives a *warning* that returns what to show on its button, empty for none, and a
+    *warning_changed* signal that fires when that changes.
     """
 
     view_id: str
@@ -44,3 +48,5 @@ class SidebarView:
     icon: Icon
     group: ViewGroup
     widget: QWidget
+    warning: Callable[[], str] = lambda: ""
+    warning_changed: SignalInstance | None = None

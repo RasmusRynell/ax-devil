@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 from dataclasses import dataclass
+from logging import DEBUG
 from pathlib import Path
 from typing import Any, cast
 
@@ -106,14 +107,10 @@ class ApplicationPluginLoader:
                 origin = cls._entrypoint_origin(entrypoint)
                 plugin_cls = entrypoint.load()
             except Exception as exc:
-                logger.exception(f"Failed to load plugin entry point {plugin_id_hint!r}: {exc}")
-                RuntimePluginRegistry.mark_failed(
-                    family.plugin_type,
-                    plugin_id_hint,
-                    entrypoint_path,
-                    origin,
-                    f"entry-point discovery failed: {exc}",
-                )
+                reason = f"entry-point discovery failed: {exc}"
+                if isinstance(exc, ImportError) and (exc.name or "").startswith("ax_devil."):
+                    reason = f"incompatible with this ax-devil version: {exc}"
+                cls._fail(family, plugin_id_hint, entrypoint_path, origin, reason, exc)
                 continue
 
             cls._register_plugin_class(
@@ -132,7 +129,7 @@ class ApplicationPluginLoader:
         try:
             module = importlib.import_module(module_path)
         except Exception as exc:
-            logger.exception(f"Failed to import built-in plugin {entrypoint}: {exc}")
+            cls._fail(family, entrypoint.parent.name, entrypoint, "builtin", f"import failed: {exc}", exc)
             return
 
         cls._register_plugin_class(
@@ -140,7 +137,7 @@ class ApplicationPluginLoader:
             getattr(module, "PLUGIN_CLASS", None),
             entrypoint,
             "builtin",
-            plugin_id_hint=entrypoint.stem,
+            plugin_id_hint=entrypoint.parent.name,
         )
 
     @classmethod
@@ -157,71 +154,32 @@ class ApplicationPluginLoader:
         failure_prefix = "plugin validation failed: "
         try:
             if not isinstance(plugin_cls, type) or not issubclass(plugin_cls, family.plugin_base_class):
-                logger.warning(
-                    f"Plugin {entrypoint} must expose PLUGIN_CLASS subclassing {family.plugin_base_class.__name__}"
-                )
-                RuntimePluginRegistry.mark_failed(
-                    family.plugin_type,
-                    plugin_id_hint,
-                    entrypoint,
-                    origin,
-                    "PLUGIN_CLASS missing or invalid",
-                )
+                cls._fail(family, plugin_id_hint, entrypoint, origin, "PLUGIN_CLASS missing or invalid")
                 return
 
             plugin_cls = cast(type[PluginBase], plugin_cls)
 
             api_declaring_class = next(base for base in plugin_cls.__mro__ if "required_api_version" in base.__dict__)
             if origin != "builtin" and api_declaring_class is PluginBase:
-                error_message = "must explicitly declare required_api_version"
-                logger.warning(f"Plugin {entrypoint} {error_message}")
-                RuntimePluginRegistry.mark_failed(
-                    family.plugin_type,
-                    plugin_id_hint,
-                    entrypoint,
-                    origin,
-                    error_message,
-                )
+                cls._fail(family, plugin_id_hint, entrypoint, origin, "must explicitly declare required_api_version")
                 return
 
             required_api_version = plugin_cls.required_api_version()
             if required_api_version != PLUGIN_API_VERSION:
-                error_message = f"requires plugin API {required_api_version}, host provides {PLUGIN_API_VERSION}"
-                logger.warning(f"Plugin {entrypoint} {error_message}")
-                RuntimePluginRegistry.mark_failed(
-                    family.plugin_type,
-                    plugin_cls.plugin_id(),
-                    entrypoint,
-                    origin,
-                    error_message,
-                )
+                reason = f"requires plugin API {required_api_version}, host provides {PLUGIN_API_VERSION}"
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, reason)
                 return
 
             unimplemented = sorted(getattr(plugin_cls, "__abstractmethods__", ()))
             if unimplemented:
-                error_message = f"does not implement {', '.join(unimplemented)}"
-                logger.warning(f"Plugin {entrypoint} {error_message}")
-                RuntimePluginRegistry.mark_failed(
-                    family.plugin_type,
-                    plugin_cls.plugin_id(),
-                    entrypoint,
-                    origin,
-                    error_message,
-                )
+                reason = f"does not implement {', '.join(unimplemented)}"
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, reason)
                 return
 
             if plugin_cls.plugin_type() != family.plugin_type:
-                error_message = (
-                    f"PLUGIN_CLASS declared plugin_type={plugin_cls.plugin_type()!r}, expected {family.plugin_type!r}"
-                )
-                logger.warning(f"Plugin {entrypoint} {error_message}")
-                RuntimePluginRegistry.mark_failed(
-                    family.plugin_type,
-                    plugin_cls.plugin_id(),
-                    entrypoint,
-                    origin,
-                    error_message,
-                )
+                declared = plugin_cls.plugin_type()
+                reason = f"PLUGIN_CLASS declared plugin_type={declared!r}, expected {family.plugin_type!r}"
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, reason)
                 return
 
             try:
@@ -237,14 +195,7 @@ class ApplicationPluginLoader:
 
             validation_error = plugin_cls.validate_registration(RuntimePluginRegistry)
             if validation_error is not None:
-                logger.warning(f"Plugin {entrypoint} {validation_error}")
-                RuntimePluginRegistry.mark_failed(
-                    family.plugin_type,
-                    plugin_cls.plugin_id(),
-                    entrypoint,
-                    origin,
-                    validation_error,
-                )
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, validation_error)
                 return
 
             failure_id = plugin_cls.plugin_id()
@@ -252,10 +203,26 @@ class ApplicationPluginLoader:
             RuntimePluginRegistry.register_plugin(plugin_cls, entrypoint, origin)
             logger.debug(f"Registered plugin {plugin_cls.plugin_type()}:{plugin_cls.plugin_id()} from {entrypoint}")
         except Exception as exc:
-            logger.exception(f"Failed to load plugin {entrypoint}: {exc}")
-            RuntimePluginRegistry.mark_failed(
-                family.plugin_type, failure_id, entrypoint, origin, f"{failure_prefix}{exc}"
-            )
+            cls._fail(family, failure_id, entrypoint, origin, f"{failure_prefix}{exc}", exc)
+
+    @staticmethod
+    def _fail(
+        family: PluginFamily,
+        plugin_id: str,
+        entrypoint: Path,
+        origin: str,
+        reason: str,
+        exc: Exception | None = None,
+    ) -> None:
+        """Log one line for a plugin that cannot load and record it for the Plugins view.
+
+        The traceback of *exc* is logged only at DEBUG; the reason already says what failed.
+        """
+        logger.warning(
+            f"Plugin {family.plugin_type}:{plugin_id} from {origin} failed to load: {reason}",
+            exc_info=exc if logger.isEnabledFor(DEBUG) else None,
+        )
+        RuntimePluginRegistry.mark_failed(family.plugin_type, plugin_id, entrypoint, origin, reason)
 
     @staticmethod
     def _entrypoint_path(entrypoint: importlib.metadata.EntryPoint) -> Path:

@@ -87,7 +87,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   `Observation.debug`; `Scene.debug` is kept for diagnostics only. Filtering, rendering, synchronization, and
   hit-testing never read either.
 - Changing Scene model dataclass fields requires bumping `SCENE_MODEL_VERSION`: major when breaking, minor when
-  additive. Decoder plugins declaring another major, or a newer minor, fail to load and are reported at startup.
+  additive. Decoder plugins declaring another major, or a newer minor, fail to load; the Plugins view lists them and flags its button.
 
 ## Workspace And Viewers
 

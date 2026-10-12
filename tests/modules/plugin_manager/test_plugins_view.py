@@ -130,6 +130,21 @@ def test_the_view_lists_failed_installed_and_built_in_plugins(qtbot: QtBot, reco
     assert not _banner_shown(view)
 
 
+def test_the_view_warns_while_a_plugin_has_failed_to_load(qtbot: QtBot, records: list[PluginRecord]) -> None:
+    view = PluginsView(
+        PluginChanges(FakeInstaller()), lambda: plugin_catalog(records, SELECTION, lambda _: None), lambda: None
+    )
+    qtbot.addWidget(view)
+
+    with qtbot.waitSignal(view.warning_changed) as failed:
+        view.refresh()
+    records.pop()
+    with qtbot.waitSignal(view.warning_changed) as healthy:
+        view.refresh()
+
+    assert (failed.args, healthy.args) == (["1 failed to load"], [""])
+
+
 def test_updating_a_plugin_disables_changes_until_it_is_done_and_then_offers_a_restart(
     qtbot: QtBot, records: list[PluginRecord]
 ) -> None:
