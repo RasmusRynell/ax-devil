@@ -10,22 +10,24 @@ from unittest.mock import patch
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer
-from PySide6.QtWidgets import QCheckBox, QLabel, QLineEdit, QMenu, QProgressBar, QPushButton, QWidget
+from PySide6.QtWidgets import QCheckBox, QLabel, QLineEdit, QMenu, QProgressBar, QPushButton, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.menu_button import MenuButton
-from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
+from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem, Workspace, WorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
+from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.section_tree import captions, press, row, row_action, row_texts, shown_rows, texts
+from tests.helpers.widgets import button
 from tests.helpers.workspace import DummyViewer
 
 _LIVE_VIEWER = "ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget"
@@ -65,15 +67,15 @@ class _Scanner:
     error: Exception | None = None
     calls: int = 0
     targets: tuple[str, ...] = ()
-    login: tuple[str, str] = ("", "")
+    logins: tuple[Login, ...] = ()
     on_found: Callable[[], None] = lambda: None
 
     def __call__(
-        self, targets: tuple[str, ...], username: str, password: str, found: Callable[[DiscoveredCamera], None]
+        self, targets: tuple[str, ...], logins: tuple[Login, ...], found: Callable[[DiscoveredCamera], None]
     ) -> list[DiscoveredCamera]:
         self.calls += 1
         self.targets = targets
-        self.login = (username, password)
+        self.logins = logins
         if self.error is not None:
             raise self.error
         for camera in self.cameras:
@@ -130,11 +132,20 @@ class _Live:
         [action] = [action for action in menu.actions() if action.text() == entry]
         action.trigger()
 
-    def sign_in(self, username: str, password: str) -> None:
-        self.view.findChildren(QCheckBox)[0].setChecked(True)
-        for name, text in (("Username", username), ("Password", password)):
-            [edit] = [edit for edit in self.view.findChildren(QLineEdit) if edit.accessibleName() == name]
-            edit.setText(text)
+    def sign_in_choice(self) -> QCheckBox:
+        [choice] = self.view.findChildren(QCheckBox)
+        return choice
+
+    def save_logins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *logins: Login) -> None:
+        """Make *logins* the ones Settings gives the scan, as saving Settings does."""
+        monkeypatch.setattr(ConfigManager, "_instance", None)
+        config = ConfigManager()
+        config.set_config_path(tmp_path / "config.json")
+        config.set("storage", {key: str(tmp_path / key) for key in config.get_raw("storage")})
+        defaults = config.get_raw("defaults")
+        defaults["network_scan"]["credentials"] = Login.config_value(logins)
+        config.set("defaults", defaults)
+        self.controller.refresh_defaults()
 
     def texts(self) -> list[str]:
         return texts(self.view)
@@ -449,31 +460,81 @@ def test_the_filter_hides_held_cameras_by_what_the_scan_learned_too(live: _Live)
     assert list(live.rows()) == ["Entrance"]
 
 
-def test_signing_in_scans_with_the_credentials_and_add_uses_those_that_worked(live: _Live) -> None:
-    live.sign_in("operator", "secret")
+def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that_worked(
+    live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    guest, operator = Login("guest", "guest"), Login("operator", "$OPERATOR_PASS")
+    live.save_logins(tmp_path, monkeypatch, guest, operator)
+    live.sign_in_choice().setChecked(True)
 
     _scan(
         live,
-        DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", sign_in=SignIn.SIGNED_IN),
+        DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", sign_in=SignIn.SIGNED_IN, login=operator),
         DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "", sign_in=SignIn.REFUSED),
     )
 
-    assert live.scanner.login == ("operator", "secret")
+    assert live.scanner.logins == (guest, operator)
     assert live.detail("AXIS Q1656") == "192.0.2.12 · Signed in"
     assert live.detail("AXIS M3086-V") == "192.0.2.13 · Credentials refused"
     live.press("AXIS Q1656")
     live.press("AXIS M3086-V")
     signed_in, refused = live.store.workspace.items
     assert isinstance(signed_in, LiveStreamItem) and isinstance(refused, LiveStreamItem)
-    assert (signed_in.username, signed_in.password) == ("operator", "secret")
+    assert (signed_in.username, signed_in.password) == ("operator", "$OPERATOR_PASS"), "a reference stays one"
     device_defaults = ConfigManager().get_raw("defaults")["device"]
     assert (refused.username, refused.password) == (device_defaults["username"], device_defaults["password"])
 
 
-def test_a_scan_without_sign_in_sends_no_credentials(live: _Live) -> None:
+def test_a_scan_without_sign_in_sends_no_credentials(
+    live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live.save_logins(tmp_path, monkeypatch, Login("root", "pass"))
     _scan(live, DiscoveredCamera("192.0.2.12", "AXIS Q1656", ""))
+    assert live.scanner.logins == ()
 
-    assert live.scanner.login == ("", "")
+
+def test_the_logins_show_under_sign_in_and_edits_there_are_saved_for_settings_too(
+    live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live.save_logins(tmp_path, monkeypatch, Login("root", "pass"))
+    [editor] = live.view.findChildren(LoginsEditor)
+    assert editor.isHidden(), "the logins stay out of the way until sign-in is wanted"
+
+    live.sign_in_choice().setChecked(True)
+    assert not editor.isHidden()
+    button(editor, "Add login").click()
+    *_, username, password = [edit for edit in editor.findChildren(QLineEdit) if edit.isVisibleTo(editor)]
+    username.setText("operator")
+    password.setText("secret")
+    password.editingFinished.emit()
+
+    saved = (Login("root", "pass"), Login("operator", "secret"))
+    assert Login.saved(ConfigManager()) == saved, "Settings reads the same list"
+    _scan(live, DiscoveredCamera("192.0.2.12", "AXIS Q1656", ""))
+    assert live.scanner.logins == saved
+
+
+@pytest.mark.parametrize(("count", "scrolls"), [(5, False), (7, True)])
+def test_up_to_five_logins_show_at_once_and_more_scroll(qtbot: QtBot, count: int, scrolls: bool) -> None:
+    editor = LoginsEditor([Login(f"user{index}", "pass") for index in range(count)])
+    qtbot.addWidget(editor)
+    editor.show()
+    QCoreApplication.processEvents()
+
+    scroll = editor.findChild(QScrollArea)
+    assert scroll is not None
+    assert (scroll.verticalScrollBar().maximum() > 0) is scrolls
+
+
+def test_an_empty_login_list_takes_no_room(qtbot: QtBot) -> None:
+    editor = LoginsEditor([Login("root", "pass")])
+    qtbot.addWidget(editor)
+
+    editor.set_logins(())
+
+    scroll = editor.findChild(QScrollArea)
+    assert scroll is not None
+    assert scroll.height() == 0
 
 
 def test_right_click_remove_takes_a_camera_out_of_the_workspace(live: _Live) -> None:

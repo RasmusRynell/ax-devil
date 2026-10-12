@@ -5,11 +5,11 @@ from __future__ import annotations
 import copy
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ax_devil.modules.device_discovery.network_scan import parse_scan_targets
+from ax_devil.modules.device_discovery.network_scan import Login, parse_scan_targets
 from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings, SettingsState
@@ -74,7 +74,13 @@ class ConfigSection:
     requires_restart: bool = False
 
 
-CONNECTION_SECTIONS = (
+NETWORK_SCAN_SECTION = ConfigSection(
+    "Network scan", (ConfigField("defaults.network_scan.ip_range", "Default IP range"),)
+)
+"""The scan's section, which Settings shows on a page of its own with the scan's sign-in logins."""
+
+
+STREAM_SECTIONS = (
     ConfigSection(
         "Device",
         (
@@ -83,7 +89,6 @@ CONNECTION_SECTIONS = (
             ConfigField("defaults.device.password", "Password", secret=True),
         ),
     ),
-    ConfigSection("Network scan", (ConfigField("defaults.network_scan.ip_range", "Default IP range"),)),
     ConfigSection(
         "Video and overlay",
         (
@@ -97,6 +102,9 @@ CONNECTION_SECTIONS = (
             ConfigField("defaults.live_stream.rtsp.data_stream_handler", "RTSP decoder", decoder=True),
         ),
     ),
+)
+
+ANALYTICS_SECTIONS = (
     ConfigSection(
         "MQTT analytics",
         (
@@ -130,6 +138,8 @@ CONNECTION_SECTIONS = (
     ),
 )
 
+CONNECTION_SECTIONS = (*STREAM_SECTIONS, *ANALYTICS_SECTIONS, NETWORK_SCAN_SECTION)
+
 STORAGE_SECTION = ConfigSection(
     "Storage locations",
     (
@@ -151,8 +161,11 @@ def field_value(config: ConfigManager, field: ConfigField) -> str:
     return str(value)
 
 
-def configuration_updates(config: ConfigManager, edits: Mapping[ConfigField, str]) -> dict[str, Any]:
-    """Validate all edited fields and return updated roots without changing the live config."""
+def configuration_updates(
+    config: ConfigManager, edits: Mapping[ConfigField, str], logins: Sequence[Login] | None = None
+) -> dict[str, Any]:
+    """Validate all edited fields and return updated roots without changing the live config; with *logins*, they
+    replace the scan's sign-in logins."""
     roots: dict[str, Any] = {}
     for field, text in edits.items():
         value = field.parse(text)
@@ -163,6 +176,9 @@ def configuration_updates(config: ConfigManager, edits: Mapping[ConfigField, str
         for key in keys[:-1]:
             branch = branch[key]
         branch[keys[-1]] = value
+    if logins is not None:
+        defaults = roots.setdefault("defaults", copy.deepcopy(config.get_raw("defaults")))
+        defaults["network_scan"]["credentials"] = Login.config_value(logins)
     return roots
 
 
@@ -171,9 +187,10 @@ def apply_preferences(
     settings: GlobalSettings,
     snapshot: SettingsState,
     edits: Mapping[ConfigField, str],
+    logins: Sequence[Login] | None = None,
 ) -> None:
     """Validate and save preferences before publishing any runtime changes."""
-    updates = configuration_updates(config, edits)
+    updates = configuration_updates(config, edits, logins)
     previous = {root: copy.deepcopy(config.get_raw(root, {})) for root in (*updates, "ui", "settings")}
     try:
         for root, value in updates.items():

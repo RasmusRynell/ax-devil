@@ -1,5 +1,5 @@
-"""The network scan finds Axis devices by what they give without login, and signs in only when asked, never sending a
-plain password over HTTP."""
+"""The network scan finds Axis devices by what they give without login, and signs in only with the logins it is given,
+in order, never sending a plain password."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from ax_devil.modules.device_discovery import network_scan
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
     DiscoveredCamera,
+    Login,
     SignIn,
     parse_scan_targets,
     scan_network,
@@ -38,12 +39,14 @@ class _Device:
     """A loopback web server that answers as an Axis device would, with *properties* unrestricted, or 404 to
     everything if *axis* is false.
 
-    Signed-in requests are challenged for HTTP Digest; any Digest answer is accepted when *accepts* is true.
+    Signed-in requests are challenged for HTTP Digest; a Digest answer for the user *accepts* is accepted, after the
+    first *turned_away* answers are turned away with HTTP 429, as a device limiting sign-in attempts does.
     """
 
-    def __init__(self, axis: bool, accepts: bool, properties: dict[str, str]) -> None:
+    def __init__(self, axis: bool, accepts: str | None, turned_away: int, properties: dict[str, str]) -> None:
         self.authorizations: list[str] = []
         device = self
+        turn_away = [turned_away]
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:  # noqa: N802
@@ -57,7 +60,10 @@ class _Device:
                     self._answer(200, {"data": {"systemready": "yes", "uptime": "93600"}})
                 elif request.get("method") == "getAllUnrestrictedProperties":
                     self._answer(200, {"data": {"propertyList": properties}})
-                elif accepts and authorization.startswith("Digest "):
+                elif authorization.startswith("Digest ") and turn_away[0] > 0:
+                    turn_away[0] -= 1
+                    self._answer(429, {})
+                elif accepts is not None and authorization.startswith(f'Digest username="{accepts}"'):
                     self._answer(200, {"data": {"propertyList": _ALL}})
                 else:
                     self._answer(401, {}, ("WWW-Authenticate", 'Digest realm="AXIS", nonce="n0", qop="auth"'))
@@ -90,9 +96,12 @@ def serve(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., _Device]]:
     devices: list[_Device] = []
     ports: dict[int, Callable[[str, str, str], object]] = {}
     monkeypatch.setattr(network_scan, "_PORT_CONFIGS", ports)
+    monkeypatch.setattr(network_scan, "_RATE_LIMIT_RETRY_SECONDS", (0.0, 0.0))
 
-    def start(*, axis: bool, accepts: bool = True, properties: dict[str, str] = _UNRESTRICTED) -> _Device:
-        device = _Device(axis, accepts, properties)
+    def start(
+        *, axis: bool, accepts: str | None = "root", turned_away: int = 0, properties: dict[str, str] = _UNRESTRICTED
+    ) -> _Device:
+        device = _Device(axis, accepts, turned_away, properties)
         devices.append(device)
         ports[device.port] = partial(DeviceConfig.http, port=device.port)
         return device
@@ -117,20 +126,78 @@ def test_an_axis_device_is_found_with_what_it_gives_without_login(serve: Callabl
 
 def test_signing_in_reads_more_and_sends_only_a_digest_answer(serve: Callable[..., _Device]) -> None:
     device = serve(axis=True)
+    root = Login("root", "secret")
 
-    [camera] = scan_network(targets=["127.0.0.1"], username="root", password="secret")
+    [camera] = scan_network(targets=["127.0.0.1"], logins=[root])
 
-    assert (camera.sign_in, camera.architecture, camera.soc) == (SignIn.SIGNED_IN, "aarch64", "Ambarella CV25")
+    assert (camera.sign_in, camera.login) == (SignIn.SIGNED_IN, root)
+    assert (camera.architecture, camera.soc) == ("aarch64", "Ambarella CV25")
     assert device.authorizations
     assert all(header.startswith("Digest ") and "secret" not in header for header in device.authorizations)
 
 
+def test_logins_are_tried_in_order_until_one_signs_in(
+    serve: Callable[..., _Device], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    device = serve(axis=True, accepts="operator")
+    monkeypatch.setenv("AX_DEVIL_TEST_SCAN_USER", "operator")
+    operator = Login("$AX_DEVIL_TEST_SCAN_USER", "secret")
+
+    [camera] = scan_network(targets=["127.0.0.1"], logins=[Login("guest", "guest"), operator, Login("root", "x")])
+
+    assert (camera.sign_in, camera.login) == (SignIn.SIGNED_IN, operator), "the login is kept as written"
+    assert not any('username="root"' in header for header in device.authorizations), (
+        "no login after the one that worked"
+    )
+
+
+def test_a_device_that_turns_sign_ins_away_for_now_is_asked_again(serve: Callable[..., _Device]) -> None:
+    serve(axis=True, turned_away=2)
+
+    [camera] = scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")])
+
+    assert camera.sign_in is SignIn.SIGNED_IN
+
+
 def test_refused_credentials_still_list_the_device(serve: Callable[..., _Device]) -> None:
-    serve(axis=True, accepts=False)
+    serve(axis=True, accepts=None)
 
-    [camera] = scan_network(targets=["127.0.0.1"], username="root", password="wrong")
+    [camera] = scan_network(targets=["127.0.0.1"], logins=[Login("root", "wrong"), Login("admin", "wrong")])
 
-    assert (camera.model, camera.sign_in, camera.architecture) == ("AXIS P3265-LVE", SignIn.REFUSED, "")
+    assert (camera.model, camera.sign_in, camera.login, camera.architecture) == (
+        "AXIS P3265-LVE",
+        SignIn.REFUSED,
+        None,
+        "",
+    )
+
+
+def test_a_login_whose_username_is_an_unset_variable_is_never_sent(
+    serve: Callable[..., _Device], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    device = serve(axis=True)
+    monkeypatch.delenv("AX_DEVIL_TEST_UNSET_USER", raising=False)
+
+    [camera] = scan_network(targets=["127.0.0.1"], logins=[Login("$AX_DEVIL_TEST_UNSET_USER", "x")])
+
+    assert camera.sign_in is SignIn.NOT_TRIED
+    assert device.authorizations == []
+
+
+def test_no_login_is_sent_once_the_scan_is_cancelled(serve: Callable[..., _Device]) -> None:
+    device = serve(axis=True)
+    cancelled = threading.Event()
+    cancelled.set()
+
+    camera = network_scan._signed_in(
+        DiscoveredCamera("127.0.0.1", "m", "s"),
+        lambda user, password: DeviceConfig.http("127.0.0.1", user, password, port=device.port),
+        [Login("root", "secret")],
+        cancelled,
+    )
+
+    assert camera.sign_in is SignIn.NOT_TRIED
+    assert device.authorizations == []
 
 
 def test_another_web_server_is_not_listed_and_does_not_hide_the_axis_one(serve: Callable[..., _Device]) -> None:
@@ -149,7 +216,7 @@ def test_a_device_that_does_not_say_it_is_axis_is_not_listed_or_signed_in_to(
 ) -> None:
     device = serve(axis=True, properties=properties)
 
-    assert scan_network(targets=["127.0.0.1"], username="root", password="secret") == []
+    assert scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")]) == []
     assert device.authorizations == []
 
 
@@ -171,10 +238,13 @@ def test_signing_in_over_https_asks_for_digest_not_basic(monkeypatch: pytest.Mon
             return _ALL
 
     monkeypatch.setattr(network_scan, "Client", _Client)
-    config = DeviceConfig.https("127.0.0.1", "root", "secret")
-    config.auth_method = AuthMethod.AUTO
 
-    camera = network_scan._signed_in(DiscoveredCamera("127.0.0.1", "", "", ""), config)
+    camera = network_scan._signed_in(
+        DiscoveredCamera("127.0.0.1", "", "", ""),
+        lambda user, password: DeviceConfig.https("127.0.0.1", user, password),
+        [Login("root", "secret")],
+        threading.Event(),
+    )
 
     assert camera.sign_in is SignIn.SIGNED_IN
     assert methods == [AuthMethod.DIGEST]
@@ -187,7 +257,7 @@ def test_signing_in_goes_through_the_endpoint_that_identified_the_device(
     ports = network_scan._PORT_CONFIGS
     monkeypatch.setitem(ports, broken.port, partial(DeviceConfig.https, port=broken.port))  # TLS to a plain server
 
-    [camera] = scan_network(targets=["127.0.0.1"], username="root", password="secret")
+    [camera] = scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")])
 
     assert camera.sign_in is SignIn.SIGNED_IN
     assert axis.authorizations
@@ -199,7 +269,7 @@ def test_credentials_go_only_to_identified_axis_devices_and_only_when_given(serv
     scan_network(targets=["127.0.0.1"])
     assert axis.authorizations == []
 
-    scan_network(targets=["127.0.0.1"], username="root", password="secret")
+    scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")])
     assert other.authorizations == []
     assert axis.authorizations
 

@@ -18,8 +18,11 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.application_shell.configuration_editor import ConfigurationEditor
 from ax_devil.modules.application_shell.configuration_preferences import (
+    ANALYTICS_SECTIONS,
     CONNECTION_SECTIONS,
+    NETWORK_SCAN_SECTION,
     STORAGE_SECTION,
+    STREAM_SECTIONS,
     ConfigField,
     ConfigSection,
     apply_preferences,
@@ -29,6 +32,7 @@ from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.choice_dialog import ask
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.device_discovery.network_scan import Login
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
@@ -39,6 +43,7 @@ from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
+from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 
 RESTART_MARK = "(requires restart)"
 """Suffix on every setting that takes effect only after restarting the app."""
@@ -81,6 +86,7 @@ class SettingsDialog(BaseDialog):
     def _setup_content(self) -> None:
         """Build the settings form."""
         self._tabs = QTabWidget()
+        self._tabs.setUsesScrollButtons(False)  # So the dialog is sized to show every page's tab.
         self._page_layouts: list[QVBoxLayout] = []
         layout = self._add_page("General")
 
@@ -154,12 +160,29 @@ class SettingsDialog(BaseDialog):
         streams = self._add_page("Stream defaults")
         self._add_note(
             streams,
-            "These defaults prefill Add Live Stream and the network scan. Each stream can override them. "
+            "These defaults prefill Add Live Stream. Each stream can override them. "
             "Existing viewers keep their settings. "
             "You can enter $VARIABLE_NAME to keep using an environment variable.",
         )
-        for section in CONNECTION_SECTIONS:
+        for section in STREAM_SECTIONS:
             self._add_config_section(streams, section)
+        analytics = self._add_page("Analytics")
+        self._add_note(analytics, "These defaults prefill the overlay of Add Live Stream.")
+        for section in ANALYTICS_SECTIONS:
+            self._add_config_section(analytics, section)
+        scan = self._add_page("Network scan")
+        self._add_config_section(scan, NETWORK_SCAN_SECTION)
+        logins_group = QGroupBox("Sign-in logins")
+        logins_group.setToolTip("defaults.network_scan.credentials")
+        logins_layout = QVBoxLayout(logins_group)
+        self._add_note(
+            logins_layout,
+            "With Try to sign in in the Live view, each Axis device found is tried with these, in order, until one "
+            "works. The Live view edits the same list. You can enter $VARIABLE_NAME to use an environment variable.",
+        )
+        self._logins = LoginsEditor(Login.saved(self._config))
+        logins_layout.addWidget(self._logins)
+        scan.addWidget(logins_group)
         storage = self._add_page("Storage")
         self._add_note(storage, "Existing files are not moved.")
         self._add_config_section(storage, STORAGE_SECTION)
@@ -262,6 +285,7 @@ class SettingsDialog(BaseDialog):
                 self._settings,
                 self._build_snapshot(),
                 {field: editor.text() for field, editor in self._configuration_editors.items()},
+                self._logins.logins(),
             )
         except (ValueError, OSError) as exc:
             self._status_label.setText(f"Could not save settings: {exc}")

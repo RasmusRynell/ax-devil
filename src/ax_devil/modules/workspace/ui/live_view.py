@@ -3,6 +3,7 @@ scan."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import Enum
 
 from PySide6.QtCore import Signal
@@ -17,7 +18,8 @@ from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
-from ax_devil.modules.device_discovery.network_scan import DeviceOrder
+from ax_devil.modules.device_discovery.network_scan import DeviceOrder, Login
+from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
 LIVE_VIEW_ID = "live"
@@ -37,11 +39,13 @@ class LiveView(SectionsView):
     nothing itself.
 
     ``scan_requested`` carries the IP range as typed, ``add_manually_requested`` that the user wants to enter a
-    camera's details, and ``order_chosen`` the ``DeviceOrder`` picked.
+    camera's details, ``logins_edited`` the logins a scan tries once the user edited them, and ``order_chosen`` the
+    ``DeviceOrder`` picked.
     """
 
     scan_requested = Signal(str)
     add_manually_requested = Signal()
+    logins_edited = Signal(object)  # tuple[Login, ...]
     order_chosen = Signal(object)  # DeviceOrder
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -65,21 +69,18 @@ class LiveView(SectionsView):
         self._ip_range = QLineEdit(self)
         self._ip_range.setPlaceholderText("IP range, such as 192.168.1.0/24")
         self._ip_range.returnPressed.connect(self._request_scan)
-        self._sign_in = QCheckBox("Sign in to found cameras", self)
+        self._sign_in = QCheckBox("Try to sign in to found cameras", self)
         self._sign_in.setToolTip(
-            "Read more about each camera, and add it with the credentials that worked.\n"
-            "They go only to Axis devices, and only as an HTTP Digest answer."
+            "Tries these logins in order on each Axis device found, to read more about it and add it with the login "
+            "that worked.\nPasswords go only as HTTP Digest answers. Settings edits the same list."
         )
         TextRole.SMALL.apply(self._sign_in)
-        self._username = QLineEdit(self)
-        self._username.setAccessibleName("Username")
-        self._password = QLineEdit(self)
-        self._password.setAccessibleName("Password")
-        self._password.setEchoMode(QLineEdit.EchoMode.Password)
-        self.set_login_hints("", "")
-        for field in (self._ip_range, self._username, self._password):
-            TextRole.SMALL.apply(field)
-            follow_appearance(field, lambda field=field: field.setFixedHeight(Height.ROW.px))
+        self._logins = LoginsEditor()
+        self._logins.hide()
+        self._logins.edited.connect(lambda: self.logins_edited.emit(self._logins.logins()))
+        self._sign_in.toggled.connect(self._logins.setVisible)
+        TextRole.SMALL.apply(self._ip_range)
+        follow_appearance(self._ip_range, lambda: self._ip_range.setFixedHeight(Height.ROW.px))
         self._scan_button = SmallButton("Rescan", Icon.SCAN)
         self._scan_button.clicked.connect(self._request_scan)
         self._scan_progress = QProgressBar(self)
@@ -97,21 +98,13 @@ class LiveView(SectionsView):
         line.setSpacing(Space.M)
         line.addWidget(self._ip_range, 1)
         line.addWidget(self._scan_button)
-        login = QWidget(self)
-        login_layout = QHBoxLayout(login)
-        login_layout.setContentsMargins(0, 0, 0, 0)
-        login_layout.setSpacing(Space.M)
-        login_layout.addWidget(self._username, 1)
-        login_layout.addWidget(self._password, 1)
-        login.hide()
-        self._sign_in.toggled.connect(login.setVisible)
         controls = QWidget(self)
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(Space.M, 0, Space.M, 0)
         controls_layout.setSpacing(Space.S)
         controls_layout.addLayout(line)
         controls_layout.addWidget(self._sign_in)
-        controls_layout.addWidget(login)
+        controls_layout.addWidget(self._logins)
         controls_layout.addWidget(self._scan_progress)
         controls_layout.addWidget(self._scan_status)
         footer = QWidget(self)
@@ -131,14 +124,13 @@ class LiveView(SectionsView):
         """Return the IP range as typed."""
         return self._ip_range.text()
 
-    def set_login_hints(self, username: str, password: str) -> None:
-        """Show *username* and *password*, the defaults an empty sign-in field stands for, as their placeholders."""
-        self._username.setPlaceholderText(username or "Username")
-        self._password.setPlaceholderText(password or "Password")
+    def set_logins(self, logins: Sequence[Login]) -> None:
+        """Show *logins* as the ones a scan tries."""
+        self._logins.set_logins(logins)
 
-    def scan_login(self) -> tuple[str, str] | None:
-        """Return the username and password as typed, empty where left to the defaults, or None without sign-in."""
-        return (self._username.text(), self._password.text()) if self._sign_in.isChecked() else None
+    def sign_in_wanted(self) -> bool:
+        """Return whether the user asked the scan to try to sign in."""
+        return self._sign_in.isChecked()
 
     def set_scan_status(self, status: ScanStatus, reason: str = "") -> None:
         """Show *status* under the scan settings, with *reason* on hover; the button waits while a scan runs."""

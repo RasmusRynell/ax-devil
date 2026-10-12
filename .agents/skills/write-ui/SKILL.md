@@ -84,6 +84,15 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
   `HEADING`/`DISPLAY` are rare.
 - **Size containers from their content.** Prefer layouts and size hints over fixed widths; when a fixed size is
   unavoidable, derive it from `Height` or `TextRole.<ROLE>.px` so it grows with the text.
+- **Added content must fit the window it joins.** Each page opens without scrolling, a horizontal scroll bar, tab
+  scroll arrows, or a field squeezed below its `sizeHint()`; `BaseDialog` caps its opening size at 120 average
+  characters by 48 lines. When it does not fit, take the more reasonable of two fixes:
+  - **Restructure** when the window is already long or dense, or the addition is a concept of its own: give it its own
+    page, tab or group, split a long page, or give a list editor full width instead of a form row.
+  - **Enlarge** when the content is naturally wider and the window still has room under the cap, through size hints
+    (such as `QTabWidget.setUsesScrollButtons(False)`), never a fixed size.
+
+  Scrolling is right only for content that grows with the user's data, such as a list of rows.
 - **A new user preference** follows `ThemeMode` and `TextSize` in `modules/settings/`: a `str` enum with
   `label` and `from_config`, a `GlobalSettings` property, a row in the Settings dialog, and a paragraph in
   `docs/settings.md`. Apply it live when Qt allows; mark it `(requires restart)` only when it cannot;
@@ -99,6 +108,9 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
    when nothing is clipped, overlapping or unreadable and the new UI matches its neighbours' sizes and spacing.
    To read one image instead of two, join a before and after shot with ImageMagick:
    `montage /tmp/ui-before/X.png /tmp/ui-after/X.png -tile 2x1 -geometry +4+0 /tmp/X-compare.png`.
+   Also measure the fit, offscreen with `HOME` set to a temporary folder, at text sizes 13 and 21: show the window,
+   and for each page compare its content's `sizeHint()` with the scroll area's viewport, check the scroll bars and
+   tab bar, and compare each field's width with its `sizeHint()`. Numbers catch a page that only just scrolls.
 3. Add the window or dialog to `SURFACES` in `tests/modules/chrome/test_surface_fit.py`, which checks that no button
    or label text is cut off in both themes at a small and a large text size. A guard test fails until a new
    `BaseDialog` or `ChromeWindow` subclass is there or in `EXEMPT` with the reason it is covered elsewhere.
