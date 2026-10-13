@@ -429,6 +429,26 @@ def test_found_cameras_are_listed_while_the_scan_is_still_running(live: _Live) -
     assert list(live.rows()) == ["AXIS P3265-LVE", "AXIS Q1656"]
 
 
+def test_a_burst_of_finds_refreshes_the_list_far_less_often_than_cameras_are_found(
+    live: _Live, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    refreshes = 0
+    listing_refresh = live.controller._listing.refresh
+
+    def counted(*args: object) -> None:
+        nonlocal refreshes
+        refreshes += 1
+        listing_refresh(*args)
+
+    monkeypatch.setattr(live.controller._listing, "refresh", counted)
+    cameras = [DiscoveredCamera(f"192.0.2.{n}", f"AXIS Q{n}", "") for n in range(1, 101)]
+
+    _scan(live, *cameras)
+
+    assert refreshes < len(cameras) // 4
+    assert list(live.rows()) == [camera.model for camera in cameras]
+
+
 def test_search_finds_workspace_and_found_cameras_by_what_they_show_and_their_details(live: _Live) -> None:
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
     _scan(

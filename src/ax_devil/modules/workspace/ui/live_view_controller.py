@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from functools import partial
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QTimer
 
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext
 from ax_devil.modules.device_discovery.network_scan import (
@@ -33,6 +33,8 @@ from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceControll
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 logger = get_logger(__name__)
+
+_FOUND_REFRESH_MS = 100
 
 Found = Callable[[DiscoveredCamera], None]
 Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found], Sequence[DiscoveredCamera]]
@@ -176,6 +178,10 @@ class LiveViewController(QObject):
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan starts
         self._scanning = False
         self._order = DeviceOrder.ADDRESS
+        self._found_refresh = QTimer(self)  # Finds can arrive in a burst; one refresh covers them all.
+        self._found_refresh.setSingleShot(True)
+        self._found_refresh.setInterval(_FOUND_REFRESH_MS)
+        self._found_refresh.timeout.connect(self._refresh)
         view.scan_requested.connect(self.scan)
         view.logins_edited.connect(self._save_logins)
         view.order_chosen.connect(self._sort)
@@ -219,6 +225,7 @@ class LiveViewController(QObject):
 
     def cleanup(self) -> None:
         """Stop showing the outcome of a scan still running."""
+        self._found_refresh.stop()
         self._jobs.close()
 
     def _save_logins(self, logins: tuple[Login, ...]) -> None:
@@ -237,10 +244,12 @@ class LiveViewController(QObject):
     def _on_found(self, camera: DiscoveredCamera) -> None:
         if self._found is not None and self._scanning:
             self._found += (camera,)
-            self._refresh()
+            if not self._found_refresh.isActive():
+                self._found_refresh.start()
 
     def _on_scanned(self, cameras: tuple[DiscoveredCamera, ...]) -> None:
         self._scanning = False
+        self._found_refresh.stop()
         if self._view is None:
             return
         self._view.set_scan_status(ScanStatus.IDLE)
@@ -249,6 +258,7 @@ class LiveViewController(QObject):
 
     def _on_scan_failed(self, error: Exception) -> None:
         self._scanning = False
+        self._found_refresh.stop()
         if self._view is not None:
             self._view.set_scan_status(ScanStatus.FAILED, str(error) or type(error).__name__)
 
