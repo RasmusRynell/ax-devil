@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -23,7 +24,17 @@ from ax_devil.modules.workspace.ui.browser_rows import (
 )
 from ax_devil.modules.workspace.ui.section_tree import SectionTree
 from ax_devil.modules.workspace.ui.source_row import SourceRow
-from tests.helpers.section_tree import caption, click_caption, is_folded, texts, titles
+from tests.helpers.section_tree import (
+    caption,
+    click_caption,
+    is_folded,
+    press,
+    row,
+    row_texts,
+    shown_rows,
+    texts,
+    titles,
+)
 
 
 def _tree(qtbot: QtBot, *rows: WorkspaceBrowserRow, kind: BrowserSection = BrowserSection.PLAYLISTS) -> SectionTree:
@@ -299,3 +310,72 @@ def test_hovering_any_text_of_a_row_shows_the_rows_tooltip(qtbot: QtBot) -> None
 
     assert "is not installed" in widget.toolTip()
     assert [label.toolTip() for label in widget.findChildren(QLabel)] == [""] * len(widget.findChildren(QLabel))
+
+
+def _camera(
+    host: str, *, label: str = "", detail: str = "", add: Callable[[], None] | None = None
+) -> WorkspaceBrowserRow:
+    return WorkspaceBrowserRow(
+        row_id=f"camera/{host}",
+        label=label or host,
+        icon_kind="live_video",
+        detail=detail,
+        action=RowAction.ADD,
+        add=add,
+    )
+
+
+def _network(*cameras: WorkspaceBrowserRow) -> tuple[WorkspaceBrowserSection, ...]:
+    return (WorkspaceBrowserSection(BrowserSection.NETWORK, cameras),)
+
+
+def _hosts(*hosts: str) -> tuple[WorkspaceBrowserSection, ...]:
+    return _network(*(_camera(host) for host in hosts))
+
+
+def test_keyboard_focus_stays_on_a_rows_action_when_cameras_are_found_around_it(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _camera("10.0.0.2"), kind=BrowserSection.NETWORK)
+    [button] = row(tree, "10.0.0.2").findChildren(SmallButton)
+    button.setFocus()
+    assert tree.focusWidget() is button
+    tree.set_sections(_hosts("10.0.0.1", "10.0.0.2", "10.0.0.3"))
+
+    assert titles(tree) == ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+    qtbot.wait(10)
+    assert tree.focusWidget() is button
+
+
+def test_pressing_add_after_an_update_runs_the_add_the_row_has_now(qtbot: QtBot) -> None:
+    calls: list[str] = []
+    tree = _tree(qtbot, _camera("10.0.0.2", add=lambda: calls.append("stale")), kind=BrowserSection.NETWORK)
+    pressed: list[WorkspaceBrowserRow] = []
+    tree.row_action_requested.connect(pressed.append)
+
+    tree.set_sections(_network(_camera("10.0.0.2", add=lambda: calls.append("current"))))
+    press(tree, "10.0.0.2")
+
+    [requested] = pressed
+    assert requested.add is not None
+    requested.add()
+    assert calls == ["current"]
+
+
+def test_cameras_inserted_removed_and_resorted_are_listed_in_the_new_order(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, *_hosts("10.0.0.1", "10.0.0.3", "10.0.0.5")[0].rows, kind=BrowserSection.NETWORK)
+
+    tree.set_sections(_hosts("10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.5"))
+    assert titles(tree) == ["10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.5"]
+
+    tree.set_sections(_hosts("10.0.0.1", "10.0.0.2", "10.0.0.5"))
+    assert titles(tree) == ["10.0.0.1", "10.0.0.2", "10.0.0.5"]
+
+    tree.set_sections(_hosts("10.0.0.5", "10.0.0.2", "10.0.0.1"))
+    assert titles(tree) == ["10.0.0.5", "10.0.0.2", "10.0.0.1"]
+
+
+def test_a_camera_whose_label_or_detail_changes_shows_the_new_text(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _camera("10.0.0.2", detail="AXIS Q1"), kind=BrowserSection.NETWORK)
+
+    tree.set_sections(_network(_camera("10.0.0.2", label="Gate", detail="AXIS Q2")))
+
+    assert [row_texts(shown) for shown in shown_rows(tree)] == [["Gate", "AXIS Q2"]]
