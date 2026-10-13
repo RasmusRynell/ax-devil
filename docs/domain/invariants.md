@@ -135,6 +135,10 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   color, the HUD and the letterbox in `video_player` do not follow the palette, and white playback controls belong on
   that scrim, not on a theme-dependent panel.
 - Widgets that own runtime resources implement and call `cleanup()`.
+- Occasional finite work that would block the GUI thread, such as a network scan or resolving items, runs through
+  `BackgroundJobs` in a `JobScope` that closes when its owner cleans up or is destroyed. Work that owns resources it
+  hands over, changes something outside the app, or streams keeps its own runner; see the
+  [background_jobs README](../../src/ax_devil/modules/background_jobs/README.md).
 - The GUI thread never waits for offline file work and never spins the event loop to wait. `EntryOpening` opens an
   entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; whoever holds the media owns every
   source in it until `release_media`. Worker threads never hold the last reference to objects they hand to the GUI

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QRunnable, QThreadPool
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.background_jobs import JobContext, JobScope
 from ax_devil.modules.workspace.core import (
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
@@ -151,22 +153,60 @@ def _use_defaults(monkeypatch: pytest.MonkeyPatch, raw: dict[str, Any], resolved
 
 @dataclass
 class _Discovery:
-    """Device responses and queued jobs, leaving the dialog's discovery lifecycle intact."""
+    """Device responses and discovery jobs held until finished, leaving the dialog's discovery lifecycle intact."""
 
+    qtbot: QtBot
     sources: tuple[str, ...] = ("other/source", "analytics/source")
     topics: tuple[str, ...] = ("other.topic", "com.axis.scene.frame.v1")
-    jobs: list[QRunnable] = field(default_factory=list)
+    jobs: list[tuple[Event, list[bool]]] = field(default_factory=list)  # Each job's go-ahead and its delivery.
 
     def finish(self) -> None:
-        """Complete the oldest queued request synchronously."""
-        self.jobs.pop(0).run()
+        """Let the oldest held request reach the device and wait until the dialog has its answer."""
+        go, delivered = self.jobs.pop(0)
+        go.set()
+        self.qtbot.waitUntil(lambda: bool(delivered))
+
+    def release_all(self) -> None:
+        for go, _delivered in self.jobs:
+            go.set()
 
 
 @pytest.fixture(autouse=True)
-def discovery(monkeypatch: pytest.MonkeyPatch) -> _Discovery:
-    """Fake the device and worker scheduler instead of fabricating the loader's private state."""
-    pending = _Discovery()
-    monkeypatch.setattr(QThreadPool, "start", lambda self, job: pending.jobs.append(job))
+def discovery(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Generator[_Discovery, None, None]:
+    """Fake the device and hold each discovery job instead of fabricating the loader's private state."""
+    pending = _Discovery(qtbot)
+    submit = JobScope.submit
+
+    def held_submit(
+        scope: JobScope,
+        name: str,
+        work: Callable[[JobContext[Any]], Any],
+        *,
+        on_result: Callable[[Any], None],
+        on_error: Callable[[Exception], None],
+        on_progress: Callable[[Any], None] | None = None,
+    ) -> None:
+        go, delivered = Event(), list[bool]()
+        pending.jobs.append((go, delivered))
+
+        def held(job: JobContext[Any]) -> Any:
+            assert go.wait(5)
+            return work(job)
+
+        def answer(callback: Callable[[Any], None], outcome: Any) -> None:
+            delivered.append(True)
+            callback(outcome)
+
+        submit(
+            scope,
+            name,
+            held,
+            on_result=lambda outcome: answer(on_result, outcome),
+            on_error=lambda error: answer(on_error, error),
+            on_progress=on_progress,
+        )
+
+    monkeypatch.setattr(JobScope, "submit", held_submit)
     monkeypatch.setattr(
         "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.list_analytics_data_source_keys",
         lambda *_args: pending.sources,
@@ -175,7 +215,8 @@ def discovery(monkeypatch: pytest.MonkeyPatch) -> _Discovery:
         "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.list_datahub_topics",
         lambda *_args: pending.topics,
     )
-    return pending
+    yield pending
+    pending.release_all()
 
 
 @pytest.mark.parametrize("small_window", [False, True])

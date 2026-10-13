@@ -3,7 +3,6 @@ from __future__ import annotations
 from threading import Event
 
 import pytest
-from PySide6.QtCore import QThreadPool
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
@@ -39,7 +38,6 @@ def test_discovery_discards_stale_results_and_can_reload(qtbot: QtBot, fail: boo
     finally:
         release.set()
         loader.cleanup()
-        QThreadPool.globalInstance().waitForDone(6000)
 
 
 def test_discovery_instances_load_independently_and_cleanup_ignores_results(qtbot: QtBot) -> None:
@@ -65,7 +63,6 @@ def test_discovery_instances_load_independently_and_cleanup_ignores_results(qtbo
         release.set()
         for loader in loaders:
             loader.cleanup()
-        QThreadPool.globalInstance().waitForDone(6000)
 
 
 def test_choice_refresh_preserves_user_selection(qtbot: QtBot) -> None:

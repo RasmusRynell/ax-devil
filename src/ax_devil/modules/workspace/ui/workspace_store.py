@@ -62,6 +62,7 @@ class WorkspaceStore(QObject):
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
         self._rescan_count = 0  # numbers rescan requests
         self._latest_rescan: dict[str, int] = {}  # each rescanning item's newest request, the only one that commits
+        self._cancels: list[Callable[[], None]] = []  # cancel the background work started for this Workspace
         self._announced_state = self._state()
 
     @property
@@ -103,6 +104,9 @@ class WorkspaceStore(QObject):
         self._latest_rescan = {}
         self._not_considered = set()
         self._generation += 1
+        cancels, self._cancels = self._cancels, []
+        for cancel in cancels:
+            cancel()
         self._awaiting_saved = False
         self._read_saved = None
         self.workspace_replaced.emit()
@@ -123,11 +127,7 @@ class WorkspaceStore(QObject):
         self._awaiting_saved = True
         self._read_saved = partial(load_saved, kept)
         generation = self._generation
-        self._resolver.run(
-            self._read_saved,
-            partial(self._publish_saved, generation),
-            lambda: generation == self._generation and self._awaiting_saved,
-        )
+        self._cancels.append(self._resolver.run(self._read_saved, partial(self._publish_saved, generation)))
 
     def finish_restore(self) -> None:
         """Read the saved state of a restored Workspace now, on the calling thread, when it is still pending.
@@ -261,10 +261,8 @@ class WorkspaceStore(QObject):
         self._rescan_count += 1
         request = self._rescan_count
         self._latest_rescan[item_id] = request
-        self._resolver.resolve(
-            [self._workspace.item(item_id)],
-            partial(self._apply_rescan, generation, request),
-            lambda: generation == self._generation and self._latest_rescan.get(item_id) == request,
+        self._cancels.append(
+            self._resolver.resolve([self._workspace.item(item_id)], partial(self._apply_rescan, generation, request))
         )
 
     def contents(self) -> tuple[Content, ...]:
@@ -346,9 +344,7 @@ class WorkspaceStore(QObject):
         batches = [items] if added else [[item] for item in items]
         for batch in batches:
             if batch:
-                self._resolver.resolve(
-                    batch, partial(self._commit, generation, added=added), lambda: generation == self._generation
-                )
+                self._cancels.append(self._resolver.resolve(batch, partial(self._commit, generation, added=added)))
 
     def _commit(self, generation: int, resolutions: tuple[ItemResolution, ...], *, added: bool) -> None:
         """Record the results of items still waiting for them, and exclude Content whose default is not considered."""

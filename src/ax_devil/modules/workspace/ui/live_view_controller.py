@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from functools import partial
 
 from PySide6.QtCore import QObject
 
+from ax_devil.modules.background_jobs import BackgroundJobs, JobContext
 from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera, parse_scan_targets, scan_network
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import WorkspaceItem, live_stream_item_from_defaults
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
@@ -18,29 +17,15 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
-from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
-logger = get_logger(__name__)
+Scan = Callable[[tuple[str, ...]], Sequence[DiscoveredCamera]]
 
 
-@dataclass(frozen=True)
-class _ScanOutcome:
-    """What one scan found, or why it failed."""
-
-    cameras: tuple[DiscoveredCamera, ...] = ()
-    error: str = ""
-
-
-def _scan_outcome(scan: Callable[[], Sequence[DiscoveredCamera]]) -> _ScanOutcome:
-    """Run *scan*, on a worker thread, and keep its failure as a reason instead of raising it."""
-    try:
-        return _ScanOutcome(cameras=tuple(scan()))
-    except Exception as exc:
-        logger.exception("Network scan failed")
-        return _ScanOutcome(error=str(exc) or type(exc).__name__)
+def _run_scan(scan: Scan, targets: tuple[str, ...], _job: JobContext[None]) -> tuple[DiscoveredCamera, ...]:
+    return tuple(scan(targets))
 
 
 def _default_ip_range() -> str:
@@ -78,8 +63,8 @@ class LiveViewController(QObject):
 
     *workspace* carries out what the rows ask for. Nothing touches the network until the user asks for a scan of the
     IP range in the view, which starts as the Settings' default and searches the local network when empty; *scan* runs
-    through *resolver* away from the GUI thread, and its result is dropped once the view is gone. A found camera's Add
-    puts it in *store* with the user's stream defaults.
+    as one of *jobs*, and nothing it finds is shown once the view is gone or `cleanup` ran. A found camera's Add puts
+    it in *store* with the user's stream defaults.
     """
 
     def __init__(
@@ -87,15 +72,15 @@ class LiveViewController(QObject):
         view: LiveView,
         workspace: WorkspaceController,
         store: WorkspaceStore,
-        resolver: ItemResolver,
-        scan: Callable[[tuple[str, ...]], Sequence[DiscoveredCamera]] = lambda targets: scan_network(targets=targets),
+        jobs: BackgroundJobs,
+        scan: Scan = lambda targets: scan_network(targets=targets),
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._view: LiveView | None = view
         self._workspace = workspace
         self._store = store
-        self._resolver = resolver
+        self._jobs = jobs.scope(view)
         self._scan = scan
         self._given_range = _default_ip_range()  # What the view's field was last set to by default.
         view.set_scan_range(self._given_range)
@@ -124,21 +109,29 @@ class LiveViewController(QObject):
             return
         self._scanning = True
         self._view.set_scan_status(ScanStatus.SCANNING)
-        scan = self._scan
-        self._resolver.run(
-            lambda: _scan_outcome(lambda: scan(targets)), self._on_scanned, lambda: self._view is not None
+        self._jobs.submit(
+            "network scan",
+            partial(_run_scan, self._scan, targets),
+            on_result=self._on_scanned,
+            on_error=self._on_scan_failed,
         )
 
-    def _on_scanned(self, outcome: _ScanOutcome) -> None:
+    def cleanup(self) -> None:
+        """Stop showing the outcome of a scan still running."""
+        self._jobs.close()
+
+    def _on_scanned(self, cameras: tuple[DiscoveredCamera, ...]) -> None:
         self._scanning = False
         if self._view is None:
             return
-        if outcome.error:
-            self._view.set_scan_status(ScanStatus.FAILED, outcome.error)
-            return
         self._view.set_scan_status(ScanStatus.IDLE)
-        self._found = outcome.cameras
+        self._found = cameras
         self._show(self._workspace.sections())
+
+    def _on_scan_failed(self, error: Exception) -> None:
+        self._scanning = False
+        if self._view is not None:
+            self._view.set_scan_status(ScanStatus.FAILED, str(error) or type(error).__name__)
 
     def _show(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
         """Show the Live section, how many of its cameras are connected, and the cameras found that the workspace

@@ -245,8 +245,9 @@ def test_a_launch_with_a_workspace_file_asks_about_the_kept_workspace_edits_even
     tmp_path: Path,
 ) -> None:
     class _NeverRuns(ItemResolver):
-        def run(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = bool) -> None:
+        def run(self, work: Callable[[], Any], done: Callable[[Any], None]) -> Callable[[], None]:
             """Leave background work unfinished, as a slow filesystem does."""
+            return lambda: None
 
     saved = save_workspace(
         Workspace(name="Lot", items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace"
@@ -269,8 +270,9 @@ def test_replacing_a_workspace_still_being_restored_asks_about_its_edits_even_wh
     tmp_path: Path, action: str
 ) -> None:
     class _NeverRuns(ItemResolver):
-        def run(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = bool) -> None:
+        def run(self, work: Callable[[], Any], done: Callable[[Any], None]) -> Callable[[], None]:
             """Leave background work unfinished, as a slow filesystem does."""
+            return lambda: None
 
     saved = save_workspace(
         Workspace(name="Lot", items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace"
