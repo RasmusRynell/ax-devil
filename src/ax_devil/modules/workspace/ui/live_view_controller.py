@@ -258,7 +258,9 @@ class LiveViewController(QObject):
 
     def _on_scan_failed(self, error: Exception) -> None:
         self._scanning = False
-        self._found_refresh.stop()
+        if self._found_refresh.isActive():
+            self._found_refresh.stop()
+            self._refresh()
         if self._view is not None:
             self._view.set_scan_status(ScanStatus.FAILED, str(error) or type(error).__name__)
 
