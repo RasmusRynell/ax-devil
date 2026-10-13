@@ -115,8 +115,7 @@ resolvers, whose Add runs the row's `add`. Their buttons, such as the scan setti
 
 Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Connect,
 Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
-(`section_tree.py`) lists sections of them under captions that fold on a click. `set_sections` keeps a row's widget
-while its `row_id` and drawn values stay the same, so a controller must keep `row_id` stable across snapshots.
+(`section_tree.py`) lists sections of them under captions that fold on a click.
 `WorkspaceController.connect_tree` serves every view's tree, so a row behaves the same in all
 of them: a double-click opens it, its action runs through `perform_row_action`, its eye includes or excludes it, and
 its right-click menu (owned by `SectionTree`) opens, renames and removes it.
