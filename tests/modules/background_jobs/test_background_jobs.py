@@ -12,7 +12,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QObject
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.background_jobs import BackgroundJobs, JobContext
+from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, background_jobs
 
 _T = TypeVar("_T")
 
@@ -194,3 +194,69 @@ def test_the_work_and_its_result_are_released_on_the_gui_thread(qtbot: QtBot) ->
 
 def _track_and_return(track: Callable[[str], object], _captured: object, _job: JobContext[None]) -> object:
     return track("result")  # Made on the worker, so only the job holds it once the work returns.
+
+
+def test_a_result_nobody_wants_any_more_goes_to_discard_on_the_gui_thread(qtbot: QtBot) -> None:
+    """A result that owns something is handed back for release when its job was cancelled while it ran, so it is
+    not leaked; a delivered result, cancelled waiting work and an error never reach discard."""
+    jobs = BackgroundJobs(max_workers=1)
+    owner = QObject()
+    scope = jobs.scope(owner)
+    started, release = threading.Event(), threading.Event()
+    outcomes: list[object] = []
+    discarded: list[tuple[object, threading.Thread]] = []
+
+    def discard(value: object) -> None:
+        discarded.append((value, threading.current_thread()))
+
+    def running(_job: JobContext[None]) -> str:
+        started.set()
+        assert release.wait(5)
+        return "opened"
+
+    def broken(_job: JobContext[None]) -> str:
+        raise OSError("unreachable")
+
+    def submit(name: str, work: Callable[[JobContext[None]], str]) -> Callable[[], None]:
+        return scope.submit(name, work, on_result=outcomes.append, on_error=outcomes.append, on_discard=discard)
+
+    cancel_running = submit("running", running)
+    submit("delivered", lambda _job: "delivered")
+    cancel_waiting = submit("waiting", lambda _job: "waiting")
+    submit("broken", broken)
+    assert started.wait(5)
+    cancel_running()
+    cancel_waiting()
+    release.set()
+    qtbot.waitUntil(lambda: len(outcomes) == 2)
+
+    assert discarded == [("opened", threading.main_thread())]
+    assert outcomes[0] == "delivered"
+    assert isinstance(outcomes[1], OSError)
+
+
+def test_a_pool_of_its_own_keeps_slow_work_away_from_the_shared_workers(qtbot: QtBot) -> None:
+    """Work in a named pool has the size it asked for, and a busy pool does not delay the shared one."""
+    name = f"test-{threading.get_ident()}-{id(qtbot)}"
+    slow = background_jobs(name, max_workers=1)
+    assert slow.max_workers == 1
+    assert background_jobs(name) is slow
+    with pytest.raises(ValueError):
+        background_jobs(name, max_workers=2)
+    assert background_jobs() is not slow
+    release = threading.Event()
+    owner = QObject()
+    slow_outcomes: list[object] = []
+    shared_outcomes: list[object] = []
+
+    slow.scope(owner).submit(
+        "slow", lambda _job: release.wait(5), on_result=slow_outcomes.append, on_error=slow_outcomes.append
+    )
+    background_jobs().scope(owner).submit(
+        "quick", lambda _job: "quick", on_result=shared_outcomes.append, on_error=shared_outcomes.append
+    )
+    qtbot.waitUntil(lambda: shared_outcomes == ["quick"])
+
+    assert slow_outcomes == []
+    release.set()
+    qtbot.waitUntil(lambda: slow_outcomes == [True])

@@ -121,7 +121,10 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
     user when settings are missing, invalid, or point at nothing. It runs on a background thread, so keep it in a
     module without Qt imports and free of shared mutable state.
   - `create_settings_widget()` is required: a `PlaylistResolverWidget` that edits settings and calls
-    `submit_settings(settings)` when the user is ready.
+    `submit_settings(settings)` when the user is ready. Slow work in the form, such as scanning a folder, goes through
+    `self.jobs.submit(name, work, on_result=..., on_error=...)`: `work(job: JobContext)` runs on a worker thread and
+    uses only the values it was given, and the callbacks run on the GUI thread until the form is closed.
+    Import `JobContext` from `ax_devil.modules.plugin_system`.
   - `create_cli_command()` is optional: it builds the same settings from CLI arguments and passes
     `[PlaylistItem(resolver=cls.plugin_id(), settings=settings)]` to
     `ctx.obj["run_with_items"]`.

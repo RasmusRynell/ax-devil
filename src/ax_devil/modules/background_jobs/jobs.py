@@ -14,7 +14,7 @@ from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_MAX_WORKERS = 4  # ponytail: shared by every job, so slow jobs delay others; give such work its own instance.
+_MAX_WORKERS = 4  # ponytail: shared by every job in a pool, so slow jobs delay others; give such work its own pool.
 
 P = TypeVar("P")
 R = TypeVar("R")
@@ -30,6 +30,7 @@ class _Job:
         on_result: Callable[[Any], None],
         on_error: Callable[[Exception], None],
         on_progress: Callable[[Any], None] | None,
+        on_discard: Callable[[Any], None] | None,
         scope: JobScope,
     ) -> None:
         self.name = name
@@ -37,15 +38,18 @@ class _Job:
         self.on_result: Callable[[Any], None] | None = on_result
         self.on_error: Callable[[Exception], None] | None = on_error
         self.on_progress = on_progress
+        self.on_discard = on_discard
         self.scope: JobScope | None = scope
         self.cancelled = threading.Event()
         self.result: Any = None
+        self.has_result = False  # The result may be None.
         self.error: Exception | None = None
 
     def cancel(self) -> None:
         """Stop wanting the outcome and drop the callbacks, which may hold the owner. GUI thread only.
 
-        *work* stays until the job finishes, so a worker running it never holds its last reference.
+        *work* stays until the job finishes, so a worker running it never holds its last reference. *on_discard* stays
+        too, since it is for a result that arrives after this.
         """
         self.cancelled.set()
         self.on_result = self.on_error = self.on_progress = None
@@ -89,6 +93,7 @@ class JobScope:
         on_result: Callable[[R], None],
         on_error: Callable[[Exception], None],
         on_progress: Callable[[P], None] | None = None,
+        on_discard: Callable[[R], None] | None = None,
     ) -> Callable[[], None]:
         """Run *work* on a worker thread and call exactly one of *on_result* or *on_error* on the GUI thread.
 
@@ -98,8 +103,13 @@ class JobScope:
         goes to *on_error*, so its message must not carry secrets. Return a function that cancels this job as
         closing the scope cancels all of them; once either happens nothing more is called, and work that has not
         started never runs.
+
+        A result that owns something, such as a running source, would leak when its job is cancelled while the work
+        runs. Pass *on_discard* to receive such a result on the GUI thread and release it. It is called only for
+        a result nobody asked for any more, never for a delivered result, skipped work or an error, and must not hold
+        the owner.
         """
-        job = _Job(name, work, on_result, on_error, on_progress, self)
+        job = _Job(name, work, on_result, on_error, on_progress, on_discard, self)
         if self._closed:
             job.cancel()
             return job.cancel
@@ -128,8 +138,8 @@ class BackgroundJobs(QObject):
     For occasional work that would block the GUI, such as scanning the network; streams and long-lived workers own
     their threads. Owners submit through a `JobScope` that ends with them. Workers start when work is queued and stop
     when none is left, and are daemon threads, so quitting never waits for a job. Every object a job holds is
-    released on the GUI thread. Jobs may finish in any order unless *max_workers* is 1. Use `background_jobs()` for
-    the application's instance; create others only in tests, on the GUI thread.
+    released on the GUI thread. Jobs may finish in any order unless *max_workers* is 1. Get the application's
+    instances from `background_jobs()`; create one directly only in tests, on the GUI thread.
     """
 
     progressed = Signal(object, object)  # _Job, the progress value
@@ -144,6 +154,11 @@ class BackgroundJobs(QObject):
         self._unfinished: set[_Job] = set()  # Keeps each job alive until the GUI thread releases it.
         self.progressed.connect(self._progress, Qt.ConnectionType.QueuedConnection)
         self.finished.connect(self._finish, Qt.ConnectionType.QueuedConnection)
+
+    @property
+    def max_workers(self) -> int:
+        """Return how many jobs run at once."""
+        return self._max_workers
 
     def scope(self, owner: QObject) -> JobScope:
         """Return a new scope for jobs whose outcome *owner* wants; it closes when *owner* is destroyed."""
@@ -178,6 +193,7 @@ class BackgroundJobs(QObject):
             return
         try:
             job.result = work(JobContext(job, self))
+            job.has_result = True
         except Exception as exc:
             # A warning: most failures are a device or file the user named, not a fault in the app.
             logger.warning(f"Background job '{job.name}' failed: {exc}", exc_info=True)
@@ -190,14 +206,17 @@ class BackgroundJobs(QObject):
 
     @Slot(object)
     def _finish(self, job: _Job) -> None:
-        """Release everything *job* holds, then deliver its outcome unless it was cancelled."""
+        """Release everything *job* holds, then deliver its outcome, or hand a result nobody wants to *on_discard*."""
         self._unfinished.discard(job)
         if job.scope is not None:
             job.scope._forget(job)
-        on_result, on_error = job.on_result, job.on_error
-        result, error = job.result, job.error
-        job.work = job.on_result = job.on_error = job.on_progress = job.scope = job.result = job.error = None
+        on_result, on_error, on_discard = job.on_result, job.on_error, job.on_discard
+        result, error, has_result = job.result, job.error, job.has_result
+        job.work = job.on_result = job.on_error = job.on_progress = job.on_discard = job.scope = None
+        job.result = job.error = None
         if on_result is None or on_error is None:
+            if on_discard is not None and has_result:
+                on_discard(result)
             return
         if error is not None:
             on_error(error)
@@ -205,12 +224,19 @@ class BackgroundJobs(QObject):
             on_result(result)
 
 
-_shared: BackgroundJobs | None = None
+_pools: dict[str, BackgroundJobs] = {}
 
 
-def background_jobs() -> BackgroundJobs:
-    """Return the application's `BackgroundJobs`, created on first use; the first call must be on the GUI thread."""
-    global _shared
-    if _shared is None:
-        _shared = BackgroundJobs()
-    return _shared
+def background_jobs(pool: str = "shared", *, max_workers: int | None = None) -> BackgroundJobs:
+    """Return the application's workers named *pool*, created on first use; call it on the GUI thread.
+
+    Work that is slow, or must run one job at a time, asks for a pool of its own so it neither delays other work nor
+    is delayed by it. The first call for a *pool* sets its *max_workers* (default 4); a later call that names another
+    size raises ``ValueError``.
+    """
+    jobs = _pools.get(pool)
+    if jobs is None:
+        jobs = _pools[pool] = BackgroundJobs(_MAX_WORKERS if max_workers is None else max_workers)
+    elif max_workers not in (None, jobs.max_workers):
+        raise ValueError(f"Background pool '{pool}' has {jobs.max_workers} workers, not {max_workers}.")
+    return jobs

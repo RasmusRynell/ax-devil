@@ -1,5 +1,7 @@
 """Plugin-host runtime contracts and discovery machinery."""
 
+from ax_devil.modules.background_jobs import JobContext, JobScope
+
 from .base import PLUGIN_API_VERSION, PluginBase, PluginDefinitionBase
 from .decoder_plugins import (
     DECODER_PLUGIN_TYPE,
@@ -28,6 +30,8 @@ __all__ = [
     "DecoderPluginDefinition",
     "FileToSceneDecoderDefinition",
     "HandlerTypeName",
+    "JobContext",
+    "JobScope",
     "PLUGIN_API_VERSION",
     "PLAYLIST_RESOLVER_PLUGIN_TYPE",
     "PayloadToSceneDecoderDefinition",
