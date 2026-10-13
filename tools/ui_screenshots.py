@@ -47,7 +47,7 @@ from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
-from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera
+from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
 from ax_devil.modules.plugin_system import DECODER_PLUGIN_TYPE, RuntimePluginRegistry
 from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import BoundingBox, Classification, Entity, EntityId, MotionState, Observation, Score
@@ -212,10 +212,21 @@ def _fill_sidebar_views(
 ) -> None:
     """Give the Live, Bookmarks and Plugins views something to show: a scan result, bookmarks and a failed plugin."""
     cameras = [
-        DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "ACCC8E123456"),
-        DiscoveredCamera("192.0.2.51", "AXIS M3086-V", ""),
+        DiscoveredCamera(
+            "192.0.2.34",
+            "AXIS P3265-LVE",
+            "ACCC8E123456",
+            "12.6.85",
+            "Dome Camera",
+            93_600.0,
+            "aarch64",
+            "Ambarella CV25",
+            SignIn.SIGNED_IN,
+        ),
+        DiscoveredCamera("192.0.2.51", "AXIS M3086-V", "", "11.11.73", "Dome Camera", sign_in=SignIn.REFUSED),
+        DiscoveredCamera("192.0.2.77", "AXIS C1310-E", "", "12.2.40", "Network Speaker", sign_in=SignIn.REFUSED),
     ]
-    session._live_view_controller._scan = lambda _targets: cameras
+    session._live_view_controller._scan = lambda *_args: cameras
     session._live_view_controller.scan("192.0.2.0/24")
     qtbot.waitUntil(lambda: not session._live_view_controller._scanning, timeout=10000)
 
@@ -400,8 +411,8 @@ def test_screenshots(
     )
 
     def tree_items() -> list[QTreeWidgetItem]:
-        """Return every row of the content browser, depth first."""
-        iterator = QTreeWidgetItemIterator(session._content_browser.tree)
+        """Return every row of the Workspace view, depth first."""
+        iterator = QTreeWidgetItemIterator(session._workspace_view.tree)
         items = []
         while (item := iterator.value()) is not None:
             if item.data(0, ROW_ROLE) is not None:
@@ -435,7 +446,7 @@ def test_screenshots(
         for size_name, size in WINDOW_SIZES.items():
             window.resize(*size)
             suffix = "" if size_name == "wide" else f"-{size_name}"
-            for view_id in ("live", "playlists", "bookmarks", "plugins"):
+            for view_id in ("live", "offline", "bookmarks", "plugins"):
                 session.show_sidebar_view(view_id)
                 qtbot.wait(500)
                 window.grab().save(str(OUT / f"{theme}-{text_size.value}-view-{view_id}{suffix}.png"))

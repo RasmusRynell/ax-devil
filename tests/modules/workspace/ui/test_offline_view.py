@@ -1,4 +1,4 @@
-"""The Playlists view lists the workspace's playlists and the resolvers that can add more, and acts through the
+"""The Offline view lists the workspace's videos and playlists and the resolvers that can add more, and acts through the
 workspace."""
 
 from __future__ import annotations
@@ -31,13 +31,24 @@ from ax_devil.modules.workspace.core import (
     PlaylistResolver,
     PlaylistSettings,
     RecentWorkspaces,
+    VideoItem,
     WorkspaceBackup,
 )
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
-from ax_devil.modules.workspace.ui.playlists_view import PlaylistsView
+from ax_devil.modules.workspace.ui.offline_view import OfflineView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.contents import make_video
-from tests.helpers.section_tree import captions, double_click, expand, press, row, row_action, row_texts, titles
+from tests.helpers.section_tree import (
+    captions,
+    double_click,
+    expand,
+    press,
+    row,
+    row_action,
+    row_texts,
+    texts,
+    titles,
+)
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext
 
@@ -63,7 +74,7 @@ def _session(
     in_background: bool = False,
     **resolvers: PlaylistResolver,
 ) -> WorkspaceSession:
-    """Return a session showing the Playlists view, with *resolvers* under the ids of the built-in ones.
+    """Return a session showing the Offline view, with *resolvers* under the ids of the built-in ones.
 
     Items resolve at once unless *in_background*.
     """
@@ -77,17 +88,17 @@ def _session(
     qtbot.addWidget(session.widget())
     session.widget().resize(1000, 900)
     session.widget().show()
-    session.show_sidebar_view("playlists")
+    session.show_sidebar_view("offline")
     return session
 
 
-def _view(session: WorkspaceSession) -> PlaylistsView:
-    view = session.widget().findChild(PlaylistsView)
+def _view(session: WorkspaceSession) -> OfflineView:
+    view = session.widget().findChild(OfflineView)
     assert view is not None
     return view
 
 
-def _texts(view: PlaylistsView, title: str) -> list[str]:
+def _texts(view: OfflineView, title: str) -> list[str]:
     return row_texts(row(view.tree, title))
 
 
@@ -125,6 +136,21 @@ def test_playlists_list_their_entries_once_expanded(
 
     shown = titles(view.tree)
     assert shown[shown.index("MOT") + 1] == "run_00.mp4"
+
+
+def test_videos_are_listed_beside_the_playlists_and_both_are_counted(
+    qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=_Folder(2))
+    view = _view(session)
+
+    with patch(_OFFLINE_VIEWER, DummyViewer), patch("PySide6.QtWidgets.QMessageBox.warning"):
+        session.add_items(
+            [VideoItem(video=tmp_path / "gate.mp4"), PlaylistItem(label="Night shift", resolver="folder_pair")]
+        )
+
+    assert captions(view.tree)[:2] == ["Videos, 1", "Playlists, 1"]
+    assert "2" in texts(view)
 
 
 def test_double_clicking_an_entry_opens_its_playlist_at_that_entry(
@@ -231,7 +257,7 @@ def test_add_from_lists_the_loaded_resolvers_whenever_the_view_is_shown(
     loaded = [*_resolvers(), _external_resolver(), _failed_resolver()]
     monkeypatch.setattr(RuntimePluginRegistry, "get_plugins", lambda _plugin_type: loaded)
     session.show_sidebar_view("workspace")
-    session.show_sidebar_view("playlists")
+    session.show_sidebar_view("offline")
 
     assert titles(view.tree) == [*builtins, "Experiment Runs"]
     assert {title: row_action(row(view.tree, title)) for title in titles(view.tree)} == dict.fromkeys(
@@ -249,8 +275,8 @@ def test_add_opens_the_add_playlist_dialog_with_that_resolver_chosen(
     window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     window.show()
-    window._workspace_session.show_sidebar_view("playlists")
-    view = window.findChild(PlaylistsView)
+    window._workspace_session.show_sidebar_view("offline")
+    view = window.findChild(OfflineView)
     assert view is not None
     chosen: list[str] = []
     original_exec = BaseDialog.exec

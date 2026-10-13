@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QObject
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.background_jobs import BackgroundJobs
@@ -833,6 +833,28 @@ def test_an_older_rescan_finishing_last_does_not_overwrite_the_newer_result(qtbo
 
     assert [content.display_name for content in store.contents()] == [newer_name]
     assert len(rescanned) == 1
+
+
+def test_repeated_rescans_waiting_for_a_worker_never_run_but_the_latest(qtbot: QtBot) -> None:
+    scripted = _ScriptedResolver()
+    baseline = set(threading.enumerate())
+    jobs = BackgroundJobs(max_workers=1)
+    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": scripted}), jobs=jobs)
+    store = WorkspaceStore(resolver)
+    runs = PlaylistItem(resolver="runs")
+    store.add_items([runs])
+    qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
+    busy, owner = threading.Event(), QObject()
+    jobs.scope(owner).submit("busy", lambda _job: busy.wait(5), on_result=lambda _: None, on_error=lambda _: None)
+
+    for _ in range(3):
+        store.rescan_item(runs.id)
+    busy.set()
+    qtbot.waitUntil(lambda: len(scripted.requests) == 1)
+    scripted.requests[0][0].set()
+    _wait_for_jobs_since(qtbot, baseline)
+
+    assert len(scripted.requests) == 1, "the two rescans the latest replaced never took a worker"
 
 
 def _wait_for_jobs_since(qtbot: QtBot, baseline: set[threading.Thread]) -> None:

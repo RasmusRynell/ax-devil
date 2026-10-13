@@ -1,1 +1,1 @@
-"""Qt interface for the Workspace: split view, content browser, dialogs, and viewer hosting."""
+"""Qt interface for the Workspace: split view, sidebar views, dialogs, and viewer hosting."""

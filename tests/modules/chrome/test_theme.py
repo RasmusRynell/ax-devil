@@ -31,7 +31,7 @@ from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_viewer.media_tools.entity_list_widget import EntityListWidget
 from ax_devil.modules.video_viewer.media_tools.event_log_widget import EventLogWidget
 from ax_devil.modules.video_viewer.media_tools.object_history_widget import ObjectCard
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
+from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
 
 def _foreground_pixels(image: QImage, rect: QRect, *, dark: bool) -> int:
@@ -88,7 +88,7 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     host = QWidget()
     host.resize(500, 350)
     hover = EntityHoverCard(host)
-    browser = ContentBrowserWidget()
+    browser = SectionsView("test", "Test", Icon.WORKSPACE)
     browser.resize(300, 150)
     for widget in (entities, events, card, host, browser):
         qtbot.addWidget(widget)

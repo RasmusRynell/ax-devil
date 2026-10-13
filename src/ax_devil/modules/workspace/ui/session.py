@@ -26,13 +26,14 @@ from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoD
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.bookmarks_view import BOOKMARKS_VIEW_ID, BookmarksView
 from ax_devil.modules.workspace.ui.bookmarks_view_controller import BookmarksViewController
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
+from ax_devil.modules.workspace.ui.browser_rows import HELD_SECTIONS
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
-from ax_devil.modules.workspace.ui.playlists_view import PlaylistsView
-from ax_devil.modules.workspace.ui.playlists_view_controller import PlaylistsViewController
+from ax_devil.modules.workspace.ui.offline_view import OfflineView
+from ax_devil.modules.workspace.ui.offline_view_controller import OfflineViewController
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
+from ax_devil.modules.workspace.ui.sections_view_controller import SectionsViewController
 from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.start_panel import StartPanel
@@ -84,9 +85,8 @@ class WorkspaceSession(QObject):
         self._resolver = resolver or ItemResolver(default_resolution_context(), parent=self, jobs=jobs)
 
         self._workspace_store = WorkspaceStore(self._resolver, parent=self)
-        self._content_browser = ContentBrowserWidget()
         self._start_panel = StartPanel()
-        self._workspace_view = WorkspaceView(self._content_browser, self._start_panel)
+        self._workspace_view = WorkspaceView(self._start_panel)
         self._center_area = SplitView()
         self._window = ApplicationWindow(
             sidebar=SidebarPanel(),
@@ -96,10 +96,12 @@ class WorkspaceSession(QObject):
         self._window.add_view(self._workspace_view.sidebar_view())
         self._workspace_controller = WorkspaceController(
             workspace_store=self._workspace_store,
-            content_browser=self._content_browser,
             center_area=self._center_area,
             render_catalog_manager=self._render_catalog_manager,
             parent=self._window,
+        )
+        self._workspace_listing = SectionsViewController(
+            self._workspace_view, self._workspace_controller, HELD_SECTIONS
         )
         self._live_view = LiveView()
         self._live_view_controller = LiveViewController(
@@ -107,12 +109,10 @@ class WorkspaceSession(QObject):
         )
         self._window.add_view(self._live_view.sidebar_view())
         self._live_view.add_manually_requested.connect(self.add_live_stream_requested)
-        self._playlists_view = PlaylistsView()
-        self._window.add_view(self._playlists_view.sidebar_view())
-        self._playlists_controller = PlaylistsViewController(
-            self._playlists_view, self._workspace_controller, parent=self
-        )
-        self._playlists_controller.add_requested.connect(self.add_playlist_requested)
+        self._offline_view = OfflineView()
+        self._window.add_view(self._offline_view.sidebar_view())
+        self._offline_controller = OfflineViewController(self._offline_view, self._workspace_controller, parent=self)
+        self._offline_controller.add_requested.connect(self.add_playlist_requested)
         self._bookmarks_view = BookmarksView()
         self._bookmarks = BookmarksViewController(
             self._bookmarks_view, self._workspace_store, self._workspace_controller, parent=self
@@ -189,9 +189,9 @@ class WorkspaceSession(QObject):
         """Add items a dialog already resolved, without resolving them again, and open the first."""
         self._workspace_store.add_resolved(resolutions)
 
-    def refresh_scan_range(self) -> None:
-        """Show the Settings' default IP range in the Live view, unless the user typed another."""
-        self._live_view_controller.refresh_default_range()
+    def refresh_scan_defaults(self) -> None:
+        """Give the Live view the Settings' default IP range, unless the user typed another, and sign-in defaults."""
+        self._live_view_controller.refresh_defaults()
 
     def refresh_recent_workspaces(self) -> None:
         """Show the recent workspace files on the start panel."""

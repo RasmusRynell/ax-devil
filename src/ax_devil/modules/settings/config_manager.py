@@ -77,7 +77,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
             },
             "overlay_source": "websocket",
         },
-        "network_scan": {"ip_range": "192.168.1.0/24"},
+        "network_scan": {
+            "ip_range": "192.168.1.0/24",
+            "credentials": [{"username": "$AX_DEVIL_TARGET_USER", "password": "$AX_DEVIL_TARGET_PASS"}],
+        },
     },
 }
 
@@ -121,6 +124,16 @@ def _resolve_runtime_value(value: Any, *, expand_user_paths: bool) -> Any:
 def expand_environment_reference(value: str) -> str:
     """Return the environment value a ``$VARIABLE_NAME`` reference names, empty when unset; other text unchanged."""
     return cast(str, _resolve_runtime_value(value, expand_user_paths=False))
+
+
+def default_hint(raw_value: str, *, mask: bool = False) -> str:
+    """Return the placeholder that shows a default field value: the value, masked with *mask*, followed by the
+    ``$VARIABLE`` it comes from, such as ``172.20.1.1  (via $AX_DEVIL_TARGET_ADDR)``; empty when it has no value."""
+    value = expand_environment_reference(raw_value)
+    if not value:
+        return ""
+    display = "*" * len(value) if mask else value
+    return f"{display}  (via {raw_value})" if is_environment_reference(raw_value) else display
 
 
 def integer_default(value: object, default: int) -> int:

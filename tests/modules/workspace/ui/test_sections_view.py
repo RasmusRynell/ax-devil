@@ -1,4 +1,4 @@
-"""Tests for ContentBrowserWidget row rendering and signals."""
+"""A sections view lists its rows, searches and filters them, and reports what the user does with them."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit, QMenu, QToolButton, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     FileVideoSourceSpec,
@@ -23,11 +25,16 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
-from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
+from ax_devil.modules.workspace.ui.browser_rows import (
+    BrowserSection,
+    Facet,
+    WorkspaceBrowserRow,
+    WorkspaceBrowserSection,
+)
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
+from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.source_row import SourceRow
 from tests.helpers.section_tree import caption, captions, titles
 from tests.helpers.widgets import required_child
@@ -37,60 +44,80 @@ def _make_video(name: str = "test.mp4") -> SeekableVideoContent:
     return SeekableVideoContent(display_name=name, source_spec=FileVideoSourceSpec(path=Path(f"/tmp/{name}")))
 
 
-def _browser(qtbot: QtBot, *rows: WorkspaceBrowserRow) -> ContentBrowserWidget:
-    browser = ContentBrowserWidget()
-    qtbot.addWidget(browser)
-    _set_rows(browser, rows)
-    return browser
+def _new_view() -> SectionsView:
+    return SectionsView("test", "Test", Icon.WORKSPACE)
 
 
-def _set_rows(browser: ContentBrowserWidget, rows: tuple[WorkspaceBrowserRow, ...]) -> None:
-    browser.set_browser_sections((WorkspaceBrowserSection(BrowserSection.VIDEOS, rows),))
+def _view_with(qtbot: QtBot, *rows: WorkspaceBrowserRow) -> SectionsView:
+    view = _new_view()
+    qtbot.addWidget(view)
+    _set_rows(view, rows)
+    return view
 
 
-def _tree(browser: ContentBrowserWidget) -> QTreeWidget:
-    tree: QTreeWidget | None = browser.findChild(QTreeWidget)
+def _set_rows(view: SectionsView, rows: tuple[WorkspaceBrowserRow, ...]) -> None:
+    view.set_sections((WorkspaceBrowserSection(BrowserSection.VIDEOS, rows),))
+
+
+def _tree(view: SectionsView) -> QTreeWidget:
+    tree: QTreeWidget | None = view.findChild(QTreeWidget)
     assert tree is not None
     return tree
 
 
-def _search(browser: ContentBrowserWidget) -> QLineEdit:
-    search: QLineEdit | None = browser.findChild(QLineEdit)
+def _search(view: SectionsView) -> QLineEdit:
+    search: QLineEdit | None = view.findChild(QLineEdit)
     assert search is not None
     return search
 
 
-def _show_excluded_toggle(browser: ContentBrowserWidget) -> QToolButton:
-    """Return the list filter button, the only tool button placed directly in the browser toolbar."""
-    toggle: QToolButton | None = browser.findChild(QToolButton, options=Qt.FindChildOption.FindDirectChildrenOnly)
-    assert toggle is not None
-    return toggle
+def _filter_entries(view: SectionsView) -> dict[str, bool]:
+    """Return what the Filter offers, each entry with whether its rows are shown; empty while it is disabled."""
+    [button] = [button for button in view.findChildren(MenuButton) if button.text() == "Filter"]
+    menu = button.menu()
+    assert menu is not None
+    if not button.isEnabled():
+        return {}
+    return {action.text(): action.isChecked() for action in menu.actions() if not action.isSeparator()}
+
+
+def _choose_in_filter(view: SectionsView, entry: str) -> None:
+    """Check or uncheck *entry* in the Filter, as the user does."""
+    [button] = [button for button in view.findChildren(MenuButton) if button.text() == "Filter"]
+    menu = button.menu()
+    assert menu is not None
+    [action] = [action for action in menu.actions() if action.text() == entry]
+    action.trigger()
+
+
+def _show_left_out(view: SectionsView) -> None:
+    _choose_in_filter(view, "Left out")
 
 
 def _row(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
     return cast(WorkspaceBrowserRow, item.data(0, ROW_ROLE))
 
 
-def _row_widget(browser: ContentBrowserWidget, item: QTreeWidgetItem) -> SourceRow:
-    widget = _tree(browser).itemWidget(item, 0)
+def _row_widget(view: SectionsView, item: QTreeWidgetItem) -> SourceRow:
+    widget = _tree(view).itemWidget(item, 0)
     assert isinstance(widget, SourceRow)
     return widget
 
 
-def _row_toggle(browser: ContentBrowserWidget, item: QTreeWidgetItem) -> QToolButton:
-    toggle = _row_widget(browser, item).findChild(QToolButton)
+def _row_toggle(view: SectionsView, item: QTreeWidgetItem) -> QToolButton:
+    toggle = _row_widget(view, item).findChild(QToolButton)
     assert toggle is not None
     return toggle
 
 
-def _required_item_row(browser: ContentBrowserWidget, index: int = 0) -> QTreeWidgetItem:
-    section = _tree(browser).topLevelItem(0)
+def _required_item_row(view: SectionsView, index: int = 0) -> QTreeWidgetItem:
+    section = _tree(view).topLevelItem(0)
     assert section is not None
     return required_child(section, index)
 
 
 def _context_menu(
-    browser: ContentBrowserWidget,
+    view: SectionsView,
     item: QTreeWidgetItem,
     choose: str | None = None,
     after_choosing: Callable[[], None] | None = None,
@@ -99,12 +126,12 @@ def _context_menu(
 
     *after_choosing* runs once the chosen action is underway, for closing a dialog it opens.
     """
-    browser.show()
-    tree = _tree(browser)
+    view.show()
+    tree = _tree(view)
     entries: dict[str, bool] = {}
 
     def inspect_menu() -> None:
-        menu = browser.findChildren(QMenu)[-1]
+        menu = view.tree.findChildren(QMenu)[-1]
         entries.update({action.text(): action.isEnabled() for action in menu.actions() if not action.isSeparator()})
         menu.close()
         if after_choosing is not None:
@@ -119,7 +146,7 @@ def _context_menu(
 
 
 def test_renders_explicit_rows(qtbot: QtBot) -> None:
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-0",
@@ -132,7 +159,7 @@ def test_renders_explicit_rows(qtbot: QtBot) -> None:
         ),
     )
 
-    top_item = _required_item_row(browser)
+    top_item = _required_item_row(view)
     assert _row(top_item).label == "Suite"
     assert [_row(required_child(top_item, index)).label for index in range(top_item.childCount())] == [
         "Entry 1",
@@ -146,18 +173,18 @@ def test_refresh_preserves_expansion_by_identity_after_reordering(qtbot: QtBot) 
     second = WorkspaceBrowserRow(
         row_id="second", label="Same name", icon_kind="playlist", children=(replace(child, row_id="other-child"),)
     )
-    browser = _browser(qtbot, first, second)
-    _required_item_row(browser, 0).setExpanded(False)
-    _required_item_row(browser, 1).setExpanded(True)
+    view = _view_with(qtbot, first, second)
+    _required_item_row(view, 0).setExpanded(False)
+    _required_item_row(view, 1).setExpanded(True)
 
-    _set_rows(browser, (second, replace(first, label="Renamed")))
+    _set_rows(view, (second, replace(first, label="Renamed")))
 
-    assert _required_item_row(browser, 0).isExpanded()
-    assert not _required_item_row(browser, 1).isExpanded()
+    assert _required_item_row(view, 0).isExpanded()
+    assert not _required_item_row(view, 1).isExpanded()
 
 
 def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-11",
@@ -167,42 +194,42 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
         ),
     )
 
-    top_item = _required_item_row(browser)
+    top_item = _required_item_row(view)
     assert top_item.isExpanded()
     child_item = required_child(top_item, 0)
     assert _row(child_item).is_open
-    assert "Open in a viewer" in _row_widget(browser, child_item).toolTip()
+    assert "Open in a viewer" in _row_widget(view, child_item).toolTip()
 
 
 def test_a_section_row_is_not_selectable_or_openable_and_is_not_searchable(qtbot: QtBot) -> None:
-    browser = _browser(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"))
-    section = _tree(browser).topLevelItem(0)
+    view = _view_with(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"))
+    section = _tree(view).topLevelItem(0)
     assert section is not None
 
     assert section.isExpanded()
     assert not section.flags() & Qt.ItemFlag.ItemIsSelectable
     assert section.toolTip(0) == ""
     activated = Mock()
-    browser.tree.row_activated.connect(activated)
-    _tree(browser).itemDoubleClicked.emit(section, 0)
+    view.tree.row_activated.connect(activated)
+    _tree(view).itemDoubleClicked.emit(section, 0)
     activated.assert_not_called()
     assert _row(required_child(section, 0)).label == "clip.mp4"
 
-    _search(browser).setText("videos")
+    _search(view).setText("videos")
 
     assert section.isHidden()
     assert required_child(section, 0).isHidden()
 
-    _search(browser).setText("clip")
+    _search(view).setText("clip")
 
     assert not section.isHidden()
     assert not required_child(section, 0).isHidden()
 
 
 def test_tree_items_expose_their_detail_as_accessible_text(qtbot: QtBot) -> None:
-    browser = ContentBrowserWidget()
-    qtbot.addWidget(browser)
-    browser.set_browser_sections(
+    view = _new_view()
+    qtbot.addWidget(view)
+    view.set_sections(
         (
             WorkspaceBrowserSection(
                 BrowserSection.LIVE,
@@ -213,7 +240,7 @@ def test_tree_items_expose_their_detail_as_accessible_text(qtbot: QtBot) -> None
             ),
         )
     )
-    section = _tree(browser).topLevelItem(0)
+    section = _tree(view).topLevelItem(0)
     assert section is not None
 
     def accessible_text(item: QTreeWidgetItem) -> object:
@@ -233,27 +260,27 @@ def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
             children=(WorkspaceBrowserRow(row_id="entry", label="Match", icon_kind="video"),),
         ),
     )
-    browser = _browser(qtbot, *rows)
-    _search(browser).setText("Match")
-    _required_item_row(browser).setExpanded(False)
+    view = _view_with(qtbot, *rows)
+    _search(view).setText("Match")
+    _required_item_row(view).setExpanded(False)
 
-    _set_rows(browser, rows)
+    _set_rows(view, rows)
 
-    assert _required_item_row(browser).isExpanded()
+    assert _required_item_row(view).isExpanded()
 
 
 def test_consideration_toggle_requests_the_change_for_its_row(qtbot: QtBot) -> None:
     item_ref = ConsiderationItemRef.playlist_entry("playlist-id", 0)
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-3", label="Entry 1", icon_kind="video", consideration_ref=item_ref, is_considered=False
         ),
     )
-    toggle = _row_toggle(browser, _required_item_row(browser))
+    toggle = _row_toggle(view, _required_item_row(view))
     assert not toggle.isChecked()
 
-    with qtbot.waitSignal(browser.tree.row_consideration_changed, timeout=1000) as blocker:
+    with qtbot.waitSignal(view.tree.row_consideration_changed, timeout=1000) as blocker:
         toggle.click()
 
     assert blocker.args == [item_ref, True]
@@ -266,18 +293,18 @@ def test_filter_waits_for_workspace_state_after_toggle_request(qtbot: QtBot) -> 
         icon_kind="video",
         consideration_ref=ConsiderationItemRef.playlist_entry("playlist", 0),
     )
-    browser = _browser(qtbot, row)
-    _row_toggle(browser, _required_item_row(browser)).click()
-    _search(browser).setText("Entry")
-    assert not _required_item_row(browser).isHidden()
+    view = _view_with(qtbot, row)
+    _row_toggle(view, _required_item_row(view)).click()
+    _search(view).setText("Entry")
+    assert not _required_item_row(view).isHidden()
 
-    _set_rows(browser, (replace(row, is_considered=False),))
+    _set_rows(view, (replace(row, is_considered=False),))
 
-    assert _required_item_row(browser).isHidden()
+    assert _required_item_row(view).isHidden()
 
 
 def test_excluded_rows_stay_hidden_through_search_until_shown(qtbot: QtBot) -> None:
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-10",
@@ -287,17 +314,17 @@ def test_excluded_rows_stay_hidden_through_search_until_shown(qtbot: QtBot) -> N
             is_considered=False,
         ),
     )
-    assert _required_item_row(browser).isHidden()
+    assert _required_item_row(view).isHidden()
 
-    _search(browser).setText("warehouse")
-    assert _required_item_row(browser).isHidden()
+    _search(view).setText("warehouse")
+    assert _required_item_row(view).isHidden()
 
-    _show_excluded_toggle(browser).click()
-    assert not _required_item_row(browser).isHidden()
+    _show_left_out(view)
+    assert not _required_item_row(view).isHidden()
 
 
 def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> None:
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(row_id="row-5", label="Parking lot north", icon_kind="video"),
         WorkspaceBrowserRow(
@@ -308,26 +335,26 @@ def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> Non
             detail="site_a",
         ),
     )
-    search = _search(browser)
-    location_row = _required_item_row(browser, 1)
+    search = _search(view)
+    location_row = _required_item_row(view, 1)
     assert _row(location_row).label == "cam.mp4"
-    assert "/data/site_a/cam.mp4" in _row_widget(browser, location_row).toolTip()
+    assert "/data/site_a/cam.mp4" in _row_widget(view, location_row).toolTip()
 
     search.setText("parking")
-    assert not _required_item_row(browser, 0).isHidden()
+    assert not _required_item_row(view, 0).isHidden()
     assert location_row.isHidden()
 
     search.setText("site_a")
-    assert _required_item_row(browser, 0).isHidden()
+    assert _required_item_row(view, 0).isHidden()
     assert not location_row.isHidden()
 
     search.clear()
-    assert not _required_item_row(browser, 0).isHidden()
+    assert not _required_item_row(view, 0).isHidden()
     assert not location_row.isHidden()
 
 
 def test_search_keeps_matching_playlist_children_reachable(qtbot: QtBot) -> None:
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-7",
@@ -340,9 +367,9 @@ def test_search_keeps_matching_playlist_children_reachable(qtbot: QtBot) -> None
         ),
     )
 
-    _search(browser).setText("warehouse")
+    _search(view).setText("warehouse")
 
-    top_item = _required_item_row(browser)
+    top_item = _required_item_row(view)
     assert not top_item.isHidden()
     assert required_child(top_item, 0).isHidden()
     assert not required_child(top_item, 1).isHidden()
@@ -361,7 +388,7 @@ def _double_click(
 def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
     """Double-clicking a collapsed row asks to open it and leaves its children visible instead of toggling them."""
     video = _make_video()
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-13",
@@ -371,12 +398,12 @@ def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
             children=(WorkspaceBrowserRow(row_id="row-14", label="Overlay", icon_kind="overlay"),),
         ),
     )
-    browser.show()
-    top_item = _required_item_row(browser)
+    view.show()
+    top_item = _required_item_row(view)
     top_item.setExpanded(False)
 
-    with qtbot.waitSignal(browser.tree.row_activated, timeout=1000) as blocker:
-        _double_click(_row_widget(browser, top_item))
+    with qtbot.waitSignal(view.tree.row_activated, timeout=1000) as blocker:
+        _double_click(_row_widget(view, top_item))
 
     assert blocker.args == [_row(top_item), False]
     assert top_item.isExpanded()
@@ -384,7 +411,7 @@ def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
 
 def test_double_clicking_the_eye_toggle_does_not_open_the_row(qtbot: QtBot) -> None:
     video = _make_video()
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-15",
@@ -395,9 +422,9 @@ def test_double_clicking_the_eye_toggle_does_not_open_the_row(qtbot: QtBot) -> N
         ),
     )
     activated = Mock()
-    browser.tree.row_activated.connect(activated)
-    browser.show()
-    toggle = _row_toggle(browser, _required_item_row(browser))
+    view.tree.row_activated.connect(activated)
+    view.show()
+    toggle = _row_toggle(view, _required_item_row(view))
 
     _double_click(toggle, position=toggle.rect().center())
 
@@ -408,7 +435,7 @@ def test_context_menu_shows_information_on_request_and_removes_only_top_level_it
     item = VideoItem(video=Path("/tmp/video.mp4"))
     info = WorkspaceItemInfo(title="Video", fields=(("type", "video"),))
     information_factory = Mock(return_value=info)
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-16",
@@ -423,11 +450,11 @@ def test_context_menu_shows_information_on_request_and_removes_only_top_level_it
             ),
         ),
     )
-    top_item = _required_item_row(browser)
+    top_item = _required_item_row(view)
     top_item.setExpanded(True)
 
-    assert list(_context_menu(browser, top_item)) == ["Information", "Rename", "Remove"]
-    assert list(_context_menu(browser, required_child(top_item, 0))) == ["Information"]
+    assert list(_context_menu(view, top_item)) == ["Information", "Rename", "Remove"]
+    assert list(_context_menu(view, required_child(top_item, 0))) == ["Information"]
     information_factory.assert_not_called()
 
     shown: list[str] = []
@@ -439,46 +466,46 @@ def test_context_menu_shows_information_on_request_and_removes_only_top_level_it
         shown.append(dialog.windowTitle())
         dialog.reject()
 
-    _context_menu(browser, top_item, choose="Information", after_choosing=close_information)
+    _context_menu(view, top_item, choose="Information", after_choosing=close_information)
     information_factory.assert_called_once_with()
     assert len(shown) == 1
 
-    with qtbot.waitSignal(browser.item_remove_requested) as removed:
-        _context_menu(browser, top_item, choose="Remove")
+    with qtbot.waitSignal(view.tree.item_remove_requested) as removed:
+        _context_menu(view, top_item, choose="Remove")
     assert removed.args == [item.id]
 
 
 @pytest.mark.parametrize("is_open", [True, False])
 def test_export_action_requests_the_open_item(qtbot: QtBot, is_open: bool) -> None:
     target = OnScreenWorkspaceItem(kind="video", content_id="video")
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(row_id="video", label="Video", icon_kind="video", export_target=target, is_open=is_open),
     )
     exported = Mock()
-    browser.export_requested.connect(exported)
+    view.tree.export_requested.connect(exported)
 
-    [(label, enabled)] = _context_menu(browser, _required_item_row(browser)).items()
+    [(label, enabled)] = _context_menu(view, _required_item_row(view)).items()
     assert enabled is is_open
     if is_open:
-        _context_menu(browser, _required_item_row(browser), choose=label)
+        _context_menu(view, _required_item_row(view), choose=label)
         exported.assert_called_once_with(target)
 
 
 def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> None:
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="video", label="Video", icon_kind="video", item=VideoItem(video=Path("/tmp/video.mp4"))
         ),
     )
-    browser.show()
-    tree = _tree(browser)
-    position = tree.visualItemRect(_required_item_row(browser)).center()
+    view.show()
+    tree = _tree(view)
+    position = tree.visualItemRect(_required_item_row(view)).center()
     destroyed = Mock()
 
     def close_menu() -> None:
-        for menu in browser.findChildren(QMenu):
+        for menu in view.tree.findChildren(QMenu):
             menu.destroyed.connect(destroyed)
             for action in menu.actions():
                 assert action.parent() is menu
@@ -491,20 +518,20 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
     assert destroyed.call_count == 9  # Each time: the menu, Rename, and Remove.
-    assert browser.findChildren(QMenu) == []
+    assert view.tree.findChildren(QMenu) == []
 
 
 def test_open_actions_open_in_preview_or_to_the_side(qtbot: QtBot) -> None:
     video = _make_video()
-    browser = _browser(
+    view = _view_with(
         qtbot, WorkspaceBrowserRow(row_id="video", label="Video", icon_kind="video", activation_target=(video, 0))
     )
-    item = _required_item_row(browser)
+    item = _required_item_row(view)
 
-    with qtbot.waitSignal(browser.content_open_to_side_requested) as side:
-        _context_menu(browser, item, choose="Open to the Side")
-    with qtbot.waitSignal(browser.content_activated) as preview:
-        _context_menu(browser, item, choose="Open")
+    with qtbot.waitSignal(view.tree.content_open_to_side_requested) as side:
+        _context_menu(view, item, choose="Open to the Side")
+    with qtbot.waitSignal(view.tree.content_activated) as preview:
+        _context_menu(view, item, choose="Open")
 
     assert side.args == [video, 0]
     assert preview.args == [video, 0]
@@ -537,7 +564,7 @@ def test_workspace_item_info_dialog_fits_screen_and_is_resizable(qtbot: QtBot) -
 
 def test_an_unavailable_row_shows_its_reason_and_can_only_be_renamed_or_removed(qtbot: QtBot) -> None:
     item = VideoItem(video=Path("/missing/lot.mp4"))
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id=item.id,
@@ -547,18 +574,18 @@ def test_an_unavailable_row_shows_its_reason_and_can_only_be_renamed_or_removed(
             unavailable_reason="File not found: /missing/lot.mp4",
         ),
     )
-    tree_item = _required_item_row(browser)
+    tree_item = _required_item_row(view)
 
-    assert "File not found: /missing/lot.mp4" in _row_widget(browser, tree_item).toolTip()
-    assert list(_context_menu(browser, tree_item)) == ["Rename", "Remove"]
-    with qtbot.waitSignal(browser.item_remove_requested) as removed:
-        _context_menu(browser, tree_item, choose="Remove")
+    assert "File not found: /missing/lot.mp4" in _row_widget(view, tree_item).toolTip()
+    assert list(_context_menu(view, tree_item)) == ["Rename", "Remove"]
+    with qtbot.waitSignal(view.tree.item_remove_requested) as removed:
+        _context_menu(view, tree_item, choose="Remove")
     assert removed.args == [item.id]
 
 
 def test_rename_asks_for_a_name_and_requests_it(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     item = VideoItem(label="Gate", video=Path("/tmp/gate.mp4"))
-    browser = _browser(qtbot, WorkspaceBrowserRow(row_id="gate", label="Gate", icon_kind="video", item=item))
+    view = _view_with(qtbot, WorkspaceBrowserRow(row_id="gate", label="Gate", icon_kind="video", item=item))
     shown: list[str] = []
 
     def enter_name(dialog: RenameDialog) -> int:
@@ -567,8 +594,8 @@ def test_rename_asks_for_a_name_and_requests_it(qtbot: QtBot, monkeypatch: pytes
         return RenameDialog.DialogCode.Accepted
 
     monkeypatch.setattr(RenameDialog, "exec", enter_name)
-    with qtbot.waitSignal(browser.item_rename_requested) as renamed:
-        _context_menu(browser, _required_item_row(browser), choose="Rename")
+    with qtbot.waitSignal(view.tree.item_rename_requested) as renamed:
+        _context_menu(view, _required_item_row(view), choose="Rename")
 
     assert shown == ["Gate"]
     assert renamed.args == [item.id, "North gate"]
@@ -579,7 +606,7 @@ def test_renaming_an_unlabeled_row_seeds_the_shown_name_and_keeping_it_clears_th
 ) -> None:
     item = VideoItem(video=Path("/tmp/gate.mp4"))
     shown_label = "Lot / gate.mp4"
-    browser = _browser(qtbot, WorkspaceBrowserRow(row_id="gate", label=shown_label, icon_kind="video", item=item))
+    view = _view_with(qtbot, WorkspaceBrowserRow(row_id="gate", label=shown_label, icon_kind="video", item=item))
     entered: list[str] = []
     shown: list[str] = []
 
@@ -591,8 +618,8 @@ def test_renaming_an_unlabeled_row_seeds_the_shown_name_and_keeping_it_clears_th
     monkeypatch.setattr(RenameDialog, "exec", enter_name)
     for name, expected in ((shown_label, ""), ("North gate", "North gate")):
         entered.append(name)
-        with qtbot.waitSignal(browser.item_rename_requested) as renamed:
-            _context_menu(browser, _required_item_row(browser), choose="Rename")
+        with qtbot.waitSignal(view.tree.item_rename_requested) as renamed:
+            _context_menu(view, _required_item_row(view), choose="Rename")
         assert renamed.args == [item.id, expected]
 
     assert shown == [shown_label, shown_label]
@@ -600,14 +627,14 @@ def test_renaming_an_unlabeled_row_seeds_the_shown_name_and_keeping_it_clears_th
 
 def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
     item = UnreadableItem.from_raw({"kind": "radar", "id": "r1"}, "Unknown item kind: 'radar'.")
-    browser = _browser(
+    view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id=item.id, label="radar", icon_kind="unavailable", item=item, unavailable_reason=item.reason
         ),
     )
 
-    assert _context_menu(browser, _required_item_row(browser)) == {"Rename": False, "Remove": True}
+    assert _context_menu(view, _required_item_row(view)) == {"Rename": False, "Remove": True}
 
 
 def _excluded(label: str, children: tuple[WorkspaceBrowserRow, ...] = ()) -> WorkspaceBrowserRow:
@@ -619,38 +646,38 @@ def _excluded(label: str, children: tuple[WorkspaceBrowserRow, ...] = ()) -> Wor
 
 
 def test_a_search_matching_only_an_excluded_item_keeps_its_section_listed(qtbot: QtBot) -> None:
-    browser = _browser(qtbot, _excluded("Entry"))
+    view = _view_with(qtbot, _excluded("Entry"))
 
-    _search(browser).setText("entry")
+    _search(view).setText("entry")
 
-    assert captions(browser.tree) == ["Videos, 1, 1 hidden"]
-    assert titles(browser.tree) == []
+    assert captions(view.tree) == ["Videos, 1, 1 hidden"]
+    assert titles(view.tree) == []
 
 
 def test_a_section_counts_the_excluded_items_the_list_hides(qtbot: QtBot) -> None:
     clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
-    browser = _browser(qtbot, clip, _excluded("Entry"))
+    view = _view_with(qtbot, clip, _excluded("Entry"))
 
-    assert caption(browser.tree, "Videos").text() == "Videos  2  · 1 hidden"
-    assert captions(browser.tree) == ["Videos, 2, 1 hidden"]
+    assert caption(view.tree, "Videos").text() == "Videos  2  · 1 hidden"
+    assert captions(view.tree) == ["Videos, 2, 1 hidden"]
 
-    _show_excluded_toggle(browser).click()
+    _show_left_out(view)
 
-    assert caption(browser.tree, "Videos").text() == "Videos  2"
-    assert captions(browser.tree) == ["Videos, 2"]
+    assert caption(view.tree, "Videos").text() == "Videos  2"
+    assert captions(view.tree) == ["Videos, 2"]
 
 
 def test_a_section_counts_only_excluded_items_the_search_would_otherwise_show(qtbot: QtBot) -> None:
     clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
-    browser = _browser(qtbot, clip, _excluded("Entry"))
+    view = _view_with(qtbot, clip, _excluded("Entry"))
 
-    _search(browser).setText("clip")
+    _search(view).setText("clip")
 
-    assert captions(browser.tree) == ["Videos, 2"]
+    assert captions(view.tree) == ["Videos, 2"]
 
-    _search(browser).setText("entry")
+    _search(view).setText("entry")
 
-    assert captions(browser.tree) == ["Videos, 2, 1 hidden"]
+    assert captions(view.tree) == ["Videos, 2, 1 hidden"]
 
 
 def test_a_section_counts_an_excluded_entry_revealed_with_its_excluded_lane_matching_a_search(qtbot: QtBot) -> None:
@@ -661,8 +688,43 @@ def test_a_section_counts_an_excluded_entry_revealed_with_its_excluded_lane_matc
         consideration_ref=ConsiderationItemRef.playlist_lane("playlist-id", 0, 0),
         is_considered=False,
     )
-    browser = _browser(qtbot, _excluded("Entry", (lane,)))
+    view = _view_with(qtbot, _excluded("Entry", (lane,)))
 
-    _search(browser).setText("lane")
+    _search(view).setText("lane")
 
-    assert captions(browser.tree) == ["Videos, 1, 2 hidden"]
+    assert captions(view.tree) == ["Videos, 1, 2 hidden"]
+
+
+def test_the_filter_offers_left_out_while_rows_are_left_out_and_keeps_the_users_choice(qtbot: QtBot) -> None:
+    clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
+    view = _view_with(qtbot, clip)
+    assert _filter_entries(view) == {}
+
+    _set_rows(view, (clip, _excluded("Entry")))
+    assert _filter_entries(view) == {"Left out": False}
+
+    _show_left_out(view)
+    _set_rows(view, (clip, _excluded("Entry"), _excluded("Other")))
+
+    assert _filter_entries(view) == {"Left out": True}
+    assert titles(view.tree) == ["clip.mp4", "Entry", "Other"]
+
+
+def _camera(name: str, product_type: str) -> WorkspaceBrowserRow:
+    return WorkspaceBrowserRow(
+        row_id=name, label=name, icon_kind="live_video", facets=frozenset({Facet("Type", product_type)})
+    )
+
+
+def test_the_filter_offers_a_group_once_it_has_a_choice_and_hides_rows_by_it(qtbot: QtBot) -> None:
+    view = _view_with(qtbot, _camera("Q1656", "Box Camera"))
+    assert _filter_entries(view) == {}, "one type is no choice"
+
+    _set_rows(view, (_camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker")))
+    assert _filter_entries(view) == {"Box Camera": True, "Network Speaker": True}
+
+    _choose_in_filter(view, "Network Speaker")
+    assert titles(view.tree) == ["Q1656"]
+
+    _set_rows(view, (_camera("C1310", "Network Speaker"),))
+    assert _filter_entries(view) == {"Network Speaker": False}, "a hidden type stays offered, to show it again"

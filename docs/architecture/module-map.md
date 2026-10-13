@@ -18,12 +18,13 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | CLI commands and maintenance entry points | `src/ax_devil/cli.py` |
 | Main window menus, app-wide dialogs (including Settings and Quick Setup), diagnostics window launch | `src/ax_devil/modules/application_shell/` |
 | Workspace model: the Workspace, Workspace Items and their resolution, file format, kept workspace and recent workspaces, content, intake, item information (Qt-free) | `src/ax_devil/modules/workspace/core/` |
-| Workspace interface: `WorkspaceStore`, plugin-backed background resolution, browser rows and the section tree that shows them, add-content and rename dialogs, workspace lifecycle and prompts, split-view hosting, `ViewerWidget`, viewer factory, session/controller, the activity bar, sidebar host and the Workspace, Live, Playlists and Bookmarks views | `src/ax_devil/modules/workspace/ui/` |
+| Workspace interface: `WorkspaceStore`, plugin-backed background resolution, browser rows and the section tree that shows them, add-content and rename dialogs, workspace lifecycle and prompts, split-view hosting, `ViewerWidget`, viewer factory, session/controller, the activity bar, sidebar host and the Workspace, Live, Offline and Bookmarks views | `src/ax_devil/modules/workspace/ui/` |
 | Live/offline viewer workflows, media tools, offline entry opening (`EntryOpening`, `EntryMedia`), `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation | `src/ax_devil/modules/video_player/` |
 | Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
 | Render catalog viewer: example sheets, the live viewer window, the `ax-devil catalog` commands and the generated language reference | `src/ax_devil/modules/catalog_viewer/` |
 | Frame sources, overlay sources, file providers, transport/runtime source plumbing | `src/ax_devil/modules/data_sources/` |
+| The on-request network scan that finds Axis devices on IP ranges by what they give without login, and signs in with HTTP Digest only when asked | `src/ax_devil/modules/device_discovery/` |
 | Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
 | Session filtering, shared filter configs, state, predicates, and whole-file history filtering | `src/ax_devil/modules/filtering/` |
 | Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |
@@ -39,7 +40,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 
 ## Live Sources And Add-Content Placement
 
-`data_sources/live/` groups RTSP, MQTT, and DataHub transport implementations and discovery, including the on-request network scan that finds cameras. Shared source contracts
+`data_sources/live/` groups RTSP, MQTT, and DataHub transport implementations and discovery. Shared source contracts
 remain in `data_sources/base.py`; file sources and providers remain outside `live/`.
 
 `workspace/ui/add_content/` groups the three add-content dialogs and their analytics discovery and playlist-selection

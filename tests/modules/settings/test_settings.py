@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QProcess
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QWidget
+from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QLineEdit, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.configuration_preferences import ConfigField
@@ -34,6 +34,7 @@ from tests.helpers.settings_dialog import (
     preference_input,
     save_error,
 )
+from tests.helpers.widgets import button
 
 
 @pytest.fixture(autouse=True)
@@ -201,6 +202,36 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
     qtbot.addWidget(reopened)
     assert choice(reopened, "Text size").currentData() == "large"
     assert {path: config_editor(reopened, path).text() for path in edits} == edits
+
+
+def test_scan_logins_are_added_removed_and_saved_in_order(qtbot: QtBot, config: ConfigManager) -> None:
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
+    from ax_devil.modules.device_discovery.network_scan import Login
+    from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
+
+    GlobalSettings().load_from_config(config)
+    dialog = SettingsDialog()
+    qtbot.addWidget(dialog)
+    [editor] = dialog.findChildren(LoginsEditor)
+
+    def fields() -> list[QLineEdit]:
+        return [edit for edit in editor.findChildren(QLineEdit) if edit.isVisibleTo(editor)]
+
+    assert [edit.text() for edit in fields()] == ["$AX_DEVIL_TARGET_USER", "$AX_DEVIL_TARGET_PASS"], "the default login"
+    for username, password in (("operator", "$OPERATOR_PASS"), ("root", "pass"), ("", "ignored")):
+        button(editor, "Add login").click()
+        *_, user_field, password_field = fields()
+        user_field.setText(username)
+        password_field.setText(password)
+    [remove_first, *_] = [found for found in editor.findChildren(QPushButton) if found.toolTip() == "Remove this login"]
+    remove_first.click()
+    assert click_ok(dialog), save_error(dialog)
+
+    assert Login.saved(config) == (Login("operator", "$OPERATOR_PASS"), Login("root", "pass"))
+    assert json.loads(config.config_path.read_text())["defaults"]["network_scan"]["credentials"] == [
+        {"username": "operator", "password": "$OPERATOR_PASS"},
+        {"username": "root", "password": "pass"},
+    ]
 
 
 def test_invalid_transport_and_failed_save_do_not_partially_apply(

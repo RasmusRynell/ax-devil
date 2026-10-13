@@ -7,12 +7,17 @@ from contextlib import contextmanager
 from typing import cast
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QFrame, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
+from PySide6.QtGui import QAction, QGuiApplication
+from PySide6.QtWidgets import QDialog, QFrame, QMenu, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space
+from ax_devil.modules.workspace.core.content import Content
+from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
+from ax_devil.modules.workspace.core.items import WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
+from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
+from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 from ax_devil.modules.workspace.ui.source_row import SourceRow, section_accessible_text, section_caption
 
 ROW_ROLE = Qt.ItemDataRole.UserRole
@@ -37,14 +42,19 @@ class SectionTree(QTreeWidget):
     widgets.
 
     ``row_activated`` carries a double-clicked row and whether Ctrl asked for it to the side, ``row_action_requested``
-    a row whose action was pressed, ``row_consideration_changed`` a consideration item and the state its eye asks for,
-    and ``context_menu_requested`` the row under a right click and where to show a menu.
+    a row whose action was pressed, and ``row_consideration_changed`` a consideration item and the state its eye asks
+    for. Right-clicking a row offers its menu, the same in every view: Open, Open to the Side, Information, Export,
+    Rename and Remove, as far as the row has them; the other signals carry what the user picks there.
     """
 
     row_activated = Signal(object, bool)  # WorkspaceBrowserRow, to the side
     row_action_requested = Signal(object)  # WorkspaceBrowserRow
     row_consideration_changed = Signal(object, bool)  # ConsiderationItemRef, considered
-    context_menu_requested = Signal(object, QPoint)  # WorkspaceBrowserRow, global position
+    content_activated = Signal(object, int)  # Content, start index
+    content_open_to_side_requested = Signal(object, int)  # Content, start index
+    item_remove_requested = Signal(str)  # item id
+    item_rename_requested = Signal(str, str)  # item id, new label; empty for the default name
+    export_requested = Signal(object)  # OnScreenWorkspaceItem
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -260,10 +270,86 @@ class SectionTree(QTreeWidget):
         self.row_activated.emit(_row_of(item), to_side)
 
     def _on_context_menu(self, position: QPoint) -> None:
-        """Report the row under a right click, with the screen position to show a menu at."""
+        """Show the menu of the row under a right click, if it has anything to offer."""
         item = self.itemAt(position)
-        if item is not None and item.parent() is not None:
-            self.context_menu_requested.emit(_row_of(item), self.viewport().mapToGlobal(position))
+        if item is None or item.parent() is None:
+            return
+        menu = self._build_context_menu(_row_of(item))
+        try:
+            if menu.actions():
+                menu.exec(self.viewport().mapToGlobal(position))
+        finally:
+            menu.deleteLater()
+
+    def _build_context_menu(self, row: WorkspaceBrowserRow) -> QMenu:
+        """Build the context menu for one row."""
+        menu = QMenu(self)
+        if row.activation_target is not None:
+            self._add_open_actions(menu, *row.activation_target)
+        information_factory = row.information_factory
+        if information_factory is not None:
+            info_action = QAction("Information", menu)
+            info_action.triggered.connect(
+                lambda _checked=False, factory=information_factory: self._show_item_information(factory())
+            )
+            menu.addAction(info_action)
+
+        if row.export_target is not None:
+            export_action = QAction("Export video" if row.is_open else "Export video (open it first)", menu)
+            export_action.setEnabled(row.is_open)
+            export_action.triggered.connect(
+                lambda _checked=False, target=row.export_target: self.export_requested.emit(target)
+            )
+            menu.addAction(export_action)
+
+        workspace_item = row.item
+        if workspace_item is not None:
+            rename_action = QAction("Rename", menu)
+            rename_action.setEnabled(workspace_item.renamable)
+            rename_action.triggered.connect(
+                lambda _checked=False, value=workspace_item, shown=row.label: self._rename_item(value, shown)
+            )
+            menu.addAction(rename_action)
+            remove_action = QAction("Remove", menu)
+            remove_action.triggered.connect(
+                lambda _checked=False, item_id=workspace_item.id: self.item_remove_requested.emit(item_id)
+            )
+            menu.addAction(remove_action)
+
+        return menu
+
+    def _rename_item(self, item: WorkspaceItem, shown_name: str) -> None:
+        """Ask for a new name for *item* and request the rename when the user confirms it.
+
+        *shown_name* is the label of the row the user clicked. An unlabeled item shows its default name there, which
+        can differ from ``item.display_name`` when several playlists share the row. Keeping that name means no label.
+        """
+        with RenameDialog(item.label or shown_name, self) as dialog:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            name = dialog.name()
+        if not item.label and name == shown_name:
+            name = ""
+        self.item_rename_requested.emit(item.id, name)
+
+    def _add_open_actions(self, menu: QMenu, content: Content, start_index: int) -> None:
+        """Add actions that open the row in the preview pane or in a new split."""
+        open_action = QAction("Open", menu)
+        open_action.setToolTip("Replace the preview (unpinned) pane")
+        open_action.triggered.connect(lambda _checked=False: self.content_activated.emit(content, start_index))
+        side_action = QAction("Open to the Side", menu)
+        side_action.setToolTip("Open pinned in a new split (Ctrl+double-click)")
+        side_action.triggered.connect(
+            lambda _checked=False: self.content_open_to_side_requested.emit(content, start_index)
+        )
+        menu.addAction(open_action)
+        menu.addAction(side_action)
+        menu.addSeparator()
+
+    def _show_item_information(self, info: WorkspaceItemInfo) -> None:
+        """Display a simple modal summary for one workspace tree item."""
+        with WorkspaceItemInfoDialog(info, self) as dialog:
+            dialog.exec()
 
 
 def _row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:

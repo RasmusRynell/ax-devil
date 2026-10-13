@@ -1,4 +1,4 @@
-"""Feed the Playlists view the workspace's playlists and the loaded resolver plugins that can add more."""
+"""Feed the Offline view the workspace's videos and playlists, and the loaded resolver plugins that add playlists."""
 
 from __future__ import annotations
 
@@ -19,7 +19,8 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
-from ax_devil.modules.workspace.ui.playlists_view import PlaylistsView
+from ax_devil.modules.workspace.ui.offline_view import OfflineView
+from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 
 
@@ -48,44 +49,47 @@ def _resolver_row(record: PluginRecord, add: Callable[[], None]) -> WorkspaceBro
     )
 
 
-class PlaylistsViewController(QObject):
-    """Show the workspace's Playlists section and the loaded resolvers in *view*.
+class OfflineViewController(QObject):
+    """Show the workspace's Videos and Playlists sections in *view*, then the loaded resolvers to add playlists from.
 
-    Playlists follow ``WorkspaceController.sections_changed``, and *workspace* carries out what their rows ask for;
-    resolvers are read again whenever the view comes on screen, so plugins reloaded meanwhile are listed. A resolver's
+    Resolvers are read again whenever the view comes on screen, so plugins reloaded meanwhile are listed. A resolver's
     Add emits ``add_requested`` with its id, for whoever asks the user for the playlist's settings.
     """
 
     add_requested = Signal(str)  # resolver id
 
-    def __init__(self, view: PlaylistsView, workspace: WorkspaceController, parent: QObject | None = None) -> None:
+    def __init__(self, view: OfflineView, workspace: WorkspaceController, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._view = view
-        self._sections = workspace.sections()
-        self._resolvers = _loaded_resolvers()
-        workspace.connect_tree(view.tree)
+        self._resolvers: tuple[PluginRecord, ...] = ()
+        self._resolver_rows: tuple[WorkspaceBrowserRow, ...] = ()
+        self._listing = SectionsViewController(
+            view,
+            workspace,
+            {BrowserSection.VIDEOS, BrowserSection.PLAYLISTS},
+            compose=self._with_resolvers,
+            summary=_held_count,
+        )
         view.shown.connect(self._refresh_resolvers)
-        workspace.sections_changed.connect(self._show_sections)
-        self._show()
-
-    def _show_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
-        self._sections = sections
-        self._show()
 
     def _refresh_resolvers(self) -> None:
+        if _loaded_resolvers() != self._resolvers:
+            self._listing.refresh()
+
+    def _with_resolvers(self, held: Sections) -> Sections:
+        """Return *held*, then the loaded resolvers."""
         resolvers = _loaded_resolvers()
         if resolvers != self._resolvers:
             self._resolvers = resolvers
-            self._show()
+            self._resolver_rows = tuple(
+                _resolver_row(record, partial(self.add_requested.emit, record.definition.plugin_id))
+                for record in resolvers
+            )
+        if not self._resolver_rows:
+            return held
+        return (*held, WorkspaceBrowserSection(BrowserSection.ADD_FROM, self._resolver_rows))
 
-    def _show(self) -> None:
-        """Show the Playlists section, counted in the header, and the resolvers to add more from."""
-        shown = tuple(section for section in self._sections if section.kind is BrowserSection.PLAYLISTS)
-        count = sum(len(section.rows) for section in shown)
-        resolvers = tuple(
-            _resolver_row(record, partial(self.add_requested.emit, record.definition.plugin_id))
-            for record in self._resolvers
-        )
-        if resolvers:
-            shown += (WorkspaceBrowserSection(BrowserSection.ADD_FROM, resolvers),)
-        self._view.set_sections(shown, str(count) if count else "")
+
+def _held_count(sections: Sections) -> str:
+    """Return how many rows of what the Workspace holds *sections* list, or nothing for none."""
+    count = sum(len(section.rows) for section in sections if not section.kind.addable)
+    return str(count) if count else ""

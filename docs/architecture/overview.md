@@ -92,7 +92,7 @@ It signals item changes, `workspace_replaced` when another Workspace is opened, 
 `state_changed` when the modified flag, name, or path changes.
 
 `build_browser_sections` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query, and the open
-items into `WorkspaceBrowserSection` values containing `WorkspaceBrowserRow` items. Open-row identity is supplied from the current items reported by hosted viewer widgets. The package split is described in [Workspace](workspace.md). `ContentBrowserWidget` renders explicit browser rows and emits activation, row action, removal, and consideration intents. It does not decide playlist expansion, lane expansion, open-row identity, or information payloads.
+items into `WorkspaceBrowserSection` values containing `WorkspaceBrowserRow` items. Open-row identity is supplied from the current items reported by hosted viewer widgets. The package split is described in [Workspace](workspace.md). Every sidebar view of the Workspace renders these rows in a `SectionTree`, which emits activation, row action, removal, and consideration intents; see [UI Framework](ui-framework.md#sidebar-views). The views do not decide playlist expansion, lane expansion, open-row identity, or information payloads.
 
 ## Data Sources
 

@@ -10,24 +10,26 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QObject
-from PySide6.QtWidgets import QLabel, QLineEdit, QProgressBar, QPushButton, QWidget
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QTimer
+from PySide6.QtWidgets import QCheckBox, QLabel, QLineEdit, QMenu, QProgressBar, QPushButton, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.background_jobs import BackgroundJobs
-from ax_devil.modules.data_sources.live.network_scan import DiscoveredCamera
+from ax_devil.modules.chrome.menu_button import MenuButton
+from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem, Workspace, WorkspaceItem
-from ax_devil.modules.workspace.ui.content_browser import ContentBrowserWidget
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
+from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.section_tree import captions, press, row, row_action, row_texts, shown_rows, texts
+from tests.helpers.widgets import button
 from tests.helpers.workspace import DummyViewer
 
 _LIVE_VIEWER = "ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget"
@@ -58,24 +60,35 @@ class _HeldResolver(ItemResolver):
 
 @dataclass
 class _Scanner:
-    """A network scan that finds *cameras*, or fails with *error*, and counts its calls; it waits while *gate* is
-    clear, as a scan still under way would."""
+    """A network scan that reports *cameras* one by one, or fails with *error*, and records how it was called; it
+    waits while *gate* is clear, as a scan still under way would.
+
+    *on_found* runs after each report on the scan's worker thread, so it must not touch widgets.
+    """
 
     cameras: list[DiscoveredCamera] = field(default_factory=list)
     error: Exception | None = None
     calls: int = 0
     targets: tuple[str, ...] = ()
+    logins: tuple[Login, ...] = ()
+    on_found: Callable[[], None] = lambda: None
     gate: Event = field(default_factory=Event)
 
     def __post_init__(self) -> None:
         self.gate.set()
 
-    def __call__(self, targets: tuple[str, ...]) -> list[DiscoveredCamera]:
+    def __call__(
+        self, targets: tuple[str, ...], logins: tuple[Login, ...], found: Callable[[DiscoveredCamera], None]
+    ) -> list[DiscoveredCamera]:
         self.calls += 1
         self.targets = targets
+        self.logins = logins
         assert self.gate.wait(5)
         if self.error is not None:
             raise self.error
+        for camera in self.cameras:
+            found(camera)
+            self.on_found()
         return self.cameras
 
 
@@ -115,8 +128,37 @@ class _Live:
         return button
 
     def ip_range(self) -> QLineEdit:
-        [field] = self.view.findChildren(QLineEdit)
-        return field
+        return self._field("IP range")
+
+    def _field(self, placeholder: str) -> QLineEdit:
+        [found] = [edit for edit in self.view.findChildren(QLineEdit) if edit.placeholderText().startswith(placeholder)]
+        return found
+
+    def search(self, text: str) -> None:
+        self._field("Search").setText(text)
+
+    def choose(self, button: str, entry: str) -> None:
+        """Pick *entry* in the menu of the menu button *button*."""
+        [menu_button] = [found for found in self.view.findChildren(MenuButton) if found.text() == button]
+        menu = menu_button.menu()
+        assert menu is not None
+        [action] = [action for action in menu.actions() if action.text() == entry]
+        action.trigger()
+
+    def sign_in_choice(self) -> QCheckBox:
+        [choice] = self.view.findChildren(QCheckBox)
+        return choice
+
+    def save_logins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *logins: Login) -> None:
+        """Make *logins* the ones Settings gives the scan, as saving Settings does."""
+        monkeypatch.setattr(ConfigManager, "_instance", None)
+        config = ConfigManager()
+        config.set_config_path(tmp_path / "config.json")
+        config.set("storage", {key: str(tmp_path / key) for key in config.get_raw("storage")})
+        defaults = config.get_raw("defaults")
+        defaults["network_scan"]["credentials"] = Login.config_value(logins)
+        config.set("defaults", defaults)
+        self.controller.refresh_defaults()
 
     def texts(self) -> list[str]:
         return texts(self.view)
@@ -128,7 +170,7 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
     jobs = BackgroundJobs(max_workers=1)  # One worker runs jobs in the order they were submitted.
     store = WorkspaceStore(resolutions)
     center = SplitView()
-    workspace = WorkspaceController(store, ContentBrowserWidget(), center, render_catalog_manager)
+    workspace = WorkspaceController(store, center, render_catalog_manager)
     host = QWidget()  # Holds the view, so a test can delete the view alone.
     qtbot.addWidget(host)
     view = LiveView(host)
@@ -228,7 +270,7 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: _Live, monk
         live,
         DiscoveredCamera("192.0.2.10", "AXIS Q1656", "ACCC8E000001"),
         DiscoveredCamera("192.0.2.11", "AXIS M3086-V", ""),
-        DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", "ACCC8E000002"),
+        DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", "ACCC8E000002", "12.6.85"),
     )
 
     assert captions(live.view.tree) == ["Live, 2", "On the network, 1"]
@@ -236,11 +278,24 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: _Live, monk
     assert live.rows()["AXIS P3265-LVE"] == "Add"
     assert live.detail("AXIS P3265-LVE") == "192.0.2.12"
     assert "ACCC8E000002" in row(live.view.tree, "AXIS P3265-LVE").toolTip()
+    assert "12.6.85" in row(live.view.tree, "AXIS P3265-LVE").toolTip()
 
     _scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", ""))
 
     assert list(live.rows())[2:] == []
     assert "No new cameras" in live.texts()
+
+
+def test_a_held_camera_the_scan_found_shows_and_is_found_by_what_the_scan_learned(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
+
+    _scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "ACCC8E000001", "11.11.73"))
+
+    hover = row(live.view.tree, "Entrance").toolTip()
+    assert all(fact in hover for fact in ("AXIS Q1656", "ACCC8E000001", "11.11.73"))
+    assert "AXIS Q1656" not in row(live.view.tree, "192.0.2.11").toolTip()
+    live.search("q1656")
+    assert list(live.rows()) == ["Entrance"]
 
 
 def test_add_puts_the_camera_in_the_workspace_with_the_stream_defaults(
@@ -338,14 +393,201 @@ def test_a_changed_default_reaches_the_field_unless_the_user_typed_another(live:
     defaults["network_scan"]["ip_range"] = "10.1.0.0/24"
     config.set("defaults", defaults)
     try:
-        controller.refresh_default_range()
+        controller.refresh_defaults()
         assert live.ip_range().text() == "10.1.0.0/24"
 
         live.ip_range().setText("10.2.0.0/24")
         for changed in ("10.2.0.0/24", "10.3.0.0/24"):  # Even a default equal to what was typed is not theirs to take.
             defaults["network_scan"]["ip_range"] = changed
-            controller.refresh_default_range()
+            controller.refresh_defaults()
             assert live.ip_range().text() == "10.2.0.0/24"
     finally:
         defaults["network_scan"]["ip_range"] = default
         config.set("defaults", defaults)
+
+
+def test_found_cameras_are_listed_while_the_scan_is_still_running(live: _Live) -> None:
+    resume = Event()
+
+    def keep_scanning() -> None:
+        """Keep the scan under way after its first find."""
+        resume.wait(5)
+
+    live.scanner.on_found = keep_scanning
+    live.scanner.cameras = [
+        DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", ""),
+        DiscoveredCamera("192.0.2.13", "AXIS Q1656", ""),
+    ]
+
+    live.button("Rescan").click()
+    live.qtbot.waitUntil(lambda: list(live.rows()) == ["AXIS P3265-LVE"])
+    assert not live.button("Rescan").isEnabled(), "the scan is still running"
+
+    resume.set()
+    live.wait_for_scan()
+
+    assert list(live.rows()) == ["AXIS P3265-LVE", "AXIS Q1656"]
+
+
+def test_search_finds_workspace_and_found_cameras_by_what_they_show_and_their_details(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
+    _scan(
+        live,
+        DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", "ACCC8E000002", "12.6.85"),
+        DiscoveredCamera("192.0.2.13", "AXIS Q1656", "ACCC8E000003", "11.11.73"),
+    )
+
+    live.search("ACCC8E000003")
+    assert list(live.rows()) == ["AXIS Q1656"]
+
+    live.search("12.6")
+    assert list(live.rows()) == ["AXIS P3265-LVE"]
+
+    live.search("entrance")
+    assert list(live.rows()) == ["Entrance"]
+
+    live.search("")
+    assert list(live.rows()) == ["Entrance", "AXIS P3265-LVE", "AXIS Q1656"]
+
+
+def test_found_cameras_follow_the_chosen_order(live: _Live) -> None:
+    _scan(
+        live,
+        DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", "12.10.1", uptime_seconds=60.0),
+        DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "", "12.9.4", uptime_seconds=600.0),
+    )
+    assert list(live.rows()) == ["AXIS Q1656", "AXIS M3086-V"]
+
+    live.choose("Sort", "Model")
+    assert list(live.rows()) == ["AXIS M3086-V", "AXIS Q1656"]
+
+    live.choose("Sort", "Uptime")
+    assert list(live.rows()) == ["AXIS Q1656", "AXIS M3086-V"]
+
+
+def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live: _Live) -> None:
+    _scan(
+        live,
+        DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", product_type="Box Camera"),
+        DiscoveredCamera("192.0.2.13", "AXIS C1310-E", "", product_type="Network Speaker"),
+    )
+
+    live.choose("Filter", "Network Speaker")
+
+    assert list(live.rows()) == ["AXIS Q1656"]
+    assert captions(live.view.tree) == ["On the network, 2, 1 hidden"]
+
+    live.choose("Filter", "Network Speaker")
+    assert list(live.rows()) == ["AXIS Q1656", "AXIS C1310-E"]
+
+
+def test_the_filter_hides_held_cameras_by_what_the_scan_learned_too(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
+
+    _scan(
+        live,
+        DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", product_type="Box Camera"),
+        DiscoveredCamera("192.0.2.11", "AXIS C1310-E", "", product_type="Network Speaker"),
+    )
+    live.choose("Filter", "Network Speaker")
+
+    assert list(live.rows()) == ["Entrance"]
+
+
+def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that_worked(
+    live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    guest, operator = Login("guest", "guest"), Login("operator", "$OPERATOR_PASS")
+    live.save_logins(tmp_path, monkeypatch, guest, operator)
+    live.sign_in_choice().setChecked(True)
+
+    _scan(
+        live,
+        DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", sign_in=SignIn.SIGNED_IN, login=operator),
+        DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "", sign_in=SignIn.REFUSED),
+    )
+
+    assert live.scanner.logins == (guest, operator)
+    assert live.detail("AXIS Q1656") == "192.0.2.12 · Signed in"
+    assert live.detail("AXIS M3086-V") == "192.0.2.13 · Credentials refused"
+    live.press("AXIS Q1656")
+    live.press("AXIS M3086-V")
+    signed_in, refused = live.store.workspace.items
+    assert isinstance(signed_in, LiveStreamItem) and isinstance(refused, LiveStreamItem)
+    assert (signed_in.username, signed_in.password) == ("operator", "$OPERATOR_PASS"), "a reference stays one"
+    device_defaults = ConfigManager().get_raw("defaults")["device"]
+    assert (refused.username, refused.password) == (device_defaults["username"], device_defaults["password"])
+
+
+def test_a_scan_without_sign_in_sends_no_credentials(
+    live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live.save_logins(tmp_path, monkeypatch, Login("root", "pass"))
+    _scan(live, DiscoveredCamera("192.0.2.12", "AXIS Q1656", ""))
+    assert live.scanner.logins == ()
+
+
+def test_the_logins_show_under_sign_in_and_edits_there_are_saved_for_settings_too(
+    live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live.save_logins(tmp_path, monkeypatch, Login("root", "pass"))
+    [editor] = live.view.findChildren(LoginsEditor)
+    assert editor.isHidden(), "the logins stay out of the way until sign-in is wanted"
+
+    live.sign_in_choice().setChecked(True)
+    assert not editor.isHidden()
+    button(editor, "Add login").click()
+    *_, username, password = [edit for edit in editor.findChildren(QLineEdit) if edit.isVisibleTo(editor)]
+    username.setText("operator")
+    password.setText("secret")
+    password.editingFinished.emit()
+
+    saved = (Login("root", "pass"), Login("operator", "secret"))
+    assert Login.saved(ConfigManager()) == saved, "Settings reads the same list"
+    _scan(live, DiscoveredCamera("192.0.2.12", "AXIS Q1656", ""))
+    assert live.scanner.logins == saved
+
+
+@pytest.mark.parametrize(("count", "scrolls"), [(5, False), (7, True)])
+def test_up_to_five_logins_show_at_once_and_more_scroll(qtbot: QtBot, count: int, scrolls: bool) -> None:
+    editor = LoginsEditor([Login(f"user{index}", "pass") for index in range(count)])
+    qtbot.addWidget(editor)
+    editor.show()
+    QCoreApplication.processEvents()
+
+    scroll = editor.findChild(QScrollArea)
+    assert scroll is not None
+    assert (scroll.verticalScrollBar().maximum() > 0) is scrolls
+
+
+def test_an_empty_login_list_takes_no_room(qtbot: QtBot) -> None:
+    editor = LoginsEditor([Login("root", "pass")])
+    qtbot.addWidget(editor)
+
+    editor.set_logins(())
+
+    scroll = editor.findChild(QScrollArea)
+    assert scroll is not None
+    assert scroll.height() == 0
+
+
+def test_right_click_remove_takes_a_camera_out_of_the_workspace(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
+    live.press("Entrance")
+    tree = live.view.tree
+    tree.window().show()
+    widget = row(tree, "Entrance")
+    entries: list[str] = []
+
+    def remove() -> None:
+        menu = tree.findChildren(QMenu)[-1]
+        entries.extend(action.text() for action in menu.actions() if not action.isSeparator())
+        menu.close()
+        next(action for action in menu.actions() if action.text() == "Remove").trigger()
+
+    QTimer.singleShot(0, remove)
+    tree.customContextMenuRequested.emit(tree.viewport().mapFromGlobal(widget.mapToGlobal(widget.rect().center())))
+
+    assert entries == ["Open", "Open to the Side", "Information", "Rename", "Remove"]
+    assert live.rows() == {"192.0.2.11": "Connect"}
+    assert live.center.get_widget_count() == 0, "removing a camera disconnects it"
