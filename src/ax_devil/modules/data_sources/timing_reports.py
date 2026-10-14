@@ -8,6 +8,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Literal
 
+from ax_devil.core.cancellation import CancelToken
+
 _GOOD_ALIGNMENT_RATIO = 0.8
 _MIN_TIMELINE_END_WARNING_US = 1_000_000
 _TIMELINE_END_WARNING_RATIO = 0.05
@@ -36,16 +38,18 @@ class TimestampTimeline:
         """Return timestamps as a set for membership and overlap checks."""
         return set(self.timestamps_us)
 
-    def deltas_us(self) -> tuple[int, ...]:
-        """Return timestamp deltas between adjacent samples."""
+    def deltas_us(self, token: CancelToken) -> tuple[int, ...]:
+        """Return timestamp deltas between adjacent samples; polls *token*."""
         return tuple(
-            next_timestamp_us - timestamp_us
-            for timestamp_us, next_timestamp_us in zip(self.timestamps_us, self.timestamps_us[1:])
+            token.polled(
+                next_timestamp_us - timestamp_us
+                for timestamp_us, next_timestamp_us in zip(self.timestamps_us, self.timestamps_us[1:])
+            )
         )
 
-    def delta_modes_us(self, limit: int) -> tuple[tuple[int, int], ...]:
-        """Return most common adjacent timestamp deltas."""
-        return tuple(Counter(self.deltas_us()).most_common(limit))
+    def delta_modes_us(self, limit: int, token: CancelToken) -> tuple[tuple[int, int], ...]:
+        """Return most common adjacent timestamp deltas; polls *token*."""
+        return tuple(Counter(self.deltas_us(token)).most_common(limit))
 
     def nearest_offset_us(self, timestamp_us: int) -> int | None:
         """Return signed nearest timeline timestamp offset from ``timestamp_us``."""
@@ -89,6 +93,12 @@ class FrameTimeline:
     def lazy(cls, *, count: int, timestamp_loader: Callable[[], tuple[int, ...]]) -> "FrameTimeline":
         """Create a frame timeline whose timestamps are loaded only when needed."""
         return cls(count=count, _timestamp_loader=timestamp_loader)
+
+    def snapshot(self) -> "FrameTimeline":
+        """Return an independent copy with its timestamps loaded, which another thread may read freely."""
+        copy = FrameTimeline(count=self.count)
+        copy._timestamps_us = self.timestamps_us
+        return copy
 
     @property
     def timestamps_us(self) -> tuple[int, ...]:

@@ -13,9 +13,11 @@ from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QW
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
+from ax_devil.modules.background_jobs import BackgroundJobs, JobScope, LatestRequest, background_jobs
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
+from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import (
@@ -35,7 +37,6 @@ from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.offline_entry_media import (
     EntryMedia,
     OpenedLane,
-    place_scene_history,
     release_media,
 )
 from ax_devil.modules.video_viewer.overlay_persistence import (
@@ -49,6 +50,15 @@ from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     TimingDiagnosticsWidget,
 )
 from ax_devil.modules.workspace.core import EntryLane, SeekableVideoContent
+
+# Whole-file analysis of a lane's overlay; its own pool keeps it from delaying the shared one.
+_ANALYSIS_POOL = "overlay-analysis"
+
+
+def _stale_message(what: str, lane_name: str, error: Exception, retry_settings: str) -> str:
+    """Say that the *what* shown for a lane is out of date because refreshing it failed, and what retries it."""
+    reason = str(error) or type(error).__name__
+    return f"{what} of lane '{lane_name}' is out of date: {reason}. Change {retry_settings} to retry."
 
 
 def _diagnostics_label(item_name: str, lane_name: str) -> str:
@@ -148,6 +158,13 @@ class OfflineLane:
     alignment_indicator: OverlayAlignmentIndicator | None = None
     video_source: FileFrameSource | None = None
     source_index: int = 0
+    analysis_jobs: JobScope | None = None  # The session's; the lane refreshes nothing without it.
+    _history_request: LatestRequest = field(init=False, repr=False)
+    _alignment_request: LatestRequest = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._history_request = LatestRequest(self.display)
+        self._alignment_request = LatestRequest(self.display)
 
     def display_frame(self, frame: VideoFrameWithOverlays) -> None:
         """Display a synced frame and update lane-owned controls."""
@@ -208,7 +225,7 @@ class OfflineLane:
             self.timing_controls.timestampFallbackPolicyChanged.connect(on_changed)
 
     def set_timestamp_fallback_policy(self, policy: TimestampFallbackPolicy) -> None:
-        """Apply a timestamp fallback policy and refresh alignment status."""
+        """Apply a timestamp fallback policy now and refresh alignment status and history in the background."""
         if self.overlay_source is None:
             return
         self.overlay_source.set_timestamp_fallback_policy(policy)
@@ -216,19 +233,60 @@ class OfflineLane:
         self.refresh_scene_history()
 
     def refresh_scene_history(self) -> None:
-        """Place the overlay history again after a change in how lookup selects samples."""
-        if self.tools_panel is None or self.video_source is None:
+        """Place the overlay history again after a change in how lookup selects samples.
+
+        The placement runs on a worker over values copied now; the panel keeps the previous history until the newest
+        request finishes. A failed one leaves the previous history in place, marked out of date.
+        """
+        if (
+            self.tools_panel is None
+            or self.video_source is None
+            or self.overlay_source is None
+            or self.overlay_policy is None
+            or self.analysis_jobs is None
+        ):
             return
-        history = place_scene_history(self.overlay_source, self.overlay_policy, self.video_source.get_frame_timeline())
-        if history is not None:
+        allow_previous, max_sample_age_us = self.overlay_policy.sample_selection()
+        samples = self.overlay_source.samples()
+        timeline = self.video_source.get_frame_timeline().snapshot()
+        self._history_request.submit(
+            self.analysis_jobs,
+            f"scene history of lane '{self.name}'",
+            lambda job: samples.scene_history(
+                timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us, token=job.token
+            ),
+            on_result=self._show_history,
+            on_error=self._history_failed,
+        )
+
+    def _show_history(self, history: SceneHistory) -> None:
+        if self.tools_panel is not None:
             self.tools_panel.set_scene_history(history)
 
+    def _history_failed(self, error: Exception) -> None:
+        if self.tools_panel is not None:
+            self.tools_panel.mark_history_out_of_date(
+                _stale_message("Scene history", self.name, error, "an overlay sync or sticky setting")
+            )
+
     def refresh_alignment_report(self) -> None:
-        """Refresh the visible overlay alignment report."""
-        report: OverlayAlignmentReport | None = None
-        if self.overlay_source is not None and self.video_source is not None:
-            report = self.overlay_source.analyze_alignment(self.video_source.get_frame_timeline())
-        self._show_alignment_report(report)
+        """Refresh the visible overlay alignment report in the background.
+
+        The previous report stays until the newest request finishes. A failed one leaves it in place, marked out of
+        date.
+        """
+        if self.overlay_source is None or self.video_source is None or self.analysis_jobs is None:
+            return
+        samples = self.overlay_source.samples()
+        handler_type = self.overlay_source.handler_type
+        timeline = self.video_source.get_frame_timeline().snapshot()
+        self._alignment_request.submit(
+            self.analysis_jobs,
+            f"overlay alignment of lane '{self.name}'",
+            lambda job: samples.analyze_alignment(handler_type, timeline, job.token),
+            on_result=self._show_alignment_report,
+            on_error=self._alignment_failed,
+        )
 
     def _show_alignment_report(self, report: OverlayAlignmentReport | None) -> None:
         if self.timing_controls is None or self.alignment_indicator is None:
@@ -236,8 +294,17 @@ class OfflineLane:
         self.timing_controls.update_alignment_report(report)
         self.alignment_indicator.update_alignment_report(report)
 
+    def _alignment_failed(self, error: Exception) -> None:
+        if self.timing_controls is None or self.alignment_indicator is None:
+            return
+        message = _stale_message("Overlay alignment", self.name, error, "an overlay sync setting")
+        self.timing_controls.mark_alignment_out_of_date(message)
+        self.alignment_indicator.mark_alignment_out_of_date(message)
+
     def cleanup_display(self) -> None:
         """Release display-owned mount widgets before the lane container is deleted."""
+        self._history_request.close()
+        self._alignment_request.close()
         if self.presenter is not None:
             self.presenter.clear()
         if self.tools_panel is not None:
@@ -311,6 +378,7 @@ class OfflineSession(QObject):
         *,
         media: EntryMedia,
         source_pool: list[_PooledVideoSource],
+        jobs: BackgroundJobs | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -323,6 +391,9 @@ class OfflineSession(QObject):
         self._min_valid_primary_generation: int | None = None
         self._secondary_frame_relay = _SecondaryFrameRelay(self)
         self._secondary_frame_relay.frameReady.connect(self._display_secondary_frame)
+        self._analysis_jobs = (jobs or background_jobs(_ANALYSIS_POOL)).scope(self)
+        for lane in lanes:
+            lane.analysis_jobs = self._analysis_jobs
 
         primary_source = self.get_primary_video_source()
         self._current_frame = (
@@ -822,6 +893,7 @@ class OfflineSession(QObject):
 
         for lane in self.lanes:
             lane.cleanup_display()
+        self._analysis_jobs.close()
         self.lanes.clear()
 
         self.container.setParent(None)

@@ -3,8 +3,10 @@
 from collections.abc import Callable
 from typing import Protocol
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import OverlayLookupResult
+from ax_devil.modules.data_sources.overlay_samples import OverlaySamples
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.filtering.filter_config import FilterConfig
@@ -57,9 +59,16 @@ class FrameIdentifierDataProvider(Protocol):
         ...
 
     def scene_history(
-        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None
+        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None, token: CancelToken
     ) -> SceneHistory:
-        """Return the source's events and entity appearances placed on the video's frames as lookup shows them."""
+        """Return the source's events and entity appearances placed on the video's frames as lookup shows them.
+
+        Polls *token*.
+        """
+        ...
+
+    def samples(self) -> OverlaySamples:
+        """Return an immutable copy of the sample keys, history and timestamp policy for analysis on any thread."""
         ...
 
     def uses_sequence_lookup(self) -> bool:

@@ -355,6 +355,27 @@ def test_panel_replaces_history_in_every_tool(
     assert "Rename a → b" in _title(pane)
 
 
+def test_panel_marks_the_history_out_of_date_until_it_is_replaced(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    panel = MediaToolsPanel(render_catalog_selection, scene_history=_history(), filter_model=SessionFilter())
+    qtbot.addWidget(panel)
+    panel.show()
+    notice = panel.findChild(QLabel, "historyOutOfDateNotice")
+    assert notice is not None
+    assert not notice.isVisible()
+
+    panel.mark_history_out_of_date("History of lane 'a' is out of date: unreadable")
+
+    assert notice.isVisible()
+    assert "unreadable" in notice.text()
+    assert _view(panel.event_log).model().rowCount() == 2  # The previous history stays usable.
+
+    panel.set_scene_history(_history())
+
+    assert not notice.isVisible()
+
+
 def test_live_panel_has_no_history_tools(qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection) -> None:
     panel = MediaToolsPanel(render_catalog_selection, filter_model=SessionFilter())
     qtbot.addWidget(panel)

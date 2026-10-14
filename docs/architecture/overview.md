@@ -185,9 +185,11 @@ completed frame out to the lanes that reference them. Each `OfflineLane` pulls o
 what was shown before; only the live path (`select_overlay`) keeps a last-sample cache.
 
 While indexing, file overlay providers record each Scene event and each entity's runs of samples as
-`SceneHistoryRecords`; `FileOverlaySource.scene_history()` places them on the bound video under the lane's matching
+`SceneHistoryRecords`; `OverlaySamples.scene_history()` places them on the bound video under the lane's matching
 rules, and `MediaToolsPanel` shows them in the entity list, event log and object history. Live viewers have no
-history.
+history. Changing the timestamp fallback policy or sticky overlays places the history and alignment report again on
+the `overlay-analysis` background pool from an immutable `OverlaySamples` and a copy of the video's timeline; the
+lane keeps showing the previous ones until the newest request finishes.
 
 ## Scene Model And Rendering
 

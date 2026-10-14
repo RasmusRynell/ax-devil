@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
+from ax_devil.core.cancellation import CancelToken
+
 
 class TimestampFallbackMode(str, Enum):
     """Mode for timestamp fallback after exact and provider-owned lookup fail."""
@@ -88,14 +90,15 @@ def count_tolerated_past_overlay_timestamps(
     video_timestamps_us: Sequence[int],
     sorted_overlay_timestamps_us: Sequence[int],
     policy: TimestampFallbackPolicy,
+    token: CancelToken,
 ) -> int:
-    """Count non-exact overlay timestamps selectable by the shared runtime policy."""
+    """Count non-exact overlay timestamps selectable by the shared runtime policy; polls *token*."""
     if not policy.uses_previous_with_tolerance or not video_timestamps_us or not sorted_overlay_timestamps_us:
         return 0
 
     video_timestamp_set = set(video_timestamps_us)
     tolerated_overlay_timestamps: set[int] = set()
-    for video_timestamp_us in video_timestamps_us:
+    for video_timestamp_us in token.polled(video_timestamps_us):
         match = find_matching_overlay_timestamp(
             sorted_overlay_timestamps_us=sorted_overlay_timestamps_us,
             video_timestamp_us=video_timestamp_us,

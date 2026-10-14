@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.cache import CacheManager
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
@@ -160,7 +161,7 @@ def test_placement_follows_the_sample_each_frame_shows() -> None:
 
         return -1 if key < times[0] else bisect_left(times, key)
 
-    history = SceneHistory.place(records, times, position, [0, 40_000, None, 110_000])
+    history = SceneHistory.place(records, times, position, [0, 40_000, None, 110_000], NEVER)
 
     assert history.events == (FrameEvent(_frame(2), "Rename", "Rename a → b", ("a", "b")),)
     assert [(h.entity_id, h.spans) for h in history.objects] == [
@@ -189,9 +190,9 @@ def test_objects_follow_retention_and_replacement_like_lookup(tmp_path: Path) ->
     )
     provider = _provider(path, tmp_path)
     try:
-        sticky = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
-        aged = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=70_000)
-        not_sticky = provider.scene_history(_VIDEO, allow_previous=False, max_sample_age_us=None)
+        sticky = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None, token=NEVER)
+        aged = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=70_000, token=NEVER)
+        not_sticky = provider.scene_history(_VIDEO, allow_previous=False, max_sample_age_us=None, token=NEVER)
     finally:
         provider.close()
 
@@ -213,7 +214,7 @@ def test_provider_history_survives_a_cache_restore(storage_mode: StorageMode, tm
     )
     cold = _provider(path, tmp_path, storage_mode=storage_mode)
     try:
-        expected = cold.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
+        expected = cold.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None, token=NEVER)
     finally:
         cold.close()
     assert [(event.frame_id.sequence_id, event.label) for event in expected.events] == [
@@ -228,7 +229,7 @@ def test_provider_history_survives_a_cache_restore(storage_mode: StorageMode, tm
     _CountingDecoder.decoded = 0
     warm = _provider(path, tmp_path, storage_mode=storage_mode)
     try:
-        restored = warm.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
+        restored = warm.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None, token=NEVER)
         assert _CountingDecoder.decoded == 0
         assert restored.events == expected.events
         assert restored.objects == expected.objects
@@ -246,8 +247,8 @@ def test_frame_keyed_samples_land_on_their_sequence_frame(tmp_path: Path) -> Non
     )
     provider = _provider(path, tmp_path, supports_sequence_lookup=True)
     try:
-        history = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
-        exact = provider.scene_history(_VIDEO, allow_previous=False, max_sample_age_us=None)
+        history = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None, token=NEVER)
+        exact = provider.scene_history(_VIDEO, allow_previous=False, max_sample_age_us=None, token=NEVER)
     finally:
         provider.close()
     assert history.events == (FrameEvent(_frame(2), "Delete", "Delete a", ("a",)),)
@@ -266,7 +267,7 @@ def test_source_index_without_history_is_rebuilt(tmp_path: Path) -> None:
 
     provider = _provider(path, tmp_path)
     try:
-        history = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None)
+        history = provider.scene_history(_VIDEO, allow_previous=True, max_sample_age_us=None, token=NEVER)
         assert [h.entity_id for h in history.objects] == ["a"]
     finally:
         provider.close()

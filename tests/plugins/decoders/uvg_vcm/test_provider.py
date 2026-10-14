@@ -75,7 +75,7 @@ def test_frame_alignment_tracking_and_empty_frames_survive_cache_and_source_chan
                 assert not _load(provider, 1).entities
                 assert _load(provider, 2).entities[EntityId("7")].observations[0].geometry.as_xywh()[0] == -0.000001
                 assert provider.get_filter_config().supports_history_filtering
-                history = provider.scene_history(timeline, allow_previous=False, max_sample_age_us=None)
+                history = provider.scene_history(timeline, allow_previous=False, max_sample_age_us=None, token=NEVER)
                 assert [(item.entity_id, item.types, item.spans) for item in history.objects] == [
                     ("7", ("person",), ((0, 0), (2, 2)))
                 ]

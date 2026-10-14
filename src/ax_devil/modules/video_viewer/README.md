@@ -50,6 +50,9 @@ Do not move Workspace session/layout behavior, reusable player primitives, or pu
   lane when focus is elsewhere.
 - Multi-lane export tiles the selected lanes in the viewer's lane grid and follows the first selected lane's frame
   index and timing, as playback does; a lane past its last frame holds that frame.
+- A lane's whole-file analyses (scene history, overlay alignment) run on a worker over a snapshot, poll cancellation
+  and stop early once superseded. When one fails, the last results stay shown, marked out of date with the lane and
+  reason, until a later change succeeds: a sync change for either, a sticky change for the history only.
 
 ## Testing focus
 

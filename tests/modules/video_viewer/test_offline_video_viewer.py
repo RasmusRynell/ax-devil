@@ -13,6 +13,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QListView, QPushButton, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.data_sources.base import SeekableFrameSource
@@ -37,7 +38,7 @@ from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
-from ax_devil.modules.video_viewer.timing_diagnostics_widget import TimingDiagnosticsWidget
+from ax_devil.modules.video_viewer.timing_diagnostics_widget import OverlayAlignmentIndicator, TimingDiagnosticsWidget
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     EntryLane,
@@ -206,8 +207,37 @@ class _OverlayDecoderRequest:
         self.registry = registry
 
 
+class _SourceSamples:
+    """Analysis snapshot of a test overlay source: the fallback policy it had when taken, answered by that source."""
+
+    def __init__(self, source: _SpecFileOverlaySource, policy: TimestampFallbackPolicy) -> None:
+        self._source = source
+        self._policy = policy
+
+    def scene_history(
+        self,
+        video_timeline: FrameTimeline,
+        *,
+        allow_previous: bool,
+        max_sample_age_us: int | None,
+        token: CancelToken,
+    ) -> SceneHistory:
+        return self._source.history_under(
+            self._policy, video_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us
+        )
+
+    def analyze_alignment(
+        self, _handler_type: str, video_timeline: FrameTimeline, token: CancelToken
+    ) -> OverlayAlignmentReport:
+        return self._source.report_under(self._policy, video_timeline)
+
+
 class _SpecFileOverlaySource(_TrackedOverlaySource):
-    """FileOverlaySource test double created from source specs and decoder lookup."""
+    """FileOverlaySource test double created from source specs and decoder lookup.
+
+    Its history names the settings it was placed under, and its analyses fail with *failure* while that is set, so
+    tests can tell which setting the displayed results follow.
+    """
 
     def __init__(
         self,
@@ -227,6 +257,7 @@ class _SpecFileOverlaySource(_TrackedOverlaySource):
         self._handler_type = handler_type
         self._timestamp_fallback_policy = TimestampFallbackPolicy()
         self.history_selections: list[tuple[bool, int | None]] = []
+        self.failure: str | None = None
         if registry is not None:
             registry.append(self)
 
@@ -240,21 +271,50 @@ class _SpecFileOverlaySource(_TrackedOverlaySource):
     def set_timestamp_fallback_policy(self, policy: TimestampFallbackPolicy) -> None:
         self._timestamp_fallback_policy = policy
 
+    def samples(self) -> _SourceSamples:
+        return _SourceSamples(self, self._timestamp_fallback_policy)
+
     def scene_history(
-        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None
+        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None, token: CancelToken
+    ) -> SceneHistory:
+        return self.history_under(
+            self._timestamp_fallback_policy,
+            video_timeline,
+            allow_previous=allow_previous,
+            max_sample_age_us=max_sample_age_us,
+        )
+
+    def history_under(
+        self,
+        policy: TimestampFallbackPolicy,
+        video_timeline: FrameTimeline,
+        *,
+        allow_previous: bool,
+        max_sample_age_us: int | None,
     ) -> SceneHistory:
         self.history_selections.append((allow_previous, max_sample_age_us))
+        if self.failure is not None:
+            raise RuntimeError(self.failure)
 
         def frame_id(index: int) -> FrameIdentifier:
             return FrameIdentifier(sequence_id=index, timestamp_monotime_us=video_timeline.timestamps_us[index])
 
+        settings = ["no fallback"] if policy.effective_tolerance_us == 0 else []
+        settings += [] if allow_previous else ["no sticky"]
+        suffix = f" ({', '.join(settings)})" if settings else ""
+        label = f"Delete {self.name}{suffix}"
         return SceneHistory(
-            events=(FrameEvent(frame_id(20), "Delete", f"Delete {self.name}", (self.name,)),),
+            events=(FrameEvent(frame_id(20), "Delete", label, (self.name,)),),
             objects=(ObjectHistory(self.name, ("human",), ((10, 19),), video_timeline.timestamps_us),),
             frame_count=video_timeline.count,
         )
 
-    def analyze_alignment(self, video_timeline: FrameTimeline) -> OverlayAlignmentReport:
+    def analyze_alignment(self, video_timeline: FrameTimeline, token: CancelToken) -> OverlayAlignmentReport:
+        return self.report_under(self._timestamp_fallback_policy, video_timeline)
+
+    def report_under(self, policy: TimestampFallbackPolicy, video_timeline: FrameTimeline) -> OverlayAlignmentReport:
+        if self.failure is not None:
+            raise RuntimeError(self.failure)
         return OverlayAlignmentReport(
             handler_type=self.handler_type,
             total_video_frames=video_timeline.count,
@@ -262,7 +322,7 @@ class _SpecFileOverlaySource(_TrackedOverlaySource):
             exact_matches=0,
             max_abs_nearest_offset_us=None,
             sample_period_modes_us=(),
-            tolerance_us=self._timestamp_fallback_policy.effective_tolerance_us,
+            tolerance_us=policy.effective_tolerance_us,
             tolerated_past_matches=0,
         )
 
@@ -341,6 +401,21 @@ def _displays(widget: OfflineVideoViewerWidget) -> list[FrameDisplay]:
 
     displays: list[FrameDisplay] = widget.findChildren(FrameDisplay)
     return displays
+
+
+def _event_texts(panel: MediaToolsPanel) -> list[str]:
+    """Return the event rows the panel lists now."""
+
+    view = panel.event_log.findChild(QListView)
+    assert view is not None
+    model = view.model()
+    return [model.data(model.index(row, 0)) for row in range(model.rowCount())]
+
+
+def _alignment_text(timing: TimingDiagnosticsWidget) -> str:
+    """Return the status text the timing widget shows now."""
+
+    return "\n".join(label.text() for label in timing.findChildren(QLabel))
 
 
 def _transports(widget: OfflineVideoViewerWidget) -> list[SeekableVideoControlPanel]:
@@ -949,7 +1024,7 @@ class TestOfflineVideoViewerWidget:
         assert frame_sources[0].get_current_frame() == 12
 
     def test_lane_history_follows_sticky_and_fallback_settings(self, qtbot: QtBot) -> None:
-        """Object presence is placed again whenever lookup would select samples differently."""
+        """Each sticky or fallback change shows a history and alignment report made under the new setting."""
         overlay_sources: list[_TrackedOverlaySource] = []
         content = _make_seekable_content("history", overlays=(_make_overlay_content("only", overlay_sources),))
         widget = self._open(qtbot, content)
@@ -959,10 +1034,57 @@ class TestOfflineVideoViewerWidget:
         assert isinstance(source, _SpecFileOverlaySource)
         assert source.history_selections == [(True, 2_050_000)]
 
+        def shows(history: str, tolerance: str) -> Callable[[], bool]:
+            def shown() -> bool:
+                alignment = _alignment_text(timing)
+                return _event_texts(panel) == [f"#20 00:00:00.020 {history}"] and f"tol {tolerance}" in alignment
+
+            return shown
+
+        qtbot.waitUntil(shows("Delete only", "50 ms"), timeout=5000)
+
         panel.overlay_controls.settingsChanged.emit(OverlayPersistenceSettings(enabled=False))
+        qtbot.waitUntil(lambda: _event_texts(panel) == ["#20 00:00:00.020 Delete only (no sticky)"], timeout=5000)
+        assert source.history_selections[-1] == (False, None)
+
+        timing.timestampFallbackPolicyChanged.emit(TimestampFallbackPolicy(tolerance_us=0))
+        qtbot.waitUntil(shows("Delete only (no fallback, no sticky)", "0 ms"), timeout=5000)
+
+        panel.overlay_controls.settingsChanged.emit(OverlayPersistenceSettings(enabled=True))
+        qtbot.waitUntil(shows("Delete only (no fallback)", "0 ms"), timeout=5000)
+
+    def test_failed_lane_analysis_is_shown_and_the_next_setting_change_recovers(self, qtbot: QtBot) -> None:
+        """A history or alignment analysis that fails says so on its lane, keeps the old results and can be retried."""
+        overlay_sources: list[_TrackedOverlaySource] = []
+        content = _make_seekable_content("history", overlays=(_make_overlay_content("only", overlay_sources),))
+        widget = self._open(qtbot, content)
+        (panel,) = widget.findChildren(MediaToolsPanel)
+        (timing,) = widget.findChildren(TimingDiagnosticsWidget)
+        (indicator,) = widget.findChildren(OverlayAlignmentIndicator)
+        (source,) = overlay_sources
+        assert isinstance(source, _SpecFileOverlaySource)
+        notice = panel.findChild(QLabel, "historyOutOfDateNotice")
+        assert notice is not None
+        qtbot.waitUntil(lambda: "tol 50 ms" in _alignment_text(timing), timeout=5000)
+        assert notice.isHidden()
+
+        source.failure = "frame index unreadable"
         timing.timestampFallbackPolicyChanged.emit(TimestampFallbackPolicy(tolerance_us=0))
 
-        assert source.history_selections == [(True, 2_050_000), (False, None), (False, None)]
+        qtbot.waitUntil(lambda: not notice.isHidden() and not indicator.isHidden(), timeout=5000)
+        for text in (notice.text(), _alignment_text(timing), indicator.toolTip()):
+            assert "lane '" in text
+            assert "frame index unreadable" in text
+        assert _event_texts(panel) == ["#20 00:00:00.020 Delete only"]
+        assert "tol 50 ms" in _alignment_text(timing)
+
+        source.failure = None
+        timing.timestampFallbackPolicyChanged.emit(TimestampFallbackPolicy(tolerance_us=10_000))
+
+        qtbot.waitUntil(lambda: notice.isHidden() and "tol 10 ms" in _alignment_text(timing), timeout=5000)
+        assert _event_texts(panel) == ["#20 00:00:00.020 Delete only"]
+        assert "frame index unreadable" not in _alignment_text(timing)
+        assert indicator.isHidden()
 
     @pytest.mark.parametrize("lane_count, columns", [(2, 2), (3, 2), (5, 3)])
     def test_lane_geometry(self, qtbot: QtBot, lane_count: int, columns: int) -> None:

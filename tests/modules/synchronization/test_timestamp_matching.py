@@ -1,5 +1,6 @@
 """Tests for shared timestamp matching policy."""
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.synchronization.timestamp_matching import (
     TimestampFallbackMode,
     TimestampFallbackPolicy,
@@ -78,6 +79,7 @@ def test_count_tolerated_past_overlay_timestamps_excludes_exact_matches() -> Non
         video_timestamps_us=(1_000, 2_000, 3_000),
         sorted_overlay_timestamps_us=(1_000, 1_999, 2_300, 4_000),
         policy=TimestampFallbackPolicy(tolerance_us=500),
+        token=NEVER,
     )
 
     assert count == 1
@@ -89,6 +91,7 @@ def test_count_tolerated_past_overlay_timestamps_counts_only_runtime_selectable_
         video_timestamps_us=(1_000,),
         sorted_overlay_timestamps_us=(998, 999),
         policy=TimestampFallbackPolicy(tolerance_us=5_000),
+        token=NEVER,
     )
 
     assert count == 1
@@ -100,6 +103,7 @@ def test_count_tolerated_past_overlay_timestamps_does_not_double_count_exact_ove
         video_timestamps_us=(1_000, 1_001),
         sorted_overlay_timestamps_us=(1_000,),
         policy=TimestampFallbackPolicy(tolerance_us=5_000),
+        token=NEVER,
     )
 
     assert count == 0

@@ -27,6 +27,9 @@ allowance itself is the user's [setting](../../../../docs/settings.md#video-cach
 
 - Providers retain only the two most recently used decoded scenes; larger decoded histories cause
   garbage-collection pauses on the shared GUI thread, so keep in-memory history records small and plain.
+- `OverlaySamples` is what whole-file analysis (history placement, alignment) reads: sample keys, history records and
+  the timestamp policy, never mutated after the provider builds them. Analysis runs on it from any thread; a policy
+  change makes a new value, and per-frame lookup stays on the provider.
 
 ### Live transports
 

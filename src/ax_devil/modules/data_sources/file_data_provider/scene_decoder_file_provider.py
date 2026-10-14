@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import (
@@ -26,7 +26,8 @@ from ax_devil.modules.data_sources.file_data_provider.stores import (
     SourceFingerprint,
     SourceIndexedSceneStore,
 )
-from ax_devil.modules.data_sources.scene_history import SceneHistory, SceneHistoryRecords
+from ax_devil.modules.data_sources.overlay_samples import OverlaySamples, sequence_sample
+from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentBasis
 from ax_devil.modules.diagnostics.metrics_store import (
     get_metrics_store,
@@ -154,10 +155,9 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._runtime_cache = RuntimeSceneCache()
         self._metadata: SceneDecoderFileMetadata | None = None
         self._available_frame_ids: set[int] = set()
-        self._sorted_frame_ids: list[int] = []
+        self._sorted_frame_ids: tuple[int, ...] = ()
         self._sequence_to_timestamp: dict[int, int] = {}
         self._timestamp_to_sequence: dict[int, int] = {}
-        self._history = SceneHistoryRecords(events=(), tracks=())
         self._stats = _RetrievalStats()
         self._store = self._build_store()
         self._apply_catalog(self._store.catalog)
@@ -201,11 +201,19 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
 
     def _apply_catalog(self, catalog: SceneCatalog) -> None:
         self._available_frame_ids = set(catalog.available_frame_ids)
-        self._sorted_frame_ids = sorted(self._available_frame_ids)
+        self._sorted_frame_ids = tuple(sorted(self._available_frame_ids))
         self._timestamp_to_sequence = dict(catalog.timestamp_to_sequence)
         self._sequence_to_timestamp = {seq: ts for ts, seq in self._timestamp_to_sequence.items()}
-        self._sorted_sequences = sorted(self._sequence_to_timestamp)
-        self._history = catalog.history
+        self._sorted_sequences = tuple(sorted(self._sequence_to_timestamp))
+        self._samples = OverlaySamples(
+            sequence_lookup=self._sequence_lookup_enabled,
+            timestamps_us=self._sorted_frame_ids,
+            sequences=self._sorted_sequences,
+            sequence_to_timestamp=self._sequence_to_timestamp,
+            timestamp_to_sequence=self._timestamp_to_sequence,
+            records=catalog.history,
+            policy=self._timestamp_fallback_policy,
+        )
         self._metadata = SceneDecoderFileMetadata(
             file_path=str(self.file_path),
             total_lines=catalog.total_lines,
@@ -406,7 +414,9 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
     ) -> OverlayLookupResult:
         """Resolve frame-keyed annotations using actual video timestamps for their age."""
         requested_time = int(frame_id.timestamp_monotime_us)
-        sample = self._sequence_sample(frame_id.sequence_id, requested_time, timeline, allow_previous=allow_previous)
+        sample = sequence_sample(
+            self._sorted_sequences, frame_id.sequence_id, requested_time, timeline, allow_previous=allow_previous
+        )
         sequence, sample_time = sample if sample is not None else (None, None)
         scene = self._load_scene(self._sequence_to_timestamp[sequence]) if sequence is not None else None
         match_type: OverlayLookupMatchType = "missing"
@@ -424,37 +434,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._stats.record(requested_time, self._stats.resolved if scene is not None else self._stats.misses)
         self._push_metrics()
         return result
-
-    def _sequence_sample(
-        self, frame_index: int, frame_time_us: int, timeline: FrameTimeline, *, allow_previous: bool
-    ) -> tuple[int, int] | None:
-        """Return the sequence and video time of the frame-keyed sample a frame shows, if any."""
-        index = bisect_right(self._sorted_sequences, frame_index) - 1
-        if index < 0:
-            return None
-        sequence = self._sorted_sequences[index]
-        if not allow_previous and sequence != frame_index:
-            return None
-        timestamps = timeline.timestamps_us
-        if not 0 <= sequence < len(timestamps) or timestamps[sequence] > frame_time_us:
-            return None
-        return sequence, timestamps[sequence]
-
-    def _shown_sample(
-        self, frame_index: int, frame_time_us: int, timeline: FrameTimeline, *, allow_previous: bool
-    ) -> tuple[int, int] | None:
-        """Return the timestamp key and time of the sample lookup selects for a video frame, if any."""
-        if self._sequence_lookup_enabled:
-            sample = self._sequence_sample(frame_index, frame_time_us, timeline, allow_previous=allow_previous)
-            return (self._sequence_to_timestamp[sample[0]], sample[1]) if sample is not None else None
-        match = find_matching_overlay_timestamp(
-            sorted_overlay_timestamps_us=self._sorted_frame_ids,
-            video_timestamp_us=frame_time_us,
-            policy=self._timestamp_fallback_policy,
-            allow_previous=allow_previous,
-        )
-        key = match.overlay_timestamp_us
-        return (key, key) if key is not None else None
 
     def _lookup_result(
         self,
@@ -490,6 +469,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         is not affected by this policy.
         """
         self._timestamp_fallback_policy = policy
+        self._samples = replace(self._samples, policy=policy)
 
     def _push_metrics(self) -> None:
         """Push current retrieval stats to the metrics store for live debugging."""
@@ -519,33 +499,17 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         """Get the total number of frames available."""
         return len(self._available_frame_ids)
 
+    def samples(self) -> OverlaySamples:
+        """Return this file's sample keys, history and current timestamp policy as an immutable value."""
+        return self._samples
+
     def scene_history(
-        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None
+        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None, token: CancelToken
     ) -> SceneHistory:
-        """Return this source's events and entity appearances placed on the video's frames.
-
-        Objects appear on exactly the frames whose looked-up sample contains them, under the same matching as
-        ``lookup_by_frame_id`` with *allow_previous*, and only while the sample is at most *max_sample_age_us* old.
-        Events take effect on the first frame at or after their sample; frame-keyed samples belong to the frame
-        their sequence names.
-        """
-        frame_times = video_timeline.timestamps_us
-        shown_keys: list[int | None] = []
-        for frame_index, frame_time in enumerate(frame_times):
-            sample = self._shown_sample(frame_index, frame_time, video_timeline, allow_previous=allow_previous)
-            too_old = (
-                sample is not None and max_sample_age_us is not None and frame_time - sample[1] > max_sample_age_us
-            )
-            shown_keys.append(sample[0] if sample is not None and not too_old else None)
-
-        def frame_position(timestamp_key: int) -> int:
-            if self._sequence_lookup_enabled:
-                return self._timestamp_to_sequence[timestamp_key]
-            if not frame_times or timestamp_key < frame_times[0]:
-                return -1
-            return bisect_left(frame_times, timestamp_key)
-
-        return SceneHistory.place(self._history, frame_times, frame_position, shown_keys)
+        """Return this source's events and entity appearances placed on the video's frames; see `OverlaySamples`."""
+        return self._samples.scene_history(
+            video_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us, token=token
+        )
 
     def get_metadata(self) -> SceneDecoderFileMetadata:
         """Get metadata about the data file."""
