@@ -286,7 +286,12 @@ def test_routing_uses_primary_classification_and_catalog_selectors(types: tuple[
     scene = _scene()
     entity = next(iter(scene.entities.values()))
     entity.observations[0].classification = [
-        Classification(type=kind, score=Score((index + 1) / len(types))) for index, kind in enumerate(types)
+        Classification(
+            type=kind,
+            score=Score((index + 1) / len(types)),
+            confidence=Score((len(types) - index) / len(types)),
+        )
+        for index, kind in enumerate(types)
     ]
     recipe = _runtime_catalog().recipe_for_entity(entity)
     assert recipe is not None and recipe.recipe_id == recipe_id

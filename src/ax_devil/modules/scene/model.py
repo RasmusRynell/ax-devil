@@ -13,7 +13,7 @@ _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (1, 0)
+SCENE_MODEL_VERSION: tuple[int, int] = (1, 1)
 
 
 # ---------------------------------------------------------------------------#
@@ -317,11 +317,12 @@ class WorldVelocity:
 # ---------------------------------------------------------------------------#
 @dataclass(slots=True)
 class Classification:
-    """Classification with dynamic type and flexible attributes."""
+    """Classification with a raw score, optional reported confidence, and flexible attributes."""
 
     type: ClassificationType  # str alias
     score: Score
     attributes: list[Attribute] = field(default_factory=list)
+    confidence: Score | None = None
 
     def __post_init__(self) -> None:
         if not self.type:

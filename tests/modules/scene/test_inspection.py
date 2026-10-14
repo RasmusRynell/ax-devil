@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from ax_devil.modules.scene.inspection import build_entity_hover_html, debug_section_html
 from ax_devil.modules.scene.model import (
     RGB,
@@ -57,6 +59,22 @@ def test_hover_html_includes_entity_and_observation_fields_without_field_specifi
     assert "17" in html
 
 
+@pytest.mark.parametrize("confidence", [None, Score(0.0), Score(0.8516)])
+def test_hover_distinguishes_classification_score_from_optional_confidence(confidence: Score | None) -> None:
+    entity = _make_entity()
+    observation = entity.latest_observation
+    assert observation is not None
+    observation.classification = [Classification("car", Score(0.69), confidence=confidence)]
+
+    html = build_entity_hover_html(entity)
+
+    assert "score: 0.69" in html
+    if confidence is None:
+        assert "confidence" not in html
+    else:
+        assert f"confidence: {confidence.value:.2f}" in html
+
+
 def test_hover_html_surfaces_custom_classification_attributes() -> None:
     entity = _make_entity()
     observation = entity.latest_observation
@@ -78,7 +96,7 @@ def test_hover_html_surfaces_custom_classification_attributes() -> None:
         Attribute(
             "vehicle_type",
             [
-                Classification(type="truck", score=Score(0.17)),
+                Classification(type="truck", score=Score(0.17), confidence=Score(0.73)),
                 Classification(type="bus", score=Score(0.08)),
             ],
         ),
@@ -98,6 +116,7 @@ def test_hover_html_surfaces_custom_classification_attributes() -> None:
     assert "vehicle_type" in html
     assert "truck" in html
     assert "bus" in html
+    assert "confidence: 0.73" in html
 
 
 def test_hover_html_surfaces_nested_observation_debug() -> None:

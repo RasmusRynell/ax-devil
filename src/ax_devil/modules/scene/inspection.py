@@ -164,9 +164,10 @@ def _render_classification(classification: Classification, *, continuation_inden
 
 
 def _render_classification_header(classification: Classification) -> str:
+    confidence = f", confidence: {classification.confidence.value:.2f}" if classification.confidence is not None else ""
     return (
         f'<span style="{_BOLD}">{escape(classification.type)}</span>'
-        f'<span style="{_VALUE}"> ({classification.score.value:.2f})</span>'
+        f'<span style="{_VALUE}"> (score: {classification.score.value:.2f}{confidence})</span>'
     )
 
 
