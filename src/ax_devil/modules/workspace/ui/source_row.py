@@ -113,6 +113,22 @@ def _action_button(action: RowAction) -> SmallButton:
     return button
 
 
+def row_look(row: WorkspaceBrowserRow) -> tuple[object, ...]:
+    """Return the values ``SourceRow`` draws or binds for *row*; a widget can be kept while they stay equal."""
+    return (
+        row.label,
+        row.detail,
+        row.icon_kind,
+        row.is_mark_muted,
+        row.is_dimmed,
+        row.is_open,
+        row.action,
+        row.consideration_ref,
+        row.is_considered,
+        row.tooltip,
+    )
+
+
 class SourceRow(ListRow):
     """*row* as a list row: its kind's mark, its name over its detail, its action, and its eye toggle.
 
@@ -126,11 +142,14 @@ class SourceRow(ListRow):
     action_requested = Signal(object)  # WorkspaceBrowserRow
     consideration_changed = Signal(object, bool)  # ConsiderationItemRef, considered
 
+    row: WorkspaceBrowserRow
+    """The row the widget shows; the tree sets it to the current row while its look is unchanged."""
+
     def __init__(self, row: WorkspaceBrowserRow, parent: QWidget | None = None) -> None:
         trailing: list[QWidget] = []
         if row.action is not None:
             button = _action_button(row.action)
-            button.clicked.connect(lambda _checked=False: self.action_requested.emit(row))
+            button.clicked.connect(lambda _checked=False: self.action_requested.emit(self.row))
             trailing.append(button)
         if (ref := row.consideration_ref) is not None:
             toggle = _ConsiderationToggle(considered=row.is_considered)

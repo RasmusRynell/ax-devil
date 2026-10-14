@@ -146,7 +146,7 @@ Workspace files use the `.ax-devil.workspace` extension and contain JSON:
 
 Recipes need resolvers that run without a widget:
 
-- `resolve(settings) -> list[PlaylistContent]` — headless, and run away from the GUI thread; `settings` is a
+- `resolve(settings, token) -> list[PlaylistContent]` — headless, and run away from the GUI thread; `settings` is a
   JSON-serializable mapping. Settings that are invalid or point at nothing raise `ValueError` or `OSError` with a
   user-facing message.
 - `create_settings_widget()` — edits settings and calls `submit_settings(settings)`.

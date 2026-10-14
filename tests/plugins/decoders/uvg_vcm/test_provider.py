@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.filtering import FilterState
@@ -109,7 +110,7 @@ def test_polygons_and_category_ids_decode_through_a_folder_pair_playlist(tmp_pat
             ]
         },
     )
-    playlist = build_playlist_contents(discover_folder_pairs(videos, overlays), UVG_VCM)[0]
+    playlist = build_playlist_contents(discover_folder_pairs(videos, overlays, NEVER), UVG_VCM, NEVER)[0]
     overlay = playlist.entries[0].lanes[0].overlay
     assert overlay is not None
     assert overlay.source_spec == FileOverlaySourceSpec(path=annotation_path, handler_type=UVG_VCM)

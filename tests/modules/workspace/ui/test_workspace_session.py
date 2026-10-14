@@ -10,6 +10,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLineEdit, QSplitter, QTreeWidget, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -215,12 +216,12 @@ def test_views_follow_the_rows_and_open_and_close_content_through_the_controller
 
 
 class _TwoPlaylists:
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [_make_playlist("train"), _make_playlist("test")]
 
 
 class _NamedPlaylist:
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [_make_playlist(str(settings["name"]))]
 
 
@@ -230,7 +231,7 @@ class _GrowingPlaylist:
     def __init__(self) -> None:
         self.clips = ["first.mp4"]
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         entries = tuple(PlaylistEntry(_make_video(clip).standalone_lanes(), True) for clip in self.clips)
         self.clips.append(f"clip{len(self.clips)}.mp4")
         return [PlaylistContent(display_name="Runs", entries=entries)]
@@ -790,7 +791,7 @@ def test_rescan_in_the_workspace_view_resolves_the_playlist_again(
         def __init__(self) -> None:
             self.entries = 0
 
-        def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+        def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
             self.entries += 1
             lanes = _make_video("clip.mp4").standalone_lanes()
             return [PlaylistContent(display_name="Runs", entries=(PlaylistEntry(lanes, True),) * self.entries)]

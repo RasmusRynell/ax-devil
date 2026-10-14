@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.workspace.core.content import PlaylistContent
 from ax_devil.modules.workspace.core.intake import WorkspaceIntake
 
@@ -19,7 +20,7 @@ class ItemResolutionError(Exception):
 class PlaylistResolver(Protocol):
     """The headless part of a playlist resolver plugin."""
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
         ...
 

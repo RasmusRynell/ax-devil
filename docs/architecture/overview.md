@@ -12,7 +12,7 @@ Workspace                      -> core: Workspace, items, content, intake (Qt-fr
 Video Viewer                   -> live/offline workflows, media tools, Scene presentation, catalog viewer
 Video Player                   -> reusable frame display, viewport, drawing preparation
 Runtime Modules                -> Scene, filtering, data sources, synchronization, cache, plugins
-Supporting Modules             -> diagnostics, shortcuts, chrome
+Supporting Modules             -> diagnostics, shortcuts, chrome, background jobs
 Settings                       -> config, settings state, preference values, logging, paths
 Core                           -> small foundational data types and pure policies
 ```

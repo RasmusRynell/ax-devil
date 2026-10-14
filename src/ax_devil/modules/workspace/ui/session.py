@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.background_jobs import BackgroundJobs, background_jobs
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.sidebar_view import SidebarView
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -58,7 +59,8 @@ def _storage_file(name: str) -> Path:
 class WorkspaceSession(QObject):
     """Compose the workspace UI around one store and its lifecycle, and tear it down.
 
-    *resolver* resolves items, by default with the installed plugins in the background. *backup*,
+    *resolver* resolves items, by default with the installed plugins through *jobs*, the application's background jobs
+    unless given, which also run network scans. *backup*,
     *recent_workspaces*, and *prompts* go to the ``WorkspaceLifecycle``; *prompts* defaults to dialogs over the window.
     """
 
@@ -72,6 +74,7 @@ class WorkspaceSession(QObject):
         *,
         render_catalog_manager: SceneRenderCatalogManager,
         resolver: ItemResolver | None = None,
+        jobs: BackgroundJobs | None = None,
         backup: WorkspaceBackup | None = None,
         recent_workspaces: RecentWorkspaces | None = None,
         prompts: WorkspacePrompts | None = None,
@@ -79,7 +82,7 @@ class WorkspaceSession(QObject):
         super().__init__(parent)
         self._logger = get_logger(__name__)
         self._render_catalog_manager = render_catalog_manager
-        self._resolver = resolver or ItemResolver(default_resolution_context(), parent=self)
+        self._resolver = resolver or ItemResolver(default_resolution_context(), parent=self, jobs=jobs)
 
         self._workspace_store = WorkspaceStore(self._resolver, parent=self)
         self._start_panel = StartPanel()
@@ -102,7 +105,7 @@ class WorkspaceSession(QObject):
         )
         self._live_view = LiveView()
         self._live_view_controller = LiveViewController(
-            self._live_view, self._workspace_controller, self._workspace_store, self._resolver, parent=self
+            self._live_view, self._workspace_controller, self._workspace_store, jobs or background_jobs(), parent=self
         )
         self._window.add_view(self._live_view.sidebar_view())
         self._live_view.add_manually_requested.connect(self.add_live_stream_requested)
@@ -226,6 +229,7 @@ class WorkspaceSession(QObject):
 
     def cleanup(self) -> None:
         """Release workspace viewers and related UI state."""
+        self._live_view_controller.cleanup()
         self._workspace_controller.cleanup()
         self._logger.debug("Workspace session cleanup completed")
 

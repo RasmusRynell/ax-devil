@@ -11,6 +11,7 @@ import numpy as np
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 
+from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
 from ax_devil.modules.data_sources.base import OverlayLookup
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
@@ -56,11 +57,11 @@ class ExportJob:
         self._output_path = output_path
         self._compression = compression or CompressionPreset.default()
         self._temporary_path: Path | None = None
-        self._cancelled = False
+        self._token = CancelToken()
 
     def cancel(self) -> None:
         """Request cancellation before the next frame or destination replacement."""
-        self._cancelled = True
+        self._token.cancel()
 
     def run(self, progress: Callable[[int, int], None] | None = None) -> bool:
         """Export on the GUI thread; return False on cancellation and propagate failures.
@@ -85,10 +86,7 @@ class ExportJob:
         held: list[QImage] = []
         try:
             renderer = FrameImageRenderer()
-            for idx in range(total):
-                if self._cancelled:
-                    break
-
+            for idx in self._token.polled(range(total)):
                 # Lanes sharing a pooled source decode each frame once.
                 decoded: dict[int, DecodedFrame | None] = {}
                 rendered: list[QImage] = []
@@ -129,24 +127,23 @@ class ExportJob:
                 if progress is not None and (idx % 10 == 0 or idx == total - 1):
                     progress(idx, total)
 
+            self._token.raise_if_cancelled()  # Cancelled by the last frame's progress report.
             if encoder is None:
-                return not self._cancelled
-            if self._cancelled:
-                encoder.close()
-                return False
+                return True
             encoder.finish()
+            encoder = None  # finish() closed it; an encoder left for the cleanup below was never finished
             assert self._temporary_path is not None
             self._temporary_path.replace(self._output_path)
             self._temporary_path = None
             return True
-        except BaseException:
+        except Cancelled:
+            return False
+        finally:
             try:
                 if encoder is not None:
                     encoder.close()
             except Exception as exc:
                 logger.warning(f"Failed to close partial export: {exc}")
-            raise
-        finally:
             try:
                 if renderer is not None:
                     renderer.cleanup()

@@ -5,11 +5,11 @@ so the resolver runs again, without any widget, every time the item resolves.
 
 Plugin authors implement:
 
-* ``resolve(settings)`` — headless; returns the playlists the settings describe and raises ``ValueError`` or
+* ``resolve(settings, token)`` — headless; returns the playlists the settings describe and raises ``ValueError`` or
   ``OSError`` with a user-facing message when the settings are missing, invalid, or point at nothing. It runs on a
   worker thread, possibly beside another call, so it touches no Qt objects and no shared mutable state.
 * ``create_settings_widget()`` — returns a widget that edits settings and calls ``submit_settings(settings)`` when
-  the user is ready.
+  the user is ready. Work that would freeze the form, such as scanning a folder, runs through the widget's ``jobs``.
 * ``create_cli_command()`` — optional; builds settings from CLI arguments and passes a ``PlaylistItem`` to the runner
   in ``ctx.obj["run_with_items"]``.
 """
@@ -23,6 +23,9 @@ import click
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.core.cancellation import CancelToken
+from ax_devil.modules.background_jobs import JobScope, background_jobs
+
 from .base import PluginBase, PluginDefinitionBase
 
 if TYPE_CHECKING:
@@ -35,6 +38,12 @@ class PlaylistResolverWidget(QWidget):
     """Base widget contract for playlist resolver plugins: it edits settings and submits them."""
 
     settings_submitted = Signal(object)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # Finite work away from the GUI thread: results arrive on it, and none after the widget is destroyed. A pool of
+        # its own, so a slow folder scan never holds up scans, discovery or item resolution.
+        self.jobs: JobScope = background_jobs("plugins").scope(self)
 
     def submit_settings(self, settings: PlaylistSettings) -> None:
         """Hand the edited settings to the host dialog."""
@@ -66,7 +75,7 @@ class PlaylistResolverPlugin(PluginBase):
     # -- Instance methods for runtime integration ---------------------------
 
     @abstractmethod
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
 
     @abstractmethod

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QRunnable, QThreadPool
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -20,6 +21,8 @@ from PySide6.QtWidgets import (
 )
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import Cancelled, CancelToken
+from ax_devil.modules.background_jobs import JobContext, JobScope
 from ax_devil.modules.workspace.core import (
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
@@ -43,6 +46,7 @@ from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import Add
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
+from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from tests.helpers.forms import form_field
 from tests.helpers.workspace import FakeResolutionContext, inline_resolver
 
@@ -151,22 +155,67 @@ def _use_defaults(monkeypatch: pytest.MonkeyPatch, raw: dict[str, Any], resolved
 
 @dataclass
 class _Discovery:
-    """Device responses and queued jobs, leaving the dialog's discovery lifecycle intact."""
+    """Device responses and discovery jobs held until finished, leaving the dialog's discovery lifecycle intact."""
 
+    qtbot: QtBot
     sources: tuple[str, ...] = ("other/source", "analytics/source")
     topics: tuple[str, ...] = ("other.topic", "com.axis.scene.frame.v1")
-    jobs: list[QRunnable] = field(default_factory=list)
+    jobs: list[tuple[Event, list[bool]]] = field(default_factory=list)  # Each job's go-ahead and its delivery.
 
     def finish(self) -> None:
-        """Complete the oldest queued request synchronously."""
-        self.jobs.pop(0).run()
+        """Let the oldest held request reach the device and wait until the dialog has its answer."""
+        go, delivered = self.jobs.pop(0)
+        go.set()
+        self.qtbot.waitUntil(lambda: bool(delivered))
+
+    def release_all(self) -> None:
+        for go, _delivered in self.jobs:
+            go.set()
+
+    def release_cancelled(self) -> None:
+        """Release obsolete work; a cancelled job no longer delivers an answer."""
+        go, _delivered = self.jobs.pop(0)
+        go.set()
 
 
 @pytest.fixture(autouse=True)
-def discovery(monkeypatch: pytest.MonkeyPatch) -> _Discovery:
-    """Fake the device and worker scheduler instead of fabricating the loader's private state."""
-    pending = _Discovery()
-    monkeypatch.setattr(QThreadPool, "start", lambda self, job: pending.jobs.append(job))
+def discovery(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Generator[_Discovery, None, None]:
+    """Fake the device and hold each discovery job instead of fabricating the loader's private state."""
+    pending = _Discovery(qtbot)
+    submit = JobScope.submit
+
+    def held_submit(
+        scope: JobScope,
+        name: str,
+        work: Callable[[JobContext[Any]], Any],
+        *,
+        on_result: Callable[[Any], None],
+        on_error: Callable[[Exception], None],
+        on_progress: Callable[[Any], None] | None = None,
+        on_discard: Callable[[Any], None] | None = None,
+    ) -> Callable[[], None]:
+        go, delivered = Event(), list[bool]()
+        pending.jobs.append((go, delivered))
+
+        def held(job: JobContext[Any]) -> Any:
+            assert go.wait(5)
+            return work(job)
+
+        def answer(callback: Callable[[Any], None], outcome: Any) -> None:
+            delivered.append(True)
+            callback(outcome)
+
+        return submit(
+            scope,
+            name,
+            held,
+            on_result=lambda outcome: answer(on_result, outcome),
+            on_error=lambda error: answer(on_error, error),
+            on_progress=on_progress,
+            on_discard=on_discard,
+        )
+
+    monkeypatch.setattr(JobScope, "submit", held_submit)
     monkeypatch.setattr(
         "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.list_analytics_data_source_keys",
         lambda *_args: pending.sources,
@@ -175,7 +224,8 @@ def discovery(monkeypatch: pytest.MonkeyPatch) -> _Discovery:
         "ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog.list_datahub_topics",
         lambda *_args: pending.topics,
     )
-    return pending
+    yield pending
+    pending.release_all()
 
 
 @pytest.mark.parametrize("small_window", [False, True])
@@ -550,7 +600,7 @@ def test_add_live_stream_discards_stale_discovery_and_reloads_after_connection_r
         assert data_source.currentData() == "analytics/source"
     host.setText("another-camera.local")
     if not completed:
-        discovery.finish()
+        discovery.release_cancelled()
 
     assert data_source.currentData() is None
     assert data_source.currentText() == "Connection changed — refresh data sources"
@@ -645,7 +695,7 @@ def test_live_stream_numeric_defaults_handle_changed_environment(
 class _Resolver:
     """Resolve settings naming an existing root into one playlist, and fail for any other root."""
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         if settings.get("root") != "/selected":
             raise ValueError(f"Folder not found: {settings.get('root')}")
         video = SeekableVideoContent(display_name="clip", source_spec=FileVideoSourceSpec(path=Path("/clip.mp4")))
@@ -701,3 +751,34 @@ def test_add_playlist_dialog_stays_open_with_the_reason_when_settings_do_not_res
     assert playlist_dialog.result() != AddPlaylistDialog.DialogCode.Accepted
     assert playlist_dialog.get_result() is None
     assert "Folder not found: /gone" in playlist_dialog._message_label.text()
+
+
+def test_closing_playlist_dialog_interrupts_its_resolution(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, discovery: _Discovery
+) -> None:
+    """Closing a form stops its active filesystem work instead of only hiding the answer."""
+    started, stopped = Event(), Event()
+
+    def resolve(self: _Resolver, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
+        started.set()
+        try:
+            token.wait(5)
+        except Cancelled:
+            stopped.set()
+            raise
+        raise AssertionError("Resolution was not cancelled")
+
+    monkeypatch.setattr(_Resolver, "resolve", resolve)
+    dialog = AddPlaylistDialog(ItemResolver(_AnyResolverContext()))
+    qtbot.addWidget(dialog)
+    settings = dialog._settings
+    form = next(iter(settings._resolver_by_widget))
+    settings._resolver_combo.setCurrentIndex(settings._resolver_combo.findData(form))
+    form.submit_settings({"root": "/selected"})
+    discovery.release_all()
+    qtbot.waitUntil(started.is_set)
+
+    dialog.reject()
+
+    qtbot.waitUntil(stopped.is_set)
+    assert dialog.get_result() is None

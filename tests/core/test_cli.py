@@ -29,14 +29,14 @@ from pathlib import Path
 
 import click
 
-from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
+from ax_devil.modules.plugin_system import CancelToken, PlaylistResolverPlugin, PlaylistResolverWidget
 from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
 
 
 class ExternalGroupResolver(PlaylistResolverPlugin):
     @classmethod
     def required_api_version(cls) -> int:
-        return 2
+        return 3
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -63,7 +63,7 @@ class ExternalGroupResolver(PlaylistResolverPlugin):
 
         return command
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         raise NotImplementedError
 
     def create_settings_widget(self) -> PlaylistResolverWidget:

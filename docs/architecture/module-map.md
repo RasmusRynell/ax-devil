@@ -35,6 +35,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Shortcut definitions, the manager that installs them, override persistence, and the shortcuts dialog | `src/ax_devil/modules/shortcuts/` |
 | Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons, the sidebar view contract and list building blocks (view panel, section caption, list row, chip, small button, banner), menu buttons, browse buttons and key chips, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
 | Diagnostics windows, metrics, exception reporting | `src/ax_devil/modules/diagnostics/` |
+| Occasional finite work away from the GUI thread, with outcomes delivered on it | `src/ax_devil/modules/background_jobs/` |
 | Cache services | `src/ax_devil/modules/cache/` |
 
 ## Live Sources And Add-Content Placement

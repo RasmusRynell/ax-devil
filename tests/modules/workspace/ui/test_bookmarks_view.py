@@ -12,6 +12,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QFileDialog, QLabel, QLineEdit, QMenu, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.chrome.chip import Chip
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.list_row import ListRow
@@ -51,7 +52,7 @@ def _video(name: str) -> SeekableVideoContent:
 class _NightShift:
     """A resolver that finds the same two runs every time."""
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         entries = tuple(
             PlaylistEntry(lanes=_video(name).standalone_lanes(), default_considered=True)
             for name in ("run_01.mp4", "run_02.mp4")

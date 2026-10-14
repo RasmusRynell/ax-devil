@@ -27,6 +27,7 @@ from ax_devil_device_api import Client, DeviceConfig
 from ax_devil_device_api.core.config import AuthMethod
 from ax_devil_device_api.utils.errors import AuthenticationError
 
+from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
 from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -43,6 +44,7 @@ _REQUEST_TIMEOUT_SECONDS = 2.0
 _IDENTIFY_WORKERS = 32
 _IDENTIFY_DEADLINE_SECONDS = 20.0  # For the requests still running once the probe has finished.
 _RATE_LIMIT_RETRY_SECONDS = (1.0, 2.0)  # Waits before trying a login again that a device turned away for now.
+_CANCEL_POLL_SECONDS = 0.05  # How soon a cancelled scan notices while it waits for devices.
 _HTTP_STATUS = re.compile(r"\bHTTP\s+(\d{3})\b")
 
 
@@ -197,12 +199,14 @@ def scan_network(
     targets: Sequence[str] = (),
     logins: Sequence[Login] = (),
     found: Callable[[DiscoveredCamera], None] = lambda _camera: None,
+    token: CancelToken = NEVER,
 ) -> list[DiscoveredCamera]:
     """Return the Axis devices at *targets*, or on this computer's /24 network if there are none, sorted by address.
 
     Each device is handed to *found*, on a worker thread, as soon as it is identified, and never after the scan
     returns. With *logins*, the scan also tries them in order on each device until one signs in, for what only a
-    signed-in user may read.
+    signed-in user may read. Once *token* is cancelled the scan asks devices nothing new, calls *found* no more and
+    raises `Cancelled` instead of returning.
 
     Blocks for up to half a second per 128 addresses plus the device requests, so call it from a worker thread. Raise
     ``OSError`` if the local network cannot be worked out or the probe cannot open sockets.
@@ -210,16 +214,23 @@ def scan_network(
     hosts = targets or _local_network()
     cameras: list[DiscoveredCamera] = []
     lock = threading.Lock()
-    finished = threading.Event()
+    # The scan's own token, cancelled by the scan, not its caller: when the scan returns or is cancelled, it stops the
+    # workers still running and seals *cameras*, so nothing arrives after the result.
+    sealed = CancelToken()
     pending: queue.SimpleQueue[tuple[str, set[int]] | None] = queue.SimpleQueue()
 
     def work() -> None:
-        while not finished.is_set() and (job := pending.get()) is not None:
-            camera = _identify(*job, logins, finished)
-            with lock:
-                if camera is not None and not finished.is_set():
-                    cameras.append(camera)
-                    found(camera)
+        try:
+            while (job := pending.get()) is not None:
+                sealed.raise_if_cancelled()
+                camera = _identify(*job, logins, sealed)
+                with lock:
+                    sealed.raise_if_cancelled()
+                    if camera is not None:
+                        cameras.append(camera)
+                        found(camera)
+        except Cancelled:
+            pass  # The scan is over; the workers only needed to stop.
 
     # Daemon threads, unlike a ThreadPoolExecutor's workers, are not joined at exit, so a slow device cannot hold it.
     workers = [threading.Thread(target=work, name="network-scan", daemon=True) for _ in range(_IDENTIFY_WORKERS)]
@@ -228,18 +239,20 @@ def scan_network(
     try:
         try:
             per_batch = _MAX_OPEN_SOCKETS // len(_PORT_CONFIGS)
-            for start in range(0, len(hosts), per_batch):
-                for host, ports in _open_ports(hosts[start : start + per_batch]).items():
+            for start in token.polled(range(0, len(hosts), per_batch)):
+                open_ports = _open_ports(hosts[start : start + per_batch])
+                token.raise_if_cancelled()  # The probe blocks; cancelled meanwhile, no device is asked anything.
+                for host, ports in open_ports.items():
                     pending.put((host, ports))
         finally:
             for _worker in workers:
                 pending.put(None)
         deadline = time.monotonic() + _IDENTIFY_DEADLINE_SECONDS
-        for worker in workers:
-            worker.join(max(0.0, deadline - time.monotonic()))
+        while any(worker.is_alive() for worker in workers) and time.monotonic() < deadline:
+            token.wait(_CANCEL_POLL_SECONDS)
     finally:
         with lock:
-            finished.set()
+            sealed.cancel()
     return DeviceOrder.ADDRESS.sorted(cameras)
 
 
@@ -282,7 +295,7 @@ def _open_ports(hosts: Sequence[str]) -> dict[str, set[int]]:
 
 
 def _identify(
-    host: str, ports: Collection[int], logins: Sequence[Login], cancelled: threading.Event
+    host: str, ports: Collection[int], logins: Sequence[Login], token: CancelToken
 ) -> DiscoveredCamera | None:
     """Return the Axis device at *host* from what it gives without login, signed in to with the first of *logins* it
     accepts, or ``None`` if no Axis device answers."""
@@ -310,16 +323,16 @@ def _identify(
             continue
         if not logins:
             return camera
-        return _signed_in(camera, partial(make, host), logins, cancelled)
+        return _signed_in(camera, partial(make, host), logins, token)
     return None
 
 
 def _signed_in(
-    camera: DiscoveredCamera, make: Callable[[str, str], Any], logins: Sequence[Login], cancelled: threading.Event
+    camera: DiscoveredCamera, make: Callable[[str, str], Any], logins: Sequence[Login], token: CancelToken
 ) -> DiscoveredCamera:
     """Return *camera* with what signing in through configs from *make* tells, with the first of *logins* it accepts.
 
-    A login whose username expands to nothing is skipped, and no login is sent once *cancelled* is set.
+    A login whose username expands to nothing is skipped, and no login is sent once *token* is cancelled.
 
     A login the device turns away for now, as Axis devices do after failed attempts, is tried again after a wait. Any
     other failure ends the attempt, so a broken device is not asked again and again.
@@ -332,8 +345,7 @@ def _signed_in(
             continue
         tried = True
         for wait in (*_RATE_LIMIT_RETRY_SECONDS, None):
-            if cancelled.is_set():
-                return camera
+            token.raise_if_cancelled()
             config = make(username, expand_environment_reference(login.password))
             config.timeout = _REQUEST_TIMEOUT_SECONDS
             config.auth_method = AuthMethod.DIGEST
@@ -349,7 +361,7 @@ def _signed_in(
                 if wait is None or not _rate_limited(exc, refusals):
                     logger.debug(f"Network scan could not sign in to {camera.host}: {exc}")
                     return replace(camera, sign_in=SignIn.FAILED)
-                cancelled.wait(wait)
+                token.wait(wait)
     return replace(camera, sign_in=SignIn.REFUSED) if tried else camera
 
 

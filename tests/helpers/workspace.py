@@ -9,6 +9,7 @@ from typing import Any, ClassVar, TypeVar, cast
 
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
@@ -45,7 +46,7 @@ class ContentItem(WorkspaceItem):
     def default_name(self) -> str:
         return self.contents[0].display_name
 
-    def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
+    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         return self.contents
 
     def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:

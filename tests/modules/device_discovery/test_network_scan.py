@@ -4,7 +4,9 @@ in order, never sending a plain password."""
 from __future__ import annotations
 
 import json
+import queue
 import threading
+import time
 from collections.abc import Callable, Iterator
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,6 +16,7 @@ import pytest
 from ax_devil_device_api import DeviceConfig
 from ax_devil_device_api.core.config import AuthMethod
 
+from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
 from ax_devil.modules.device_discovery import network_scan
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
@@ -186,18 +189,79 @@ def test_a_login_whose_username_is_an_unset_variable_is_never_sent(
 
 def test_no_login_is_sent_once_the_scan_is_cancelled(serve: Callable[..., _Device]) -> None:
     device = serve(axis=True)
-    cancelled = threading.Event()
-    cancelled.set()
+    cancelled = CancelToken()
+    cancelled.cancel()
 
-    camera = network_scan._signed_in(
-        DiscoveredCamera("127.0.0.1", "m", "s"),
-        lambda user, password: DeviceConfig.http("127.0.0.1", user, password, port=device.port),
-        [Login("root", "secret")],
-        cancelled,
-    )
+    with pytest.raises(Cancelled):
+        network_scan._signed_in(
+            DiscoveredCamera("127.0.0.1", "m", "s"),
+            lambda user, password: DeviceConfig.http("127.0.0.1", user, password, port=device.port),
+            [Login("root", "secret")],
+            cancelled,
+        )
 
-    assert camera.sign_in is SignIn.NOT_TRIED
     assert device.authorizations == []
+
+
+def test_a_cancelled_scan_raises_and_asks_devices_nothing(serve: Callable[..., _Device]) -> None:
+    device = serve(axis=True)
+    token = CancelToken()
+    token.cancel()
+
+    with pytest.raises(Cancelled):
+        scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")], token=token)
+
+    assert device.authorizations == []
+
+
+def test_a_scan_cancelled_while_probing_ports_queues_no_device_for_identification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = CancelToken()
+    queued: list[object] = []
+
+    class RecordingQueue(queue.SimpleQueue[Any]):
+        def put(self, item: Any, block: bool = True, timeout: float | None = None) -> None:
+            queued.append(item)
+            super().put(item, block, timeout)
+
+    def probe_then_get_cancelled(_hosts: object) -> dict[str, set[int]]:
+        token.cancel()  # The user cancels while the probe blocks.
+        return {"127.0.0.1": {80}}
+
+    monkeypatch.setattr(network_scan, "_open_ports", probe_then_get_cancelled)
+    monkeypatch.setattr(queue, "SimpleQueue", RecordingQueue)
+
+    with pytest.raises(Cancelled):
+        scan_network(targets=["127.0.0.1"], token=token)
+
+    assert [item for item in queued if item is not None] == [], "only the workers' stop signals are queued"
+
+
+def test_cancelling_a_scan_stops_its_workers_even_while_they_wait_to_try_a_login_again(
+    serve: Callable[..., _Device], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    device = serve(axis=True, turned_away=1)
+    monkeypatch.setattr(network_scan, "_RATE_LIMIT_RETRY_SECONDS", (60.0, 60.0))
+    token = CancelToken()
+
+    def cancel_once_the_device_has_turned_a_login_away() -> None:
+        while not device.authorizations:
+            time.sleep(0.01)
+        time.sleep(0.2)  # Long enough for the worker to be in its wait.
+        token.cancel()
+
+    canceller = threading.Thread(target=cancel_once_the_device_has_turned_a_login_away)
+    canceller.start()
+
+    with pytest.raises(Cancelled):
+        scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")], token=token)
+
+    canceller.join(5)
+    deadline = time.monotonic() + 5
+    while any(t.name == "network-scan" for t in threading.enumerate()) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not any(t.name == "network-scan" for t in threading.enumerate()), "no worker sleeps on through the wait"
 
 
 def test_another_web_server_is_not_listed_and_does_not_hide_the_axis_one(serve: Callable[..., _Device]) -> None:
@@ -243,7 +307,7 @@ def test_signing_in_over_https_asks_for_digest_not_basic(monkeypatch: pytest.Mon
         DiscoveredCamera("127.0.0.1", "", "", ""),
         lambda user, password: DeviceConfig.https("127.0.0.1", user, password),
         [Login("root", "secret")],
-        threading.Event(),
+        NEVER,
     )
 
     assert camera.sign_in is SignIn.SIGNED_IN

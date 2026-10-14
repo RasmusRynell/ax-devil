@@ -3,7 +3,6 @@ from __future__ import annotations
 from threading import Event
 
 import pytest
-from PySide6.QtCore import QThreadPool
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
@@ -14,32 +13,42 @@ from ax_devil.modules.workspace.ui.add_content.analytics_discovery import Analyt
 def test_discovery_discards_stale_results_and_can_reload(qtbot: QtBot, fail: bool) -> None:
     """A changed connection invalidates both successful and failed in-flight requests."""
     release = Event()
+    started = Event()
+    finished = Event()
 
     def fetch(host: str, username: str, password: str, protocol: str) -> tuple[str, ...]:
         if host == "old-camera":
-            assert release.wait(5)
-            if fail:
-                raise ValueError("old connection failed")
+            started.set()
+            try:
+                assert release.wait(5)
+                if fail:
+                    raise ValueError("old connection failed")
+            finally:
+                finished.set()
         return (host,)
 
     loader = AnalyticsChoiceLoader(fetch, "topics")
+    choice = AnalyticsChoice(loader, "")
+    qtbot.addWidget(choice)
     try:
         loader.set_connection(("old-camera", "", "", "https"))
         loader.load()
+        qtbot.waitUntil(started.is_set)
         loader.set_connection(("new-camera", "", "", "https"))
-        release.set()
-        qtbot.waitUntil(lambda: not loader.loading)
+        assert not loader.loading
+        assert choice.refresh.isEnabled()
         assert not loader.loaded
         assert loader.choices == ()
         assert loader.status == "Connection changed — refresh topics"
-        loader.load()
+        choice.refresh.click()
         qtbot.waitUntil(lambda: not loader.loading)
         assert loader.loaded
         assert loader.choices == ("new-camera",)
+        release.set()
+        qtbot.waitUntil(finished.is_set)
     finally:
         release.set()
         loader.cleanup()
-        QThreadPool.globalInstance().waitForDone(6000)
 
 
 def test_discovery_instances_load_independently_and_cleanup_ignores_results(qtbot: QtBot) -> None:
@@ -65,7 +74,6 @@ def test_discovery_instances_load_independently_and_cleanup_ignores_results(qtbo
         release.set()
         for loader in loaders:
             loader.cleanup()
-        QThreadPool.globalInstance().waitForDone(6000)
 
 
 def test_choice_refresh_preserves_user_selection(qtbot: QtBot) -> None:

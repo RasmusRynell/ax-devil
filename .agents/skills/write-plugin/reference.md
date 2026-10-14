@@ -58,7 +58,7 @@ class ExamplePlugin(DecoderPlugin):
     @classmethod
     def required_api_version(cls) -> int:
         """Declare the plugin API this implementation supports."""
-        return 2
+        return 3
 
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
@@ -102,7 +102,7 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   in development, or pins the exact base app release for standalone installations. Plugins cannot upgrade the app.
 - Declare supported Python versions honestly. The installation uses the Python version running ax-devil.
 - Point an entry point at your plugin class or `PLUGIN_CLASS`. Declare `required_api_version()` explicitly. The host's
-  version is `PLUGIN_API_VERSION` in `ax_devil.modules.plugin_system.base` (currently 2). A plugin built for an
+  version is `PLUGIN_API_VERSION` in `ax_devil.modules.plugin_system.base` (currently 3). A plugin built for an
   earlier version is rejected at load; there is no compatibility path, so rebuild it against the current version.
 - Decoder plugins must declare `scene_model_version()` as `(major, minor)`. ax-devil exposes its own as
   `ax_devil.modules.scene.model.SCENE_MODEL_VERSION`. A plugin loads when the major matches and its minor is not
@@ -116,12 +116,19 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   a chosen overlay file; leaving it empty keeps the decoder available for every file.
 - For playlist resolvers, use the `ax_devil.playlist_resolver_plugins` entry-point group and subclass
   `PlaylistResolverPlugin`. A workspace saves a resolver's id and settings and runs it again on every open, so:
-  - `resolve(settings)` is required and headless: it turns a JSON-serializable settings dict (strings, numbers,
+  - `resolve(settings, token)` is required and headless: it turns a JSON-serializable settings dict (strings, numbers,
     lists, dicts; absolute paths) into `PlaylistContent`, and raises `ValueError` or `OSError` with a message for the
     user when settings are missing, invalid, or point at nothing. It runs on a background thread, so keep it in a
-    module without Qt imports and free of shared mutable state.
+    module without Qt imports and free of shared mutable state. Poll the required `CancelToken` between filesystem
+    operations and pass it through to helpers; callers without cancellation pass `NEVER` from
+    `ax_devil.core.cancellation`. Let `Cancelled` escape so removed items and superseded rescans stop quietly.
   - `create_settings_widget()` is required: a `PlaylistResolverWidget` that edits settings and calls
-    `submit_settings(settings)` when the user is ready.
+    `submit_settings(settings)` when the user is ready. Slow work in the form, such as scanning a folder, goes through
+    `self.jobs.submit(name, work, on_result=..., on_error=...)`: `work(job: JobContext)` runs on a worker thread and
+    uses only the values it was given, and the callbacks run on the GUI thread until the form is closed. When the form
+    closes, `work` stops at its next poll of `job.token` (`for path in job.token.polled(paths):`), which raises
+    `Cancelled`, a `BaseException` that `except Exception` does not catch. Import `JobContext` (and `Cancelled`, to
+    clean up) from `ax_devil.modules.plugin_system`.
   - `create_cli_command()` is optional: it builds the same settings from CLI arguments and passes
     `[PlaylistItem(resolver=cls.plugin_id(), settings=settings)]` to
     `ctx.obj["run_with_items"]`.

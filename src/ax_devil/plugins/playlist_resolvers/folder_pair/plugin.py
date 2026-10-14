@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
 from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
 from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import resolve_settings
@@ -48,9 +49,9 @@ class FolderPairResolverPlugin(PlaylistResolverPlugin):
 
         return command
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         """Return the playlist of matched video and overlay files the settings describe."""
-        return resolve_settings(settings)
+        return resolve_settings(settings, token)
 
     def create_settings_widget(self) -> PlaylistResolverWidget:
         from .settings_widget import FolderPairSettingsWidget

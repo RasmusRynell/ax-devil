@@ -5,19 +5,21 @@ from __future__ import annotations
 from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from threading import Event
 from unittest.mock import patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QTimer
 from PySide6.QtWidgets import QCheckBox, QLabel, QLineEdit, QMenu, QProgressBar, QPushButton, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import Cancelled, CancelToken
+from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem, Workspace, WorkspaceItem
+from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem, Workspace, WorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
@@ -39,28 +41,32 @@ class _HeldResolver(ItemResolver):
     def __init__(self) -> None:
         super().__init__(default_resolution_context(), in_background=False)
         self.hold = False
-        self._held: list[tuple[Callable[[], Any], Callable[[Any], None], Callable[[], bool]]] = []
+        self._held: list[tuple[WorkspaceItem, Callable[[ItemResolution], None], CancelToken]] = []
 
-    def run(
-        self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = lambda: True
-    ) -> None:
-        if self.hold:
-            self._held.append((work, done, wanted))
-        elif wanted():
-            done(work())
+    def resolve(self, item: WorkspaceItem, done: Callable[[ItemResolution], None]) -> Callable[[], None]:
+        """Resolve immediately unless this test is holding item delivery."""
+        if not self.hold:
+            return super().resolve(item, done)
+        token = CancelToken()
+        self._held.append((item, done, token))
+        return token.cancel
 
     def finish(self) -> None:
+        """Finish held items unless their owner cancelled them."""
         held, self._held = self._held, []
-        for work, done, wanted in held:
-            if wanted():
-                done(work())
+        for item, done, token in held:
+            try:
+                done(ItemResolution.of(item, self.context, token))
+            except Cancelled:
+                pass
 
 
 @dataclass
 class _Scanner:
-    """A network scan that reports *cameras* one by one, or fails with *error*, and records how it was called.
+    """A network scan that reports *cameras* one by one, or fails with *error*, and records how it was called; it
+    waits while *gate* is clear, as a scan still under way would.
 
-    *on_found* runs after each report, while the scan is still under way.
+    *on_found* runs after each report on the scan's worker thread, so it must not touch widgets.
     """
 
     cameras: list[DiscoveredCamera] = field(default_factory=list)
@@ -69,13 +75,24 @@ class _Scanner:
     targets: tuple[str, ...] = ()
     logins: tuple[Login, ...] = ()
     on_found: Callable[[], None] = lambda: None
+    gate: Event = field(default_factory=Event)
+    token: CancelToken | None = None
+
+    def __post_init__(self) -> None:
+        self.gate.set()
 
     def __call__(
-        self, targets: tuple[str, ...], logins: tuple[Login, ...], found: Callable[[DiscoveredCamera], None]
+        self,
+        targets: tuple[str, ...],
+        logins: tuple[Login, ...],
+        found: Callable[[DiscoveredCamera], None],
+        token: CancelToken,
     ) -> list[DiscoveredCamera]:
         self.calls += 1
+        self.token = token
         self.targets = targets
         self.logins = logins
+        assert self.gate.wait(5)
         if self.error is not None:
             raise self.error
         for camera in self.cameras:
@@ -86,13 +103,18 @@ class _Scanner:
 
 @dataclass
 class _Live:
+    qtbot: QtBot
     view: LiveView
     store: WorkspaceStore
     center: SplitView
     scanner: _Scanner
-    scans: _HeldResolver
+    jobs: BackgroundJobs
     resolutions: _HeldResolver
     controller: LiveViewController
+
+    def wait_for_scan(self) -> None:
+        """Wait until the scan under way has finished and the view shows its outcome."""
+        self.qtbot.waitUntil(lambda: self.button("Rescan").isEnabled())
 
     def open_workspace(self, *items: WorkspaceItem) -> None:
         """Make *items* the workspace, opening nothing, as restoring one does."""
@@ -153,8 +175,8 @@ class _Live:
 
 @pytest.fixture
 def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Generator[_Live, None, None]:
-    resolutions, scans = _HeldResolver(), _HeldResolver()
-    scans.hold = True
+    resolutions = _HeldResolver()
+    jobs = BackgroundJobs(max_workers=1)  # One worker runs jobs in the order they were submitted.
     store = WorkspaceStore(resolutions)
     center = SplitView()
     workspace = WorkspaceController(store, center, render_catalog_manager)
@@ -163,15 +185,16 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
     view = LiveView(host)
     qtbot.addWidget(center)
     scanner = _Scanner()
-    controller = LiveViewController(view, workspace, store, scans, scan=scanner, parent=workspace)
+    controller = LiveViewController(view, workspace, store, jobs, scan=scanner, parent=workspace)
     with patch(_LIVE_VIEWER, DummyViewer):
-        yield _Live(view, store, center, scanner, scans, resolutions, controller)
+        yield _Live(qtbot, view, store, center, scanner, jobs, resolutions, controller)
+    scanner.gate.set()
 
 
 def _scan(live: _Live, *cameras: DiscoveredCamera) -> None:
     live.scanner.cameras = list(cameras)
     live.button("Rescan").click()
-    live.scans.finish()
+    live.wait_for_scan()
 
 
 def test_rows_show_which_cameras_are_connected_and_follow_their_viewers(live: _Live) -> None:
@@ -219,7 +242,6 @@ def test_cameras_that_cannot_open_yet_or_at_all_offer_no_action(live: _Live) -> 
 def test_nothing_scans_until_rescan_is_pressed(qtbot: QtBot, live: _Live) -> None:
     live.view.window().show()
     qtbot.waitExposed(live.view)
-    live.scans.finish()
     assert live.scanner.calls == 0
     assert captions(live.view.tree) == []
 
@@ -233,15 +255,16 @@ def test_the_scan_button_waits_and_progress_shows_while_a_scan_runs(live: _Live)
     progress = live.view.findChild(QProgressBar)
     assert progress is not None
     assert progress.isHidden()
+    live.scanner.gate.clear()
 
     live.button("Rescan").click()
     assert not live.button("Rescan").isEnabled()
     assert not progress.isHidden()
     assert "Scanning…" in live.texts()
 
-    live.scans.finish()
+    live.scanner.gate.set()
+    live.wait_for_scan()
 
-    assert live.button("Rescan").isEnabled()
     assert progress.isHidden()
     assert "Scanning…" not in live.texts()
 
@@ -319,21 +342,40 @@ def test_add_puts_the_camera_in_the_workspace_with_the_stream_defaults(
 def test_a_failed_scan_says_so_and_keeps_the_reason_on_hover(live: _Live) -> None:
     live.scanner.error = OSError("Network is unreachable")
     live.button("Rescan").click()
-    live.scans.finish()
+    live.wait_for_scan()
 
     [failed] = [label for label in live.view.findChildren(QLabel) if label.text() == "Scan failed"]
     assert "Network is unreachable" in failed.toolTip()
-    assert live.button("Rescan").isEnabled()
 
 
-def test_a_scan_is_dropped_once_the_view_is_gone(live: _Live) -> None:
-    live.button("Rescan").click()
+def test_a_scan_waiting_its_turn_never_runs_once_the_view_is_gone(qtbot: QtBot, live: _Live) -> None:
+    busy, done = Event(), list[object]()
+    owner = QObject()
+    other = live.jobs.scope(owner)
+    other.submit("busy", lambda _job: busy.wait(5), on_result=done.append, on_error=done.append)
+    live.button("Rescan").click()  # Queued behind the busy job on the single worker.
 
     live.view.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    live.scans.finish()
+    busy.set()
+    # The single worker reaches this job only after the scan's turn.
+    other.submit("after", lambda _job: "after", on_result=done.append, on_error=done.append)
+    qtbot.waitUntil(lambda: done == [True, "after"])
 
     assert live.scanner.calls == 0
+
+
+def test_closing_the_view_tells_a_running_scan_to_stop(qtbot: QtBot, live: _Live) -> None:
+    live.scanner.gate.clear()
+    live.button("Rescan").click()
+    qtbot.waitUntil(lambda: live.scanner.token is not None)
+    assert live.scanner.token is not None
+    live.scanner.token.raise_if_cancelled()
+
+    live.controller.cleanup()
+
+    with pytest.raises(Cancelled):
+        live.scanner.token.raise_if_cancelled()
 
 
 def test_a_scan_searches_the_ip_range_in_the_field_and_the_field_starts_as_the_settings_default(live: _Live) -> None:
@@ -341,7 +383,7 @@ def test_a_scan_searches_the_ip_range_in_the_field_and_the_field_starts_as_the_s
 
     live.ip_range().setText("10.0.0.5, 10.0.0.0/30")
     live.button("Rescan").click()
-    live.scans.finish()
+    live.wait_for_scan()
 
     assert live.scanner.targets == ("10.0.0.1", "10.0.0.2", "10.0.0.5")
 
@@ -349,7 +391,7 @@ def test_a_scan_searches_the_ip_range_in_the_field_and_the_field_starts_as_the_s
 def test_an_empty_ip_range_scans_the_local_network(live: _Live) -> None:
     live.ip_range().setText("")
     live.button("Rescan").click()
-    live.scans.finish()
+    live.wait_for_scan()
 
     assert live.scanner.targets == ()
     assert live.scanner.calls == 1
@@ -387,12 +429,46 @@ def test_a_changed_default_reaches_the_field_unless_the_user_typed_another(live:
 
 
 def test_found_cameras_are_listed_while_the_scan_is_still_running(live: _Live) -> None:
-    listed: list[list[str]] = []
-    live.scanner.on_found = lambda: listed.append(list(live.rows()))
+    resume = Event()
 
-    _scan(live, DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", ""), DiscoveredCamera("192.0.2.13", "AXIS Q1656", ""))
+    def keep_scanning() -> None:
+        """Keep the scan under way after its first find."""
+        resume.wait(5)
 
-    assert listed == [["AXIS P3265-LVE"], ["AXIS P3265-LVE", "AXIS Q1656"]]
+    live.scanner.on_found = keep_scanning
+    live.scanner.cameras = [
+        DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", ""),
+        DiscoveredCamera("192.0.2.13", "AXIS Q1656", ""),
+    ]
+
+    live.button("Rescan").click()
+    live.qtbot.waitUntil(lambda: list(live.rows()) == ["AXIS P3265-LVE"])
+    assert not live.button("Rescan").isEnabled(), "the scan is still running"
+
+    resume.set()
+    live.wait_for_scan()
+
+    assert list(live.rows()) == ["AXIS P3265-LVE", "AXIS Q1656"]
+
+
+def test_a_burst_of_finds_refreshes_the_list_far_less_often_than_cameras_are_found(
+    live: _Live, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    refreshes = 0
+    listing_refresh = live.controller._listing.refresh
+
+    def counted(*args: object) -> None:
+        nonlocal refreshes
+        refreshes += 1
+        listing_refresh(*args)
+
+    monkeypatch.setattr(live.controller._listing, "refresh", counted)
+    cameras = [DiscoveredCamera(f"192.0.2.{n}", f"AXIS Q{n}", "") for n in range(1, 101)]
+
+    _scan(live, *cameras)
+
+    assert refreshes < len(cameras) // 4
+    assert list(live.rows()) == [camera.model for camera in cameras]
 
 
 def test_search_finds_workspace_and_found_cameras_by_what_they_show_and_their_details(live: _Live) -> None:

@@ -15,6 +15,7 @@ from typing import Generic, TypeVar
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
+from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
@@ -259,17 +260,15 @@ def _open_lanes(
     lane_indices: tuple[int, ...],
     *,
     report: Callable[[str], None],
-    abandoned: threading.Event,
+    token: CancelToken,
 ) -> None:
-    """Open sources into *media* lane by lane, so a failure or abandonment leaves only owned sources behind.
+    """Open sources into *media* lane by lane, so a failure or cancellation leaves only owned sources behind.
 
-    Abandonment is checked after every blocking open, so a discarded entry never starts its derived analysis.
+    The token is polled after every blocking open, so a discarded entry never starts its derived analysis.
     """
     # Lanes showing the same video share one source; image sequence timing is not part of video equality.
     source_index_by_video: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], int] = {}
-    for position, lane_index in enumerate(lane_indices):
-        if abandoned.is_set():
-            return
+    for position, lane_index in token.polled(enumerate(lane_indices)):
         lane = entry.lanes[lane_index]
         video = _require_seekable_video(lane.video)
         video_key = (video, video.source_spec.image_sequence_config)
@@ -279,8 +278,7 @@ def _open_lanes(
             source_index = len(media.video_sources)
             media.video_sources.append(create_frame_source(video))
             source_index_by_video[video_key] = source_index
-            if abandoned.is_set():
-                return
+            token.raise_if_cancelled()
             # Timing analysis reads the whole index; do it here so the lane's diagnostics never wait for it.
             media.video_sources[source_index].get_timing_profile()
 
@@ -288,8 +286,7 @@ def _open_lanes(
         media.lanes.append(opened)
         if lane.overlay is None:
             continue
-        if abandoned.is_set():
-            return
+        token.raise_if_cancelled()
         if len(lane_indices) == 1:
             report(f"Parsing overlay data: {lane.overlay.display_name}")
         else:
@@ -298,8 +295,7 @@ def _open_lanes(
         opened.overlay_source, opened.overlay_policy = create_overlay_source(
             lane.overlay, frame_timeline=frame_timeline
         )
-        if abandoned.is_set():
-            return
+        token.raise_if_cancelled()
         opened.scene_history = place_scene_history(opened.overlay_source, opened.overlay_policy, frame_timeline)
         opened.alignment_report = opened.overlay_source.analyze_alignment(frame_timeline)
 
@@ -310,16 +306,18 @@ def open_entry_media(
     report: Callable[[str], None],
     *,
     gui_thread: QThread,
-    abandoned: threading.Event,
+    token: CancelToken,
 ) -> EntryMedia:
     """Open the sources of *entry*'s lanes at *lane_indices* and move them to *gui_thread*.
 
     Blocks; run it on a worker thread. *report* receives progress messages. Never raises: a failure is recorded in
-    `EntryMedia.error`. Once *abandoned* is set it opens nothing more and returns what it already opened.
+    `EntryMedia.error`. Once *token* is cancelled it opens nothing more and returns what it already opened.
     """
     media = EntryMedia()
     try:
-        _open_lanes(media, entry, lane_indices, report=report, abandoned=abandoned)
+        _open_lanes(media, entry, lane_indices, report=report, token=token)
+    except Cancelled:
+        pass  # Abandoned: what was opened still goes back to be released.
     except Exception as exc:
         logger.error(f"Failed to open playlist entry: {exc}", exc_info=True)
         media.error = str(exc)
@@ -346,7 +344,7 @@ class EntryOpening:
     """One entry opening in the background for a viewer that may stop wanting it."""
 
     def __init__(self, *, on_status: Callable[[str], None], on_opened: Callable[[EntryMedia], None]) -> None:
-        self._abandoned = threading.Event()
+        self._token = CancelToken()
         self._on_status: Callable[[str], None] | None = on_status
         self._on_opened: Callable[[EntryMedia], None] | None = on_opened
 
@@ -358,7 +356,7 @@ class EntryOpening:
                 entry,
                 lane_indices,
                 gui_thread=QThread.currentThread(),
-                abandoned=self._abandoned,
+                token=self._token,
             ),
             self._finish,
             on_progress=self._report_status,
@@ -367,7 +365,7 @@ class EntryOpening:
 
     def abandon(self) -> None:
         """Stop wanting the result: open nothing more and release whatever was opened instead of delivering it."""
-        self._abandoned.set()
+        self._token.cancel()
         self._on_status = None
         self._on_opened = None
 

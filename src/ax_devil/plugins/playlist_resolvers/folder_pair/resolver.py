@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
@@ -31,12 +32,12 @@ class FolderPairMatch:
     overlay_path: Path
 
 
-def resolve_settings(settings: PlaylistSettings) -> list[PlaylistContent]:
+def resolve_settings(settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
     """Return the playlist for ``{"videos_dir": ..., "overlays_dir": ..., "handler_type": ...}`` settings."""
     videos_dir = Path(_required_text(settings, "videos_dir"))
     overlays_dir = Path(_required_text(settings, "overlays_dir"))
     playlists = build_playlist_contents(
-        discover_folder_pairs(videos_dir, overlays_dir), _required_text(settings, "handler_type")
+        discover_folder_pairs(videos_dir, overlays_dir, token), _required_text(settings, "handler_type"), token
     )
     if not playlists:
         raise ValueError(f"No matched video/overlay pairs in '{videos_dir}' and '{overlays_dir}'.")
@@ -50,31 +51,34 @@ def _required_text(settings: PlaylistSettings, key: str) -> str:
     return value
 
 
-def discover_folder_pairs(videos_dir: Path, overlays_dir: Path) -> list[FolderPairMatch]:
-    """Return files from two folders that share the same suffix-stripped file name."""
+def discover_folder_pairs(videos_dir: Path, overlays_dir: Path, token: CancelToken) -> list[FolderPairMatch]:
+    """Return matching files, polling *token* between filesystem operations."""
+    token.raise_if_cancelled()
     if not videos_dir.is_dir():
         raise FileNotFoundError(f"Video directory does not exist: {videos_dir}")
     if not overlays_dir.is_dir():
         raise FileNotFoundError(f"Overlay directory does not exist: {overlays_dir}")
 
-    videos = _index_files_by_name(videos_dir, "video")
-    overlays = _index_files_by_name(overlays_dir, "overlay")
+    videos = _index_files_by_name(videos_dir, "video", token)
+    overlays = _index_files_by_name(overlays_dir, "overlay", token)
     matches: list[FolderPairMatch] = []
 
-    for name in sorted(videos.keys() & overlays.keys()):
+    for name in token.polled(sorted(videos.keys() & overlays.keys())):
         matches.append(FolderPairMatch(name=name, video_path=videos[name], overlay_path=overlays[name]))
 
     logger.debug(f"Discovered {len(matches)} folder-pair playlist match(es)")
     return matches
 
 
-def build_playlist_contents(matches: list[FolderPairMatch], handler_type: str) -> list[PlaylistContent]:
+def build_playlist_contents(
+    matches: list[FolderPairMatch], handler_type: str, token: CancelToken
+) -> list[PlaylistContent]:
     """Build one playlist from matched folder-pair files and the selected file decoder."""
     if not matches:
         return []
 
     entries: list[PlaylistEntry] = []
-    for match in matches:
+    for match in token.polled(matches):
         video = SeekableVideoContent(
             display_name=match.name,
             source_spec=FileVideoSourceSpec(path=match.video_path),
@@ -100,11 +104,11 @@ def build_playlist_contents(matches: list[FolderPairMatch], handler_type: str) -
     ]
 
 
-def _index_files_by_name(directory: Path, label: str) -> dict[str, Path]:
+def _index_files_by_name(directory: Path, label: str, token: CancelToken) -> dict[str, Path]:
     indexed: dict[str, Path] = {}
     duplicates: set[str] = set()
 
-    for path in sorted(directory.iterdir()):
+    for path in token.polled(directory.iterdir()):
         if not path.is_file() or path.name.startswith("."):
             continue
         name = _match_name(path)
