@@ -7,12 +7,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
-from ax_devil.modules.data_sources.alignment_diagnostics import (
-    analyze_overlay_alignment,
-    analyze_overlay_sequence_alignment,
-)
 from ax_devil.modules.data_sources.file_data_provider.base import FileDataProviderFactory, FrameIdentifierDataProvider
+from ax_devil.modules.data_sources.overlay_samples import OverlaySamples
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
 from ax_devil.modules.diagnostics.metrics_store import source_identity
@@ -72,32 +70,24 @@ class FileOverlaySource(QObject):
         """Get total number of overlay frames."""
         return int(self.data_provider.get_total_frames())
 
-    def analyze_alignment(self, video_timeline: FrameTimeline) -> OverlayAlignmentReport:
-        """Analyze how this overlay source aligns to decoded video timestamps."""
-        policy = self.data_provider.get_timestamp_fallback_policy()
-        if self.data_provider.uses_sequence_lookup():
-            return analyze_overlay_sequence_alignment(
-                handler_type=self._handler_type,
-                total_video_frames=video_timeline.count,
-                overlay_sequences=self.data_provider.get_available_sequences(),
-                policy=policy,
-            )
-        return analyze_overlay_alignment(
-            handler_type=self._handler_type,
-            video_timeline=video_timeline,
-            overlay_timestamps_us=self.data_provider.get_available_frames(),
-            policy=policy,
-        )
+    def samples(self) -> OverlaySamples:
+        """Return an immutable copy of what alignment and history analysis read, usable on a worker thread."""
+        return self.data_provider.samples()
+
+    def analyze_alignment(self, video_timeline: FrameTimeline, token: CancelToken) -> OverlayAlignmentReport:
+        """Analyze how this overlay source aligns to decoded video timestamps; polls *token*."""
+        return self.samples().analyze_alignment(self._handler_type, video_timeline, token)
 
     def scene_history(
-        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None
+        self, video_timeline: FrameTimeline, *, allow_previous: bool, max_sample_age_us: int | None, token: CancelToken
     ) -> SceneHistory:
         """Return this overlay's events and entity appearances placed on the video's frames as lookup shows them.
 
         *allow_previous* and *max_sample_age_us* are the sticky-overlay selection the viewer applies on top of lookup.
+        Polls *token*.
         """
         return self.data_provider.scene_history(
-            video_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us
+            video_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us, token=token
         )
 
     def get_timestamp_fallback_policy(self) -> TimestampFallbackPolicy:

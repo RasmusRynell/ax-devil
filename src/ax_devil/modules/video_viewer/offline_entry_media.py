@@ -11,7 +11,7 @@ from functools import partial
 
 from PySide6.QtCore import QObject, QThread, QTimer
 
-from ax_devil.core.cancellation import Cancelled
+from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.modules.background_jobs import JobContext, JobScope, background_jobs
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
@@ -135,13 +135,14 @@ def place_scene_history(
     overlay_source: FileOverlaySource | None,
     overlay_policy: OverlayPersistencePolicy | None,
     frame_timeline: FrameTimeline,
+    token: CancelToken,
 ) -> SceneHistory | None:
-    """Place an overlay's history on the video as the lane's lookup and sticky selection show it."""
+    """Place an overlay's history on the video as the lane's lookup and sticky selection show it; polls *token*."""
     if overlay_source is None or overlay_policy is None:
         return None
     allow_previous, max_sample_age_us = overlay_policy.sample_selection()
     return overlay_source.scene_history(
-        frame_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us
+        frame_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us, token=token
     )
 
 
@@ -192,9 +193,9 @@ def _open_lanes(
             lane.overlay, frame_timeline=frame_timeline
         )
         token.raise_if_cancelled()
-        opened.scene_history = place_scene_history(opened.overlay_source, opened.overlay_policy, frame_timeline)
+        opened.scene_history = place_scene_history(opened.overlay_source, opened.overlay_policy, frame_timeline, token)
         token.raise_if_cancelled()
-        opened.alignment_report = opened.overlay_source.analyze_alignment(frame_timeline)
+        opened.alignment_report = opened.overlay_source.analyze_alignment(frame_timeline, token)
 
 
 def open_entry_media(

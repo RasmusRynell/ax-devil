@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.data_sources.alignment_diagnostics import (
     analyze_overlay_alignment,
 )
@@ -18,6 +19,7 @@ def test_alignment_report_flags_poor_exact_match_for_sampled_overlay() -> None:
         video_timeline=FrameTimeline.from_timestamps((0, 80_000, 120_000, 200_000, 280_000, 320_000)),
         overlay_timestamps_us={100_000, 200_000, 300_000},
         policy=TimestampFallbackPolicy(tolerance_us=5_000),
+        token=NEVER,
     )
 
     assert report.total_video_frames == 6
@@ -38,6 +40,7 @@ def test_alignment_report_accepts_exact_overlay() -> None:
         video_timeline=FrameTimeline.from_timestamps((0, 40_000, 80_000)),
         overlay_timestamps_us={0, 40_000, 80_000},
         policy=TimestampFallbackPolicy(tolerance_us=5_000),
+        token=NEVER,
     )
 
     assert report.exact_matches == 3
@@ -54,6 +57,7 @@ def test_alignment_report_detects_short_overlay_timeline() -> None:
         video_timeline=FrameTimeline.from_timestamps((0, 32_000_000, 65_700_000, 74_433_000)),
         overlay_timestamps_us={0, 32_000_000, 65_700_000},
         policy=TimestampFallbackPolicy(tolerance_us=100_000),
+        token=NEVER,
     )
 
     assert report.policy_match_ratio == 1.0
@@ -72,6 +76,7 @@ def test_alignment_report_counts_tolerated_past_overlay_matches() -> None:
         video_timeline=FrameTimeline.from_timestamps((1_280_000,)),
         overlay_timestamps_us={1_279_000},
         policy=TimestampFallbackPolicy(tolerance_us=5_000),
+        token=NEVER,
     )
 
     assert report.exact_matches == 0
@@ -90,6 +95,7 @@ def test_alignment_report_rejects_overlay_after_video_for_tolerance() -> None:
         video_timeline=FrameTimeline.from_timestamps((1_280_000,)),
         overlay_timestamps_us={1_280_001},
         policy=TimestampFallbackPolicy(tolerance_us=5_000),
+        token=NEVER,
     )
 
     assert report.exact_matches == 0
@@ -106,6 +112,7 @@ def test_small_timeline_end_difference_does_not_warn() -> None:
         video_timeline=FrameTimeline.from_timestamps((0, 74_090_000, 74_433_000)),
         overlay_timestamps_us={0, 74_090_000},
         policy=TimestampFallbackPolicy(tolerance_us=100_000),
+        token=NEVER,
     )
 
     assert report.has_suspicious_last_overlay_timestamp is False
@@ -126,7 +133,7 @@ def test_sequence_overlay_alignment_counts_coverage_without_loading_video_timest
     )
     source = FileOverlaySource(path, MOTChallengeSceneDataProvider, "MOT_FILE")
     try:
-        report = source.analyze_alignment(FrameTimeline.lazy(count=3, timestamp_loader=load_timestamps))
+        report = source.analyze_alignment(FrameTimeline.lazy(count=3, timestamp_loader=load_timestamps), NEVER)
     finally:
         source.close()
 

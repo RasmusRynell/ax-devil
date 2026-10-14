@@ -12,6 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.scene.model import Event, Scene
 
@@ -206,13 +207,14 @@ class SceneHistory:
         frame_times_us: tuple[int, ...],
         frame_position: FramePosition,
         shown_keys: Sequence[int | None],
+        token: CancelToken,
     ) -> SceneHistory:
         """Place sample-keyed records on video frames.
 
         *frame_position* places events; events outside the video are omitted. *shown_keys* gives, per frame, the
         timestamp of the sample lookup shows there (None for no sample): an object spans exactly the frames showing
         one of its samples. Lookup never shows an older sample on a later frame, so each run of samples maps to one
-        slice of frames, split where frames show no sample.
+        slice of frames, split where frames show no sample. Polls *token*.
         """
         frame_count = len(frame_times_us)
         shown_frames = [frame for frame, key in enumerate(shown_keys) if key is not None]
@@ -223,7 +225,7 @@ class SceneHistory:
             return FrameIdentifier(sequence_id=index, timestamp_monotime_us=frame_times_us[index])
 
         events: list[FrameEvent] = []
-        for sample_event in records.events:
+        for sample_event in token.polled(records.events):
             position = frame_position(sample_event.timestamp_key)
             if 0 <= position < frame_count:
                 events.append(
@@ -231,13 +233,13 @@ class SceneHistory:
                 )
 
         objects: list[ObjectHistory] = []
-        for track in records.tracks:
+        for track in token.polled(records.tracks):
             spans: list[FrameSpan] = []
-            for first_key, last_key in track.runs:
+            for first_key, last_key in token.polled(track.runs):
                 start = bisect_left(shown_frame_keys, first_key)
                 stop = bisect_right(shown_frame_keys, last_key)
                 if start < stop:
-                    _add_spans(spans, shown_frames[start], shown_frames[stop - 1], empty_frames)
+                    _add_spans(spans, shown_frames[start], shown_frames[stop - 1], empty_frames, token)
             if spans:
                 objects.append(ObjectHistory(track.entity_id, track.types, tuple(spans), frame_times_us))
         objects.sort(key=lambda history: (history.spans[0][0], history.entity_id))
@@ -256,10 +258,11 @@ def _involved_ids(event: Event) -> tuple[str, ...]:
     return tuple(str(entity_id) for entity_id in event.involved_entity_ids)
 
 
-def _add_spans(spans: list[FrameSpan], first: int, last: int, empty_frames: list[int]) -> None:
+def _add_spans(spans: list[FrameSpan], first: int, last: int, empty_frames: list[int], token: CancelToken) -> None:
     """Append the frames first..last, split around frames showing no sample and merged with a touching span."""
     start = first
-    for empty in empty_frames[bisect_right(empty_frames, first) : bisect_left(empty_frames, last)]:
+    gaps = empty_frames[bisect_right(empty_frames, first) : bisect_left(empty_frames, last)]
+    for empty in token.polled(gaps):
         if empty > start:
             _append_span(spans, (start, empty - 1))
         start = empty + 1

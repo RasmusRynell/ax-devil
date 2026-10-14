@@ -27,6 +27,7 @@ class OverlayAlignmentIndicator(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFixedWidth(_INDICATOR_WIDTH)
         self._report: OverlayAlignmentReport | None = None
+        self._out_of_date: str | None = None
         self.setVisible(False)
         follow_appearance(self, self._apply_appearance)
 
@@ -38,11 +39,26 @@ class OverlayAlignmentIndicator(QLabel):
     def _apply_appearance(self) -> None:
         """Retint the warning, including one already displayed, from the current palette."""
         self._refresh_icons()
-        self.update_alignment_report(self._report)
+        self._show()
 
     def update_alignment_report(self, report: OverlayAlignmentReport | None) -> None:
         """Show a tinted warning icon when overlay timing needs attention."""
         self._report = report
+        self._out_of_date = None
+        self._show()
+
+    def mark_alignment_out_of_date(self, reason: str) -> None:
+        """Show a warning that explains why the alignment report is out of date, until the next report replaces it."""
+        self._out_of_date = reason
+        self._show()
+
+    def _show(self) -> None:
+        report = self._report
+        if self._out_of_date is not None:
+            self.setPixmap(self._weak_pixmap)
+            self.setToolTip(self._out_of_date)
+            self.setVisible(True)
+            return
         if report is None or report.total_overlay_frames <= 0:
             self.setVisible(False)
             return
@@ -71,6 +87,7 @@ class TimingDiagnosticsWidget(QWidget):
         """Initialize the controls widget."""
         super().__init__(parent)
         self._report: OverlayAlignmentReport | None = None
+        self._out_of_date: str | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(Space.S)
@@ -110,7 +127,7 @@ class TimingDiagnosticsWidget(QWidget):
         """Size the mode buttons to the text and recolor the displayed report from the current palette."""
         for button in (self._exact_button, self._previous_button):
             button.setFixedHeight(Height.ROW.px)
-        self.update_alignment_report(self._report)
+        self._show_alignment()
 
     def _emit_timestamp_fallback_policy(self) -> None:
         """Emit the selected timestamp fallback policy."""
@@ -160,33 +177,49 @@ class TimingDiagnosticsWidget(QWidget):
     def update_alignment_report(self, report: OverlayAlignmentReport | None) -> None:
         """Update overlay alignment status text."""
         self._report = report
-        if report is None:
-            self._alignment_label.setText("Overlay: none")
+        self._out_of_date = None
+        self._show_alignment()
+
+    def mark_alignment_out_of_date(self, reason: str) -> None:
+        """Show *reason* above the last alignment report, until the next report replaces both."""
+        self._out_of_date = reason
+        self._show_alignment()
+
+    def _show_alignment(self) -> None:
+        report = self._report
+        text = "Overlay: none"
+        color: StatusColor | None = None
+        if report is not None:
+            policy_ratio = report.policy_match_ratio * 100.0
+            if report.total_video_frames <= 0 and report.total_overlay_frames > 0:
+                prefix = "no video timing"
+            elif report.has_suspicious_last_overlay_timestamp:
+                prefix = "coverage/clock warning"
+            else:
+                prefix = "weak match" if report.has_poor_policy_alignment else "match"
+            color = (
+                StatusColor.WARNING
+                if report.has_poor_policy_alignment or report.has_suspicious_last_overlay_timestamp
+                else StatusColor.SUCCESS
+            )
+            if report.total_video_frames <= 0 and report.total_overlay_frames > 0:
+                color = StatusColor.WARNING
+            if report.alignment_basis == "sequence":
+                details = f"sequence {report.sequence_matches}"
+                label = "Sequence"
+            else:
+                details = f"exact {report.exact_matches}, tol {report.tolerance_text}"
+                label = "Timestamp"
+            text = (
+                f"{label}: {prefix} {report.policy_matches}/{report.total_overlay_frames} "
+                f"({policy_ratio:.0f}%, {details})"
+            )
+        if self._out_of_date is not None:
+            text, color = f"{self._out_of_date}\nLast result: {text}", StatusColor.ERROR
+        self._alignment_label.setText(text)
+        if color is None:
             self._alignment_label.setStyleSheet("")
             self._alignment_label.setFont(QFont())  # inherit body text again
-            return
-        policy_ratio = report.policy_match_ratio * 100.0
-        if report.total_video_frames <= 0 and report.total_overlay_frames > 0:
-            prefix = "no video timing"
-        elif report.has_suspicious_last_overlay_timestamp:
-            prefix = "coverage/clock warning"
         else:
-            prefix = "weak match" if report.has_poor_policy_alignment else "match"
-        color = (
-            StatusColor.WARNING
-            if report.has_poor_policy_alignment or report.has_suspicious_last_overlay_timestamp
-            else StatusColor.SUCCESS
-        )
-        if report.total_video_frames <= 0 and report.total_overlay_frames > 0:
-            color = StatusColor.WARNING
-        if report.alignment_basis == "sequence":
-            details = f"sequence {report.sequence_matches}"
-            label = "Sequence"
-        else:
-            details = f"exact {report.exact_matches}, tol {report.tolerance_text}"
-            label = "Timestamp"
-        self._alignment_label.setText(
-            f"{label}: {prefix} {report.policy_matches}/{report.total_overlay_frames} ({policy_ratio:.0f}%, {details})"
-        )
-        self._alignment_label.setStyleSheet(color.css(self.palette()))
-        self._alignment_label.setFont(TextRole.STRONG.font())
+            self._alignment_label.setStyleSheet(color.css(self.palette()))
+            self._alignment_label.setFont(TextRole.STRONG.font())

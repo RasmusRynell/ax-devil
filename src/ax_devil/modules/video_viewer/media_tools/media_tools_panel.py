@@ -33,6 +33,7 @@ from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.menu_button import MenuButton
+from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
@@ -188,6 +189,16 @@ class MediaToolsPanel(QWidget):
             self._object_pane = ObjectHistoryPane(scene_history)
             self._object_pane.frameRequested.connect(self.frameRequested.emit)
             self._splitter.addWidget(self._object_pane)
+        self._history_notice = QLabel(self)
+        self._history_notice.setObjectName("historyOutOfDateNotice")
+        self._history_notice.setWordWrap(True)
+        self._history_notice.setContentsMargins(*_TAB_PAGE_MARGINS)
+        self._history_notice.setVisible(False)
+        follow_appearance(
+            self._history_notice,
+            lambda: self._history_notice.setStyleSheet(StatusColor.ERROR.css(self._history_notice.palette())),
+        )
+        layout.addWidget(self._history_notice)
         layout.addWidget(self._splitter)
 
         corner = QWidget(self)
@@ -366,9 +377,15 @@ class MediaToolsPanel(QWidget):
     def set_scene_history(self, history: SceneHistory) -> None:
         """Replace the history after a change in how overlay samples are selected."""
         assert self._object_pane is not None, "History tools exist only for panels created with a history"
+        self._history_notice.setVisible(False)
         self._entity_list.set_history(history, self.filter_model)
         self._event_log.set_history(history)
         self._object_pane.set_history(history)
+
+    def mark_history_out_of_date(self, reason: str) -> None:
+        """Say why the history shown is out of date; the next `set_scene_history` replaces the notice."""
+        self._history_notice.setText(reason)
+        self._history_notice.setVisible(True)
 
     def _show_event_history(self, event: FrameEvent) -> None:
         assert self._object_pane is not None

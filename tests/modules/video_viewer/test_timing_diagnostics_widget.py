@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtWidgets import QLabel
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
@@ -106,3 +107,30 @@ def test_set_timestamp_fallback_policy_updates_buttons_without_emitting(qtbot: Q
     assert button(widget, "Exact").isChecked()
     assert not button(widget, "Previous").isChecked()
     assert emitted_policies == []
+
+
+def test_alignment_status_says_it_is_out_of_date_until_a_new_report_arrives(qtbot: QtBot) -> None:
+    """A failed refresh keeps the last report visible but marked, in the status text and the lane indicator."""
+    widget = TimingDiagnosticsWidget()
+    indicator = _shown_indicator(qtbot)
+    qtbot.addWidget(widget)
+    widget.show()
+    matched = _alignment_report(total_overlay_frames=4, exact_matches=4)
+    widget.update_alignment_report(matched)
+    indicator.update_alignment_report(matched)
+    assert not indicator.isVisible()
+
+    widget.mark_alignment_out_of_date("Alignment of lane 'A' is out of date: unreadable")
+    indicator.mark_alignment_out_of_date("Alignment of lane 'A' is out of date: unreadable")
+
+    status = " ".join(label.text() for label in widget.findChildren(QLabel))
+    assert "unreadable" in status
+    assert "4/4" in status  # The last report is still shown.
+    assert indicator.isVisible()
+    assert "unreadable" in indicator.toolTip()
+
+    widget.update_alignment_report(matched)
+    indicator.update_alignment_report(matched)
+
+    assert "unreadable" not in " ".join(label.text() for label in widget.findChildren(QLabel))
+    assert not indicator.isVisible()

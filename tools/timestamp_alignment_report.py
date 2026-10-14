@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import TimestampTimeline
@@ -132,6 +133,7 @@ def build_tsv_report(
         video_timestamps_us=sorted_video_timestamps,
         sorted_overlay_timestamps_us=sorted_overlay_timestamps,
         policy=policy,
+        token=NEVER,
     )
     summary = TimelineSummary(
         video_frames=len(sorted_video_timestamps),
@@ -200,8 +202,8 @@ def _build_header(
         f"merged_rows={summary.merged_rows}",
         f"# exact_matches={summary.exact_matches} video_only={summary.video_only} overlay_only={summary.overlay_only}",
         f"# tolerated_past_matches={summary.tolerated_past_matches} tolerance_us={summary.tolerance_us}",
-        f"# video_delta_modes={video_timeline.delta_modes_us(8)}",
-        f"# overlay_delta_modes={overlay_timeline.delta_modes_us(8)}",
+        f"# video_delta_modes={video_timeline.delta_modes_us(8, NEVER)}",
+        f"# overlay_delta_modes={overlay_timeline.delta_modes_us(8, NEVER)}",
         "# row_type: EXACT means same timestamp exists in both video and overlay",
         "# policy columns use: exact first, else overlay timestamp at or before video timestamp within tolerance",
         "\t".join(
