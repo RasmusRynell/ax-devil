@@ -3,10 +3,12 @@
 Both apply immediately; widgets that style themselves follow through ``chrome.appearance.follow_appearance``.
 """
 
+import atexit
 from enum import Enum
 from typing import cast
 
 import qdarktheme
+import qdarktheme._main as qdarktheme_main
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
@@ -154,7 +156,31 @@ def _install_stylesheet(app: QApplication) -> None:
 def apply_theme(mode: str) -> None:
     """Change appearance immediately, including starting or stopping OS theme following."""
     qdarktheme.setup_theme(mode, custom_colors=THEME_COLORS)
+    _guard_listener_exit()
     _sync_palette(QApplication.palette())
+
+
+_listener_exit_guarded = False
+
+
+def _guard_listener_exit() -> None:
+    """Keep the theme engine from terminating its OS-theme thread after the thread has already ended.
+
+    The engine registers ``terminate()`` for the interpreter's exit. Terminating a thread that has finished
+    (no ``gsettings``, or the monitor stopped) signals a recycled native thread and crashes the process after a
+    normal shutdown. This runs first at exit because it registers after the engine does.
+    """
+    global _listener_exit_guarded
+    listener = getattr(qdarktheme_main, "_listener", None)
+    if _listener_exit_guarded or listener is None:
+        return
+    _listener_exit_guarded = True
+
+    def release_finished_listener() -> None:
+        if listener.isFinished():
+            atexit.unregister(listener.kill)
+
+    atexit.register(release_finished_listener)
 
 
 def _sync_palette(_palette: QPalette) -> None:

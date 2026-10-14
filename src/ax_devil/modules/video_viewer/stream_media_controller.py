@@ -73,7 +73,9 @@ class StreamMediaController:
         self._render_catalog_selection = render_catalog_selection
         self._scene_filter: SessionFilter | None = None
         self._scene_inspector: "SceneInspectorSink" | None = None
-        self._presenter = SceneFramePresenter(scene_render_catalog=self._render_catalog_selection.active_catalog())
+        self._presenter = SceneFramePresenter(
+            scene_render_catalog=self._render_catalog_selection.active_catalog(), await_catalog=True
+        )
         self._overlay_persistence = OverlayPersistenceSettings.default_enabled()
         self._overlay_policy = OverlayPersistencePolicy(self._overlay_persistence.copy())
         self._metrics_id = source_identity(self)

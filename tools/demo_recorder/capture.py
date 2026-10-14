@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QApplication, QListView
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.theme import setup_theme
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
-from ax_devil.modules.scene.rendering import create_scene_render_catalog_manager
+from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, create_scene_render_catalog_manager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger, setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
@@ -74,6 +74,15 @@ def wait_until(predicate: Callable[[], bool], description: str, timeout: float =
         if time.monotonic() >= deadline:
             raise TimeoutError(f"Timed out waiting for {description}")
         QTest.qWait(5)
+
+
+def apply_catalog(catalogs: SceneRenderCatalogManager, path: Path) -> None:
+    """Make every open view use *path* and wait until each has switched, so the next capture shows it."""
+    failures: list[Exception] = []
+    catalogs.apply_to_all(path, on_failed=failures.append)
+    wait_until(lambda: not catalogs.is_loading, f"catalog {path.stem} to apply")
+    if failures:
+        raise failures[0]
 
 
 def grab(window: MainWindow, runtime: OfflineSession) -> QImage:
@@ -132,8 +141,12 @@ def capture(args: argparse.Namespace) -> None:
     shortcuts.register_defaults()
     catalogs = create_scene_render_catalog_manager()
     catalog_paths = [catalogs.built_in_catalog_path().parent / f"{name}.json" for name in args.catalogs]
+    failures: list[Exception] = []
     for path in catalog_paths:
-        catalogs.load_catalog(path)
+        catalogs.request_revision(path, on_loaded=lambda _revision: None, on_failed=failures.append)
+    wait_until(lambda: catalogs.listing_ready and not catalogs.is_loading, "the catalogs to compile")
+    if failures:
+        raise failures[0]
     catalogs.set_default_catalog(catalog_paths[0])
     window = MainWindow(shortcuts, catalogs, use_custom_frame=True)
     session = window._workspace_session
@@ -197,18 +210,18 @@ def capture(args: argparse.Namespace) -> None:
                 segment = min(int(position), len(catalog_paths) - 1)
                 selected = catalog_paths[segment]
                 if active_catalog != selected:
-                    catalogs.apply_to_all(selected)
+                    apply_catalog(catalogs, selected)
                     active_catalog = selected
                 label = selected.stem.capitalize()
             image = grab(window, runtime)
             if args.recipe == "catalogs" and segment + 1 < len(catalog_paths) and position - segment > 0.7:
                 next_catalog = catalog_paths[segment + 1]
-                catalogs.apply_to_all(next_catalog)
+                apply_catalog(catalogs, next_catalog)
                 second = grab(window, runtime)
                 viewport = first_lane.display.viewport
                 area = QRect(viewport.mapTo(window, QPoint()), viewport.size())
                 image = wipe(image, second, area, (position - segment - 0.7) / 0.3)
-                catalogs.apply_to_all(selected)
+                apply_catalog(catalogs, selected)
             if label:
                 painter = QPainter(image)
                 painter.fillRect(QRect(20, args.height - 48, 210, 30), QColor("#101726"))

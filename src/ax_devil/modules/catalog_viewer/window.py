@@ -8,6 +8,7 @@ edit keeps that file's last version that loaded on screen with the error above i
 from __future__ import annotations
 
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from weakref import ref
 
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.catalog_viewer.sheets import Sheet, drawing_errors, sheet_frame, sheets
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -37,8 +39,10 @@ from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalog,
+    SceneRenderCatalogFile,
     SceneRenderCatalogListing,
     SceneRenderCatalogManager,
+    SceneRenderCatalogRevision,
 )
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
@@ -97,6 +101,8 @@ class CatalogViewerWindow(ChromeWindow):
         self._catalog: SceneRenderCatalog | None = None
         self._sheets: tuple[Sheet, ...] = ()
         self._error: str | None = None
+        self._load_request = LatestRequest(self)
+        self._action_request = LatestRequest(self)
         self._loaded_at: datetime | None = None
         self._shown_key: object = None
         self._description_status: StatusColor | None = None
@@ -146,6 +152,7 @@ class CatalogViewerWindow(ChromeWindow):
         self._use_as_default.clicked.connect(self._use_catalog_as_default)
         manager.catalogFileChanged.connect(self._on_file_changed)
         manager.catalogListingChanged.connect(self._on_listing_changed)
+        manager.catalogUsabilityChanged.connect(self._show_state)
         self.show_catalog(self._path)
         follow_appearance(self, self._apply_appearance)
 
@@ -169,7 +176,8 @@ class CatalogViewerWindow(ChromeWindow):
     def show_catalog(self, path: Path) -> None:
         """Show the catalog file at *path*."""
         if path != self._path:
-            self._catalog, self._sheets, self._changes = None, (), 0
+            self._action_request.cancel()
+            self._catalog, self._sheets, self._changes, self._error = None, (), 0, None
         self._path = path
         self._load()
 
@@ -187,8 +195,11 @@ class CatalogViewerWindow(ChromeWindow):
 
     def cleanup(self) -> None:
         """Stop following the catalog manager and release the renderer."""
+        self._load_request.close()
+        self._action_request.close()
         self._manager.catalogFileChanged.disconnect(self._on_file_changed)
         self._manager.catalogListingChanged.disconnect(self._on_listing_changed)
+        self._manager.catalogUsabilityChanged.disconnect(self._show_state)
         self._renderer.cleanup()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
@@ -204,16 +215,27 @@ class CatalogViewerWindow(ChromeWindow):
     # Loading ---------------------------------------------------------------------------------------------------
 
     def _load(self) -> None:
-        try:
-            revision = self._manager.load_revision(self._path)
-        except (OSError, ValueError) as error:
-            self._error = str(error)
-            logger.info(f"Render catalog {self._path.name} does not load: {error}")
-        else:
-            self._error = None
-            self._loaded_at = datetime.now()
-            if revision.catalog is not self._catalog:
-                self._catalog, self._sheets = revision.catalog, sheets(revision.document)
+        self._load_request.start(
+            lambda result, error: self._manager.request_revision(self._path, on_loaded=result, on_failed=error),
+            on_result=self._on_loaded,
+            on_error=self._on_load_failed,
+        )
+        if self._load_request.pending:
+            self._show_all()
+
+    def _on_loaded(self, revision: SceneRenderCatalogRevision) -> None:
+        self._error = None
+        self._loaded_at = datetime.now()
+        if revision.catalog is not self._catalog:
+            self._catalog, self._sheets = revision.catalog, sheets(revision.document)
+        self._show_all()
+
+    def _on_load_failed(self, error: Exception) -> None:
+        self._error = str(error)
+        logger.info(f"Render catalog {self._path.name} does not load: {error}")
+        self._show_all()
+
+    def _show_all(self) -> None:
         self._show_listing(self._manager.listing())
         self._show_state()
         self._show_tabs()
@@ -252,12 +274,12 @@ class CatalogViewerWindow(ChromeWindow):
         self._file.set_full_text(str(self._path))
 
     def _show_state(self) -> None:
-        loads = self._error is None
+        loads = self._error is None and not self._load_request.pending
         self._new.setEnabled(loads)
         self._new.setToolTip(
             "Create a new catalog that starts as a copy of this one"
             if loads
-            else "Only a catalog that loads can be copied"
+            else "Only a catalog that has loaded can be copied"
         )
         deletable = self._manager.catalog_store.is_user_catalog(self._path)
         self._delete.setEnabled(deletable)
@@ -266,6 +288,11 @@ class CatalogViewerWindow(ChromeWindow):
         )
         self._apply_to_all.setEnabled(self._manager.can_apply_to_all(self._path))
         self._use_as_default.setEnabled(self._manager.can_use_as_default(self._path))
+        if self._load_request.pending:
+            self._state.setText("● Loading")
+            self._state.setStyleSheet("")
+            self._banner.hide()
+            return
         if self._error is not None:
             self._state.setText("● Does not load")
             self._state.setStyleSheet(StatusColor.ERROR.css(self.palette()))
@@ -334,24 +361,57 @@ class CatalogViewerWindow(ChromeWindow):
             if dialog.exec() != BaseDialog.DialogCode.Accepted or not dialog.name():
                 return
             name = dialog.name()
-        try:
-            created = self._manager.create_catalog(name, base_catalog_path=self._path)
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "New Catalog", f"Could not create the catalog: {error}")
-            return
+        base_path = self._path
+        self._action_request.start(
+            lambda result, error: self._manager.create_catalog(
+                name, base_catalog_path=base_path, on_created=result, on_failed=error
+            ),
+            on_result=self._show_created,
+            on_error=self._warn_create,
+        )
+
+    def _show_created(self, created: SceneRenderCatalogFile) -> None:
         self.show_catalog(created.path)
 
+    def _warn_create(self, error: Exception) -> None:
+        QMessageBox.warning(self, "New Catalog", f"Could not create the catalog: {error}")
+
     def _apply_catalog_to_all(self) -> None:
-        try:
-            self._manager.apply_to_all(self._path)
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Apply to All", f"Could not use the catalog: {error}")
+        self._action_request.start(
+            lambda result, error: self._manager.apply_to_all(
+                self._path, on_done=partial(result, None), on_failed=error
+            ),
+            on_result=self._action_done,
+            on_error=self._warn_apply,
+        )
+
+    def _warn_apply(self, error: Exception) -> None:
+        self._on_load_failed(error)
+        QMessageBox.warning(self, "Apply to All", f"Could not use the catalog: {error}")
 
     def _use_catalog_as_default(self) -> None:
-        try:
-            self._manager.set_default_catalog(self._path)
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Use as Default", f"Could not make the catalog the default: {error}")
+        self._action_request.start(
+            lambda result, error: self._manager.use_as_default(
+                self._path, on_done=partial(result, None), on_failed=error, on_not_saved=result
+            ),
+            on_result=self._default_done,
+            on_error=self._default_load_failed,
+        )
+
+    def _default_done(self, persistence_error: Exception | None) -> None:
+        self._load()
+        if persistence_error is not None:
+            self._warn_default(persistence_error)
+
+    def _default_load_failed(self, error: Exception) -> None:
+        self._on_load_failed(error)
+        self._warn_default(error)
+
+    def _warn_default(self, error: Exception) -> None:
+        QMessageBox.warning(self, "Use as Default", f"Could not make the catalog the default: {error}")
+
+    def _action_done(self, _result: None) -> None:
+        self._load()
 
     def _delete_catalog(self) -> None:
         listing = self._manager.listing()
@@ -374,7 +434,14 @@ class CatalogViewerWindow(ChromeWindow):
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Delete Catalog", f"Could not delete the catalog: {error}")
             return
-        self.show_catalog(self._manager.listing().chosen_default_path)
+        self._action_request.start(
+            lambda result, error: self._manager.refresh_catalogs(on_done=result, on_failed=error),
+            on_result=self._show_default,
+            on_error=self._on_load_failed,
+        )
+
+    def _show_default(self, listing: SceneRenderCatalogListing) -> None:
+        self.show_catalog(listing.chosen_default_path)
 
     def _build(self) -> None:
         header = QHBoxLayout()

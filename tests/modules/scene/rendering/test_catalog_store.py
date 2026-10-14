@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pytest
 
+from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.catalog_manager import create_scene_render_catalog_manager
 from ax_devil.modules.scene.rendering.catalog_store import SceneRenderCatalogStore
@@ -253,3 +254,17 @@ def test_catalog_store_deleting_default_restores_built_in_default(tmp_path: Path
 
     assert recreated_file.path == catalog_file.path
     assert store.list_catalogs_with_errors().default_path == store.built_in_catalog_path
+
+
+def test_a_cancelled_token_stops_the_listing_and_never_completes_it_early(
+    tmp_path: Path, small_catalog_path: Path
+) -> None:
+    store = SceneRenderCatalogStore(tmp_path)
+    store.create_catalog("Review", base_catalog_path=small_catalog_path)
+    token = CancelToken()
+    token.cancel()
+
+    with pytest.raises(Cancelled):
+        store.list_catalogs_with_errors(token)
+
+    assert len(store.list_catalogs_with_errors(NEVER).catalogs) == len(BUILT_IN_CATALOG_PATHS) + 1

@@ -11,6 +11,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any, cast
 
+from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH, BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from ax_devil.modules.settings.logging_config import get_logger
@@ -106,11 +107,14 @@ class SceneRenderCatalogStore:
             raise ValueError(f"Render catalog is not in the catalog store: {path}")
         logger.info(f"Default Scene Render Catalog set to {path}")
 
-    def list_catalogs_with_errors(self) -> SceneRenderCatalogListing:
-        """Return render catalog file metadata, per-file metadata errors and the default catalog path."""
+    def list_catalogs_with_errors(self, token: CancelToken = NEVER) -> SceneRenderCatalogListing:
+        """Return render catalog file metadata, per-file metadata errors and the default catalog path.
+
+        Reading each file can be slow on remote storage, so a cancelled *token* stops the listing before the next file.
+        """
         catalog_files: list[SceneRenderCatalogFile] = []
         errors: list[SceneRenderCatalogFileError] = []
-        for path in (*self.built_in_catalog_paths, *sorted(self._catalogs_dir.glob("*.json"))):
+        for path in token.polled((*self.built_in_catalog_paths, *sorted(self._catalogs_dir.glob("*.json")))):
             try:
                 catalog_files.append(self._catalog_file_for_path(path))
             except (OSError, TemplateRuntimeError, ValueError, KeyError) as exc:

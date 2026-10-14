@@ -159,6 +159,7 @@ class MediaToolsPanel(QWidget):
 
         self._render_catalog_selection = render_catalog_selection
         self._export_button: QToolButton | None = None
+        self._export_allowed = True
         self._last_scene: Scene | None = None
         self._last_frame_id: FrameIdentifier | None = None
         self._refilter: SceneRefilter | None = None
@@ -225,6 +226,8 @@ class MediaToolsPanel(QWidget):
             self._export_button.setAutoRaise(True)
             self._export_button.clicked.connect(self.exportRequested.emit)
             corner_layout.addWidget(self._export_button)
+            render_catalog_selection.activeCatalogChanged.connect(self._update_export_button)
+            self._update_export_button()
         self._tabs.setCornerWidget(corner, Qt.Corner.TopRightCorner)
 
         self._id_search = QLineEdit(self)
@@ -406,9 +409,18 @@ class MediaToolsPanel(QWidget):
             self._splitter.setSizes([self._splitter.height() - half, half])
 
     def set_export_enabled(self, enabled: bool) -> None:
-        """Enable or disable the export button."""
-        if self._export_button is not None:
-            self._export_button.setEnabled(enabled)
+        """Allow or forbid export, such as while an export dialog is open; it also needs a loaded render catalog."""
+        self._export_allowed = enabled
+        self._update_export_button()
+
+    def _update_export_button(self, _catalog: object = None) -> None:
+        if self._export_button is None:
+            return
+        ready = self._render_catalog_selection.active_catalog() is not None
+        self._export_button.setEnabled(self._export_allowed and ready)
+        self._export_button.setToolTip(
+            "Export video with overlays" if ready else "Export is available once the render catalog has loaded"
+        )
 
     def _on_filter_changed(self) -> None:
         if self._id_search.text().strip() != self.filter_model.id_query:

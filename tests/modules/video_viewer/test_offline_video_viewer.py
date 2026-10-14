@@ -10,7 +10,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PySide6.QtCore import QCoreApplication, QPoint, QPointF, QPropertyAnimation
 from PySide6.QtGui import QImage
-from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QListView, QPushButton, QTabWidget, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QLabel,
+    QListView,
+    QPushButton,
+    QTabWidget,
+    QToolButton,
+    QWidget,
+)
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
@@ -20,7 +29,7 @@ from ax_devil.modules.data_sources.base import SeekableFrameSource
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
 from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
-from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
+from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, SceneRenderCatalogStore
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
@@ -31,7 +40,12 @@ from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_player.ui.draggable import DraggablePanel
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
-from ax_devil.modules.video_viewer import offline_entry_media, offline_video_viewer, offline_viewer_runtime
+from ax_devil.modules.video_viewer import (
+    offline_entry_media,
+    offline_video_viewer,
+    offline_viewer_runtime,
+    scene_frame_presenter,
+)
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.event_log_widget import EventLogModel
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
@@ -50,6 +64,7 @@ from ax_devil.modules.workspace.core import (
     SeekableVideoContent,
 )
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
+from tests.catalog_helpers import GatedCatalogLoader
 from tests.helpers.qt_events import make_wheel_event
 from tests.helpers.workspace import store_with
 
@@ -1467,6 +1482,51 @@ class TestOfflineVideoViewerWidget:
         widget.step_prev_entry()
         confidence, _reset = details(_session(widget).lanes[0])
         assert confidence.isChecked()
+
+    def test_export_waits_for_the_first_render_catalog_and_then_freezes_it(
+        self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """While a viewer's first catalog loads, nothing can be exported with the built-in one in its place."""
+
+        def forbidden() -> None:
+            raise AssertionError("Export fell back to the built-in catalog")
+
+        monkeypatch.setattr(scene_frame_presenter, "get_built_in_scene_render_catalog", forbidden)
+        store = SceneRenderCatalogStore(tmp_path / "render_catalogs")
+        loader = GatedCatalogLoader()
+        manager = SceneRenderCatalogManager(catalog_store=store, catalog_loader=loader)
+        release = loader.hold(manager.default_catalog_path())
+        manager.initialize()
+        try:
+            qtbot.waitUntil(lambda: manager.listing_ready, timeout=10_000)
+            widget = OfflineVideoViewerWidget(
+                _make_local_content("cold", with_overlay=True), render_catalog_manager=manager
+            )
+            _attach_offline_widget(qtbot, widget)
+            lane = _session(widget).lanes[0]
+            assert lane.tools_panel is not None and lane.presenter is not None
+            export_button = lane.tools_panel.findChild(QToolButton, "exportVideoButton")
+            assert export_button is not None
+            assert lane.presenter.scene_render_catalog is None and not export_button.isEnabled()
+
+            with (
+                patch("ax_devil.modules.video_viewer.export.ExportDialog") as dialog_type,
+                patch("ax_devil.modules.video_viewer.offline_viewer_runtime.QMessageBox.warning") as told,
+            ):
+                widget.export_video()
+                _session(widget).export_lanes([lane])
+                dialog_type.assert_not_called()
+                assert told.call_count == 2
+
+                release.set()
+                qtbot.waitUntil(export_button.isEnabled, timeout=10_000)
+                widget.export_video()
+                exported = dialog_type.call_args.args[0]
+
+            assert lane.presenter.scene_render_catalog is not None
+            assert exported[0].presenter.scene_render_catalog is lane.presenter.scene_render_catalog
+        finally:
+            release.set()
 
 
 class TestMediaToolsToggle:
