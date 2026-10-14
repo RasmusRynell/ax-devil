@@ -228,7 +228,7 @@ def _fill_sidebar_views(
     ]
     session._live_view_controller._scan = lambda *_args: cameras
     session._live_view_controller.scan("192.0.2.0/24")
-    qtbot.waitUntil(lambda: not session._live_view_controller._scanning, timeout=10000)
+    qtbot.waitUntil(lambda: not session._live_view_controller._scan_request.pending, timeout=10000)
 
     store = session._workspace_store
     [playlist_item] = [item for item in store.workspace.items if isinstance(item, PlaylistItem)]

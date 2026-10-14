@@ -15,6 +15,7 @@ from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -70,7 +71,7 @@ def _open_now(entry: PlaylistEntry) -> EntryMedia:
         _all_lanes(entry),
         lambda _message: None,
         gui_thread=QThread.currentThread(),
-        abandoned=threading.Event(),
+        token=CancelToken(),
     )
 
 
@@ -223,18 +224,18 @@ def test_abandoned_opening_skips_analysis_after_a_blocking_open(
     monkeypatch: pytest.MonkeyPatch, abandon_during: str
 ) -> None:
     """Abandoning while a source opens skips the timing and history analysis that would delay the next entry."""
-    abandoned = threading.Event()
+    abandoned = CancelToken()
     source = MagicMock()
     overlay_source = MagicMock()
 
     def open_video(_video: SeekableVideoContent) -> MagicMock:
         if abandon_during == "video":
-            abandoned.set()
+            abandoned.cancel()
         return source
 
     def open_overlay(_overlay: OverlayContent, *, frame_timeline: object) -> tuple[MagicMock, MagicMock]:
         if abandon_during == "overlay":
-            abandoned.set()
+            abandoned.cancel()
         return overlay_source, MagicMock()
 
     monkeypatch.setattr(offline_entry_media, "create_frame_source", open_video)
@@ -249,7 +250,7 @@ def test_abandoned_opening_skips_analysis_after_a_blocking_open(
     entry = PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True)
 
     media = open_entry_media(
-        entry, _all_lanes(entry), lambda _message: None, gui_thread=QThread.currentThread(), abandoned=abandoned
+        entry, _all_lanes(entry), lambda _message: None, gui_thread=QThread.currentThread(), token=abandoned
     )
 
     assert media.video_sources == [source]

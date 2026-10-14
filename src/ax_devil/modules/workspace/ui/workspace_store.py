@@ -57,11 +57,14 @@ class WorkspaceStore(QObject):
         self._saved_workspace = self._workspace
         self._awaiting_saved = False  # a restored Workspace's saved state is still being read
         self._read_saved: Callable[[], tuple[Workspace, Workspace]] | None = None  # reads it, for finish_restore
+        self._cancel_read: Callable[[], None] | None = None  # cancels the background read of the saved state
         self._resolutions: dict[str, ItemResolution] = {}
         self._not_considered: set[ConsiderationItemRef] = set()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
-        self._rescan_count = 0  # numbers rescan requests
-        self._latest_rescan: dict[str, int] = {}  # each rescanning item's newest request, the only one that commits
+        self._rescans: dict[str, Callable[[], None]] = {}  # cancel each rescanning item's newest request
+        # Ordered GUI-side batches; each item has its own cancellable worker.
+        self._resolving: dict[int, _ResolutionBatch] = {}
+        self._batch_count = 0
         self._announced_state = self._state()
 
     @property
@@ -100,11 +103,13 @@ class WorkspaceStore(QObject):
         self._workspace = current
         self._saved_workspace = current if saved is None else saved
         self._resolutions = {item.id: ItemResolution.pending(item) for item in current.items}
-        self._latest_rescan = {}
         self._not_considered = set()
         self._generation += 1
-        self._awaiting_saved = False
-        self._read_saved = None
+        cancels = [*(batch.cancel for batch in self._resolving.values()), *self._rescans.values()]
+        self._resolving, self._rescans = {}, {}
+        for cancel in cancels:
+            cancel()
+        self._settle_saved()
         self.workspace_replaced.emit()
         self.bookmarks_changed.emit()
         self._announce_state()
@@ -123,11 +128,7 @@ class WorkspaceStore(QObject):
         self._awaiting_saved = True
         self._read_saved = partial(load_saved, kept)
         generation = self._generation
-        self._resolver.run(
-            self._read_saved,
-            partial(self._publish_saved, generation),
-            lambda: generation == self._generation and self._awaiting_saved,
-        )
+        self._cancel_read = self._resolver.run(self._read_saved, partial(self._publish_saved, generation))
 
     def finish_restore(self) -> None:
         """Read the saved state of a restored Workspace now, on the calling thread, when it is still pending.
@@ -148,8 +149,7 @@ class WorkspaceStore(QObject):
         if target is None:
             raise ValueError("A workspace without a file needs a path to be saved.")
         self._workspace = self._saved_workspace = save_workspace(self._workspace, target)
-        self._awaiting_saved = False
-        self._read_saved = None
+        self._settle_saved()
         self._announce_state()
 
     def rename_workspace(self, name: str) -> None:
@@ -176,7 +176,8 @@ class WorkspaceStore(QObject):
         before = self._workspace
         self._workspace = self._workspace.remove_item(item_id)
         removed_ids = {content.content_id for content in self._resolutions.pop(item_id).contents}
-        self._latest_rescan.pop(item_id, None)
+        self._cancel_rescan(item_id)
+        self._cancel_resolving(item_id)
         self._not_considered = {ref for ref in self._not_considered if ref.content_id not in removed_ids}
         logger.debug(f"Item removed: {item.display_name} ({item_id})")
         self.item_removed.emit(item)
@@ -250,22 +251,29 @@ class WorkspaceStore(QObject):
         from its defaults. Rescanning never opens a viewer and never changes what open viewers show, since they keep
         the immutable Content they opened; nor does it make the Workspace modified, as results are never saved. An item
         that is still resolving is left to that resolution. Rescanning an item again before the first rescan finishes
-        makes the latest request the one that counts: an earlier request's result is dropped, however late it arrives.
+        makes the latest request the one that counts: the earlier one is cancelled, so its result never arrives, and a
+        rescan still waiting its turn never runs.
         """
         if not self._workspace.has_item(item_id):
             logger.warning(f"Attempted to rescan an item not in the workspace: {item_id}")
             return
         if self._resolutions[item_id].is_pending:
             return
-        generation = self._generation
-        self._rescan_count += 1
-        request = self._rescan_count
-        self._latest_rescan[item_id] = request
-        self._resolver.resolve(
-            [self._workspace.item(item_id)],
-            partial(self._apply_rescan, generation, request),
-            lambda: generation == self._generation and self._latest_rescan.get(item_id) == request,
+        self._cancel_rescan(item_id)
+        self._rescans[item_id] = self._resolver.resolve(
+            self._workspace.item(item_id), partial(self._apply_rescan, self._generation)
         )
+
+    def _cancel_rescan(self, item_id: str) -> None:
+        """Cancel the rescan of the item with *item_id* that is still under way, if any."""
+        cancel = self._rescans.pop(item_id, None)
+        if cancel is not None:
+            cancel()
+
+    def _cancel_resolving(self, item_id: str) -> None:
+        """Cancel only this item's work and let its batch finish with any remaining items."""
+        for batch in tuple(self._resolving.values()):
+            batch.remove(item_id)
 
     def contents(self) -> tuple[Content, ...]:
         """Return the Content of every resolved item, in item order."""
@@ -330,25 +338,42 @@ class WorkspaceStore(QObject):
         if generation != self._generation or not self._awaiting_saved:
             return
         current, saved = loaded
-        self._awaiting_saved = False
-        self._read_saved = None
+        self._settle_saved()
         self._workspace = replace(self._workspace, path=current.path)
         self._saved_workspace = saved
         self._announce_state()
 
+    def _settle_saved(self) -> None:
+        """Stop waiting for a restored Workspace's saved state, and cancel its background read if still queued."""
+        self._awaiting_saved = False
+        self._read_saved = None
+        cancel, self._cancel_read = self._cancel_read, None
+        if cancel is not None:
+            cancel()
+
     def _resolve(self, items: Sequence[WorkspaceItem], *, added: bool) -> None:
         """Resolve *items* in the background and commit the results to the Workspace they belong to.
 
-        Added items resolve together, so the first of them is the one that opens; a replacing Workspace's items resolve
-        one by one, so a slow item never holds back the others.
+        Added items are published together in their original order, so the first of them is the one that opens.
+        A replacing Workspace publishes each result independently, so a slow item never holds back the others.
         """
         generation = self._generation
         batches = [items] if added else [[item] for item in items]
         for batch in batches:
             if batch:
-                self._resolver.resolve(
-                    batch, partial(self._commit, generation, added=added), lambda: generation == self._generation
-                )
+                self._batch_count += 1
+                number = self._batch_count
+                done = partial(self._batch_resolved, number, generation, added=added)
+                pending = _ResolutionBatch(batch, done)
+                self._resolving[number] = pending
+                pending.start(self._resolver)
+
+    def _batch_resolved(
+        self, number: int, generation: int, resolutions: tuple[ItemResolution, ...], *, added: bool
+    ) -> None:
+        """Forget the finished batch *number*, then commit its results."""
+        self._resolving.pop(number, None)
+        self._commit(generation, resolutions, added=added)
 
     def _commit(self, generation: int, resolutions: tuple[ItemResolution, ...], *, added: bool) -> None:
         """Record the results of items still waiting for them, and exclude Content whose default is not considered."""
@@ -368,14 +393,13 @@ class WorkspaceStore(QObject):
         if committed:
             self.items_resolved.emit(committed, added)
 
-    def _apply_rescan(self, generation: int, request: int, resolutions: tuple[ItemResolution, ...]) -> None:
-        """Replace an item's result with its rescanned one, unless the item or its Workspace is gone or a newer rescan
-        of the item was requested."""
-        [resolution] = resolutions
+    def _apply_rescan(self, generation: int, resolution: ItemResolution) -> None:
+        """Replace an item's result with its rescanned one, unless its Workspace was replaced; a removed item's or a
+        superseded rescan was cancelled and never arrives."""
         item_id = resolution.item.id
-        if generation != self._generation or self._latest_rescan.get(item_id) != request:
+        if generation != self._generation:
             return
-        del self._latest_rescan[item_id]
+        self._rescans.pop(item_id, None)
         current = resolution.renamed(self._workspace.item(item_id))
         if current.error is not None:
             logger.warning(f"Could not open {current.item.display_name}: {current.error}")
@@ -383,6 +407,49 @@ class WorkspaceStore(QObject):
         self._resolutions[item_id] = current
         self._not_considered = _carried_exclusions(self._not_considered, previous, current)
         self.item_rescanned.emit(current)
+
+
+class _ResolutionBatch:
+    """Publish independent item jobs together in input order; all state belongs to the GUI thread."""
+
+    def __init__(self, items: Sequence[WorkspaceItem], done: Callable[[tuple[ItemResolution, ...]], None]) -> None:
+        self._items = tuple(items)
+        self._results: dict[str, ItemResolution | None] = dict.fromkeys(item.id for item in items)
+        self._cancels: dict[str, Callable[[], None]] = {}
+        self._done = done
+
+    def start(self, resolver: ItemResolver) -> None:
+        """Start one cancellable job per item, including resolvers that finish inline."""
+        for item in self._items:
+            cancel = resolver.resolve(item, self._resolved)
+            if item.id in self._results and self._results[item.id] is None:
+                self._cancels[item.id] = cancel
+
+    def remove(self, item_id: str) -> None:
+        """Drop a removed item, interrupting its worker even if the rest of the batch is still wanted."""
+        if item_id not in self._results:
+            return
+        cancel = self._cancels.pop(item_id, None)
+        if cancel is not None:
+            cancel()
+        del self._results[item_id]
+        self._publish_if_ready()
+
+    def cancel(self) -> None:
+        """Cancel the entire batch without publishing it."""
+        for cancel in self._cancels.values():
+            cancel()
+        self._cancels.clear()
+
+    def _resolved(self, result: ItemResolution) -> None:
+        self._cancels.pop(result.item.id, None)
+        self._results[result.item.id] = result
+        self._publish_if_ready()
+
+    def _publish_if_ready(self) -> None:
+        completed = tuple(result for result in self._results.values() if result is not None)
+        if len(completed) == len(self._results):
+            self._done(completed)
 
 
 def _bookmark_state(workspace: Workspace) -> tuple[tuple[Bookmark, ...], frozenset[BookmarkTarget]]:

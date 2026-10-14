@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from functools import partial
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer
 
+from ax_devil.core.cancellation import CancelToken
+from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
     DiscoveredCamera,
@@ -26,7 +28,6 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
-from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
 from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
@@ -34,36 +35,24 @@ from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 logger = get_logger(__name__)
 
+_FOUND_REFRESH_MS = 100
+
 Found = Callable[[DiscoveredCamera], None]
-Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found], Sequence[DiscoveredCamera]]
-"""Search addresses, trying the logins in order on each device found, and report each find."""
+Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found, CancelToken], Sequence[DiscoveredCamera]]
+"""Search addresses, trying the logins in order on each device found, and report each find; stop when the token is
+cancelled."""
 
 
-def _scan_network(targets: tuple[str, ...], logins: tuple[Login, ...], found: Found) -> list[DiscoveredCamera]:
-    return scan_network(targets=targets, logins=logins, found=found)
+def _scan_network(
+    targets: tuple[str, ...], logins: tuple[Login, ...], found: Found, token: CancelToken
+) -> list[DiscoveredCamera]:
+    return scan_network(targets=targets, logins=logins, found=found, token=token)
 
 
-@dataclass(frozen=True)
-class _ScanOutcome:
-    """What one scan found, or why it failed."""
-
-    cameras: tuple[DiscoveredCamera, ...] = ()
-    error: str = ""
-
-
-def _scan_outcome(scan: Callable[[], Sequence[DiscoveredCamera]]) -> _ScanOutcome:
-    """Run *scan*, on a worker thread, and keep its failure as a reason instead of raising it."""
-    try:
-        return _ScanOutcome(cameras=tuple(scan()))
-    except Exception as exc:
-        logger.exception("Network scan failed")
-        return _ScanOutcome(error=str(exc) or type(exc).__name__)
-
-
-class _Finds(QObject):
-    """Carries each camera a running scan finds to the GUI thread, where it was made; the scan holds it to the end."""
-
-    found = Signal(object)  # DiscoveredCamera
+def _run_scan(
+    scan: Scan, targets: tuple[str, ...], logins: tuple[Login, ...], job: JobContext[DiscoveredCamera]
+) -> tuple[DiscoveredCamera, ...]:
+    return tuple(scan(targets, logins, job.report, job.token))
 
 
 def _defaults() -> tuple[str, tuple[Login, ...]]:
@@ -167,9 +156,9 @@ class LiveViewController(QObject):
 
     *workspace* carries out what the rows ask for, the right-click menu included. Nothing touches the network until the
     user asks for a scan of the IP range in the view, which starts as the Settings' default and searches the local
-    network when empty, signing in when the view asks to; *scan* runs through *resolver* away from the GUI thread, and
-    what it finds is dropped once the view is gone. A camera the workspace holds shows what the scan learned about it
-    as a found camera does; the order applies to the found cameras. A found camera's Add puts it in *store* with the
+    network when empty, signing in when the view asks to; *scan* runs as one of *jobs*, and what it finds is dropped
+    once the view is gone or `cleanup` ran. A camera the workspace holds shows what the scan learned about it as a
+    found camera does; the order applies to the found cameras. A found camera's Add puts it in *store* with the
     user's stream defaults, and with the credentials that signed in to it.
     """
 
@@ -178,22 +167,25 @@ class LiveViewController(QObject):
         view: LiveView,
         workspace: WorkspaceController,
         store: WorkspaceStore,
-        resolver: ItemResolver,
+        jobs: BackgroundJobs,
         scan: Scan = _scan_network,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._view: LiveView | None = view
         self._store = store
-        self._resolver = resolver
+        self._jobs = jobs.scope(view)
         self._scan = scan
         self._given_range, self._logins = _defaults()  # The range is what the view's field was last given by default.
         view.set_scan_range(self._given_range)
         view.set_logins(self._logins)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan starts
-        self._finds: _Finds | None = None
-        self._scanning = False
+        self._scan_request = LatestRequest(view)
         self._order = DeviceOrder.ADDRESS
+        self._found_refresh = QTimer(self)  # Finds can arrive in a burst; one refresh covers them all.
+        self._found_refresh.setSingleShot(True)
+        self._found_refresh.setInterval(_FOUND_REFRESH_MS)
+        self._found_refresh.timeout.connect(self._refresh)
         view.scan_requested.connect(self.scan)
         view.logins_edited.connect(self._save_logins)
         view.order_chosen.connect(self._sort)
@@ -215,7 +207,7 @@ class LiveViewController(QObject):
 
     def scan(self, ip_range: str) -> None:
         """Search *ip_range*, or the local network if it is empty, for cameras, unless a search is already running."""
-        if self._scanning or self._view is None:
+        if self._scan_request.pending or self._view is None:
             return
         try:
             targets = parse_scan_targets(ip_range)
@@ -223,18 +215,23 @@ class LiveViewController(QObject):
             self._view.set_scan_status(ScanStatus.INVALID, str(exc))
             return
         logins = self._logins if self._view.sign_in_wanted() else ()
-        self._scanning = True
         self._found = ()
         self._view.set_scan_status(ScanStatus.SCANNING)
         self._refresh()
-        finds = self._finds = _Finds()
-        finds.found.connect(self._on_found)
-        scan = self._scan
-        self._resolver.run(
-            lambda: _scan_outcome(lambda: scan(targets, logins, finds.found.emit)),
-            self._on_scanned,
-            lambda: self._view is not None,
+        self._scan_request.submit(
+            self._jobs,
+            "network scan",
+            partial(_run_scan, self._scan, targets, logins),
+            on_result=self._on_scanned,
+            on_error=self._on_scan_failed,
+            on_progress=self._on_found,
         )
+
+    def cleanup(self) -> None:
+        """Stop showing the outcome of a scan still running."""
+        self._found_refresh.stop()
+        self._scan_request.close()
+        self._jobs.close()
 
     def _save_logins(self, logins: tuple[Login, ...]) -> None:
         """Keep the logins the user edited in the view as the ones scans try, shared with Settings."""
@@ -250,20 +247,25 @@ class LiveViewController(QObject):
         self._logins = logins
 
     def _on_found(self, camera: DiscoveredCamera) -> None:
-        if self._found is not None and self._scanning:
+        if self._found is not None:
             self._found += (camera,)
-            self._refresh()
+            if not self._found_refresh.isActive():
+                self._found_refresh.start()
 
-    def _on_scanned(self, outcome: _ScanOutcome) -> None:
-        self._scanning = False
+    def _on_scanned(self, cameras: tuple[DiscoveredCamera, ...]) -> None:
+        self._found_refresh.stop()
         if self._view is None:
             return
-        if outcome.error:
-            self._view.set_scan_status(ScanStatus.FAILED, outcome.error)
-            return
         self._view.set_scan_status(ScanStatus.IDLE)
-        self._found = outcome.cameras
+        self._found = cameras
         self._refresh()
+
+    def _on_scan_failed(self, error: Exception) -> None:
+        if self._found_refresh.isActive():
+            self._found_refresh.stop()
+            self._refresh()
+        if self._view is not None:
+            self._view.set_scan_status(ScanStatus.FAILED, str(error) or type(error).__name__)
 
     def _sort(self, order: DeviceOrder) -> None:
         self._order = order

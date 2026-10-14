@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QObject
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import NEVER, CancelToken
+from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.workspace.core import (
     Bookmark,
     BookmarkKind,
@@ -37,25 +39,8 @@ from tests.helpers.contents import make_playlist, make_video
 from tests.helpers.workspace import FakeResolutionContext, content_item, inline_resolver
 
 
-def test_completed_resolver_relays_are_destroyed_on_the_gui_thread_and_workers_remain_usable(qtbot: QtBot) -> None:
-    """Finishing work releases its native Qt relay even while the worker is waiting for more work."""
-    resolver = ItemResolver(FakeResolutionContext())
-    results: list[int] = []
-    destroyed_on: list[threading.Thread] = []
-    resolver.run(lambda: 7, results.append)
-    batch = next(iter(resolver._batches))
-    batch.destroyed.connect(lambda: destroyed_on.append(threading.current_thread()))
-
-    qtbot.waitUntil(lambda: results == [7])
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-
-    assert destroyed_on == [threading.main_thread()]
-    resolver.run(lambda: 8, results.append)
-    qtbot.waitUntil(lambda: results == [7, 8])
-
-
 class _TwoPlaylists:
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [make_playlist("train"), make_playlist("test")]
 
 
@@ -217,7 +202,7 @@ class _CountingResolver:
     def __init__(self) -> None:
         self.calls = 0
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         self.calls += 1
         return [make_playlist("train"), make_playlist("test")]
 
@@ -388,7 +373,7 @@ class _BlockingResolver:
         self.release = threading.Event()
         self.threads: list[threading.Thread] = []
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         self.threads.append(threading.current_thread())
         assert self.release.wait(timeout=5)
         return [make_playlist("train"), make_playlist("test")]
@@ -497,6 +482,25 @@ def test_queued_items_of_a_replaced_workspace_are_never_resolved(qtbot: QtBot, b
     assert counting.calls == 0
 
 
+def test_replacing_a_workspace_stops_a_running_added_batch_before_its_next_item(
+    qtbot: QtBot, blocking: _BlockingResolver
+) -> None:
+    counting = _CountingResolver()
+    jobs = BackgroundJobs(max_workers=1)
+    context = FakeResolutionContext(resolvers={"runs": blocking, "counted": counting, "quick": _TwoPlaylists()})
+    store = WorkspaceStore(ItemResolver(context, jobs=jobs))
+    store.add_items([PlaylistItem(resolver="runs"), PlaylistItem(resolver="counted")])
+    qtbot.waitUntil(lambda: bool(blocking.threads))
+    requested = PlaylistItem(label="Requested", resolver="quick")
+
+    store.replace_workspace(Workspace(items=(requested,)))
+    blocking.release.set()
+
+    qtbot.waitUntil(lambda: not store.resolution(requested.id).is_pending)
+    assert counting.calls == 0
+    assert [content.display_name for content in store.contents()] == ["Requested / train", "Requested / test"]
+
+
 class _SlowSavedFile:
     """Read the saved state of a restored workspace only when the test releases it."""
 
@@ -558,6 +562,59 @@ def test_a_saved_state_arriving_after_the_workspace_was_replaced_or_saved_is_dro
 
     qtbot.wait(200)
     assert store.workspace.path == tmp_path / "Mine.ax-devil.workspace" and not store.is_modified
+
+
+def _jobs_with_a_busy_worker() -> tuple[BackgroundJobs, threading.Event, QObject]:
+    """Return a one-worker pool whose only worker is held until the returned event is set."""
+    jobs, busy, owner = BackgroundJobs(max_workers=1), threading.Event(), QObject()
+    jobs.scope(owner).submit("busy", lambda _job: busy.wait(5), on_result=lambda _: None, on_error=lambda _: None)
+    return jobs, busy, owner
+
+
+def test_saving_a_restored_workspace_stops_its_queued_saved_file_read(qtbot: QtBot, tmp_path: Path) -> None:
+    kept, saved = _restorable(tmp_path)
+    baseline = set(threading.enumerate())
+    jobs, busy, _owner = _jobs_with_a_busy_worker()
+    store = WorkspaceStore(ItemResolver(FakeResolutionContext(), jobs=jobs))
+    slow = _SlowSavedFile(saved)
+    store.restore_workspace(kept, slow)
+
+    store.save_workspace(tmp_path / "Mine.ax-devil.workspace")
+    busy.set()
+
+    _wait_for_jobs_since(qtbot, baseline)
+    assert not slow.started.is_set()
+
+
+def test_removing_an_item_stops_its_queued_resolution(qtbot: QtBot) -> None:
+    resolver = _CountingResolver()
+    baseline = set(threading.enumerate())
+    jobs, busy, _owner = _jobs_with_a_busy_worker()
+    store = WorkspaceStore(ItemResolver(FakeResolutionContext(resolvers={"runs": resolver}), jobs=jobs))
+    removed, kept = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
+    store.add_items([removed])
+    store.add_items([kept])
+
+    store.remove_item(removed.id)
+    busy.set()
+
+    _wait_for_jobs_since(qtbot, baseline)
+    assert resolver.calls == 1 and not store.resolution(kept.id).is_pending
+
+
+def test_removing_one_item_of_a_queued_batch_skips_only_that_item(qtbot: QtBot) -> None:
+    resolver = _CountingResolver()
+    baseline = set(threading.enumerate())
+    jobs, busy, _owner = _jobs_with_a_busy_worker()
+    store = WorkspaceStore(ItemResolver(FakeResolutionContext(resolvers={"runs": resolver}), jobs=jobs))
+    removed, kept = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
+    store.add_items([removed, kept])
+
+    store.remove_item(removed.id)
+    busy.set()
+
+    _wait_for_jobs_since(qtbot, baseline)
+    assert resolver.calls == 1 and not store.resolution(kept.id).is_pending
 
 
 def _recording_bookmark_signals(store: WorkspaceStore) -> list[str]:
@@ -671,7 +728,7 @@ class _Folder:
     def __init__(self, *clips: str) -> None:
         self.clips = list(clips)
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         if not self.clips:
             raise OSError("Folder not found: /runs")
         entries = tuple(
@@ -761,11 +818,16 @@ def test_a_rescan_that_fails_shows_the_item_as_unavailable_until_it_resolves_aga
 def test_rescan_results_for_a_removed_item_or_a_replaced_workspace_are_dropped(
     qtbot: QtBot, blocking: _BlockingResolver
 ) -> None:
-    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": blocking, "quick": _TwoPlaylists()}))
+    baseline = set(threading.enumerate())
+    resolver = ItemResolver(
+        FakeResolutionContext(resolvers={"runs": blocking, "quick": _TwoPlaylists()}), jobs=BackgroundJobs()
+    )
     store = WorkspaceStore(resolver)
     resolved_at_once = FakeResolutionContext(resolvers={"runs": _TwoPlaylists()})
     removed, replaced = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
-    store.add_resolved([ItemResolution.of(removed, resolved_at_once), ItemResolution.of(replaced, resolved_at_once)])
+    store.add_resolved(
+        [ItemResolution.of(removed, resolved_at_once, NEVER), ItemResolution.of(replaced, resolved_at_once, NEVER)]
+    )
     rescanned: list[ItemResolution] = []
     store.item_rescanned.connect(rescanned.append)
     store.rescan_item(removed.id)
@@ -777,7 +839,7 @@ def test_rescan_results_for_a_removed_item_or_a_replaced_workspace_are_dropped(
     store.replace_workspace(Workspace(items=(kept,)))
     blocking.release.set()
 
-    qtbot.waitUntil(lambda: not resolver._batches)
+    _wait_for_jobs_since(qtbot, baseline)
     assert rescanned == []
     assert [content.display_name for content in store.contents()] == ["Kept / train", "Kept / test"]
 
@@ -785,7 +847,8 @@ def test_rescan_results_for_a_removed_item_or_a_replaced_workspace_are_dropped(
 def test_rescanning_an_unknown_or_still_resolving_item_does_nothing(
     qtbot: QtBot, blocking: _BlockingResolver, caplog: pytest.LogCaptureFixture
 ) -> None:
-    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": blocking}))
+    baseline = set(threading.enumerate())
+    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": blocking}), jobs=BackgroundJobs())
     store = WorkspaceStore(resolver)
     runs = PlaylistItem(resolver="runs")
     store.add_items([runs])
@@ -796,7 +859,7 @@ def test_rescanning_an_unknown_or_still_resolving_item_does_nothing(
     store.rescan_item(runs.id)
     blocking.release.set()
 
-    qtbot.waitUntil(lambda: not resolver._batches)
+    _wait_for_jobs_since(qtbot, baseline)
     assert not store.resolution(runs.id).is_pending
     assert len(blocking.threads) == 1
     assert rescanned == []
@@ -811,7 +874,7 @@ class _ScriptedResolver:
         self._lock = threading.Lock()
         self._first = True
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         with self._lock:
             if self._first:
                 self._first = False
@@ -824,7 +887,8 @@ class _ScriptedResolver:
 
 def test_an_older_rescan_finishing_last_does_not_overwrite_the_newer_result(qtbot: QtBot) -> None:
     scripted = _ScriptedResolver()
-    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": scripted}))
+    baseline = set(threading.enumerate())
+    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": scripted}), jobs=BackgroundJobs())
     store = WorkspaceStore(resolver)
     runs = PlaylistItem(resolver="runs")
     store.add_items([runs])
@@ -840,7 +904,123 @@ def test_an_older_rescan_finishing_last_does_not_overwrite_the_newer_result(qtbo
     newer_release.set()
     qtbot.waitUntil(lambda: len(rescanned) == 1)
     older_release.set()
-    qtbot.waitUntil(lambda: not resolver._batches)
+    _wait_for_jobs_since(qtbot, baseline)
 
     assert [content.display_name for content in store.contents()] == [newer_name]
     assert len(rescanned) == 1
+
+
+def test_repeated_rescans_waiting_for_a_worker_never_run_but_the_latest(qtbot: QtBot) -> None:
+    scripted = _ScriptedResolver()
+    baseline = set(threading.enumerate())
+    jobs = BackgroundJobs(max_workers=1)
+    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": scripted}), jobs=jobs)
+    store = WorkspaceStore(resolver)
+    runs = PlaylistItem(resolver="runs")
+    store.add_items([runs])
+    qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
+    busy, owner = threading.Event(), QObject()
+    jobs.scope(owner).submit("busy", lambda _job: busy.wait(5), on_result=lambda _: None, on_error=lambda _: None)
+
+    for _ in range(3):
+        store.rescan_item(runs.id)
+    busy.set()
+    qtbot.waitUntil(lambda: len(scripted.requests) == 1)
+    scripted.requests[0][0].set()
+    _wait_for_jobs_since(qtbot, baseline)
+
+    assert len(scripted.requests) == 1, "the two rescans the latest replaced never took a worker"
+
+
+def _wait_for_jobs_since(qtbot: QtBot, baseline: set[threading.Thread]) -> None:
+    """Wait until the workers started after *baseline* ran out of jobs, then let the GUI thread take every outcome."""
+    qtbot.waitUntil(lambda: not set(threading.enumerate()) - baseline)
+    QCoreApplication.processEvents()
+
+
+class _CooperativeResolver:
+    """Hold one call until its owning workspace operation cancels it."""
+
+    def __init__(self, block_call: int = 1) -> None:
+        self.calls = 0
+        self.block_call = block_call
+        self.started = threading.Event()
+        self.stopped = threading.Event()
+
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
+        """Return a numbered playlist, blocking the requested call with cooperative cancellation."""
+        self.calls += 1
+        if self.calls == self.block_call:
+            self.started.set()
+            try:
+                token.wait(5)
+            finally:
+                self.stopped.set()
+        return [make_playlist(f"scan {self.calls}")]
+
+
+def test_removing_an_active_item_frees_the_worker_for_the_rest_of_its_added_batch(qtbot: QtBot) -> None:
+    """Removing one slow playlist must stop its scan even while the batch still contains another item."""
+    blocked = _CooperativeResolver()
+    context = FakeResolutionContext(resolvers={"blocked": blocked, "quick": _TwoPlaylists()})
+    store = WorkspaceStore(ItemResolver(context, jobs=BackgroundJobs(max_workers=1)))
+    removed, kept = PlaylistItem(resolver="blocked"), PlaylistItem(resolver="quick")
+    deliveries: list[list[ItemResolution]] = []
+    store.items_resolved.connect(lambda results, _added: deliveries.append(results))
+    try:
+        store.add_items([removed, kept])
+        qtbot.waitUntil(blocked.started.is_set)
+
+        store.remove_item(removed.id)
+
+        qtbot.waitUntil(lambda: not store.resolution(kept.id).is_pending, timeout=2000)
+        assert blocked.stopped.is_set()
+        assert [[result.item for result in results] for results in deliveries] == [[kept]]
+        assert store.workspace.items == (kept,)
+    finally:
+        store.replace_workspace(Workspace())
+        assert blocked.stopped.wait(5)
+
+
+def test_added_items_publish_once_in_input_order_when_later_items_finish_first(
+    qtbot: QtBot, blocking: _BlockingResolver
+) -> None:
+    counted = _CountingResolver()
+    context = FakeResolutionContext(resolvers={"slow": blocking, "quick": counted})
+    store = WorkspaceStore(ItemResolver(context, jobs=BackgroundJobs(max_workers=2)))
+    slow, quick = PlaylistItem(resolver="slow"), PlaylistItem(resolver="quick")
+    deliveries: list[list[ItemResolution]] = []
+    store.items_resolved.connect(lambda results, _added: deliveries.append(results))
+    store.add_items([slow, quick])
+    qtbot.waitUntil(lambda: counted.calls == 1)
+    assert deliveries == []
+
+    blocking.release.set()
+
+    qtbot.waitUntil(lambda: bool(deliveries))
+    assert [[result.item for result in results] for results in deliveries] == [[slow, quick]]
+
+
+def test_superseding_an_active_rescan_interrupts_it_before_the_next_scan(qtbot: QtBot) -> None:
+    """One workspace worker is enough for a replacement scan because its predecessor polls the job token."""
+    resolver = _CooperativeResolver(block_call=2)
+    context = FakeResolutionContext(resolvers={"runs": resolver})
+    store = WorkspaceStore(ItemResolver(context, jobs=BackgroundJobs(max_workers=1)))
+    runs = PlaylistItem(resolver="runs")
+    delivered: list[ItemResolution] = []
+    store.item_rescanned.connect(delivered.append)
+    try:
+        store.add_items([runs])
+        qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
+        store.rescan_item(runs.id)
+        qtbot.waitUntil(resolver.started.is_set)
+
+        store.rescan_item(runs.id)
+
+        qtbot.waitUntil(lambda: bool(delivered), timeout=2000)
+        assert resolver.stopped.is_set()
+        assert [content.display_name for content in store.contents()] == ["scan 3"]
+        assert len(delivered) == 1
+    finally:
+        store.replace_workspace(Workspace())
+        assert resolver.stopped.wait(5)

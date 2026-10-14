@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.plugin_system import (
     DECODER_PLUGIN_TYPE,
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
@@ -62,7 +63,7 @@ class ExternalDecoder(DecoderPlugin):
 
     @classmethod
     def required_api_version(cls) -> int:
-        return 2
+        return 3
 
     @classmethod
     def scene_model_version(cls) -> tuple[int, int] | None:
@@ -82,7 +83,7 @@ class ExternalResolver(PlaylistResolverPlugin):
 
     @classmethod
     def required_api_version(cls) -> int:
-        return 2
+        return 3
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -92,7 +93,7 @@ class ExternalResolver(PlaylistResolverPlugin):
     def display_name(cls) -> str:
         return "External Resolver"
 
-    def resolve(self, settings: Any) -> Any:
+    def resolve(self, settings: Any, token: CancelToken) -> Any:
         raise NotImplementedError
 
     def create_settings_widget(self) -> Any:
@@ -177,8 +178,8 @@ def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.Mon
         pytest.param(object, "PLUGIN_CLASS missing or invalid", id="not-a-plugin"),
         pytest.param(UndeclaredApi, "must explicitly declare required_api_version", id="undeclared-api"),
         pytest.param(BrokenApiDeclaration, "plugin validation failed: broken API declaration", id="raising-api"),
-        pytest.param(FutureApi, "requires plugin API 999, host provides 2", id="future-api"),
-        pytest.param(PreviousApi, "requires plugin API 1, host provides 2", id="previous-api"),
+        pytest.param(FutureApi, "requires plugin API 999, host provides 3", id="future-api"),
+        pytest.param(PreviousApi, "requires plugin API 1, host provides 3", id="previous-api"),
         pytest.param(WrongType, "expected 'decoder'", id="wrong-family"),
         pytest.param(UndeclaredSceneModel, "must explicitly declare scene_model_version", id="no-scene-model"),
         pytest.param(NewerSceneMajor, f"built for Scene model {SCENE_MODEL_VERSION[0] + 1}.0", id="scene-major"),
@@ -206,7 +207,7 @@ def test_resolver_without_headless_resolve_fails_to_load_and_says_why(monkeypatc
     class WidgetOnlyResolver(PlaylistResolverPlugin):
         @classmethod
         def required_api_version(cls) -> int:
-            return 2
+            return 3
 
         @classmethod
         def plugin_id(cls) -> str:

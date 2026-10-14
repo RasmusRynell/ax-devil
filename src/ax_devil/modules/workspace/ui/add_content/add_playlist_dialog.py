@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QLabel, QWidget
 
+from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.workspace.core import ItemResolution, PlaylistItem
 from ax_devil.modules.workspace.ui.add_content.playlist_settings import PlaylistSettingsUI
@@ -26,9 +27,8 @@ class AddPlaylistDialog(BaseDialog):
         self._result: ItemResolution | None = None
         self._resolver = resolver
         self._initial_resolver_id = resolver_id
-        self._resolving = False
-        self._closed = False
         super().__init__(parent, title="Add Playlist")
+        self._resolution = LatestRequest(self)
         self._setup_form()
         self.add_button("Cancel", self.reject)
 
@@ -42,18 +42,17 @@ class AddPlaylistDialog(BaseDialog):
         self.add_content_widget(self._message_label)
 
     def _on_item_ready(self, item: PlaylistItem) -> None:
-        if self._resolving:
+        if self._resolution.pending:
             return
-        self._resolving = True
         self._message_label.setText("Finding playlists…")
-        self._resolver.resolve([item], self._on_resolved)
+        self._resolution.start(
+            lambda result, _error: self._resolver.resolve(item, result),
+            on_result=self._on_resolved,
+            on_error=lambda error: self._message_label.setText(str(error)),
+        )
 
-    def _on_resolved(self, resolutions: tuple[ItemResolution, ...]) -> None:
-        """Accept with the resolved item, or show why it did not resolve; a closed dialog ignores the result."""
-        if self._closed:
-            return
-        self._resolving = False
-        resolution = resolutions[0]
+    def _on_resolved(self, resolution: ItemResolution) -> None:
+        """Accept with the resolved item, or show why it did not resolve."""
         if resolution.error is not None:
             self._message_label.setText(str(resolution.error))
             return
@@ -65,6 +64,6 @@ class AddPlaylistDialog(BaseDialog):
         return self._result
 
     def cleanup(self) -> None:
-        """Release resolver forms after every dialog outcome, and ignore a result still on its way."""
-        self._closed = True
+        """Release resolver forms and stop pending resolution after every dialog outcome."""
+        self._resolution.close()
         self._settings.cleanup()

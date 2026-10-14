@@ -7,6 +7,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import (
@@ -41,7 +42,7 @@ class SequenceInfo:
     im_ext: str
 
 
-def resolve_settings(settings: PlaylistSettings) -> list[PlaylistContent]:
+def resolve_settings(settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
     """Return the playlist for ``{"root": ..., "sequences": [...]}`` settings.
 
     ``sequences`` names the sequences to include; without it, every sequence found under ``root`` is included.
@@ -49,7 +50,7 @@ def resolve_settings(settings: PlaylistSettings) -> list[PlaylistContent]:
     root = settings.get("root")
     if not isinstance(root, str) or not root:
         raise ValueError("MOT Challenge setting 'root' must be a non-empty string.")
-    sequences = discover_sequences(Path(root))
+    sequences = discover_sequences(Path(root), token)
     names = settings.get("sequences")
     if names is not None:
         if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
@@ -58,7 +59,7 @@ def resolve_settings(settings: PlaylistSettings) -> list[PlaylistContent]:
         if missing:
             logger.warning(f"MOT sequences not found in {root}: {', '.join(sorted(missing))}")
         sequences = [sequence for sequence in sequences if sequence.name in names]
-    playlists = build_playlist_contents(sequences)
+    playlists = build_playlist_contents(sequences, token)
     if not playlists:
         raise ValueError(f"No MOT sequences found in '{root}'.")
     return playlists
@@ -77,13 +78,14 @@ def parse_seqinfo(ini_path: Path) -> dict[str, str]:
     return dict(parser["Sequence"])
 
 
-def discover_sequences(root: Path) -> list[SequenceInfo]:
-    """Scan *root* for subdirectories containing ``seqinfo.ini`` and return a sorted list of sequences."""
+def discover_sequences(root: Path, token: CancelToken) -> list[SequenceInfo]:
+    """Scan for sequences, polling *token* between filesystem operations."""
+    token.raise_if_cancelled()
     if not root.is_dir():
         raise FileNotFoundError(f"MOT root directory does not exist: {root}")
 
     sequences: list[SequenceInfo] = []
-    for child in _sequence_candidate_dirs(root):
+    for child in token.polled(_sequence_candidate_dirs(root, token)):
         ini_path = child / "seqinfo.ini"
         if not ini_path.is_file():
             continue
@@ -106,16 +108,16 @@ def discover_sequences(root: Path) -> list[SequenceInfo]:
     return sequences
 
 
-def _sequence_candidate_dirs(root: Path) -> list[Path]:
-    candidates = list(root.iterdir())
-    for split_name in ("train", "test"):
+def _sequence_candidate_dirs(root: Path, token: CancelToken) -> list[Path]:
+    candidates = list(token.polled(root.iterdir()))
+    for split_name in token.polled(("train", "test")):
         split_dir = root / split_name
         if split_dir.is_dir():
-            candidates.extend(split_dir.iterdir())
-    return sorted({path for path in candidates if path.is_dir()})
+            candidates.extend(token.polled(split_dir.iterdir()))
+    return sorted({path for path in token.polled(candidates) if path.is_dir()})
 
 
-def build_playlist_contents(sequences: list[SequenceInfo]) -> list[PlaylistContent]:
+def build_playlist_contents(sequences: list[SequenceInfo], token: CancelToken) -> list[PlaylistContent]:
     """Build canonical workspace playlist contents from MOT Challenge sequences.
 
     Detector variants such as ``MOT17-01-DPM/FRCNN/SDP`` are grouped into one
@@ -125,9 +127,9 @@ def build_playlist_contents(sequences: list[SequenceInfo]) -> list[PlaylistConte
     """
     entries: list[PlaylistEntry] = []
 
-    for display_name, grouped_sequences in _group_sequences(sequences):
+    for display_name, grouped_sequences in token.polled(_group_sequences(sequences, token)):
         video_seq = grouped_sequences[0]
-        overlays = _build_group_overlay_specs(grouped_sequences)
+        overlays = _build_group_overlay_specs(grouped_sequences, token)
         video = _build_video_content(video_seq, display_name)
         lanes = _build_group_lanes(video, overlays)
         entries.append(PlaylistEntry(lanes=tuple(lanes), default_considered=True))
@@ -162,10 +164,10 @@ def _build_video_content(
     )
 
 
-def _group_sequences(sequences: list[SequenceInfo]) -> list[tuple[str, list[SequenceInfo]]]:
+def _group_sequences(sequences: list[SequenceInfo], token: CancelToken) -> list[tuple[str, list[SequenceInfo]]]:
     """Group detector variants that share the same underlying MOT video."""
     grouped: OrderedDict[str, list[SequenceInfo]] = OrderedDict()
-    for seq in sequences:
+    for seq in token.polled(sequences):
         grouped.setdefault(_base_sequence_name(seq.name), []).append(seq)
     return list(grouped.items())
 
@@ -178,12 +180,12 @@ def _base_sequence_name(name: str) -> str:
     return name
 
 
-def _build_group_overlay_specs(sequences: list[SequenceInfo]) -> list[OverlayContent]:
+def _build_group_overlay_specs(sequences: list[SequenceInfo], token: CancelToken) -> list[OverlayContent]:
     """Create ordered overlay specs for a grouped MOT sequence entry."""
     overlay_specs: list[OverlayContent] = []
     gt_added = False
 
-    for seq in sequences:
+    for seq in token.polled(sequences):
         det_path = seq.path / "det" / "det.txt"
         if det_path.is_file():
             overlay_specs.append(

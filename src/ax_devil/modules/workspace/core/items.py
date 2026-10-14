@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, ClassVar, TypeVar
 from uuid import uuid4
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference, integer_default
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.content import Content, LiveOverlayMode, numbered_when_shared
@@ -113,17 +114,19 @@ class WorkspaceItem(ABC):
         """
         return replace(self, label="" if label == self.default_name else label)
 
-    def resolve(self, context: ResolutionContext) -> tuple[Content, ...]:
+    def resolve(self, context: ResolutionContext, token: CancelToken) -> tuple[Content, ...]:
         """Rebuild this item's Content named after the item, or raise ``ItemResolutionError`` with a reason."""
-        return self.name_contents(self._resolve_by_default_name(context))
+        return self.name_contents(self._resolve_by_default_name(context, token))
 
-    def _resolve_by_default_name(self, context: ResolutionContext) -> tuple[Content, ...]:
+    def _resolve_by_default_name(self, context: ResolutionContext, token: CancelToken) -> tuple[Content, ...]:
         """Rebuild this item's Content as named without a label, or raise ``ItemResolutionError``.
 
         Content ids derive from the item id and the Content's position, so they are the same on every resolution.
         """
         try:
-            contents = self._build_contents(context)
+            token.raise_if_cancelled()
+            contents = self._build_contents(context, token)
+            token.raise_if_cancelled()
         except (ValueError, OSError) as exc:
             raise ItemResolutionError(str(exc)) from exc
         if not contents:
@@ -139,7 +142,7 @@ class WorkspaceItem(ABC):
         return tuple(replace(content, display_name=self.label) for content in contents)
 
     @abstractmethod
-    def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
+    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Return this item's Content as named without a label; raise ``ItemResolutionError``, ``ValueError``, or
         ``OSError`` when it cannot."""
 
@@ -207,9 +210,9 @@ class VideoItem(WorkspaceItem):
         )
         return {"video": _path_from_json(data, "video", base_dir), "overlays": overlays}
 
-    def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
+    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Return the seekable video, after checking that its files exist."""
-        for path in (self.video, *(overlay.path for overlay in self.overlays)):
+        for path in token.polled((self.video, *(overlay.path for overlay in self.overlays))):
             if not path.is_file():
                 raise ItemResolutionError(f"File not found: {path}")
         return (
@@ -301,7 +304,7 @@ class LiveStreamItem(WorkspaceItem):
             mqtt_password=expand_environment_reference(self.mqtt_password),
         )
 
-    def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
+    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Return the live stream, built from the expanded connection values."""
         values = self.expanded()
         return (
@@ -425,13 +428,13 @@ class PlaylistItem(WorkspaceItem):
         """Return the resolver id; resolved playlists keep the names their resolver gives them."""
         return self.resolver
 
-    def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
+    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings.
 
         Playlists that share a name get it numbered " (2)", " (3)", so their entries' Bookmark Target keys differ.
         """
         try:
-            playlists = context.playlist_resolver(self.resolver).resolve(deepcopy(self.settings))
+            playlists = context.playlist_resolver(self.resolver).resolve(deepcopy(self.settings), token)
             names = numbered_when_shared(playlist.source_name for playlist in playlists)
             return [replace(playlist, source_name=name) for playlist, name in zip(playlists, names, strict=True)]
         except ItemResolutionError:
@@ -489,7 +492,7 @@ class UnreadableItem(WorkspaceItem):
         kind = self.raw.get("kind") if isinstance(self.raw, Mapping) else None
         return kind if isinstance(kind, str) and kind else "Unreadable item"
 
-    def _build_contents(self, context: ResolutionContext) -> Sequence[Content]:
+    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Fail with the reason this item could not be read."""
         raise ItemResolutionError(self.reason)
 
@@ -523,10 +526,10 @@ class ItemResolution:
         object.__setattr__(self, "contents", self.item.name_contents(self.by_default_name))
 
     @classmethod
-    def of(cls, item: WorkspaceItem, context: ResolutionContext) -> ItemResolution:
+    def of(cls, item: WorkspaceItem, context: ResolutionContext, token: CancelToken) -> ItemResolution:
         """Resolve *item*; a failure is recorded as the result's error instead of raised."""
         try:
-            return cls(item, by_default_name=item._resolve_by_default_name(context))
+            return cls(item, by_default_name=item._resolve_by_default_name(context, token))
         except ItemResolutionError as exc:
             return cls(item, error=exc)
 

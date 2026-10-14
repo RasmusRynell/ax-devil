@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.tokens import Space
@@ -87,7 +88,7 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
         videos_dir = Path(videos_text)
         overlays_dir = Path(overlays_text)
         try:
-            self._matches = discover_folder_pairs(videos_dir, overlays_dir)
+            self._matches = discover_folder_pairs(videos_dir, overlays_dir, NEVER)
         except (FileNotFoundError, ValueError) as exc:
             logger.warning(f"Failed to scan folder-pair dataset: {exc}")
             self._matches = []

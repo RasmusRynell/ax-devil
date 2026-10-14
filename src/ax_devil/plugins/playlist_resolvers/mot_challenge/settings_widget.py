@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.tokens import Space
@@ -98,7 +99,7 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             return
 
         try:
-            self._sequences = discover_sequences(root)
+            self._sequences = discover_sequences(root, NEVER)
             self._scanned_root = root.resolve()
         except Exception as exc:
             logger.warning(f"Failed to scan MOT directory: {exc}")

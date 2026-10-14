@@ -14,6 +14,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QComboBox
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.plugin_system import (
@@ -61,7 +62,7 @@ class _Folder:
     def __init__(self, count: int) -> None:
         self.count = count
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         lanes = [make_video(f"run_{index:02d}.mp4").standalone_lanes() for index in range(self.count)]
         lanes[0] = lanes[0] * 2
         return [PlaylistContent(display_name="Runs", entries=tuple(PlaylistEntry(lane, True) for lane in lanes))]
@@ -208,9 +209,9 @@ class _Blocking:
     def __init__(self) -> None:
         self.release = threading.Event()
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         assert self.release.wait(timeout=5)
-        return _Folder(1).resolve(settings)
+        return _Folder(1).resolve(settings, NEVER)
 
 
 @pytest.fixture

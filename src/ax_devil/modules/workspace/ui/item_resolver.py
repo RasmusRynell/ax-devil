@@ -2,109 +2,87 @@
 
 from __future__ import annotations
 
-import queue
-import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject
 
+from ax_devil.core.cancellation import NEVER, CancelToken
+from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, background_jobs
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ItemResolution, ItemResolutionError, ResolutionContext, WorkspaceItem
 
 logger = get_logger(__name__)
 
-ResolutionsReady = Callable[[tuple[ItemResolution, ...]], None]
-_MAX_WORKERS = 4
-
-
-class _Batch(QObject):
-    """One batch on its way back to the GUI thread; created there, so its signal is queued to the resolver."""
-
-    resolved = Signal(object, object, bool)  # _Batch, its result, whether it ran
-
-    def __init__(self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool]) -> None:
-        super().__init__()
-        self.work = work
-        self.done = done
-        self.wanted = wanted
+ResolutionReady = Callable[[ItemResolution], None]
 
 
 class ItemResolver(QObject):
-    """Resolve batches of items on background threads and hand each result back on the GUI thread.
+    """Resolve independent items on the workspace pool and deliver each outcome on the GUI thread.
 
-    Resolving reads files and runs playlist resolvers, which may take long on large or slow folders. A few daemon
-    workers take batches in turn, so new work does not wait behind one slow batch, a batch no longer wanted when its
-    turn comes is skipped, and quitting never waits for a resolver. Results may arrive in any order, and none arrive
-    after the resolver is gone. With ``in_background=False`` every batch resolves at once on the calling thread
-    instead, as tests need.
+    A slow item never holds up another pool, cancellation reaches the item's resolver, and destroying this owner
+    ends delivery. ``in_background=False`` resolves at once on the calling thread, for tests.
     """
 
     def __init__(
-        self, context: ResolutionContext, parent: QObject | None = None, *, in_background: bool = True
+        self,
+        context: ResolutionContext,
+        parent: QObject | None = None,
+        *,
+        in_background: bool = True,
+        jobs: BackgroundJobs | None = None,
     ) -> None:
         super().__init__(parent)
         self._context = context
-        self._in_background = in_background
-        self._batches: set[_Batch] = set()
-        self._queue: queue.SimpleQueue[_Batch] = queue.SimpleQueue()
-        self._workers = 0
+        self._jobs = (jobs or background_jobs("workspace")).scope(self) if in_background else None
 
     @property
     def context(self) -> ResolutionContext:
         """Return the services items resolve with."""
         return self._context
 
-    def resolve(
-        self, items: Sequence[WorkspaceItem], done: ResolutionsReady, wanted: Callable[[], bool] = lambda: True
-    ) -> None:
-        """Resolve *items* and call *done* with their results, in item order, on the GUI thread.
+    def resolve(self, item: WorkspaceItem, done: ResolutionReady) -> Callable[[], None]:
+        """Resolve *item*, call *done* on the GUI thread, and return its canceller."""
+        context = self._context
+        if self._jobs is None:
+            done(_resolve_item(item, context, NEVER))
+            return _nothing
+        return self._jobs.submit(
+            "workspace",
+            lambda job: _resolve_item(item, context, job.token),
+            on_result=done,
+            on_error=lambda error: done(ItemResolution(item, error=ItemResolutionError(str(error)))),
+        )
 
-        *wanted* is asked on a worker thread when the batch's turn comes; when it answers False, the items are not
-        resolved and *done* gets no results.
+    def run(self, work: Callable[[], Any], done: Callable[[Any], None]) -> Callable[[], None]:
+        """Call *work* on a worker thread and hand its result to *done* on the GUI thread; return a canceller.
+
+        *work* must not touch Qt objects or shared state. When it raises, the failure is logged and *done* is not
+        called.
         """
-        items = tuple(items)
-        self.run(lambda: self._resolve_all(items), done, wanted)
-
-    def run(
-        self, work: Callable[[], Any], done: Callable[[Any], None], wanted: Callable[[], bool] = lambda: True
-    ) -> None:
-        """Call *work* on a worker thread and hand its result to *done* on the GUI thread, unless *wanted* says no.
-
-        *work* must not touch Qt objects or shared state.
-        """
-        if not self._in_background:
+        if self._jobs is None:
             done(work())
-            return
-        batch = _Batch(work, done, wanted)
-        batch.resolved.connect(self._deliver)
-        self._batches.add(batch)
-        self._queue.put(batch)
-        if self._workers < _MAX_WORKERS:
-            self._workers += 1
-            threading.Thread(target=self._work, name="item-resolver", daemon=True).start()
+            return _nothing
+        return self._jobs.submit("workspace", partial(_call, work), on_result=done, on_error=_logged)
 
-    def _work(self) -> None:
-        """Resolve queued batches for as long as the process runs."""
-        while True:
-            batch = self._queue.get()
-            ran = batch.wanted()
-            batch.resolved.emit(batch, batch.work() if ran else None, ran)
 
-    def _deliver(self, batch: _Batch, result: Any, ran: bool) -> None:
-        """Release the finished *batch* and hand its *result* to its callback, unless it was skipped."""
-        self._batches.discard(batch)
-        batch.deleteLater()  # A worker may still hold the wrapper; native destruction belongs to the GUI thread.
-        if ran:
-            batch.done(result)
+def _resolve_item(item: WorkspaceItem, context: ResolutionContext, token: CancelToken) -> ItemResolution:
+    """Record unexpected failures like resolution errors, so no item waits forever."""
+    try:
+        return ItemResolution.of(item, context, token)
+    except Exception as exc:
+        logger.exception(f"Resolving {item.display_name} failed unexpectedly")
+        return ItemResolution(item, error=ItemResolutionError(str(exc)))
 
-    def _resolve_all(self, items: tuple[WorkspaceItem, ...]) -> tuple[ItemResolution, ...]:
-        return tuple(self._resolve_one(item) for item in items)
 
-    def _resolve_one(self, item: WorkspaceItem) -> ItemResolution:
-        """Resolve *item*; an unexpected failure is recorded like any other, so no item waits forever."""
-        try:
-            return ItemResolution.of(item, self._context)
-        except Exception as exc:
-            logger.exception(f"Resolving {item.display_name} failed unexpectedly")
-            return ItemResolution(item, error=ItemResolutionError(str(exc)))
+def _call(work: Callable[[], Any], _job: JobContext[None]) -> Any:
+    return work()
+
+
+def _nothing() -> None:
+    """Cancel work that already finished."""
+
+
+def _logged(_error: Exception) -> None:
+    """Drop a failure the background jobs already logged."""

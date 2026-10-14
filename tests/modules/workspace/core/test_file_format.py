@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.workspace.core import (
     Bookmark,
     BookmarkKind,
@@ -257,7 +258,7 @@ def test_items_that_cannot_be_read_stay_unresolvable_and_are_saved_back_unchange
     assert isinstance(bad, UnreadableItem) and isinstance(fine, PlaylistItem)
     assert (bad.id, bad.label) == ("x1", raw["label"])
     with pytest.raises(ItemResolutionError):
-        bad.resolve(FakeResolutionContext())
+        bad.resolve(FakeResolutionContext(), NEVER)
     resaved = tmp_path / "again.ax-devil.workspace"
     save_workspace(loaded, resaved)
     assert _written(resaved)["items"] == [raw, good]
@@ -283,7 +284,7 @@ def test_an_unknown_kind_explains_itself_when_resolved(tmp_path: Path) -> None:
     (item,) = load_workspace(path).items
 
     with pytest.raises(ItemResolutionError, match="hologram"):
-        item.resolve(FakeResolutionContext())
+        item.resolve(FakeResolutionContext(), NEVER)
 
 
 @pytest.mark.parametrize(

@@ -31,7 +31,7 @@ class ExampleDecoder(DecoderPlugin):
     @classmethod
     def required_api_version(cls) -> int:
         """Declare the supported host API."""
-        return 2
+        return 3
 
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:

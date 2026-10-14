@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLineEdit, QListWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.workspace.core import FileOverlaySourceSpec, PlaylistItem, SeekableVideoContent
 from ax_devil.plugins.playlist_resolvers.mot_challenge.plugin import MOTChallengeResolverPlugin
 from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import build_playlist_contents, discover_sequences
@@ -97,7 +98,7 @@ def test_settings_widget_loads_only_checked_sequences(tmp_path: Path, qtbot: QtB
 
 
 def _entry_names(settings: dict[str, object]) -> list[str]:
-    [playlist] = MOTChallengeResolverPlugin().resolve(settings)
+    [playlist] = MOTChallengeResolverPlugin().resolve(settings, NEVER)
     return [entry.lanes[0].video.display_name for entry in playlist.entries]
 
 
@@ -130,7 +131,7 @@ class TestResolveFromSettings:
         settings = {key: str(tmp_path) if value == "ROOT" else value for key, value in settings.items()}
 
         with pytest.raises(ValueError, match=message):
-            MOTChallengeResolverPlugin().resolve(settings)
+            MOTChallengeResolverPlugin().resolve(settings, NEVER)
 
 
 class TestCliCommand:
@@ -154,7 +155,7 @@ class TestCliCommand:
 
 def test_discovers_sorted_sequences_with_metadata_and_skips_other_folders(tmp_path: Path) -> None:
     """Discovery accepts an empty root and yields only readable sequence folders in name order."""
-    assert discover_sequences(tmp_path) == []
+    assert discover_sequences(tmp_path, NEVER) == []
     (tmp_path / "random_folder").mkdir()
     broken = tmp_path / "MOT16-02"
     broken.mkdir()
@@ -162,7 +163,7 @@ def test_discovers_sorted_sequences_with_metadata_and_skips_other_folders(tmp_pa
     _make_sequence(tmp_path, "MOT16-06", fps=14, width=640, height=480, length=1194)
     _make_sequence(tmp_path, "MOT16-01", length=450, fps=30)
 
-    seqs = discover_sequences(tmp_path)
+    seqs = discover_sequences(tmp_path, NEVER)
 
     assert [seq.name for seq in seqs] == ["MOT16-01", "MOT16-06"]
     assert seqs[0].frame_count == 450
@@ -175,12 +176,12 @@ def test_discovers_train_and_test_split_sequences_from_dataset_root(tmp_path: Pa
     _make_sequence(tmp_path / "train", "MOT17-02-DPM", create_gt=True)
     _make_sequence(tmp_path / "test", "MOT17-01-DPM", create_gt=False)
 
-    assert [seq.name for seq in discover_sequences(tmp_path)] == ["MOT17-01-DPM", "MOT17-02-DPM"]
+    assert [seq.name for seq in discover_sequences(tmp_path, NEVER)] == ["MOT17-01-DPM", "MOT17-02-DPM"]
 
 
 def test_discovery_rejects_missing_root(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
-        discover_sequences(tmp_path / "nonexistent")
+        discover_sequences(tmp_path / "nonexistent", NEVER)
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +193,7 @@ def test_sequence_becomes_image_video_with_detection_overlay_at_frame_size(tmp_p
     """MOT boxes are in pixels, so the overlay decoder needs the sequence's own frame size."""
     _make_sequence(tmp_path, "SEQ-01", width=640, height=480)
 
-    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path, NEVER), NEVER)
 
     [entry] = playlist.entries
     [lane] = entry.lanes
@@ -210,7 +211,7 @@ def test_sequence_becomes_image_video_with_detection_overlay_at_frame_size(tmp_p
 def test_det_and_gt_overlays_attached(tmp_path: Path) -> None:
     _make_sequence(tmp_path, "SEQ-01", create_det=True, create_gt=True)
 
-    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path, NEVER), NEVER)
 
     assert [lane.display_name for lane in playlist.entries[0].lanes] == ["DET", "GT"]
 
@@ -218,7 +219,7 @@ def test_det_and_gt_overlays_attached(tmp_path: Path) -> None:
 def test_sequence_without_detections_has_video_only(tmp_path: Path) -> None:
     _make_sequence(tmp_path, "SEQ-01", create_det=False)
 
-    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path, NEVER), NEVER)
 
     [lane] = playlist.entries[0].lanes
     assert lane.overlay is None
@@ -230,7 +231,7 @@ def test_detector_variants_share_one_entry_with_a_single_gt(tmp_path: Path) -> N
         _make_sequence(tmp_path, f"MOT17-01-{detector}", create_gt=True)
     _make_sequence(tmp_path, "MOT17-02-DPM")
 
-    [playlist] = build_playlist_contents(discover_sequences(tmp_path))
+    [playlist] = build_playlist_contents(discover_sequences(tmp_path, NEVER), NEVER)
 
     assert len(playlist.entries) == 2
     lanes = playlist.entries[0].lanes

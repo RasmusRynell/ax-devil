@@ -9,6 +9,7 @@ from click.testing import CliRunner
 from PySide6.QtWidgets import QComboBox, QLineEdit
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.workspace.core import FileOverlaySourceSpec, PlaylistItem, SeekableVideoContent
 from ax_devil.plugins.playlist_resolvers.folder_pair.plugin import FolderPairResolverPlugin
 from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import build_playlist_contents, discover_folder_pairs
@@ -58,7 +59,7 @@ class TestResolveFromSettings:
             "handler_type": "ADF_BETA_FRAME",
         }
 
-        [playlist] = FolderPairResolverPlugin().resolve(settings)
+        [playlist] = FolderPairResolverPlugin().resolve(settings, NEVER)
 
         [entry] = playlist.entries
         [lane] = entry.lanes
@@ -76,7 +77,7 @@ class TestResolveFromSettings:
         del settings[missing]
 
         with pytest.raises(ValueError, match=missing):
-            FolderPairResolverPlugin().resolve(settings)
+            FolderPairResolverPlugin().resolve(settings, NEVER)
 
     def test_missing_folder_raises(self, tmp_path: Path) -> None:
         settings = {
@@ -86,7 +87,7 @@ class TestResolveFromSettings:
         }
 
         with pytest.raises(FileNotFoundError):
-            FolderPairResolverPlugin().resolve(settings)
+            FolderPairResolverPlugin().resolve(settings, NEVER)
 
 
 def test_settings_widget_submits_scanned_folders_and_needs_a_new_scan_after_path_change(
@@ -134,7 +135,7 @@ class TestDiscoverFolderPairs:
         _write_file(overlays_dir / "beta.jsonl.gz")
         _write_file(overlays_dir / "orphan.json")
 
-        matches = discover_folder_pairs(videos_dir, overlays_dir)
+        matches = discover_folder_pairs(videos_dir, overlays_dir, NEVER)
 
         assert [match.name for match in matches] == ["alpha", "beta"]
         assert matches[0].video_path == videos_dir / "alpha.mp4"
@@ -149,13 +150,13 @@ class TestDiscoverFolderPairs:
         _write_file(overlays_dir / "camera.1.jsonl.gz")
         _write_file(overlays_dir / "camera.2.jsonl.gz")
 
-        matches = discover_folder_pairs(videos_dir, overlays_dir)
+        matches = discover_folder_pairs(videos_dir, overlays_dir, NEVER)
 
         assert [match.name for match in matches] == ["camera.1", "camera.2"]
 
     def test_raises_on_missing_directory(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
-            discover_folder_pairs(tmp_path / "missing", tmp_path / "annotations")
+            discover_folder_pairs(tmp_path / "missing", tmp_path / "annotations", NEVER)
 
     def test_raises_on_duplicate_stripped_names(self, tmp_path: Path) -> None:
         videos_dir = tmp_path / "videos"
@@ -165,9 +166,9 @@ class TestDiscoverFolderPairs:
         _write_file(overlays_dir / "sample.json")
 
         with pytest.raises(ValueError, match="Duplicate video"):
-            discover_folder_pairs(videos_dir, overlays_dir)
+            discover_folder_pairs(videos_dir, overlays_dir, NEVER)
 
 
 class TestBuildPlaylistContents:
     def test_empty_matches_return_no_playlist(self) -> None:
-        assert build_playlist_contents([], "ADF_BETA_FRAME") == []
+        assert build_playlist_contents([], "ADF_BETA_FRAME", NEVER) == []

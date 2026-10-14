@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
 from ax_devil.modules.chrome.tokens import reserve_line
@@ -406,7 +407,7 @@ class AddLiveStreamDialog(BaseDialog):
             websocket_topic=websocket_topic,
             websocket_channel_id=self._websocket_channel_id_spin.value(),
         )
-        resolution = ItemResolution.of(item, self._context)
+        resolution = ItemResolution.of(item, self._context, NEVER)
         if resolution.error is not None:
             raise ValueError(str(resolution.error))
         return resolution

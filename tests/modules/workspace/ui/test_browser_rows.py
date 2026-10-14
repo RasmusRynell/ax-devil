@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     Content,
@@ -317,7 +318,7 @@ class _FixedPlaylists:
     def __init__(self, *playlists: PlaylistContent) -> None:
         self._playlists = list(playlists)
 
-    def resolve(self, settings: PlaylistSettings) -> list[PlaylistContent]:
+    def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return self._playlists
 
 
