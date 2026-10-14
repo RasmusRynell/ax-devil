@@ -356,6 +356,10 @@ def test_screenshots(
         )
         shortcuts.get_action("app.settings").trigger()
         _grab_next_dialog(
+            f"{prefix}-settings-network-scan", lambda dialog: cast(SettingsDialog, dialog)._tabs.setCurrentIndex(3)
+        )
+        shortcuts.get_action("app.settings").trigger()
+        _grab_next_dialog(
             f"{prefix}-settings-manual-cache",
             lambda dialog: cast(SettingsDialog, dialog)._video_cache_mode.setCurrentIndex(1),
         )

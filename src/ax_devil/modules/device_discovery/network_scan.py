@@ -200,6 +200,7 @@ def scan_network(
     logins: Sequence[Login] = (),
     found: Callable[[DiscoveredCamera], None] = lambda _camera: None,
     token: CancelToken = NEVER,
+    low_impact: bool = False,
 ) -> list[DiscoveredCamera]:
     """Return the Axis devices at *targets*, or on this computer's /24 network if there are none, sorted by address.
 
@@ -208,10 +209,14 @@ def scan_network(
     signed-in user may read. Once *token* is cancelled the scan asks devices nothing new, calls *found* no more and
     raises `Cancelled` instead of returning.
 
-    Blocks for up to half a second per 128 addresses plus the device requests, so call it from a worker thread. Raise
+    With *low_impact*, use one-quarter the probe sockets and identification workers, with four times the completion
+    window for queued requests. Request timeouts stay unchanged.
+
+    Blocks for up to half a second per 128 addresses (32 with *low_impact*) plus device requests, so use a worker. Raise
     ``OSError`` if the local network cannot be worked out or the probe cannot open sockets.
     """
     hosts = targets or _local_network()
+    concurrency_divisor = 4 if low_impact else 1
     cameras: list[DiscoveredCamera] = []
     lock = threading.Lock()
     # The scan's own token, cancelled by the scan, not its caller: when the scan returns or is cancelled, it stops the
@@ -233,12 +238,15 @@ def scan_network(
             pass  # The scan is over; the workers only needed to stop.
 
     # Daemon threads, unlike a ThreadPoolExecutor's workers, are not joined at exit, so a slow device cannot hold it.
-    workers = [threading.Thread(target=work, name="network-scan", daemon=True) for _ in range(_IDENTIFY_WORKERS)]
+    workers = [
+        threading.Thread(target=work, name="network-scan", daemon=True)
+        for _ in range(_IDENTIFY_WORKERS // concurrency_divisor)
+    ]
     for worker in workers:
         worker.start()
     try:
         try:
-            per_batch = _MAX_OPEN_SOCKETS // len(_PORT_CONFIGS)
+            per_batch = _MAX_OPEN_SOCKETS // concurrency_divisor // len(_PORT_CONFIGS)
             for start in token.polled(range(0, len(hosts), per_batch)):
                 open_ports = _open_ports(hosts[start : start + per_batch])
                 token.raise_if_cancelled()  # The probe blocks; cancelled meanwhile, no device is asked anything.
@@ -247,7 +255,7 @@ def scan_network(
         finally:
             for _worker in workers:
                 pending.put(None)
-        deadline = time.monotonic() + _IDENTIFY_DEADLINE_SECONDS
+        deadline = time.monotonic() + _IDENTIFY_DEADLINE_SECONDS * concurrency_divisor
         while any(worker.is_alive() for worker in workers) and time.monotonic() < deadline:
             token.wait(_CANCEL_POLL_SECONDS)
     finally:

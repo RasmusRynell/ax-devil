@@ -20,6 +20,7 @@ from ax_devil.modules.device_discovery.network_scan import (
 )
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import WorkspaceItem, live_stream_item_from_defaults
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
@@ -38,21 +39,21 @@ logger = get_logger(__name__)
 _FOUND_REFRESH_MS = 100
 
 Found = Callable[[DiscoveredCamera], None]
-Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found, CancelToken], Sequence[DiscoveredCamera]]
+Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found, CancelToken, bool], Sequence[DiscoveredCamera]]
 """Search addresses, trying the logins in order on each device found, and report each find; stop when the token is
 cancelled."""
 
 
 def _scan_network(
-    targets: tuple[str, ...], logins: tuple[Login, ...], found: Found, token: CancelToken
+    targets: tuple[str, ...], logins: tuple[Login, ...], found: Found, token: CancelToken, low_impact: bool
 ) -> list[DiscoveredCamera]:
-    return scan_network(targets=targets, logins=logins, found=found, token=token)
+    return scan_network(targets=targets, logins=logins, found=found, token=token, low_impact=low_impact)
 
 
 def _run_scan(
-    scan: Scan, targets: tuple[str, ...], logins: tuple[Login, ...], job: JobContext[DiscoveredCamera]
+    scan: Scan, targets: tuple[str, ...], logins: tuple[Login, ...], low_impact: bool, job: JobContext[DiscoveredCamera]
 ) -> tuple[DiscoveredCamera, ...]:
-    return tuple(scan(targets, logins, job.report, job.token))
+    return tuple(scan(targets, logins, job.report, job.token, low_impact))
 
 
 def _defaults() -> tuple[str, tuple[Login, ...]]:
@@ -154,8 +155,8 @@ class LiveViewController(QObject):
     """Feed *view* the workspace's Live section and, once a scan has started, the cameras it finds that the workspace
     does not hold yet, as they are found.
 
-    *workspace* carries out what the rows ask for, the right-click menu included. Nothing touches the network until the
-    user asks for a scan of the IP range in the view, which starts as the Settings' default and searches the local
+    *workspace* carries out what the rows ask for, the right-click menu included. A scan uses the IP range in the
+    view, which starts as the Settings' default and searches the local
     network when empty, signing in when the view asks to; *scan* runs as one of *jobs*, and what it finds is dropped
     once the view is gone or `cleanup` ran. A camera the workspace holds shows what the scan learned about it as a
     found camera does; the order applies to the found cameras. A found camera's Add puts it in *store* with the
@@ -179,6 +180,8 @@ class LiveViewController(QObject):
         self._given_range, self._logins = _defaults()  # The range is what the view's field was last given by default.
         view.set_scan_range(self._given_range)
         view.set_logins(self._logins)
+        self._given_sign_in = GlobalSettings().scan_sign_in
+        view.set_sign_in(self._given_sign_in)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan starts
         self._scan_request = LatestRequest(view)
         self._order = DeviceOrder.ADDRESS
@@ -204,8 +207,12 @@ class LiveViewController(QObject):
             self._given_range = ip_range
             self._view.set_scan_range(ip_range)
         self._view.set_logins(self._logins)
+        sign_in = GlobalSettings().scan_sign_in
+        if sign_in != self._given_sign_in:
+            self._given_sign_in = sign_in
+            self._view.set_sign_in(sign_in)
 
-    def scan(self, ip_range: str) -> None:
+    def scan(self, ip_range: str, *, low_impact: bool = False) -> None:
         """Search *ip_range*, or the local network if it is empty, for cameras, unless a search is already running."""
         if self._scan_request.pending or self._view is None:
             return
@@ -221,7 +228,7 @@ class LiveViewController(QObject):
         self._scan_request.submit(
             self._jobs,
             "network scan",
-            partial(_run_scan, self._scan, targets, logins),
+            partial(_run_scan, self._scan, targets, logins, low_impact),
             on_result=self._on_scanned,
             on_error=self._on_scan_failed,
             on_progress=self._on_found,

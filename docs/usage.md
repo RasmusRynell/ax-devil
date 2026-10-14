@@ -42,14 +42,16 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   matches found cameras also by serial number and firmware, and the cameras in the workspace too once a scan found
   them, which then show what it learned on hover. **Sort** orders the cameras the scan found, and **Filter** narrows
   them by type and sign-in. **Scan settings**, at the bottom, takes the IP addresses to search: addresses
-  and ranges such as `192.168.1.0/24`, separated by commas. **Rescan** looks for Axis cameras there, only when you
-  press it, or on this computer's `/24` network when the field is empty, and lists each camera as soon as it answers.
+  and ranges such as `192.168.1.0/24`, separated by commas. A background scan starts when the app launches, so its
+  results are ready in Live without opening the page first. **Rescan** searches again, or searches this computer's
+  `/24` network when the field is empty, and lists each camera as soon as it answers.
   With **Try to sign in to found cameras**, the scan also tries the saved sign-in logins on each camera, in order,
-  until one works, to read more such as the SoC and to tell which login works. Ticking it shows the logins under it,
+  until one works, to read more such as the SoC and to tell which login works. It starts checked and shows the logins under it,
   with buttons to add and remove them; they are the same list as **Settings → Network scan**. They go only to devices that answered as Axis devices, and only as an
   HTTP Digest answer, never as a plain password. **Add** puts a found camera in the workspace with the **Settings →
   Stream defaults**, and with the login that signed in to it. **Add manually** opens the Add Live Stream dialog, as
-  **File → Add Live Stream** does.
+  **File → Add Live Stream** does. Startup scanning and sign-in defaults can each be turned off in
+  [Settings → Network scan](settings.md).
 - **Offline** lists the workspace's data from files: its videos, with or without overlays, and its playlists.
   **Rescan** reads a playlist's folders again, for example after adding files; open viewers keep what they show.
   **Add from** lists the playlist resolvers, including those from plugins; **Add** opens the Add Playlist dialog with

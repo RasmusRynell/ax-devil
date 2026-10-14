@@ -42,6 +42,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "shortcuts": {},
     "settings": {
+        "network_scan": {"on_startup": True, "sign_in": True},
         "playback": {"video_cache_total_mib": VideoCacheBudget().config_value},
         "appearance": {
             "graphics_acceleration": "auto",

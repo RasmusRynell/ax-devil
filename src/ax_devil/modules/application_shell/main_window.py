@@ -392,6 +392,7 @@ class MainWindow(ChromeWindow):
 
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
         """Restore the kept workspace, then open what the command line asked for; see ``WorkspaceSession.launch``."""
+        self._workspace_session.scan_network_on_startup()
         self._workspace_session.lifecycle.launch(items, workspace_file)
 
     def show_quick_setup(self) -> None:

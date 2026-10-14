@@ -86,7 +86,7 @@ The window is always in a Workspace. The activity bar has two zones, set apart b
 | View | Zone | Group | Shows |
 |------|------|-------|-------|
 | Workspace | Workspace | Workspace | Everything the Workspace holds (`WorkspaceView`: the start panel while empty). |
-| Live | Workspace | Sources | The Workspace's cameras with Connect and Disconnect, and cameras found by a scan of an IP range on request. |
+| Live | Workspace | Sources | The Workspace's cameras with Connect and Disconnect, and cameras found by startup or manual scans. |
 | Offline | Workspace | Sources | The Workspace's videos and playlists, and the playlist resolvers that can add more. |
 | Bookmarks | Workspace | Review | The moments marked in local videos and playlists, with each target's review state. |
 | Plugins | App | App | What loaded, what failed, and adding, updating, removing and reloading plugins. |

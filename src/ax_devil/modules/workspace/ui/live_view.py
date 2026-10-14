@@ -132,6 +132,10 @@ class LiveView(SectionsView):
         """Return whether the user asked the scan to try to sign in."""
         return self._sign_in.isChecked()
 
+    def set_sign_in(self, enabled: bool) -> None:
+        """Set whether scans try the saved logins, showing their editor when enabled."""
+        self._sign_in.setChecked(enabled)
+
     def set_scan_status(self, status: ScanStatus, reason: str = "") -> None:
         """Show *status* under the scan settings, with *reason* on hover; the button waits while a scan runs."""
         scanning = status is ScanStatus.SCANNING

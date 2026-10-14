@@ -35,6 +35,8 @@ class SettingsState:
     text_size: TextSize = TextSize.SYSTEM
     custom_frame: bool = True
     quick_setup_done: bool = False
+    scan_on_startup: bool = True
+    scan_sign_in: bool = True
 
 
 class GlobalSettings(QObject):
@@ -118,6 +120,30 @@ class GlobalSettings(QObject):
         self.setting_changed.emit("appearance.custom_frame", value)
 
     @property
+    def scan_on_startup(self) -> bool:
+        """Return whether launch starts a background camera scan."""
+        return self._state.scan_on_startup
+
+    @scan_on_startup.setter
+    def scan_on_startup(self, value: bool) -> None:
+        if value == self._state.scan_on_startup:
+            return
+        self._state = replace(self._state, scan_on_startup=value)
+        self.setting_changed.emit("network_scan.on_startup", value)
+
+    @property
+    def scan_sign_in(self) -> bool:
+        """Return whether camera scans try the saved logins by default."""
+        return self._state.scan_sign_in
+
+    @scan_sign_in.setter
+    def scan_sign_in(self, value: bool) -> None:
+        if value == self._state.scan_sign_in:
+            return
+        self._state = replace(self._state, scan_sign_in=value)
+        self.setting_changed.emit("network_scan.sign_in", value)
+
+    @property
     def theme(self) -> ThemeMode:
         """Return the application appearance preference."""
         return self._state.theme
@@ -178,11 +204,14 @@ class GlobalSettings(QObject):
         playback = settings.get("playback", {}) or {}
         overlay = settings.get("overlay_interaction", {}) or {}
         appearance = settings.get("appearance", {}) or {}
+        network_scan = settings.get("network_scan", {}) or {}
         self._state = SettingsState(
             theme=ThemeMode.from_config(ui.get("theme", "auto")),
             text_size=TextSize.from_config(ui.get("text_size", TextSize.SYSTEM.value)),
             custom_frame=bool((ui.get("window", {}) or {}).get("custom_frame", True)),
             quick_setup_done=bool(ui.get("quick_setup_done", False)),
+            scan_on_startup=bool(network_scan.get("on_startup", True)),
+            scan_sign_in=bool(network_scan.get("sign_in", True)),
             video_cache_budget=VideoCacheBudget.from_config(playback.get("video_cache_total_mib")),
             enabled_overlays=OverlayPreference.from_config(overlay),
             graphics_acceleration=GraphicsAcceleration.from_config(appearance.get("graphics_acceleration", "auto")),
@@ -210,6 +239,9 @@ class GlobalSettings(QObject):
         playback = settings.get("playback", {}) or {}
         playback["video_cache_total_mib"] = values.video_cache_budget.config_value
         settings["playback"] = playback
+        network_scan = settings.get("network_scan", {}) or {}
+        network_scan.update(on_startup=values.scan_on_startup, sign_in=values.scan_sign_in)
+        settings["network_scan"] = network_scan
         config_manager.set("settings", settings)
         logger.debug("GlobalSettings saved to config")
 
@@ -227,6 +259,8 @@ class GlobalSettings(QObject):
         self.custom_frame = snapshot.custom_frame
         self.graphics_acceleration = snapshot.graphics_acceleration
         self.quick_setup_done = snapshot.quick_setup_done
+        self.scan_on_startup = snapshot.scan_on_startup
+        self.scan_sign_in = snapshot.scan_sign_in
 
     @classmethod
     def reset_instance(cls) -> None:

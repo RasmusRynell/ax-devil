@@ -15,6 +15,7 @@ from ax_devil.modules.chrome.sidebar_view import SidebarView
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import (
     ItemResolution,
     RecentWorkspaces,
@@ -192,6 +193,11 @@ class WorkspaceSession(QObject):
     def refresh_scan_defaults(self) -> None:
         """Give the Live view the Settings' default IP range, unless the user typed another, and sign-in defaults."""
         self._live_view_controller.refresh_defaults()
+
+    def scan_network_on_startup(self) -> None:
+        """Start the optional background scan, retaining its results in the Live view."""
+        if GlobalSettings().scan_on_startup:
+            self._live_view_controller.scan(self._live_view.scan_range(), low_impact=True)
 
     def refresh_recent_workspaces(self) -> None:
         """Show the recent workspace files on the start panel."""

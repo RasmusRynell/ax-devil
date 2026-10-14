@@ -14,11 +14,14 @@ from PySide6.QtWidgets import QCheckBox, QLabel, QLineEdit, QMenu, QProgressBar,
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
+from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.settings.settings import GlobalSettings
+from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem, Workspace, WorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
@@ -74,6 +77,7 @@ class _Scanner:
     calls: int = 0
     targets: tuple[str, ...] = ()
     logins: tuple[Login, ...] = ()
+    low_impact: bool = False
     on_found: Callable[[], None] = lambda: None
     gate: Event = field(default_factory=Event)
     token: CancelToken | None = None
@@ -87,11 +91,13 @@ class _Scanner:
         logins: tuple[Login, ...],
         found: Callable[[DiscoveredCamera], None],
         token: CancelToken,
+        low_impact: bool = False,
     ) -> list[DiscoveredCamera]:
         self.calls += 1
         self.token = token
         self.targets = targets
         self.logins = logins
+        self.low_impact = low_impact
         assert self.gate.wait(5)
         if self.error is not None:
             raise self.error
@@ -195,6 +201,82 @@ def _scan(live: _Live, *cameras: DiscoveredCamera) -> None:
     live.scanner.cameras = list(cameras)
     live.button("Rescan").click()
     live.wait_for_scan()
+
+
+@pytest.mark.parametrize("startup", [True, False])
+@pytest.mark.parametrize("sign_in", [True, False])
+def test_launch_scan_keeps_results_for_live_and_allows_rescan(
+    qtbot: QtBot,
+    tmp_path: Path,
+    render_catalog_manager: SceneRenderCatalogManager,
+    monkeypatch: pytest.MonkeyPatch,
+    startup: bool,
+    sign_in: bool,
+) -> None:
+    monkeypatch.setattr(ConfigManager, "_instance", None)
+    config = ConfigManager()
+    config.set_config_path(tmp_path / "config.json")
+    config.set("storage", {key: str(tmp_path / key) for key in config.get_raw("storage")})
+    monkeypatch.setattr(GlobalSettings, "_instance", None)
+    settings = GlobalSettings()
+    settings.scan_on_startup = startup
+    settings.scan_sign_in = sign_in
+    scanner = _Scanner(cameras=[DiscoveredCamera("192.0.2.12", "AXIS Q1656", "")])
+    scanner.gate.clear()
+    monkeypatch.setattr("ax_devil.modules.workspace.ui.live_view_controller.scan_network", scanner)
+    shortcuts = ShortcutManager()
+    shortcuts.register_defaults()
+    window = MainWindow(shortcuts, render_catalog_manager)
+    qtbot.addWidget(window)
+    try:
+        window.launch()
+        view = window.findChild(LiveView)
+        assert view is not None
+        rescan = button(view, "Rescan")
+        assert view.sign_in_wanted() is sign_in
+        if startup:
+            qtbot.waitUntil(lambda: scanner.calls == 1)
+            assert scanner.low_impact, "automatic discovery uses the lighter scan"
+            assert not rescan.isEnabled(), "startup scan continues without opening Live"
+        else:
+            assert rescan.isEnabled()
+            assert scanner.calls == 0
+        scanner.gate.set()
+        qtbot.waitUntil(rescan.isEnabled)
+
+        window._workspace_session.show_sidebar_view("live")
+        if startup:
+            assert [row_texts(found)[0] for found in shown_rows(view.tree)] == ["AXIS Q1656"]
+            assert scanner.calls == 1, "opening Live reuses the startup scan"
+        else:
+            assert shown_rows(view.tree) == []
+        scanner.cameras = [DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "")]
+        rescan.click()
+        qtbot.waitUntil(rescan.isEnabled)
+        assert [row_texts(found)[0] for found in shown_rows(view.tree)] == ["AXIS M3086-V"]
+        assert scanner.calls == (2 if startup else 1)
+        assert not scanner.low_impact, "manual Rescan runs at normal speed"
+        assert scanner.logins == (Login.saved(config) if sign_in else ())
+    finally:
+        scanner.gate.set()
+        window.close()
+
+
+def test_saved_sign_in_default_reaches_the_live_scan(live: _Live, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(GlobalSettings, "_instance", None)
+    settings = GlobalSettings()
+    settings.scan_sign_in = False
+    live.controller.refresh_defaults()
+    assert not live.sign_in_choice().isChecked()
+    _scan(live)
+    assert live.scanner.logins == ()
+
+    settings.scan_sign_in = True
+    live.controller.refresh_defaults()
+    assert live.sign_in_choice().isChecked()
+    live.sign_in_choice().setChecked(False)
+    live.controller.refresh_defaults()
+    assert not live.sign_in_choice().isChecked(), "unrelated settings saves keep the manual choice"
 
 
 def test_rows_show_which_cameras_are_connected_and_follow_their_viewers(live: _Live) -> None:
@@ -541,7 +623,7 @@ def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that
 ) -> None:
     guest, operator = Login("guest", "guest"), Login("operator", "$OPERATOR_PASS")
     live.save_logins(tmp_path, monkeypatch, guest, operator)
-    live.sign_in_choice().setChecked(True)
+    assert live.sign_in_choice().isChecked()
 
     _scan(
         live,
@@ -565,6 +647,7 @@ def test_a_scan_without_sign_in_sends_no_credentials(
     live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     live.save_logins(tmp_path, monkeypatch, Login("root", "pass"))
+    live.sign_in_choice().setChecked(False)
     _scan(live, DiscoveredCamera("192.0.2.12", "AXIS Q1656", ""))
     assert live.scanner.logins == ()
 
@@ -574,8 +657,10 @@ def test_the_logins_show_under_sign_in_and_edits_there_are_saved_for_settings_to
 ) -> None:
     live.save_logins(tmp_path, monkeypatch, Login("root", "pass"))
     [editor] = live.view.findChildren(LoginsEditor)
-    assert editor.isHidden(), "the logins stay out of the way until sign-in is wanted"
+    assert not editor.isHidden(), "sign-in and its logins are enabled by default"
 
+    live.sign_in_choice().setChecked(False)
+    assert editor.isHidden()
     live.sign_in_choice().setChecked(True)
     assert not editor.isHidden()
     button(editor, "Add login").click()
