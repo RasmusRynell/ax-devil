@@ -28,6 +28,7 @@ from ax_devil.modules.video_viewer.media_tools import (
     OverlayPersistenceControls,
 )
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
+from tests.catalog_helpers import create_catalog
 
 
 def test_controls_emit_settings_changes(qtbot: QtBot) -> None:
@@ -121,7 +122,7 @@ def test_media_tools_popups_allow_changing_filters_and_catalog(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, small_catalog_path: Path, button_name: str
 ) -> None:
     """The visible toolbar buttons expose working filter and catalog controls."""
-    catalog = render_catalog_selection.manager.create_catalog("Review", base_catalog_path=small_catalog_path)
+    catalog = create_catalog(qtbot, render_catalog_selection.manager, "Review", base_catalog_path=small_catalog_path)
     panel = MediaToolsPanel(
         render_catalog_selection=render_catalog_selection, filter_model=SessionFilter(build_default_filter_config())
     )

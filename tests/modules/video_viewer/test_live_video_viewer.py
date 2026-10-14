@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -10,14 +11,16 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
-from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
+from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, SceneRenderCatalogStore
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
 from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.live_video_viewer import LiveStatusPanel, LiveVideoViewerWidget
 from ax_devil.modules.workspace.core import LiveRTSPStreamSpec, LiveVideoContent
+from tests.catalog_helpers import GatedCatalogLoader, create_catalog, create_ready_catalog_manager, wait_for_catalogs
 
 
 def _make_live_content(name: str = "Camera 1") -> LiveVideoContent:
@@ -161,6 +164,36 @@ def test_live_viewer_shows_displayed_frame_status_and_releases_controller(
 
     assert controller.cleaned
     assert widget.findChild(FrameDisplay) is None
+
+
+def test_closing_a_live_viewer_ends_its_pending_use_as_default(
+    qtbot: QtBot, tmp_path: Path, small_catalog_path: Path
+) -> None:
+    loader = GatedCatalogLoader()
+    store = SceneRenderCatalogStore(tmp_path)
+    manager = create_ready_catalog_manager(qtbot, store, catalog_loader=loader, jobs=BackgroundJobs(max_workers=1))
+    chosen = create_catalog(qtbot, manager, "Chosen", base_catalog_path=small_catalog_path).path
+    wait_for_catalogs(qtbot, manager)
+    manager.request_revision(chosen, on_loaded=lambda _revision: None, on_failed=lambda _error: None)
+    wait_for_catalogs(qtbot, manager)
+    try:
+        with patch(_CONTROLLER, _FakeStreamMediaController):
+            widget = LiveVideoViewerWidget(_make_live_content(), render_catalog_manager=manager)
+        qtbot.addWidget(widget)
+        selection = widget._render_catalog_selection
+        selection.select_catalog(chosen)
+        loader.hold(chosen)
+        selection.use_as_default()
+
+        widget.cleanup()
+        loader.release_all()
+        refreshed: list[object] = []
+        manager.refresh_catalogs(on_done=refreshed.append)
+        qtbot.waitUntil(lambda: bool(refreshed), timeout=10_000)
+
+        assert manager.default_catalog_path() == manager.built_in_catalog_path()
+    finally:
+        loader.release_all()
 
 
 def test_set_display_name_updates_the_name_header_and_render_diagnostics(

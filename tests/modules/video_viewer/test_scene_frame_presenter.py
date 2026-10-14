@@ -26,6 +26,7 @@ from ax_devil.modules.scene.model import (
     Score,
     TimeSlice,
 )
+from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalog,
     SceneRenderCatalogLoader,
@@ -177,6 +178,31 @@ def test_presenter_draws_with_its_catalog_and_updates_existing_overlay_on_catalo
     assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
 
 
+def test_presenter_awaiting_its_catalog_draws_nothing_instead_of_compiling_the_built_in_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first overlay drawn on the GUI thread must not compile a catalog while the selected one still loads."""
+
+    def compile_built_in() -> SceneRenderCatalog:
+        raise AssertionError("The built-in catalog was compiled while awaiting the selected one.")
+
+    monkeypatch.setattr(
+        "ax_devil.modules.video_viewer.scene_frame_presenter.get_built_in_scene_render_catalog", compile_built_in
+    )
+    monkeypatch.setattr("ax_devil.modules.scene.rendering.cache.get_built_in_scene_render_catalog", compile_built_in)
+    presenter = SceneFramePresenter(await_catalog=True)
+    presentation = presenter.prepare_frame(_build_frame(1), _build_overlay(1, _build_scene("entity-1")))
+    overlay = presentation.display_frame.overlays
+    assert overlay is not None
+    context = RenderContext.create(640, 480)
+
+    assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == PreparedDrawing()
+
+    presenter.attach_scene_render_catalog(get_built_in_scene_render_catalog())
+
+    assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
+
+
 def test_presenter_falls_back_to_unfiltered_inspector_scene_when_filtering_fails() -> None:
     scene = _build_scene("entity-1")
     presenter = SceneFramePresenter(scene_filter=_FailingSceneFilter())
@@ -267,11 +293,13 @@ def test_retained_overlay_does_not_keep_its_presenter_alive() -> None:
     )
 
 
-def test_visibility_change_reuses_filtered_scene_and_hover_cards(qtbot: QtBot) -> None:
+def test_visibility_change_reuses_filtered_scene_and_hover_cards(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
     """Visibility replaces preparation for the retained sample without redoing inspection work."""
-    from ax_devil.modules.scene.rendering import OverlayFeature, SceneRenderCatalogManager
+    from ax_devil.modules.scene.rendering import OverlayFeature
 
-    selection = SceneRenderCatalogManager().create_selection()
+    selection = render_catalog_manager.create_selection()
     scene_filter = _CountingSceneFilter()
     presenter = SceneFramePresenter(scene_filter=scene_filter, scene_render_catalog=selection.active_catalog())
     selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)

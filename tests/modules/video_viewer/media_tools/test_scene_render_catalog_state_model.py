@@ -18,11 +18,11 @@ from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogManager,
     SceneRenderCatalogSelection,
     SceneRenderCatalogStore,
-    create_scene_render_catalog_manager,
+    catalog_manager,
 )
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH
 from ax_devil.modules.video_viewer.media_tools import SceneRenderCatalogSelector
-from tests.catalog_helpers import catalog_document
+from tests.catalog_helpers import catalog_document, create_ready_catalog_manager, wait_for_catalogs
 
 GOOD_STATES = ("v1", "v2")
 LISTED_STATES = ("v1", "v2", "compile_error")
@@ -42,7 +42,11 @@ class _ViewModel:
 
 @dataclass
 class _Model:
-    """Expected catalog state, tracking the listing snapshot separately from the files on disk."""
+    """Expected catalog state: files on disk, the listing snapshot, and what the manager holds compiled.
+
+    Files are only noticed by a listing, so a catalog compiled earlier is served as it was until one runs, and then
+    every compiled catalog is checked again against its file.
+    """
 
     built_in: Path
     names: dict[Path, str]
@@ -50,24 +54,43 @@ class _Model:
     listed: dict[Path, str]
     choice: Path
     views: list[_ViewModel] = field(default_factory=list)
+    compiled: dict[Path, str] = field(default_factory=dict)
 
     def state(self, path: Path) -> str:
         return "v1" if path == self.built_in else self.disk[path]
 
     def refresh(self) -> None:
+        """Take a new listing, which drops compiled catalogs whose file changed and compiles them again."""
         self.listed = dict(self.disk)
+        for path in list(self.compiled):
+            if self.state(path) in GOOD_STATES:
+                self.compiled[path] = self.state(path)
+            else:
+                del self.compiled[path]
 
     def is_listed(self, path: Path) -> bool:
         return path == self.built_in or self.listed.get(path) in LISTED_STATES
 
+    def is_usable(self, path: Path) -> bool:
+        return self.is_listed(path) and path in self.compiled
+
     def default_path(self) -> Path:
         return self.choice if self.is_listed(self.choice) else self.built_in
 
-    def load(self, view: _ViewModel, path: Path) -> None:
+    def fetch(self, path: Path, *, force: bool = False) -> bool:
+        """Ask the manager for *path*, which reads the file unless a compiled catalog may be reused."""
+        if force or path not in self.compiled:
+            if self.state(path) not in GOOD_STATES:
+                self.compiled.pop(path, None)
+                return False
+            self.compiled[path] = self.state(path)
+        return True
+
+    def load(self, view: _ViewModel, path: Path, *, force: bool = False) -> None:
         view.path = path
-        view.loaded = self.state(path) in GOOD_STATES
+        view.loaded = self.fetch(path, force=force)
         if view.loaded:
-            view.rendered = (self.names[path], self.state(path))
+            view.rendered = (self.names[path], self.compiled[path])
 
     def new_view(self) -> _ViewModel:
         view = _ViewModel(self.default_path(), False, ("built-in", "v1"))
@@ -162,12 +185,16 @@ SCENARIOS: dict[str, list[Step]] = {
 
 
 @pytest.mark.parametrize("name", SCENARIOS)
-def test_catalog_scenarios_follow_model(qtbot: QtBot, tmp_path: Path, name: str) -> None:
-    _run_steps(qtbot, tmp_path, SCENARIOS[name])
+def test_catalog_scenarios_follow_model(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str
+) -> None:
+    _run_steps(qtbot, monkeypatch, tmp_path, SCENARIOS[name])
 
 
 @pytest.mark.parametrize("seed", range(2))
-def test_random_catalog_steps_follow_model(qtbot: QtBot, tmp_path: Path, seed: int) -> None:
+def test_random_catalog_steps_follow_model(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, seed: int
+) -> None:
     rng = random.Random(seed)
     operations = ("write", "write", "select", "reload", "refresh", "apply", "default", "delete", "new_view")
     steps: list[Step] = []
@@ -184,20 +211,24 @@ def test_random_catalog_steps_follow_model(qtbot: QtBot, tmp_path: Path, seed: i
             steps.append((operation, view))
         else:
             steps.append((operation,))
-    _run_steps(qtbot, tmp_path, steps)
+    _run_steps(qtbot, monkeypatch, tmp_path, steps)
 
 
-def _run_steps(qtbot: QtBot, tmp_path: Path, steps: list[Step]) -> None:
-    """Apply *steps* to two views and check every selection and selector against the model after each step."""
-    manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
-    built_in = manager.built_in_catalog_path()
-    paths = {"built-in": built_in, "a": tmp_path / "a.json", "b": tmp_path / "b.json"}
-    documents = {paths["a"]: _documents("A"), paths["b"]: _documents("B")}
+def _run_steps(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, steps: list[Step]) -> None:
+    """Apply *steps* to two views and check every selection and selector against the model after each step.
+
+    The file watcher is kept quiet so files are noticed only when a step lists the catalogs.
+    """
+    monkeypatch.setattr(catalog_manager, "FILE_CHECK_DELAY_MS", 3_600_000)
+    documents = {tmp_path / "a.json": _documents("A"), tmp_path / "b.json": _documents("B")}
     for path, texts in documents.items():
         _write(path, texts, "v1")
-    manager.refresh_catalogs()
+    manager = create_ready_catalog_manager(qtbot, SceneRenderCatalogStore(tmp_path))
+    built_in = manager.built_in_catalog_path()
+    paths = {"built-in": built_in, "a": tmp_path / "a.json", "b": tmp_path / "b.json"}
     names = {path: name for name, path in paths.items()}
     model = _Model(built_in, names, dict.fromkeys(documents, "v1"), dict.fromkeys(documents, "v1"), built_in)
+    model.compiled[built_in] = "v1"
     selections: list[SceneRenderCatalogSelection] = []
     selectors: list[SceneRenderCatalogSelector] = []
 
@@ -224,7 +255,7 @@ def _run_steps(qtbot: QtBot, tmp_path: Path, steps: list[Step]) -> None:
             index = int(step[1])
             selectors[index].reload_selected_catalog()
             model.refresh()
-            model.load(model.views[index], model.views[index].path)
+            model.load(model.views[index], model.views[index].path, force=True)
         elif operation == "refresh":
             manager.refresh_catalogs()
             model.refresh()
@@ -233,30 +264,34 @@ def _run_steps(qtbot: QtBot, tmp_path: Path, steps: list[Step]) -> None:
             if model.disk[path] != "deleted":
                 manager.delete_catalog(path)
                 model.disk[path] = "deleted"
+                model.compiled.pop(path, None)
                 model.choice = built_in if model.choice == path else model.choice
                 model.refresh()
         elif operation == "apply":
             index = int(step[1])
             action = _action(selectors[index], "applyRenderCatalogToAllAction")
             path = model.views[index].path
-            if action.isEnabled() and model.state(path) in GOOD_STATES:
-                for view in model.views:
-                    model.load(view, path)
-            elif action.isEnabled():
-                model.views[index].loaded = False
+            if action.isEnabled():
+                if model.fetch(path, force=True):
+                    for view in model.views:
+                        model.load(view, path)
+                else:
+                    model.views[index].loaded = False
             action.trigger()
         elif operation == "default":
             index = int(step[1])
             action = _action(selectors[index], "useRenderCatalogAsDefaultAction")
             path = model.views[index].path
-            if action.isEnabled() and model.state(path) in GOOD_STATES:
-                model.choice = path
-                model.refresh()
-            elif action.isEnabled():
-                model.views[index].loaded = False
+            if action.isEnabled():
+                if model.fetch(path, force=True):
+                    model.choice = path
+                    model.refresh()
+                else:
+                    model.views[index].loaded = False
             action.trigger()
         elif len(selections) < 4:
             add_view()
+        wait_for_catalogs(qtbot, manager)
         history.append(" ".join(step))
         _assert_matches_model(manager, model, selections, selectors, history)
 
@@ -273,7 +308,7 @@ def _assert_matches_model(
     for selection, selector, view in zip(selections, selectors, model.views):
         catalog = selection.active_catalog()
         listed = model.is_listed(view.path)
-        usable = listed and view.loaded
+        usable = model.is_usable(view.path)
         status = selection.status()
         assert selection.active_catalog_path() == view.path, trace
         assert selection.active_catalog_loaded() == view.loaded, trace

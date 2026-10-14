@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
+from pytestqt.qtbot import QtBot
 
 from ax_devil.app import _collect_due_generation
 from ax_devil.modules.cache.cache_manager import CacheManager
@@ -23,11 +24,10 @@ from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogManager,
     SceneRenderCatalogSelection,
     SceneRenderCatalogStore,
-    create_scene_render_catalog_manager,
 )
 from ax_devil.modules.settings.config_manager import ConfigManager
 from tests import OWNS_TEST_HOME, REAL_DATA_HOME, REAL_HOME, TEST_HOME
-from tests.catalog_helpers import catalog_document
+from tests.catalog_helpers import catalog_document, create_ready_catalog_manager, wait_for_catalogs
 from tests.helpers.video import create_test_video
 
 _USER_FOLDERS = (
@@ -200,15 +200,19 @@ def temp_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def render_catalog_manager(temp_dir: Path) -> SceneRenderCatalogManager:
-    """Return an initialized render catalog manager with isolated user catalog storage."""
-    return create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(temp_dir / "render_catalogs"))
+def render_catalog_manager(qtbot: QtBot, temp_dir: Path) -> SceneRenderCatalogManager:
+    """Return a render catalog manager with isolated user catalog storage that has loaded its default catalog."""
+    return create_ready_catalog_manager(qtbot, SceneRenderCatalogStore(temp_dir / "render_catalogs"))
 
 
 @pytest.fixture
-def render_catalog_selection(render_catalog_manager: SceneRenderCatalogManager) -> SceneRenderCatalogSelection:
+def render_catalog_selection(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> SceneRenderCatalogSelection:
     """Return an independent render catalog selection backed by the shared test manager."""
-    return render_catalog_manager.create_selection()
+    selection = render_catalog_manager.create_selection()
+    wait_for_catalogs(qtbot, render_catalog_manager)
+    return selection
 
 
 @pytest.fixture

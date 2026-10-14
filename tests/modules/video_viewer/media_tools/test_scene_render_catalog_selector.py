@@ -10,6 +10,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_viewer.media_tools import SceneRenderCatalogSelector
+from tests.catalog_helpers import create_catalog, wait_for_catalogs
 
 
 def test_catalog_created_after_opening_can_be_picked_from_the_list(
@@ -25,7 +26,8 @@ def test_catalog_created_after_opening_can_be_picked_from_the_list(
     )
 
     selector.refresh_catalogs()
-    with qtbot.waitSignal(selection.activeCatalogChanged):
+    qtbot.waitUntil(lambda: combo.findText("Vehicle Review") >= 0, timeout=10_000)
+    with qtbot.waitSignal(selection.activeCatalogChanged, timeout=10_000):
         combo.setCurrentText("Vehicle Review")
 
     assert selection.active_catalog_path() == catalog_file.path
@@ -38,8 +40,11 @@ def test_reload_button_picks_up_edits_to_the_active_catalog(
     selection = render_catalog_manager.create_selection()
     selector = SceneRenderCatalogSelector(selection)
     qtbot.addWidget(selector)
-    active_path = render_catalog_manager.create_catalog("Vehicle Review", base_catalog_path=small_catalog_path).path
+    active_path = create_catalog(
+        qtbot, render_catalog_manager, "Vehicle Review", base_catalog_path=small_catalog_path
+    ).path
     selection.select_catalog(active_path)
+    wait_for_catalogs(qtbot, render_catalog_manager)
     before = selection.active_catalog()
     assert before is not None
 
@@ -49,7 +54,7 @@ def test_reload_button_picks_up_edits_to_the_active_catalog(
 
     reload_button = selector.findChild(QPushButton, "reloadRenderCatalogButton")
     assert reload_button is not None
-    with qtbot.waitSignal(selection.activeCatalogChanged):
+    with qtbot.waitSignal(selection.activeCatalogChanged, timeout=10_000):
         reload_button.click()
 
     after = selection.active_catalog()

@@ -10,6 +10,7 @@ from weakref import ref
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors, SceneFilter
+from ax_devil.modules.scene.rendering.catalog import get_built_in_scene_render_catalog
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player import VideoFrame, VideoOverlayData
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
@@ -35,16 +36,22 @@ class SceneFramePresentation:
 
 
 class SceneFramePresenter:
-    """Assemble frame, Scene overlay, filtering, metadata, and inspector presentation."""
+    """Assemble frame, Scene overlay, filtering, metadata, and inspector presentation.
+
+    Without a catalog the overlays use the built-in one, compiled on first drawing, for callers with no catalog
+    selection. With *await_catalog*, whose catalog loads in the background, they draw nothing until one is attached.
+    """
 
     def __init__(
         self,
         *,
         scene_filter: SceneFilter | None = None,
         scene_render_catalog: SceneRenderCatalog | None = None,
+        await_catalog: bool = False,
     ) -> None:
         self._scene_filter = scene_filter
         self._scene_render_catalog = scene_render_catalog
+        self._await_catalog = await_catalog
         self._reported_catalog_errors = ReportedCatalogErrors()
         self._cached_source: OverlayData | None = None
         self._cached_overlay: CachedSceneOverlay | None = None
@@ -52,9 +59,14 @@ class SceneFramePresenter:
 
         def current_catalog() -> SceneRenderCatalog | None:
             presenter = owner()
-            return presenter.scene_render_catalog if presenter is not None else None
+            return presenter._drawing_catalog() if presenter is not None else get_built_in_scene_render_catalog()
 
         self._catalog_provider = current_catalog
+
+    def _drawing_catalog(self) -> SceneRenderCatalog | None:
+        if self._scene_render_catalog is None and not self._await_catalog:
+            return get_built_in_scene_render_catalog()
+        return self._scene_render_catalog
 
     def attach_scene_filter(self, scene_filter: SceneFilter | None) -> None:
         """Set the session filter used for future frame presentation."""
@@ -159,7 +171,6 @@ class SceneFramePresenter:
         self._cached_overlay = CachedSceneOverlay(
             scene=overlay.content,
             scene_filter=self._scene_filter,
-            catalog=self._scene_render_catalog,
             catalog_provider=self._catalog_provider,
             reported_errors=self._reported_catalog_errors,
         )

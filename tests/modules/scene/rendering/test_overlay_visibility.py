@@ -5,19 +5,22 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.model import BoundingBox, Entity, EntityId, Observation, Scene, TimeSlice
 from ax_devil.modules.scene.rendering import (
     OverlayFeature,
     OverlayVisibility,
+    SceneRenderCatalog,
     SceneRenderCatalogLoader,
+    SceneRenderCatalogManager,
+    SceneRenderCatalogRevision,
     SceneRenderCatalogStore,
-    create_scene_render_catalog_manager,
 )
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS, MAX_VISIBILITY_VARIANTS
 from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic, TemplateRuntimeError
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.catalog_helpers import catalog_document
+from tests.catalog_helpers import catalog_document, create_catalog, create_ready_catalog_manager, wait_for_catalogs
 from tests.drawing_helpers import PointCall, record_scene
 
 
@@ -143,17 +146,29 @@ def test_unused_and_permanently_hidden_templates_do_not_enable_controls() -> Non
     assert catalog.supported_features == frozenset({OverlayFeature.IDS})
 
 
-def test_selection_choices_survive_catalog_changes_and_failed_reload(tmp_path: Path) -> None:
-    manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
-    path = manager.create_catalog("Copy").path
+def _cached_catalog(manager: SceneRenderCatalogManager, path: Path) -> SceneRenderCatalog:
+    """Return the compiled catalog the manager already holds for *path*, which it hands over at once."""
+    loaded: list[SceneRenderCatalogRevision] = []
+    failures: list[Exception] = []
+    manager.request_revision(path, on_loaded=loaded.append, on_failed=failures.append)
+    assert loaded and not failures
+    return loaded[0].catalog
+
+
+def test_selection_choices_survive_catalog_changes_and_failed_reload(qtbot: QtBot, tmp_path: Path) -> None:
+    manager = create_ready_catalog_manager(qtbot, SceneRenderCatalogStore(tmp_path))
+    failures: list[Exception] = []
+    path = create_catalog(qtbot, manager, "Copy").path
     selection = manager.create_selection()
     other = manager.create_selection()
     selection.select_catalog(path)
+    wait_for_catalogs(qtbot, manager)
     selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
     hidden = selection.active_catalog()
     assert hidden is not None and other.active_catalog() is not hidden
     path.write_text("broken", encoding="utf-8")
     selection.reload_active_catalog()
+    wait_for_catalogs(qtbot, manager)
     assert not selection.active_catalog_loaded()
     assert selection.active_catalog() is hidden
     selection.set_feature_enabled(OverlayFeature.CONFIDENCE, True)
@@ -163,28 +178,33 @@ def test_selection_choices_survive_catalog_changes_and_failed_reload(tmp_path: P
     selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
     assert selection.active_catalog() is hidden
     minimal = next(path for path in BUILT_IN_CATALOG_PATHS if path.stem == "minimal")
-    manager.apply_to_all(minimal)
+    manager.apply_to_all(minimal, on_failed=failures.append)
+    wait_for_catalogs(qtbot, manager)
     assert OverlayFeature.CONFIDENCE in selection.visibility.disabled
     assert OverlayFeature.CONFIDENCE not in selection.available_features()
     assert other.visibility == OverlayVisibility()
-    manager.apply_to_all(manager.built_in_catalog_path())
+    manager.apply_to_all(manager.built_in_catalog_path(), on_failed=failures.append)
+    wait_for_catalogs(qtbot, manager)
     assert selection.active_catalog() is not other.active_catalog()
     other.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
     assert selection.active_catalog() is other.active_catalog()
     selection.reset_visibility()
-    assert selection.active_catalog() is manager.load_catalog(manager.built_in_catalog_path())
+    assert selection.active_catalog() is _cached_catalog(manager, manager.built_in_catalog_path())
+    assert not failures
 
 
-def test_valid_reload_reapplies_choices_and_can_toggle_without_files(tmp_path: Path) -> None:
-    manager = create_scene_render_catalog_manager(catalog_store=SceneRenderCatalogStore(tmp_path))
-    path = manager.create_catalog("Copy").path
+def test_valid_reload_reapplies_choices_and_can_toggle_without_files(qtbot: QtBot, tmp_path: Path) -> None:
+    manager = create_ready_catalog_manager(qtbot, SceneRenderCatalogStore(tmp_path))
+    path = create_catalog(qtbot, manager, "Copy").path
     selection = manager.create_selection()
     selection.select_catalog(path)
+    wait_for_catalogs(qtbot, manager)
     selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
     document = SceneRenderCatalogLoader.read_document(path)
     document["templates"]["id_tab"]["parameters"]["font_size"]["default"]["value"] = 15
     path.write_text(json.dumps(document), encoding="utf-8")
     selection.reload_active_catalog()
+    wait_for_catalogs(qtbot, manager)
     assert selection.active_catalog_loaded()
     assert OverlayFeature.CONFIDENCE in selection.visibility.disabled
     path.unlink()

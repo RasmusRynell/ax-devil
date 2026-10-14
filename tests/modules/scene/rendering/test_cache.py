@@ -300,3 +300,27 @@ def test_cached_scene_overlay_tracks_search_and_toggle_all_without_new_scene() -
     model.toggle_all()
     assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
     assert overlay.hit_test(0.2, 0.3) is None
+
+
+@pytest.mark.parametrize("initially_ready", [False, True])
+def test_hover_targets_follow_catalog_readiness_even_with_a_cached_hit_index(initially_ready: bool) -> None:
+    """An overlay waiting for its catalog offers neither invisible hover targets nor a pinned entity card."""
+    ready_catalog = get_built_in_scene_render_catalog()
+    catalog: SceneRenderCatalog | None = ready_catalog if initially_ready else None
+    overlay = CachedSceneOverlay(scene=_classified_scene(), catalog_provider=lambda: catalog)
+    context = RenderContext.create(640, 480)
+    settings = DrawingSettings.for_context(context)
+    if initially_ready:
+        assert overlay.hit_test(0.2, 0.3) is not None
+        assert overlay.get_hit_by_id("object-1") is not None
+        catalog = None
+
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
+    assert overlay.hit_test(0.2, 0.3) is None
+    assert overlay.get_hit_by_id("object-1") is None
+
+    catalog = ready_catalog
+
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) > 0
+    assert overlay.hit_test(0.2, 0.3) is not None
+    assert overlay.get_hit_by_id("object-1") is not None

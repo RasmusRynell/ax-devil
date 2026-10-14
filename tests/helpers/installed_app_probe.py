@@ -65,6 +65,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    faulthandler.enable(all_threads=True)
     faulthandler.dump_traceback_later(15, exit=True)
     try:
         main()

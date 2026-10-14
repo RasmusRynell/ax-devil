@@ -311,3 +311,4 @@ class LiveVideoViewerWidget(ViewerWidget):
                 logger.exception("Live frame display failed to clean up")
             self._frame_display = None
         self._status_panel = None
+        self._render_catalog_selection.cleanup()

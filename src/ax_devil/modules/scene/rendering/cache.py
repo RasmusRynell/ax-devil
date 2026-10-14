@@ -21,7 +21,12 @@ from ax_devil.modules.video_player.engine.data_types import (
     DrawingPreparationMetrics,
     HoverHit,
 )
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import (
+    EMPTY_DRAWING,
+    DrawingBuffer,
+    DrawingSettings,
+    PreparedDrawing,
+)
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 logger = get_logger(__name__)
@@ -75,7 +80,12 @@ class _IndexedHit:
 
 
 class CachedSceneOverlay:
-    """Cache-backed overlay object for one displayed source scene."""
+    """Cache-backed overlay object for one displayed source scene.
+
+    The catalog is *catalog_provider*'s, which answers None while it is not ready; the overlay then draws nothing and
+    offers no hover targets, so the caller redraws once a catalog arrives. Without a provider the overlay uses
+    *catalog*, or the built-in catalog compiled here, for callers that have no catalog selection.
+    """
 
     def __init__(
         self,
@@ -89,10 +99,7 @@ class CachedSceneOverlay:
         self._scene = scene
         self._scene_filter = scene_filter
         self._catalog_provider = catalog_provider
-        if catalog is not None or catalog_provider is not None:
-            self._catalog = catalog
-        else:
-            self._catalog = get_built_in_scene_render_catalog()
+        self._catalog = catalog
         self._filtered_key: FilteredSceneKey | None = None
         self._filtered_scene: Scene | None = None
         self._hover_key: FilteredSceneKey | None = None
@@ -108,8 +115,10 @@ class CachedSceneOverlay:
 
     def prepare_drawing(self, context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
         """Return final backend data for this overlay and exact drawing settings."""
-        filtered_scene = self.filtered_scene()
         catalog = self._current_catalog()
+        if catalog is None:
+            return EMPTY_DRAWING
+        filtered_scene = self.filtered_scene()
         render_key = self._render_cache_key(context, buffer.settings, catalog)
         cache_hit = self._render_key == render_key and self._drawing is not None
         capture = is_metrics_enabled()
@@ -164,6 +173,8 @@ class CachedSceneOverlay:
 
     def hit_test(self, nx: float, ny: float) -> HoverHit | None:
         """Return smallest enclosing hover region for a normalized point."""
+        if self._catalog_provider is not None and self._current_catalog() is None:
+            return None
         best: _IndexedHit | None = None
         for indexed in self._indexed_hits():
             x0, y0, w, h = indexed.bounds
@@ -180,6 +191,8 @@ class CachedSceneOverlay:
 
     def get_hit_by_id(self, target_id: str) -> HoverHit | None:
         """Return hover payload for a known target id, if it still exists."""
+        if self._catalog_provider is not None and self._current_catalog() is None:
+            return None
         self._indexed_hits()
         indexed = self._hover_hits_by_id.get(target_id)
         if indexed is None:
@@ -243,10 +256,9 @@ class CachedSceneOverlay:
 
         return self._scene_filter.cache_identity
 
-    def _current_catalog(self) -> SceneRenderCatalog:
-        provided_catalog = self._catalog_provider() if self._catalog_provider is not None else None
-        if provided_catalog is not None:
-            return provided_catalog
+    def _current_catalog(self) -> SceneRenderCatalog | None:
+        if self._catalog_provider is not None:
+            return self._catalog_provider()
         if self._catalog is None:
             self._catalog = get_built_in_scene_render_catalog()
         return self._catalog

@@ -9,7 +9,7 @@ from functools import partial
 from typing import NamedTuple
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
-from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
@@ -658,6 +658,7 @@ class OfflineSession(QObject):
         presenter = SceneFramePresenter(
             scene_filter=filter_model,
             scene_render_catalog=render_catalog_selection.active_catalog(),
+            await_catalog=True,
         )
 
         def refresh_display_overlays(_catalog: object, *, lane_display: FrameDisplay = display) -> None:
@@ -727,11 +728,21 @@ class OfflineSession(QObject):
         self.jump_to_frame(self.current_frame)
 
     def export_lanes(self, lanes: list[OfflineLane] | None = None) -> None:
-        """Export the given lanes, or let the user choose among all lanes when none are given."""
+        """Export the given lanes, or let the user choose among all lanes when none are given.
+
+        Each lane exports the catalog it shows now; while a lane has none, because its first catalog is still
+        loading, the user is told to try again and nothing is exported.
+        """
         from ax_devil.modules.video_viewer.export import ExportDialog, ExportLane
 
         lanes = [lane for lane in (self.lanes if lanes is None else lanes) if lane.video_source is not None]
         if not lanes:
+            return
+        catalogs = [lane.presenter.scene_render_catalog if lane.presenter is not None else None for lane in lanes]
+        if any(catalog is None for catalog in catalogs):
+            QMessageBox.warning(
+                self.container, "Export video", "Render catalogs are still loading. Try again in a moment."
+            )
             return
 
         # Pause playback so the export has exclusive access to the decoder
@@ -741,12 +752,11 @@ class OfflineSession(QObject):
         self._set_export_buttons_enabled(False)
 
         export_lanes: list[ExportLane] = []
-        for lane in lanes:
+        for lane, active_catalog in zip(lanes, catalogs, strict=True):
             assert lane.video_source is not None
             # Snapshot filter state so it can't change during export
             frozen_filter = lane.filter_model.snapshot() if lane.filter_model is not None else None
 
-            active_catalog = lane.presenter.scene_render_catalog if lane.presenter is not None else None
             # Export uses the same timestamp selection settings as the viewer.
             export_lanes.append(
                 ExportLane(

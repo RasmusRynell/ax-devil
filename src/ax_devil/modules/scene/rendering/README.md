@@ -47,6 +47,12 @@ filtered Scene; hit testing picks the smallest box containing the cursor.
 - Validation and compilation never run on the frame-drawing path, and widgets never read, validate or compile
   catalog files themselves; they go through a `SceneRenderCatalogSelection`. Listing is metadata discovery only;
   full validation happens on select, reload, create, apply to all and use as default.
+- Listing, fingerprinting, reading and compiling run on the `"render-catalogs"` background pool and reach the
+  manager as plain results, so callers pass callbacks (`request_revision`, `refresh_catalogs`, `apply_to_all`) and
+  workers never touch Qt objects. Only a compiled catalog already held in memory is handed over before the call
+  returns. Copies read, validate and write on the serial `"render-catalog-mutations"` pool, so unique filename
+  allocation and writing stay ordered. Cancelling a copy request detaches its consumer; the accepted write finishes
+  and refreshes the manager's listing. Deletion and default-choice persistence remain synchronous mutations.
 - Visibility is applied by compiling a variant from the already validated source, never per frame. The whole document
   is validated first, so hidden components still have to be valid.
 - `pick_color` hashes with CRC-32, not `hash()`, so an id keeps its color across runs.
@@ -66,15 +72,27 @@ Catalog choices have three scopes:
 | Scope | Call | Effect |
 |---|---|---|
 | One view | `SceneRenderCatalogSelection.select_catalog(path)` | That viewer or lane switches. |
-| All open views | `SceneRenderCatalogManager.apply_to_all(path)` | Compiled first; on failure nothing changes and the error is raised. |
-| New views | `SceneRenderCatalogManager.set_default_catalog(path)` | Compiled first; on failure the previous default stays. Open views keep their catalog. |
+| All open views | `SceneRenderCatalogManager.apply_to_all(path, on_failed=...)` | Read and compiled first; on failure nothing changes and the error goes to `on_failed`. |
+| New views | `SceneRenderCatalogManager.set_default_catalog(path)` | The caller compiles it first with a forced `request_revision`, so a catalog that fails never becomes the default. Open views keep their catalog. |
 
-A selection's active path is what the user chose; its active catalog is the last one that compiled, which after a
-failure may be an older revision, another file, or the built-in default with the reason in its status. Every load
-attempt of the active path records a failure, and only a successful compile clears it, so `active_catalog_loaded()`
-is true exactly when the latest attempt compiled and the selector can enable **Apply to all** and **Use as default**.
+A selection's active path is what the user chose, from the moment they choose it; its active catalog is the last one
+that compiled, which after a failure or while the chosen one loads may be an older revision, another file, or the
+built-in default with the reason in its status. Every load attempt of the active path records a failure, and only a
+successful compile clears it, so `active_catalog_loaded()` is true exactly when the active catalog compiled from the
+active path and the latest attempt succeeded. What a selection shows has one request at a time: a newer select, reload,
+file change or apply replaces one still running. Its user command (apply to all, use as default) is separate, replaced
+only by a newer command or select, so a file change or another view's apply never drops it; the newest apply to all
+across views wins. A selection created before the first listing waits for it, and its owner calls `cleanup()` when it
+ends, since pending requests keep their callbacks alive. Overlays of selection-backed presenters draw nothing until a
+catalog arrives, so the GUI thread never compiles the built-in catalog.
+The manager caches a compiled catalog with the file's modification time and size taken just before it was read. A
+listing that finds a file changed drops the entry, restarts a load of that file still running, compiles cached
+catalogs that changed again in the background and emits `catalogUsabilityChanged`; a read that fails drops its entry
+the same way. **Apply to all** and **Use as
+default** are enabled only for a listed catalog the manager holds compiled, so one never loaded is not eligible
+and asking never reads a file.
 The manager watches every listed file, invalid ones included, and their directories and, after 150 ms of quiet,
-reloads each selection whose
+lists again and reloads each selection whose
 active path changed; other selections are untouched. Live viewers share one selection between controller and media
 tools; offline lanes each own one.
 
