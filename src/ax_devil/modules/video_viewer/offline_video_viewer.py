@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -20,6 +20,7 @@ from ax_devil.core.playback_speed import (
     clamp_playback_speed,
     step_playback_speed,
 )
+from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
@@ -29,7 +30,12 @@ from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
-from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia, EntryOpening, release_media
+from ax_devil.modules.video_viewer.offline_entry_media import (
+    EntryMedia,
+    entry_opening_scope,
+    open_entry_media,
+    release_media,
+)
 from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
 from ax_devil.modules.video_viewer.offline_viewer_runtime import (
     OfflineSession,
@@ -108,12 +114,13 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._global_control_visibility: ControlVisibilityController | None = None
         self._use_global_controls = False
         self._is_cleaned_up = False
-        self._opening: EntryOpening | None = None
         self._loading_indicator: LoadingIndicator | None = None
         self._playback_speed = DEFAULT_PLAYBACK_SPEED
         self._initial_entry_loaded = False
         self._lane_visibility: dict[int, OverlayVisibility] = {}
         super().__init__(parent)
+        self._opening = LatestRequest(self)
+        self._opening_jobs = entry_opening_scope(self)
 
     def _get_entries(self) -> tuple[PlaylistEntry, ...]:
         """Return the playlist entries for the current content."""
@@ -182,9 +189,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if self._is_cleaned_up:
             return
         self._initial_entry_loaded = True
-        if self._opening is not None:
-            self._opening.abandon()
-            self._opening = None
+        self._opening.cancel()
         self._teardown_runtime()
         self._current_index = index
         self._update_nav_state()
@@ -196,14 +201,17 @@ class OfflineVideoViewerWidget(ViewerWidget):
             lane_index for lane_index in range(len(entry.lanes)) if self._is_lane_considered(index, lane_index)
         )
         indicator = self._show_loading_indicator()
-        opening = EntryOpening(
-            on_status=indicator.set_message, on_opened=partial(self._on_entry_opened, index, start_frame)
+        self._opening.submit(
+            self._opening_jobs,
+            "open offline entry",
+            partial(open_entry_media, entry, lane_indices, QThread.currentThread()),
+            on_result=partial(self._on_entry_opened, index, start_frame),
+            on_error=lambda error: self._on_entry_opened(index, start_frame, EntryMedia(error=str(error))),
+            on_progress=indicator.set_message,
+            on_discard=release_media,
         )
-        self._opening = opening
-        opening.start(entry, lane_indices)
 
     def _on_entry_opened(self, index: int, start_frame: int | None, media: EntryMedia) -> None:
-        self._opening = None
         self._hide_loading_indicator()
         error = media.error
         runtime: OfflineSession | None = None
@@ -474,13 +482,13 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if next_index is not None:
             self._open_entry(next_index)
 
-    def _teardown_runtime(self, *, blocking: bool = False) -> None:
+    def _teardown_runtime(self) -> None:
         runtime = self._runtime
         if runtime is None:
             return
         self._runtime = None
         self.set_header_details("")
-        runtime.cleanup(blocking=blocking)
+        runtime.cleanup()
 
     def get_display_name(self) -> str:
         return self._display_name
@@ -513,11 +521,10 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if self._is_cleaned_up:
             return
         self._is_cleaned_up = True
-        if self._opening is not None:
-            self._opening.abandon()
-            self._opening = None
+        self._opening.close()
+        self._opening_jobs.close()
         self._hide_loading_indicator()
-        self._teardown_runtime(blocking=True)
+        self._teardown_runtime()
         self._nav_label = None
         self._prev_button = None
         self._next_button = None

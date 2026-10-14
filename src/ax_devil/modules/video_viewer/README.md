@@ -8,7 +8,7 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
 - `offline_video_viewer.py`: offline and playlist Workspace viewer widget.
 - `stream_media_controller.py`: live source lifecycle, connection status, retry, and `QtStreamSync` orchestration.
 - `live_connection.py`: `LiveConnectionStatus` model; per-feed (video, overlay) state, reason, and display text.
-- `offline_entry_media.py`: `EntryOpening` opens an entry's sources on a worker thread and delivers `EntryMedia`.
+- `offline_entry_media.py`: `open_entry_media` opens an entry's sources on a worker thread and delivers `EntryMedia`.
 - `offline_viewer_runtime.py`: `OfflineSession` and `OfflineLane`; owns offline source pooling,
   direct overlay lookup, timeline commands, viewport sync, cleanup, and player composition.
 - `offline_viewer_navigation.py`: playlist entry and consideration navigation policy.

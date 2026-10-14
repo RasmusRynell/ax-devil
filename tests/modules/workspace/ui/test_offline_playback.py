@@ -105,7 +105,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
 
         assert session.focused_widget() is None
         assert window._lane_fullscreen._host is None
-        assert delivery.wait(0)
+        qtbot.waitUntil(lambda: delivery.wait(0))
         assert window.internalWinId() == native_id
 
         session.add_items([VideoItem(video=path)])

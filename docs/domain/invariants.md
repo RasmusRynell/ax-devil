@@ -12,7 +12,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Workspace content (`SeekableVideoContent`, `LiveVideoContent`, `OverlayContent`, `EntryLane`, `PlaylistContent`)
   describes what a Workspace Item resolves to. It stores source specs and metadata, never instantiated sources or
   factories.
-  Runtime sources are created when a viewer opens content: offline by `EntryOpening`, live by `StreamMediaController`.
+  Runtime sources are created when a viewer opens content: offline by `open_entry_media`, live by `StreamMediaController`.
 - Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
   only from `WorkspaceItem.resolve`. The Workspace, the store, and the file format never branch on item kind.
 - Content ids derive from the owning item's id and the Content's position, and Content records its item's id, so ids
@@ -143,7 +143,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Cancellable work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled`; there is no other
   cancellation mechanism: no flag, callback or per-feature cancellation exception. The contract is in the
   [background_jobs README](../../src/ax_devil/modules/background_jobs/README.md#cancellation).
-- The GUI thread never waits for offline file work and never spins the event loop to wait. `EntryOpening` opens an
+- The GUI thread never waits for offline file work and never spins the event loop to wait. `open_entry_media` opens an
   entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; whoever holds the media owns every
   source in it until `release_media`. Worker threads never hold the last reference to objects they hand to the GUI
   thread.

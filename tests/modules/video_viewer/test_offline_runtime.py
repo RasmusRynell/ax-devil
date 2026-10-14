@@ -406,7 +406,7 @@ def test_secondary_video_shows_only_the_current_primary_frame(qtbot: QtBot) -> N
     # A decoder finishing after the session is gone must not touch it.
     primary.deliver(15)
     late_completion = secondary.callbacks[15]
-    session.cleanup(blocking=True)
+    session.cleanup()
     QCoreApplication.sendPostedEvents(session, QEvent.Type.DeferredDelete)
     failures: list[Exception] = []
 

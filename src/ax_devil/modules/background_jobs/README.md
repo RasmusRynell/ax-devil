@@ -37,7 +37,9 @@ a viewer may keep its last good output while its replacement loads. Those decisi
   `job.token.raise_if_cancelled()`, and `job.token.wait(seconds)` instead of `sleep`. `JobContext.report` polls too.
   A poll of a cancelled token raises `Cancelled`; there is no way to ask whether a token is cancelled.
 - `Cancelled` is a `BaseException`, so an `except Exception` never swallows it. Work releases what it holds in
-  `finally`; only the code that started the work catches `Cancelled`, to stop quietly.
+  `finally`; only the code that started the work catches `Cancelled`, to stop quietly. The exception is work whose
+  partial outcome must be freed on the GUI thread, such as opened sources: it catches `Cancelled` itself and returns
+  what it holds, so `on_discard` releases it like a result that finished after the cancel.
 - A cancelled job delivers nothing, whether it was interrupted, finished anyway or never started. Only a result that
   finished anyway reaches `on_discard`. `Cancelled` raised when the job was not cancelled, such as from another token,
   goes to `on_error`, so an owner never waits for an outcome that does not come.
