@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QListView, QPushB
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.data_sources.base import SeekableFrameSource
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
@@ -406,52 +407,55 @@ def _stub_frame_source() -> MagicMock:
     return source
 
 
-def _run_now(
-    work: Callable[[Callable[[str], None]], Any],
-    on_done: Callable[[Any], None],
-    *,
-    on_progress: Callable[[str], None] = lambda _message: None,
-    name: str,
-) -> None:
-    """Run background work synchronously so viewer tests see each entry opened when the call returns."""
-    on_done(work(on_progress))
+class _DeferredBackground(BackgroundJobs):
+    """Background jobs that run on the GUI thread, at once or when the test finishes them as a slow open would.
 
-
-class _DeferredBackground:
-    """Hold background work until the test finishes it, as a slow file open would."""
+    Cancellation and delivery are the real rules; only the worker thread is replaced.
+    """
 
     def __init__(self) -> None:
-        self.pending: list[Callable[[], None]] = []
+        super().__init__(max_workers=1)
+        self.immediate = True
+        self.pending: list[Any] = []
 
-    def __call__(
-        self,
-        work: Callable[[Callable[[str], None]], Any],
-        on_done: Callable[[Any], None],
-        *,
-        on_progress: Callable[[str], None] = lambda _message: None,
-        name: str,
-    ) -> None:
-        self.pending.append(lambda: on_done(work(on_progress)))
+    def _start(self, job: Any) -> None:
+        self._unfinished.add(job)
+        if self.immediate:
+            self._complete(job)
+        else:
+            self.pending.append(job)
 
     def finish_next(self) -> None:
-        """Complete the oldest pending work and deliver its result."""
-        self.pending.pop(0)()
+        """Complete the oldest pending job, skipping its work if it was cancelled, and deliver its outcome."""
+        self._complete(self.pending.pop(0))
+
+    def _complete(self, job: Any) -> None:
+        self._run(job)
+        self._finish(job)
 
 
-@pytest.fixture
-def deferred_background(monkeypatch: pytest.MonkeyPatch) -> _DeferredBackground:
-    """Make entry opening wait for the test, with releases still running immediately."""
-    deferred = _DeferredBackground()
+@pytest.fixture(autouse=True)
+def _background(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> _DeferredBackground:
+    """Open entries as soon as they are requested, and run releases immediately."""
+    background = _DeferredBackground()
 
     def release_now(media: EntryMedia) -> None:
         media.close()
+        assert all(source.wait(0) for source in media.video_sources)
         media.delete_later()
 
-    monkeypatch.setattr(offline_entry_media, "run_in_background", deferred)
+    monkeypatch.setattr(offline_entry_media, "background_jobs", lambda *_args, **_kwargs: background)
     monkeypatch.setattr(offline_entry_media, "release_media", release_now)
     monkeypatch.setattr(offline_viewer_runtime, "release_media", release_now)
     monkeypatch.setattr(offline_video_viewer, "release_media", release_now)
-    return deferred
+    return background
+
+
+@pytest.fixture
+def deferred_background(_background: _DeferredBackground) -> _DeferredBackground:
+    """Make entry opening wait for the test to finish it."""
+    _background.immediate = False
+    return _background
 
 
 @pytest.fixture(autouse=True)
@@ -477,7 +481,6 @@ def _stub_spec_source_opening(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(offline_entry_media, "create_frame_source", _create_frame_source)
     monkeypatch.setattr(offline_entry_media, "FileOverlaySource", _SpecFileOverlaySource)
     monkeypatch.setattr(offline_entry_media, "get_file_decoder_factory", _get_file_decoder_factory)
-    monkeypatch.setattr(offline_entry_media, "run_in_background", _run_now)
     yield
     _TEST_FRAME_SOURCE_OPENERS.clear()
 

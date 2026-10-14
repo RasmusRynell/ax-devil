@@ -1,21 +1,18 @@
 """Open an offline playlist entry's sources on a worker thread and hand them to the GUI thread.
 
-The GUI thread never waits for file work. `EntryOpening` opens an entry's video and overlay sources in the
-background and delivers the result as `EntryMedia`; whoever holds that media owns it until `release_media`.
+The GUI thread never waits for file work. `open_entry_media` opens an entry's video and overlay sources in the
+background and returns `EntryMedia`; whoever holds that media owns it until `release_media`.
 """
 
 from __future__ import annotations
 
-import queue
-import threading
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Generic, TypeVar
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QThread, QTimer
 
-from ax_devil.core.cancellation import Cancelled, CancelToken
+from ax_devil.core.cancellation import Cancelled
+from ax_devil.modules.background_jobs import JobContext, JobScope, background_jobs
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
@@ -38,113 +35,10 @@ from ax_devil.modules.workspace.core import (
 
 logger = get_logger(__name__)
 
-_T = TypeVar("_T")
 
-
-class _BackgroundCall(Generic[_T]):
-    """Hand one worker result to GUI-thread callbacks.
-
-    The worker only appends its result and never holds it afterwards, and the GUI thread drops the callbacks when it
-    takes the result, so neither side can finalize the other's objects.
-    """
-
-    def __init__(self, on_done: Callable[[_T], None], on_progress: Callable[[str], None]) -> None:
-        self.results: list[_T] = []
-        self._on_done: Callable[[_T], None] | None = on_done
-        self._on_progress: Callable[[str], None] | None = on_progress
-
-    def progress(self, message: str) -> None:
-        """Forward a progress message unless the call already finished."""
-        if self._on_progress is not None:
-            self._on_progress(message)
-
-    def finish(self) -> None:
-        """Deliver the result, if the work produced one, and drop the callbacks."""
-        on_done = self._on_done
-        self._on_done = None
-        self._on_progress = None
-        if on_done is not None and self.results:
-            on_done(self.results.pop())
-
-
-class _GuiDispatcher(QObject):
-    """Queue background-call notifications onto the thread that created it, the GUI thread."""
-
-    progressed = Signal(object, str)
-    finished = Signal(object)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.progressed.connect(self._progress, Qt.ConnectionType.QueuedConnection)
-        self.finished.connect(self._finish, Qt.ConnectionType.QueuedConnection)
-
-    @Slot(object, str)
-    def _progress(self, call: _BackgroundCall[object], message: str) -> None:
-        call.progress(message)
-
-    @Slot(object)
-    def _finish(self, call: _BackgroundCall[object]) -> None:
-        call.finish()
-
-
-class _SerialWorker:
-    """One daemon thread that runs submitted jobs in order, started on first use."""
-
-    def __init__(self, name: str) -> None:
-        self._name = name
-        self._jobs: queue.SimpleQueue[Callable[[], None]] = queue.SimpleQueue()
-        self._thread: threading.Thread | None = None
-
-    def submit(self, job: Callable[[], None]) -> None:
-        """Queue *job* behind the jobs already submitted."""
-        self._jobs.put(job)
-        if self._thread is None:
-            self._thread = threading.Thread(target=self._run, name=self._name, daemon=True)
-            self._thread.start()
-
-    def _run(self) -> None:
-        while True:
-            job = self._jobs.get()
-            job()
-            del job
-
-
-_dispatcher: _GuiDispatcher | None = None
-_workers: dict[str, _SerialWorker] = {}
-
-
-def run_in_background(
-    work: Callable[[Callable[[str], None]], _T],
-    on_done: Callable[[_T], None],
-    *,
-    on_progress: Callable[[str], None] = lambda _message: None,
-    name: str,
-) -> None:
-    """Run *work* on a worker thread and call *on_done* with its result on the GUI thread.
-
-    Work with the same *name* runs on one thread, one at a time and in order. Call from the GUI thread. *work*
-    receives a callback that reports progress messages to *on_progress* on the GUI thread. If *work* raises, the error
-    is logged and *on_done* is not called, so work that acquires resources returns its failures as part of the
-    result. *work* must not keep references to its result after returning it.
-    """
-    global _dispatcher
-    if _dispatcher is None:
-        _dispatcher = _GuiDispatcher()
-    dispatcher = _dispatcher
-    worker = _workers.setdefault(name, _SerialWorker(name))
-    call = _BackgroundCall(on_done, on_progress)
-
-    def report(message: str) -> None:
-        dispatcher.progressed.emit(call, message)
-
-    def run() -> None:
-        try:
-            call.results.append(work(report))
-        except Exception:
-            logger.exception(f"Background work '{name}' failed")
-        dispatcher.finished.emit(call)
-
-    worker.submit(run)
+def entry_opening_scope(owner: QObject) -> JobScope:
+    """Return *owner*'s scope on the one queue every offline viewer opens entries on, one at a time."""
+    return background_jobs("offline-entry-open", max_workers=1).scope(owner)
 
 
 @dataclass(slots=True)
@@ -178,21 +72,24 @@ class EntryMedia:
         return [lane.overlay_source for lane in self.lanes if lane.overlay_source is not None]
 
     def close(self) -> None:
-        """Stop every source and wait for its worker. Blocks; safe on any thread and more than once.
+        """Request shutdown of every source. Blocks for bounded decoder joins; run on a worker.
 
+        This does not guarantee worker exit. The release owner retains the media until every source's wait succeeds.
         A source that fails to stop is logged, and the others still close.
         """
         for source in self.video_sources:
             try:
                 source.stop()
-                source.wait(2000)
             except Exception:
                 logger.exception("Failed to stop an offline video source")
         for overlay_source in self.overlay_sources():
-            overlay_source.close()
+            try:
+                overlay_source.close()
+            except Exception:
+                logger.exception("Failed to close an offline overlay source")
 
     def delete_later(self) -> None:
-        """Schedule deletion of every source. Call on the GUI thread after `close`."""
+        """Schedule deletion of every source. Call on the GUI thread only after every source has exited."""
         for source in self.video_sources:
             source.deleteLater()
         for overlay_source in self.overlay_sources():
@@ -258,14 +155,14 @@ def _open_lanes(
     media: EntryMedia,
     entry: PlaylistEntry,
     lane_indices: tuple[int, ...],
-    *,
-    report: Callable[[str], None],
-    token: CancelToken,
+    job: JobContext[str],
 ) -> None:
     """Open sources into *media* lane by lane, so a failure or cancellation leaves only owned sources behind.
 
-    The token is polled after every blocking open, so a discarded entry never starts its derived analysis.
+    The job's token is polled after every blocking open, so a discarded entry never starts its derived analysis.
     """
+    token = job.token
+    report = job.report
     # Lanes showing the same video share one source; image sequence timing is not part of video equality.
     source_index_by_video: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], int] = {}
     for position, lane_index in token.polled(enumerate(lane_indices)):
@@ -286,7 +183,6 @@ def _open_lanes(
         media.lanes.append(opened)
         if lane.overlay is None:
             continue
-        token.raise_if_cancelled()
         if len(lane_indices) == 1:
             report(f"Parsing overlay data: {lane.overlay.display_name}")
         else:
@@ -297,27 +193,28 @@ def _open_lanes(
         )
         token.raise_if_cancelled()
         opened.scene_history = place_scene_history(opened.overlay_source, opened.overlay_policy, frame_timeline)
+        token.raise_if_cancelled()
         opened.alignment_report = opened.overlay_source.analyze_alignment(frame_timeline)
 
 
 def open_entry_media(
     entry: PlaylistEntry,
     lane_indices: tuple[int, ...],
-    report: Callable[[str], None],
-    *,
     gui_thread: QThread,
-    token: CancelToken,
+    job: JobContext[str],
 ) -> EntryMedia:
     """Open the sources of *entry*'s lanes at *lane_indices* and move them to *gui_thread*.
 
-    Blocks; run it on a worker thread. *report* receives progress messages. Never raises: a failure is recorded in
-    `EntryMedia.error`. Once *token* is cancelled it opens nothing more and returns what it already opened.
+    Blocks; run it as a background job. *job* receives progress messages. Never raises: a failure or cancellation is
+    recorded in `EntryMedia.error`, and every source opened before it is still in the returned media. The sources can
+    only be freed on the GUI thread, so they go back to the job as a result: delivered to the viewer, or, for a
+    cancelled job, to `on_discard`, which releases them off the opening queue.
     """
     media = EntryMedia()
     try:
-        _open_lanes(media, entry, lane_indices, report=report, token=token)
+        _open_lanes(media, entry, lane_indices, job)
     except Cancelled:
-        pass  # Abandoned: what was opened still goes back to be released.
+        media.error = "Opening was cancelled"  # Delivered only if Cancelled came from elsewhere than the job's owner.
     except Exception as exc:
         logger.error(f"Failed to open playlist entry: {exc}", exc_info=True)
         media.error = str(exc)
@@ -328,56 +225,91 @@ def open_entry_media(
     return media
 
 
-def _close_media(media_box: list[EntryMedia], _report: Callable[[str], None]) -> EntryMedia:
-    media = media_box.pop()
+def _close_media(media: EntryMedia, _job: JobContext[None]) -> EntryMedia:
     media.close()
     return media
 
 
-def release_media(media: EntryMedia) -> None:
-    """Close *media*'s sources on a worker thread, then delete them on the GUI thread. Call on the GUI thread."""
-    # The worker takes the media out of the box so the GUI thread holds the last reference again.
-    run_in_background(partial(_close_media, [media]), EntryMedia.delete_later, name="offline-entry-release")
+def _finished_media(media: tuple[EntryMedia, ...], _job: JobContext[None]) -> list[EntryMedia]:
+    """Check decoder exit without waiting or issuing another stop request."""
+    finished: list[EntryMedia] = []
+    for entry in media:
+        try:
+            exited = [source.wait(0) for source in entry.video_sources]
+        except Exception:
+            logger.exception("Failed to check offline video shutdown")
+            continue
+        if all(exited):
+            finished.append(entry)
+    return finished
 
 
-class EntryOpening:
-    """One entry opening in the background for a viewer that may stop wanting it."""
+def _already_logged(_error: Exception) -> None:
+    """Drop a failure the background jobs already logged."""
 
-    def __init__(self, *, on_status: Callable[[str], None], on_opened: Callable[[EntryMedia], None]) -> None:
-        self._token = CancelToken()
-        self._on_status: Callable[[str], None] | None = on_status
-        self._on_opened: Callable[[EntryMedia], None] | None = on_opened
 
-    def start(self, entry: PlaylistEntry, lane_indices: tuple[int, ...]) -> None:
-        """Start opening the sources of *entry*'s lanes at *lane_indices*. Call on the GUI thread."""
-        run_in_background(
-            partial(
-                open_entry_media,
-                entry,
-                lane_indices,
-                gui_thread=QThread.currentThread(),
-                token=self._token,
-            ),
-            self._finish,
-            on_progress=self._report_status,
-            name="offline-entry-open",
+class _MediaReleases(QObject):
+    """Own mandatory source shutdown independently of the viewers that surrender their media.
+
+    The process owns this service: unlike viewer scopes, its scope never closes while the application runs.
+    At process exit the background job daemon policy applies; shutdown never joins decoder workers on the GUI.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._jobs = background_jobs("offline-entry-release", max_workers=1).scope(self)
+        self._pending: list[EntryMedia] = []
+        self._sweeping = False
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(100)
+        self._timer.timeout.connect(self._sweep)
+
+    def release(self, media: EntryMedia) -> None:
+        """Retain *media* until worker shutdown finishes and GUI-thread deletion is scheduled."""
+        self._jobs.submit(
+            "release offline entry",
+            partial(_close_media, media),
+            on_result=self._closed,
+            on_error=_already_logged,
         )
 
-    def abandon(self) -> None:
-        """Stop wanting the result: open nothing more and release whatever was opened instead of delivering it."""
-        self._token.cancel()
-        self._on_status = None
-        self._on_opened = None
+    def _closed(self, media: EntryMedia) -> None:
+        self._pending.append(media)
+        if not self._sweeping and not self._timer.isActive():
+            self._sweep()
 
-    def _report_status(self, message: str) -> None:
-        if self._on_status is not None:
-            self._on_status(message)
-
-    def _finish(self, media: EntryMedia) -> None:
-        on_opened = self._on_opened
-        self._on_status = None
-        self._on_opened = None
-        if on_opened is None:
-            release_media(media)
+    def _sweep(self) -> None:
+        if self._sweeping or not self._pending:
             return
-        on_opened(media)
+        self._sweeping = True
+        self._jobs.submit(
+            "check offline entry shutdown",
+            partial(_finished_media, tuple(self._pending)),
+            on_result=self._swept,
+            on_error=self._sweep_failed,
+        )
+
+    def _swept(self, finished: list[EntryMedia]) -> None:
+        finished_ids = {id(media) for media in finished}
+        self._pending = [media for media in self._pending if id(media) not in finished_ids]
+        for media in finished:
+            media.delete_later()
+        self._sweeping = False
+        if self._pending:
+            self._timer.start()
+
+    def _sweep_failed(self, _error: Exception) -> None:
+        self._sweeping = False
+        self._timer.start()
+
+
+_media_releases: _MediaReleases | None = None
+
+
+def release_media(media: EntryMedia) -> None:
+    """Transfer *media* to the process's release owner; call on the GUI thread, without waiting."""
+    global _media_releases
+    if _media_releases is None:
+        _media_releases = _MediaReleases()
+    _media_releases.release(media)

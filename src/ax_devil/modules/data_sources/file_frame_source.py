@@ -51,6 +51,7 @@ class FileFrameSource(SeekableFrameSource):
         self.file_path = file_path
         self.source_id = source_id
         self._frame_delivery: FileFrameDelivery | None = None
+        self._closing_delivery: FileFrameDelivery | None = None
         self.fps: float | int = -1
         self.total_frames = -1
         self._original_size = (-1, -1)
@@ -175,15 +176,22 @@ class FileFrameSource(SeekableFrameSource):
         """Stop frame delivery and release its decoder."""
         logger.debug(f"Stopping {self.source_id} (begin)")
         if self._frame_delivery is not None:
-            self._frame_delivery.close()
+            self._closing_delivery = self._frame_delivery
             self._frame_delivery = None
+            self._closing_delivery.close()
 
         self.cleanup_posted_events()
         logger.debug(f"Stopped {self.source_id} (done)")
 
     def wait(self, timeout: int = 2000) -> bool:
         """Wait for delivery shutdown."""
-        return self._frame_delivery.wait(timeout) if self._frame_delivery is not None else True
+        delivery = self._closing_delivery or self._frame_delivery
+        if delivery is None:
+            return True
+        if not delivery.wait(timeout):
+            return False
+        self._closing_delivery = None
+        return True
 
     def jump_to(self, frame_number: int) -> None:
         """Jump to specific frame number and read that frame."""

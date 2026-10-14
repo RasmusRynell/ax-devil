@@ -806,12 +806,8 @@ class OfflineSession(QObject):
         for source in self.iter_video_sources():
             source.set_playback_speed(playback_speed)
 
-    def cleanup(self, *, blocking: bool = False) -> None:
-        """Tear down the displays and release the media.
-
-        By default the sources close on a worker thread; *blocking* closes them before returning, for a viewer that
-        is going away and must not leave source workers running.
-        """
+    def cleanup(self) -> None:
+        """Tear down the displays and hand the media to the background release owner."""
         self._is_playing = False
         primary_source = self.get_primary_video_source()
         if primary_source is not None:
@@ -834,11 +830,7 @@ class OfflineSession(QObject):
         self.container.deleteLater()
         QCoreApplication.sendPostedEvents(self.container, QEvent.Type.DeferredDelete)
 
-        if blocking:
-            self._media.close()
-            self._media.delete_later()
-        else:
-            release_media(self._media)
+        release_media(self._media)
         self.deleteLater()
 
     def _on_frame_ready(self, source_index: int, frame_data: FrameData) -> None:

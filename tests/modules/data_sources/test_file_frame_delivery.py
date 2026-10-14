@@ -10,6 +10,7 @@ from typing import cast
 import numpy as np
 import pytest
 from PySide6.QtCore import Qt
+from pytestqt.qtbot import QtBot
 
 import ax_devil.modules.data_sources.file_frame_delivery as delivery_module
 from ax_devil.modules.cache.cache_manager import CacheManager
@@ -275,3 +276,38 @@ def test_file_frame_source_reports_its_length_without_reading_every_timestamp(
         source.stop()
     assert source.wait()
     assert source.get_duration_s() is None
+
+
+def test_source_wait_tracks_a_decoder_still_finishing_after_stop_times_out(
+    qtbot: QtBot, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bounded stop does not make a source safe to delete while its decoder is still running."""
+    monkeypatch.setattr(CacheManager, "_get_base_cache_dir", lambda self: temp_dir / "cache")
+    video_path = temp_dir / "closing.mp4"
+    create_test_video(video_path, duration=0.1, fps=10)
+    source = FileFrameSource(str(video_path))
+    entered = threading.Event()
+    finish_read = threading.Event()
+    original_read = FrameReaderWorker.read_decoded_frame
+
+    def gated_read(decoder: FrameReaderWorker, frame: int) -> DecodedFrame | None:
+        entered.set()
+        assert finish_read.wait(5)
+        return original_read(decoder, frame)
+
+    monkeypatch.setattr(FrameReaderWorker, "read_decoded_frame", gated_read)
+    assert source._frame_delivery is not None
+    # Force the supported bounded-stop outcome without spending five seconds waiting for its timeout.
+    source._frame_delivery._worker._worker_timeout = 0
+    try:
+        source.request_frame_async(0, lambda _frame: None)
+        qtbot.waitUntil(entered.is_set)
+        source.stop()
+        assert not source.wait(0)
+        source.stop()
+        assert not source.wait(0)
+    finally:
+        finish_read.set()
+        source.stop()
+        assert source.wait(5000)
+        source.deleteLater()

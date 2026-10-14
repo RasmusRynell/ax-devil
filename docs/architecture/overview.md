@@ -172,7 +172,7 @@ both inputs retain their capture timestamps for synchronization.
 Timestamp matching policy also lives in synchronization; file overlay providers consume it but own their own lookup
 behavior, such as sequence fallback and lookup metadata.
 
-Opening an offline entry happens in two phases. `EntryOpening` opens the entry's video and overlay sources on a
+Opening an offline entry happens in two phases. `open_entry_media` opens the entry's video and overlay sources on a
 worker thread (frame index, overlay parsing, and the scene history and alignment the lanes show first) while the
 viewer shows a loading indicator, then delivers `EntryMedia` on the GUI thread. `OfflineSession.build` creates the
 displays over that media without touching files. Navigating while an entry opens abandons it and opens the newer one;
