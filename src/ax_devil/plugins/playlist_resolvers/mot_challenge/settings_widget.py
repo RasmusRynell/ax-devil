@@ -6,6 +6,7 @@ in a checkable list, and submits the root and the checked sequence names.
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -21,16 +22,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.tokens import Space
-from ax_devil.modules.plugin_system import PlaylistResolverWidget
-from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.plugin_system import JobContext, LatestRequest, PlaylistResolverWidget
 
 from .resolver import SequenceInfo, discover_sequences
 
-logger = get_logger(__name__)
+
+def _scan_root(root: Path, job: JobContext[None]) -> tuple[Path, list[SequenceInfo]]:
+    """Return the resolved *root* and the sequences under it."""
+    sequences = discover_sequences(root, job.token)
+    return root.resolve(), sequences
 
 
 class MOTChallengeSettingsWidget(PlaylistResolverWidget):
@@ -42,7 +45,8 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._sequences: list[SequenceInfo] = []
-        self._scanned_root = Path()
+        self._scanned_root: Path | None = None
+        self._scan = LatestRequest(self)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -57,6 +61,7 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
         dir_row.setContentsMargins(0, 0, 0, 0)
         self._root_input = QLineEdit()
         self._root_input.setPlaceholderText("Path to MOT dataset root directory")
+        self._root_input.textChanged.connect(self._clear_sequences)
         dir_row.addWidget(self._root_input, 1)
         self._browse_btn = BrowseButton("the MOT dataset folder", self._browse_root)
         dir_row.addWidget(self._browse_btn)
@@ -87,26 +92,36 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             self._root_input.setText(path)
             self._scan_sequences()
 
+    def _clear_sequences(self) -> None:
+        """Invalidate both pending and completed discovery when its input changes."""
+        self._scan.cancel()
+        self._scanned_root = None
+        self._sequences = []
+        self._seq_list.clear()
+        self._load_btn.setEnabled(False)
+        self._status_label.setText("")
+
     def _scan_sequences(self) -> None:
+        self._clear_sequences()
         root_text = self._root_input.text().strip()
         if not root_text:
             self._status_label.setText("Please enter a root directory path.")
             return
 
-        root = Path(root_text)
-        if not root.is_dir():
-            self._status_label.setText("Directory does not exist.")
-            return
+        self._status_label.setText("Scanning...")
+        self._scan.submit(
+            self.jobs,
+            "scan MOT sequences",
+            partial(_scan_root, Path(root_text)),
+            on_result=self._show_sequences,
+            on_error=self._scan_failed,
+        )
 
-        try:
-            self._sequences = discover_sequences(root, NEVER)
-            self._scanned_root = root.resolve()
-        except Exception as exc:
-            logger.warning(f"Failed to scan MOT directory: {exc}")
-            self._status_label.setText(f"Scan failed: {exc}")
-            return
+    def _scan_failed(self, error: Exception) -> None:
+        self._status_label.setText(f"Scan failed: {error}")
 
-        self._seq_list.clear()
+    def _show_sequences(self, scanned: tuple[Path, list[SequenceInfo]]) -> None:
+        self._scanned_root, self._sequences = scanned
 
         if not self._sequences:
             self._status_label.setText("No MOT sequences found.")
@@ -124,6 +139,8 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
         self._load_btn.setEnabled(True)
 
     def _on_load(self) -> None:
+        if self._scan.pending or self._scanned_root is None:
+            return
         selected: list[SequenceInfo] = []
         for i in range(self._seq_list.count()):
             item = self._seq_list.item(i)

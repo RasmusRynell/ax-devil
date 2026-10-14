@@ -3,18 +3,27 @@
 from __future__ import annotations
 
 import textwrap
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLineEdit, QListWidget
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtWidgets import QLabel, QLineEdit, QListWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.core.cancellation import NEVER
+from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
+from ax_devil.modules.background_jobs import background_jobs
 from ax_devil.modules.workspace.core import FileOverlaySourceSpec, PlaylistItem, SeekableVideoContent
+from ax_devil.plugins.playlist_resolvers.mot_challenge import settings_widget
 from ax_devil.plugins.playlist_resolvers.mot_challenge.plugin import MOTChallengeResolverPlugin
-from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import build_playlist_contents, discover_sequences
+from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import (
+    SequenceInfo,
+    build_playlist_contents,
+    discover_sequences,
+)
+from ax_devil.plugins.playlist_resolvers.mot_challenge.settings_widget import MOTChallengeSettingsWidget
 from tests.helpers.widgets import button
 
 # ---------------------------------------------------------------------------
@@ -81,8 +90,8 @@ def test_settings_widget_loads_only_checked_sequences(tmp_path: Path, qtbot: QtB
     button(widget, "Scan").click()
     sequences = widget.findChild(QListWidget)
     assert sequences is not None
+    qtbot.waitUntil(load.isEnabled)
     assert sequences.count() == 2
-    assert load.isEnabled()
     first = sequences.item(0)
     assert first is not None
     first.setCheckState(Qt.CheckState.Unchecked)
@@ -90,6 +99,189 @@ def test_settings_widget_loads_only_checked_sequences(tmp_path: Path, qtbot: QtB
         load.click()
 
     assert submitted.args[0] == {"root": str(tmp_path), "sequences": ["SEQ-02"]}
+
+
+@pytest.mark.parametrize("replacement", ["", "second"])
+def test_editing_a_completed_scan_clears_old_sequences_until_the_new_root_is_scanned(
+    tmp_path: Path, qtbot: QtBot, replacement: str
+) -> None:
+    """After editing the root, Load cannot submit the previous folder or its checked sequences."""
+    _make_sequence(tmp_path / "first", "OLD-01")
+    _make_sequence(tmp_path / "second", "NEW-01")
+    widget = MOTChallengeSettingsWidget()
+    qtbot.addWidget(widget)
+    root = widget.findChild(QLineEdit)
+    assert root is not None
+    load = button(widget, "Load Playlist")
+    root.setText(str(tmp_path / "first"))
+    button(widget, "Scan").click()
+    qtbot.waitUntil(load.isEnabled)
+    assert _listed(widget) == ["OLD-01"]
+    submitted: list[object] = []
+    widget.settings_submitted.connect(submitted.append)
+
+    root.setText(str(tmp_path / replacement) if replacement else "")
+
+    assert _listed(widget) == []
+    assert not load.isEnabled()
+    assert not _status_says(widget, "Found")
+    load.click()
+    assert submitted == []
+    root.setText(str(tmp_path / "second"))
+    button(widget, "Scan").click()
+    qtbot.waitUntil(load.isEnabled)
+    load.click()
+    assert submitted == [{"root": str(tmp_path / "second"), "sequences": ["NEW-01"]}]
+
+
+class _SlowScan:
+    """Hold the scan of a root named *slow* until released; scans of other roots run normally."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, *, fail: bool = False) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.interrupted = False
+        real = discover_sequences
+
+        def discover(root: Path, token: CancelToken) -> list[SequenceInfo]:
+            if root.name != "slow":
+                return real(root, token)
+            self.started.set()
+            assert self.release.wait(5)
+            if fail:
+                raise ValueError("stale failure")
+            try:
+                return real(root, token)
+            except Cancelled:
+                self.interrupted = True
+                raise
+
+        monkeypatch.setattr(settings_widget, "discover_sequences", discover)
+
+    def finish(self, qtbot: QtBot) -> None:
+        """Let the held scan end and wait until its outcome has been delivered or dropped."""
+        with qtbot.waitSignal(background_jobs("plugins").finished):
+            self.release.set()
+
+
+def _status_says(widget: MOTChallengeSettingsWidget, text: str) -> bool:
+    return any(label.text().startswith(text) for label in widget.findChildren(QLabel))
+
+
+def _listed(widget: MOTChallengeSettingsWidget) -> list[str]:
+    sequences = widget.findChild(QListWidget)
+    assert sequences is not None
+    return [item.text().split()[0] for item in sequences.findItems("*", Qt.MatchFlag.MatchWildcard)]
+
+
+@pytest.mark.parametrize("stale_fails", [False, True])
+def test_a_scan_replaced_by_a_newer_one_cannot_change_the_list(
+    tmp_path: Path, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, stale_fails: bool
+) -> None:
+    _make_sequence(tmp_path / "slow", "STALE-01")
+    _make_sequence(tmp_path / "fast", "CURRENT-01")
+    slow = _SlowScan(monkeypatch, fail=stale_fails)
+    widget = MOTChallengeSettingsWidget()
+    qtbot.addWidget(widget)
+    root = widget.findChild(QLineEdit)
+    assert root is not None
+    load = button(widget, "Load Playlist")
+    root.setText(str(tmp_path / "slow"))
+    button(widget, "Scan").click()
+    qtbot.waitUntil(slow.started.is_set)
+
+    root.setText(str(tmp_path / "fast"))
+    button(widget, "Scan").click()
+    qtbot.waitUntil(load.isEnabled)
+    slow.finish(qtbot)
+
+    assert _listed(widget) == ["CURRENT-01"]
+    assert load.isEnabled()
+    with qtbot.waitSignal(widget.settings_submitted) as submitted:
+        load.click()
+    assert submitted.args[0] == {"root": str(tmp_path / "fast"), "sequences": ["CURRENT-01"]}
+
+
+@pytest.mark.parametrize("stale_fails", [False, True])
+def test_editing_the_root_while_scanning_leaves_load_disabled(
+    tmp_path: Path, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, stale_fails: bool
+) -> None:
+    _make_sequence(tmp_path / "slow", "STALE-01")
+    slow = _SlowScan(monkeypatch, fail=stale_fails)
+    widget = MOTChallengeSettingsWidget()
+    qtbot.addWidget(widget)
+    root = widget.findChild(QLineEdit)
+    assert root is not None
+    root.setText(str(tmp_path / "slow"))
+    button(widget, "Scan").click()
+    qtbot.waitUntil(slow.started.is_set)
+
+    root.setText(str(tmp_path / "elsewhere"))
+    slow.finish(qtbot)
+
+    assert _listed(widget) == []
+    assert not button(widget, "Load Playlist").isEnabled()
+    assert not _status_says(widget, "Found")
+    assert not _status_says(widget, "Scan failed")
+
+
+def test_a_cancelled_scan_does_not_touch_its_root_again_to_resolve_it(
+    tmp_path: Path, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_sequence(tmp_path / "slow", "STALE-01")
+    slow = _SlowScan(monkeypatch)
+    widget = MOTChallengeSettingsWidget()
+    qtbot.addWidget(widget)
+    root = widget.findChild(QLineEdit)
+    assert root is not None
+    root.setText(str(tmp_path / "slow"))
+    resolved: list[Path] = []
+    real_resolve = Path.resolve
+
+    def resolve(self: Path, strict: bool = False) -> Path:
+        resolved.append(self)
+        return real_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    button(widget, "Scan").click()
+    qtbot.waitUntil(slow.started.is_set)
+
+    root.setText(str(tmp_path / "elsewhere"))
+    slow.finish(qtbot)
+
+    assert tmp_path / "slow" not in resolved
+
+
+def test_a_missing_root_reports_the_failure_and_keeps_load_disabled(tmp_path: Path, qtbot: QtBot) -> None:
+    widget = MOTChallengeSettingsWidget()
+    qtbot.addWidget(widget)
+    root = widget.findChild(QLineEdit)
+    assert root is not None
+    root.setText(str(tmp_path / "gone"))
+
+    button(widget, "Scan").click()
+
+    qtbot.waitUntil(lambda: _status_says(widget, "Scan failed"))
+    assert not button(widget, "Load Playlist").isEnabled()
+
+
+def test_a_scan_still_running_when_the_form_is_closed_is_told_to_stop(
+    tmp_path: Path, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_sequence(tmp_path / "slow", "SEQ-01")
+    slow = _SlowScan(monkeypatch)
+    widget = MOTChallengeSettingsWidget()
+    root = widget.findChild(QLineEdit)
+    assert root is not None
+    root.setText(str(tmp_path / "slow"))
+    button(widget, "Scan").click()
+    qtbot.waitUntil(slow.started.is_set)
+
+    widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    slow.finish(qtbot)
+
+    assert slow.interrupted
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +374,78 @@ def test_discovers_train_and_test_split_sequences_from_dataset_root(tmp_path: Pa
 def test_discovery_rejects_missing_root(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         discover_sequences(tmp_path / "nonexistent", NEVER)
+
+
+def test_a_cancelled_token_stops_the_scan_before_it_probes_a_sequence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_sequence(tmp_path, "SEQ-01")
+    _make_sequence(tmp_path, "SEQ-02")
+    token = CancelToken()
+    token.cancel()
+    probed: list[Path] = []
+    real_is_file = Path.is_file
+
+    def is_file(self: Path) -> bool:
+        probed.append(self)
+        return real_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", is_file)
+
+    with pytest.raises(Cancelled):
+        discover_sequences(tmp_path, token)
+
+    assert probed == []
+
+
+def test_cancelling_while_listing_the_root_stops_before_checking_its_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("SEQ-01", "SEQ-02", "SEQ-03"):
+        _make_sequence(tmp_path, name)
+    token = CancelToken()
+    checked: list[Path] = []
+    real_iterdir, real_is_dir = Path.iterdir, Path.is_dir
+
+    def iterdir(self: Path) -> Iterator[Path]:
+        for child in real_iterdir(self):
+            token.cancel()
+            yield child
+
+    def is_dir(self: Path) -> bool:
+        checked.append(self)
+        return real_is_dir(self)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+
+    with pytest.raises(Cancelled):
+        discover_sequences(tmp_path, token)
+
+    assert checked == [tmp_path]
+
+
+def test_cancelling_while_probing_a_sequence_stops_before_the_next_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_sequence(tmp_path, "SEQ-01")
+    _make_sequence(tmp_path, "SEQ-02")
+    token = CancelToken()
+    probed: list[Path] = []
+    real_is_file = Path.is_file
+
+    def is_file(self: Path) -> bool:
+        probed.append(self)
+        result = real_is_file(self)
+        token.cancel()
+        return result
+
+    monkeypatch.setattr(Path, "is_file", is_file)
+
+    with pytest.raises(Cancelled):
+        discover_sequences(tmp_path, token)
+
+    assert probed == [tmp_path / "SEQ-01" / "seqinfo.ini"]
 
 
 # ---------------------------------------------------------------------------
