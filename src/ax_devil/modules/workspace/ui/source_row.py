@@ -109,6 +109,7 @@ class _ConsiderationToggle(QToolButton):
 def _action_button(action: RowAction) -> SmallButton:
     """Return the button that offers *action*."""
     button = SmallButton(action.label, action.icon, ButtonKind.PRIMARY if action.primary else ButtonKind.NORMAL)
+    button.setFixedWidth(button.sizeHint().width())
     button.setToolTip(action.tooltip)
     return button
 

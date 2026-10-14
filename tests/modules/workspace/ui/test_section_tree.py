@@ -333,6 +333,22 @@ def _hosts(*hosts: str) -> tuple[WorkspaceBrowserSection, ...]:
     return _network(*(_camera(host) for host in hosts))
 
 
+def test_camera_add_buttons_keep_their_width_when_rows_are_narrow(qtbot: QtBot) -> None:
+    cameras = (
+        _camera("10.0.0.1", label="Gate"),
+        _camera("10.0.0.2", label="North warehouse loading dock camera", detail="192.0.2.2 · signed in"),
+    )
+    tree = _tree(qtbot, *cameras, kind=BrowserSection.NETWORK)
+    tree.resize(220, 400)
+    qtbot.wait(10)
+
+    buttons = [row(tree, camera.label).findChild(SmallButton) for camera in cameras]
+
+    assert all(button is not None for button in buttons)
+    assert len({button.width() for button in buttons if button is not None}) == 1
+    assert all(button.width() == button.sizeHint().width() for button in buttons if button is not None)
+
+
 def test_keyboard_focus_stays_on_a_rows_action_when_cameras_are_found_around_it(qtbot: QtBot) -> None:
     tree = _tree(qtbot, _camera("10.0.0.2"), kind=BrowserSection.NETWORK)
     [button] = row(tree, "10.0.0.2").findChildren(SmallButton)
