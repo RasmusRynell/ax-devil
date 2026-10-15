@@ -22,7 +22,7 @@ Keyboard shortcuts are confirmed in their own dialog.
 
 **Network scan → Discovery** has two options, both enabled by default. **Scan for cameras on startup**
 (`settings.network_scan.on_startup`) starts one background scan when ax-devil launches, using the default IP range.
-Startup scanning uses one-quarter the concurrent probes and device requests to reduce load; manual scans run at normal speed.
+Startup scanning runs at reduced load; manual scans run at normal speed.
 The Live view shows its progress and keeps its results; **Rescan** starts a fresh scan. Turning this off skips the scan
 on future launches without disabling manual scans. **Try to sign in to found cameras by default**
 (`settings.network_scan.sign_in`) starts the Live view's sign-in checkbox checked, including for the startup scan.

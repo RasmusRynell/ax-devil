@@ -53,6 +53,8 @@ Check = Callable[[str, Login, CancelToken], DiscoveredCamera | None]
 
 _REFUSED = "The camera refused the login saved with it."
 """What a held camera's row says when its own login does not get in."""
+_NOT_SIGNED_IN = "Not signed in: add a login under Try to sign in."
+"""What a found camera's row says on hover when it has no Add."""
 _SIGN_IN_PROBLEMS = (SignIn.REFUSED, SignIn.FAILED)
 
 
@@ -113,7 +115,7 @@ def _joined(parts: Sequence[str]) -> str:
 def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceBrowserRow:
     """Return the row of a *camera* the scan found, with its address and all non-secret details visible; it has Add
     only when the scan signed in to it."""
-    details = _camera_details(camera, signing_in=True)
+    details = _camera_details(camera, show_sign_in_problem=True)
     can_add = camera.sign_in is SignIn.SIGNED_IN
     return WorkspaceBrowserRow(
         row_id=_network_row_id(camera),
@@ -122,6 +124,7 @@ def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> Workspace
         detail=_joined(details),
         wrap_detail=True,
         facts=("Camera on the network", *details),
+        warning=None if can_add else _NOT_SIGNED_IN,
         action=RowAction.ADD if can_add else None,
         add=add if can_add else None,
         idle=not can_add,
@@ -142,7 +145,7 @@ def _with_scan(
     camera = own or next((found[host] for host in item.hosts if host in found), None)
     if camera is None:
         return row
-    details = _camera_details(camera, signing_in=False)
+    details = _camera_details(camera, show_sign_in_problem=False)
     row = replace(
         row,
         detail=_joined((row.detail, *details)),
@@ -160,12 +163,12 @@ def _with_scan(
     return row
 
 
-def _camera_details(camera: DiscoveredCamera, *, signing_in: bool) -> tuple[str, ...]:
-    """Return the non-secret details the row shows for what a scan learned about a camera; with *signing_in*, a
-    sign-in that did not work is mentioned."""
+def _camera_details(camera: DiscoveredCamera, *, show_sign_in_problem: bool) -> tuple[str, ...]:
+    """Return the non-secret details the row shows for what a scan learned about a camera; with
+    *show_sign_in_problem*, a sign-in that did not work is mentioned."""
     facts = (
         camera.model,
-        camera.sign_in.label if signing_in and camera.sign_in in _SIGN_IN_PROBLEMS else "",
+        camera.sign_in.label if show_sign_in_problem and camera.sign_in in _SIGN_IN_PROBLEMS else "",
         f"Serial {camera.serial}" if camera.serial else "",
         f"Firmware {camera.firmware}" if camera.firmware else "",
         f"Type {camera.product_type}" if camera.product_type else "",
@@ -253,7 +256,7 @@ class LiveViewController(QObject):
         self._found_refresh.setSingleShot(True)
         self._found_refresh.setInterval(_FOUND_REFRESH_MS)
         self._found_refresh.timeout.connect(self._refresh)
-        view.scan_requested.connect(self.scan)
+        view.scan_requested.connect(self._rescan)
         view.logins_edited.connect(self._save_logins)
         view.order_chosen.connect(self._sort)
         view.destroyed.connect(self._forget_view)
@@ -348,18 +351,28 @@ class LiveViewController(QObject):
         if self._view is not None:
             self._listing.refresh()
 
+    def _rescan(self, ip_range: str) -> None:
+        """Scan again as the user asked, and sign in again to the workspace's cameras, so a login fixed meanwhile is
+        noticed."""
+        self._checked.clear()
+        self._check_access(self._store.workspace.items)
+        self.scan(ip_range)
+
     def _check_access_of(self, resolutions: list[ItemResolution], _open_first: bool) -> None:
-        """Sign in to each resolved camera not yet checked, with its own login, when signing in is wanted."""
+        self._check_access([resolution.item for resolution in resolutions])
+
+    def _check_access(self, items: Sequence[WorkspaceItem]) -> None:
+        """Sign in to each of *items* not yet checked, with its own login, when signing in is wanted."""
         if not GlobalSettings().scan_sign_in:
             return
-        for resolution in resolutions:
-            request = _access_request(resolution.item)
-            if request is None or resolution.item.id in self._checked:
+        for item in items:
+            request = _access_request(item)
+            if request is None or item.id in self._checked:
                 continue
             self._jobs.submit(
                 "camera access check",
                 partial(_run_check, self._check, *request),
-                on_result=partial(self._on_checked, resolution.item.id, request),
+                on_result=partial(self._on_checked, item.id, request),
                 on_error=lambda error: logger.debug(f"Camera access check failed: {error}"),
             )
 

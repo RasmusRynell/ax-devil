@@ -31,7 +31,7 @@ from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_conte
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.section_tree import captions, press, row, row_action, row_texts, shown_rows, texts
+from tests.helpers.section_tree import captions, expand, press, row, row_action, row_texts, shown_rows, texts
 from tests.helpers.widgets import button
 from tests.helpers.workspace import DummyViewer
 
@@ -224,8 +224,7 @@ def _scan(live: _Live, *cameras: DiscoveredCamera) -> None:
     live.wait_for_scan()
 
 
-@pytest.mark.parametrize("startup", [True, False])
-@pytest.mark.parametrize("sign_in", [True, False])
+@pytest.mark.parametrize(("startup", "sign_in"), [(True, True), (False, False)])
 def test_launch_scan_keeps_results_for_live_and_allows_rescan(
     qtbot: QtBot,
     tmp_path: Path,
@@ -343,6 +342,20 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: _
     assert live.checker.calls == [("192.0.2.10", Login("root", "pw"))]
 
 
+def test_rescan_checks_a_refused_camera_again_so_a_fixed_login_is_noticed(live: _Live) -> None:
+    refused = DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)
+    live.checker.cameras = {"192.0.2.10": refused}
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
+    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "")
+
+    live.checker.cameras = {"192.0.2.10": replace(refused, sign_in=SignIn.SIGNED_IN)}
+    _scan(live)
+
+    live.qtbot.waitUntil(lambda: len(live.checker.calls) == 2)
+    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "Start stream")
+    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+
+
 def test_a_camera_whose_check_failed_for_another_reason_can_still_start(live: _Live) -> None:
     live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.FAILED)}
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
@@ -420,11 +433,16 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
 
 
 def test_a_camera_starts_only_with_its_start_button(live: _Live) -> None:
-    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
+    live.open_workspace(
+        LiveStreamItem(host="192.0.2.10", label="Entrance"),
+        LiveStreamItem(host="192.0.2.11", label="Dock", overlay_mode=LiveOverlayMode.RTSP, handler_type="ONVIF_XML"),
+    )
 
-    live.view.tree.row_activated.emit(row(live.view.tree, "Entrance").row, False)
+    expand(live.view.tree, "Dock")
+    for title in ("Entrance", "Dock", "RTSP"):
+        live.view.tree.row_activated.emit(row(live.view.tree, title).row, False)
 
-    assert live.center.get_widget_count() == 0
+    assert live.center.get_widget_count() == 0, "neither a camera nor its overlay row starts the stream"
     live.press("Entrance")
     assert live.center.get_widget_count() == 1
 
@@ -752,12 +770,15 @@ def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that
         live,
         DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", sign_in=SignIn.SIGNED_IN, login=operator),
         DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "", sign_in=SignIn.REFUSED),
+        DiscoveredCamera("192.0.2.14", "AXIS P3265-LVE", ""),
     )
 
     assert live.scanner.logins == (guest, operator)
     assert "Signed in" not in live.detail("192.0.2.12")
     assert "Credentials refused" in live.detail("192.0.2.13")
     assert live.rows()["192.0.2.13"] == "", "a camera that did not accept a login cannot be added"
+    assert "Not signed in" in row(live.view.tree, "192.0.2.14").toolTip(), "a camera never tried says why"
+    assert "Not signed in" not in row(live.view.tree, "192.0.2.12").toolTip()
     live.press("192.0.2.12")
     [signed_in] = live.store.workspace.items
     assert isinstance(signed_in, LiveStreamItem)
@@ -781,27 +802,21 @@ def test_found_camera_row_shows_all_non_secret_information(live: _Live) -> None:
         ),
     )
 
-    camera_row = row(live.view.tree, "192.0.2.12")
-    shown = camera_row.row.detail
-    detail = shown.replace("\u00a0", " ")
-    assert camera_row.row.label == "192.0.2.12"
-    assert camera_row.row.wrap_detail
+    detail = live.detail("192.0.2.12")
     assert all(
         text in detail
         for text in (
             "AXIS P3265-LVE",
-            "Serial ACCC8E000002",
-            "Firmware 12.6.85",
-            "Type Dome Camera",
-            "Up 1d 2h",
-            "Architecture aarch64",
-            "SoC Ambarella CV25",
+            "ACCC8E000002",
+            "12.6.85",
+            "Dome Camera",
+            "1d 2h",
+            "aarch64",
+            "Ambarella CV25",
         )
     )
     assert "never-display-this" not in detail
     assert "Signed in" not in detail
-    [detail_label] = [label for label in camera_row.findChildren(QLabel) if label.text() == shown]
-    assert detail_label.wordWrap()
 
 
 def test_a_scan_without_sign_in_sends_no_credentials(

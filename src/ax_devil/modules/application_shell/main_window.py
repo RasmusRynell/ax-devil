@@ -162,7 +162,7 @@ class MainWindow(ChromeWindow):
         file_menu.addAction(add_video_action)
 
         add_live_action = sm.get_action("app.add_live_stream")
-        add_live_action.triggered.connect(lambda: self._on_add_live_stream())  # Not ``checked`` as *start*.
+        add_live_action.triggered.connect(lambda: self._on_add_live_stream(start=True))
         file_menu.addAction(add_live_action)
 
         add_playlist_action = sm.get_action("app.add_playlist")
@@ -364,7 +364,7 @@ class MainWindow(ChromeWindow):
                 if result is not None:
                     self._workspace_session.add_items([result])
 
-    def _on_add_live_stream(self, start: bool = True) -> None:
+    def _on_add_live_stream(self, start: bool) -> None:
         """Handle File -> Add Live Stream, which starts the stream; the Live view's Add manually only adds it."""
         from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 

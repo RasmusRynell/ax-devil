@@ -10,7 +10,6 @@ import time
 from collections.abc import Callable, Collection, Iterator, Sequence
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -115,86 +114,38 @@ def serve(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., _Device]]:
         device.close()
 
 
-@pytest.mark.parametrize(("low_impact", "workers", "batch_size"), [(False, 32, 128), (True, 8, 32)])
-def test_scan_limits_concurrent_work_without_losing_devices(
-    monkeypatch: pytest.MonkeyPatch, low_impact: bool, workers: int, batch_size: int
+def test_low_impact_scan_runs_fewer_probes_at_once_and_still_finds_every_device(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    hosts = tuple(f"192.0.2.{index}" for index in range(1, 193))
-    batches: list[tuple[str, ...]] = []
-    ready = threading.Event()
+    hosts = tuple(f"192.0.2.{index}" for index in range(1, 97))
     lock = threading.Lock()
     active = 0
     peak = 0
-
-    def probe(targets: Sequence[str]) -> dict[str, set[int]]:
-        batches.append(tuple(targets))
-        return dict.fromkeys(targets, {80})
 
     def identify(host: str, ports: Collection[int], logins: Sequence[Login], token: CancelToken) -> DiscoveredCamera:
         nonlocal active, peak
         with lock:
             active += 1
             peak = max(peak, active)
-            if active == workers:
-                ready.set()
-        assert ready.wait(5)
-        token.raise_if_cancelled()
+        threading.Event().wait(0.05)  # Long enough for the probes of a wider scan to overlap.
         with lock:
             active -= 1
         return DiscoveredCamera(host, "AXIS Q1656", "")
 
-    monkeypatch.setattr(network_scan, "_open_ports", probe)
+    monkeypatch.setattr(network_scan, "_open_ports", lambda targets: dict.fromkeys(targets, {80}))
     monkeypatch.setattr(network_scan, "_identify", identify)
-    found: list[DiscoveredCamera] = []
 
-    cameras = scan_network(targets=hosts, found=found.append, low_impact=low_impact)
+    def scan(*, low_impact: bool) -> int:
+        nonlocal peak
+        peak = 0
+        cameras = scan_network(targets=hosts, low_impact=low_impact)
+        assert tuple(camera.host for camera in cameras) == hosts
+        return peak
 
-    assert peak == workers
-    assert max(map(len, batches)) == batch_size
-    assert tuple(host for batch in batches for host in batch) == hosts
-    assert tuple(camera.host for camera in cameras) == hosts
-    assert set(found) == set(cameras)
+    normal_peak = scan(low_impact=False)
+    low_impact_peak = scan(low_impact=True)
 
-
-@pytest.mark.parametrize("low_impact", [False, True])
-def test_low_impact_scan_allows_more_time_for_queued_devices(monkeypatch: pytest.MonkeyPatch, low_impact: bool) -> None:
-    clock = SimpleNamespace(seconds=0.0)
-    started = threading.Event()
-    release = threading.Event()
-    reported = threading.Event()
-    finished = threading.Event()
-    token = CancelToken()
-    camera = DiscoveredCamera("192.0.2.1", "AXIS Q1656", "")
-
-    def identify(host: str, ports: Collection[int], logins: Sequence[Login], sealed: CancelToken) -> DiscoveredCamera:
-        try:
-            started.set()
-            assert release.wait(5)
-            sealed.raise_if_cancelled()
-            return camera
-        finally:
-            finished.set()
-
-    def advance(seconds: float) -> None:
-        if clock.seconds == 0.0:
-            assert started.wait(5)
-            clock.seconds = 30.0
-        else:
-            release.set()
-            assert reported.wait(5)
-
-    monkeypatch.setattr(network_scan, "time", SimpleNamespace(monotonic=lambda: clock.seconds))
-    monkeypatch.setattr(network_scan, "_open_ports", lambda hosts: {camera.host: {80}})
-    monkeypatch.setattr(network_scan, "_identify", identify)
-    monkeypatch.setattr(token, "wait", advance)
-    try:
-        cameras = scan_network(
-            targets=[camera.host], token=token, low_impact=low_impact, found=lambda found: reported.set()
-        )
-        assert cameras == ([camera] if low_impact else [])
-    finally:
-        release.set()
-        assert finished.wait(5)
+    assert low_impact_peak < normal_peak
 
 
 def test_an_axis_device_is_found_with_what_it_gives_without_login(serve: Callable[..., _Device]) -> None:

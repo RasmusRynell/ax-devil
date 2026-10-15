@@ -425,7 +425,7 @@ class _RowProjection:
                     row_id=row_id,
                     label=lane.display_name,
                     icon_kind="overlay",
-                    activation_target=(video, 0),
+                    activation_target=None if video.is_live else (video, 0),
                     consideration_ref=lane_ref if consideration_item is not None else None,
                     information_factory=partial(build_video_lane_information, video, lane),
                     is_considered=(self._is_considered(lane_ref) if consideration_item is not None else True),

@@ -47,14 +47,15 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   them by type and sign-in. **Scan settings**, at the bottom, takes the IP addresses to search: addresses
   and ranges such as `192.168.1.0/24`, separated by commas. A background scan starts when the app launches, so its
   results are ready in Live without opening the page first. **Rescan** searches again, or searches this computer's
-  `/24` network when the field is empty, and lists each camera as soon as it answers.
+  `/24` network when the field is empty, and lists each camera as soon as it answers; it also checks the workspace's
+  saved logins again.
   With **Try to sign in to found cameras**, the scan also tries the saved sign-in logins on each camera, in order,
   until one works, to read more such as the SoC and to tell which login works. It starts checked and shows the logins under it,
   with buttons to add and remove them; they are the same list as **Settings → Network scan**. They go only to devices that answered as Axis devices, and only as an
   HTTP Digest answer, never as a plain password. **Add** puts a camera the scan signed in to in the workspace with the
   **Settings → Stream defaults**, and with the login that signed in to it; it does not start the stream, **Start
   stream** does. A found camera the scan did not sign in to, because it refused every login or signing in was off,
-  has no **Add**. **Add manually** is the same Add for a camera you
+  has no **Add**, and says why on hover. **Add manually** is the same Add for a camera you
   enter yourself: it opens the Add Live Stream dialog and adds the camera without starting it, while **File → Add
   Live Stream** also starts it. Startup scanning and sign-in defaults can each be turned off in
   [Settings → Network scan](settings.md).

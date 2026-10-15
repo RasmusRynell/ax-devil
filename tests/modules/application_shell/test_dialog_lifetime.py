@@ -38,7 +38,7 @@ def test_repeated_modal_dialogs_are_destroyed(
 
     monkeypatch.setattr(BaseDialog, "exec", cancel)
     for _ in range(3):
-        getattr(window, action_name)()
+        getattr(window, action_name)(**({"start": True} if action_name == "_on_add_live_stream" else {}))
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert len(destroyed) == 3
     assert window.findChildren(BaseDialog) == []

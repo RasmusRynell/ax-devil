@@ -118,6 +118,8 @@ def test_live_rows_use_live_icon_and_embedded_overlay_child() -> None:
     assert row.icon_kind == "live_video"
     assert [child.label for child in row.children] == ["RTSP"]
     assert row.children[0].consideration_ref is None
+    assert row.activation_target is None
+    assert row.children[0].activation_target is None, "a live camera starts only with its Start stream action"
 
 
 def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads() -> None:
