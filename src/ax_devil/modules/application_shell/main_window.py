@@ -85,7 +85,7 @@ class MainWindow(ChromeWindow):
         self._setup_menu_bar()
         self._setup_central_widget()
         self._workspace_session.state_changed.connect(self._update_title)
-        self._workspace_session.add_live_stream_requested.connect(self._on_add_live_stream)
+        self._workspace_session.add_live_stream_requested.connect(lambda: self._on_add_live_stream(start=False))
         self._workspace_session.add_playlist_requested.connect(self._on_add_playlist)
         self._update_title()
         # Every way of quitting passes here, including quitting after an error without closing this window.
@@ -162,7 +162,7 @@ class MainWindow(ChromeWindow):
         file_menu.addAction(add_video_action)
 
         add_live_action = sm.get_action("app.add_live_stream")
-        add_live_action.triggered.connect(self._on_add_live_stream)
+        add_live_action.triggered.connect(lambda: self._on_add_live_stream())  # Not ``checked`` as *start*.
         file_menu.addAction(add_live_action)
 
         add_playlist_action = sm.get_action("app.add_playlist")
@@ -364,15 +364,15 @@ class MainWindow(ChromeWindow):
                 if result is not None:
                     self._workspace_session.add_items([result])
 
-    def _on_add_live_stream(self) -> None:
-        """Handle File -> Add Live Stream action."""
+    def _on_add_live_stream(self, start: bool = True) -> None:
+        """Handle File -> Add Live Stream, which starts the stream; the Live view's Add manually only adds it."""
         from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 
         with AddLiveStreamDialog(self) as dialog:
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
-                    self._workspace_session.add_resolved([result])
+                    self._workspace_session.add_resolved([result], open_first=start)
                     self._logger.info(f"Added live stream: {result.item.display_name}")
 
     def _on_add_playlist(self, resolver_id: str | None = None) -> None:

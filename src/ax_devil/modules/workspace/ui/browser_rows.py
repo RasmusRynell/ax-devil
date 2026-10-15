@@ -86,8 +86,8 @@ LEFT_OUT = Facet("Playback", "Left out", hidden_at_first=True)
 class RowAction(Enum):
     """The one action a row offers at its right: its button text, icon, hover text, and whether it is the main one."""
 
-    CONNECT = ("Connect", None, "", False)
-    DISCONNECT = ("Disconnect", None, "", False)
+    START_STREAM = ("Start stream", None, "", True)
+    STOP_STREAM = ("Stop stream", None, "", True)
     RESCAN = ("", Icon.REFRESH, "Rescan", False)
     ADD = ("Add", Icon.ADD, "", True)
 
@@ -128,6 +128,8 @@ class WorkspaceBrowserRow:
     """The item a top-level row stands for, which the row can remove or rename; None for nested rows."""
     unavailable_reason: str | None = None
     """Why the row's item could not open; such a row shows the reason instead of opening."""
+    warning: str | None = None
+    """A problem with the row's item that does not stop it from opening, shown on hover."""
     information_factory: Callable[[], WorkspaceItemInfo] | None = None
     export_target: OnScreenWorkspaceItem | None = None
     is_considered: bool = True
@@ -136,6 +138,8 @@ class WorkspaceBrowserRow:
     location: str | None = None
     detail: str = ""
     """The final muted text shown under the label; empty for none, which keeps the row one line high."""
+    wrap_detail: bool = False
+    """Whether the detail may take multiple lines instead of being elided."""
     facts: tuple[str, ...] = ()
     """Lines that open the hover text, starting with what kind of row this is."""
     action: RowAction | None = None
@@ -182,6 +186,7 @@ class WorkspaceBrowserRow:
         lines = [
             *self.facts,
             self.unavailable_reason or "",
+            self.warning or "",
             self.location or "",
             "Open in a viewer" if self.is_open else "",
         ]
@@ -249,7 +254,8 @@ def _with_details(
     """
     same_label: defaultdict[str, list[int]] = defaultdict(list)
     for index, row in enumerate(rows):
-        if row.activation_target is not None:  # Unresolved rows have no location to tell apart.
+        resolved = row.information_factory is not None and row.unavailable_reason is None
+        if resolved:  # Rows still loading or failed have no location to tell apart.
             same_label[row.label].append(index)
     hints: dict[int, str] = {}
     for indexes in same_label.values():
@@ -354,7 +360,7 @@ class _RowProjection:
             row_id=content.content_id,
             label=content.display_name,
             icon_kind=self._icon_kind_for_video(content),
-            activation_target=(content, 0),
+            activation_target=None if content.is_live else (content, 0),
             item=item,
             information_factory=partial(build_video_information, content),
             export_target=None if content.is_live else content.on_screen_item(),
@@ -365,7 +371,7 @@ class _RowProjection:
             if content.is_live and content.source_location != content.display_name
             else "",
             facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
-            action=(RowAction.DISCONNECT if is_open else RowAction.CONNECT) if content.is_live else None,
+            action=(RowAction.STOP_STREAM if is_open else RowAction.START_STREAM) if content.is_live else None,
             idle=content.is_live and not is_open,
         )
 

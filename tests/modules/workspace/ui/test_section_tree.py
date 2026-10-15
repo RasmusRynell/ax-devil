@@ -277,10 +277,12 @@ def test_two_line_rows_keep_both_lines_and_their_action_inside_a_narrow_tree(qtb
         label="Loading dock entrance, north side",
         icon_kind="live_video",
         detail="192.0.2.10 · head 2 (1)",
-        action=RowAction.DISCONNECT,
+        action=RowAction.STOP_STREAM,
         is_open=True,
     )
-    tree = _tree(qtbot, camera, replace(camera, row_id="other", action=RowAction.CONNECT), kind=BrowserSection.LIVE)
+    tree = _tree(
+        qtbot, camera, replace(camera, row_id="other", action=RowAction.START_STREAM), kind=BrowserSection.LIVE
+    )
     tree.resize(220, 400)
     qtbot.wait(10)
 

@@ -1,9 +1,9 @@
-"""The Live view lists the workspace's cameras with connect and disconnect, and adds cameras found on the network."""
+"""The Live view lists the workspace's cameras with start and stop stream, and adds cameras found on the network."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Generator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from threading import Event
 from unittest.mock import patch
@@ -108,6 +108,24 @@ class _Scanner:
 
 
 @dataclass
+class _Checker:
+    """Signing in to a workspace camera with its own login, answering from *cameras* by host, and recording the calls;
+    a host not listed does not answer; it waits while *gate* is clear."""
+
+    cameras: dict[str, DiscoveredCamera] = field(default_factory=dict)
+    calls: list[tuple[str, Login]] = field(default_factory=list)
+    gate: Event = field(default_factory=Event)
+
+    def __post_init__(self) -> None:
+        self.gate.set()
+
+    def __call__(self, host: str, login: Login, token: CancelToken) -> DiscoveredCamera | None:
+        self.calls.append((host, login))
+        assert self.gate.wait(5)
+        return self.cameras.get(host)
+
+
+@dataclass
 class _Live:
     qtbot: QtBot
     view: LiveView
@@ -117,6 +135,7 @@ class _Live:
     jobs: BackgroundJobs
     resolutions: _HeldResolver
     controller: LiveViewController
+    checker: _Checker
 
     def wait_for_scan(self) -> None:
         """Wait until the scan under way has finished and the view shows its outcome."""
@@ -131,8 +150,8 @@ class _Live:
         return {row_texts(row)[0]: row_action(row) for row in shown_rows(self.view.tree)}
 
     def detail(self, title: str) -> str:
-        """Return the second line of the row named *title*."""
-        return row_texts(row(self.view.tree, title))[1]
+        """Return the detail shown under the row named *title*, with its unbreakable spaces plain."""
+        return row(self.view.tree, title).row.detail.replace("\u00a0", " ")
 
     def press(self, title: str) -> None:
         """Press the action of the row titled *title*."""
@@ -191,10 +210,12 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
     view = LiveView(host)
     qtbot.addWidget(center)
     scanner = _Scanner()
-    controller = LiveViewController(view, workspace, store, jobs, scan=scanner, parent=workspace)
+    checker = _Checker()
+    controller = LiveViewController(view, workspace, store, jobs, scan=scanner, parent=workspace, check=checker)
     with patch(_LIVE_VIEWER, DummyViewer):
-        yield _Live(qtbot, view, store, center, scanner, jobs, resolutions, controller)
+        yield _Live(qtbot, view, store, center, scanner, jobs, resolutions, controller, checker)
     scanner.gate.set()
+    checker.gate.set()
 
 
 def _scan(live: _Live, *cameras: DiscoveredCamera) -> None:
@@ -246,14 +267,14 @@ def test_launch_scan_keeps_results_for_live_and_allows_rescan(
 
         window._workspace_session.show_sidebar_view("live")
         if startup:
-            assert [row_texts(found)[0] for found in shown_rows(view.tree)] == ["AXIS Q1656"]
+            assert [row_texts(found)[0] for found in shown_rows(view.tree)] == ["192.0.2.12"]
             assert scanner.calls == 1, "opening Live reuses the startup scan"
         else:
             assert shown_rows(view.tree) == []
         scanner.cameras = [DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "")]
         rescan.click()
         qtbot.waitUntil(rescan.isEnabled)
-        assert [row_texts(found)[0] for found in shown_rows(view.tree)] == ["AXIS M3086-V"]
+        assert [row_texts(found)[0] for found in shown_rows(view.tree)] == ["192.0.2.13"]
         assert scanner.calls == (2 if startup else 1)
         assert not scanner.low_impact, "manual Rescan runs at normal speed"
         assert scanner.logins == (Login.saved(config) if sign_in else ())
@@ -279,33 +300,133 @@ def test_saved_sign_in_default_reaches_the_live_scan(live: _Live, monkeypatch: p
     assert not live.sign_in_choice().isChecked(), "unrelated settings saves keep the manual choice"
 
 
-def test_rows_show_which_cameras_are_connected_and_follow_their_viewers(live: _Live) -> None:
+def test_rows_show_which_cameras_are_streaming_and_follow_their_viewers(live: _Live) -> None:
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
-    assert live.rows() == {"Entrance": "Connect", "192.0.2.11": "Connect"}
-    assert not any(text.endswith("connected") for text in live.texts())
+    assert live.rows() == {"Entrance": "Start stream", "192.0.2.11": "Start stream"}
+    assert not any(text.endswith("streaming") for text in live.texts())
 
     live.press("Entrance")
     assert live.center.get_widget_count() == 1
-    assert live.rows() == {"Entrance": "Disconnect", "192.0.2.11": "Connect"}
-    assert "1 connected" in live.texts()
+    assert live.rows() == {"Entrance": "Stop stream", "192.0.2.11": "Start stream"}
+    assert "1 streaming" in live.texts()
 
     live.press("192.0.2.11")
-    assert live.center.get_widget_count() == 2, "connecting a camera never disconnects another"
-    assert "2 connected" in live.texts()
+    assert live.center.get_widget_count() == 2, "starting a stream never stops another"
+    assert "2 streaming" in live.texts()
 
     live.center.clear_all_widgets()
-    assert live.rows() == {"Entrance": "Connect", "192.0.2.11": "Connect"}
+    assert live.rows() == {"Entrance": "Start stream", "192.0.2.11": "Start stream"}
 
 
-def test_disconnect_closes_every_viewer_of_the_camera(live: _Live) -> None:
+def test_stop_stream_closes_every_viewer_of_the_camera(live: _Live) -> None:
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
     live.press("Entrance")
-    assert live.rows() == {"Entrance": "Disconnect"}
+    assert live.rows() == {"Entrance": "Stop stream"}
 
     live.press("Entrance")
 
     assert live.center.get_widget_count() == 0
-    assert live.rows() == {"Entrance": "Connect"}
+    assert live.rows() == {"Entrance": "Start stream"}
+
+
+def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: _Live) -> None:
+    live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
+    live.open_workspace(
+        LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"),
+        LiveStreamItem(host="192.0.2.11", label="Dock"),
+    )
+
+    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "")
+
+    assert "refused" in row(live.view.tree, "Entrance").toolTip(), "the reason is on hover"
+    assert live.rows()["Dock"] == "Start stream", "a camera without a login to try is left alone"
+    assert live.checker.calls == [("192.0.2.10", Login("root", "pw"))]
+
+
+def test_a_camera_whose_check_failed_for_another_reason_can_still_start(live: _Live) -> None:
+    live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.FAILED)}
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
+
+    live.qtbot.waitUntil(lambda: "AXIS Q1656" in live.detail("Entrance"))
+
+    assert live.rows() == {"Entrance": "Start stream"}
+    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+
+
+def test_a_scan_refusal_does_not_warn_about_a_camera_that_has_its_own_login(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
+
+    _scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED))
+
+    assert live.rows() == {"Entrance": "Start stream"}
+    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+
+
+def test_cameras_are_not_signed_in_to_when_signing_in_is_turned_off(
+    live: _Live, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(GlobalSettings, "_instance", None)
+    GlobalSettings().scan_sign_in = False
+
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
+
+    live.qtbot.waitUntil(lambda: "Entrance" in live.rows())
+    assert live.checker.calls == []
+
+
+def test_a_camera_that_accepts_its_login_shows_what_it_is_without_saying_it_signed_in(live: _Live) -> None:
+    live.checker.cameras = {
+        "192.0.2.10": DiscoveredCamera(
+            "192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.SIGNED_IN, login=Login("root", "pw")
+        )
+    }
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", username="root", password="pw"))
+
+    live.qtbot.waitUntil(lambda: "AXIS Q1656" in live.detail("192.0.2.10"))
+
+    assert live.rows() == {"192.0.2.10": "Start stream"}
+    assert "Signed in" not in live.detail("192.0.2.10")
+
+
+def test_a_camera_can_start_before_its_login_is_checked_and_keeps_stop_when_the_check_refuses_it(live: _Live) -> None:
+    live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
+    live.checker.gate.clear()
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
+    assert live.rows() == {"Entrance": "Start stream"}, "the check does not hold the camera back"
+
+    live.press("Entrance")
+    live.checker.gate.set()
+
+    live.qtbot.waitUntil(lambda: "refused" in row(live.view.tree, "Entrance").toolTip())
+    assert live.rows() == {"Entrance": "Stop stream"}
+
+
+def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(live: _Live) -> None:
+    live.checker.cameras = {
+        "192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED),
+        "192.0.2.20": DiscoveredCamera("192.0.2.20", "AXIS P3265-LVE", "", sign_in=SignIn.SIGNED_IN),
+    }
+    live.checker.gate.clear()
+    entrance = LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw")
+    live.open_workspace(entrance)
+    live.qtbot.waitUntil(lambda: live.checker.calls == [("192.0.2.10", Login("root", "pw"))])
+    live.open_workspace(replace(entrance, host="192.0.2.20"))  # Same id, another camera.
+
+    live.checker.gate.set()
+
+    live.qtbot.waitUntil(lambda: "AXIS P3265-LVE" in live.detail("Entrance"))
+    assert live.rows() == {"Entrance": "Start stream"}
+    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+
+
+def test_a_camera_starts_only_with_its_start_button(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
+
+    live.view.tree.row_activated.emit(row(live.view.tree, "Entrance").row, False)
+
+    assert live.center.get_widget_count() == 0
+    live.press("Entrance")
+    assert live.center.get_widget_count() == 1
 
 
 def test_cameras_that_cannot_open_yet_or_at_all_offer_no_action(live: _Live) -> None:
@@ -318,7 +439,7 @@ def test_cameras_that_cannot_open_yet_or_at_all_offer_no_action(live: _Live) -> 
     assert "nope" in row(live.view.tree, "Dock").toolTip(), "the reason is on hover"
 
     live.resolutions.finish()
-    assert live.rows()["Gate"] == "Disconnect", "an added camera opens once resolved"
+    assert live.rows()["Gate"] == "Stop stream", "an added camera opens once resolved"
 
 
 def test_nothing_scans_until_rescan_is_pressed(qtbot: QtBot, live: _Live) -> None:
@@ -361,15 +482,15 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: _Live, monk
         live,
         DiscoveredCamera("192.0.2.10", "AXIS Q1656", "ACCC8E000001"),
         DiscoveredCamera("192.0.2.11", "AXIS M3086-V", ""),
-        DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", "ACCC8E000002", "12.6.85"),
+        DiscoveredCamera("192.0.2.12", "AXIS P3265-LVE", "ACCC8E000002", "12.6.85", sign_in=SignIn.SIGNED_IN),
     )
 
     assert captions(live.view.tree) == ["Live, 2", "On the network, 1"]
-    assert list(live.rows())[2:] == ["AXIS P3265-LVE"]
-    assert live.rows()["AXIS P3265-LVE"] == "Add"
-    assert live.detail("AXIS P3265-LVE") == "192.0.2.12"
-    assert "ACCC8E000002" in row(live.view.tree, "AXIS P3265-LVE").toolTip()
-    assert "12.6.85" in row(live.view.tree, "AXIS P3265-LVE").toolTip()
+    assert list(live.rows())[2:] == ["192.0.2.12"]
+    assert live.rows()["192.0.2.12"] == "Add"
+    assert "AXIS P3265-LVE" in live.detail("192.0.2.12")
+    assert "ACCC8E000002" in row(live.view.tree, "192.0.2.12").toolTip()
+    assert "12.6.85" in row(live.view.tree, "192.0.2.12").toolTip()
 
     _scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", ""))
 
@@ -389,7 +510,7 @@ def test_a_held_camera_the_scan_found_shows_and_is_found_by_what_the_scan_learne
     assert list(live.rows()) == ["Entrance"]
 
 
-def test_add_puts_the_camera_in_the_workspace_with_the_stream_defaults(
+def test_add_puts_the_camera_in_the_workspace_without_starting_its_stream(
     live: _Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(ConfigManager, "_instance", None)
@@ -403,20 +524,22 @@ def test_add_puts_the_camera_in_the_workspace_with_the_stream_defaults(
     )
     defaults["live_stream"]["overlay_source"] = "rtsp"
     config.set("defaults", defaults)
-    _scan(live, DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", ""))
+    _scan(live, DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "", sign_in=SignIn.SIGNED_IN))
 
-    live.press("AXIS P3265-LVE")
+    live.press("192.0.2.34")
 
     [item] = live.store.workspace.items
     assert isinstance(item, LiveStreamItem)
     assert (item.host, item.label, item.username, item.password) == (
         "192.0.2.34",
-        "AXIS P3265-LVE",
+        "",
         "$CAMERA_USER",
         "$CAMERA_PASS",
     )
     assert (item.camera_head, item.resolution, item.overlay_mode) == (2, "640x480", LiveOverlayMode.RTSP)
-    assert live.rows()["AXIS P3265-LVE"] == "Disconnect"
+    assert live.rows()["192.0.2.34"] == "Start stream"
+    assert live.center.get_widget_count() == 0, "adding is not starting the stream"
+    assert live.checker.calls == [], "the scan has just shown the login works"
     assert captions(live.view.tree) == ["Live, 1", "On the network, 0"]
     assert "No new cameras" in live.texts()
 
@@ -524,13 +647,13 @@ def test_found_cameras_are_listed_while_the_scan_is_still_running(live: _Live) -
     ]
 
     live.button("Rescan").click()
-    live.qtbot.waitUntil(lambda: list(live.rows()) == ["AXIS P3265-LVE"])
+    live.qtbot.waitUntil(lambda: list(live.rows()) == ["192.0.2.12"])
     assert not live.button("Rescan").isEnabled(), "the scan is still running"
 
     resume.set()
     live.wait_for_scan()
 
-    assert list(live.rows()) == ["AXIS P3265-LVE", "AXIS Q1656"]
+    assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]
 
 
 def test_a_burst_of_finds_refreshes_the_list_far_less_often_than_cameras_are_found(
@@ -550,7 +673,7 @@ def test_a_burst_of_finds_refreshes_the_list_far_less_often_than_cameras_are_fou
     _scan(live, *cameras)
 
     assert refreshes < len(cameras) // 4
-    assert list(live.rows()) == [camera.model for camera in cameras]
+    assert list(live.rows()) == [camera.host for camera in cameras]
 
 
 def test_search_finds_workspace_and_found_cameras_by_what_they_show_and_their_details(live: _Live) -> None:
@@ -562,16 +685,16 @@ def test_search_finds_workspace_and_found_cameras_by_what_they_show_and_their_de
     )
 
     live.search("ACCC8E000003")
-    assert list(live.rows()) == ["AXIS Q1656"]
+    assert list(live.rows()) == ["192.0.2.13"]
 
     live.search("12.6")
-    assert list(live.rows()) == ["AXIS P3265-LVE"]
+    assert list(live.rows()) == ["192.0.2.12"]
 
     live.search("entrance")
     assert list(live.rows()) == ["Entrance"]
 
     live.search("")
-    assert list(live.rows()) == ["Entrance", "AXIS P3265-LVE", "AXIS Q1656"]
+    assert list(live.rows()) == ["Entrance", "192.0.2.12", "192.0.2.13"]
 
 
 def test_found_cameras_follow_the_chosen_order(live: _Live) -> None:
@@ -580,13 +703,13 @@ def test_found_cameras_follow_the_chosen_order(live: _Live) -> None:
         DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", "12.10.1", uptime_seconds=60.0),
         DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "", "12.9.4", uptime_seconds=600.0),
     )
-    assert list(live.rows()) == ["AXIS Q1656", "AXIS M3086-V"]
+    assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]
 
     live.choose("Sort", "Model")
-    assert list(live.rows()) == ["AXIS M3086-V", "AXIS Q1656"]
+    assert list(live.rows()) == ["192.0.2.13", "192.0.2.12"]
 
     live.choose("Sort", "Uptime")
-    assert list(live.rows()) == ["AXIS Q1656", "AXIS M3086-V"]
+    assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]
 
 
 def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live: _Live) -> None:
@@ -598,11 +721,11 @@ def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live
 
     live.choose("Filter", "Network Speaker")
 
-    assert list(live.rows()) == ["AXIS Q1656"]
+    assert list(live.rows()) == ["192.0.2.12"]
     assert captions(live.view.tree) == ["On the network, 2, 1 hidden"]
 
     live.choose("Filter", "Network Speaker")
-    assert list(live.rows()) == ["AXIS Q1656", "AXIS C1310-E"]
+    assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]
 
 
 def test_the_filter_hides_held_cameras_by_what_the_scan_learned_too(live: _Live) -> None:
@@ -632,15 +755,53 @@ def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that
     )
 
     assert live.scanner.logins == (guest, operator)
-    assert live.detail("AXIS Q1656") == "192.0.2.12 · Signed in"
-    assert live.detail("AXIS M3086-V") == "192.0.2.13 · Credentials refused"
-    live.press("AXIS Q1656")
-    live.press("AXIS M3086-V")
-    signed_in, refused = live.store.workspace.items
-    assert isinstance(signed_in, LiveStreamItem) and isinstance(refused, LiveStreamItem)
+    assert "Signed in" not in live.detail("192.0.2.12")
+    assert "Credentials refused" in live.detail("192.0.2.13")
+    assert live.rows()["192.0.2.13"] == "", "a camera that did not accept a login cannot be added"
+    live.press("192.0.2.12")
+    [signed_in] = live.store.workspace.items
+    assert isinstance(signed_in, LiveStreamItem)
     assert (signed_in.username, signed_in.password) == ("operator", "$OPERATOR_PASS"), "a reference stays one"
-    device_defaults = ConfigManager().get_raw("defaults")["device"]
-    assert (refused.username, refused.password) == (device_defaults["username"], device_defaults["password"])
+
+
+def test_found_camera_row_shows_all_non_secret_information(live: _Live) -> None:
+    _scan(
+        live,
+        DiscoveredCamera(
+            "192.0.2.12",
+            "AXIS P3265-LVE",
+            "ACCC8E000002",
+            "12.6.85",
+            "Dome Camera",
+            93_600.0,
+            "aarch64",
+            "Ambarella CV25",
+            SignIn.SIGNED_IN,
+            Login("root", "never-display-this"),
+        ),
+    )
+
+    camera_row = row(live.view.tree, "192.0.2.12")
+    shown = camera_row.row.detail
+    detail = shown.replace("\u00a0", " ")
+    assert camera_row.row.label == "192.0.2.12"
+    assert camera_row.row.wrap_detail
+    assert all(
+        text in detail
+        for text in (
+            "AXIS P3265-LVE",
+            "Serial ACCC8E000002",
+            "Firmware 12.6.85",
+            "Type Dome Camera",
+            "Up 1d 2h",
+            "Architecture aarch64",
+            "SoC Ambarella CV25",
+        )
+    )
+    assert "never-display-this" not in detail
+    assert "Signed in" not in detail
+    [detail_label] = [label for label in camera_row.findChildren(QLabel) if label.text() == shown]
+    assert detail_label.wordWrap()
 
 
 def test_a_scan_without_sign_in_sends_no_credentials(
@@ -715,6 +876,6 @@ def test_right_click_remove_takes_a_camera_out_of_the_workspace(live: _Live) -> 
     QTimer.singleShot(0, remove)
     tree.customContextMenuRequested.emit(tree.viewport().mapFromGlobal(widget.mapToGlobal(widget.rect().center())))
 
-    assert entries == ["Open", "Open to the Side", "Information", "Rename", "Remove"]
-    assert live.rows() == {"192.0.2.11": "Connect"}
-    assert live.center.get_widget_count() == 0, "removing a camera disconnects it"
+    assert entries == ["Information", "Rename", "Remove"], "a camera starts only with Start stream"
+    assert live.rows() == {"192.0.2.11": "Start stream"}
+    assert live.center.get_widget_count() == 0, "removing a camera stops its stream"

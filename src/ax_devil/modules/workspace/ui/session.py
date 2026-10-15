@@ -186,9 +186,10 @@ class WorkspaceSession(QObject):
         """Add *items* to the workspace; once they resolve, the first opens and those that cannot open are reported."""
         self._workspace_store.add_items(items)
 
-    def add_resolved(self, resolutions: Sequence[ItemResolution]) -> None:
-        """Add items a dialog already resolved, without resolving them again, and open the first."""
-        self._workspace_store.add_resolved(resolutions)
+    def add_resolved(self, resolutions: Sequence[ItemResolution], *, open_first: bool = True) -> None:
+        """Add items a dialog already resolved, without resolving them again, and open the first unless *open_first*
+        is False."""
+        self._workspace_store.add_resolved(resolutions, open_first=open_first)
 
     def refresh_scan_defaults(self) -> None:
         """Give the Live view the Settings' default IP range, unless the user typed another, and sign-in defaults."""

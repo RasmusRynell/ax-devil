@@ -26,7 +26,8 @@ Startup scanning uses one-quarter the concurrent probes and device requests to r
 The Live view shows its progress and keeps its results; **Rescan** starts a fresh scan. Turning this off skips the scan
 on future launches without disabling manual scans. **Try to sign in to found cameras by default**
 (`settings.network_scan.sign_in`) starts the Live view's sign-in checkbox checked, including for the startup scan.
-Turn it off to discover cameras without trying saved logins. Changing the default applies to the Live view immediately;
+Turn it off to discover cameras without trying saved logins; it also stops the check of the workspace's cameras
+against their own saved login. Changing the default applies to the Live view immediately;
 you can also override its checkbox for a manual scan. Neither option interrupts a scan already running.
 
 Connection and storage fields keep `$VARIABLE_NAME` references as written and read the variable when the value is

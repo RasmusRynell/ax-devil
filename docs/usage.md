@@ -14,7 +14,7 @@ workspace name, with `●` while it has unsaved changes; click the name to chang
 file and is separate from the file's name, which is what the recent lists show.
 
 Closing never asks. The workspace, unsaved changes included, is kept in the storage folder and reopened by the next
-plain `ax-devil` launch, with its items listed and nothing opened or connected. Opening or creating another workspace
+plain `ax-devil` launch, with its items listed and nothing opened or streaming. Opening or creating another workspace
 while the current one has unsaved changes asks whether to save them first. `ax-devil local`, `live`, and `playlist`
 start a new Untitled workspace with what they open. A workspace is called Untitled until you name it.
 
@@ -37,8 +37,11 @@ You are always in a workspace. The strip along the left edge has two parts. The 
 first shows everything in it, and the others show one part of it, with their own actions. The bottom buttons are the
 application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
 
-- **Live** lists the workspace's cameras with **Connect** and **Disconnect**; a camera is connected while its viewer is
-  open. Right-click a camera for the same menu as in the Workspace view, such as **Rename** and **Remove**. The search
+- **Live** lists the workspace's cameras with **Start stream** and **Stop stream**; a camera streams while its viewer
+  is open. A camera starts only with **Start stream**, never by double-clicking it or from its right-click menu, and
+  it can start before ax-devil has checked its login. With sign-in on, ax-devil checks each camera's saved login when
+  its workspace opens; a camera that refuses it gets a warning triangle, with the reason on hover, and loses **Start
+  stream**. Right-click a camera for the same menu as in the Workspace view, such as **Rename** and **Remove**. The search
   matches found cameras also by serial number and firmware, and the cameras in the workspace too once a scan found
   them, which then show what it learned on hover. **Sort** orders the cameras the scan found, and **Filter** narrows
   them by type and sign-in. **Scan settings**, at the bottom, takes the IP addresses to search: addresses
@@ -48,9 +51,12 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   With **Try to sign in to found cameras**, the scan also tries the saved sign-in logins on each camera, in order,
   until one works, to read more such as the SoC and to tell which login works. It starts checked and shows the logins under it,
   with buttons to add and remove them; they are the same list as **Settings → Network scan**. They go only to devices that answered as Axis devices, and only as an
-  HTTP Digest answer, never as a plain password. **Add** puts a found camera in the workspace with the **Settings →
-  Stream defaults**, and with the login that signed in to it. **Add manually** opens the Add Live Stream dialog, as
-  **File → Add Live Stream** does. Startup scanning and sign-in defaults can each be turned off in
+  HTTP Digest answer, never as a plain password. **Add** puts a camera the scan signed in to in the workspace with the
+  **Settings → Stream defaults**, and with the login that signed in to it; it does not start the stream, **Start
+  stream** does. A found camera the scan did not sign in to, because it refused every login or signing in was off,
+  has no **Add**. **Add manually** is the same Add for a camera you
+  enter yourself: it opens the Add Live Stream dialog and adds the camera without starting it, while **File → Add
+  Live Stream** also starts it. Startup scanning and sign-in defaults can each be turned off in
   [Settings → Network scan](settings.md).
 - **Offline** lists the workspace's data from files: its videos, with or without overlays, and its playlists.
   **Rescan** reads a playlist's folders again, for example after adding files; open viewers keep what they show.
