@@ -1,4 +1,4 @@
-"""The workspace lifecycle: keeping and restoring, New/Open/Save with the modified prompt, launches, and rename."""
+"""The workspace lifecycle: keeping and restoring, New/Open/Save, launches, and rename."""
 
 from __future__ import annotations
 
@@ -153,29 +153,23 @@ def test_new_workspace_asks_about_unsaved_changes_first(
     assert launch.store.is_modified is not replaced
 
 
-@pytest.mark.parametrize(("choice", "opened"), [(SaveChoice.DISCARD, True), (SaveChoice.SAVE, False)])
-def test_opening_a_workspace_asks_about_unsaved_changes_and_adds_its_items_without_resolving_them_as_added(
-    launches: _Launches, tmp_path: Path, choice: SaveChoice, opened: bool
+def test_opening_a_workspace_discards_unsaved_changes_without_asking_and_does_not_resolve_items_as_added(
+    launches: _Launches, tmp_path: Path
 ) -> None:
     other = save_workspace(
         Workspace(name="Other", items=(_video(tmp_path, "other.mp4"),)), tmp_path / "Other.ax-devil.workspace"
     )
-    prompts = FakePrompts(choice, open_path=other.path)
-    launch, clip = _modified_launch(launches, tmp_path, prompts)
+    prompts = FakePrompts(open_path=other.path)
+    launch, _ = _modified_launch(launches, tmp_path, prompts)
     added = _record_added_flags(launch.store)
 
-    assert launch.lifecycle.open_workspace() is opened
+    assert launch.lifecycle.open_workspace()
 
-    assert prompts.asked_to_save == ["Untitled"]
-    if opened:
-        assert launch.store.workspace.items == other.items
-        assert (launch.store.workspace.name, launch.store.is_modified) == ("Other", False)
-        assert added == [False]
-        assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [other.path]
-    else:
-        assert launch.store.workspace.items == (clip,)
-        assert added == []
-        assert launch.lifecycle.recent_workspaces() == ()
+    assert prompts.asked_to_save == []
+    assert launch.store.workspace.items == other.items
+    assert (launch.store.workspace.name, launch.store.is_modified) == ("Other", False)
+    assert added == [False]
+    assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [other.path]
 
 
 def test_cancelling_the_open_dialog_asks_nothing(launches: _Launches, tmp_path: Path) -> None:
@@ -193,13 +187,14 @@ def test_a_workspace_file_that_cannot_be_read_is_reported_and_changes_nothing(
 ) -> None:
     damaged = tmp_path / "Damaged.ax-devil.workspace"
     damaged.write_text("{not json")
-    prompts = FakePrompts(SaveChoice.DISCARD)
+    prompts = FakePrompts()
     launch, clip = _modified_launch(launches, tmp_path, prompts)
 
     assert not launch.lifecycle.open_workspace(damaged)
 
     [error] = prompts.errors
     assert error.startswith(f"{damaged.name} is not valid JSON")
+    assert prompts.asked_to_save == []
     assert launch.store.workspace.items == (clip,) and launch.store.is_modified
 
 
@@ -241,7 +236,7 @@ def test_a_launch_with_content_replaces_an_unmodified_kept_workspace_without_ask
     assert added == [True]
 
 
-def test_a_launch_with_a_workspace_file_asks_about_the_kept_workspace_edits_even_when_reading_is_slow(
+def test_a_launch_with_a_workspace_file_discards_kept_workspace_edits_without_asking(
     tmp_path: Path,
 ) -> None:
     class _NeverRuns(ItemResolver):
@@ -255,19 +250,49 @@ def test_a_launch_with_a_workspace_file_asks_about_the_kept_workspace_edits_even
     backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
     backup.keep(saved.add_items([_video(tmp_path, "unsaved.mp4")]))
     other = save_workspace(Workspace(), tmp_path / "Other.ax-devil.workspace")
-    prompts = FakePrompts(SaveChoice.DISCARD)
+    prompts = FakePrompts()
+
+    class _UnreadSavedBaseline(WorkspaceBackup):
+        @staticmethod
+        def load_saved(kept: Workspace) -> tuple[Workspace, Workspace]:
+            raise AssertionError("Opening the requested workspace must not read the kept workspace file first.")
+
     store = WorkspaceStore(_NeverRuns(FakeResolutionContext(), in_background=False))
-    lifecycle = WorkspaceLifecycle(store, prompts, backup, RecentWorkspaces(lambda: tmp_path / "recent.json"))
+    lifecycle = WorkspaceLifecycle(
+        store,
+        prompts,
+        _UnreadSavedBaseline(lambda: tmp_path / "workspace-backup.json"),
+        RecentWorkspaces(lambda: tmp_path / "recent.json"),
+    )
 
     lifecycle.launch(workspace_file=other.path)
 
-    assert prompts.asked_to_save == ["Lot"]
+    assert prompts.asked_to_save == []
     assert store.workspace.path == other.path and not store.is_modified
 
 
-@pytest.mark.parametrize("action", ["new", "open"])
-def test_replacing_a_workspace_still_being_restored_asks_about_its_edits_even_when_reading_is_slow(
-    tmp_path: Path, action: str
+def test_a_failed_launch_open_keeps_the_restored_workspace_and_its_unsaved_edits(tmp_path: Path) -> None:
+    saved = save_workspace(
+        Workspace(name="Lot", items=(_video(tmp_path, "a.mp4"),)), tmp_path / "Lot.ax-devil.workspace"
+    )
+    backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
+    kept = saved.add_items([_video(tmp_path, "unsaved.mp4")])
+    backup.keep(kept)
+    damaged = tmp_path / "Damaged.ax-devil.workspace"
+    damaged.write_text("{not json")
+    store = WorkspaceStore(inline_resolver())
+    lifecycle = WorkspaceLifecycle(store, FakePrompts(), backup, RecentWorkspaces(lambda: tmp_path / "recent.json"))
+
+    lifecycle.launch(workspace_file=damaged)
+
+    assert store.workspace.items == kept.items
+    assert store.workspace.path == saved.path
+    assert store.is_modified
+
+
+@pytest.mark.parametrize(("action", "asked"), [("new", ["Lot"]), ("open", [])])
+def test_replacing_a_workspace_still_being_restored_handles_edits_by_action_even_when_reading_is_slow(
+    tmp_path: Path, action: str, asked: list[str]
 ) -> None:
     class _NeverRuns(ItemResolver):
         def run(self, work: Callable[[], Any], done: Callable[[Any], None]) -> Callable[[], None]:
@@ -287,7 +312,7 @@ def test_replacing_a_workspace_still_being_restored_asks_about_its_edits_even_wh
 
     assert lifecycle.new_workspace() if action == "new" else lifecycle.open_workspace()
 
-    assert prompts.asked_to_save == ["Lot"]
+    assert prompts.asked_to_save == asked
     assert store.workspace.path == (None if action == "new" else other.path)
 
 

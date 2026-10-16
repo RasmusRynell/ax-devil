@@ -27,8 +27,8 @@ class WorkspaceLifecycle(QObject):
     """Decide when the Workspace in *store* is replaced, saved, kept, and remembered; build no widgets.
 
     The lifecycle works like VS Code: quitting never asks and keeps the current Workspace in *backup*; launching
-    restores it. Replacing a modified Workspace asks Save / Don't Save through *prompts* first. Opened and saved
-    files join *recent_workspaces*.
+    restores it. Starting a new Workspace asks before discarding edits; opening a saved Workspace discards them.
+    Opened and saved files join *recent_workspaces*.
     """
 
     recent_workspaces_changed = Signal()
@@ -58,11 +58,7 @@ class WorkspaceLifecycle(QObject):
         When the user cancels replacing it, it stays.
         """
         kept = self._backup.restore()
-        if workspace_file is None and not items and kept.path is not None:
-            self._store.restore_workspace(kept, self._backup.load_saved)
-        else:
-            # Replacing the kept workspace asks about its unsaved edits, so its saved state is needed now.
-            self._store.replace_workspace(*self._backup.load_saved(kept))
+        self._store.restore_workspace(kept, self._backup.load_saved)
         if workspace_file is not None:
             self.open_workspace(workspace_file)
         elif items and not self.new_workspace(items):
@@ -81,9 +77,9 @@ class WorkspaceLifecycle(QObject):
         return True
 
     def open_workspace(self, path: Path | None = None) -> bool:
-        """Open the workspace saved in *path*, or in a file the user picks; return whether it opened."""
+        """Open the workspace saved in *path*, or in a file the user picks, discarding current edits."""
         path = path or self._prompts.choose_workspace_to_open()
-        if path is None or not self._settle_unsaved_changes():
+        if path is None:
             return False
         try:
             self._store.open_workspace(path)

@@ -63,7 +63,7 @@ flowchart TD
 
 Callers use the session to add Workspace Items (`add_items`, `add_resolved`, `open_files`), reach the workspace
 lifecycle (`session.lifecycle`), route to the focused widget, configure shortcuts, and tear down. The lifecycle
-— the kept workspace, the Save / Don't Save question, and recent workspaces — is described in
+— the kept workspace, the New-workspace save question, and recent workspaces — is described in
 [Workspace](workspace.md#lifecycle). The session re-emits the store's
 `state_changed`, and `MainWindow` sets its window title from `workspace_name` and `is_modified`, and its custom `TitleBar` follows the
 window title, so the name and the unsaved mark sit at the top whichever sidebar view is on screen. The store, views, split view, and controller are composed implementation details rather than

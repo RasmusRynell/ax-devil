@@ -95,10 +95,11 @@ the store; it asks the user through `WorkspacePrompts` and builds no widgets.
   slow filesystem cannot freeze the window, is the saved state, so unsaved edits are still marked modified once it
   arrives; when the file can no longer be read, the items stay, without a file.
 - Restored, opened, and new Workspaces list their items and open and connect nothing; only adding items opens a viewer.
-  A CLI launch with content then starts an Untitled Workspace with those items, and `ax-devil open <file>` opens a
-  saved one, each after the usual question.
-- Replacing a modified Workspace asks Save / Don't Save, with no way to dismiss it. Saving a Workspace that has no file
-  goes through Save As, and cancelling that cancels the whole action. A file that cannot be read or written is reported and changes nothing.
+  A CLI launch with content then starts an Untitled Workspace with those items after asking about unsaved edits, and
+  `ax-devil open <file>` opens a saved one without asking and discards them.
+- Creating a new Workspace with unsaved edits asks Save / Don't Save, with no way to dismiss it. Saving a Workspace
+  that has no file goes through Save As, and cancelling that cancels the whole action. A file that cannot be read or
+  written is reported and changes nothing.
 - Opened and saved files are listed as recent workspaces under the path the user chose; symlinks are not followed.
   Each recent keeps the time it was last opened or saved, so listing and dating recents never reads their files; for
   the same reason a recent is labelled with its file's name, not the name saved inside it.
