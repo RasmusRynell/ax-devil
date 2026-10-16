@@ -57,7 +57,10 @@ def main() -> None:
         QTimer.singleShot(0, window.close)
         return int(original_exec())
 
-    with patch.object(QApplication, "exec", staticmethod(checked_exec)):
+    with (
+        patch.object(QApplication, "exec", staticmethod(checked_exec)),
+        patch("ax_devil.modules.workspace.ui.live_view_controller.scan_network", return_value=[]),
+    ):
         assert application.run() == 0
     assert entered
     assert DEFAULT_CONFIG_PATH.is_file()

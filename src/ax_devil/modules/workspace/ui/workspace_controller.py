@@ -96,13 +96,14 @@ class WorkspaceController(QObject):
     def perform_row_action(self, row: WorkspaceBrowserRow) -> None:
         """Carry out the action *row* offers, whichever view showed it.
 
-        Connect opens the camera beside the open viewers, never in place of one, so connecting never disconnects
-        another; Disconnect closes every viewer of the camera; Rescan resolves the row's item again; Add does what the
-        row's ``add`` does.
+        Start stream opens the camera beside the open viewers, never in place of one, so starting one stream never
+        stops another; Stop stream closes every viewer of the camera; Rescan resolves the row's item again; Add does
+        what the row's ``add`` does.
         """
-        if row.action is RowAction.CONNECT and row.activation_target is not None:
-            self.open_content(*row.activation_target, to_side=True)
-        elif row.action is RowAction.DISCONNECT and row.item is not None:
+        if row.action is RowAction.START_STREAM and row.item is not None:
+            for content in self._workspace_store.resolution(row.item.id).contents:
+                self.open_content(content, to_side=True)
+        elif row.action is RowAction.STOP_STREAM and row.item is not None:
             self.close_item_viewers(row.item.id)
         elif row.action is RowAction.RESCAN and row.item is not None:
             self._workspace_store.rescan_item(row.item.id)
@@ -161,13 +162,14 @@ class WorkspaceController(QObject):
                 widget.set_display_name(names[on_screen.content_id])
         self._publish_sections()
 
-    def _on_items_resolved(self, resolutions: list[ItemResolution], added: bool) -> None:
-        """Show resolved items; for items the user added, tell which could not open and preview the first Content.
+    def _on_items_resolved(self, resolutions: list[ItemResolution], open_first: bool) -> None:
+        """Show resolved items; with *open_first*, tell which could not open and preview the first Content.
 
-        Only adding items opens a viewer; opening, creating, or restoring a Workspace lists its items and opens nothing.
+        Only adding items opens a viewer, and a camera never opens one by being added to the Live view; opening,
+        creating, or restoring a Workspace lists its items and opens nothing.
         """
         self._publish_sections()
-        if not added:
+        if not open_first:
             return
         failures = [
             f"{resolution.item.display_name}: {resolution.error}" for resolution in resolutions if resolution.error

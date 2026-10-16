@@ -74,6 +74,7 @@ class ListRow(QFrame):
                 line = QLabel(subtitle, self)
                 line.setTextFormat(Qt.TextFormat.PlainText)
                 line.setWordWrap(True)
+                line.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             else:
                 line = ElidedLabel(subtitle, Qt.TextElideMode.ElideRight, self)
             TextRole.SMALL.apply(line)

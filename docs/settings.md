@@ -6,7 +6,7 @@
   keyboard shortcuts.
 - **Stream defaults:** device credentials and RTSP defaults for new live streams.
 - **Analytics:** defaults for MQTT and DataHub overlay connections.
-- **Network scan:** the Live view's default IP range and the logins its scan tries.
+- **Network scan:** startup discovery, sign-in defaults, the Live view's default IP range, and the logins its scan tries.
 - **Storage:** window state, cache, log, and render catalog folders.
 - **Advanced:** the active configuration's location and version.
 
@@ -19,6 +19,16 @@ cameras** tries on each camera, in order; **Add login** adds one, and a row with
 Live view shows the same list under that choice, and saves its edits at once.
 Theme and text size changes apply immediately; storage, title bar, and graphics changes need a restart. Changing storage locations does not move existing files.
 Keyboard shortcuts are confirmed in their own dialog.
+
+**Network scan → Discovery** has two options, both enabled by default. **Scan for cameras on startup**
+(`settings.network_scan.on_startup`) starts one background scan when ax-devil launches, using the default IP range.
+Startup scanning runs at reduced load; manual scans run at normal speed.
+The Live view shows its progress and keeps its results; **Rescan** starts a fresh scan. Turning this off skips the scan
+on future launches without disabling manual scans. **Try to sign in to found cameras by default**
+(`settings.network_scan.sign_in`) starts the Live view's sign-in checkbox checked, including for the startup scan.
+Turn it off to discover cameras without trying saved logins; it also stops the check of the workspace's cameras
+against their own saved login. Changing the default applies to the Live view immediately;
+you can also override its checkbox for a manual scan. Neither option interrupts a scan already running.
 
 Connection and storage fields keep `$VARIABLE_NAME` references as written and read the variable when the value is
 used; any other text is literal, even when it starts with `$` or `~`. Password references stay visible while literal

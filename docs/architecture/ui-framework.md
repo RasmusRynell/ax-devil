@@ -86,7 +86,7 @@ The window is always in a Workspace. The activity bar has two zones, set apart b
 | View | Zone | Group | Shows |
 |------|------|-------|-------|
 | Workspace | Workspace | Workspace | Everything the Workspace holds (`WorkspaceView`: the start panel while empty). |
-| Live | Workspace | Sources | The Workspace's cameras with Connect and Disconnect, and cameras found by a scan of an IP range on request. |
+| Live | Workspace | Sources | The Workspace's cameras with Start stream and Stop stream, and cameras found by startup or manual scans. |
 | Offline | Workspace | Sources | The Workspace's videos and playlists, and the playlist resolvers that can add more. |
 | Bookmarks | Workspace | Review | The moments marked in local videos and playlists, with each target's review state. |
 | Plugins | App | App | What loaded, what failed, and adding, updating, removing and reloading plugins. |
@@ -113,11 +113,11 @@ not hold. Live and Offline show their kinds, and their controllers (`LiveViewCon
 compose what is their own into them: cameras a scan found, what the scan learned about held cameras, and playlist
 resolvers, whose Add runs the row's `add`. Their buttons, such as the scan settings, stay theirs.
 
-Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Connect,
-Disconnect, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
+Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Start stream,
+Stop stream, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
 (`section_tree.py`) lists sections of them under captions that fold on a click.
 `WorkspaceController.connect_tree` serves every view's tree, so a row behaves the same in all
-of them: a double-click opens it, its action runs through `perform_row_action`, its eye includes or excludes it, and
+of them: a double-click opens a row that has something to open, its action runs through `perform_row_action`, its eye includes or excludes it, and
 its right-click menu (owned by `SectionTree`) opens, renames and removes it.
 
 ## Workspace Controller

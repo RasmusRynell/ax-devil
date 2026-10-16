@@ -8,6 +8,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QPushButton
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
@@ -17,8 +18,16 @@ from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-from ax_devil.modules.workspace.core import RecentWorkspaces, VideoItem, WorkspaceBackup
+from ax_devil.modules.workspace.core import (
+    ItemResolution,
+    LiveStreamItem,
+    RecentWorkspaces,
+    VideoItem,
+    WorkspaceBackup,
+)
+from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.live_view import LiveView
+from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import DummyViewer, FakePrompts
@@ -296,6 +305,37 @@ def test_add_manually_in_the_live_view_opens_the_add_live_stream_dialog(
     button.click()
 
     assert opened == ["Add Live Stream"]
+
+
+@pytest.mark.parametrize("from_file_menu", [True, False])
+def test_add_live_stream_starts_the_stream_only_from_the_file_menu_not_from_add_manually(
+    qtbot: QtBot,
+    render_catalog_manager: SceneRenderCatalogManager,
+    monkeypatch: pytest.MonkeyPatch,
+    from_file_menu: bool,
+) -> None:
+    manager = make_shortcut_manager()
+    window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    camera = ItemResolution.of(
+        LiveStreamItem(host="192.0.2.10", label="Entrance"), default_resolution_context(), CancelToken()
+    )
+    monkeypatch.setattr(BaseDialog, "exec", lambda dialog: BaseDialog.DialogCode.Accepted)
+    monkeypatch.setattr(AddLiveStreamDialog, "get_result", lambda dialog: camera)
+    session = window._workspace_session
+    session.show_sidebar_view("live")
+
+    with patch("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", DummyViewer):
+        if from_file_menu:
+            manager.get_action("app.add_live_stream").trigger()
+        else:
+            view = window.findChild(LiveView)
+            assert view is not None
+            [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add manually"]
+            button.click()
+
+    assert [item.display_name for item in session._workspace_store.workspace.items] == ["Entrance"]
+    assert (session.focused_widget() is not None) == from_file_menu
 
 
 def test_quitting_keeps_the_workspace_even_without_closing_the_window(

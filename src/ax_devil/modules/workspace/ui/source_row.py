@@ -119,6 +119,7 @@ def row_look(row: WorkspaceBrowserRow) -> tuple[object, ...]:
     return (
         row.label,
         row.detail,
+        row.wrap_detail,
         row.icon_kind,
         row.is_mark_muted,
         row.is_dimmed,
@@ -162,6 +163,7 @@ class SourceRow(ListRow):
             row.label,
             icon=icon.icon(mark.color(QGuiApplication.palette())),
             subtitle=row.detail,
+            wrap=row.wrap_detail,
             trailing=trailing,
             active=row.is_open,
             dim=row.is_dimmed,

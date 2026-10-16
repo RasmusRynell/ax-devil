@@ -7,7 +7,7 @@ import json
 import queue
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator, Sequence
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -112,6 +112,40 @@ def serve(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., _Device]]:
     yield start
     for device in devices:
         device.close()
+
+
+def test_low_impact_scan_runs_fewer_probes_at_once_and_still_finds_every_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hosts = tuple(f"192.0.2.{index}" for index in range(1, 97))
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def identify(host: str, ports: Collection[int], logins: Sequence[Login], token: CancelToken) -> DiscoveredCamera:
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        threading.Event().wait(0.05)  # Long enough for the probes of a wider scan to overlap.
+        with lock:
+            active -= 1
+        return DiscoveredCamera(host, "AXIS Q1656", "")
+
+    monkeypatch.setattr(network_scan, "_open_ports", lambda targets: dict.fromkeys(targets, {80}))
+    monkeypatch.setattr(network_scan, "_identify", identify)
+
+    def scan(*, low_impact: bool) -> int:
+        nonlocal peak
+        peak = 0
+        cameras = scan_network(targets=hosts, low_impact=low_impact)
+        assert tuple(camera.host for camera in cameras) == hosts
+        return peak
+
+    normal_peak = scan(low_impact=False)
+    low_impact_peak = scan(low_impact=True)
+
+    assert low_impact_peak < normal_peak
 
 
 def test_an_axis_device_is_found_with_what_it_gives_without_login(serve: Callable[..., _Device]) -> None:

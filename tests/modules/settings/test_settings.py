@@ -81,6 +81,9 @@ class TestGlobalSettingsConfigRoundTrip:
         settings.text_size = TextSize.LARGER
         settings.custom_frame = False
         settings.quick_setup_done = True
+        assert settings.scan_on_startup and settings.scan_sign_in
+        settings.scan_on_startup = False
+        settings.scan_sign_in = False
         settings.video_cache_budget = VideoCacheBudget(512)
         for preference in OverlayPreference:
             settings.set_overlay_enabled(preference, False)
@@ -202,6 +205,37 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
     qtbot.addWidget(reopened)
     assert choice(reopened, "Text size").currentData() == "large"
     assert {path: config_editor(reopened, path).text() for path in edits} == edits
+
+
+def test_scan_preferences_default_on_and_can_be_cancelled_or_saved(qtbot: QtBot, config: ConfigManager) -> None:
+    from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
+
+    settings = GlobalSettings()
+    settings.load_from_config(config)
+    labels = ("Scan for cameras on startup", "Try to sign in to found cameras by default")
+    cancelled = SettingsDialog()
+    qtbot.addWidget(cancelled)
+    for label in labels:
+        assert checkbox(cancelled, label).isChecked()
+        checkbox(cancelled, label).setChecked(False)
+    cancelled.reject()
+    assert settings.scan_on_startup and settings.scan_sign_in
+
+    saved = SettingsDialog()
+    qtbot.addWidget(saved)
+    for label in labels:
+        assert checkbox(saved, label).isChecked()
+        checkbox(saved, label).setChecked(False)
+    assert click_ok(saved), save_error(saved)
+    assert not settings.scan_on_startup and not settings.scan_sign_in
+    settings.load_from_config(config)
+    reopened = SettingsDialog()
+    qtbot.addWidget(reopened)
+    assert all(not checkbox(reopened, label).isChecked() for label in labels)
+    assert json.loads(config.config_path.read_text())["settings"]["network_scan"] == {
+        "on_startup": False,
+        "sign_in": False,
+    }
 
 
 def test_scan_logins_are_added_removed_and_saved_in_order(qtbot: QtBot, config: ConfigManager) -> None:

@@ -41,7 +41,7 @@ class WorkspaceStore(QObject):
     """
 
     items_added = Signal(list)  # list[WorkspaceItem]; they may still be resolving
-    items_resolved = Signal(list, bool)  # list[ItemResolution], and whether the user added the items
+    items_resolved = Signal(list, bool)  # list[ItemResolution], and whether to open the first and report failures
     item_removed = Signal(object)  # WorkspaceItem
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
@@ -113,7 +113,7 @@ class WorkspaceStore(QObject):
         self.workspace_replaced.emit()
         self.bookmarks_changed.emit()
         self._announce_state()
-        self._resolve(current.items, added=False)
+        self._resolve(current.items, open_first=False)
 
     def restore_workspace(
         self, kept: Workspace, load_saved: Callable[[Workspace], tuple[Workspace, Workspace]]
@@ -157,15 +157,19 @@ class WorkspaceStore(QObject):
         self._workspace = self._workspace.renamed(name)
         self._announce_state()
 
-    def add_items(self, items: Sequence[WorkspaceItem]) -> None:
-        """Append *items* and resolve them in the background; an item that fails to resolve stays, with its error."""
-        self._append(items)
-        self._resolve(items, added=True)
+    def add_items(self, items: Sequence[WorkspaceItem], *, open_first: bool = True) -> None:
+        """Append *items* and resolve them in the background; an item that fails to resolve stays, with its error.
 
-    def add_resolved(self, resolutions: Sequence[ItemResolution]) -> None:
-        """Append items a dialog already resolved, with their results, so they are not resolved again."""
+        Once they resolve, the first opens and those that cannot open are reported, unless *open_first* is False.
+        """
+        self._append(items)
+        self._resolve(items, open_first=open_first)
+
+    def add_resolved(self, resolutions: Sequence[ItemResolution], *, open_first: bool = True) -> None:
+        """Append items a dialog already resolved, with their results, so they are not resolved again; as with
+        ``add_items``, the first opens unless *open_first* is False."""
         self._append([resolution.item for resolution in resolutions])
-        self._commit(self._generation, tuple(resolutions), added=True)
+        self._commit(self._generation, tuple(resolutions), open_first=open_first)
 
     def remove_item(self, item_id: str) -> None:
         """Remove the item with *item_id*, its Content, its exclusions, and its bookmarks and reviewed targets."""
@@ -351,31 +355,31 @@ class WorkspaceStore(QObject):
         if cancel is not None:
             cancel()
 
-    def _resolve(self, items: Sequence[WorkspaceItem], *, added: bool) -> None:
+    def _resolve(self, items: Sequence[WorkspaceItem], *, open_first: bool) -> None:
         """Resolve *items* in the background and commit the results to the Workspace they belong to.
 
-        Added items are published together in their original order, so the first of them is the one that opens.
-        A replacing Workspace publishes each result independently, so a slow item never holds back the others.
+        With *open_first*, items are published together in their original order, so the first of them is the one that
+        opens. Otherwise each result is published independently, so a slow item never holds back the others.
         """
         generation = self._generation
-        batches = [items] if added else [[item] for item in items]
+        batches = [items] if open_first else [[item] for item in items]
         for batch in batches:
             if batch:
                 self._batch_count += 1
                 number = self._batch_count
-                done = partial(self._batch_resolved, number, generation, added=added)
+                done = partial(self._batch_resolved, number, generation, open_first=open_first)
                 pending = _ResolutionBatch(batch, done)
                 self._resolving[number] = pending
                 pending.start(self._resolver)
 
     def _batch_resolved(
-        self, number: int, generation: int, resolutions: tuple[ItemResolution, ...], *, added: bool
+        self, number: int, generation: int, resolutions: tuple[ItemResolution, ...], *, open_first: bool
     ) -> None:
         """Forget the finished batch *number*, then commit its results."""
         self._resolving.pop(number, None)
-        self._commit(generation, resolutions, added=added)
+        self._commit(generation, resolutions, open_first=open_first)
 
-    def _commit(self, generation: int, resolutions: tuple[ItemResolution, ...], *, added: bool) -> None:
+    def _commit(self, generation: int, resolutions: tuple[ItemResolution, ...], *, open_first: bool) -> None:
         """Record the results of items still waiting for them, and exclude Content whose default is not considered."""
         if generation != self._generation:
             return
@@ -391,7 +395,7 @@ class WorkspaceStore(QObject):
             self._not_considered.update(ref for ref, considered in _defaults(current).items() if not considered)
             committed.append(current)
         if committed:
-            self.items_resolved.emit(committed, added)
+            self.items_resolved.emit(committed, open_first)
 
     def _apply_rescan(self, generation: int, resolution: ItemResolution) -> None:
         """Replace an item's result with its rescanned one, unless its Workspace was replaced; a removed item's or a

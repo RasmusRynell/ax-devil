@@ -171,6 +171,13 @@ class SettingsDialog(BaseDialog):
         for section in ANALYTICS_SECTIONS:
             self._add_config_section(analytics, section)
         scan = self._add_page("Network scan")
+        scan_group = QGroupBox("Discovery")
+        scan_layout = QVBoxLayout(scan_group)
+        self._scan_on_startup = QCheckBox("Scan for cameras on startup")
+        self._scan_sign_in = QCheckBox("Try to sign in to found cameras by default")
+        scan_layout.addWidget(self._scan_on_startup)
+        scan_layout.addWidget(self._scan_sign_in)
+        scan.addWidget(scan_group)
         self._add_config_section(scan, NETWORK_SCAN_SECTION)
         logins_group = QGroupBox("Sign-in logins")
         logins_group.setToolTip("defaults.network_scan.credentials")
@@ -241,6 +248,8 @@ class SettingsDialog(BaseDialog):
         self._video_cache_spin.setValue((budget.mib or VideoCacheBudget.FALLBACK_MIB) / 1024)
         self._update_video_cache_controls()
         self._custom_frame.setChecked(self._settings.custom_frame)
+        self._scan_on_startup.setChecked(self._settings.scan_on_startup)
+        self._scan_sign_in.setChecked(self._settings.scan_sign_in)
         for preference, checkbox in self._overlay_checkboxes.items():
             checkbox.setChecked(self._settings.is_overlay_enabled(preference))
         self._theme_combo.setCurrentIndex(self._theme_combo.findData(self._settings.theme.value))
@@ -274,6 +283,8 @@ class SettingsDialog(BaseDialog):
             theme=ThemeMode(self._theme_combo.currentData()),
             text_size=TextSize(self._text_size_combo.currentData()),
             custom_frame=self._custom_frame.isChecked(),
+            scan_on_startup=self._scan_on_startup.isChecked(),
+            scan_sign_in=self._scan_sign_in.isChecked(),
             enabled_overlays=frozenset(p for p, checkbox in self._overlay_checkboxes.items() if checkbox.isChecked()),
         )
 

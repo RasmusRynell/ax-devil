@@ -118,6 +118,8 @@ def test_live_rows_use_live_icon_and_embedded_overlay_child() -> None:
     assert row.icon_kind == "live_video"
     assert [child.label for child in row.children] == ["RTSP"]
     assert row.children[0].consideration_ref is None
+    assert row.activation_target is None
+    assert row.children[0].activation_target is None, "a live camera starts only with its Start stream action"
 
 
 def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads() -> None:
@@ -477,15 +479,15 @@ def test_same_named_pending_items_get_no_hints() -> None:
     assert [row.detail for row in section.rows] == ["", ""]
 
 
-def test_cameras_offer_connect_while_idle_and_disconnect_while_a_viewer_shows_them(tmp_path: Path) -> None:
+def test_cameras_offer_start_stream_while_idle_and_stop_stream_while_a_viewer_shows_them(tmp_path: Path) -> None:
     store = _store_of_items(LiveStreamItem(host="192.0.2.10", label="Gate"))
     [live] = store.contents()
 
     closed = item_rows(store)[0]
     opened = item_rows(store, frozenset({OnScreenWorkspaceItem(kind="video", content_id=live.content_id)}))[0]
 
-    assert (closed.action, closed.idle, closed.is_dimmed) == (RowAction.CONNECT, True, True)
-    assert (opened.action, opened.idle, opened.is_dimmed) == (RowAction.DISCONNECT, False, False)
+    assert (closed.action, opened.action) == (RowAction.START_STREAM, RowAction.STOP_STREAM)
+    assert (closed.is_dimmed, opened.is_dimmed) == (True, False), "a camera is dimmed while nothing shows it"
 
 
 def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_action(tmp_path: Path) -> None:
