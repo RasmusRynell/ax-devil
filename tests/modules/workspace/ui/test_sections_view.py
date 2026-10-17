@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QToolButton, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.icons import Icon

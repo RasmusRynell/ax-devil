@@ -12,7 +12,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.workspace.core import RecentWorkspaces, WorkspaceBackup
+from ax_devil.modules.workspace.core import RecentWorkspaces
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
     Facet,
@@ -37,7 +37,6 @@ def session(qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCat
     session = WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
         resolver=ItemResolver(FakeResolutionContext(), in_background=False),
-        backup=WorkspaceBackup(lambda: tmp_path / "workspace-backup.json"),
         recent_workspaces=RecentWorkspaces(lambda: tmp_path / "recent-workspaces.json"),
         prompts=FakePrompts(),
     )
