@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
@@ -236,7 +236,9 @@ class ObjectsPage(QWidget):
         self._history: SceneHistory | None = None
         self._scene_filter: SessionFilter | None = None
         self._frame_rows: dict[str, _FrameRow] = {}
-        self._file_rows: list[_FileRow] = []
+        self._file_key: tuple[SceneHistory, SessionFilter, Hashable] | None = None
+        self._file_histories: list[ObjectHistory] = []
+        self._file_rows: dict[str, _FileRow] = {}
         self._file_shown: list[_FileRow] = []
         self._file_dirty = True
         self._stale = True
@@ -322,12 +324,18 @@ class ObjectsPage(QWidget):
         policies.
         """
         self._history, self._scene_filter = history, scene_filter
-        self._build_file_rows()
+        self._file_key, self._file_rows, self._file_dirty = None, {}, True
+        self._update_count()
+        self._refresh()
         self._update_switch()
 
     def refilter(self) -> None:
-        """Re-apply the session filter to the file's objects after it changed."""
-        self._build_file_rows()
+        """Re-apply the session filter to the file's objects after it changed; Frame scope has nothing to redo."""
+        if self._scope is ObjectScope.FILE:
+            before = self._file_key
+            self._update_count()
+            if self._file_key != before:
+                self._refresh()
 
     def set_scope(self, scope: ObjectScope) -> None:
         """List the displayed frame's objects or the whole file's; File needs a history that can be filtered."""
@@ -410,22 +418,26 @@ class ObjectsPage(QWidget):
         if not available and self._scope is ObjectScope.FILE:
             self.set_scope(ObjectScope.FRAME)
 
-    def _build_file_rows(self) -> None:
-        """Make a row of each object that passes the session filter, with the event kinds it is in, once."""
+    def _filtered_histories(self) -> list[ObjectHistory]:
+        """Return the file's objects that pass the session filter, redone only when the history or filter changed."""
         history, scene_filter = self._history, self._scene_filter
         if history is None or scene_filter is None or not scene_filter.supports_history_filtering:
-            self._file_rows = []
+            key = None
         else:
-            self._file_rows = [
-                _FileRow(
-                    objects,
-                    tuple(dict.fromkeys(event.kind for event in history.events_involving(objects.entity_id))),
-                )
-                for objects in scene_filter.filter_history(history.objects)
-            ]
-        self._file_dirty = True
-        self._update_count()
-        self._refresh()
+            key = (history, scene_filter, scene_filter.cache_identity)
+        if key != self._file_key:
+            self._file_key = key
+            self._file_dirty = True
+            self._file_histories = [] if key is None else key[1].filter_history(key[0].objects)
+        return self._file_histories
+
+    def _file_row(self, history: SceneHistory, objects: ObjectHistory) -> _FileRow:
+        """Return the row of *objects*, with the event kinds it is in; built once, when File scope first lists it."""
+        row = self._file_rows.get(objects.entity_id)
+        if row is None:
+            kinds = tuple(dict.fromkeys(event.kind for event in history.events_involving(objects.entity_id)))
+            row = self._file_rows[objects.entity_id] = _FileRow(objects, kinds)
+        return row
 
     def _on_query_changed(self, query: Query) -> None:
         self._query = query
@@ -436,7 +448,7 @@ class ObjectsPage(QWidget):
         if self._scope is ObjectScope.FRAME:
             count = len(self._scene.entities) if self._scene is not None else 0
         else:
-            count = len(self._file_rows)
+            count = len(self._filtered_histories())
         if count != self._count:
             self._count = count
             self.countChanged.emit(count)
@@ -471,11 +483,14 @@ class ObjectsPage(QWidget):
         self._show(shown, len(rows), note, "No objects in this frame")
 
     def _apply_file(self) -> None:
+        histories = self._filtered_histories()
+        history = self._history
         if self._file_dirty:
             self._file_dirty = False
             query = self._query
-            self._file_shown = [row for row in self._file_rows if query.matches(row.record)]
-        self._show(self._file_shown, len(self._file_rows), _FILE_NOTE, "No objects in the file")
+            rows = [] if history is None else [self._file_row(history, objects) for objects in histories]
+            self._file_shown = [row for row in rows if query.matches(row.record)]
+        self._show(self._file_shown, len(histories), _FILE_NOTE, "No objects in the file")
 
     def _show(self, shown: Sequence[Any], total: int, note: str, none_text: str) -> None:
         """Put *shown* of *total* objects in the table of the current scope, along with the note under the query."""

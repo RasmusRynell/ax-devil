@@ -17,7 +17,7 @@ from enum import Enum, auto
 
 FieldValue = str | int | float | bool
 
-_TERM = re.compile(r"([A-Za-z_][\w.]*)(>=|<=|:|=|>|<)")
+_TERM = re.compile(r"([A-Za-z_][\w./-]*)(>=|<=|:|=|>|<)")
 _COMPARATORS: Mapping[str, Callable[[float, float], bool]] = {
     ">": operator.gt,
     "<": operator.lt,

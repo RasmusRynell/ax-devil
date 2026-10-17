@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+import numpy as np
 import pytest
 
 from ax_devil.modules.scene.inspection import (
@@ -258,6 +259,14 @@ def test_entity_fields_group_by_role_and_omit_empty_groups() -> None:
     assert _paths(_inspection_entity(), FieldGroup.MOTION)[("velocity_in_world_space", "speed")] == 1.25
 
 
+def test_debug_values_that_cannot_be_compared_to_empty_do_not_raise() -> None:
+    entity = _inspection_entity()
+    observation = entity.latest_observation
+    assert observation is not None
+    observation.debug = {"frame": np.zeros((2, 2)), "empty": np.zeros(0)}
+    assert ("frame",) in _paths(entity, FieldGroup.DEBUG)
+
+
 def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range() -> None:
     items = {
         item.path: item
@@ -289,6 +298,7 @@ def test_entity_record_exposes_debug_paths_and_never_derives_speed() -> None:
     assert record.fields["debug.tracker.state"] == ("coasting",)
     assert record.fields["debug.tracker.hits.1"] == (4,)
     assert record.fields["motion.state"] == ("moving",)
+    assert "raw.motion_state" not in record.fields
     assert record.text == ("42", "bus", "moving")
     plain = entity_summary(_make_entity())
     assert (plain.speed, plain.class_name) == (None, "human")

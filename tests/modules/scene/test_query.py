@@ -24,6 +24,7 @@ _PERSON = _record(
     classification__conf=0.6,
     debug__latency=12,
     debug__lost=True,
+    **{"debug__track-id": 9, "debug__trk/id": 3},
 )
 
 
@@ -59,6 +60,10 @@ def _selected(query: str) -> list[str]:
         ("-type:car", ["Person"]),
         ("-conf>0.9", ["Person"]),
         ("-nothing:here", ["Car", "Person"]),
+        ("debug.track-id:9", ["Person"]),
+        ("track-id>8", ["Person"]),
+        ("-track-id>8", ["Car"]),
+        ("trk/id=3", ["Person"]),
         ("car OR person", ["Car", "Person"]),
         ("type:car OR conf<0.7 speed>1", ["Car"]),
         ("car person", []),

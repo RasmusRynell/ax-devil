@@ -94,7 +94,9 @@ def entity_fields(entity: Entity) -> tuple[tuple[FieldGroup, tuple[InspectionFie
     grouped: dict[FieldGroup, list[InspectionField]] = {group: [] for group in FieldGroup}
     if entity.motion_state is not None:
         grouped[FieldGroup.MOTION].append(InspectionField(("state",), entity.motion_state.value))
-    grouped[FieldGroup.RAW].extend(_flatten_items(_dataclass_items(entity, skip={"id", "observations", "images"})))
+    grouped[FieldGroup.RAW].extend(
+        _flatten_items(_dataclass_items(entity, skip={"id", "observations", "images", "motion_state"}))
+    )
     grouped[FieldGroup.IMAGES].extend(_flatten(entity.images, ()))
 
     observation = entity.latest_observation
@@ -490,7 +492,10 @@ def _format_geometry(geometry: Geometry) -> str:
 
 
 def _is_empty(value: Any) -> bool:
-    return value is None or value == [] or value == {} or value == "" or value == b""
+    """Return True for None and empty text, bytes and containers; other objects (such as arrays) count as populated."""
+    if value is None:
+        return True
+    return isinstance(value, str | bytes | list | tuple | Mapping) and len(value) == 0
 
 
 def _format_float(value: float, decimals: int = 3) -> str:
