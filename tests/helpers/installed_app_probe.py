@@ -14,8 +14,8 @@ from PySide6.QtWidgets import QApplication
 import ax_devil
 from ax_devil.app import create_app
 from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.plugin_installation.validate import validate_plugins
 from ax_devil.modules.plugin_system import ApplicationPluginLoader, get_payload_decoder
-from ax_devil.modules.plugin_system.validate import validate_plugins
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
 
 

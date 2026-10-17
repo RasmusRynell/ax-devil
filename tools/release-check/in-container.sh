@@ -63,7 +63,7 @@ check_app() {
     plugin_python=$(ls -d "$HOME"/.local/share/ax-devil/plugins-*/current/.venv/bin/python)
     "$plugin_python" -I -c "
 from ax_devil.modules.plugin_system import get_payload_decoder
-from ax_devil.modules.plugin_system.validate import validate_plugins
+from ax_devil.modules.plugin_installation.validate import validate_plugins
 validate_plugins(['example-plugin'])
 assert get_payload_decoder('EXAMPLE_FRAME').decode({'frame': 42}).time_slice.start == 42
 "

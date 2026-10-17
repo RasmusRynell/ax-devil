@@ -1,4 +1,8 @@
-"""Validate the prepared app and editable sources before activating plugin changes."""
+"""Validate the prepared app and its plugins before activating plugin changes.
+
+Runs only as ``python -m`` inside the prepared plugin environment. Neither the launcher nor ``project.py`` may import
+it, because it loads the application's plugin system (and Qt).
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,8 @@ import importlib.metadata
 import json
 import sys
 from pathlib import Path
+
+from packaging.utils import canonicalize_name
 
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -15,8 +21,31 @@ from .project import read_project, selected_plugins
 logger = get_logger(__name__)
 
 
+def validate_plugins(names: list[str]) -> None:
+    """Reject missing, broken, incompatible, or shadowed selected plugins using the real application registry."""
+    from ax_devil.modules.plugin_system.loader import ApplicationPluginLoader
+    from ax_devil.modules.plugin_system.registry import PluginStatus, RuntimePluginRegistry
+
+    ApplicationPluginLoader.load_all()
+    groups = {family.entrypoint_group: family.plugin_type for family in ApplicationPluginLoader.PLUGIN_FAMILIES}
+    for name in names:
+        distribution = importlib.metadata.distribution(name)
+        entries = [ep for ep in distribution.entry_points if ep.group in groups]
+        if not entries:
+            raise ValueError(f"{name} has no plugin entry points")
+        for entry in entries:
+            plugin = entry.load()
+            record = RuntimePluginRegistry.get_plugin(groups[entry.group], plugin.plugin_id())
+            if (
+                record.status is not PluginStatus.LOADED
+                or record.plugin_class is not plugin
+                or record.package != canonicalize_name(distribution.name)
+            ):
+                raise ValueError(f"{name}:{entry.name} was rejected: {record.error or 'duplicate plugin ID'}")
+
+
 def validate_installation(project: Path) -> None:
-    """Reject an unexpected app build or copied/replaced editable packages."""
+    """Reject an unexpected app build or copied/replaced editable packages, then validate the selected plugins."""
     metadata = read_project(project)
     host = current_host()
     sources = metadata["tool"]["uv"].get("sources", {})
@@ -27,8 +56,6 @@ def validate_installation(project: Path) -> None:
         origin = json.loads(distribution.read_text("direct_url.json") or "{}")
         if not origin.get("dir_info", {}).get("editable") or origin.get("url") != Path(source["path"]).as_uri():
             raise ValueError(f"Prepared {name} does not use its selected editable source")
-
-    from ax_devil.modules.plugin_system.validate import validate_plugins
 
     validate_plugins(list(selected_plugins(project)))
 

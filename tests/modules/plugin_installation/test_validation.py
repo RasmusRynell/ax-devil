@@ -1,4 +1,4 @@
-"""Reject prepared environments that do not contain the requested app and sources."""
+"""Reject prepared environments without the requested app and sources, and plugins the application rejects."""
 
 from __future__ import annotations
 
@@ -6,13 +6,15 @@ import importlib.metadata
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from ax_devil.modules.plugin_installation import project, validate
 from ax_devil.modules.plugin_installation.host import current_host
-from ax_devil.modules.plugin_system import validate as plugin_validation
+from ax_devil.modules.plugin_system import DecoderPlugin
+from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
 
 
 @pytest.mark.parametrize("mismatch", [None, "app-version", "copied-app", "copied-plugin", "wrong-source"])
@@ -43,7 +45,7 @@ def test_prepared_sources_are_verified_before_plugin_imports(
 
     monkeypatch.setattr(importlib.metadata, "distribution", distribution)
     load_plugins = Mock()
-    monkeypatch.setattr(plugin_validation, "validate_plugins", load_plugins)
+    monkeypatch.setattr(validate, "validate_plugins", load_plugins)
     if mismatch is None:
         validate.validate_installation(prepared)
         load_plugins.assert_called_once_with(["example-plugin"])
@@ -51,3 +53,64 @@ def test_prepared_sources_are_verified_before_plugin_imports(
         with pytest.raises(ValueError, match="Prepared"):
             validate.validate_installation(prepared)
         load_plugins.assert_not_called()
+
+
+class ExampleDecoder(DecoderPlugin):
+    """A valid decoder that can be exported by several entry points."""
+
+    @classmethod
+    def plugin_id(cls) -> str:
+        """Return the plugin's stable identifier."""
+        return "review-example"
+
+    @classmethod
+    def display_name(cls) -> str:
+        """Return the plugin's label."""
+        return "Review example"
+
+    @classmethod
+    def required_api_version(cls) -> int:
+        """Declare the supported host API."""
+        return 3
+
+    @classmethod
+    def scene_model_version(cls) -> tuple[int, int]:
+        """Declare the supported Scene model."""
+        return SCENE_MODEL_VERSION
+
+
+@pytest.mark.usefixtures("unloaded_plugins")
+@pytest.mark.parametrize("wrong_family,other_owner", [(False, False), (True, False), (False, True)])
+def test_validate_entry_point_family_and_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrong_family: bool, other_owner: bool
+) -> None:
+    """A class registered elsewhere cannot validate a rejected entry point."""
+    distribution = SimpleNamespace(name="example-distribution", locate_file=lambda _: tmp_path)
+    groups = ["ax_devil.decoder_plugins"]
+    if wrong_family:
+        groups.append("ax_devil.playlist_resolver_plugins")
+    entries = [
+        SimpleNamespace(name="review-example", group=group, dist=distribution, load=lambda: ExampleDecoder)
+        for group in groups
+    ]
+    distribution.entry_points = entries
+    visible_entries = list(entries)
+    if other_owner:
+        visible_entries.insert(
+            0,
+            SimpleNamespace(
+                name="review-example",
+                group=groups[0],
+                dist=SimpleNamespace(name="other-distribution", locate_file=lambda _: tmp_path),
+                load=lambda: ExampleDecoder,
+            ),
+        )
+    monkeypatch.setattr(importlib.metadata, "distribution", lambda _: distribution)
+    monkeypatch.setattr(
+        importlib.metadata, "entry_points", lambda *, group: [ep for ep in visible_entries if ep.group == group]
+    )
+    if wrong_family or other_owner:
+        with pytest.raises(ValueError):
+            validate.validate_plugins([distribution.name])
+    else:
+        validate.validate_plugins([distribution.name])
