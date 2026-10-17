@@ -189,7 +189,7 @@ class MediaToolsPanel(QWidget):
         self._objects.setObjectName("mediaToolsObjects")
         self._events = EventsPage(scene_history, self)
         self._events.setObjectName("mediaToolsEvents")
-        self._events.eventActivated.connect(self._open_event)
+        self._events.eventActivated.connect(self._open_event_page)
         roots: list[tuple[MediaToolsSection, QWidget]] = [
             (MediaToolsSection.OBJECTS, self._objects),
             (MediaToolsSection.EVENTS, self._events),
@@ -394,11 +394,20 @@ class MediaToolsPanel(QWidget):
         self._stack.push(ObjectPageKey(entity_id), self._objects)
 
     def _open_event(self, event: FrameEvent) -> None:
-        self._stack.push(EventPageKey(event), self._events)
+        self._open_event_page(EventPageKey(event))
+
+    def _open_event_page(self, key: EventPageKey) -> None:
+        self._stack.push(key, self._events)
 
     def _resolve_event_key(self, key: EventPageKey) -> EventPageKey | None:
-        event = self._history.nearest_event(key.event) if self._history is not None else key.event
-        return None if event is None else EventPageKey(event)
+        """Find the key in a replaced history: the nearest equal event, keeping its occurrence while it remains."""
+        history = self._history
+        if history is None:
+            return key
+        event = history.nearest_event(key.event)
+        if event is None:
+            return None
+        return EventPageKey(event, min(key.occurrence, history.events.count(event) - 1))
 
     def _build_page(self, key: PageKey) -> QWidget:
         """Build the page of *key*, which follows the displayed frame from now on."""

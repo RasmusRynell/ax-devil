@@ -434,6 +434,29 @@ def test_event_page_follows_its_event_through_a_history_replacement_and_closes_w
     assert events_view.isVisible() and _button(panel, "Go to frame") is None
 
 
+def test_identical_events_are_stepped_through_one_at_a_time(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    twin = FrameEvent(_frame(3), "Delete", "Delete a", ("a",))
+    panel = _panel(qtbot, render_catalog_selection, _history(events=(twin, twin)))
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+    model = events_view.rows_model
+
+    def marked() -> list[bool]:
+        return [model.is_active(row) for row in range(model.rowCount())]
+
+    _click_row(events_view, model.key_at(0))
+    assert marked() == [True, False]
+    _click(panel, "Next in list")
+    assert marked() == [False, True]
+    _click(panel, "Previous in list")
+    assert marked() == [True, False]
+
+
 def _deleting_scene(frame: int, *entity_ids: str) -> Scene:
     scene = Scene(time_slice=TimeSlice(start=frame, end=frame))
     for entity_id in entity_ids:
