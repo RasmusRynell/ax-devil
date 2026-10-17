@@ -156,6 +156,20 @@ def test_a_quit_keeps_unsaved_edits_of_a_workspace_whose_name_has_characters_a_f
     assert load_workspace(copy.path).name == name
 
 
+def test_a_quit_keeps_unsaved_edits_of_a_workspace_whose_name_has_a_lone_surrogate(
+    launches: _Launches, tmp_path: Path
+) -> None:
+    name = "Lot \ud800 1"
+    launch = launches.new()
+    launch.store.add_items([_video(tmp_path, "a.mp4")])
+    launch.store.rename_workspace(name)
+
+    launch.lifecycle.keep_unsaved_changes()
+
+    [copy] = launch.lifecycle.recent_workspaces()
+    assert load_workspace(copy.path).name == name
+
+
 def _write_legacy_backup(state: Path, name: str, items: list[VideoItem], saved_file: Path | None = None) -> Path:
     """Write the ``workspace-backup.json`` that earlier versions kept on quit."""
     backup = state / "workspace-backup.json"

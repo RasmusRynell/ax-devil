@@ -158,12 +158,12 @@ class WorkspaceLifecycle(QObject):
     def _reserve_copy_path(self, workspace: Workspace) -> Path:
         """Create and return an empty file named after *workspace* and now that no other file or instance has.
 
-        The name is cut to a length every file system accepts. Creating the file is what claims the name, so instances
-        saving at the same moment get different files.
+        The name is encoded with unencodable characters replaced, then cut to a length every file system accepts.
+        Creating the file is what claims the name, so instances saving at the same moment get different files.
         """
         folder = self._unsaved_folder()
         folder.mkdir(parents=True, exist_ok=True)
-        stem = workspace.suggested_file_stem.encode()[:_COPY_STEM_BYTES].decode(errors="ignore")
+        stem = workspace.suggested_file_stem.encode(errors="replace")[:_COPY_STEM_BYTES].decode(errors="ignore")
         stem = f"{stem} {datetime.now():%Y-%m-%d %H-%M-%S}"
         number = 1
         while True:
