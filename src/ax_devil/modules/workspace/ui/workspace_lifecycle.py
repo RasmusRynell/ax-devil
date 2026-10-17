@@ -66,6 +66,7 @@ class WorkspaceLifecycle(QObject):
         self._recent_workspaces = recent_workspaces
         self._recovery: Path | None = None  # This instance's copy of the Workspace's unsaved edits, once written.
         self._lock: QLockFile | None = None
+        self._listed = False  # Whether the copy is among the recent workspaces, so a crash leaves it findable.
         # A Workspace is immutable, so any edit makes a new one: polling its identity needs no signal from the store.
         self._synced: Workspace | None = None
         self._timer = QTimer(self)
@@ -95,7 +96,7 @@ class WorkspaceLifecycle(QObject):
         """
         self._sync_recovery()
         if self._recovery is not None:
-            self._remember(self._recovery)
+            self._listed = self._remember(self._recovery)
 
     def new_workspace(self, items: Sequence[WorkspaceItem] = ()) -> None:
         """Replace the Workspace with a new Untitled one holding *items*; unsaved edits stay in their copy."""
@@ -219,7 +220,7 @@ class WorkspaceLifecycle(QObject):
             raise
         if lock is not None:
             self._detach_recovery()
-            self._recovery, self._lock = copy, lock
+            self._recovery, self._lock, self._listed = copy, lock, True
         self._synced = self._store.workspace
         self.recovered.emit()
 
@@ -238,21 +239,20 @@ class WorkspaceLifecycle(QObject):
     def _sync_recovery(self) -> None:
         """Bring the recovery copy up to date: written while the Workspace has unsaved edits, deleted when it has not.
 
-        Nothing happens while the Workspace is the one the copy was last synced with.
+        Nothing happens while the Workspace is the one the copy was last synced with. A failure is logged and leaves
+        the Workspace unsynced, so the next tick tries again.
         """
         workspace = self._store.workspace
         if workspace is self._synced:
             return
-        self._synced = workspace
-        if self._store.is_modified:
-            self._write_recovery(workspace)
-        else:
-            self._delete_recovery()
+        done = self._write_recovery(workspace) if self._store.is_modified else self._delete_recovery()
+        if done:
+            self._synced = workspace
 
-    def _write_recovery(self, workspace: Workspace) -> None:
-        """Write *workspace* to this instance's copy, claiming and listing a new file the first time.
+    def _write_recovery(self, workspace: Workspace) -> bool:
+        """Write *workspace* to this instance's copy, claiming a new file the first time, and list it.
 
-        A failure is logged; the copy is tried again with the next change.
+        Return whether the copy is written and listed.
         """
         copy, lock = self._recovery, self._lock
         try:
@@ -268,26 +268,37 @@ class WorkspaceLifecycle(QObject):
                 if lock is not None:
                     lock.unlock()
                 copy.unlink(missing_ok=True)
-            return
+            return False
         if self._recovery is None:
             self._recovery, self._lock = copy, lock
-            self._remember(copy)  # Unlisted, the copy is still on disk if this fails.
+        if not self._listed:
+            self._listed = self._remember(copy)  # Unlisted, the copy is still on disk if this fails.
+        return self._listed
 
     def _detach_recovery(self) -> None:
         """Stop treating the copy as this instance's, leaving it on disk and among the recent workspaces."""
         if self._lock is not None:
             self._lock.unlock()
         self._recovery = self._lock = None
+        self._listed = False
 
-    def _delete_recovery(self) -> None:
-        """Delete the copy, if there is one, and forget it."""
+    def _delete_recovery(self) -> bool:
+        """Delete the copy, if there is one, and forget it; return whether it is gone.
+
+        A copy that cannot be deleted stays this instance's, locked, to be deleted by a later sync.
+        """
         copy = self._recovery
         if copy is None:
-            return
+            return True
+        try:
+            copy.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(f"Could not delete the recovery copy {copy}: {exc}")
+            return False
         self._detach_recovery()
-        copy.unlink(missing_ok=True)
         self._recent_workspaces.forget(copy)
         self.recent_workspaces_changed.emit()
+        return True
 
     def _reserve_copy_path(self, workspace: Workspace) -> Path:
         """Create and return an empty file named after *workspace* and now that no other file or instance has.
@@ -321,7 +332,8 @@ class WorkspaceLifecycle(QObject):
             else:
                 return path
 
-    def _remember(self, path: Path) -> None:
-        """Record *path* as the most recent workspace file."""
-        self._recent_workspaces.record(path)
+    def _remember(self, path: Path) -> bool:
+        """Record *path* as the most recent workspace file; return whether the list could be saved."""
+        recorded = self._recent_workspaces.record(path)
         self.recent_workspaces_changed.emit()
+        return recorded

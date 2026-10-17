@@ -226,6 +226,9 @@ def test_a_quit_that_cannot_write_its_copy_does_not_raise(launches: _Launches, t
     launch.lifecycle.keep_unsaved_changes()
 
     assert launch.lifecycle.recent_workspaces() == ()
+    (tmp_path / "state" / "unsaved-workspaces").unlink()
+    launch.lifecycle.keep_unsaved_changes()  # The failed write is tried again.
+    assert len(launch.lifecycle.recent_workspaces()) == 1
 
 
 def test_saving_an_untitled_workspace_asks_where_appends_the_extension_and_remembers_it(
@@ -401,7 +404,7 @@ def _break_recent_workspaces(tmp_path: Path) -> Path:
 
 
 def test_a_quit_whose_copy_cannot_be_listed_leaves_the_copy_on_disk(launches: _Launches, tmp_path: Path) -> None:
-    _break_recent_workspaces(tmp_path)
+    lock = _break_recent_workspaces(tmp_path)
     clip = _video(tmp_path, "a.mp4")
     launch = launches.new()
     launch.store.add_items([clip])
@@ -411,3 +414,7 @@ def test_a_quit_whose_copy_cannot_be_listed_leaves_the_copy_on_disk(launches: _L
     assert launch.lifecycle.recent_workspaces() == ()
     [copy] = (tmp_path / "state" / "unsaved-workspaces").glob("*.ax-devil.workspace")
     assert load_workspace(copy).items == (clip,)
+    lock.rmdir()
+    launch.store.rename_workspace("Listed")
+    launch.lifecycle._sync_recovery()  # A tick lists the copy again.
+    assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [copy]

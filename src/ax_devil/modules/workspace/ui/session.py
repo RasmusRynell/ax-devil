@@ -126,7 +126,7 @@ class WorkspaceSession(QObject):
             prompts or DialogPrompts(self._window),
             (lambda: unsaved_folder) if unsaved_folder is not None else partial(_storage_file, "unsaved-workspaces"),
             recent_workspaces or RecentWorkspaces(partial(_storage_file, "recent-workspaces.json")),
-            parent=self,
+            parent=self._window,  # Its sync timer must not outlive the start panel it refreshes.
         )
         self.refresh_recent_workspaces()
         self._lifecycle.recent_workspaces_changed.connect(self.refresh_recent_workspaces)

@@ -54,7 +54,7 @@ class ContentItem(WorkspaceItem):
         return self.contents
 
     def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
-        raise NotImplementedError("Test Content is never saved.")
+        return {}  # Written into recovery copies as time passes, but never read back.
 
     @classmethod
     def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
