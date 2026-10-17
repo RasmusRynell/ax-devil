@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
+import pkgutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -16,7 +17,6 @@ from .playlist_resolvers import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverP
 from .registry import PluginRecord, PluginStatus, RuntimePluginRegistry
 
 logger = get_logger(__name__)
-AX_DEVIL_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class PluginFamily:
 
     plugin_type: str
     plugin_base_class: type[Any]
-    builtin_root: Path
+    builtin_package: str
     entrypoint_group: str
 
 
@@ -36,18 +36,17 @@ class ApplicationPluginLoader:
         PluginFamily(
             plugin_type=DECODER_PLUGIN_TYPE,
             plugin_base_class=DecoderPlugin,
-            builtin_root=AX_DEVIL_ROOT / "plugins" / "decoders",
+            builtin_package="ax_devil.plugins.decoders",
             entrypoint_group="ax_devil.decoder_plugins",
         ),
         PluginFamily(
             plugin_type=PLAYLIST_RESOLVER_PLUGIN_TYPE,
             plugin_base_class=PlaylistResolverPlugin,
-            builtin_root=AX_DEVIL_ROOT / "plugins" / "playlist_resolvers",
+            builtin_package="ax_devil.plugins.playlist_resolvers",
             entrypoint_group="ax_devil.playlist_resolver_plugins",
         ),
     )
     _loaded: bool = False
-    _loaded_entrypoints: set[Path] = set()
 
     @classmethod
     def load_all(cls) -> None:
@@ -63,31 +62,13 @@ class ApplicationPluginLoader:
         cls._warn_about_failures()
 
     @classmethod
-    def reload_plugins(cls) -> None:
-        """Clear existing registrations and reload all plugin families."""
-        logger.info("Reloading application plugins...")
-        RuntimePluginRegistry.reset()
-        cls._loaded = False
-        cls._loaded_entrypoints.clear()
-        cls.load_all()
-
-    @classmethod
     def _load_builtins(cls, family: PluginFamily) -> None:
-        directory = family.builtin_root
-        if not directory.exists():
-            logger.debug(f"Built-in plugin directory does not exist: {directory}")
-            return
-
-        for child in sorted(directory.iterdir()):
-            if not child.is_dir():
-                continue
-
-            entrypoint = (child / "plugin.py").resolve()
-            if not entrypoint.is_file() or entrypoint in cls._loaded_entrypoints:
-                continue
-
-            cls._loaded_entrypoints.add(entrypoint)
-            cls._import_builtin_and_register(family, entrypoint)
+        """Import every ``<family package>.<name>.plugin`` module, in name order, and register its plugin."""
+        package = importlib.import_module(family.builtin_package)
+        package_dir = Path(package.__path__[0])
+        for module_info in sorted(pkgutil.iter_modules(package.__path__), key=lambda info: info.name):
+            if module_info.ispkg:
+                cls._import_builtin_and_register(family, module_info.name, package_dir / module_info.name / "plugin.py")
 
     @classmethod
     def _load_family_from_entrypoints(cls, family: PluginFamily) -> None:
@@ -122,14 +103,12 @@ class ApplicationPluginLoader:
             )
 
     @classmethod
-    def _import_builtin_and_register(cls, family: PluginFamily, entrypoint: Path) -> None:
+    def _import_builtin_and_register(cls, family: PluginFamily, name: str, entrypoint: Path) -> None:
         logger.debug(f"Loading {family.plugin_type} plugin from {entrypoint}")
-        relative = entrypoint.parent.relative_to(family.builtin_root)
-        module_path = ".".join(("ax_devil.plugins", f"{family.plugin_type}s", *relative.parts, "plugin"))
         try:
-            module = importlib.import_module(module_path)
+            module = importlib.import_module(f"{family.builtin_package}.{name}.plugin")
         except Exception as exc:
-            cls._fail(family, entrypoint.parent.name, entrypoint, "builtin", f"import failed: {exc}", exc)
+            cls._fail(family, name, entrypoint, "builtin", f"import failed: {exc}", exc)
             return
 
         cls._register_plugin_class(
@@ -137,7 +116,7 @@ class ApplicationPluginLoader:
             getattr(module, "PLUGIN_CLASS", None),
             entrypoint,
             "builtin",
-            plugin_id_hint=entrypoint.parent.name,
+            plugin_id_hint=name,
         )
 
     @classmethod

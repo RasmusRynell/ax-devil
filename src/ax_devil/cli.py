@@ -42,14 +42,14 @@ def _require_existing_config_path(config: Path | None) -> None:
         raise click.ClickException(f"Config file does not exist: {config}")
 
 
-def _apply_cli_config_and_reload_plugins(config: Path | None) -> None:
-    """Apply the requested CLI config path, then reload plugins."""
+def _apply_cli_config_and_load_plugins(config: Path | None) -> None:
+    """Apply the requested CLI config path, then load plugins (a no-op once they have been loaded)."""
     _require_existing_config_path(config)
 
     config_manager = ConfigManager()
     target = config if config is not None else DEFAULT_CONFIG_PATH
     config_manager.set_config_path(target, create_if_missing=config is None)
-    ApplicationPluginLoader.reload_plugins()
+    ApplicationPluginLoader.load_all()
 
 
 def _run_app(
@@ -136,7 +136,7 @@ def cli(
 
 def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click.Command:
     """Look up a resolver-provided playlist command after config has been applied."""
-    _apply_cli_config_and_reload_plugins(config)
+    _apply_cli_config_and_load_plugins(config)
 
     try:
         record = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, resolver_id)
@@ -165,7 +165,7 @@ def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click
 
 def _list_available_playlist_resolvers(config: Path | None) -> list[str]:
     """Return sorted IDs of currently loadable playlist resolvers."""
-    _apply_cli_config_and_reload_plugins(config)
+    _apply_cli_config_and_load_plugins(config)
     return sorted(
         plugin.definition.plugin_id
         for plugin in RuntimePluginRegistry.get_plugins(PLAYLIST_RESOLVER_PLUGIN_TYPE)
@@ -290,7 +290,7 @@ def list_handlers() -> None:
     """List available decoder handler types for use with --handler-type."""
     from ax_devil.modules.plugin_system import get_file_decoder_definitions
 
-    _apply_cli_config_and_reload_plugins(None)
+    _apply_cli_config_and_load_plugins(None)
 
     definitions = get_file_decoder_definitions()
     if not definitions:
@@ -433,7 +433,7 @@ def live(
     setup_logging(console_log_level="WARNING", console_only=True)
 
     runtime = ctx.obj
-    _apply_cli_config_and_reload_plugins(runtime["config"])
+    _apply_cli_config_and_load_plugins(runtime["config"])
     try:
         item = live_stream_item_from_defaults(
             host=host,

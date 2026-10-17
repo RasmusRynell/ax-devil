@@ -52,8 +52,7 @@ def _resolver_row(record: PluginRecord, add: Callable[[], None]) -> WorkspaceBro
 class OfflineViewController(QObject):
     """Show the workspace's Videos and Playlists sections in *view*, then the loaded resolvers to add playlists from.
 
-    Resolvers are read again whenever the view comes on screen, so plugins reloaded meanwhile are listed. A resolver's
-    Add emits ``add_requested`` with its id, for whoever asks the user for the playlist's settings.
+    A resolver's Add emits ``add_requested`` with its id, for whoever asks the user for the playlist's settings.
     """
 
     add_requested = Signal(str)  # resolver id

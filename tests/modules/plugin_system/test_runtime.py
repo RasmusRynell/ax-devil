@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import importlib
-from collections.abc import Generator
 from importlib import metadata
 from logging import WARNING
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
@@ -30,13 +28,7 @@ DECODER_GROUP = "ax_devil.decoder_plugins"
 RESOLVER_GROUP = "ax_devil.playlist_resolver_plugins"
 PLUGIN_ID = "external-plugin"
 
-
-@pytest.fixture(autouse=True)
-def _restore_plugins() -> Generator[None, None, None]:
-    """Restore the built-in plugins after each test."""
-    yield
-    with patch("ax_devil.modules.plugin_system.loader.importlib.metadata.entry_points", return_value=[]):
-        ApplicationPluginLoader.reload_plugins()
+pytestmark = pytest.mark.usefixtures("unloaded_plugins")
 
 
 def _entry_point(plugin: Any, *, name: str = PLUGIN_ID, distribution: str = "example-distribution") -> SimpleNamespace:
@@ -52,10 +44,10 @@ def _entry_point(plugin: Any, *, name: str = PLUGIN_ID, distribution: str = "exa
 
 
 def _load_installed(monkeypatch: pytest.MonkeyPatch, **groups: list[SimpleNamespace]) -> None:
-    """Reload all plugins with these entry points installed, keyed by ``decoders`` and ``resolvers``."""
+    """Load all plugins with these entry points installed, keyed by ``decoders`` and ``resolvers``."""
     by_group = {DECODER_GROUP: groups.get("decoders", []), RESOLVER_GROUP: groups.get("resolvers", [])}
     monkeypatch.setattr(metadata, "entry_points", lambda *, group: by_group.get(group, []))
-    ApplicationPluginLoader.reload_plugins()
+    ApplicationPluginLoader.load_all()
 
 
 class ExternalDecoder(DecoderPlugin):

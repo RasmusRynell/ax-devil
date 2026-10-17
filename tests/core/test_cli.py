@@ -6,17 +6,14 @@ import copy
 import importlib
 import json
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner, Result
 
 from ax_devil import cli as cli_module
-from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.settings.config_manager import DEFAULT_CONFIG, ConfigManager
 from ax_devil.modules.workspace.core import OverlayFile
 
@@ -83,10 +80,10 @@ class _Launches(list[Any]):
 
 
 @pytest.fixture(autouse=True)
-def startups(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Launches]:
+def startups(monkeypatch: pytest.MonkeyPatch, unloaded_plugins: None) -> _Launches:
     """Record the items each command would open, without starting the application.
 
-    Commands reload plugins; only built-in ones are visible, and the built-in set is restored afterward.
+    Commands load plugins afresh; only built-in ones are visible unless a test installs more.
     """
     opened = _Launches()
 
@@ -101,9 +98,7 @@ def startups(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Launches]:
 
     monkeypatch.setattr(cli_module, "create_app", create_app)
     monkeypatch.setattr(ENTRY_POINTS, lambda **_: [])
-    yield opened
-    with patch(ENTRY_POINTS, return_value=[]):
-        ApplicationPluginLoader.reload_plugins()
+    return opened
 
 
 def _invoke(*arguments: str, user_input: str | None = None) -> Result:
