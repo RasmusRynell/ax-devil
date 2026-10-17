@@ -32,7 +32,13 @@ from ax_devil.modules.workspace.core.content import (
     SeekableVideoContent,
     create_entry_lane,
 )
-from ax_devil.modules.workspace.core.file_format import WorkspaceFileError, load_workspace, save_workspace
+from ax_devil.modules.workspace.core.file_format import (
+    WorkspaceFileError,
+    load_workspace,
+    read_recovery,
+    save_workspace,
+    write_recovery,
+)
 from ax_devil.modules.workspace.core.intake import (
     OverlayFile,
     WorkspaceDecoderOption,
@@ -125,8 +131,10 @@ __all__ = [
     "load_workspace",
     "new_item_id",
     "overlay_choice",
+    "read_recovery",
     "save_workspace",
     "video_file_selections",
     "workspace_file_path",
     "workspace_file_stem",
+    "write_recovery",
 ]

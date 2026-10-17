@@ -109,9 +109,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   item and Workspace are still current.
 - Only adding items opens a viewer. Opening or creating a Workspace lists its items and opens and connects
   nothing.
-- Launching never opens a Workspace on its own, and closing never prompts: a modified Workspace is saved as a copy
-  that joins the recent workspaces, never over its own file. Opening a saved Workspace discards current edits without
-  asking; creating a new one replaces nothing until the save question, including any Save As, completes. The rest is in
+- Nothing prompts on launch, open, New or quit: a Workspace with unsaved edits has one recovery copy, never its own
+  file, that exists exactly while the edits do and is deleted when they are saved or discarded. The rest is in
   [Workspace](../architecture/workspace.md#lifecycle).
 
 ## Sidebar

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QLineEdit, QMenu, QSplitter, QTreeWidget, QTreeWid
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -34,7 +35,6 @@ from ax_devil.modules.workspace.core import (
     VideoItem,
     Workspace,
     WorkspaceItem,
-    load_workspace,
     save_workspace,
 )
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
@@ -57,6 +57,7 @@ from tests.helpers.workspace import (
     FakeResolutionContext,
     content_item,
     inline_resolver,
+    quit_app,
     recent_workspace_names,
 )
 
@@ -674,26 +675,40 @@ def test_sidebar_default_width_follows_text_size_until_dragged(workspace_session
     assert splitter.sizes()[0] == dragged
 
 
-def test_launch_opens_on_the_start_panel_with_the_unsaved_workspace_among_the_recent_ones(
-    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+@pytest.mark.parametrize("saved", [True, False])
+def test_launch_restores_unsaved_changes_with_a_banner_and_discard_returns_to_the_saved_file_or_the_start_panel(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path, saved: bool
 ) -> None:
-    quit_session = _session(render_catalog_manager, tmp_path)
+    original = tmp_path / "Lot.ax-devil.workspace"
+    quit_session = _session(render_catalog_manager, tmp_path, prompts=FakePrompts(save_path=original))
     qtbot.addWidget(quit_session.widget())
-    clip = _video_item(tmp_path, "clip.mp4")
+    kept, edit = _video_item(tmp_path, "kept.mp4"), _video_item(tmp_path, "edit.mp4")
     with patch(_OFFLINE_VIEWER, DummyViewer):
-        quit_session.add_items([clip])
-    quit_session.lifecycle.keep_unsaved_changes()
+        if saved:
+            quit_session.add_items([kept])
+            quit_session.lifecycle.save_workspace()
+        quit_session.add_items([edit])
+    quit_app(quit_session.lifecycle)
 
     launched = _session(render_catalog_manager, tmp_path)
     qtbot.addWidget(launched.widget())
     launched.lifecycle.launch()
 
-    assert _store(launched).workspace.items == ()
-    assert _item_rows(launched) == []
+    banner = launched.widget().findChild(Banner)
+    assert banner is not None and not banner.isHidden()
+    assert _store(launched).is_modified
+    assert _store(launched).workspace.items == ((kept, edit) if saved else (edit,))
+    assert len(_item_rows(launched)) == (2 if saved else 1)
     assert _center(launched).get_widget_count() == 0
-    [recent] = launched.lifecycle.recent_workspaces()
-    assert recent.path.parent == tmp_path / "state" / "unsaved-workspaces"
-    assert load_workspace(recent.path).items == (clip,)
+
+    banner.action.click()
+
+    assert banner.isHidden()
+    assert not _store(launched).is_modified
+    assert _store(launched).workspace.items == ((kept,) if saved else ())
+    assert _store(launched).workspace.path == (original if saved else None)
+    assert [entry.path for entry in launched.lifecycle.recent_workspaces()] == ([original] if saved else [])
+    assert list((tmp_path / "state" / "unsaved-workspaces").glob("*.ax-devil.workspace")) == []
 
 
 def test_saved_workspace_is_listed_on_the_start_panel(

@@ -46,7 +46,7 @@ from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceControll
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
 from ax_devil.modules.workspace.ui.workspace_prompts import DialogPrompts, WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from ax_devil.modules.workspace.ui.workspace_view import WorkspaceView
+from ax_devil.modules.workspace.ui.workspace_view import WORKSPACE_VIEW_ID, WorkspaceView
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -126,7 +126,7 @@ class WorkspaceSession(QObject):
             prompts or DialogPrompts(self._window),
             (lambda: unsaved_folder) if unsaved_folder is not None else partial(_storage_file, "unsaved-workspaces"),
             recent_workspaces or RecentWorkspaces(partial(_storage_file, "recent-workspaces.json")),
-            parent=self,
+            parent=self._window,  # Its sync timer must not outlive the start panel it refreshes.
         )
         self.refresh_recent_workspaces()
         self._lifecycle.recent_workspaces_changed.connect(self.refresh_recent_workspaces)
@@ -136,11 +136,20 @@ class WorkspaceSession(QObject):
         self._workspace_store.state_changed.connect(self._show_workspace_state)
         self._workspace_store.workspace_replaced.connect(self._show_bookmarks_of_new_workspace)
         self._workspace_view.title_edited.connect(self._workspace_store.rename_workspace)
+        self._lifecycle.recovered.connect(self._show_restored)
+        self._workspace_store.workspace_replaced.connect(partial(self._workspace_view.set_restored, False))
+        self._workspace_view.discard_requested.connect(self._lifecycle.revert_workspace)
         self._show_workspace_state()
 
     def _show_workspace_state(self) -> None:
         workspace = self._workspace_store.workspace
         self._workspace_view.set_workspace(workspace.name, workspace.path, self._workspace_store.is_modified)
+        if not self._workspace_store.is_modified:
+            self._workspace_view.set_restored(False)
+
+    def _show_restored(self) -> None:
+        self._workspace_view.set_restored(True)
+        self._window.show_view(WORKSPACE_VIEW_ID)
 
     def _show_bookmarks_of_new_workspace(self) -> None:
         """Show the Bookmarks view when the Workspace just opened has bookmarks, so its spots are one click away."""
