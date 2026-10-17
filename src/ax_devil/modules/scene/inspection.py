@@ -173,6 +173,7 @@ def _flatten(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
         yield from _flatten(value.attributes, (*path, value.type, "attributes"))
     elif isinstance(value, ColorClassification):
         yield from _flatten(value.score, (*path, value.name))
+        yield from _flatten(value.rgb, (*path, value.name, "rgb"))
     elif isinstance(value, Geometry):
         x, y, width, height = value.as_xywh()
         for name, number in (("x", x), ("y", y), ("width", width), ("height", height)):

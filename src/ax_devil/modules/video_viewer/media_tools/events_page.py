@@ -134,8 +134,11 @@ class EventsPage(QWidget):
         super().__init__(parent)
         self._history = history
         self._rows: list[_EventRow] = []
-        self._shown: list[_EventRow] = []
+        self._shown: list[_EventRow] = []  # The rows the query accepts, in frame order; the table lags while hidden.
         self._shown_frames: list[int] = []
+        self._positions: dict[PageKey, int] = {}
+        self._note = ""
+        self._filter_stale = True
         self._query = compile_query("")
         self._frame: int | None = None
         self._stale = True
@@ -218,13 +221,14 @@ class EventsPage(QWidget):
     def neighbor(self, key: PageKey, delta: int) -> PageKey | None:
         """Return the page *delta* rows from *key* in the listed order, or None past either end or off the list.
 
-        The order is the latest one even while the page is hidden behind an open event page.
+        The order is the latest one even while the page is hidden behind an open event page; it comes from the
+        filtered list, so the hidden table is never rebuilt as events arrive.
         """
-        if self._stale:
-            self._apply()
-        other = self._model.neighbor(key, delta)
-        row = None if other is None else self._model.row_for(other)
-        return None if row is None else _key(row)
+        if self._filter_stale:
+            self._refilter()
+        position = self._positions.get(key)
+        target = None if position is None else position + delta
+        return None if target is None or not 0 <= target < len(self._shown) else _key(self._shown[target])
 
     def highlight(self, key: PageKey | None) -> None:
         """Mark the row of *key* as the one the open page came from; a key that is not an event clears the mark."""
@@ -285,6 +289,7 @@ class EventsPage(QWidget):
 
     def _on_query_changed(self, query: Query) -> None:
         self._query = query
+        self._filter_stale = True
         self._refresh()
 
     def _on_scrolled(self) -> None:
@@ -294,6 +299,7 @@ class EventsPage(QWidget):
 
     def _changed(self) -> None:
         """Count the events held and show them, now or when the page is shown."""
+        self._filter_stale = True
         self._refresh()
         if len(self._rows) != self._count:  # After the refresh, so a listener asking for neighbors sees the new rows.
             self._count = len(self._rows)
@@ -306,26 +312,33 @@ class EventsPage(QWidget):
         else:
             self._stale = True
 
+    def _refilter(self) -> None:
+        """Select the events the query accepts, leaving the table as it is."""
+        self._filter_stale = False
+        rows, query = self._rows, self._query
+        self._note = ""
+        self._shown = list(rows)
+        if not query.is_empty:
+            records = [row.record for row in rows]
+            self._shown = [row for row, record in zip(rows, records) if query.matches(record)]
+            missing = query.missing_paths(records)
+            if missing:
+                self._note = f"No event has {', '.join(missing)}"
+        self._shown_frames = [row.frame for row in self._shown]
+        self._positions = {_key(row): position for position, row in enumerate(self._shown)}
+
     def _apply(self) -> None:
         """Put the events the query accepts in the table."""
         self._stale = False
+        if self._filter_stale:
+            self._refilter()
         rows, query = self._rows, self._query
-        note = ""
-        shown = rows
-        if not query.is_empty:
-            records = [row.record for row in rows]
-            shown = [row for row, record in zip(rows, records) if query.matches(record)]
-            missing = query.missing_paths(records)
-            if missing:
-                note = f"No event has {', '.join(missing)}"
-        self._shown = list(shown)
-        self._shown_frames = [row.frame for row in self._shown]
         self._scrolling = True
         try:
             self._model.set_rows(self._shown, _key)
         finally:
             self._scrolling = False
-        self._query_bar.set_note(note)
+        self._query_bar.set_note(self._note)
         self._count_label.setText(f"{len(self._shown)} of {len(rows)} events")
         self._count_label.setVisible(not query.is_empty)
         if self._shown:

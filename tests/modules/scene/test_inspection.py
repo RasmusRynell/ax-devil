@@ -13,9 +13,11 @@ from ax_devil.modules.scene.inspection import (
     entity_summary,
 )
 from ax_devil.modules.scene.model import (
+    RGB,
     Attribute,
     BoundingBox,
     Classification,
+    ColorClassification,
     Entity,
     EntityId,
     Image,
@@ -24,6 +26,7 @@ from ax_devil.modules.scene.model import (
     Score,
     WorldVelocity,
 )
+from ax_devil.modules.scene.query import compile_query
 
 _TS = datetime(2024, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -93,6 +96,23 @@ def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range(
     assert items[("candidates", "bus")].fraction is None
     assert items[("candidates", "bus", "attributes", "make")].value == "volvo"
     assert [path[1] for path in items if path[0] == "candidates" and len(path) == 2] == ["bus", "car", "truck"]
+
+
+def test_color_candidates_with_one_name_stay_distinguishable_and_searchable() -> None:
+    entity = _inspection_entity()
+    observation = entity.latest_observation
+    assert observation is not None
+    colors = [
+        ColorClassification("RGB", RGB(200, 0, 0), Score(0.9)),
+        ColorClassification("RGB", RGB(0, 0, 200), Score(0.1)),
+    ]
+    observation.classification[2].attributes = [Attribute("color", colors)]
+
+    fields = entity_record(entity).fields
+    assert fields["classification.candidates.bus.attributes.color.RGB"] == (0.9, 0.1)
+    assert fields["classification.candidates.bus.attributes.color.RGB.rgb.r"] == (200, 0)
+    assert compile_query("rgb.b>=100").matches(entity_record(entity))
+    assert not compile_query("rgb.g>0").matches(entity_record(entity))
 
 
 def test_conf_falls_back_to_primary_score_unless_observation_reports_confidence() -> None:
