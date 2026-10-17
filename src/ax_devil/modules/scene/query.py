@@ -59,12 +59,11 @@ def _number(value: FieldValue) -> float | None:
     """Return ``value`` as a finite number, or None for strings, booleans and non-finite numbers."""
     if isinstance(value, bool):
         return None
-    if isinstance(value, str):
-        try:
-            value = float(value)
-        except ValueError:
-            return None
-    return float(value) if math.isfinite(value) else None
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 @dataclass(frozen=True, slots=True)

@@ -232,12 +232,13 @@ class EventPage(QWidget):
         )
 
     def _is_absent(self, row: _Involved) -> bool:
-        """Return whether the displayed frame lacks the object: by its history, else by the displayed scene."""
+        """Return whether the displayed frame lacks the object: by its history, else by the displayed scene, where
+        a frame without a scene shows no objects."""
         if self._frame is None:
             return False
         if row.history is not None:
             return not row.history.is_visible_at(self._frame)
-        return self._scene is not None and EntityId(row.entity_id) not in self._scene.entities
+        return self._scene is None or EntityId(row.entity_id) not in self._scene.entities
 
     def _involved(self, entity_id: str) -> _Involved:
         history = self._history.object(entity_id) if self._history is not None else None

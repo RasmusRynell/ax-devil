@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Hashable
 from typing import Any, cast
 
+import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QTabBar, QToolButton
@@ -18,6 +19,7 @@ from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
+    Delete,
     Entity,
     EntityId,
     MotionState,
@@ -28,9 +30,17 @@ from ax_devil.modules.scene.model import (
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
+from ax_devil.modules.video_viewer.media_tools.event_page import EventPage
+from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey
-from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, RowTableModel, RowTableView
+from ax_devil.modules.video_viewer.media_tools.row_table import (
+    _DIMMED_ROLE,
+    CellKind,
+    Column,
+    RowTableModel,
+    RowTableView,
+)
 
 
 def _frame(index: int) -> FrameIdentifier:
@@ -397,3 +407,62 @@ def test_event_page_follows_its_event_through_a_history_replacement_and_closes_w
 
     panel.set_scene_history(_history(events=(merge(5),)))
     assert events_view.isVisible() and _button(panel, "Go to frame") is None
+
+
+def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    def deleted(frame: int) -> Scene:
+        scene = Scene(time_slice=TimeSlice(start=frame, end=frame))
+        scene.add_event(Delete(scene.time_slice, EntityId(f"o{frame}")))
+        return scene
+
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.update_scene(deleted(1), _frame(1), {})
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+    _click_row(events_view, EventPageKey(FrameEvent.of(_frame(1), deleted(1).events[0])))
+    next_button = _button(panel, "Next in list")
+    assert next_button is not None and not next_button.isEnabled()
+
+    panel.update_scene(deleted(2), _frame(2), {})
+    assert next_button.isEnabled()
+    next_button.click()
+
+    (page,) = [p for p in panel.findChildren(EventPage) if p.isVisible()]
+    assert page.frame_event.entity_ids == ("o2",)
+
+
+def test_live_event_page_dims_an_object_when_the_frame_has_no_overlay(qtbot: QtBot) -> None:
+    page = EventPage(FrameEvent(_frame(3), "Delete", "Delete a", ("a",)))
+    qtbot.addWidget(page)
+    page.show()
+    table = page.findChild(RowTableView)
+    assert table is not None
+
+    page.update_scene(_scene(_entity("a")), 3)
+    assert not table.rows_model.data(table.rows_model.index(0, 0), _DIMMED_ROLE)
+    page.update_scene(None, 4)
+    assert table.rows_model.data(table.rows_model.index(0, 0), _DIMMED_ROLE)
+
+
+def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    lookups: list[str] = []
+
+    def events_involving(self: SceneHistory, entity_id: str) -> tuple[()]:
+        lookups.append(entity_id)
+        return ()
+
+    monkeypatch.setattr(SceneHistory, "events_involving", events_involving)
+    page = ObjectPage("a", {})
+    qtbot.addWidget(page)
+
+    page.set_history(_history(("a", "human", ((0, 3),))))
+    page.set_history(_history(("a", "human", ((0, 4),))))
+    assert lookups == []
+
+    page.show()
+    assert lookups == ["a"]
