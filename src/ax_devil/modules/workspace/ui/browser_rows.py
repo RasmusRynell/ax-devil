@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
 from pathlib import PurePath
-from typing import Literal
+from typing import Any, Literal
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.workspace.core.content import (
@@ -193,6 +193,24 @@ class WorkspaceBrowserSection:
 
     kind: BrowserSection
     rows: tuple[WorkspaceBrowserRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RowOrder:
+    """A named order for the rows of a view: rows sort by what *key* returns, and equal keys keep the order given."""
+
+    label: str
+    key: Callable[[WorkspaceBrowserRow], tuple[Any, ...]]
+
+    def arrange(self, sections: Sequence[WorkspaceBrowserSection]) -> tuple[WorkspaceBrowserSection, ...]:
+        """Return *sections* with the top-level rows of each in this order; the rows under a row keep theirs, so a
+        playlist's entries stay in playlist order."""
+        return tuple(replace(section, rows=tuple(sorted(section.rows, key=self.key))) for section in sections)
+
+
+WORKSPACE_ORDER = RowOrder("Workspace order", lambda _row: ())
+"""Rows as the workspace, or whatever feeds the view, lists them."""
+BY_NAME = RowOrder("Name", lambda row: (row.label.casefold(),))
 
 
 def _counted(count: int, noun: str, plural: str = "") -> str:

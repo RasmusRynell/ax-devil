@@ -28,9 +28,10 @@ Right-click an item to rename or remove it; an empty name returns to its default
 camera host. An item that cannot open, such as a missing file or a missing plugin, stays in the list with a warning
 icon; hover it for the reason. The details are in [Workspace](architecture/workspace.md#lifecycle).
 
-The Workspace, Live and Offline views have a search at the top, which matches what a row shows, and a **Filter**,
-which shows or hides rows by what they are, such as a found camera's type. Right-click a playlist entry or an overlay
-and choose **Hide** to skip it in playback; it stays listed, dimmed, until you choose **Unhide**. A playlist lists its
+The Workspace, Live and Offline views have a search at the top, which matches what a row shows, a **Sort**, which
+orders the rows of each section, and a **Filter**, which shows or hides rows by what they are, such as a found camera's
+type. **Sort** and **Filter** appear once there is a choice to make. Right-click a playlist entry or an overlay and
+choose **Hide** to skip it in playback; it stays listed, dimmed, until you choose **Unhide**. A playlist lists its
 entries when it loads, unless it has more than 200; expand a longer one with its arrow.
 
 ## Sidebar views
@@ -45,7 +46,7 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   its workspace opens; a camera that refuses it gets a warning triangle, with the reason on hover, and loses **Start
   stream**. Right-click a camera for the same menu as in the Workspace view, such as **Rename** and **Remove**. The search
   matches found cameras also by serial number and firmware, and the cameras in the workspace too once a scan found
-  them, which then show what it learned on hover. **Sort** orders the cameras the scan found, and **Filter** narrows
+  them, which then show what it learned on hover. **Sort** also orders the cameras by model, firmware or uptime, and **Filter** narrows
   them by type and sign-in. **Scan settings**, at the bottom, takes the IP addresses to search: addresses
   and ranges such as `192.168.1.0/24`, separated by commas. A background scan starts when the app launches, so its
   results are ready in Live without opening the page first. **Rescan** searches again, or searches this computer's

@@ -29,9 +29,11 @@ from ax_devil.modules.workspace.core import (
     live_stream_item_from_defaults,
 )
 from ax_devil.modules.workspace.ui.browser_rows import (
+    BY_NAME,
     BrowserSection,
     Facet,
     RowAction,
+    RowOrder,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
@@ -133,18 +135,26 @@ def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> Workspace
     )
 
 
-def _with_scan(
+def _scan_camera(
     row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[str, DiscoveredCamera]
-) -> WorkspaceBrowserRow:
-    """Return the row of a camera the workspace holds with what *checked*, its own sign-in, or else a scan in *found*
-    learned about it, as a found camera shows it; one that refuses its own login warns and can not start a stream."""
+) -> DiscoveredCamera | None:
+    """Return what *checked*, the row's own sign-in, or else a scan in *found* learned about the camera of a row the
+    workspace holds, or None when nothing did."""
     item = row.item
     if item is None:
+        return None
+    return checked.get(item.id) or next((found[host] for host in item.hosts if host in found), None)
+
+
+def _with_scan(
+    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[str, DiscoveredCamera]
+) -> WorkspaceBrowserRow:
+    """Return the row of a camera the workspace holds with what *camera*, which signing in or a scan learned about it,
+    shows as a found camera does; one that refuses its own login warns and can not start a stream."""
+    item = row.item
+    if item is None or camera is None:
         return row
     own = checked.get(item.id)
-    camera = own or next((found[host] for host in item.hosts if host in found), None)
-    if camera is None:
-        return row
     details = _camera_details(camera, show_sign_in_problem=False)
     row = replace(
         row,
@@ -218,9 +228,10 @@ class LiveViewController(QObject):
     view, which starts as the Settings' default and searches the local
     network when empty, signing in when the view asks to; *scan* runs as one of *jobs*, and what it finds is dropped
     once the view is gone or `cleanup` ran. A camera the workspace holds shows what the scan learned about it as a
-    found camera does; the order applies to the found cameras. A found camera's Add puts it in *store* with the
-    user's stream defaults, and with the credentials that signed in to it; it only adds, the stream starts when the
-    user starts it. It can be added only once signed in, so Add never puts in a camera that refuses its login.
+    found camera does; the view's Sort orders both by what is known of each camera. A found camera's Add puts it in
+    *store* with the user's stream defaults, and with the credentials that signed in to it; it only adds, the stream
+    starts when the user starts it. It can be added only once signed in, so Add never puts in a camera that refuses
+    its login.
 
     The workspace's cameras are *check*ed once with their own login as they resolve, unless Settings turn signing in
     off; one that refuses it shows a warning and can not start a stream. Until a check answers, or when it can not
@@ -251,19 +262,20 @@ class LiveViewController(QObject):
         view.set_sign_in(self._given_sign_in)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan starts
         self._scan_request = LatestRequest(view)
-        self._order = DeviceOrder.ADDRESS
+        self._cameras: dict[str, DiscoveredCamera] = {}  # By row id, what the rows listed last show of their camera.
         self._found_refresh = QTimer(self)  # Finds can arrive in a burst; one refresh covers them all.
         self._found_refresh.setSingleShot(True)
         self._found_refresh.setInterval(_FOUND_REFRESH_MS)
         self._found_refresh.timeout.connect(self._refresh)
         view.scan_requested.connect(self._rescan)
         view.logins_edited.connect(self._save_logins)
-        view.order_chosen.connect(self._sort)
         view.destroyed.connect(self._forget_view)
         store.workspace_replaced.connect(self._checked.clear)
         store.items_resolved.connect(self._check_access_of)
+        orders = [self._device_order(order) for order in DeviceOrder]
+        orders.insert(1, BY_NAME)  # After the address, which the device orders start from.
         self._listing = SectionsViewController(
-            view, workspace, {BrowserSection.LIVE}, compose=self._with_found, summary=_streaming
+            view, workspace, {BrowserSection.LIVE}, compose=self._with_found, summary=_streaming, orders=orders
         )
 
     def refresh_defaults(self) -> None:
@@ -343,10 +355,6 @@ class LiveViewController(QObject):
         if self._view is not None:
             self._view.set_scan_status(ScanStatus.FAILED, str(error) or type(error).__name__)
 
-    def _sort(self, order: DeviceOrder) -> None:
-        self._order = order
-        self._refresh()
-
     def _refresh(self) -> None:
         if self._view is not None:
             self._listing.refresh()
@@ -391,21 +399,29 @@ class LiveViewController(QObject):
 
     def _with_found(self, held: Sections) -> Sections:
         """Return *held* with what its cameras' own sign-ins and the scan learned about them, then the cameras found
-        that the workspace does not hold, in the chosen order."""
+        that the workspace does not hold."""
         by_host = {camera.host: camera for camera in self._found or ()}
-        held = tuple(
-            replace(section, rows=tuple(_with_scan(row, by_host, self._checked) for row in section.rows))
-            for section in held
-        )
+        self._cameras = {}
+        listed: list[WorkspaceBrowserSection] = []
+        for section in held:
+            rows = []
+            for row in section.rows:
+                camera = _scan_camera(row, by_host, self._checked)
+                if camera is not None:
+                    self._cameras[row.row_id] = camera
+                rows.append(_with_scan(row, camera, self._checked))
+            listed.append(replace(section, rows=tuple(rows)))
         if self._found is None:
-            return held
+            return tuple(listed)
         hosts = _workspace_hosts(self._store.workspace.items)
-        found = tuple(
-            _network_row(camera, partial(self._add, camera))
-            for camera in self._order.sorted(self._found)
-            if camera.host not in hosts
-        )
-        return (*held, WorkspaceBrowserSection(BrowserSection.NETWORK, found))
+        new = [camera for camera in self._found if camera.host not in hosts]
+        self._cameras.update((_network_row_id(camera), camera) for camera in new)
+        found = tuple(_network_row(camera, partial(self._add, camera)) for camera in new)
+        return (*listed, WorkspaceBrowserSection(BrowserSection.NETWORK, found))
+
+    def _device_order(self, order: DeviceOrder) -> RowOrder:
+        """Return *order* as an order of rows, by what the rows listed last show of their camera."""
+        return RowOrder(order.label, lambda row: order.key(self._cameras.get(row.row_id)))
 
     def _forget_view(self) -> None:
         self._view = None

@@ -66,6 +66,7 @@ class WorkspaceSession(QObject):
 
     state_changed = Signal()  # The Workspace's name or modified flag changed.
     add_live_stream_requested = Signal()  # The Live view asked to add a camera by entering its details.
+    add_video_requested = Signal()  # The Offline view asked to add a video.
     add_playlist_requested = Signal(str)  # The id of the playlist resolver to add a playlist with.
 
     def __init__(
@@ -113,6 +114,7 @@ class WorkspaceSession(QObject):
         self._window.add_view(self._offline_view.sidebar_view())
         self._offline_controller = OfflineViewController(self._offline_view, self._workspace_controller, parent=self)
         self._offline_controller.add_requested.connect(self.add_playlist_requested)
+        self._offline_view.add_video_requested.connect(self.add_video_requested)
         self._bookmarks_view = BookmarksView()
         self._bookmarks = BookmarksViewController(
             self._bookmarks_view, self._workspace_store, self._workspace_controller, parent=self

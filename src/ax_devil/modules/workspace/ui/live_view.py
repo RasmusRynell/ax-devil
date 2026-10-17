@@ -1,5 +1,5 @@
-"""The Live view: the cameras in the workspace and on the network, with their order, then the settings of the network
-scan."""
+"""The Live view: the cameras in the workspace and on the network, with a button to add one manually and the settings
+of the network scan under them."""
 
 from __future__ import annotations
 
@@ -7,18 +7,16 @@ from collections.abc import Sequence
 from enum import Enum
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QActionGroup
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QMenu, QProgressBar, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QProgressBar, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import muted_label
-from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
-from ax_devil.modules.device_discovery.network_scan import DeviceOrder, Login
+from ax_devil.modules.device_discovery.network_scan import Login
 from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
@@ -34,38 +32,19 @@ class ScanStatus(Enum):
     FAILED = "Scan failed"
 
 
-class LiveView(SectionsView):
-    """The sections it is given, with a Sort beside the search, then Add manually and the scan settings; it decides
-    nothing itself.
+class ScanSettingsPanel(QWidget):
+    """The settings of the network scan: the IP range with Rescan, whether to sign in and the logins to try, and how
+    the last scan went.
 
-    ``scan_requested`` carries the IP range as typed, ``add_manually_requested`` that the user wants to enter a
-    camera's details, ``logins_edited`` the logins a scan tries once the user edited them, and ``order_chosen`` the
-    ``DeviceOrder`` picked.
+    ``scan_requested`` carries the IP range as typed, and ``logins_edited`` the logins a scan tries once the user
+    edited them.
     """
 
     scan_requested = Signal(str)
-    add_manually_requested = Signal()
     logins_edited = Signal(object)  # tuple[Login, ...]
-    order_chosen = Signal(object)  # DeviceOrder
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(LIVE_VIEW_ID, "Live", Icon.LIVE_VIDEO, search_placeholder="Search cameras", parent=parent)
-        order_menu = QMenu(self)
-        orders = QActionGroup(order_menu)
-        for order in DeviceOrder:
-            action = order_menu.addAction(order.label)
-            action.setCheckable(True)
-            action.setChecked(order is DeviceOrder.ADDRESS)
-            orders.addAction(action)
-            action.triggered.connect(lambda _checked=False, order=order: self.order_chosen.emit(order))
-        sort = MenuButton("Sort", order_menu)
-        sort.setToolTip("The order of the cameras found on the network")
-        self.add_tool(sort)
-
-        add_manually = SmallButton("Add manually", Icon.ADD)
-        add_manually.clicked.connect(self.add_manually_requested)
-        self.add_padded(add_manually, top=Space.S, bottom=Space.S)
-
+        super().__init__(parent)
         self._ip_range = QLineEdit(self)
         self._ip_range.setPlaceholderText("IP range, such as 192.168.1.0/24")
         self._ip_range.returnPressed.connect(self._request_scan)
@@ -107,14 +86,12 @@ class LiveView(SectionsView):
         controls_layout.addWidget(self._logins)
         controls_layout.addWidget(self._scan_progress)
         controls_layout.addWidget(self._scan_status)
-        footer = QWidget(self)
-        footer.setStyleSheet(SEE_THROUGH)
-        footer_layout = QVBoxLayout(footer)
-        footer_layout.setContentsMargins(0, Space.S, 0, Space.M)
-        footer_layout.setSpacing(Space.XS)
-        footer_layout.addWidget(SectionCaption("Scan settings", None, KindColor.MUTED.color))
-        footer_layout.addWidget(controls)
-        self.add(footer)
+        self.setStyleSheet(SEE_THROUGH)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, Space.S, 0, Space.M)
+        layout.setSpacing(Space.XS)
+        layout.addWidget(SectionCaption("Scan settings", None, KindColor.MUTED.color))
+        layout.addWidget(controls)
 
     def set_scan_range(self, text: str) -> None:
         """Put *text* in the IP range field."""
@@ -148,3 +125,48 @@ class LiveView(SectionsView):
     def _request_scan(self) -> None:
         if self._scan_button.isEnabled():
             self.scan_requested.emit(self._ip_range.text())
+
+
+class LiveView(SectionsView):
+    """The sections it is given, with an Add manually button under them and the scan settings below it; it decides
+    nothing itself.
+
+    ``scan_requested`` carries the IP range as typed, ``add_manually_requested`` that the user wants to enter a
+    camera's details, and ``logins_edited`` the logins a scan tries once the user edited them.
+    """
+
+    scan_requested = Signal(str)
+    add_manually_requested = Signal()
+    logins_edited = Signal(object)  # tuple[Login, ...]
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(LIVE_VIEW_ID, "Live", Icon.LIVE_VIDEO, search_placeholder="Search cameras", parent=parent)
+        self.add_footer_button("Add manually", Icon.ADD).clicked.connect(self.add_manually_requested)
+        self._scan = ScanSettingsPanel(self)
+        self._scan.scan_requested.connect(self.scan_requested)
+        self._scan.logins_edited.connect(self.logins_edited)
+        self.set_footer_panel(self._scan)
+
+    def set_scan_range(self, text: str) -> None:
+        """Put *text* in the IP range field."""
+        self._scan.set_scan_range(text)
+
+    def scan_range(self) -> str:
+        """Return the IP range as typed."""
+        return self._scan.scan_range()
+
+    def set_logins(self, logins: Sequence[Login]) -> None:
+        """Show *logins* as the ones a scan tries."""
+        self._scan.set_logins(logins)
+
+    def sign_in_wanted(self) -> bool:
+        """Return whether the user asked the scan to try to sign in."""
+        return self._scan.sign_in_wanted()
+
+    def set_sign_in(self, enabled: bool) -> None:
+        """Set whether scans try the saved logins, showing their editor when enabled."""
+        self._scan.set_sign_in(enabled)
+
+    def set_scan_status(self, status: ScanStatus, reason: str = "") -> None:
+        """Show *status* under the scan settings, with *reason* on hover; the button waits while a scan runs."""
+        self._scan.set_scan_status(status, reason)

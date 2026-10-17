@@ -14,14 +14,20 @@ from ax_devil.modules.plugin_system import (
     RuntimePluginRegistry,
 )
 from ax_devil.modules.workspace.ui.browser_rows import (
+    BY_NAME,
+    WORKSPACE_ORDER,
     BrowserSection,
     RowAction,
+    RowOrder,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.offline_view import OfflineView
 from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
+
+BY_LOCATION = RowOrder("Location", lambda row: (row.location is None, (row.location or "").casefold()))
+"""Rows by the folder or file they come from, the ones without a location last."""
 
 
 def _loaded_resolvers() -> tuple[PluginRecord, ...]:
@@ -67,6 +73,7 @@ class OfflineViewController(QObject):
             {BrowserSection.VIDEOS, BrowserSection.PLAYLISTS},
             compose=self._with_resolvers,
             summary=_held_count,
+            orders=(WORKSPACE_ORDER, BY_NAME, BY_LOCATION),
         )
         view.shown.connect(self._refresh_resolvers)
 

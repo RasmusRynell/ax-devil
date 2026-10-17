@@ -111,7 +111,15 @@ The Workspace, Live and Offline views are one `SectionsView` (`sections_view.py`
 plus what its concept adds. Workspace shows every section the Workspace holds (`HELD_SECTIONS`) and nothing it does
 not hold. Live and Offline show their kinds, and their controllers (`LiveViewController`, `OfflineViewController`)
 compose what is their own into them: cameras a scan found, what the scan learned about held cameras, and playlist
-resolvers, whose Add runs the row's `add`. Their buttons, such as the scan settings, stay theirs.
+resolvers, whose Add runs the row's `add`.
+
+`SectionsView` is also the one shell, with a fixed layout: a toolbar (Search, Sort, Filter, in that order), the tree, a
+row of footer buttons directly under it, then an optional footer panel. A view never adds toolbar widgets or lays out
+its own footer; it fills these slots through the controller's settings. The orders Sort offers are declared in
+the `SectionsViewController` (`RowOrder`, default `WORKSPACE_ORDER` and `BY_NAME`); Sort appears with two or more, and the
+view re-sorts the sections it was given when the user picks another. Filter appears only when a facet group has a
+choice. A view's own buttons (`add_footer_button`) and panel (`set_footer_panel`, such as Live's scan settings) fill
+the footer.
 
 Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Start stream,
 Stop stream, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
