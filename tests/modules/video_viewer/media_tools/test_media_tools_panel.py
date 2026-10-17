@@ -516,8 +516,21 @@ def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
     assert page.frame_event.entity_ids == ("new",)
 
 
+def test_event_page_lists_the_equal_event_reported_twice_among_its_same_moment(qtbot: QtBot) -> None:
+    twice = FrameEvent(_frame(3), "Delete", "Delete a", ("a",))
+    other = FrameEvent(_frame(3), "Merge", "Merge a, b", ("a", "b"))
+    page = EventPage(EventPageKey(twice, 0))
+    qtbot.addWidget(page)
+    page.set_history(_history(events=(twice, other, twice)))
+    page.show()
+    moment = next(view for view in page.findChildren(RowTableView) if view.isHeaderHidden())
+
+    assert moment.rows_model.rowCount() == 2
+    assert {moment.rows_model.row_of(EventPageKey(twice, 1)), moment.rows_model.row_of(EventPageKey(other))} == {0, 1}
+
+
 def test_live_event_page_dims_an_object_when_the_frame_has_no_overlay(qtbot: QtBot) -> None:
-    page = EventPage(FrameEvent(_frame(3), "Delete", "Delete a", ("a",)))
+    page = EventPage(EventPageKey(FrameEvent(_frame(3), "Delete", "Delete a", ("a",))))
     qtbot.addWidget(page)
     page.show()
     table = page.findChild(RowTableView)

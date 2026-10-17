@@ -66,6 +66,7 @@ from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
+from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.workspace.core import (
     BookmarkKind,
@@ -633,7 +634,7 @@ def test_media_tools_screenshots(
     events._query_bar.set_text("kind:merge")
     shoot("panel-events-query")
     events._query_bar.set_text("")
-    events.eventActivated.emit(rename)
+    events.eventActivated.emit(EventPageKey(rename))
     shoot("panel-event")
 
     # Four lanes of the same clip, the panel open on Objects in each, then an object page in each.
