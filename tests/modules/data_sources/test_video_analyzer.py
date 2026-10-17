@@ -12,7 +12,7 @@ from ax_devil.modules.data_sources.video_analyzer import VideoAnalyzer
 
 
 @pytest.fixture(autouse=True)
-def isolated_cache(temp_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def isolated_cache_base(temp_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the real cache manager within this test's temporary directory."""
     monkeypatch.setattr(CacheManager, "_get_base_cache_dir", lambda self: temp_dir / "cache")
 

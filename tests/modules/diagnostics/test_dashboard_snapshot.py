@@ -25,18 +25,14 @@ def test_snapshot_and_export_include_viewers_sources_and_full_cache_ranges() -> 
             cache.put(index, make_cached_frame(index))
         snapshot = service.build_snapshot()
         assert any(viewer.viewer_id == "export-test" for viewer in snapshot.viewers)
-        assert snapshot.sources["Source A"].observations["Overlay offset (ms)"].value is None
         detail = next(value for value in snapshot.caches.values() if value["label"] == "A")
         assert len(detail["ranges"]) == 50
         assert detail["reserved_bytes"] == 50 * 768
         assert detail["budget_bytes"] == 100 * 768
-        payload = service.build_export_payload()
-        assert payload["caches"]
-        assert payload["viewers"]
-        assert (
-            json.loads(json.dumps(payload))["sources"]["Source A"]["observations"]["Overlay offset (ms)"]["value"]
-            is None
-        )
+        payload = json.loads(json.dumps(service.build_export_payload()))
+        assert any(cache["label"] == "A" for cache in payload["caches"].values())
+        assert any(viewer["viewer_id"] == "export-test" for viewer in payload["viewers"])
+        assert payload["sources"]["Source A"]["observations"]["Overlay offset (ms)"]["value"] is None
     finally:
         render.remove("export-test")
         get_frame_cache_registry().deregister(cache)

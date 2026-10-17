@@ -206,11 +206,12 @@ def test_the_file_is_indented_json_with_a_version_and_a_trailing_newline(tmp_pat
     assert list(tmp_path.iterdir()) == [path]
 
 
-def test_a_failed_save_keeps_the_old_file_and_leaves_no_temporary_file(tmp_path: Path) -> None:
+@pytest.mark.parametrize("value", [object(), float("nan"), float("inf")], ids=["not-json", "nan", "inf"])
+def test_a_failed_save_keeps_the_old_file_and_leaves_no_temporary_file(tmp_path: Path, value: object) -> None:
     path = tmp_path / "w.ax-devil.workspace"
     save_workspace(Workspace(items=(PlaylistItem(label="Old", resolver="r"),)), path)
     before = path.read_text(encoding="utf-8")
-    unwritable = PlaylistItem(label="New", resolver="r", settings={"bad": object()})
+    unwritable = PlaylistItem(label="New", resolver="r", settings={"bad": value})
 
     with pytest.raises(WorkspaceFileError):
         save_workspace(Workspace(items=(unwritable,)), path)
@@ -322,20 +323,6 @@ def test_a_version_that_is_not_the_integer_one_is_rejected(tmp_path: Path, versi
 
     with pytest.raises(WorkspaceFileError, match="workspace file version"):
         load_workspace(path)
-
-
-@pytest.mark.parametrize("number", [float("nan"), float("inf")])
-def test_a_non_finite_number_fails_the_save_and_keeps_the_old_file(tmp_path: Path, number: float) -> None:
-    path = tmp_path / "w.ax-devil.workspace"
-    save_workspace(Workspace(items=(PlaylistItem(label="Old", resolver="r"),)), path)
-    before = path.read_text(encoding="utf-8")
-    non_finite = PlaylistItem(label="New", resolver="r", settings={"threshold": number})
-
-    with pytest.raises(WorkspaceFileError):
-        save_workspace(Workspace(items=(non_finite,)), path)
-
-    assert path.read_text(encoding="utf-8") == before
-    assert list(tmp_path.iterdir()) == [path]
 
 
 @pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])

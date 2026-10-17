@@ -106,7 +106,7 @@ def test_resize_round_trip_restores_view_after_temporary_pan_clamp(renderer: Vid
     assert tuple(_normalized_view(renderer)) == pytest.approx(tuple(before))
 
 
-def test_keyboard_zoom_steps_around_center_and_resets_peers(renderer: VideoFrameRenderer) -> None:
+def test_keyboard_zoom_steps_around_center_and_reset_reports_the_viewport(renderer: VideoFrameRenderer) -> None:
     emitted: list[NormalizedViewport] = []
     renderer.viewportChanged.connect(emitted.append)
 

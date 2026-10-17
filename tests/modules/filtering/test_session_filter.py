@@ -9,9 +9,11 @@ def test_detached_snapshot_keeps_decoder_predicates_and_search_after_session_edi
     config = FilterConfig(
         options=(
             FilterOption(
-                id="tracks", label="Tracks", predicate=lambda entity, state: str(entity.id).startswith("Track")
+                id="tracks", label="Tracks", predicate=lambda entity, _state: str(entity.id).startswith("Track")
             ),
-            FilterOption(id="other", label="Other", predicate=lambda entity, state: str(entity.id).startswith("other")),
+            FilterOption(
+                id="other", label="Other", predicate=lambda entity, _state: str(entity.id).startswith("other")
+            ),
         )
     )
     model = SessionFilter(config)

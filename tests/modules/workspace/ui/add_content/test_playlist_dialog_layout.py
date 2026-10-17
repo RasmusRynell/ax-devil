@@ -1,11 +1,12 @@
 """Layout regression checks for dynamically selected playlist resolver forms."""
 
 import pytest
-from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QScrollArea, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QScrollArea, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PlaylistResolverWidget, RuntimePluginRegistry
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
+from tests.helpers.dialogs import visible_texts
 from tests.helpers.workspace import inline_resolver
 
 
@@ -62,17 +63,12 @@ def test_broken_resolver_leaves_other_resolvers_available(qtbot: QtBot, monkeypa
     assert visible_forms[0] is combo.currentData()
 
 
-def _visible_texts(dialog: AddPlaylistDialog) -> list[str]:
-    """Return the text of every label the user can currently see."""
-    return [label.text() for label in dialog.findChildren(QLabel) if label.isVisibleTo(dialog)]
-
-
 def test_opening_page_explains_every_source(qtbot: QtBot) -> None:
     """Before a source is chosen, the dialog explains itself and describes each available source."""
     dialog = AddPlaylistDialog(inline_resolver())
     qtbot.addWidget(dialog)
     combo = _source_combo(dialog)
-    opening_text = " ".join(_visible_texts(dialog))
+    opening_text = " ".join(visible_texts(dialog))
     assert "Choose a source" in opening_text
     for record in RuntimePluginRegistry.get_plugins(PLAYLIST_RESOLVER_PLUGIN_TYPE):
         index = combo.findText(record.definition.display_name)
@@ -81,5 +77,5 @@ def test_opening_page_explains_every_source(qtbot: QtBot) -> None:
         description = record.definition.description
         assert description is not None and description in opening_text
         combo.setCurrentIndex(index)
-        page_text = _visible_texts(dialog)
+        page_text = visible_texts(dialog)
         assert description in page_text

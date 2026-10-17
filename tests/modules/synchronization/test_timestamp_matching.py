@@ -1,5 +1,7 @@
 """Tests for shared timestamp matching policy."""
 
+import pytest
+
 from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.synchronization.timestamp_matching import (
     TimestampFallbackMode,
@@ -73,37 +75,23 @@ def test_find_matching_overlay_timestamp_rejects_empty_overlay_timeline() -> Non
     assert result.match_type == "missing"
 
 
-def test_count_tolerated_past_overlay_timestamps_excludes_exact_matches() -> None:
-    """Tolerance count should only include non-exact past matches."""
+@pytest.mark.parametrize(
+    ("video", "overlays", "tolerance_us", "expected"),
+    [
+        pytest.param((1_000, 2_000, 3_000), (1_000, 1_999, 2_300, 4_000), 500, 1, id="excludes_exact_matches"),
+        pytest.param((1_000,), (998, 999), 5_000, 1, id="counts_only_latest_previous_overlay"),
+        pytest.param((1_000, 1_001), (1_000,), 5_000, 0, id="exact_overlay_is_not_counted_for_later_frame"),
+    ],
+)
+def test_count_tolerated_past_overlay_timestamps_counts_only_runtime_selectable_non_exact_matches(
+    video: tuple[int, ...], overlays: tuple[int, ...], tolerance_us: int, expected: int
+) -> None:
+    """Only the past overlay a frame would actually select, and only when it is not an exact match, is counted."""
     count = count_tolerated_past_overlay_timestamps(
-        video_timestamps_us=(1_000, 2_000, 3_000),
-        sorted_overlay_timestamps_us=(1_000, 1_999, 2_300, 4_000),
-        policy=TimestampFallbackPolicy(tolerance_us=500),
+        video_timestamps_us=video,
+        sorted_overlay_timestamps_us=overlays,
+        policy=TimestampFallbackPolicy(tolerance_us=tolerance_us),
         token=NEVER,
     )
 
-    assert count == 1
-
-
-def test_count_tolerated_past_overlay_timestamps_counts_only_runtime_selectable_overlays() -> None:
-    """Tolerance count should not include older overlays hidden behind the latest previous overlay."""
-    count = count_tolerated_past_overlay_timestamps(
-        video_timestamps_us=(1_000,),
-        sorted_overlay_timestamps_us=(998, 999),
-        policy=TimestampFallbackPolicy(tolerance_us=5_000),
-        token=NEVER,
-    )
-
-    assert count == 1
-
-
-def test_count_tolerated_past_overlay_timestamps_does_not_double_count_exact_overlay() -> None:
-    """An exact overlay selected by a later frame should still count only as exact elsewhere."""
-    count = count_tolerated_past_overlay_timestamps(
-        video_timestamps_us=(1_000, 1_001),
-        sorted_overlay_timestamps_us=(1_000,),
-        policy=TimestampFallbackPolicy(tolerance_us=5_000),
-        token=NEVER,
-    )
-
-    assert count == 0
+    assert count == expected

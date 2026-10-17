@@ -81,7 +81,10 @@ def test_live_policy_rejects_future_and_expired_samples() -> None:
     assert policy.select_overlay(_frame_id(12, 12_000_000), overlay).overlay is None
     assert policy.select_overlay(overlay.frame_id, overlay).overlay is overlay
     policy.update_settings(OverlayPersistenceSettings(enabled=True, timeout_ms=None))
-    assert policy.select_overlay(_frame_id(9, 9_000_000), None).overlay is None
+    # Without a timeout the retained overlay never expires, however much video time passes.
+    much_later = policy.select_overlay(_frame_id(10_000, 10_000_000_000), None)
+    assert much_later.overlay is overlay
+    assert much_later.reused
 
 
 def test_late_live_sample_does_not_replace_newer_state() -> None:

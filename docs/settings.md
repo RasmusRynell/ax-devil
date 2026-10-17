@@ -7,7 +7,7 @@
 - **Stream defaults:** device credentials and RTSP defaults for new live streams.
 - **Analytics:** defaults for MQTT and DataHub overlay connections.
 - **Network scan:** startup discovery, sign-in defaults, the Live view's default IP range, and the logins its scan tries.
-- **Storage:** window state, cache, log, and render catalog folders.
+- **Storage:** the folders for window state, cache, logs, and render catalogs.
 - **Advanced:** the active configuration's location and version.
 
 **OK** saves all pages and closes, and **Cancel** discards the changes. When a saved change needs a restart, ax-devil
@@ -30,7 +30,7 @@ Turn it off to discover cameras without trying saved logins; it also stops the c
 against their own saved login. Changing the default applies to the Live view immediately;
 you can also override its checkbox for a manual scan. Neither option interrupts a scan already running.
 
-Connection and storage fields keep `$VARIABLE_NAME` references as written and read the variable when the value is
+Stream defaults, Analytics, Network scan and Storage fields keep `$VARIABLE_NAME` references as written and read the variable when the value is
 used; any other text is literal, even when it starts with `$` or `~`. Password references stay visible while literal
 passwords are masked. Numeric and storage references must resolve to valid values to save. Storage folders may start
 with `~` for the home folder.
@@ -82,8 +82,7 @@ Keep these private:
 - Configuration can store manually entered credentials as plain JSON.
 - Logs may contain credentials or authenticated URLs, and performance traces contain local paths.
   Redact diagnostics before sharing.
-- Frame caches use pickle. Keep cache and config folders user-owned. Do not load third-party caches
-  or distribute your own.
+- Keep cache and config folders user-owned. Do not load third-party caches or distribute your own.
 
 ## Video overlays
 

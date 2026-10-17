@@ -317,51 +317,30 @@ def test_removing_one_content_of_an_item_removes_the_whole_item(
     assert len(_item_rows(session)) == 1
 
 
-def test_removing_a_video_item_leaves_a_playlist_of_the_same_video_open(
-    workspace_session: WorkspaceSession,
+@pytest.mark.parametrize("remove", ["video", "playlist"])
+def test_removing_one_of_a_video_and_a_playlist_of_it_leaves_the_other_viewer_open(
+    workspace_session: WorkspaceSession, remove: str
 ) -> None:
     video = _make_video("shared.mp4")
     playlist = PlaylistContent(
         display_name="Playlist",
         entries=(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),),
     )
-    video_item = content_item(video)
+    items = {"video": content_item(video), "playlist": content_item(playlist)}
+    removed = items[remove]
+    (kept,) = (item for item in items.values() if item is not removed)
 
     with patch(_OFFLINE_VIEWER, DummyViewer):
-        workspace_session.add_items([content_item(playlist)])
-        playlist_viewer = _focused(workspace_session)
-        playlist_viewer.set_pinned(True)
-        workspace_session.add_items([video_item])
+        workspace_session.add_items([kept])
+        kept_viewer = _focused(workspace_session)
+        kept_viewer.set_pinned(True)
+        workspace_session.add_items([removed])
 
         assert _center(workspace_session).get_widget_count() == 2
-        _store(workspace_session).remove_item(video_item.id)
+        _store(workspace_session).remove_item(removed.id)
 
     assert _center(workspace_session).get_widget_count() == 1
-    assert workspace_session.focused_widget() is playlist_viewer
-
-
-def test_removing_playlist_leaves_standalone_underlying_video_viewer_open(
-    workspace_session: WorkspaceSession,
-) -> None:
-    video = _make_video("shared.mp4")
-    playlist_item = content_item(
-        PlaylistContent(
-            display_name="Playlist",
-            entries=(PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),),
-        )
-    )
-
-    with patch(_OFFLINE_VIEWER, DummyViewer):
-        workspace_session.add_items([content_item(video)])
-        video_viewer = _focused(workspace_session)
-        video_viewer.set_pinned(True)
-        workspace_session.add_items([playlist_item])
-
-        assert _center(workspace_session).get_widget_count() == 2
-        _store(workspace_session).remove_item(playlist_item.id)
-
-    assert _center(workspace_session).get_widget_count() == 1
-    assert workspace_session.focused_widget() is video_viewer
+    assert workspace_session.focused_widget() is kept_viewer
 
 
 @pytest.mark.parametrize("kind", ["video", "live_stream"])

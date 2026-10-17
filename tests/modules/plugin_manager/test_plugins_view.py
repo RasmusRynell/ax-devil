@@ -19,28 +19,10 @@ from ax_devil.modules.plugin_manager.catalog import PluginGroup, plugin_catalog
 from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChangeError, PluginChanges
 from ax_devil.modules.plugin_manager.plugins_view import PluginsView
 from ax_devil.modules.plugin_system import (
-    DECODER_PLUGIN_TYPE,
-    DecoderPluginDefinition,
-    FileToSceneDecoderDefinition,
     PluginRecord,
-    PluginStatus,
     RuntimePluginRegistry,
 )
-
-
-def _record(
-    plugin_id: str, package: str | None, error: str | None = None, handlers: tuple[str, ...] = ()
-) -> PluginRecord:
-    files = tuple(FileToSceneDecoderDefinition(name.upper(), Mock(), name) for name in handlers)
-    return PluginRecord(
-        definition=DecoderPluginDefinition(
-            plugin_type=DECODER_PLUGIN_TYPE, plugin_id=plugin_id, display_name=plugin_id, file_to_scene_decoders=files
-        ),
-        package=package,
-        status=PluginStatus.FAILED if error else PluginStatus.LOADED,
-        error=error,
-    )
-
+from tests.helpers.plugin_records import file_handler, plugin_record
 
 SELECTION = {"yolo-detections": "yolo-detections>=0.2", "old-model-decoder": "old-model-decoder"}
 
@@ -49,9 +31,9 @@ SELECTION = {"yolo-detections": "yolo-detections>=0.2", "old-model-decoder": "ol
 def records() -> list[PluginRecord]:
     """The registry's records, as the view reads them."""
     return [
-        _record("mot", None, handlers=("mot", "mot-extra")),
-        _record("yolo", "yolo-detections", handlers=("yolo-boxes",)),
-        _record("old", "old-model-decoder", error="requires plugin API 1, host provides 2"),
+        plugin_record("mot", None, files=(file_handler("MOT", "mot"), file_handler("MOT-EXTRA", "mot-extra"))),
+        plugin_record("yolo", "yolo-detections", files=(file_handler("YOLO-BOXES", "yolo-boxes"),)),
+        plugin_record("old", "old-model-decoder", error="requires plugin API 1, host provides 2"),
     ]
 
 
@@ -158,7 +140,7 @@ def test_the_initial_warning_comes_from_loaded_plugins_without_reading_the_catal
 def test_the_warning_counts_every_failed_plugin_of_a_package(
     qtbot: QtBot, records: list[PluginRecord], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    records.append(_record("old-two", "old-model-decoder", error="requires plugin API 1, host provides 2"))
+    records.append(plugin_record("old-two", "old-model-decoder", error="requires plugin API 1, host provides 2"))
     monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
     view = PluginsView(PluginChanges(FakeInstaller()), lambda: ())
     qtbot.addWidget(view)
@@ -233,7 +215,7 @@ def test_adding_a_plugin_installs_what_was_entered(
 def test_the_list_is_read_again_when_the_view_is_shown(qtbot: QtBot, records: list[PluginRecord]) -> None:
     view = _view(qtbot, records, FakeInstaller())
     view.hide()
-    records.append(_record("late", "late-plugin", error="entry-point discovery failed: No module named 'x'"))
+    records.append(plugin_record("late", "late-plugin", error="entry-point discovery failed: No module named 'x'"))
 
     view.show()
 

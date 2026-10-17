@@ -61,7 +61,7 @@ def test_failed_launcher_does_not_leave_a_recording_process(tmp_path: Path) -> N
         try:
             if status.read_text().split()[2] == "Z":
                 break  # Dead; its new parent will reap it.
-        except (FileNotFoundError, ProcessLookupError):  # Gone between the check and the read.
+        except FileNotFoundError:
             break
         assert time.monotonic() < deadline, f"Recording child {pid} survived cleanup"
         time.sleep(0.01)

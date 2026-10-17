@@ -1047,7 +1047,8 @@ class TestOfflineVideoViewerWidget:
         (timing,) = widget.findChildren(TimingDiagnosticsWidget)
         (source,) = overlay_sources
         assert isinstance(source, _SpecFileOverlaySource)
-        assert source.history_selections == [(True, 2_050_000)]
+        panel.overlay_controls.settingsChanged.emit(OverlayPersistenceSettings(enabled=True, timeout_ms=1500))
+        qtbot.waitUntil(lambda: source.history_selections[-1] == (True, 1_500_000), timeout=5000)
 
         def shows(history: str, tolerance: str) -> Callable[[], bool]:
             def shown() -> bool:
@@ -1515,9 +1516,13 @@ class TestOfflineVideoViewerWidget:
                 patch("ax_devil.modules.video_viewer.offline_viewer_runtime.QMessageBox.warning") as told,
             ):
                 widget.export_video()
+                told.assert_called()
+                assert "still loading" in told.call_args.args[2]
+                told.reset_mock()
                 _session(widget).export_lanes([lane])
+                told.assert_called()
+                assert "still loading" in told.call_args.args[2]
                 dialog_type.assert_not_called()
-                assert told.call_count == 2
 
                 release.set()
                 qtbot.waitUntil(export_button.isEnabled, timeout=10_000)

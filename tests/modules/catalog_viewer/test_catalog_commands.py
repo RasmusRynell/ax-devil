@@ -46,7 +46,9 @@ def test_check_passes_a_working_catalog_and_names_where_a_broken_one_fails(qtbot
     path = _new("Checked", config)
 
     working = runner.invoke(catalog, ["check", str(path), *config])
-    path.write_text(path.read_text(encoding="utf-8").replace('"schema_version": 3', '"schema_version": 99', 1))
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["metadata"]["schema_version"] = 99
+    path.write_text(json.dumps(document), encoding="utf-8")
     broken = runner.invoke(catalog, ["check", str(path), *config])
 
     assert working.exit_code == 0, working.output

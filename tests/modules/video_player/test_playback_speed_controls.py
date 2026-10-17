@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent
+from PySide6.QtCore import QEvent, QPropertyAnimation
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
@@ -86,4 +86,6 @@ def test_controls_ignore_fade_requests_after_cleanup(qtbot: QtBot) -> None:
 
     panel.start_auto_hide_timer()
     panel.fade_in()
-    qtbot.wait(panel.auto_hide_delay + 50)
+
+    assert not panel.hide_timer.isActive()
+    assert panel.fade_animation.state() == QPropertyAnimation.State.Stopped

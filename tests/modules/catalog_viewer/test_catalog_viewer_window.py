@@ -138,7 +138,9 @@ def test_a_broken_file_shows_its_error_over_the_last_version_until_fixed(
     assert description and _shows_text(window, description)
     original = catalog.path.read_text(encoding="utf-8")
 
-    catalog.path.write_text(original.replace('"schema_version": 3', '"schema_version": 99', 1), encoding="utf-8")
+    unsupported = json.loads(original)
+    unsupported["metadata"]["schema_version"] = 99
+    catalog.path.write_text(json.dumps(unsupported), encoding="utf-8")
     _file_changed(qtbot, render_catalog_manager, catalog.path)
     assert window.error() is not None
 

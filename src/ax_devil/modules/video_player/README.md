@@ -92,7 +92,6 @@ consumes prepared data. Rules worth knowing before changing `engine/quick/`:
 - Viewport behavior: `tests/modules/video_player/test_video_renderer_zoom.py`.
 - Metrics identity behavior: `tests/modules/video_player/test_video_renderer_metrics.py`.
 - Transform sizing math: `tests/modules/video_player/test_video_transforms.py`.
-- Keep renderer tests focused on behavior contracts, not internal private fields.
 
 Rendering diagnostics use `modules/diagnostics/render_metrics.py`; viewer owners set a content/lane label through
 `display.viewport.set_diagnostics_label(...)`. Timing boundaries are in the

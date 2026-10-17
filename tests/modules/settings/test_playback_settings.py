@@ -80,6 +80,7 @@ def test_budget_persistence_and_change_signal(
     changes: list[tuple[str, object]] = []
     settings.setting_changed.connect(lambda key, value: changes.append((key, value)))
     settings.apply_snapshot(replace(settings.snapshot(), video_cache_budget=VideoCacheBudget.from_config(value)))
+    # Applying the same value again must not emit a second change.
     settings.apply_snapshot(replace(settings.snapshot(), video_cache_budget=VideoCacheBudget.from_config(value)))
     assert changes == [("playback.video_cache_total_mib", value)]
     settings.save_to_config(config)

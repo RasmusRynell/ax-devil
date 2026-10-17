@@ -669,11 +669,16 @@ def test_a_broken_catalog_file_keeps_the_last_version_until_it_is_fixed(
         catalog_file.path.write_text("{ not json", encoding="utf-8")
     qtbot.waitUntil(lambda: not selection.active_catalog_loaded(), timeout=10_000)
     assert selection.active_catalog() is working
-    assert "error" in selection.status().lower() or "invalid" in selection.status().lower()
+    assert selection.status().startswith(("Render catalog error:", "Active render catalog is invalid:"))
 
+    edited = original.replace('"default": 0.25', '"default": 0.5', 1)
+    assert edited != original
     with qtbot.waitSignal(selection.activeCatalogChanged, timeout=10_000):
-        catalog_file.path.write_text(original.replace('"default": 0.25', '"default": 0.5', 1), encoding="utf-8")
+        catalog_file.path.write_text(edited, encoding="utf-8")
     assert selection.active_catalog_loaded()
+    fixed = selection.active_catalog()
+    assert fixed is not working
+    assert fixed is not None and working is not None and fixed.rendering_identity != working.rendering_identity
 
 
 def test_a_broken_default_is_still_the_chosen_default(qtbot: QtBot, tmp_path: Path, small_catalog_path: Path) -> None:
@@ -1048,7 +1053,9 @@ def test_deleting_the_chosen_default_takes_effect_before_discovery_returns(
     assert manager.listing().chosen_default_path == manager.built_in_catalog_path()
     assert selection.active_catalog_path() == manager.built_in_catalog_path()
     assert selection.active_catalog_loaded()
-    assert "error" not in selection.status().lower()
+    active = selection.active_catalog()
+    assert active is not None
+    assert selection.status() == f"Selected catalog: {active.catalog_id}"
 
 
 def test_accepted_copies_finish_after_detachment_and_same_names_get_distinct_files(
@@ -1062,10 +1069,11 @@ def test_accepted_copies_finish_after_detachment_and_same_names_get_distinct_fil
     copies: list[SceneRenderCatalogFile] = []
     detached: list[SceneRenderCatalogFile] = []
     failures: list[Exception] = []
+    released: list[bool] = []
 
     def gated_create(name: str, base_catalog_path: Path | None = None) -> SceneRenderCatalogFile:
         started.set()
-        assert release.wait(5)
+        released.append(release.wait(5))
         return original_create(name, base_catalog_path)
 
     monkeypatch.setattr(store, "create_catalog", gated_create)
@@ -1087,5 +1095,6 @@ def test_accepted_copies_finish_after_detachment_and_same_names_get_distinct_fil
     assert len(created) == 2
     assert len({catalog.path for catalog in created}) == 2
     assert all(catalog.path.exists() for catalog in created)
+    assert released == [True, True]
     assert detached == []
     assert failures == []

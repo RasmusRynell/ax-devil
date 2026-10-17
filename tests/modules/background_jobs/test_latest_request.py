@@ -41,7 +41,7 @@ class _ServiceRequest:
         self.error(OSError(message))
 
 
-def test_replacement_and_old_cancel_handles_leave_only_the_latest_delivery(qtbot: QtBot) -> None:
+def test_replacement_and_old_cancel_handles_leave_only_the_latest_delivery() -> None:
     owner = QObject()
     slot = LatestRequest(owner)
     first, second = _ServiceRequest(), _ServiceRequest()
@@ -62,7 +62,7 @@ def test_replacement_and_old_cancel_handles_leave_only_the_latest_delivery(qtbot
     assert not slot.pending
 
 
-def test_cached_completion_can_start_a_replacement_that_cleanup_still_cancels(qtbot: QtBot) -> None:
+def test_cached_completion_can_start_a_replacement_that_cleanup_still_cancels() -> None:
     owner = QObject()
     slot = LatestRequest(owner)
     cached, replacement = _ServiceRequest(), _ServiceRequest()
@@ -92,7 +92,7 @@ def test_cached_completion_can_start_a_replacement_that_cleanup_still_cancels(qt
     assert errors == []
 
 
-def test_cancel_before_the_service_returns_its_handle_still_stops_the_operation(qtbot: QtBot) -> None:
+def test_cancel_before_the_service_returns_its_handle_still_stops_the_operation() -> None:
     owner = QObject()
     slot = LatestRequest(owner)
     service = _ServiceRequest()
@@ -134,7 +134,7 @@ def test_owner_end_cancels_delivery_and_prevents_new_service_requests(qtbot: QtB
     assert delivered == []
 
 
-def test_cancellation_releases_consumer_callbacks_while_service_still_holds_delivery(qtbot: QtBot) -> None:
+def test_cancellation_releases_consumer_callbacks_while_service_still_holds_delivery() -> None:
     class Receiver:
         """A controller held only by its completion callbacks."""
 
@@ -202,7 +202,7 @@ def test_replaced_worker_discards_its_resource_and_queued_progress(qtbot: QtBot)
     assert discarded == ["unwanted resource"]
 
 
-def test_failure_finishes_pending_state_and_a_retry_succeeds(qtbot: QtBot) -> None:
+def test_failure_finishes_pending_state_and_a_retry_succeeds() -> None:
     owner = QObject()
     slot = LatestRequest(owner)
     first, retry = _ServiceRequest(), _ServiceRequest()

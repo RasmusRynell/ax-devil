@@ -267,8 +267,15 @@ def test_hidden_inspector_defers_rows_and_shows_only_latest_scene(qtbot: QtBot) 
 
 def test_long_ids_leave_room_for_the_class() -> None:
     """Short ids leave spare width for long classes; long ids still reserve room for a visible class."""
-    assert split_id_and_class(300, 40, 50, 8) == (40, 50)
-    assert split_id_and_class(150, 20, 180, 8) == (20, 122)
-    id_room, class_room = split_id_and_class(90, 260, 120, 8)
-    assert 0 < class_room <= 30 and id_room + 8 + class_room == 90
-    assert split_id_and_class(150, 260, 0, 8) == (150, 0)
+    gap = 8
+    # Both fit: each keeps its natural width.
+    assert split_id_and_class(300, 40, 50, gap) == (40, 50)
+    # A short id keeps its width and the class takes everything else.
+    id_room, class_room = split_id_and_class(150, 20, 180, gap)
+    assert id_room == 20 and id_room + gap + class_room == 150
+    # A long id still leaves the class some room.
+    id_room, class_room = split_id_and_class(90, 260, 120, gap)
+    assert 0 < class_room <= 30 and id_room + gap + class_room == 90
+    # Without a class the id takes the whole row.
+    room = 150
+    assert split_id_and_class(room, 260, 0, gap) == (room, 0)

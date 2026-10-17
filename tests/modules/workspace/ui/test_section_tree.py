@@ -8,7 +8,7 @@ from dataclasses import replace
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
@@ -186,7 +186,7 @@ def test_the_list_keeps_its_scroll_position_when_the_rows_change(qtbot: QtBot) -
     scroll_bar.setValue(position)
 
     tree.set_sections((WorkspaceBrowserSection(BrowserSection.PLAYLISTS, playlists),))
-    qtbot.wait(10)
+    QApplication.processEvents()  # Let the tree run its delayed layout, where a jump to the top would happen.
 
     assert scroll_bar.value() == position
 
@@ -423,7 +423,7 @@ def test_two_line_rows_keep_both_lines_and_their_action_inside_a_narrow_tree(qtb
         kind=BrowserSection.LIVE,
     )
     tree.resize(220, 400)
-    qtbot.wait(10)
+    qtbot.waitUntil(lambda: all(_widget(tree, _item(tree, i)).width() <= 220 for i in range(2)), timeout=2000)
 
     for index in range(2):
         item = _item(tree, index)
@@ -450,7 +450,9 @@ def test_hovering_any_text_of_a_row_shows_the_rows_tooltip(qtbot: QtBot) -> None
     widget = _widget(tree, _item(tree, 0))
 
     assert "is not installed" in widget.toolTip()
-    assert [label.toolTip() for label in widget.findChildren(QLabel)] == [""] * len(widget.findChildren(QLabel))
+    labels = widget.findChildren(QLabel)
+    assert labels, "the row shows text"
+    assert not any(label.toolTip() for label in labels), "a label tooltip would hide the row's"
 
 
 def _camera(
@@ -481,7 +483,7 @@ def test_camera_add_buttons_keep_their_width_when_rows_are_narrow(qtbot: QtBot) 
     )
     tree = _tree(qtbot, *cameras, kind=BrowserSection.NETWORK)
     tree.resize(220, 400)
-    qtbot.wait(10)
+    qtbot.waitUntil(lambda: row(tree, cameras[0].label).width() <= 220, timeout=2000)
 
     buttons = [row(tree, camera.label).findChild(SmallButton) for camera in cameras]
 
@@ -498,7 +500,7 @@ def test_keyboard_focus_stays_on_a_rows_action_when_cameras_are_found_around_it(
     tree.set_sections(_hosts("10.0.0.1", "10.0.0.2", "10.0.0.3"))
 
     assert titles(tree) == ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
-    qtbot.wait(10)
+    QApplication.processEvents()  # Deferred row updates must not take the focus away either.
     assert tree.focusWidget() is button
 
 

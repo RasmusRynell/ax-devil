@@ -62,8 +62,9 @@ the Workspace, beside the items, so they are saved and make the Workspace modifi
 - A viewer reports the frame on screen as a `BookmarkPosition`, and opening a bookmark opens the Content at its entry
   and frame through `open_content(..., start_frame=)`, paused. Building the groups the Bookmarks view shows, their
   order, orphan detection and filtering are pure functions in `bookmark_rows.py`.
-- Bookmarks never apply to live streams. Only an item whose `bookmarkable` is true takes new bookmarks or review
-  changes; bookmarks a file already holds load whatever their item, so ones on an `UnreadableItem` are saved back.
+- Only an item whose `bookmarkable` is true takes new bookmarks or review changes (never a live stream; see
+  [Sidebar](../domain/invariants.md#sidebar)). Bookmarks a file already holds load whatever their item, so ones on
+  an `UnreadableItem` are saved back.
 
 ## Resolution
 
@@ -152,9 +153,4 @@ Recipes need resolvers that run without a widget:
 - `create_cli_command()` — builds settings from CLI arguments and passes a `PlaylistItem` to
   `ctx.obj["run_with_items"]`.
 
-The `write-plugin` skill's reference describes the plugin API. The built-in resolvers' settings:
-
-| Resolver | Settings |
-|----------|----------|
-| `folder_pair` | `{"videos_dir": str, "overlays_dir": str, "handler_type": str}` |
-| `mot_challenge` | `{"root": str, "sequences": [str, ...]}`; without `sequences`, every sequence under `root` (the CLI's choice) |
+The `write-plugin` skill's reference describes the plugin API.

@@ -50,6 +50,7 @@ from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPla
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog, OverlayFileRow
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
+from tests.helpers.dialogs import visible_texts
 from tests.helpers.forms import form_field
 from tests.helpers.workspace import FakeResolutionContext, inline_resolver
 
@@ -68,10 +69,6 @@ def _ok(dialog: QWidget) -> QPushButton:
 
 def _shows(dialog: QWidget, text: str) -> bool:
     return any(label.text() == text for label in dialog.findChildren(QLabel))
-
-
-def _visible_texts(dialog: QWidget) -> list[str]:
-    return [label.text() for label in dialog.findChildren(QLabel) if label.isVisibleTo(dialog)]
 
 
 def _set_overlay_mode(dialog: AddLiveStreamDialog, mode: LiveOverlayMode) -> None:
@@ -268,7 +265,7 @@ def test_live_overlay_pages_describe_their_modes(qtbot: QtBot) -> None:
     qtbot.addWidget(dialog)
     for mode in LiveOverlayMode:
         _set_overlay_mode(dialog, mode)
-        texts = _visible_texts(dialog)
+        texts = visible_texts(dialog)
         assert mode.description in texts
         if mode is LiveOverlayMode.NONE:
             assert all(any(other.description in text for text in texts) for other in LiveOverlayMode)

@@ -148,11 +148,11 @@ def test_bookmarks_and_review_marks_need_an_item_in_the_workspace_and_unique_ids
     bookmark = Bookmark(target=BookmarkTarget(video.id), frame=0, time_s=0.0)
     elsewhere = BookmarkTarget("missing")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="No item missing"):
         workspace.add_bookmark(Bookmark(target=elsewhere, frame=0, time_s=0.0))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="No item missing"):
         workspace.set_reviewed(elsewhere, True)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="No item missing"):
         workspace.set_reviewed(elsewhere, False)
     with pytest.raises(ValueError, match="unique ids"):
         workspace.add_bookmark(bookmark).add_bookmark(bookmark)
@@ -190,7 +190,8 @@ def test_bookmark_and_review_edits_make_a_workspace_modified_until_reverted() ->
 
     assert bookmarked != saved
     assert bookmarked.remove_bookmark(bookmark.id) == saved
-    assert bookmarked.edit_bookmark(bookmark.id, note="Gate") != bookmarked
-    assert bookmarked.edit_bookmark(bookmark.id, note="") == bookmarked
+    noted = bookmarked.edit_bookmark(bookmark.id, note="Gate")
+    assert noted != bookmarked
+    assert noted.edit_bookmark(bookmark.id, note="") == bookmarked
     assert saved.set_reviewed(target, True) != saved
     assert saved.set_reviewed(target, True).set_reviewed(target, False) == saved

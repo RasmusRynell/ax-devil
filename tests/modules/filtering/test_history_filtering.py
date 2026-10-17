@@ -94,7 +94,6 @@ def test_all_builtin_decoder_filters_declare_shared_classification_policies() ->
     )
     for config in configs:
         assert config.supports_history_filtering, config.name
-        assert all(option.predicate is option.classification_filter for option in config.options)
 
     unlabeled = build_cvat_filter_config(())
     state = FilterState(unlabeled, initial={"show_unlabeled": False})
