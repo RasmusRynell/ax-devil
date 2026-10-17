@@ -24,7 +24,7 @@ uv run ax-devil
 
 The **Plugins** view in the app does the same from the running app: **Add** is `plugins install`, **Update** is
 `plugins install --upgrade-package <package>`, which moves only that package and what it needs, and **Remove** is
-`plugins remove`. Each runs through the launcher, so the base app manages the plugins, and applies after a restart.
+`plugins remove`. Each runs through the launcher, so the base app manages the plugins; installs, updates and removals apply after a restart.
 
 `plugins install` accepts one or more package requirements, local wheels, or editable source directories; `--upgrade`
 also upgrades every dependency beyond the existing lockfile, and `--upgrade-package NAME` only that package.
@@ -32,7 +32,7 @@ Quote requirements containing shell operators such as `>=` or `<`. All selected 
 together in one private environment. Packages the app already uses stay at the versions installed with the app, so
 plugins run on exactly the dependencies the app was installed and tested with. Conflicting requirements, including a
 plugin that needs other versions of those packages, fail installation without changing the active selection.
-Restart the app after plugin changes. Built-in plugins are included with ax-devil and need no installation.
+Built-in plugins are included with ax-devil and need no installation.
 
 Plugin installation never changes the base app environment or a development checkout's `pyproject.toml` or `uv.lock`.
 The app depends on uv and invokes its installed Python module, so a separate uv executable on PATH is not required

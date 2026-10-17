@@ -66,7 +66,7 @@ def remove_command(names: tuple[str, ...], clear: bool) -> None:
     if bool(names) == clear:
         raise click.UsageError("Specify plugin names or --all")
     change_plugins(current_host(), remove=names, clear=clear)
-    click.echo("Plugins removed.")
+    click.echo("Plugins removed. Restart ax-devil to apply.")
 
 
 @plugins.command("list")

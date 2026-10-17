@@ -71,9 +71,9 @@ application, and stay the same whichever workspace is open: **Plugins**, the ren
   Bookmarks and review marks are saved in the workspace file, and live streams cannot be bookmarked.
 - **Plugins** shows which plugins loaded, which failed and why, and which are built in, and under each plugin the
   decoders and playlist resolvers it gives you, with whether a decoder reads overlay files, live messages or both.
-  **Add** installs a package, wheel or folder; the `…` menu of an installed plugin updates or removes it; the reload
-  button next to **Add** loads plugins again.
-  Installs, updates and removals apply after a restart, which a banner offers. **Debug → Plug-ins** also opens it.
+  **Add** installs a package, wheel or folder; the `…` menu of an installed plugin updates or removes it.
+  Plugin changes (installs, updates and removals) apply after a restart, which a banner offers.
+  **Debug → Plug-ins** also opens it.
   A small warning triangle appears on the button's icon while a plugin has failed to load.
 
 ## Video and overlays
