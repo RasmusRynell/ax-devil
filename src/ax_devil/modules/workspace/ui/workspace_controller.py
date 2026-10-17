@@ -75,8 +75,8 @@ class WorkspaceController(QObject):
         self._open_content(content, start_index=start_index, place=place, start_frame=start_frame)
 
     def connect_tree(self, tree: SectionTree) -> None:
-        """Carry out what the user does with the rows of *tree*: double-clicks open, actions run, eyes include or
-        exclude, and its menu opens, exports, renames and removes."""
+        """Carry out what the user does with the rows of *tree*: double-clicks open, actions run, and its menu opens,
+        exports, hides or unhides, renames and removes."""
         tree.row_activated.connect(self.open_row)
         tree.row_action_requested.connect(self.perform_row_action)
         tree.row_consideration_changed.connect(self._workspace_store.set_item_considered)

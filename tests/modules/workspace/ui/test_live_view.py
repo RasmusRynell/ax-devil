@@ -740,7 +740,7 @@ def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live
     live.choose("Filter", "Network Speaker")
 
     assert list(live.rows()) == ["192.0.2.12"]
-    assert captions(live.view.tree) == ["On the network, 2, 1 hidden"]
+    assert captions(live.view.tree) == ["On the network, 2, 1 filtered out"]
 
     live.choose("Filter", "Network Speaker")
     assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]
@@ -891,6 +891,6 @@ def test_right_click_remove_takes_a_camera_out_of_the_workspace(live: _Live) -> 
     QTimer.singleShot(0, remove)
     tree.customContextMenuRequested.emit(tree.viewport().mapFromGlobal(widget.mapToGlobal(widget.rect().center())))
 
-    assert entries == ["Information", "Rename", "Remove"], "a camera starts only with Start stream"
+    assert entries == ["Stop stream", "Information", "Rename", "Remove"], "a running camera offers Stop stream first"
     assert live.rows() == {"192.0.2.11": "Start stream"}
     assert live.center.get_widget_count() == 0, "removing a camera stops its stream"

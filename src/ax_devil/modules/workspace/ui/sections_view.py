@@ -84,7 +84,7 @@ class SectionsView(ViewPanel):
     def set_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
         """List *sections*, and offer the facets of their rows in the Filter."""
         self.tree.set_sections(sections)
-        self._offer(sorted({facet for row in _rows(sections) for facet in row.filter_facets}, key=_facet_order))
+        self._offer(sorted({facet for row in _rows(sections) for facet in row.facets}, key=_facet_order))
         self._show_page()
 
     def set_summary(self, text: str, tooltip: str = "") -> None:
@@ -94,15 +94,14 @@ class SectionsView(ViewPanel):
         self._summary.setVisible(bool(text))
 
     def _offer(self, facets: Sequence[Facet]) -> None:
-        """Offer *facets* in the Filter, in groups, leaving out a group with one value unless its rows start hidden or
-        the user hid them."""
+        """Offer *facets* in the Filter, in groups, leaving out a group with one value unless the user hid it."""
         values: dict[str, list[Facet]] = {}
         for facet in facets:
             values.setdefault(facet.group, []).append(facet)
         offered = tuple(
             facet
             for group in values.values()
-            if len(group) > 1 or any(facet.hidden_at_first or facet in self._toggled for facet in group)
+            if len(group) > 1 or any(facet in self._toggled for facet in group)
             for facet in group
         )
         if offered == self._offered:
@@ -121,7 +120,7 @@ class SectionsView(ViewPanel):
         self._filter.setEnabled(bool(offered))
 
     def _is_hidden(self, facet: Facet) -> bool:
-        return facet.hidden_at_first != (facet in self._toggled)
+        return facet in self._toggled
 
     def _toggle(self, facet: Facet) -> None:
         self._toggled ^= {facet}
@@ -134,7 +133,7 @@ class SectionsView(ViewPanel):
     def _apply_filter(self) -> None:
         query = self._query
         self.tree.set_filter(
-            lambda row: not any(self._is_hidden(facet) for facet in row.filter_facets),
+            lambda row: not any(self._is_hidden(facet) for facet in row.facets),
             (lambda row: query in row.search_text.casefold()) if query else None,
         )
 

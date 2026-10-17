@@ -117,8 +117,10 @@ Every view shows a browser row the same way. The row decides its look and offers
 Stop stream, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`
 (`section_tree.py`) lists sections of them under captions that fold on a click.
 `WorkspaceController.connect_tree` serves every view's tree, so a row behaves the same in all
-of them: a double-click opens a row that has something to open, its action runs through `perform_row_action`, its eye includes or excludes it, and
-its right-click menu (owned by `SectionTree`) opens, renames and removes it.
+of them: a double-click opens a row that has something to open, its action runs through `perform_row_action`, and
+its right-click menu (owned by `SectionTree`) offers, in groups split by separators, Open, Inspect (Information, Export),
+Hide or Unhide (a hidden row stays listed, dimmed, and playback skips it), and Edit (Rename, Remove). A playlist row
+starts expanded to its entries; its lane rows stay collapsed until an entry opens.
 
 ## Workspace Controller
 

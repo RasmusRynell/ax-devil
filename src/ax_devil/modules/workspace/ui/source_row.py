@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from html import escape
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QLabel, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
@@ -33,7 +33,7 @@ _KIND_MARKS: dict[WorkspaceBrowserIconKind, tuple[Icon, KindColor | StatusColor]
 
 def _hidden_note(hidden: int) -> str:
     """Return what a caption adds for *hidden* rows the list leaves out, or nothing for none."""
-    return f"{hidden} hidden" if hidden else ""
+    return f"{hidden} filtered out" if hidden else ""
 
 
 def section_accessible_text(section: WorkspaceBrowserSection, hidden: int) -> str:
@@ -69,43 +69,6 @@ def section_caption(
     return heading
 
 
-class _ConsiderationToggle(QToolButton):
-    """Small eye toggle used to include or exclude a row from playback."""
-
-    def __init__(self, *, considered: bool, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAutoRaise(True)
-        self.setCheckable(True)
-        self.setChecked(considered)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(
-            """
-            QToolButton {
-                border: none;
-                padding: 0px;
-                margin: 0px;
-                background: transparent;
-            }
-            QToolButton:hover {
-                background: transparent;
-            }
-            QToolButton:checked {
-                background: transparent;
-            }
-            """
-        )
-        self.toggled.connect(self._update_icon)
-        self._update_icon(considered)
-
-    def _update_icon(self, considered: bool) -> None:
-        self.setIcon((Icon.SHOWN if considered else Icon.HIDDEN).icon())
-        self.setToolTip(
-            "Included in playback layout/navigation. Click to exclude."
-            if considered
-            else "Excluded from playback layout/navigation. Click to include."
-        )
-
-
 def _action_button(action: RowAction) -> SmallButton:
     """Return the button that offers *action*."""
     button = SmallButton(action.label, action.icon, ButtonKind.PRIMARY if action.primary else ButtonKind.NORMAL)
@@ -125,24 +88,20 @@ def row_look(row: WorkspaceBrowserRow) -> tuple[object, ...]:
         row.is_dimmed,
         row.is_open,
         row.action,
-        row.consideration_ref,
-        row.is_considered,
         row.tooltip,
     )
 
 
 class SourceRow(ListRow):
-    """*row* as a list row: its kind's mark, its name over its detail, its action, and its eye toggle.
+    """*row* as a list row: its kind's mark, its name over its detail, and its action.
 
     The mark is muted and the name dimmed as the row says; a row open in a viewer is the list row's active one.
     Hovering shows the full name over the row's tooltip. ``action_requested`` carries the row whose action was
-    pressed and ``consideration_changed`` the consideration item and the state the eye asks for; a click on the row
-    itself is ``activated``. Kind colors are drawn for the palette at construction, so owners build rows again when
-    the theme changes.
+    pressed; a click on the row itself is ``activated``. Kind colors are drawn for the palette at construction, so
+    owners build rows again when the theme changes.
     """
 
     action_requested = Signal(object)  # WorkspaceBrowserRow
-    consideration_changed = Signal(object, bool)  # ConsiderationItemRef, considered
 
     row: WorkspaceBrowserRow
     """The row the widget shows; the tree sets it to the current row while its look is unchanged."""
@@ -153,10 +112,6 @@ class SourceRow(ListRow):
             button = _action_button(row.action)
             button.clicked.connect(lambda _checked=False: self.action_requested.emit(self.row))
             trailing.append(button)
-        if (ref := row.consideration_ref) is not None:
-            toggle = _ConsiderationToggle(considered=row.is_considered)
-            toggle.toggled.connect(lambda considered: self.consideration_changed.emit(ref, considered))
-            trailing.append(toggle)
         icon, color = _KIND_MARKS[row.icon_kind]
         mark = KindColor.MUTED if row.is_mark_muted else color
         super().__init__(

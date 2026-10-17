@@ -29,8 +29,9 @@ camera host. An item that cannot open, such as a missing file or a missing plugi
 icon; hover it for the reason. The details are in [Workspace](architecture/workspace.md#lifecycle).
 
 The Workspace, Live and Offline views have a search at the top, which matches what a row shows, and a **Filter**,
-which shows or hides rows by what they are, such as a found camera's type. Rows left out of playback start hidden;
-check **Left out** in the **Filter** to list them.
+which shows or hides rows by what they are, such as a found camera's type. Right-click a playlist entry or an overlay
+and choose **Hide** to skip it in playback; it stays listed, dimmed, until you choose **Unhide**. A playlist lists its
+entries when it loads, unless it has more than 200; expand a longer one with its arrow.
 
 ## Sidebar views
 

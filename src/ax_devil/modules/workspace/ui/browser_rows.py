@@ -69,18 +69,10 @@ HELD_SECTIONS = frozenset(section for section in BrowserSection if not section.a
 
 @dataclass(frozen=True, slots=True)
 class Facet:
-    """Something the Filter can hide rows by: a *value* in a *group*, such as Network Speaker under Type.
-
-    Rows with a facet *hidden_at_first* stay hidden until the user shows them.
-    """
+    """Something the Filter can hide rows by: a *value* in a *group*, such as Network Speaker under Type."""
 
     group: str
     value: str
-    hidden_at_first: bool = False
-
-
-LEFT_OUT = Facet("Playback", "Left out", hidden_at_first=True)
-"""The facet of a row left out of playback."""
 
 
 class RowAction(Enum):
@@ -109,6 +101,11 @@ _SECTION_BY_ITEM_KIND = {
 def _section_of(item: WorkspaceItem) -> BrowserSection:
     """Return the section that lists *item*'s rows."""
     return _SECTION_BY_ITEM_KIND.get(item.kind, BrowserSection.OTHER)
+
+
+EXPANDED_AT_FIRST_LIMIT = 200
+"""The most entries a playlist can have and still start expanded; building a row widget costs about a millisecond,
+so a longer playlist stays collapsed rather than stall the sidebar while it loads."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,13 +148,9 @@ class WorkspaceBrowserRow:
     search_terms: str = ""
     """More text the search matches beyond what the row shows, such as a found camera's serial number."""
     facets: frozenset[Facet] = frozenset()
-    """What the Filter can hide the row by, besides being left out of playback."""
-
-    @property
-    def filter_facets(self) -> frozenset[Facet]:
-        """Return every facet the Filter can hide the row by: its own, and ``LEFT_OUT`` while it is left out."""
-        left_out = self.consideration_ref is not None and not self.is_considered
-        return self.facets | {LEFT_OUT} if left_out else self.facets
+    """What the Filter can hide the row by."""
+    expanded_at_first: bool = False
+    """Whether the row shows the rows under it until the user collapses it."""
 
     @property
     def is_available(self) -> bool:
@@ -171,7 +164,7 @@ class WorkspaceBrowserRow:
 
     @property
     def is_dimmed(self) -> bool:
-        """Return whether the row's name is dimmed: it is idle, left out of playback, or cannot open."""
+        """Return whether the row's name is dimmed: it is idle, hidden from playback, or cannot open."""
         return self.idle or not self.is_considered or self.unavailable_reason is not None
 
     @property
@@ -181,13 +174,14 @@ class WorkspaceBrowserRow:
 
     @property
     def tooltip(self) -> str:
-        """Return the hover text below the row's name: its facts, why it is unavailable, its location, and whether
-        it is open."""
+        """Return the hover text below the row's name: its facts, why it is unavailable, its location, whether
+        it is hidden from playback, and whether it is open."""
         lines = [
             *self.facts,
             self.unavailable_reason or "",
             self.warning or "",
             self.location or "",
+            "Hidden: skipped in playback" if not self.is_considered else "",
             "Open in a viewer" if self.is_open else "",
         ]
         return "\n".join(line for line in lines if line)
@@ -337,7 +331,7 @@ class _RowProjection:
             total = len(children)
             taking_part = sum(child.is_considered for child in children)
             entries = _counted(total, "entry", "entries")
-            excluded = f", {total - taking_part} left out" if taking_part < total else ""
+            excluded = f", {total - taking_part} hidden" if taking_part < total else ""
             return WorkspaceBrowserRow(
                 row_id=content.content_id,
                 label=content.display_name,
@@ -350,6 +344,7 @@ class _RowProjection:
                 location=content.source_location,
                 facts=(f"Playlist · {entries}{excluded}",),
                 action=RowAction.RESCAN,
+                expanded_at_first=total <= EXPANDED_AT_FIRST_LIMIT,
             )
 
         if not content.is_live:

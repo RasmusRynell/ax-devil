@@ -32,8 +32,6 @@ class Icon(Enum):
     DRAG = ("grip-vertical", False)
     PIN = ("pin", False)
     PINNED = ("pin", True)
-    SHOWN = ("eye", False)
-    HIDDEN = ("eye-off", False)
     VIDEO = ("square-play", False)
     LIVE_VIDEO = ("video", False)
     PLAYLIST = ("list-video", False)
