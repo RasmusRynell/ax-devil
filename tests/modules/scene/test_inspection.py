@@ -278,10 +278,11 @@ def test_debug_leaves_keep_reported_empties_and_searchable_bytes_and_arrays_do_n
     debug = _paths(entity, FieldGroup.DEBUG)
     assert ("frame",) in debug
     assert (debug[("text",)], debug[("blank",)], debug[("list",)], debug[("map", "inner")]) == ("", "", "[]", "{}")
-    assert ("absent",) not in debug
+    assert debug[("absent",)] == "null"
     assert debug[("serial",)] == "00ff"
     assert debug[("blob",)] == f"{bytes(range(32)).hex()}... (40 bytes)"
     assert compile_query("serial:00ff").matches(entity_record(entity))
+    assert compile_query("absent:null").matches(entity_record(entity))
 
 
 def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range() -> None:
