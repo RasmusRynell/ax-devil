@@ -132,6 +132,7 @@ class EventPage(QWidget):
         self._objects_model = RowTableModel(self._object_columns(), self)
         self._objects_model.set_dimmed(self._is_absent)
         self._objects = RowTableView(self._objects_model, self)
+        self._objects.sortRequested.connect(self.refresh)
         self._objects.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
         self._moment_model = RowTableModel(
             (
@@ -181,10 +182,17 @@ class EventPage(QWidget):
         self._simultaneous = tuple(keys)
         self._request_refresh()
 
-    def update_scene(self, scene: Scene | None, frame_index: int) -> None:
+    def update_scene(self, scene: Scene | None, frame_index: int, *, defer: bool = False) -> None:
         """Follow the displayed *frame_index* and its *scene*, which tell which involved objects are in the frame."""
         self._scene, self._frame = scene, frame_index
-        self._request_refresh()
+        self._dirty = True
+        if not defer:
+            self.refresh()
+
+    def refresh(self) -> None:
+        """Apply the latest snapshot only while this page is visible."""
+        if self.isVisible() and self._dirty:
+            self._refresh()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """Catch up with the latest frame and history."""

@@ -1,8 +1,7 @@
 """A virtualized, sortable table of plain rows for the media tools pages.
 
 ``RowTableModel`` holds any objects as rows and a ``Column`` per cell says how to read, show and sort it.
-``RowTableView`` paints every cell kind itself, one delegate and no widgets per row, so a list of thousands stays cheap
-and updating it for every video frame does not rebuild it.
+``RowTableView`` paints visible rows in one pass, with fixed geometry and no widgets per row.
 """
 
 from __future__ import annotations
@@ -19,19 +18,26 @@ from PySide6.QtCore import (
     QModelIndex,
     QPersistentModelIndex,
     QRect,
-    QSize,
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QPalette
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QGuiApplication,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPalette,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QHeaderView,
-    QStyle,
-    QStyledItemDelegate,
     QStyleOptionViewItem,
-    QTreeView,
+    QTableView,
     QWidget,
 )
 
@@ -43,7 +49,6 @@ from ax_devil.modules.chrome.theme import category_color
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.video_viewer.media_tools.presence import Presence, paint_presence
 
-_DIMMED_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 _DIMMED_OPACITY = 0.5
 _CHIP_ALPHA = 0.18
 _RULE_ALPHA = 0.12
@@ -123,6 +128,7 @@ class RowTableModel(QAbstractTableModel):
         self._source: list[object] = []
         self._rows: list[object] = []
         self._keys: list[Hashable] = []
+        self._order_keys: dict[Hashable, tuple[tuple[int, str], ...]] = {}
         self._key_of: Callable[[Any], Hashable] = id
         self._sort_column = -1
         self._sort_order = Qt.SortOrder.AscendingOrder
@@ -194,6 +200,10 @@ class RowTableModel(QAbstractTableModel):
         self._dimmed = predicate
         self._repaint_all()
 
+    def is_dimmed(self, position: int) -> bool:
+        """Return whether the row at *position* is dimmed."""
+        return self._dimmed is not None and self._dimmed(self._rows[position])
+
     def sort_state(self) -> tuple[int, Qt.SortOrder]:
         """Return the sorted column (-1 for none) and its order."""
         return self._sort_column, self._sort_order
@@ -212,14 +222,12 @@ class RowTableModel(QAbstractTableModel):
         return 0 if parent is not None and parent.isValid() else len(self._columns)
 
     def data(self, index: QModelIndex | QPersistentModelIndex, role: int = int(Qt.ItemDataRole.DisplayRole)) -> Any:
-        """Return the cell's value for the display role, and whether its row is dimmed for the dimmed role."""
+        """Return the cell's value for the display role."""
         if not index.isValid() or not 0 <= index.row() < len(self._rows):
             return None
         row = self._rows[index.row()]
         if role == int(Qt.ItemDataRole.DisplayRole):
             return self._columns[index.column()].value(row)
-        if role == _DIMMED_ROLE:
-            return self._dimmed is not None and self._dimmed(row)
         return None
 
     def headerData(  # noqa: N802
@@ -234,9 +242,13 @@ class RowTableModel(QAbstractTableModel):
         keyed = [(self._key_of(row), row) for row in self._source]
         sort_key = self._columns[self._sort_column].sort_key if self._sort_column >= 0 else None
         if sort_key is not None:
+            previous = self._order_keys
+            self._order_keys = {key: previous[key] if key in previous else _natural(str(key)) for key, _ in keyed}
             # Python's sort is stable: order by key first, so equal sort values keep a fixed order from frame to frame.
-            keyed.sort(key=lambda pair: _natural(str(pair[0])))
+            keyed.sort(key=lambda pair: self._order_keys[pair[0]])
             keyed.sort(key=lambda pair: sort_key(pair[1]), reverse=self._sort_order == Qt.SortOrder.DescendingOrder)
+        else:
+            self._order_keys.clear()
         keys = [key for key, _ in keyed]
         rows = [row for _, row in keyed]
         if keys == self._keys:
@@ -250,7 +262,10 @@ class RowTableModel(QAbstractTableModel):
             self.endResetModel()
 
     def _move_rows(self, keys: list[Hashable], rows: list[object]) -> None:
-        self.layoutAboutToBeChanged.emit()
+        # PySide exposes Qt signal overloads at runtime but omits __getitem__ from its stubs.
+        self.layoutAboutToBeChanged["QList<QPersistentModelIndex>", "QAbstractItemModel::LayoutChangeHint"].emit(  # type: ignore[index]
+            [], self.LayoutChangeHint.VerticalSortHint
+        )
         old_keys = self._keys
         self._keys, self._rows = keys, rows
         new_position = {key: position for position, key in enumerate(keys)}
@@ -258,7 +273,9 @@ class RowTableModel(QAbstractTableModel):
         self.changePersistentIndexList(
             old, [self.index(new_position[old_keys[index.row()]], index.column()) for index in old]
         )
-        self.layoutChanged.emit()
+        self.layoutChanged["QList<QPersistentModelIndex>", "QAbstractItemModel::LayoutChangeHint"].emit(  # type: ignore[index]
+            [], self.LayoutChangeHint.VerticalSortHint
+        )
 
     def _repaint_all(self) -> None:
         if self._rows:
@@ -313,12 +330,10 @@ class _Header(QHeaderView):
         painter.restore()
 
 
-class _CellDelegate(QStyledItemDelegate):
-    """Paints every cell kind; the row's background is the view's."""
+class _RowPainter:
+    """Paint the cells of a visible row with shared appearance resources."""
 
-    def __init__(self, model: RowTableModel, parent: QWidget) -> None:
-        super().__init__(parent)
-        self._table = model
+    def __init__(self) -> None:
         self._painters: dict[CellKind, Callable[[QPainter, QRect, QPalette, Any, QColor], None]] = {
             CellKind.ID_DOT: self._paint_id_dot,
             CellKind.TEXT: self._paint_text,
@@ -336,36 +351,35 @@ class _CellDelegate(QStyledItemDelegate):
         self._body = TextRole.BODY.font()
         self._mono = TextRole.MONO.font()
         self._chip = TextRole.MONO_SMALL.font()
-        self._row_height = Height.ROW.px
+        self._metrics = {id(font): QFontMetrics(font) for font in (self._body, self._mono, self._chip)}
         self._dot = max(6, TextRole.BODY.px * 2 // 3)
 
-    def sizeHint(  # noqa: N802
-        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
-    ) -> QSize:
-        """Return the uniform row height."""
-        return QSize(option.rect.width(), self._row_height)
-
-    def paint(
-        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
-    ) -> None:
-        """Paint one cell in the way its column's kind says."""
-        column = self._table.columns[index.column()]
-        # The application's palette: a view's own has the theme stylesheet's selection colors as its highlight.
+    def paint(self, painter: QPainter, rect: QRect, model: RowTableModel, row: int, header: QHeaderView) -> None:
+        """Read the row once and paint only columns that intersect the viewport."""
+        record = model.row_at(row)
         palette = QGuiApplication.palette()
-        dimmed = bool(index.data(_DIMMED_ROLE))
+        dimmed = model.is_dimmed(row)
         text = palette.color(QPalette.ColorRole.PlaceholderText if dimmed else QPalette.ColorRole.Text)
-        rect = option.rect.adjusted(Space.M if index.column() == 0 else Space.S, 0, -Space.S, 0)
-        painter.save()
-        painter.setClipRect(option.rect)
-        if dimmed:
-            painter.setOpacity(_DIMMED_OPACITY)
-        self._painters[column.cell](painter, rect, palette, index.data(), text)
-        painter.restore()
+        for position, column in enumerate(model.columns):
+            if header.isSectionHidden(position):
+                continue
+            cell = QRect(
+                header.sectionViewportPosition(position), rect.top(), header.sectionSize(position), rect.height()
+            )
+            if not cell.intersects(rect):
+                continue
+            content = cell.adjusted(Space.M if position == 0 else Space.S, 0, -Space.S, 0)
+            painter.save()
+            painter.setClipRect(cell, Qt.ClipOperation.IntersectClip)
+            if dimmed:
+                painter.setOpacity(_DIMMED_OPACITY)
+            self._painters[column.cell](painter, content, palette, column.value(record), text)
+            painter.restore()
 
-    def _text(self, painter: QPainter, rect: QRect, font: Any, text: QColor, value: str, flags: int = 0) -> None:
+    def _text(self, painter: QPainter, rect: QRect, font: QFont, text: QColor, value: str, flags: int = 0) -> None:
         painter.setFont(font)
         painter.setPen(text)
-        shown = QFontMetrics(font).elidedText(value, Qt.TextElideMode.ElideRight, rect.width())
+        shown = self._metrics[id(font)].elidedText(value, Qt.TextElideMode.ElideRight, rect.width())
         painter.drawText(rect, flags | int(Qt.AlignmentFlag.AlignVCenter), shown)
 
     def _paint_text(self, painter: QPainter, rect: QRect, palette: QPalette, value: str, text: QColor) -> None:
@@ -442,7 +456,7 @@ class _CellDelegate(QStyledItemDelegate):
         icon.paint(painter, QRect(rect.right() - size + 1, rect.top() + (rect.height() - size) // 2, size, size))
 
 
-class RowTableView(QTreeView):
+class RowTableView(QTableView):
     """A ``RowTableModel`` as a table of uniform rows with caption headers that sort their column.
 
     The highlighted row and the row under the pointer get the sidebar's row background. A click or Enter on a row emits
@@ -451,21 +465,20 @@ class RowTableView(QTreeView):
     """
 
     rowActivated = Signal(object)  # the row object
+    sortRequested = Signal()  # Let the page catch up to its pending snapshot before sorting.
 
     def __init__(self, model: RowTableModel, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._rows_model = model
         self._hover_row = -1
-        self._delegate = _CellDelegate(model, self)
+        self._row_painter = _RowPainter()
         self.setModel(model)
-        self.setHeader(_Header(model, self))
-        self.setItemDelegate(self._delegate)
+        self.setHorizontalHeader(_Header(model, self))
+        self.verticalHeader().hide()
+        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.verticalHeader().setDefaultSectionSize(Height.ROW.px)
+        self.setShowGrid(False)
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setRootIsDecorated(False)
-        self.setItemsExpandable(False)
-        self.setIndentation(0)
-        self.setUniformRowHeights(True)
-        self.setAllColumnsShowFocus(False)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -481,6 +494,18 @@ class RowTableView(QTreeView):
         model.modelReset.connect(self._restore_scroll)
         self.clicked.connect(self._activate_index)
         follow_appearance(self, self._apply_metrics)
+
+    def header(self) -> QHeaderView:
+        """Return the flat table's horizontal header."""
+        return self.horizontalHeader()
+
+    def setHeaderHidden(self, hidden: bool) -> None:  # noqa: N802
+        """Show or hide the horizontal header."""
+        self.horizontalHeader().setVisible(not hidden)
+
+    def isHeaderHidden(self) -> bool:  # noqa: N802
+        """Return whether the horizontal header is hidden."""
+        return self.horizontalHeader().isHidden()
 
     @property
     def rows_model(self) -> RowTableModel:
@@ -498,6 +523,23 @@ class RowTableView(QTreeView):
         if position >= 0:
             self.scrollTo(self._rows_model.index(position, 0), QAbstractItemView.ScrollHint.EnsureVisible)
 
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Paint visible fixed-height rows once using native table navigation and geometry."""
+        first = self.rowAt(event.rect().top())
+        if first < 0:
+            return
+        painter = QPainter(self.viewport())
+        painter.setClipRegion(event.region())
+        rows = self._rows_model.rowCount()
+        for position in range(first, rows):
+            top = self.rowViewportPosition(position)
+            if top > event.rect().bottom():
+                break
+            options = QStyleOptionViewItem()
+            options.rect = QRect(0, top, self.viewport().width(), self.rowHeight(position))
+            self.drawRow(painter, options, self._rows_model.index(position, 0))
+        painter.end()
+
     def drawRow(  # noqa: N802
         self, painter: QPainter, options: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
     ) -> None:
@@ -512,11 +554,7 @@ class RowTableView(QTreeView):
             active=self._rows_model.is_active(row),
             hovered=row == self._hover_row or cursor,
         )
-        plain = QStyleOptionViewItem(options)
-        plain.state &= ~(
-            QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_MouseOver | QStyle.StateFlag.State_HasFocus
-        )
-        super().drawRow(painter, plain, index)
+        self._row_painter.paint(painter, rect, self._rows_model, row, self.header())
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         """Activate the cursor row on Enter."""
@@ -548,6 +586,7 @@ class RowTableView(QTreeView):
     def _sort_by_section(self, section: int) -> None:
         if self._rows_model.columns[section].sort_key is None:
             return
+        self.sortRequested.emit()
         column, order = self._rows_model.sort_state()
         flipped = Qt.SortOrder.DescendingOrder if order == Qt.SortOrder.AscendingOrder else Qt.SortOrder.AscendingOrder
         self.sort_by(section, flipped if column == section else Qt.SortOrder.AscendingOrder)
@@ -561,7 +600,8 @@ class RowTableView(QTreeView):
 
     def _apply_metrics(self) -> None:
         """Size rows, header and columns for the current text size."""
-        self._delegate.load_metrics()
+        self._row_painter.load_metrics()
+        self.verticalHeader().setDefaultSectionSize(Height.ROW.px)
         header = self.header()
         header.setFixedHeight(Height.ROW.px)
         mono = QFontMetrics(TextRole.MONO.font())

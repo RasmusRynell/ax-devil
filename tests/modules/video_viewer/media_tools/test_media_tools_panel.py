@@ -16,6 +16,7 @@ from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption, build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.scene.inspection import EntitySummary, entity_summary
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -36,13 +37,7 @@ from ax_devil.modules.video_viewer.media_tools.events_page import LIVE_EVENT_LIM
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey, PageKey
-from ax_devil.modules.video_viewer.media_tools.row_table import (
-    _DIMMED_ROLE,
-    CellKind,
-    Column,
-    RowTableModel,
-    RowTableView,
-)
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 
 def _frame(index: int) -> FrameIdentifier:
@@ -304,46 +299,44 @@ def test_object_page_steps_use_the_list_as_it_is_now(
     assert selected == ["a", "c"] and previous_button is not None and not previous_button.isEnabled()
 
 
-def test_scene_updates_behind_an_open_object_page_do_not_rebuild_the_hidden_list(
+def test_hidden_objects_list_defers_query_work_until_shown(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from ax_devil.modules.video_viewer.media_tools import objects_page
+
     panel = _panel(qtbot, render_catalog_selection)
     panel.update_scene(_scene(_entity("a"), _entity("b")), _frame(0), {})
+    _search(panel, "class:human")
     _open(panel, "a")
-    rebuilt: list[int] = []
-    set_rows = RowTableModel.set_rows
+    formatted: list[str] = []
 
-    def counted(self: RowTableModel, *args: Any) -> None:
-        rebuilt.append(1)
-        set_rows(self, *args)
+    def summary(entity: Entity) -> EntitySummary:
+        formatted.append(str(entity.id))
+        return entity_summary(entity)
 
-    monkeypatch.setattr(RowTableModel, "set_rows", counted)
+    monkeypatch.setattr(objects_page, "entity_summary", summary)
 
     for index in range(1, 4):
         panel.update_scene(_scene(_entity("a"), _entity("b")), _frame(index), {})
 
-    assert not rebuilt
+    assert not formatted
     _click(panel, "Back (Esc)")
     assert _ids(panel) == ["a", "b"]
+    assert formatted == ["a", "b"]
 
-
-def test_unchanged_rows_are_not_sorted_again(qtbot: QtBot) -> None:
-    sorts: list[str] = []
-
-    def sort_key(row: object) -> str:
-        sorts.append(str(row))
-        return str(row)
-
-    model = RowTableModel([Column("Name", CellKind.TEXT, str, sort_key)])
-    model.sort(0)
-    rows = ["b", "a", "c"]
-    model.set_rows(rows, str)
-    sorts.clear()
-
-    model.set_rows(list(rows), str)
-    assert not sorts
-    model.set_rows(["a", "c"], str)
-    assert sorts and [model.key_at(n) for n in range(model.rowCount())] == ["a", "c"]
+    formatted.clear()
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    panel.update_scene(_scene(_entity("old")), _frame(4), {})
+    assert tabs.tabText(0) == "Objects 1"  # The tab label is visible even though its table is not.
+    panel.hide()
+    panel.update_scene(_scene(_entity("latest")), _frame(5), {})
+    panel.show()  # The Events tab is still selected.
+    assert not formatted
+    tabs.setCurrentIndex(0)
+    assert _ids(panel) == ["latest"]
+    assert formatted == ["latest"]
 
 
 def test_object_page_outside_the_frame_goes_to_where_the_object_was_and_will_be(
@@ -571,17 +564,21 @@ def test_event_page_lists_the_equal_event_reported_twice_among_its_same_moment(q
     assert {moment.rows_model.row_of(EventPageKey(twice, 1)), moment.rows_model.row_of(EventPageKey(other))} == {0, 1}
 
 
-def test_live_event_page_dims_an_object_when_the_frame_has_no_overlay(qtbot: QtBot) -> None:
-    page = EventPage(EventPageKey(FrameEvent(_frame(3), "Delete", "Delete a", ("a",))))
+def test_live_event_page_sorts_the_latest_classes_and_dims_objects_without_an_overlay(qtbot: QtBot) -> None:
+    page = EventPage(EventPageKey(FrameEvent(_frame(3), "Merge", "Merge a, b", ("a", "b"))))
     qtbot.addWidget(page)
     page.show()
     table = page.findChild(RowTableView)
     assert table is not None
 
-    page.update_scene(_scene(_entity("a")), 3)
-    assert not table.rows_model.data(table.rows_model.index(0, 0), _DIMMED_ROLE)
+    page.update_scene(_scene(_entity("a", "human"), _entity("b", "car")), 3)
+    assert not table.rows_model.is_dimmed(0)
+    page.update_scene(_scene(_entity("a", "car"), _entity("b", "human")), 4, defer=True)
+    header = table.header()
+    QTest.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(header.sectionViewportPosition(1) + 4, 4))
+    assert [table.rows_model.key_at(row) for row in range(2)] == ["a", "b"]
     page.update_scene(None, 4)
-    assert table.rows_model.data(table.rows_model.index(0, 0), _DIMMED_ROLE)
+    assert table.rows_model.is_dimmed(0)
 
 
 def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -601,3 +598,106 @@ def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, mo
 
     page.show()
     assert lookups == ["a"]
+
+
+def test_playback_coalesces_inspection_but_pause_navigation_and_showing_catch_up(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fast table may skip frames, but inspection actions must see the currently displayed snapshot."""
+    now = [0.0]
+    monkeypatch.setattr("ax_devil.modules.video_viewer.media_tools.media_tools_panel.monotonic", lambda: now[0])
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.set_playing(True)
+    panel.update_scene(_scene(_entity("first")), _frame(0), {})
+    for frame in range(1, 4):
+        panel.update_scene(_scene(_entity(str(frame))), _frame(frame), {})
+    assert _ids(panel) == ["first"]
+    panel.set_playing(False)
+    assert _ids(panel) == ["3"]
+    for frame in (2, 3, 1):  # Backward and forward steps while paused have no refresh delay.
+        panel.update_scene(_scene(_entity(str(frame))), _frame(frame), {})
+        assert _ids(panel) == [str(frame)]
+
+    panel.set_playing(True)
+    panel.update_scene(_scene(_entity("playing")), _frame(4), {})
+    panel.update_scene(_scene(_entity("searchable")), _frame(5), {})
+    _search(panel, "searchable")
+    assert _ids(panel) == ["searchable"]
+    _search(panel, "")
+    now[0] = 1.0
+    panel.update_scene(_scene(_entity("due")), _frame(6), {})
+    assert _ids(panel) == ["due"]
+
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    panel.update_scene(_scene(_entity("new-tab")), _frame(7), {})
+    tabs.setCurrentIndex(0)
+    assert _ids(panel) == ["new-tab"]
+    panel.hide()
+    panel.update_scene(_scene(_entity("hidden")), _frame(8), {})
+    panel.show()
+    assert _ids(panel) == ["hidden"]
+    panel.update_scene(_scene(_entity("tail")), _frame(9), {})
+    panel.update_scene(_scene(_entity("latest-tail")), _frame(10), {})
+    now[0] = 1.1
+    qtbot.waitUntil(lambda: _ids(panel) == ["latest-tail"])  # A quiet source must not leave an old table forever.
+    now[0] = 1.11
+    panel.update_scene(_scene(_entity("discarded")), _frame(11), {})
+    assert _ids(panel) == ["latest-tail"]  # Arriving just after the idle flush still observes the playback limit.
+    panel.clear()
+    assert _ids(panel) == []
+
+
+def test_skipped_visual_updates_keep_all_live_events_and_the_exact_paused_marker(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Coalescing is a display policy: an event in an intermediate frame must remain inspectable."""
+    monkeypatch.setattr("ax_devil.modules.video_viewer.media_tools.media_tools_panel.monotonic", lambda: 0.0)
+    panel = _panel(qtbot, render_catalog_selection)
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    panel.set_playing(True)
+    for frame in range(3):
+        scene = _scene()
+        scene.add_event(Delete(timestamp=scene.time_slice, entity_id=EntityId(str(frame))))
+        panel.update_scene(scene, _frame(frame), {})
+    view = panel.events_page.findChild(RowTableView)
+    assert view is not None
+    assert view.rows_model.rowCount() == 1
+    panel.set_playing(False)
+    model = view.rows_model
+    events = [cast(EventPageKey, model.key_at(row)).event for row in range(model.rowCount())]
+    assert [event.entity_ids for event in events] == [("0",), ("1",), ("2",)]
+    assert cast(Any, view).position == (2, 3)
+
+
+def test_visible_rows_are_formatted_lazily_and_the_keyboard_cursor_follows_the_object(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A long list does not format offscreen rows; sorting still keeps navigation attached to object identity."""
+    from ax_devil.modules.video_viewer.media_tools import objects_page
+
+    formatted: set[str] = set()
+    summarize = entity_summary
+
+    def summary(entity: Entity) -> EntitySummary:
+        formatted.add(str(entity.id))
+        return summarize(entity)
+
+    monkeypatch.setattr(objects_page, "entity_summary", summary)
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.update_scene(_scene(*(_entity(str(index), conf=index / 200) for index in range(200))), _frame(0), {})
+    view = _view(panel)
+    assert view is not None
+    view.grab()  # Exercise painting, including the cells that demand display summaries.
+    assert 0 < len(formatted) < 200
+    model = view.rows_model
+    view.setCurrentIndex(model.index(model.row_of(ObjectPageKey("199")), 0))
+    view.setFocus()
+    panel.update_scene(_scene(*(_entity(str(index), conf=1 - index / 200) for index in range(200))), _frame(1), {})
+    assert model.key_at(view.currentIndex().row()) == ObjectPageKey("199")
+    selected = _record(panel.objectSelected)
+    QTest.keyClick(view, Qt.Key.Key_Return)
+    assert selected == ["199"]

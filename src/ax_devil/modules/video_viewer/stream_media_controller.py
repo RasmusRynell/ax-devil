@@ -45,7 +45,7 @@ from ax_devil.modules.workspace.core import (
 from .live_connection import LiveConnectionStatus, LiveFeed, LiveFeedStatus
 from .overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from .scene_frame_presenter import SceneFramePresenter, describe_frame_id, describe_overlay_data
-from .scene_inspection import schedule_scene_inspection_update
+from .scene_inspection import deliver_scene_inspection_update
 
 logger = get_logger(__name__)
 
@@ -191,7 +191,7 @@ class StreamMediaController:
         self.frame_display.display_frame(display_frame)
         if self._frame_displayed is not None:
             self._frame_displayed(display_frame)
-        schedule_scene_inspection_update(self._scene_inspector, presentation.inspection)
+        deliver_scene_inspection_update(self._scene_inspector, presentation.inspection)
 
     def _on_filter_changed(self) -> None:
         if self.frame_display is None:
@@ -202,6 +202,8 @@ class StreamMediaController:
         """Start every live transport and watch the video feed for stalls."""
         self._logger.debug("Starting live stream playback")
         self._overlay_policy.reset()
+        if self._scene_inspector is not None:
+            self._scene_inspector.set_playing(True)
         self._last_video_data_s = time.monotonic()
         self._stall_timer.start()
         for source in self._sources:
@@ -236,6 +238,8 @@ class StreamMediaController:
         """Pause live stream sources. Connections stay alive."""
         self._logger.debug("Pausing live stream playback")
         self._paused = True
+        if self._scene_inspector is not None:
+            self._scene_inspector.set_playing(False)
         for source in self._sources:
             source.pause()
 
@@ -245,6 +249,8 @@ class StreamMediaController:
         if self.synchronizer is not None:
             self.synchronizer.reset()
         self._paused = False
+        if self._scene_inspector is not None:
+            self._scene_inspector.set_playing(True)
         self._last_video_data_s = time.monotonic()
         for source in self._sources:
             source.play()
@@ -290,6 +296,7 @@ class StreamMediaController:
         if scene_inspector is None:
             return
         scene_inspector.clear()
+        scene_inspector.set_playing(not self._paused)
 
     def attach_scene_render_catalog(self, scene_render_catalog: "SceneRenderCatalog") -> None:
         """Set the Scene Render Catalog used for future overlay presentation."""
