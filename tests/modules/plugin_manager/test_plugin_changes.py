@@ -38,6 +38,7 @@ def test_each_change_runs_the_matching_plugins_command(monkeypatch: pytest.Monke
     assert install[-2:] == ["--", "/home/me/my-plugin"], "the target follows `--`, so it is never read as an option"
     assert update[:2] == ["plugins", "install"]
     assert update[update.index("--upgrade-package") + 1] == "yolo-detections"
+    assert "--upgrade" not in update, "updating one plugin must not upgrade the others"
     assert update[-2:] == ["--", "yolo-detections>=0.2"]
     assert remove[:2] == ["plugins", "remove"]
     assert remove[-2:] == ["--", "yolo-detections"]

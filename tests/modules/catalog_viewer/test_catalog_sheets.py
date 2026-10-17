@@ -90,13 +90,18 @@ def test_caption_plates_skip_empty_lines_at_small_sizes(qtbot: QtBot, width: int
     assert drawing.diagnostics == ()
 
 
-def test_every_example_keeps_its_own_id() -> None:
+def test_every_example_keeps_its_own_id_and_ids_come_in_the_usual_formats() -> None:
     document = _built_in()
     built = {sheet.key: sheet for sheet in sheets(document)}
     relations = len(document["recipes"]["relations"])
 
     # Entities are keyed by id, so a repeated id would replace an example and leave fewer than were placed.
     assert len(built["overview"].scene.entities) == len(_ids(document, OBJECT_GROUPS)) + 2 * relations
+
+    ids = [entity_id for sheet in built.values() for entity_id in sheet.scene.entities]
+    assert any(len(entity_id) == 36 for entity_id in ids), "UUID-length ids show how long ids fit"
+    assert any(entity_id.isdigit() for entity_id in ids)
+    assert any(not entity_id.isdigit() and len(entity_id) < 36 for entity_id in ids)
 
 
 def test_sheets_are_the_same_every_time() -> None:

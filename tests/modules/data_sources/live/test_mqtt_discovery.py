@@ -12,8 +12,8 @@ from ax_devil.modules.data_sources.live import mqtt_discovery
 
 
 class _ClientContext(AbstractContextManager[object]):
-    def __init__(self, client: object) -> None:
-        self._client = client
+    def __init__(self, config: DeviceConfig, cameras: dict[str, object]) -> None:
+        self._client = cameras[config.host]
 
     def __enter__(self) -> object:
         return self._client
@@ -27,9 +27,13 @@ def test_list_mqtt_data_source_keys_uses_device_api(monkeypatch: pytest.MonkeyPa
     analytics_mqtt = SimpleNamespace(
         get_data_sources=lambda: [{"key": "source/one"}, {"key": ""}, {}, {"key": "source/two"}]
     )
-    client = SimpleNamespace(analytics_mqtt=analytics_mqtt)
+    other_mqtt = SimpleNamespace(get_data_sources=lambda: [{"key": "other/camera"}])
+    cameras: dict[str, object] = {
+        "camera.local": SimpleNamespace(analytics_mqtt=analytics_mqtt),
+        "other.local": SimpleNamespace(analytics_mqtt=other_mqtt),
+    }
     config = DeviceConfig.https(host="camera.local", username="root", password="pass")
-    monkeypatch.setattr(mqtt_discovery, "Client", lambda _config: _ClientContext(client))
+    monkeypatch.setattr(mqtt_discovery, "Client", lambda device_config: _ClientContext(device_config, cameras))
 
     keys = mqtt_discovery.list_mqtt_data_source_keys(config)
 
