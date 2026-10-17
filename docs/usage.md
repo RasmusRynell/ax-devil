@@ -51,8 +51,6 @@ entries when it loads, unless it has more than 200; expand a longer one with its
 A video can have any number of overlay files, and each one is a lane to compare. `ax-devil local --help` lists the
 file-opening options and `ax-devil list-handlers` the available handlers.
 
-Press **F** on a lane to show it fullscreen; **F** or **Esc** restores it, and **F11** toggles the application window.
-
 ## Live cameras
 
 New connections use the credentials from **Settings → Stream defaults** and the overlay mode and decoder from

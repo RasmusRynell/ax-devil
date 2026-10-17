@@ -100,7 +100,7 @@ Rendering diagnostics use `modules/diagnostics/render_metrics.py`; viewer owners
 
 ## Lane fullscreen
 
-Lane fullscreen (keys in [Usage](../../../../docs/usage.md#video-and-overlays)) opens on the monitor containing the
+Lane fullscreen opens on the monitor containing the
 lane's center. `LaneFullscreenController` temporarily hosts the existing `FrameDisplay` in a
 `ChromeWindow`; sources, synchronization, and sibling lanes remain owned by the viewer
 and keep running. Playback and playlist shortcuts reuse the main window actions.

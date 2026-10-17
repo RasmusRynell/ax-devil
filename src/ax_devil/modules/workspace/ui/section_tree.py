@@ -328,7 +328,7 @@ class SectionTree(QTreeWidget):
         """Ask for the action of a key (Enter, F2, Delete) on the selected row; other keys move and fold as Qt does."""
         action = _KEY_ACTIONS.get(Qt.Key(event.key()))
         item = self.currentItem()
-        if action is None or item is None or item.parent() is None:
+        if action is None or item is None or not item.isSelected() or item.parent() is None:
             super().keyPressEvent(event)
             return
         if action is RowAction.OPEN and event.modifiers() & Qt.KeyboardModifier.ControlModifier:

@@ -298,6 +298,11 @@ def test_keys_on_the_selected_row_ask_for_its_action_and_on_a_section_caption_fo
 
     assert requested == [RowAction.OPEN, RowAction.OPEN_TO_SIDE, RowAction.RENAME, RowAction.REMOVE]
 
+    requested.clear()
+    _item(tree, 0).setSelected(False)  # As Ctrl-clicking a selected row does: still current, no longer selected.
+    QTest.keyClick(tree, Qt.Key.Key_Delete)
+    assert requested == []
+
 
 def test_the_row_menu_lists_every_offered_action_greys_out_the_disabled_ones_with_their_reason_and_picks(
     qtbot: QtBot,

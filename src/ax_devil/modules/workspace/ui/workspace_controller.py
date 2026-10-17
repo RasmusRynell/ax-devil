@@ -99,15 +99,23 @@ class WorkspaceController(QObject):
         """Carry out what the user asks of the rows of *tree*, however they asked: see ``perform_row_action``."""
         tree.row_action_requested.connect(self.perform_row_action)
 
-    def perform_row_action(self, row: WorkspaceBrowserRow, action: RowAction) -> None:
+    def perform_row_action(
+        self, row: WorkspaceBrowserRow, action: RowAction, viewer: ViewerWidget | None = None
+    ) -> None:
         """Carry out *action* on *row*, whichever view and gesture asked; one the row does not offer, or offers
         disabled, does nothing.
+
+        An Export the *viewer* asked for is that viewer's, not the first viewer showing the same thing.
 
         The row may be older than the Workspace, such as when a menu was open as its item was removed; an action on an
         item that is gone does nothing.
         """
         offered = row.offered(action)
-        if offered is not None and not offered.disabled_reason:
+        if offered is None or offered.disabled_reason:
+            return
+        if viewer is not None and action is RowAction.EXPORT_VIDEO:
+            viewer.export_video()
+        else:
             self._row_handlers[action](row)
 
     def set_shared_actions(self, actions: Mapping[str, QAction]) -> None:
@@ -143,22 +151,28 @@ class WorkspaceController(QObject):
         self.sections_changed.emit(self._sections)
 
     def _show_viewer_menu(self, widget: ViewerWidget, global_pos: QPoint) -> None:
-        """Show the menu of the item *widget* shows at *global_pos*: what its sidebar row offers, as that row does.
+        """Show the menu of the Content *widget* shows at *global_pos*: what its sidebar row offers, as that row does.
 
-        A viewer whose item has no row, such as one just removed, shows no menu.
+        An item can resolve to several Contents, so the row is the one of the Content on screen. A viewer whose
+        Content has no row, such as one just removed, shows no menu.
         """
-        item_id = self._widget_item_ids.get(widget)
+        shown = widget.current_on_screen_item()
         row = next(
             (
                 row
                 for section in self._sections
                 for row in section.rows
-                if row.item is not None and row.item.id == item_id
+                if shown is not None and row.item is not None and row.row_id == shown.content_id
             ),
             None,
         )
         if row is not None:
-            show_row_menu(row, self._window_parent(), global_pos, lambda action: self.perform_row_action(row, action))
+            show_row_menu(
+                row,
+                self._window_parent(),
+                global_pos,
+                lambda action: self.perform_row_action(row, action, viewer=widget),
+            )
 
     def _held_item(self, row: WorkspaceBrowserRow) -> WorkspaceItem | None:
         """Return the item *row* stands for as the Workspace holds it now; None for a row of no item or a gone one."""
