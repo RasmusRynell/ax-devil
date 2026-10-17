@@ -96,7 +96,7 @@ class ApplicationPluginLoader:
                 reason = f"entry-point discovery failed: {exc}"
                 if isinstance(exc, ImportError) and (exc.name or "").startswith("ax_devil."):
                     reason = f"incompatible with this ax-devil version: {exc}"
-                cls._fail(family, plugin_id_hint, entrypoint_path, package, reason, exc)
+                cls._fail(family, plugin_id_hint, package, reason, exc)
                 continue
 
             cls._register_plugin_class(
@@ -113,7 +113,7 @@ class ApplicationPluginLoader:
         try:
             module = importlib.import_module(f"{family.builtin_package}.{name}.plugin")
         except Exception as exc:
-            cls._fail(family, name, entrypoint, None, f"import failed: {exc}", exc)
+            cls._fail(family, name, None, f"import failed: {exc}", exc)
             return
 
         cls._register_plugin_class(
@@ -138,7 +138,7 @@ class ApplicationPluginLoader:
         failure_prefix = "plugin validation failed: "
         try:
             if not isinstance(plugin_cls, type) or not issubclass(plugin_cls, family.plugin_base_class):
-                cls._fail(family, plugin_id_hint, entrypoint, package, "PLUGIN_CLASS missing or invalid")
+                cls._fail(family, plugin_id_hint, package, "PLUGIN_CLASS missing or invalid")
                 return
 
             plugin_cls = cast(type[PluginBase], plugin_cls)
@@ -146,19 +146,19 @@ class ApplicationPluginLoader:
             unimplemented = sorted(getattr(plugin_cls, "__abstractmethods__", ()))
             if unimplemented:
                 reason = f"does not implement {', '.join(unimplemented)}"
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, reason)
+                cls._fail(family, plugin_cls.plugin_id(), package, reason)
                 return
 
             required_api_version = plugin_cls.required_api_version()
             if required_api_version != PLUGIN_API_VERSION:
                 reason = f"requires plugin API {required_api_version}, host provides {PLUGIN_API_VERSION}"
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, reason)
+                cls._fail(family, plugin_cls.plugin_id(), package, reason)
                 return
 
             if plugin_cls.plugin_type() != family.plugin_type:
                 declared = plugin_cls.plugin_type()
                 reason = f"PLUGIN_CLASS declared plugin_type={declared!r}, expected {family.plugin_type!r}"
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, reason)
+                cls._fail(family, plugin_cls.plugin_id(), package, reason)
                 return
 
             try:
@@ -174,28 +174,27 @@ class ApplicationPluginLoader:
 
             validation_error = plugin_cls.validate_registration(RuntimePluginRegistry)
             if validation_error is not None:
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, validation_error)
+                cls._fail(family, plugin_cls.plugin_id(), package, validation_error)
                 return
 
             failure_id = plugin_cls.plugin_id()
             failure_prefix = ""
-            RuntimePluginRegistry.register_plugin(plugin_cls, entrypoint, package)
+            RuntimePluginRegistry.register_plugin(plugin_cls, package)
             logger.debug(f"Registered plugin {plugin_cls.plugin_type()}:{plugin_cls.plugin_id()} from {entrypoint}")
         except Exception as exc:
-            cls._fail(family, failure_id, entrypoint, package, f"{failure_prefix}{exc}", exc)
+            cls._fail(family, failure_id, package, f"{failure_prefix}{exc}", exc)
 
     @staticmethod
     def _fail(
         family: PluginFamily,
         plugin_id: str,
-        entrypoint: Path,
         package: str | None,
         reason: str,
         exc: Exception | None = None,
     ) -> None:
         """Record a plugin that cannot load; ``_warn_about_failures`` reports it once per source."""
         logger.debug(f"Plugin {family.plugin_type}:{plugin_id} failed to load: {reason}", exc_info=exc)
-        RuntimePluginRegistry.mark_failed(family.plugin_type, plugin_id, entrypoint, package, reason)
+        RuntimePluginRegistry.mark_failed(family.plugin_type, plugin_id, package, reason)
 
     @staticmethod
     def _warn_about_failures() -> None:

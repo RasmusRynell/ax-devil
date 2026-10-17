@@ -18,7 +18,6 @@ from ax_devil.modules.plugin_system import (
     ApplicationPluginLoader,
     DecoderPlugin,
     PlaylistResolverPlugin,
-    PluginDefinitionBase,
     PluginStatus,
     RuntimePluginRegistry,
 )
@@ -160,7 +159,6 @@ def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.Mon
     assert (decoder.status, decoder.plugin_class) == (PluginStatus.LOADED, ExternalDecoder)
     assert (resolver.status, resolver.plugin_class) == (PluginStatus.LOADED, ExternalResolver)
     assert decoder.package == "example-distribution"
-    assert decoder.entrypoint == Path("/site-packages/example-distribution")
     assert (
         RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "mot_challenge").status is PluginStatus.LOADED
     )
@@ -380,14 +378,17 @@ def test_duplicate_plugin_id_does_not_replace_loaded_plugin(
     assert any("Duplicate plugin id" in message for message in caplog.messages)
 
 
-def test_registry_scopes_unique_plugin_ids_by_plugin_type(tmp_path: Path) -> None:
-    RuntimePluginRegistry.reset()
-    for plugin_type in ("type-a", "type-b"):
-        definition = PluginDefinitionBase(plugin_type=plugin_type, plugin_id="shared", display_name=plugin_type)
-        RuntimePluginRegistry.register_definition(definition, tmp_path / f"{plugin_type}.py", "test")
+def test_registry_scopes_unique_plugin_ids_by_plugin_type() -> None:
+    class SameIdResolver(ExternalResolver):
+        @classmethod
+        def plugin_id(cls) -> str:
+            return PLUGIN_ID
 
-    assert RuntimePluginRegistry.get_plugin("type-a", "shared").definition.display_name == "type-a"
-    assert RuntimePluginRegistry.get_plugin("type-b", "shared").definition.display_name == "type-b"
-    duplicate = PluginDefinitionBase(plugin_type="type-a", plugin_id="shared", display_name="again")
-    with pytest.raises(ValueError, match="Duplicate plugin id registered: shared"):
-        RuntimePluginRegistry.register_definition(duplicate, tmp_path / "again.py", "test")
+    RuntimePluginRegistry.reset()
+    RuntimePluginRegistry.register_plugin(ExternalDecoder, "test")
+    RuntimePluginRegistry.register_plugin(SameIdResolver, "test")
+
+    assert RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID).plugin_class is ExternalDecoder
+    assert RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, PLUGIN_ID).plugin_class is SameIdResolver
+    with pytest.raises(ValueError, match="Duplicate plugin id registered: external-plugin"):
+        RuntimePluginRegistry.register_plugin(ExternalDecoder, "test")

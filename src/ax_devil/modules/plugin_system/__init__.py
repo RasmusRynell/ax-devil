@@ -16,7 +16,7 @@ from .decoder_plugins import (
     get_payload_decoder,
     get_payload_filter_factory,
 )
-from .loader import ApplicationPluginLoader, PluginFamily
+from .loader import ApplicationPluginLoader
 from .playlist_resolvers import (
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
     PlaylistResolverPlugin,
@@ -43,7 +43,6 @@ __all__ = [
     "PlaylistResolverWidget",
     "PluginBase",
     "PluginDefinitionBase",
-    "PluginFamily",
     "PluginRecord",
     "PluginStatus",
     "RuntimePluginRegistry",

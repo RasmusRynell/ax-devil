@@ -295,7 +295,7 @@ def _external_resolver() -> PluginRecord:
 
 def _failed_resolver() -> PluginRecord:
     definition = PluginDefinitionBase(PLAYLIST_RESOLVER_PLUGIN_TYPE, "broken", "Broken", None)
-    return PluginRecord(definition, Path("broken"), "broken", PluginStatus.FAILED, error="import failed")
+    return PluginRecord(definition, "broken", PluginStatus.FAILED, error="import failed")
 
 
 def test_add_from_lists_the_loaded_resolvers_whenever_the_view_is_shown(

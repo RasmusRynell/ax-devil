@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -29,7 +28,6 @@ class PluginRecord:
     """Metadata captured for each discovered plugin."""
 
     definition: PluginDefinitionBase
-    entrypoint: Path
     package: str | None
     status: PluginStatus
     plugin_class: type[PluginBase] | None = None
@@ -52,14 +50,13 @@ class RuntimePluginRegistry:
         cls._plugins_by_type.clear()
 
     @classmethod
-    def register_definition(
+    def register_plugin(
         cls,
-        definition: PluginDefinitionBase,
-        entrypoint: Path,
+        plugin_cls: type[PluginBase],
         package: str | None,
-        plugin_class: type[PluginBase] | None = None,
     ) -> PluginRecord:
-        """Register a concrete plugin definition."""
+        """Register a plugin class under its definition's type and id."""
+        definition = plugin_cls.definition()
         plugins = cls._plugins_by_type.setdefault(definition.plugin_type, {})
         existing = plugins.get(definition.plugin_id)
         if existing is not None and existing.status == PluginStatus.LOADED:
@@ -69,30 +66,18 @@ class RuntimePluginRegistry:
 
         record = PluginRecord(
             definition=definition,
-            entrypoint=entrypoint,
             package=package,
             status=PluginStatus.LOADED,
-            plugin_class=plugin_class,
+            plugin_class=plugin_cls,
         )
         plugins[definition.plugin_id] = record
         return record
-
-    @classmethod
-    def register_plugin(
-        cls,
-        plugin_cls: type[PluginBase],
-        entrypoint: Path,
-        package: str | None,
-    ) -> PluginRecord:
-        """Register a plugin class by resolving its definition."""
-        return cls.register_definition(plugin_cls.definition(), entrypoint, package, plugin_class=plugin_cls)
 
     @classmethod
     def mark_failed(
         cls,
         plugin_type: str,
         plugin_id: str,
-        entrypoint: Path,
         package: str | None,
         error_message: str,
     ) -> None:
@@ -118,7 +103,6 @@ class RuntimePluginRegistry:
         )
         plugins[plugin_id] = PluginRecord(
             definition=definition,
-            entrypoint=entrypoint,
             package=package,
             status=PluginStatus.FAILED,
             error=error_message,
@@ -137,11 +121,6 @@ class RuntimePluginRegistry:
     def get_plugins(cls, plugin_type: str) -> list[PluginRecord]:
         """Return all plugin records for the requested type."""
         return list(cls._plugins_by_type.get(plugin_type, {}).values())
-
-    @classmethod
-    def get_plugin_ids(cls, plugin_type: str) -> list[str]:
-        """Return all plugin ids for the requested type."""
-        return list(cls._plugins_by_type.get(plugin_type, {}).keys())
 
     @classmethod
     def list_plugins(cls) -> list[PluginRecord]:
