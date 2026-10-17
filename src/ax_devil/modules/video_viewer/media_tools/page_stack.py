@@ -201,9 +201,14 @@ class PageStack(QWidget):
         key = entry.origin.neighbor(entry.key, delta)
         if key is not None:
             self._replace_top(key, entry.origin)
+        else:
+            self._update_header()  # The list moved on since ▲▼ were last enabled.
 
     def refresh_steps(self) -> None:
-        """Enable ▲▼ again from the list's current order, which changes under an open page as frames arrive."""
+        """Enable ▲▼ again from the list's current order, which changes under an open page as frames arrive.
+
+        The list is only asked when the user steps or a page shows; asking it per frame would rebuild a hidden list.
+        """
         if self._entries:
             self._update_header()
 
