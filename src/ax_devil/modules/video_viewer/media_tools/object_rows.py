@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from ax_devil.modules.data_sources.scene_history import ObjectHistory
-from ax_devil.modules.video_viewer.media_tools.frame_labels import format_short_frame_time
+from ax_devil.modules.object_inspection.frame_labels import format_short_frame_time
 
 _DIGITS = re.compile(r"(\d+)")
 

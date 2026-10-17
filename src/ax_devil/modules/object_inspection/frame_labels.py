@@ -1,4 +1,4 @@
-"""Shared frame labels and highlight for media tools that point at video frames."""
+"""Shared frame labels and highlight for tools that point at video frames."""
 
 from __future__ import annotations
 

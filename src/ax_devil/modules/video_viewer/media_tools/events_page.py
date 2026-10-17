@@ -14,9 +14,9 @@ from PySide6.QtWidgets import QLabel, QStackedLayout, QStyleOptionViewItem, QVBo
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
+from ax_devil.modules.object_inspection.frame_labels import current_frame_highlight, format_frame_time
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.query import Query, QueryRecord, compile_query
-from ax_devil.modules.video_viewer.media_tools.frame_labels import current_frame_highlight, format_frame_time
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, PageKey
 from ax_devil.modules.video_viewer.media_tools.query_bar import QueryBar
 from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView

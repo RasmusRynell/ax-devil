@@ -17,6 +17,7 @@ from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_v
 from ax_devil.modules.catalog_viewer.inspector import ObjectInspector
 from ax_devil.modules.catalog_viewer.sheets import sheet_frame, sheets
 from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
+from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogFile,
     SceneRenderCatalogLoader,
@@ -25,7 +26,6 @@ from ax_devil.modules.scene.rendering import (
 )
 from ax_devil.modules.scene.rendering.catalog import CatalogJsonDocument
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
-from ax_devil.modules.video_viewer.media_tools.fields_view import FieldsView
 from tests.catalog_helpers import (
     GatedCatalogLoader,
     create_catalog,

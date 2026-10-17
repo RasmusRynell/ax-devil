@@ -7,10 +7,10 @@ from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space, TextRole
+from ax_devil.modules.object_inspection.fields_view import FieldsView, field_sections
+from ax_devil.modules.object_inspection.title_row import TitleRow
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import Entity
-from ax_devil.modules.video_viewer.media_tools.fields_view import FieldsView, field_sections
-from ax_devil.modules.video_viewer.media_tools.object_page import TitleRow
 
 _WIDTH_IN_BODY_TEXT = 24
 _HINT = "Click an object to read its attributes. Select a row and press Ctrl+C to copy it."

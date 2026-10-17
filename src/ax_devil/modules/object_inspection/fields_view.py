@@ -50,9 +50,9 @@ from ax_devil.modules.chrome.section_caption import paint_section_caption
 from ax_devil.modules.chrome.theme import category_color
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent
+from ax_devil.modules.object_inspection.frame_labels import format_frame_time
 from ax_devil.modules.scene.inspection import InspectionField, entity_fields
 from ax_devil.modules.scene.model import Entity
-from ax_devil.modules.video_viewer.media_tools.frame_labels import format_frame_time
 
 EVENTS_SECTION = "Events"
 
