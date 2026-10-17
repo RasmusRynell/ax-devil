@@ -106,6 +106,14 @@ def test_incomplete_terms_are_ignored_while_typing() -> None:
     assert compile_query("OR car").matches(_CAR)
 
 
+def test_quoted_empty_value_selects_fields_reported_empty() -> None:
+    blank = _record(("Blank",), debug__note="")
+    assert compile_query('note:""').matches(blank)
+    assert not compile_query('note:""').matches(_record(debug__note="x"))
+    assert compile_query('-note:""').matches(_CAR)
+    assert compile_query('note:"').is_empty
+
+
 def test_comparison_with_non_number_searches_as_text() -> None:
     record = _record(("conf>abc",))
     assert compile_query("conf>abc").matches(record)
