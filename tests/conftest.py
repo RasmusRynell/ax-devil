@@ -19,7 +19,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.app import _collect_due_generation
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.diagnostics.metrics_store import metrics_enabled, set_metrics_enabled
-from ax_devil.modules.plugin_system import ApplicationPluginLoader
+from ax_devil.modules.plugin_system import ApplicationPluginLoader, RuntimePluginRegistry
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogManager,
     SceneRenderCatalogSelection,
@@ -134,6 +134,21 @@ def _load_plugins(tmp_path_factory: pytest.TempPathFactory) -> Generator[Path, N
         yield test_config_path
     finally:
         ApplicationPluginLoader._loaded = False
+
+
+@pytest.fixture
+def unloaded_plugins() -> Generator[None, None, None]:
+    """Start the test with no plugins loaded, so its next ``load_all()`` reads whatever entry points it patches in.
+
+    Afterward the built-in plugins are loaded again, without installed ones.
+    """
+    RuntimePluginRegistry.reset()
+    ApplicationPluginLoader._loaded = False
+    yield
+    RuntimePluginRegistry.reset()
+    ApplicationPluginLoader._loaded = False
+    with patch("ax_devil.modules.plugin_system.loader.importlib.metadata.entry_points", return_value=[]):
+        ApplicationPluginLoader.load_all()
 
 
 @pytest.fixture(autouse=True)

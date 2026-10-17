@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 
-from ax_devil.modules.plugin_system import ApplicationPluginLoader, DecoderPlugin, RuntimePluginRegistry
+from ax_devil.modules.plugin_system import DecoderPlugin
 from ax_devil.modules.plugin_system.validate import validate_plugins
 from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
+
+pytestmark = pytest.mark.usefixtures("unloaded_plugins")
 
 
 class ExampleDecoder(DecoderPlugin):
@@ -37,16 +37,6 @@ class ExampleDecoder(DecoderPlugin):
     def scene_model_version(cls) -> tuple[int, int]:
         """Declare the supported Scene model."""
         return SCENE_MODEL_VERSION
-
-
-@pytest.fixture(autouse=True)
-def isolated_loader() -> Generator[None, None, None]:
-    """Load each scenario independently and restore built-ins after the test."""
-    RuntimePluginRegistry.reset()
-    ApplicationPluginLoader._loaded = False
-    yield
-    with patch.object(metadata, "entry_points", return_value=[]):
-        ApplicationPluginLoader.reload_plugins()
 
 
 @pytest.mark.parametrize("wrong_family,other_owner", [(False, False), (True, False), (False, True)])
