@@ -10,13 +10,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QComboBox
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
+from ax_devil.modules.chrome.elided_label import ElidedLabel
+from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.plugin_system import (
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
@@ -37,7 +40,7 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
-from ax_devil.modules.workspace.ui.offline_view import OfflineView
+from ax_devil.modules.workspace.ui.offline_view import AddPanel, OfflineView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.contents import make_video
 from tests.helpers.section_tree import (
@@ -51,7 +54,6 @@ from tests.helpers.section_tree import (
     titles,
 )
 from tests.helpers.shortcuts import make_shortcut_manager
-from tests.helpers.widgets import button
 from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
@@ -112,12 +114,23 @@ def _resolver_names() -> list[str]:
     return [record.definition.display_name for record in _resolvers()]
 
 
+def _add_rows(view: OfflineView) -> dict[str, ListRow]:
+    """Return the rows of the Add panel by name, in order."""
+    [panel] = view.findChildren(AddPanel)
+    rows = [row for row in panel.findChildren(ListRow) if row.isVisibleTo(panel)]
+    return {label.full_text(): row for row in rows if (label := row.findChild(ElidedLabel)) is not None}
+
+
+def _click(row: ListRow) -> None:
+    QTest.mouseClick(row, Qt.MouseButton.LeftButton)
+
+
 def test_playlists_list_their_entries_from_the_start(
     qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=_Folder(3), mot_challenge=_Folder(1))
     view = _view(session)
-    assert captions(view.tree) == [f"Add from, {len(_resolver_names())}"]
+    assert captions(view.tree) == []
 
     with patch(_OFFLINE_VIEWER, DummyViewer):
         session.add_items(
@@ -192,7 +205,7 @@ def test_add_video_opens_the_add_video_dialog(qtbot: QtBot, render_catalog_manag
         return BaseDialog.DialogCode.Rejected
 
     with patch.object(BaseDialog, "exec", reject):
-        button(view, "Add video").click()
+        _click(_add_rows(view)["Single video"])
 
     assert [type(dialog).__name__ for dialog in opened] == ["AddVideoDialog"]
 
@@ -289,27 +302,22 @@ def _failed_resolver() -> PluginRecord:
     return PluginRecord(definition, "broken", PluginStatus.FAILED, error="import failed")
 
 
-def test_add_from_lists_the_loaded_resolvers_whenever_the_view_is_shown(
+def test_add_lists_the_loaded_resolvers_whenever_the_view_is_shown(
     qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager)
     view = _view(session)
     builtins = _resolver_names()
-    assert titles(view.tree) == builtins
+    assert [*_add_rows(view)] == ["Single video", *builtins]
 
     loaded = [*_resolvers(), _external_resolver(), _failed_resolver()]
     monkeypatch.setattr(RuntimePluginRegistry, "get_plugins", lambda _plugin_type: loaded)
     session.show_sidebar_view("workspace")
     session.show_sidebar_view("offline")
 
-    assert titles(view.tree) == [*builtins, "Experiment Runs"]
-    assert {title: row_action(row(view.tree, title)) for title in titles(view.tree)} == dict.fromkeys(
-        titles(view.tree), "Add"
-    )
-    external = row(view.tree, "Experiment Runs")
-    assert row_texts(external) == ["Experiment Runs"]
-    assert "From lab-experiments." in external.toolTip()
-    assert "Match videos and overlays from two folders by file name." in row(view.tree, "Folder Pair").toolTip()
+    assert [*_add_rows(view)] == ["Single video", *builtins, "Experiment Runs"]
+    assert "From lab-experiments." in _add_rows(view)["Experiment Runs"].toolTip()
+    assert "Match videos and overlays from two folders by file name." in _add_rows(view)["Folder Pair"].toolTip()
 
 
 def test_add_opens_the_add_playlist_dialog_with_that_resolver_chosen(
@@ -331,6 +339,6 @@ def test_add_opens_the_add_playlist_dialog_with_that_resolver_chosen(
         return original_exec(dialog)
 
     with patch.object(BaseDialog, "exec", note_choice):
-        press(view.tree, "MOT Challenge")
+        _click(_add_rows(view)["MOT Challenge"])
 
     assert chosen == ["MOT Challenge"]

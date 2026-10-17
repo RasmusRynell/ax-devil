@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from functools import partial
-
 from PySide6.QtCore import QObject, Signal
 
 from ax_devil.modules.plugin_system import (
@@ -17,13 +14,9 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     BY_NAME,
     WORKSPACE_ORDER,
     BrowserSection,
-    OfferedAction,
-    RowAction,
     RowOrder,
-    WorkspaceBrowserRow,
-    WorkspaceBrowserSection,
 )
-from ax_devil.modules.workspace.ui.offline_view import OfflineView
+from ax_devil.modules.workspace.ui.offline_view import OfflineView, PlaylistSource
 from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 
@@ -40,60 +33,45 @@ def _loaded_resolvers() -> tuple[PluginRecord, ...]:
     )
 
 
-def _resolver_row(record: PluginRecord, add: Callable[[], None]) -> WorkspaceBrowserRow:
-    """Return the row of a playlist resolver, whose Add does *add*; its description and the plugin package it
-    comes from show on hover."""
+def _playlist_source(record: PluginRecord) -> PlaylistSource:
+    """Return the source of a playlist resolver; its description and the plugin package it comes from show on hover."""
     definition = record.definition
     description = " ".join((definition.description or "").split())
     source = f"From {record.package}." if record.package else ""
-    return WorkspaceBrowserRow(
-        row_id=f"resolver/{definition.plugin_id}",
-        label=definition.display_name,
-        icon_kind="playlist",
-        facts=tuple(line for line in ("Playlist resolver", description, source) if line),
-        actions=(OfferedAction(RowAction.ADD),),
-        add=add,
+    return PlaylistSource(
+        definition.plugin_id, definition.display_name, "\n".join(line for line in (description, source) if line)
     )
 
 
 class OfflineViewController(QObject):
-    """Show the workspace's Videos and Playlists sections in *view*, then the loaded resolvers to add playlists from.
+    """Show the workspace's Videos and Playlists sections in *view*, and offer the resolvers to add playlists from.
 
-    A resolver's Add emits ``add_requested`` with its id, for whoever asks the user for the playlist's settings.
+    A resolver's row emits ``add_requested`` with its id, for whoever asks the user for the playlist's settings.
     """
 
     add_requested = Signal(str)  # resolver id
 
     def __init__(self, view: OfflineView, workspace: WorkspaceController, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._resolvers: tuple[PluginRecord, ...] = ()
-        self._resolver_rows: tuple[WorkspaceBrowserRow, ...] = ()
-        self._listing = SectionsViewController(
+        self._view = view
+        self._resolvers: tuple[PluginRecord, ...] | None = None
+        SectionsViewController(
             view,
             workspace,
             {BrowserSection.VIDEOS, BrowserSection.PLAYLISTS},
-            compose=self._with_resolvers,
             summary=_held_count,
             orders=(WORKSPACE_ORDER, BY_NAME, BY_LOCATION),
         )
+        view.add_playlist_requested.connect(self.add_requested)
         view.shown.connect(self._refresh_resolvers)
+        self._refresh_resolvers()
 
     def _refresh_resolvers(self) -> None:
-        if _loaded_resolvers() != self._resolvers:
-            self._listing.refresh()
-
-    def _with_resolvers(self, held: Sections) -> Sections:
-        """Return *held*, then the loaded resolvers."""
+        """Offer the loaded resolvers again when they changed."""
         resolvers = _loaded_resolvers()
         if resolvers != self._resolvers:
             self._resolvers = resolvers
-            self._resolver_rows = tuple(
-                _resolver_row(record, partial(self.add_requested.emit, record.definition.plugin_id))
-                for record in resolvers
-            )
-        if not self._resolver_rows:
-            return held
-        return (*held, WorkspaceBrowserSection(BrowserSection.ADD_FROM, self._resolver_rows))
+            self._view.set_playlist_sources([_playlist_source(record) for record in resolvers])
 
 
 def _held_count(sections: Sections) -> str:
