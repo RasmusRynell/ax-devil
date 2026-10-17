@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QLineEdit, QToolButton
+from PySide6.QtWidgets import QLabel, QLineEdit, QTabBar, QToolButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.small_button import SmallButton
-from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
+from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption, build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
+    Delete,
     Entity,
     EntityId,
     MotionState,
@@ -28,10 +30,18 @@ from ax_devil.modules.scene.model import (
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
+from ax_devil.modules.video_viewer.media_tools.event_page import EventPage
+from ax_devil.modules.video_viewer.media_tools.events_page import LIVE_EVENT_LIMIT, EventsPage
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
-from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
-from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, RowTableModel, RowTableView
+from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey, PageKey
+from ax_devil.modules.video_viewer.media_tools.row_table import (
+    _DIMMED_ROLE,
+    CellKind,
+    Column,
+    RowTableModel,
+    RowTableView,
+)
 
 
 def _frame(index: int) -> FrameIdentifier:
@@ -55,10 +65,12 @@ def _scene(*entities: Entity) -> Scene:
     return scene
 
 
-def _history(*objects: tuple[str, str, tuple[tuple[int, int], ...]], frames: int = 10) -> SceneHistory:
+def _history(
+    *objects: tuple[str, str, tuple[tuple[int, int], ...]], frames: int = 10, events: tuple[FrameEvent, ...] = ()
+) -> SceneHistory:
     times = tuple(index * 1_000_000 for index in range(frames))
     return SceneHistory(
-        events=(),
+        events=events,
         objects=tuple(ObjectHistory(entity_id, (kind,), spans, times) for entity_id, kind, spans in objects),
         frame_count=frames,
     )
@@ -104,7 +116,10 @@ def _open(panel: MediaToolsPanel, entity_id: str) -> None:
     """Click the row of *entity_id* in the Objects list."""
     view = _view(panel)
     assert view is not None
-    key = ObjectPageKey(entity_id)
+    _click_row(view, ObjectPageKey(entity_id))
+
+
+def _click_row(view: RowTableView, key: Hashable) -> None:
     view.scroll_to_key(key)
     rect = view.visualRect(view.rows_model.index(view.rows_model.row_of(key), 0))
     QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
@@ -365,6 +380,166 @@ def test_file_scope_is_unavailable_when_the_decoder_cannot_filter_history(
 
     assert panel.objects_page.scope is ObjectScope.FRAME
     assert not file_button.isVisible()
+
+
+def test_event_page_opens_from_the_events_list_and_leads_to_an_involved_object_and_back(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    event = FrameEvent(_frame(3), "Merge", "Merge a → b", ("a", "b"))
+    panel = _panel(qtbot, render_catalog_selection, _history(("a", "human", ((0, 5),)), events=(event,)))
+    requested, selected = _record(panel.frameRequested), _record(panel.objectSelected)
+    panel.update_scene(_scene(_entity("a")), _frame(1), {})
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+
+    _click_row(events_view, EventPageKey(event))
+    _click(panel, "Go to frame")
+    assert requested == [3]
+
+    (page,) = [v for v in panel.findChildren(RowTableView) if v.isVisible() and v is not events_view]
+    _click_row(page, "a")  # Its object page is a step further from the events list.
+    assert selected[-1] == "a"
+    _click(panel, "Back (Esc)")
+    assert _button(panel, "Go to frame") is not None  # The event page again, and the list is still beneath it.
+    _click(panel, "Back (Esc)")
+    assert events_view.isVisible() and events_view.rows_model.highlight() == EventPageKey(event)
+
+
+def test_event_page_follows_its_event_through_a_history_replacement_and_closes_when_it_is_gone(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    def merge(frame: int) -> FrameEvent:
+        return FrameEvent(_frame(frame), "Merge", "Merge a → b", ("a", "b"))
+
+    delete = FrameEvent(_frame(6), "Delete", "Delete a", ("a",))
+    panel = _panel(qtbot, render_catalog_selection, _history(events=(merge(3), delete)))
+    requested = _record(panel.frameRequested)
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+    _click_row(events_view, EventPageKey(merge(3)))
+
+    panel.set_scene_history(_history(events=(merge(5), delete)))
+    _click(panel, "Go to frame")
+    _click(panel, "Next in list")  # The list it came from has the new order too.
+    _click(panel, "Go to frame")
+    assert requested == [5, 6]
+
+    panel.set_scene_history(_history(events=(merge(5),)))
+    assert events_view.isVisible() and _button(panel, "Go to frame") is None
+
+
+def test_identical_events_are_stepped_through_one_at_a_time(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    twin = FrameEvent(_frame(3), "Delete", "Delete a", ("a",))
+    panel = _panel(qtbot, render_catalog_selection, _history(events=(twin, twin)))
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+    model = events_view.rows_model
+
+    def marked() -> list[bool]:
+        return [model.is_active(row) for row in range(model.rowCount())]
+
+    _click_row(events_view, model.key_at(0))
+    assert marked() == [True, False]
+    _click(panel, "Next in list")
+    assert marked() == [False, True]
+    _click(panel, "Previous in list")
+    assert marked() == [True, False]
+
+
+def _deleting_scene(frame: int, *entity_ids: str) -> Scene:
+    scene = Scene(time_slice=TimeSlice(start=frame, end=frame))
+    for entity_id in entity_ids:
+        scene.add_event(Delete(scene.time_slice, EntityId(entity_id)))
+    return scene
+
+
+def _open_last_live_event(panel: MediaToolsPanel) -> SmallButton | None:
+    """Open the newest event of the Events list and return its Next button."""
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+    _click_row(events_view, events_view.rows_model.key_at(events_view.rows_model.rowCount() - 1))
+    return _button(panel, "Next in list")
+
+
+@pytest.mark.parametrize("hidden", [False, True])
+@pytest.mark.parametrize("held", [1, LIVE_EVENT_LIMIT])
+def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
+    qtbot: QtBot,
+    render_catalog_selection: SceneRenderCatalogSelection,
+    monkeypatch: pytest.MonkeyPatch,
+    held: int,
+    hidden: bool,
+) -> None:
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.update_scene(_deleting_scene(1, *(f"o{n}" for n in range(held))), _frame(1), {})
+    next_button = _open_last_live_event(panel)  # At the limit, the next event drops the oldest and keeps the count.
+    assert next_button is not None and not next_button.isEnabled()
+    events_table = panel.events_page.findChild(RowTableView)
+    assert events_table is not None
+    resets: list[None] = []
+    events_table.rows_model.modelReset.connect(lambda: resets.append(None))
+
+    lookups: list[None] = []
+    neighbor = EventsPage.neighbor
+
+    def counting_neighbor(page: EventsPage, key: PageKey, delta: int) -> PageKey | None:
+        lookups.append(None)
+        return neighbor(page, key, delta)
+
+    monkeypatch.setattr(EventsPage, "neighbor", counting_neighbor)
+    if hidden:
+        panel.hide()
+
+    panel.update_scene(_deleting_scene(2, "new"), _frame(2), {})
+    if hidden:
+        assert lookups == []  # A collapsed panel does no list work per event.
+        panel.show()
+    assert next_button.isEnabled()
+    assert resets == []  # The hidden list is not rebuilt per event.
+    next_button.click()
+
+    (page,) = [p for p in panel.findChildren(EventPage) if p.isVisible()]
+    assert page.frame_event.entity_ids == ("new",)
+
+
+def test_event_page_lists_the_equal_event_reported_twice_among_its_same_moment(qtbot: QtBot) -> None:
+    twice = FrameEvent(_frame(3), "Delete", "Delete a", ("a",))
+    other = FrameEvent(_frame(3), "Merge", "Merge a, b", ("a", "b"))
+    page = EventPage(EventPageKey(twice, 0))
+    qtbot.addWidget(page)
+    page.set_history(_history(events=(twice, other, twice)))
+    page.show()
+    moment = next(view for view in page.findChildren(RowTableView) if view.isHeaderHidden())
+
+    assert moment.rows_model.rowCount() == 2
+    assert {moment.rows_model.row_of(EventPageKey(twice, 1)), moment.rows_model.row_of(EventPageKey(other))} == {0, 1}
+
+
+def test_live_event_page_dims_an_object_when_the_frame_has_no_overlay(qtbot: QtBot) -> None:
+    page = EventPage(EventPageKey(FrameEvent(_frame(3), "Delete", "Delete a", ("a",))))
+    qtbot.addWidget(page)
+    page.show()
+    table = page.findChild(RowTableView)
+    assert table is not None
+
+    page.update_scene(_scene(_entity("a")), 3)
+    assert not table.rows_model.data(table.rows_model.index(0, 0), _DIMMED_ROLE)
+    page.update_scene(None, 4)
+    assert table.rows_model.data(table.rows_model.index(0, 0), _DIMMED_ROLE)
 
 
 def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:

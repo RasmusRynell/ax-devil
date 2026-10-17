@@ -431,7 +431,8 @@ class _CellDelegate(QStyledItemDelegate):
             painter.drawText(
                 chip,
                 int(Qt.AlignmentFlag.AlignCenter),
-                metrics.elidedText(label.text, Qt.TextElideMode.ElideRight, chip.width() - 2 * Space.S),
+                # One pixel of slack: Qt elides text whose advance is exactly the width it is given.
+                metrics.elidedText(label.text, Qt.TextElideMode.ElideRight, chip.width() - 2 * Space.S + 1),
             )
             left += width + Space.S
 

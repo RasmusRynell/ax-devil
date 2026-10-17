@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from enum import Enum
 from html import escape
 from typing import Any
@@ -24,7 +25,7 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Space
-from ax_devil.modules.data_sources.scene_history import SceneHistory
+from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
@@ -33,15 +34,15 @@ from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistence
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 
 from .entity_filter_widget import EntityFilterWidget
-from .event_log_widget import EventLogWidget
+from .event_page import EventPage
+from .events_page import EventsPage
 from .object_page import ObjectPage
 from .objects_page import ObjectsPage
 from .overlay_persistence_controls import OverlayPersistenceControls
 from .overlay_visibility_widget import OverlayVisibilityWidget
-from .page_stack import ObjectPageKey, PageKey, PageStack
+from .page_stack import EventPageKey, ObjectPageKey, PageKey, PageStack
 from .scene_render_catalog_selector import SceneRenderCatalogSelector
 
-_EVENTS_MARGINS = (Space.M, Space.M, Space.M, 0)
 _HISTORY_NOTICE_MARGINS = (0, Space.M, Space.M, 0)
 _MENU_CONTENT_MARGINS = (Space.M, Space.M, Space.M, Space.M)
 
@@ -108,11 +109,10 @@ class MediaToolsSection(Enum):
             MediaToolsSection.EVENTS: (
                 "Scene events such as deletes and renames, listed on the video frame where each takes effect.\n\n"
                 "For files, the list holds every event in the overlay, each on the first frame at or after its "
-                "sample. Events on the displayed frame are highlighted. Double-click an event to jump to its "
-                "frame. For live streams, events are added when their overlay is first shown. Times are the "
-                "video position for files and UTC clock time for live streams.\n\n"
-                "The search box keeps events whose text, including their ids, contains the typed text; Filter "
-                "offers each kind of event the log holds."
+                "sample. Events on the displayed frame are highlighted. Click an event to open its page, "
+                "which can jump to its frame. For live streams, events are added when their overlay is "
+                "first shown. Times are the video position for files and UTC clock time for live streams.\n\n"
+                "Search by kind:merge or object:17, or by text in the label; ? shows the syntax."
             ),
         }[self]
 
@@ -126,11 +126,11 @@ class MediaToolsSection(Enum):
 class MediaToolsPanel(QWidget):
     """Side panel: the displayed frame's objects and the Scene events as pages, and the overlay controls in a menu.
 
-    The roots are an Objects list and an Events log under a tab bar. Opening an object drills into its page, which
-    replaces the tabs until the user goes back; ``show_object`` opens an object the same way, for a selection made
-    elsewhere. The panel is the Scene inspector sink of its viewer and forwards each update to the pages that follow
-    the displayed frame. With a `SceneHistory` the Objects list can also list every object of the file, and an object
-    page shows where it appears.
+    The roots are an Objects list and an Events list under a tab bar. Opening an object or an event drills into its
+    page, which replaces the tabs until the user goes back; ``show_object`` opens an object the same way, for a
+    selection made elsewhere. The panel is the Scene inspector sink of its viewer and forwards each update to the pages
+    that follow the displayed frame. With a `SceneHistory` the Objects list can also list every object of the file, and
+    an object page shows where it appears.
     """
 
     overlayPersistenceChanged = Signal(object)  # Emits OverlayPersistenceSettings
@@ -162,7 +162,16 @@ class MediaToolsPanel(QWidget):
         self._refilter: SceneRefilter | None = None
         self._history = scene_history
         self._pending_object: ObjectPageKey | None = None
-        self._object_page: ObjectPage | None = None
+        self._followed: ObjectPage | EventPage | None = None  # The drilled page on top, which follows the frame
+        self._page_builders: dict[type, Callable[[Any], ObjectPage | EventPage]] = {
+            ObjectPageKey: self._build_object_page,
+            EventPageKey: self._build_event_page,
+        }
+        # Where a page's key is in a replaced history; an object page does not depend on it.
+        self._key_resolvers: dict[type, Callable[[Any], PageKey | None]] = {
+            ObjectPageKey: lambda key: key,
+            EventPageKey: self._resolve_event_key,
+        }
         self._fold_state: dict[str, bool] = {}
         self.filter_model = filter_model
         self._filter_widget = EntityFilterWidget(filter_model=self.filter_model, show_title=False)
@@ -177,17 +186,13 @@ class MediaToolsPanel(QWidget):
 
         self._objects = ObjectsPage(self)
         self._objects.objectActivated.connect(self._open_object)
-        self._event_log = EventLogWidget(scene_history)
-        self._event_log.frameRequested.connect(self.frameRequested.emit)
-        events_root = QWidget(self)
-        events_root.setObjectName("mediaToolsEvents")
-        events_layout = QVBoxLayout(events_root)
-        events_layout.setContentsMargins(*_EVENTS_MARGINS)
-        events_layout.addWidget(self._event_log, 1)
         self._objects.setObjectName("mediaToolsObjects")
+        self._events = EventsPage(scene_history, self)
+        self._events.setObjectName("mediaToolsEvents")
+        self._events.eventActivated.connect(self._open_event_page)
         roots: list[tuple[MediaToolsSection, QWidget]] = [
             (MediaToolsSection.OBJECTS, self._objects),
-            (MediaToolsSection.EVENTS, events_root),
+            (MediaToolsSection.EVENTS, self._events),
         ]
         self._stack = PageStack({section.title: root for section, root in roots}, self._build_page, self)
         self._stack.pageChanged.connect(self._on_page_changed)
@@ -203,9 +208,10 @@ class MediaToolsPanel(QWidget):
         self._tab_roots = [root for _section, root in roots]
         self._tabs.currentChanged.connect(lambda index: self._stack.show_root(self._tab_roots[index]))
         self._objects.countChanged.connect(lambda count: self._set_tab_count(0, MediaToolsSection.OBJECTS, count))
-        self._event_log.countChanged.connect(lambda count: self._set_tab_count(1, MediaToolsSection.EVENTS, count))
+        self._events.countChanged.connect(lambda count: self._set_tab_count(1, MediaToolsSection.EVENTS, count))
+        self._events.rowsChanged.connect(self._refresh_event_steps)
         self._set_tab_count(0, MediaToolsSection.OBJECTS, self._objects.count)
-        self._set_tab_count(1, MediaToolsSection.EVENTS, self._event_log.event_count)
+        self._set_tab_count(1, MediaToolsSection.EVENTS, self._events.count)
 
         self._more_menu = QMenu(self)
         self._more_menu.setToolTipsVisible(True)
@@ -301,9 +307,9 @@ class MediaToolsPanel(QWidget):
         return self._objects
 
     @property
-    def event_log(self) -> EventLogWidget:
-        """Return the Scene event log, the Events root page."""
-        return self._event_log
+    def events_page(self) -> EventsPage:
+        """Return the Scene events list, the Events root page."""
+        return self._events
 
     @property
     def catalog_selector(self) -> SceneRenderCatalogSelector:
@@ -315,9 +321,9 @@ class MediaToolsPanel(QWidget):
         frame_id = self._last_frame_id
         self._last_scene, self._last_frame_id, self._refilter = None, None, None
         self._objects.clear()
-        self._event_log.clear()
-        if self._object_page is not None and frame_id is not None:
-            self._object_page.update_scene(None, frame_id.sequence_id)
+        self._events.clear()
+        if self._followed is not None and frame_id is not None:
+            self._followed.update_scene(None, frame_id.sequence_id)
 
     def update_scene(
         self,
@@ -335,7 +341,7 @@ class MediaToolsPanel(QWidget):
             return
         self._last_scene, self._last_frame_id, self._refilter = scene, frame_id, refilter
         self._objects.update_scene(scene, frame_id.sequence_id if frame_id is not None else None)
-        self._event_log.update_scene(scene, frame_id, metadata)
+        self._events.update_scene(scene, frame_id, metadata)
         self._follow_frame()
 
     def set_scene_history(self, history: SceneHistory) -> None:
@@ -343,9 +349,12 @@ class MediaToolsPanel(QWidget):
         self._history = history
         self._history_notice.setVisible(False)
         self._objects.set_history(history, self.filter_model)
-        self._event_log.set_history(history)
-        if self._object_page is not None:
-            self._object_page.set_history(history)
+        self._events.set_history(history)
+        # An open event may now sit on another frame, or be gone; its page then follows it, or closes.
+        self._stack.remap(lambda key: self._key_resolvers[type(key)](key))
+        if self._followed is not None:
+            self._followed.set_history(history)
+        self._stack.refresh_steps()
 
     def mark_history_out_of_date(self, reason: str) -> None:
         """Say why the history shown is out of date; the next `set_scene_history` replaces the notice."""
@@ -367,6 +376,15 @@ class MediaToolsPanel(QWidget):
         self._show_pending_object()
         self._stack.refresh_steps()
 
+    def _refresh_event_steps(self) -> None:
+        """Enable ▲▼ of an open event page again when live events rotate under it, even at a constant count.
+
+        Only for pages opened from the events list, and only while the panel shows: asking would refilter the list per
+        event, and `showEvent` catches up when the panel opens again.
+        """
+        if self.isVisible() and self._stack.root() is self._events:
+            self._stack.refresh_steps()
+
     def _show_pending_object(self) -> None:
         key, self._pending_object = self._pending_object, None
         if key is not None:
@@ -375,28 +393,52 @@ class MediaToolsPanel(QWidget):
     def _open_object(self, entity_id: str) -> None:
         self._stack.push(ObjectPageKey(entity_id), self._objects)
 
+    def _open_event(self, event: FrameEvent) -> None:
+        self._open_event_page(EventPageKey(event))
+
+    def _open_event_page(self, key: EventPageKey) -> None:
+        self._stack.push(key, self._events)
+
+    def _resolve_event_key(self, key: EventPageKey) -> EventPageKey | None:
+        """Find the key in a replaced history: the nearest equal event, keeping its occurrence while it remains."""
+        history = self._history
+        if history is None:
+            return key
+        event = history.nearest_event(key.event)
+        if event is None:
+            return None
+        return EventPageKey(event, min(key.occurrence, history.events.count(event) - 1))
+
     def _build_page(self, key: PageKey) -> QWidget:
         """Build the page of *key*, which follows the displayed frame from now on."""
-        if not isinstance(key, ObjectPageKey):
-            raise ValueError(f"The panel has no page for {key}")
-        page = ObjectPage(key.entity_id, self._fold_state)
+        page = self._page_builders[type(key)](key)
         page.frameRequested.connect(self.frameRequested.emit)
-        page.eventActivated.connect(lambda event: self.frameRequested.emit(event.frame_id.sequence_id))
         page.set_history(self._history)
-        self._object_page = page
+        self._followed = page
         if self._last_frame_id is not None:
             page.update_scene(self._last_scene, self._last_frame_id.sequence_id)
+        return page
+
+    def _build_object_page(self, key: ObjectPageKey) -> ObjectPage:
+        page = ObjectPage(key.entity_id, self._fold_state)
+        page.eventActivated.connect(self._open_event)
+        return page
+
+    def _build_event_page(self, key: EventPageKey) -> EventPage:
+        page = EventPage(key)
+        page.objectActivated.connect(self._open_object)
+        page.eventActivated.connect(self._open_event_page)
         return page
 
     def _on_page_changed(self, key: PageKey | None) -> None:
         self._tab_row.setVisible(key is None)
         if key is None:
-            self._object_page = None
+            self._followed = None
         self.objectSelected.emit(key.entity_id if isinstance(key, ObjectPageKey) else None)
 
     def _follow_frame(self) -> None:
-        if self._object_page is not None and self._last_frame_id is not None:
-            self._object_page.update_scene(self._last_scene, self._last_frame_id.sequence_id)
+        if self._followed is not None and self._last_frame_id is not None:
+            self._followed.update_scene(self._last_scene, self._last_frame_id.sequence_id)
 
     def _set_tab_count(self, index: int, section: MediaToolsSection, count: int) -> None:
         self._tabs.setTabText(index, f"{section.title} {count}")
