@@ -271,6 +271,8 @@ def test_screenshots(
             ]
         )
     )
+    # Abbreviate scenario paths as ~/... so pytest's per-run directory does not change the welcome shots.
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     application = Application(config_path=config.config_path)
     window = application.start(qapp)
     qtbot.addWidget(window)
