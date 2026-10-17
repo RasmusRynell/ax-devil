@@ -273,6 +273,7 @@ class EventLogWidget(QWidget):
 
     eventSelected = Signal(object)  # FrameEvent
     frameRequested = Signal(int)  # video frame index
+    countChanged = Signal(int)  # events held, before the search and kind filter narrow them
 
     def __init__(self, history: SceneHistory | None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -327,6 +328,11 @@ class EventLogWidget(QWidget):
         self._position_row: int | None = None
         self._current_frame: int | None = None
         self.clear()
+
+    @property
+    def event_count(self) -> int:
+        """Return how many events the log holds, before the search and kind filter narrow them."""
+        return self._model.total_count
 
     def set_history(self, history: SceneHistory) -> None:
         """Show the events of a replacement history."""
@@ -441,6 +447,7 @@ class EventLogWidget(QWidget):
 
     def _update_count(self) -> None:
         count, total = self._model.rowCount(), self._model.total_count
+        self.countChanged.emit(total)
         if not total:
             self._count_label.setText("No events")
         elif count == total:

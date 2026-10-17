@@ -84,7 +84,7 @@ Built-in catalogs are read-only; make a copy before editing. A catalog choice ap
 
 Click an object to pin the inspector; pinned values follow the displayed frame, so pause playback when copying text.
 
-The **Details** choices in the media tools panel only change what a view draws; hidden data stays in inspection and
+The **Overlay details** choices in the media tools panel only change what a view draws; hidden data stays in inspection and
 hover cards. Each view or comparison lane keeps its own choices when changing catalogs, and offline playlists retain
 them by lane position across entries. Choices last until the viewer closes and are not saved across restarts. Export
 uses the choices selected when it starts.

@@ -23,8 +23,8 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
 - `timing_diagnostics_widget.py`: each offline lane's timing and overlay-alignment status, mounted in the media
   tools panel's Overlay sync section.
 - `loading_indicator.py`: loading overlay used by offline entry changes.
-- `media_tools/`: viewer-owned side-panel widgets for filtering, Scene inspection, the Scene event log, object
-  history, and overlay persistence controls. `MediaToolsPanel` is the Scene inspector sink of its viewer.
+- `media_tools/`: viewer-owned side-panel pages and controls: the Objects list and object pages, the Scene event log,
+  filtering, and overlay persistence controls. `MediaToolsPanel` is the Scene inspector sink of its viewer.
 
 ## Boundaries
 
@@ -44,7 +44,7 @@ Do not move Workspace session/layout behavior, reusable player primitives, or pu
 ## Rules
 
 - Tools that follow playback do no work while they cannot be seen: a collapsed side panel hides its content, and
-  hidden lists, tabs and cards keep only the latest update and catch up when shown. Live event logs still record
+  hidden lists and pages keep only the latest update and catch up when shown. Live event logs still record
   while hidden, since those events cannot be recovered, and record each overlay's events once.
 - Media tools and zoom shortcuts act on the lane holding keyboard focus, including in lane fullscreen, or the first
   lane when focus is elsewhere.

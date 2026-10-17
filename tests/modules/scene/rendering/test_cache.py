@@ -278,7 +278,7 @@ def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettin
     assert overlay.prepare_drawing(context, DrawingBuffer(changed)) is second
 
 
-def test_cached_scene_overlay_tracks_search_and_toggle_all_without_new_scene() -> None:
+def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:
     scene = _classified_scene()
     model = SessionFilter(build_default_filter_config())
     overlay = CachedSceneOverlay(scene=scene, scene_filter=model)
@@ -286,13 +286,6 @@ def test_cached_scene_overlay_tracks_search_and_toggle_all_without_new_scene() -
     settings = DrawingSettings.for_context(context)
     first = overlay.prepare_drawing(context, DrawingBuffer(settings))
     assert len(first) > 0
-
-    model.set_id_query("missing")
-    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
-    assert overlay.hit_test(0.2, 0.3) is None
-
-    model.set_id_query("")
-    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) > 0
     assert overlay.hit_test(0.2, 0.3) is not None
 
     model.toggle_all()

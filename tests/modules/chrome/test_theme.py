@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage, QPalette
-from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QListView, QTabWidget, QToolButton, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QListView, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
@@ -28,19 +27,21 @@ from ax_devil.modules.scene.model import (
 )
 from ax_devil.modules.video_player.ui.controls import video_control_icon
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
-from ax_devil.modules.video_viewer.media_tools.entity_list_widget import EntityListWidget
 from ax_devil.modules.video_viewer.media_tools.event_log_widget import EventLogWidget
-from ax_devil.modules.video_viewer.media_tools.object_history_widget import ObjectCard
+from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
+from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectsPage
+from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
 
-def _foreground_pixels(image: QImage, rect: QRect, *, dark: bool) -> int:
+def _foreground_pixels(image: QImage, rect: QRect, *, dark: bool, light_limit: int = 100) -> int:
     count = 0
     for y in range(rect.top(), min(image.height(), rect.bottom() + 1)):
         for x in range(rect.left(), min(image.width(), rect.right() + 1)):
             color = image.pixelColor(x, y)
             gray = (color.red() + color.green() + color.blue()) / 3
-            if (dark and gray > 150) or (not dark and gray < 100):
+            if (dark and gray > 150) or (not dark and gray < light_limit):
                 count += 1
     return count
 
@@ -79,11 +80,11 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
         objects=(ObjectHistory("person-1", ("human",), ((0, 8),), tuple(i * 1_000_000 for i in range(10))),),
         frame_count=10,
     )
-    entities = EntityListWidget()
+    entities = ObjectsPage()
     entities.resize(400, 300)
     events = EventLogWidget(history)
     events.resize(500, 150)
-    card = ObjectCard("person-1", history)
+    card = ObjectPage("person-1", {})
     card.resize(400, 300)
     host = QWidget()
     host.resize(500, 350)
@@ -93,16 +94,14 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     for widget in (entities, events, card, host, browser):
         qtbot.addWidget(widget)
         widget.show()
-    entities.update_scene(scene, frame, {})
-    entity_view = _list_view(entities)
+    entities.update_scene(scene, 5)
+    QApplication.processEvents()
+    (entity_view,) = [view for view in entities.findChildren(RowTableView) if view.isVisible()]
     first_row = entity_view.model().index(0, 0)
-    QTest.mouseClick(entity_view.viewport(), Qt.MouseButton.LeftButton, pos=entity_view.visualRect(first_row).center())
+    row_rect = entity_view.visualRect(first_row).adjusted(0, 0, entity_view.viewport().width(), 0)
     events.update_scene(None, frame, {})
-    card.show_frame(scene, 5)
-    object_button = card.findChild(QToolButton, "objectButton")
-    assert object_button is not None
-    object_button.setChecked(True)
-    (details,) = [label for label in card.findChildren(QLabel) if label.isVisibleTo(card)]
+    card.set_history(history)
+    card.update_scene(scene, 5)
     hover.show_for("person-1", build_entity_hover_html(entity), 20, 20)
 
     for mode in ("light", "dark", "light"):
@@ -117,22 +116,21 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
         ):
             assert (color.lightnessF() < 0.5) is dark, mode
         image = entity_view.viewport().grab().toImage()
-        assert _foreground_pixels(image, QRect(25, 3, 160, 18), dark=dark) > 20, mode
-        assert _foreground_pixels(image, QRect(10, 30, 300, 110), dark=dark) > 100, mode
+        # Row text is the theme's muted text color, around 100 of 255 on light.
+        assert _foreground_pixels(image, row_rect, dark=dark, light_limit=140) > 40, mode
         events_image = _list_view(events).viewport().grab().toImage()
         assert _foreground_pixels(events_image, QRect(170, 3, 200, 18), dark=dark) > 20, mode
         hover_image = hover.grab().toImage()
         assert _foreground_pixels(hover_image, QRect(10, 8, 150, 70), dark=dark) > 100, mode
-        detail_image = details.grab().toImage()
-        assert _foreground_pixels(detail_image, detail_image.rect(), dark=dark) > 100, mode
+        card_image = card.grab().toImage()
+        assert _foreground_pixels(card_image, card_image.rect(), dark=dark) > 100, mode
 
-        # Selection must preserve readable summaries and cached rich text.
-        entity_view.setCurrentIndex(first_row)
+        # The row of the current object stays readable.
+        entities.highlight(ObjectPageKey("person-1"))
         QApplication.processEvents()
         selected = entity_view.viewport().grab().toImage()
-        assert _foreground_pixels(selected, QRect(25, 3, 160, 18), dark=dark) > 20, mode
-        assert _foreground_pixels(selected, QRect(10, 30, 300, 110), dark=dark) > 100, mode
-        entity_view.clearSelection()
+        assert _foreground_pixels(selected, row_rect, dark=dark, light_limit=140) > 40, mode
+        entities.highlight(None)
 
         # Playback controls sit on the near-black video in both themes, so they stay light.
         icon = video_control_icon(Icon.PLAY).pixmap(32, 32).toImage()
