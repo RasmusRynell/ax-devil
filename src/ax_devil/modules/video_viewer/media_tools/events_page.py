@@ -293,10 +293,10 @@ class EventsPage(QWidget):
 
     def _changed(self) -> None:
         """Count the events held and show them, now or when the page is shown."""
-        if len(self._rows) != self._count:
+        self._refresh()
+        if len(self._rows) != self._count:  # After the refresh, so a listener asking for neighbors sees the new rows.
             self._count = len(self._rows)
             self.countChanged.emit(self._count)
-        self._refresh()
 
     def _refresh(self) -> None:
         if self.isVisible():

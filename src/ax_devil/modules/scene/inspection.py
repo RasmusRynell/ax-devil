@@ -170,6 +170,7 @@ def _flatten(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
     elif isinstance(value, Classification):
         yield from _flatten(value.score, (*path, value.type))
         yield from _flatten(value.confidence, (*path, value.type, "confidence"))
+        yield from _flatten(value.attributes, (*path, value.type, "attributes"))
     elif isinstance(value, ColorClassification):
         yield from _flatten(value.score, (*path, value.name))
     elif isinstance(value, Geometry):

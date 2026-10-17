@@ -112,6 +112,12 @@ def test_comparison_with_non_number_searches_as_text() -> None:
     assert not compile_query("conf>abc").matches(_CAR)
 
 
+def test_integer_too_large_for_a_float_does_not_match_or_raise() -> None:
+    record = _record(debug__big=10**1000)
+    assert not compile_query("big>5").matches(record)
+    assert not compile_query("big:5").matches(record)
+
+
 def test_missing_paths_names_fields_no_record_has() -> None:
     query = compile_query("speed>1 -zoom:2 conf>0.5 zoom>3 car")
     assert query.missing_paths([_CAR, _PERSON]) == ("zoom",)
