@@ -47,8 +47,9 @@ class BookmarkRow:
 class BookmarkGroup:
     """A bookmarked or reviewed target, where its video is now, and its bookmarks in frame order, possibly none.
 
-    *found* is the Content and entry index the target names now, or None when it is orphaned: its entry is gone or its
-    item did not resolve. An orphaned group's bookmarks do not open and its review mark can only be cleared.
+    *found* is the Content and entry index the target names now, or None when it is orphaned or its item is resolving.
+    *missing* is the orphaned case: the item resolved, or failed to, without the entry. A missing group's bookmarks do
+    not open and its review mark can only be cleared; while the item resolves the group is neither missing nor openable.
     """
 
     target: BookmarkTarget
@@ -58,6 +59,7 @@ class BookmarkGroup:
     the item resolved to several playlists or the entry is gone."""
     reviewed: bool
     found: tuple[Content, int] | None
+    missing: bool
     rows: tuple[BookmarkRow, ...]
 
     @property
@@ -74,11 +76,6 @@ class BookmarkGroup:
     def mark(self) -> KindColor:
         """Return the color of the icon: the playlist or the video color."""
         return KindColor.PLAYLIST if self.target.entry else KindColor.VIDEO
-
-    @property
-    def missing(self) -> bool:
-        """Return whether the target is orphaned."""
-        return self.found is None
 
     def csv_rows(self) -> tuple[BookmarkCsvRow, ...]:
         """Return this group's bookmarks as CSV rows."""
@@ -123,11 +120,12 @@ def build_bookmark_groups(
         for target in targets:
             found = find_entry(resolution.contents, target)
             marks = sorted(by_target[target], key=lambda bookmark: (bookmark.frame, bookmark.time_s))
+            missing = found is None and not resolution.is_pending
             rows = tuple(
-                BookmarkRow(bookmark, MISSING if found is None else bookmark_subtitle(bookmark)) for bookmark in marks
+                BookmarkRow(bookmark, MISSING if missing else bookmark_subtitle(bookmark)) for bookmark in marks
             )
             entry = _entry_shown(resolution.contents, target, found)
-            groups.append(BookmarkGroup(target, item.display_name, entry, target in reviewed, found, rows))
+            groups.append(BookmarkGroup(target, item.display_name, entry, target in reviewed, found, missing, rows))
     return tuple(groups)
 
 

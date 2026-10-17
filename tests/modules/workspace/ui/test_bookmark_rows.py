@@ -61,15 +61,15 @@ def test_groups_follow_item_then_entry_order_with_orphaned_entries_last() -> Non
     assert groups[1].found is not None and groups[1].found[1] == 1
 
 
-def test_an_unresolved_item_leaves_its_bookmarks_missing_and_items_without_any_are_not_listed() -> None:
+def test_a_resolving_item_lists_its_bookmarks_not_missing_and_items_without_any_are_not_listed() -> None:
     video = VideoItem(video=Path("clip.mp4"))
     live = LiveStreamItem(host="192.0.2.10")
     resolutions = (ItemResolution.pending(video), ItemResolution.pending(live))
 
     groups = build_bookmark_groups(resolutions, (_bookmark(BookmarkTarget(video.id), 5),), set())
 
-    assert [(group.title, group.missing) for group in groups] == [("clip.mp4", True)]
-    assert [row.subtitle for row in groups[0].rows] == ["Missing"]
+    assert [(group.title, group.missing, group.found) for group in groups] == [("clip.mp4", False, None)]
+    assert [row.subtitle for row in groups[0].rows] == ["0:00.50 · frame 5 · Note"]
 
 
 def test_bookmarks_kept_for_an_item_this_version_cannot_read_stay_listed_and_exportable() -> None:
