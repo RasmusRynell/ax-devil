@@ -82,9 +82,6 @@ Built-in catalogs are read-only; make a copy before editing. A catalog choice ap
 
 ## Overlay details
 
-Click an object to select it and open its page in the media tools panel; click empty video to clear the selection.
-Copy values from the page.
-
 The **Overlay details** choices in the media tools panel only change what a view draws; hidden data stays in inspection and
 the hover chip. Each view or comparison lane keeps its own choices when changing catalogs, and offline playlists retain
 them by lane position across entries. Choices last until the viewer closes and are not saved across restarts. Export

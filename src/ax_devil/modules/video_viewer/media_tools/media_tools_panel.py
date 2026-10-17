@@ -376,13 +376,16 @@ class MediaToolsPanel(QWidget):
         """Keep the object selected on *display* and the object page open here the same.
 
         Clicking an object on the video opens its page; moving between objects here moves the selection on the video.
-        Clearing the selection on the video leaves the page open.
+        Clearing the selection on the video leaves a page that is open, but drops an object chosen while the panel was
+        hidden so that opening the panel does not select it again.
         """
         display.objectSelected.connect(self._show_selected)
         self.objectSelected.connect(display.select_object)
 
     def _show_selected(self, entity_id: str | None) -> None:
-        if entity_id is not None:
+        if entity_id is None:
+            self._pending_object = None
+        else:
             self.show_object(entity_id)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802

@@ -258,6 +258,23 @@ def test_the_selection_on_the_video_and_the_open_object_page_follow_each_other(
     assert display.viewport._selected_id is None
 
 
+def test_opening_the_panel_does_not_bring_back_a_selection_cleared_on_the_video_meanwhile(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    panel = _panel(qtbot, render_catalog_selection, show=False)
+    display = FrameDisplay()
+    qtbot.addWidget(display)
+    panel.link_selection(display)
+    shown = _record(panel.objectSelected)
+
+    display.viewport.selectionChanged.emit("a")
+    display.viewport.selectionChanged.emit(None)  # Clicking empty video while the panel is collapsed.
+    panel.show()
+    qtbot.waitExposed(panel)
+
+    assert shown == [] and display.viewport._selected_id is None
+
+
 def test_object_page_steps_use_the_list_as_it_is_now(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
 ) -> None:
