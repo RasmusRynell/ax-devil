@@ -28,7 +28,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
 | Session filtering, shared filter configs, state, predicates, and whole-file history filtering | `src/ax_devil/modules/filtering/` |
 | Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |
-| The Plugins sidebar view: the plugin catalog, in-app install, update, remove and reload | `src/ax_devil/modules/plugin_manager/` |
+| The Plugins sidebar view: the plugin catalog, in-app install, update and remove | `src/ax_devil/modules/plugin_manager/` |
 | Locked plugin installation projects and install/update/remove commands | `src/ax_devil/modules/plugin_installation/` |
 | Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
 | Config, settings state and preference values, logging, paths | `src/ax_devil/modules/settings/` |

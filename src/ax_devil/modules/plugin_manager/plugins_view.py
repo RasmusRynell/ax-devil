@@ -1,4 +1,4 @@
-"""The Plugins view: what loaded, what failed and why, and adding, updating, removing and reloading plugins."""
+"""The Plugins view: what loaded, what failed and why, and adding, updating and removing plugins."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from ax_devil.modules.plugin_manager.catalog import (
     current_catalog,
 )
 from ax_devil.modules.plugin_manager.plugin_changes import PluginChange, PluginChanges
-from ax_devil.modules.plugin_system import ApplicationPluginLoader, PluginStatus, RuntimePluginRegistry
+from ax_devil.modules.plugin_system import PluginStatus, RuntimePluginRegistry
 
 PLUGINS_VIEW_ID = "plugins"
 
@@ -84,12 +84,8 @@ class PluginsView(ViewPanel):
         self,
         changes: PluginChanges | None = None,
         catalog: Callable[[], tuple[PluginGroup, ...]] = current_catalog,
-        reload: Callable[[], None] = ApplicationPluginLoader.reload_plugins,
         parent: QWidget | None = None,
     ) -> None:
-        reload_button = SmallButton("", Icon.REFRESH)
-        reload_button.setToolTip("Reload plugins")
-        reload_button.setAccessibleName("Reload plugins")
         self._add_button = SmallButton("Add", Icon.ADD, ButtonKind.PRIMARY)
         self._add_button.setToolTip("Add plugin")
         header_buttons = QWidget()
@@ -97,12 +93,10 @@ class PluginsView(ViewPanel):
         header_layout = QHBoxLayout(header_buttons)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(Space.S)
-        header_layout.addWidget(reload_button)
         header_layout.addWidget(self._add_button)
         super().__init__("Plugins", header_widget=header_buttons, parent=parent)
         self._changes = changes if changes is not None else PluginChanges(parent=self)
         self._catalog = catalog
-        self._reload = reload
         self._groups: tuple[PluginGroup, ...] = ()
         self._failure: tuple[PluginChange, str] | None = None
         self._change_buttons: list[QWidget] = []
@@ -117,9 +111,8 @@ class PluginsView(ViewPanel):
         self._add_button.clicked.connect(self._add_plugin)
         self._install_status = _muted_line("")
         self._install_status_holder = self.add_padded(self._install_status, top=Space.S, bottom=Space.S)
-        self.add_padded(muted_label("Installs and updates apply after a restart."), top=0, bottom=Space.M)
+        self.add_padded(muted_label("Plugin changes apply after a restart."), top=0, bottom=Space.M)
 
-        reload_button.clicked.connect(self._reload_plugins)
         self._changes.started.connect(self._on_change_started)
         self._changes.finished.connect(self._on_change_finished)
         follow_appearance(self, self._render)
@@ -150,10 +143,6 @@ class PluginsView(ViewPanel):
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """List the plugins as they are now, including failures recorded since the view was last shown."""
         super().showEvent(event)
-        self.refresh()
-
-    def _reload_plugins(self) -> None:
-        self._reload()
         self.refresh()
 
     def _add_plugin(self) -> None:

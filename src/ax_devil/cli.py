@@ -486,6 +486,7 @@ def live(
     _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
 
 
+# Listed for --help; the launcher runs `plugins` in the base app before this CLI loads.
 cli.add_command(plugins)
 cli.add_command(catalog)
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -73,13 +72,11 @@ class FakeInstaller:
             raise PluginChangeError(self._failure)
 
 
-def _view(
-    qtbot: QtBot, records: list[PluginRecord], installer: FakeInstaller, reload: Callable[[], None] = lambda: None
-) -> PluginsView:
+def _view(qtbot: QtBot, records: list[PluginRecord], installer: FakeInstaller) -> PluginsView:
     def catalog() -> tuple[PluginGroup, ...]:
         return plugin_catalog(records, SELECTION, {"yolo-detections": "0.2.1"}.get)
 
-    view = PluginsView(PluginChanges(installer), catalog, reload)
+    view = PluginsView(PluginChanges(installer), catalog)
     qtbot.addWidget(view)
     view.resize(340, 600)
     view.show()
@@ -135,9 +132,7 @@ def test_the_view_warns_while_a_plugin_has_failed_to_load(
     qtbot: QtBot, records: list[PluginRecord], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
-    view = PluginsView(
-        PluginChanges(FakeInstaller()), lambda: plugin_catalog(records, SELECTION, lambda _: None), lambda: None
-    )
+    view = PluginsView(PluginChanges(FakeInstaller()), lambda: plugin_catalog(records, SELECTION, lambda _: None))
     qtbot.addWidget(view)
 
     with qtbot.waitSignal(view.warning_changed) as failed:
@@ -154,7 +149,7 @@ def test_the_initial_warning_comes_from_loaded_plugins_without_reading_the_catal
 ) -> None:
     monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
     unread = Mock(side_effect=AssertionError("the plugin selection must not be read at startup"))
-    view = PluginsView(PluginChanges(FakeInstaller()), unread, lambda: None)
+    view = PluginsView(PluginChanges(FakeInstaller()), unread)
     qtbot.addWidget(view)
 
     assert view.warning() == "1 failed to load"
@@ -165,7 +160,7 @@ def test_the_warning_counts_every_failed_plugin_of_a_package(
 ) -> None:
     records.append(_record("old-two", "package:old-model-decoder", error="requires plugin API 1, host provides 2"))
     monkeypatch.setattr(RuntimePluginRegistry, "list_plugins", lambda: records)
-    view = PluginsView(PluginChanges(FakeInstaller()), lambda: (), lambda: None)
+    view = PluginsView(PluginChanges(FakeInstaller()), lambda: ())
     qtbot.addWidget(view)
 
     assert view.warning() == "2 failed to load"
@@ -233,18 +228,6 @@ def test_adding_a_plugin_installs_what_was_entered(
 
     qtbot.waitUntil(lambda: _banner_shown(view), timeout=5000)
     assert installer.made == [PluginChange.install("/home/me/my-plugin")]
-
-
-def test_reload_loads_the_plugins_again_and_lists_them_anew(qtbot: QtBot, records: list[PluginRecord]) -> None:
-    def reload() -> None:
-        records.append(_record("lab", "package:lab-experiments"))
-
-    view = _view(qtbot, records, FakeInstaller(), reload)
-    assert ("lab-experiments", "Not loaded") not in _rows(view)
-
-    next(button for button in view.findChildren(SmallButton) if button.accessibleName() == "Reload plugins").click()
-
-    assert ("lab-experiments", "Not loaded") in _rows(view)
 
 
 def test_the_list_is_read_again_when_the_view_is_shown(qtbot: QtBot, records: list[PluginRecord]) -> None:
