@@ -8,7 +8,7 @@ from time import perf_counter
 from typing import Protocol
 
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
-from ax_devil.modules.scene.inspection import build_entity_hover_html
+from ax_devil.modules.scene.inspection import EntitySummary, entity_summary
 from ax_devil.modules.scene.model import Entity, Scene
 from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalog,
@@ -111,7 +111,7 @@ class CachedSceneOverlay:
         self._pending_filter_time_ms: float | None = None
         self.diagnostics: tuple[CatalogDiagnostic, ...] = ()
         self._reported_errors = reported_errors if reported_errors is not None else ReportedCatalogErrors()
-        self._hover_cards: dict[str, HoverHit] = {}
+        self._hover_hits_by_target: dict[str, HoverHit] = {}
 
     def prepare_drawing(self, context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
         """Return final backend data for this overlay and exact drawing settings."""
@@ -245,7 +245,7 @@ class CachedSceneOverlay:
             )
 
         self._hover_key = key
-        self._hover_cards.clear()
+        self._hover_hits_by_target.clear()
         self._hover_hits = hits
         self._hover_hits_by_id = {indexed.target_id: indexed for indexed in hits}
         return hits
@@ -273,12 +273,25 @@ class CachedSceneOverlay:
         )
 
     def _hover_hit_from_indexed(self, indexed: _IndexedHit) -> HoverHit:
-        hit = self._hover_cards.get(indexed.target_id)
+        hit = self._hover_hits_by_target.get(indexed.target_id)
         if hit is None:
+            summary = entity_summary(indexed.entity)
             hit = HoverHit(
                 target_id=indexed.target_id,
                 bounds=indexed.bounds,
-                card_html=build_entity_hover_html(indexed.entity),
+                label=f"{summary.entity_id} {summary.class_name}",
+                detail=_hover_detail(summary),
+                color_key=summary.class_name,
             )
-            self._hover_cards[indexed.target_id] = hit
+            self._hover_hits_by_target[indexed.target_id] = hit
         return hit
+
+
+def _hover_detail(summary: EntitySummary) -> str:
+    """Return the facts the decoder reported for the entity in one line, leaving out those it did not."""
+    parts: list[str] = []
+    if summary.conf is not None:
+        parts.append(f"conf {summary.conf:.2f}")
+    if summary.speed is not None:
+        parts.append(f"speed {summary.speed:.1f}")
+    return " · ".join(parts)
