@@ -35,7 +35,9 @@ class HoverHit:
 
     target_id: str
     bounds: tuple[float, float, float, float]  # (x, y, width, height) normalized [0,1]
-    card_html: str
+    label: str  # Identity of the target, such as "12 person"
+    detail: str  # Facts about the target in one line, such as "conf 0.97 · speed 1.2"; empty when there are none
+    color_key: str  # Names the category whose color marks the target
 
 
 class HoverInteractionProvider(Protocol):

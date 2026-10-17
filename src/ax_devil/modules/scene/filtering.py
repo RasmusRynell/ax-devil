@@ -33,16 +33,8 @@ def _enabled_options(config: FilterConfig, state: FilterState) -> tuple[FilterOp
     return enabled
 
 
-def matches_id_query(entity_id: str, state: FilterState) -> bool:
-    """Return whether *entity_id* contains the state's id query, ignoring case."""
-    return _contains_query(entity_id, state.id_query.casefold())
-
-
 def filter_scene(scene: Scene, config: FilterConfig, state: FilterState) -> Scene:
-    """Apply filter state to a scene and return a filtered copy.
-
-    Entities whose id does not contain ``state.id_query`` (case-insensitive) are always dropped.
-    """
+    """Apply filter state to a scene and return a filtered copy."""
     if not scene.entities:
         return scene
 
@@ -50,17 +42,12 @@ def filter_scene(scene: Scene, config: FilterConfig, state: FilterState) -> Scen
     if not enabled_options:
         return replace(scene, entities={})
 
-    id_query = state.id_query.casefold()
     filtered_entities: dict[EntityId, Entity] = {
         entity_id: entity
         for entity_id, entity in scene.entities.items()
-        if _contains_query(entity_id, id_query) and _keeps(entity, enabled_options, config, state)
+        if _keeps(entity, enabled_options, config, state)
     }
     return replace(scene, entities=filtered_entities)
-
-
-def _contains_query(entity_id: str, folded_query: str) -> bool:
-    return folded_query in entity_id.casefold()
 
 
 def _keeps(

@@ -686,6 +686,7 @@ class OfflineSession(QObject):
             lane_display.refresh_overlays()
 
         display.set_side_panel_widget(tools_panel)
+        tools_panel.link_selection(display)
         filter_model.changed.connect(display.refresh_overlays)
         render_catalog_selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)
         render_catalog_selection.activeCatalogChanged.connect(refresh_display_overlays)

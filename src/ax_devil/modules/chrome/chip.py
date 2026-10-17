@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from enum import Enum
 
-from PySide6.QtCore import QEvent, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPalette
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
@@ -105,6 +105,29 @@ class Chip(QWidget):
         outline = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         painter.drawRoundedRect(outline, outline.height() / 2, outline.height() / 2)
         painter.drawText(self.rect(), int(Qt.AlignmentFlag.AlignCenter), self._text)
+
+
+def paint_tag(painter: QPainter, rect: QRect, text: str, color: QColor) -> int:
+    """Draw *text* as an outlined tag in *color*, left-aligned and vertically centered in *rect*; return its width.
+
+    For rows that paint themselves. The tag looks like a ``Chip`` and is elided when *rect* is too narrow for it.
+    """
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    font = TextRole.SMALL.font()
+    metrics = QFontMetrics(font)
+    shown = metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(0, rect.width() - 2 * Space.M))
+    width = metrics.horizontalAdvance(shown) + 2 * Space.M
+    height = body_px() + Space.XS
+    tag = QRect(rect.left(), rect.top() + (rect.height() - height) // 2, width, height)
+    painter.setPen(color)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setFont(font)
+    outline = QRectF(tag).adjusted(0.5, 0.5, -0.5, -0.5)
+    painter.drawRoundedRect(outline, outline.height() / 2, outline.height() / 2)
+    painter.drawText(tag, int(Qt.AlignmentFlag.AlignCenter), shown)
+    painter.restore()
+    return width
 
 
 class ChoiceChips(QWidget):
