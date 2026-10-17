@@ -137,10 +137,14 @@ class RowTableModel(QAbstractTableModel):
     def set_rows(self, rows: Sequence[object], key: Callable[[Any], Hashable]) -> None:
         """Show *rows*, each identified by ``key(row)``.
 
-        When the same keys come back in the same order only the cells repaint, so scroll position and keyboard cursor
-        stay; the same keys in another order move the rows; otherwise the table resets.
+        The very same row objects again only repaint, without sorting; when the same keys come back in the same order
+        the cells repaint too, so scroll position and keyboard cursor stay; the same keys in another order move the
+        rows; otherwise the table resets.
         """
         self._key_of = key
+        if len(rows) == len(self._source) and all(new is old for new, old in zip(rows, self._source)):
+            self._repaint_all()
+            return
         self._source = list(rows)
         self._apply_order()
 

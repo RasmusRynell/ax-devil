@@ -177,6 +177,7 @@ class MediaToolsPanel(QWidget):
 
         self._objects = ObjectsPage(self)
         self._objects.objectActivated.connect(self._open_object)
+        self._objects.orderChanged.connect(self._refresh_steps)
         self._event_log = EventLogWidget(scene_history)
         self._event_log.frameRequested.connect(self.frameRequested.emit)
         events_root = QWidget(self)
@@ -365,11 +366,17 @@ class MediaToolsPanel(QWidget):
         """Open the object chosen while the panel was hidden."""
         super().showEvent(event)
         self._show_pending_object()
+        self._stack.refresh_steps()
 
     def _show_pending_object(self) -> None:
         key, self._pending_object = self._pending_object, None
         if key is not None:
             self._stack.jump(key, self._objects if self._stack.root() is self._objects else None)
+
+    def _refresh_steps(self) -> None:
+        """Enable ▲▼ of an open object page from the list's latest order, which a hidden list follows only on demand."""
+        if self.isVisible():
+            self._stack.refresh_steps()
 
     def _open_object(self, entity_id: str) -> None:
         self._stack.push(ObjectPageKey(entity_id), self._objects)
