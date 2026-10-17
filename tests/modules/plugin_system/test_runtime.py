@@ -166,6 +166,29 @@ def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.Mon
     )
 
 
+def test_a_distribution_with_unreadable_metadata_is_listed_as_failed_and_the_rest_still_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnreadableDistribution:
+        @property
+        def name(self) -> str:
+            raise metadata.PackageNotFoundError("broken-distribution")
+
+        def locate_file(self, _: str) -> Path:
+            return Path("/site-packages/broken-distribution")
+
+    broken = _entry_point(ExternalDecoder, name="broken-plugin")
+    broken.dist = UnreadableDistribution()
+
+    _load_installed(monkeypatch, decoders=[broken], resolvers=[_entry_point(ExternalResolver)])
+
+    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "broken-plugin")
+    assert record.status is PluginStatus.FAILED
+    assert record.error is not None and "broken-distribution" in record.error
+    resolver = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "external-resolver")
+    assert resolver.status is PluginStatus.LOADED
+
+
 @pytest.mark.parametrize(
     ("plugin", "reason"),
     [

@@ -83,8 +83,9 @@ class ApplicationPluginLoader:
         for index, entrypoint in enumerate(entrypoints):
             entrypoint_path = Path("<unknown>")
             plugin_id_hint = entrypoint.name or f"<entrypoint-{index}>"
-            package = cls._entrypoint_package(entrypoint)
+            package: str = canonicalize_name(plugin_id_hint)  # fallback when the distribution metadata is unreadable
             try:
+                package = cls._entrypoint_package(entrypoint)
                 entrypoint_path = cls._entrypoint_path(entrypoint)
                 plugin_cls = entrypoint.load()
             except Exception as exc:
