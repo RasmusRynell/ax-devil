@@ -42,7 +42,6 @@ _GROUP_SPACING = 2 * Space.XL
 _ROW_H_PAD = Space.M
 _ROW_RADIUS = Radius.CONTROL
 _MAX_LABEL_WIDTH = 420.0
-_DROP_HINT = "Or drop a video file, with an optional overlay file, anywhere here"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,11 +67,10 @@ class _PlacedRow:
 
 @dataclass(frozen=True, slots=True)
 class _WelcomeLayout:
-    """Positions of every header, row, and the drop hint for the current widget size."""
+    """Positions of every header and row for the current widget size."""
 
     headers: list[tuple[str, QPointF]]
     rows: list[_PlacedRow]
-    drop_hint: QPointF
     label_x: float
     badge_right: float
     minimum_size: QSize
@@ -91,7 +89,7 @@ class _WelcomeFonts:
 
 
 class WelcomeWidget(QWidget):
-    """Show clickable VS Code-style actions and a drop hint centered in the empty workspace."""
+    """Show clickable VS Code-style actions centered in the empty workspace."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -186,7 +184,7 @@ def _fonts() -> _WelcomeFonts:
 
 
 def _layout_rows(widget: QWidget, groups: OrderedDict[str, list[WelcomeItem]]) -> _WelcomeLayout:
-    """Measure and center every group, row, and the drop hint in *widget*."""
+    """Measure and center every group and row in *widget*."""
     fonts = _fonts()
     measured: list[list[tuple[WelcomeItem, str, list[str], float]]] = []
     max_label_width = 0.0
@@ -205,7 +203,6 @@ def _layout_rows(widget: QWidget, groups: OrderedDict[str, list[WelcomeItem]]) -
     row_height = max(fonts.label_fm.height(), key_chips_height(fonts.badge_fm))
     header_height = fonts.header_fm.height()
     show_headers = len(groups) > 1
-    hint_height = fonts.label_fm.height()
 
     total_height = 0.0
     for i, group_rows in enumerate(measured):
@@ -214,7 +211,6 @@ def _layout_rows(widget: QWidget, groups: OrderedDict[str, list[WelcomeItem]]) -
         total_height += len(group_rows) * row_height + (len(group_rows) - 1) * _HINT_ROW_SPACING
         if i < len(measured) - 1:
             total_height += _GROUP_SPACING
-    total_height += _GROUP_SPACING + hint_height
 
     block_width = max_label_width + _LABEL_KEY_GAP + max_badge_width
     start_x = (widget.width() - block_width) / 2
@@ -238,16 +234,13 @@ def _layout_rows(widget: QWidget, groups: OrderedDict[str, list[WelcomeItem]]) -
         y -= _HINT_ROW_SPACING
         if group_idx < len(measured) - 1:
             y += _GROUP_SPACING
-    y += _GROUP_SPACING
-    hint_x = (widget.width() - fonts.label_fm.horizontalAdvance(_DROP_HINT)) / 2
     return _WelcomeLayout(
         headers=headers,
         rows=rows,
-        drop_hint=QPointF(hint_x, y + fonts.label_fm.ascent()),
         label_x=start_x,
         badge_right=start_x + block_width,
         minimum_size=QSize(
-            ceil(max(block_width, fonts.label_fm.horizontalAdvance(_DROP_HINT)) + 2 * _ROW_H_PAD),
+            ceil(block_width + 2 * _ROW_H_PAD),
             ceil(total_height + 2 * _ROW_H_PAD),
         ),
     )
@@ -259,7 +252,7 @@ def _row_index_at(rows: list[_PlacedRow], pos: QPointF) -> int | None:
 
 
 def _draw_layout(painter: QPainter, widget: QWidget, layout: _WelcomeLayout, hovered: int | None) -> None:
-    """Draw section headers, rows with key badges, the hover highlight, and the drop hint."""
+    """Draw section headers, rows with key badges, and the hover highlight."""
     fonts = _fonts()
     palette = widget.palette()
     label_color = palette.color(QPalette.ColorRole.Text)
@@ -294,7 +287,3 @@ def _draw_layout(painter: QPainter, widget: QWidget, layout: _WelcomeLayout, hov
             center_y - key_chips_height(fonts.badge_fm) / 2,
             chip_colors,
         )
-
-    painter.setFont(fonts.label)
-    painter.setPen(muted_color)
-    painter.drawText(layout.drop_hint, _DROP_HINT)

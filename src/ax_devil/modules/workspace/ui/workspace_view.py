@@ -36,7 +36,7 @@ class WorkspaceView(SectionsView):
             empty_page=start_panel,
             parent=parent,
         )
-        self._restored = Banner("Restored unsaved changes", "Discard changes", dismiss_text="Keep")
+        self._restored = Banner("Restored unsaved changes", "Discard", dismiss_text="Keep")
         self._restored.action.clicked.connect(self.discard_requested)
         self._restored.hide()
         self.set_footer_panel(self._restored)

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ax_devil.modules.chrome.tokens import Radius, Space
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.filtering import FilterOption
 from ax_devil.modules.filtering.session_filter import SessionFilter
 
@@ -77,19 +77,6 @@ class EntityFilterWidget(QWidget):
         self._toggle_all_button = QPushButton("Toggle")
         self._toggle_all_button.setObjectName("toggleAllButton")
         self._toggle_all_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._toggle_all_button.setStyleSheet(
-            f"""
-            QPushButton#toggleAllButton {{
-                border: 1px solid palette(Midlight);
-                border-radius: {Radius.CONTROL}px;
-                padding: {Space.S}px {Space.L}px;
-                background: palette(Base);
-            }}
-            QPushButton#toggleAllButton:hover {{
-                border-color: palette(Highlight);
-            }}
-            """
-        )
         controls_layout.addWidget(self._toggle_all_button)
 
         controls_layout.addStretch()

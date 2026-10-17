@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameSpan, ObjectHistory, SceneHistory
@@ -116,9 +116,9 @@ class ObjectPage(QWidget):
         self._message.setTextFormat(Qt.TextFormat.PlainText)
         TextRole.SMALL.apply(self._message)
         self._message.setStyleSheet(_MESSAGE_STYLE)
-        self._last_button = SmallButton("Go to last seen", kind=ButtonKind.OUTLINE, parent=self)
+        self._last_button = SmallButton("Go to last seen", parent=self)
         self._last_button.clicked.connect(lambda: self._request_frame(self._last_seen))
-        self._next_button = SmallButton("Next appearance", kind=ButtonKind.OUTLINE, parent=self)
+        self._next_button = SmallButton("Next appearance", parent=self)
         self._next_button.clicked.connect(lambda: self._request_frame(self._next_seen))
         self._absence_box = QWidget(self)
         absence_layout = QVBoxLayout(self._absence_box)

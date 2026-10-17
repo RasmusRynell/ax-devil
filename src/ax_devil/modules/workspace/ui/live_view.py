@@ -7,11 +7,11 @@ from collections.abc import Sequence
 from enum import Enum
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QProgressBar, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.list_row import muted_label
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor
@@ -24,7 +24,7 @@ LIVE_VIEW_ID = "live"
 
 
 class ScanStatus(Enum):
-    """How the last network scan went, as the text shown under the scan settings."""
+    """How the last network scan went, as the text shown in the header of the scan settings."""
 
     IDLE = ""
     SCANNING = "Scanning…"
@@ -33,8 +33,8 @@ class ScanStatus(Enum):
 
 
 class ScanSettingsPanel(QWidget):
-    """The settings of the network scan: the IP range with Rescan, whether to sign in and the logins to try, and how
-    the last scan went.
+    """The settings of the network scan: the IP range with Rescan, whether to sign in and the logins to try, and, in
+    its header, how the last scan went.
 
     ``scan_requested`` carries the IP range as typed, and ``logins_edited`` the logins a scan tries once the user
     edited them.
@@ -62,16 +62,18 @@ class ScanSettingsPanel(QWidget):
         follow_appearance(self._ip_range, lambda: self._ip_range.setFixedHeight(Height.ROW.px))
         self._scan_button = SmallButton("Rescan", Icon.SCAN)
         self._scan_button.clicked.connect(self._request_scan)
+        # A thin line over the panel's top edge, outside its layout, so showing it never moves anything.
         self._scan_progress = QProgressBar(self)
         self._scan_progress.setRange(0, 0)  # Busy: a scan cannot say how far along it is.
         self._scan_progress.setTextVisible(False)
-        self._scan_progress.setFixedHeight(Space.S)
-        policy = self._scan_progress.sizePolicy()
-        policy.setRetainSizeWhenHidden(True)  # So the view does not jump when a scan starts and ends.
-        self._scan_progress.setSizePolicy(policy)
+        self._scan_progress.setFixedHeight(Space.XS)
+        # The theme's 1px border and rounded chunk leave no room for a chunk in a line this thin.
+        self._scan_progress.setStyleSheet(
+            "QProgressBar { border: none; background: transparent; }"
+            "QProgressBar::chunk { background: palette(highlight); border-radius: 0px; }"
+        )
         self._scan_progress.hide()
-        self._scan_status = muted_label("")
-        self._scan_status.hide()
+        self._caption = SectionCaption("Scan settings", None, KindColor.MUTED.color)
 
         line = QHBoxLayout()
         line.setSpacing(Space.M)
@@ -84,13 +86,11 @@ class ScanSettingsPanel(QWidget):
         controls_layout.addLayout(line)
         controls_layout.addWidget(self._sign_in)
         controls_layout.addWidget(self._logins)
-        controls_layout.addWidget(self._scan_progress)
-        controls_layout.addWidget(self._scan_status)
         self.setStyleSheet(SEE_THROUGH)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, Space.S, 0, Space.M)
+        layout.setContentsMargins(0, Space.S, 0, 0)
         layout.setSpacing(Space.XS)
-        layout.addWidget(SectionCaption("Scan settings", None, KindColor.MUTED.color))
+        layout.addWidget(self._caption)
         layout.addWidget(controls)
 
     def set_scan_range(self, text: str) -> None:
@@ -114,13 +114,18 @@ class ScanSettingsPanel(QWidget):
         self._sign_in.setChecked(enabled)
 
     def set_scan_status(self, status: ScanStatus, reason: str = "") -> None:
-        """Show *status* under the scan settings, with *reason* on hover; the button waits while a scan runs."""
+        """Show *status* in the header of the scan settings, with *reason* on hover; the button waits while a scan
+        runs."""
         scanning = status is ScanStatus.SCANNING
         self._scan_button.setEnabled(not scanning)
         self._scan_progress.setVisible(scanning)
-        self._scan_status.setText(status.value)
-        self._scan_status.setToolTip(reason)
-        self._scan_status.setVisible(bool(status.value))
+        self._caption.set_aside(status.value)
+        self._caption.setToolTip(reason)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Keep the progress line across the top edge."""
+        super().resizeEvent(event)
+        self._scan_progress.setGeometry(0, 0, self.width(), self._scan_progress.height())
 
     def _request_scan(self) -> None:
         if self._scan_button.isEnabled():
@@ -168,5 +173,6 @@ class LiveView(SectionsView):
         self._scan.set_sign_in(enabled)
 
     def set_scan_status(self, status: ScanStatus, reason: str = "") -> None:
-        """Show *status* under the scan settings, with *reason* on hover; the button waits while a scan runs."""
+        """Show *status* in the header of the scan settings, with *reason* on hover; the button waits while a scan
+        runs."""
         self._scan.set_scan_status(status, reason)

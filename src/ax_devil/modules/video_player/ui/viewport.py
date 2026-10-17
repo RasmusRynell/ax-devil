@@ -110,7 +110,7 @@ class FrameViewport(VideoFrameRenderer):
 
     def set_viewport(self, viewport: NormalizedViewport) -> None:
         super().set_viewport(viewport)
-        self._update_overlay_visibility()
+        self._on_viewport_changed(viewport)
 
     def set_background_text(self, text: str) -> None:
         """Set the text shown while no frame is displayed."""
@@ -291,6 +291,8 @@ class FrameViewport(VideoFrameRenderer):
 
     def _on_viewport_changed(self, _viewport: NormalizedViewport) -> None:
         self._update_overlay_visibility()
+        if self._can_position_overlays():
+            self.position_overlays()
 
     def _on_overlay_visibility_preference_changed(self, _preference: OverlayPreference, _enabled: bool) -> None:
         self._update_overlay_visibility()
@@ -314,7 +316,7 @@ class FrameViewport(VideoFrameRenderer):
 
         display_width = self.width()
         display_height = self.height()
-        displayed_frame = self.frame_display_rect()
+        displayed_frame = self.visible_frame_rect()
         frame_rect = None
         if displayed_frame is not None:
             frame_rect = (

@@ -13,6 +13,7 @@ from ax_devil.modules.chrome.list_row import muted_label
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.chrome.view_panel import ViewPanel
 from ax_devil.modules.workspace.ui.browser_rows import (
@@ -98,6 +99,9 @@ class SectionsView(ViewPanel):
         self._footer_button_row = self.add_padded(buttons, top=Space.S, bottom=Space.S)
         self._footer_button_row.hide()
         self._footer_panel = QWidget(self)
+        self._footer_panel.setStyleSheet(
+            SEE_THROUGH
+        )  # The view's background, not the window color plain containers get.
         self._footer_panel_layout = QVBoxLayout(self._footer_panel)
         self._footer_panel_layout.setContentsMargins(0, 0, 0, 0)
         self.add(self._footer_panel)

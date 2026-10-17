@@ -88,28 +88,27 @@ class RowAction(Enum):
     """Something the user can do with a row, in the order a row's menu lists it, grouped by *group*.
 
     Each action has its menu text and hover text; an *inline* one is also the button at the row's right, with its own
-    button text and icon, and *primary* marks the main one.
+    button text and icon.
     """
 
-    OPEN = ("Open", "", None, "Replace the preview (unpinned) pane", False, False, RowActionGroup.OPEN)
+    OPEN = ("Open", "", None, "Replace the preview (unpinned) pane", False, RowActionGroup.OPEN)
     OPEN_TO_SIDE = (
         "Open to the Side",
         "",
         None,
         "Open pinned in a new split (Ctrl+double-click)",
         False,
-        False,
         RowActionGroup.OPEN,
     )
-    START_STREAM = ("Start stream", "Start stream", None, "", True, True, RowActionGroup.OPEN)
-    STOP_STREAM = ("Stop stream", "Stop stream", None, "", True, True, RowActionGroup.OPEN)
-    ADD = ("Add", "Add", Icon.ADD, "", True, True, RowActionGroup.OPEN)
-    INFORMATION = ("Information", "", None, "", False, False, RowActionGroup.INSPECT)
-    EXPORT_VIDEO = ("Export video", "", None, "", False, False, RowActionGroup.INSPECT)
-    HIDE = ("Hide", "", None, "Skip it in playback", False, False, RowActionGroup.VISIBILITY)
-    UNHIDE = ("Unhide", "", None, "Play it again", False, False, RowActionGroup.VISIBILITY)
-    RENAME = ("Rename", "", None, "", False, False, RowActionGroup.EDIT)
-    REMOVE = ("Remove", "", None, "", False, False, RowActionGroup.EDIT)
+    START_STREAM = ("Start stream", "Start stream", None, "", True, RowActionGroup.OPEN)
+    STOP_STREAM = ("Stop stream", "Stop stream", None, "", True, RowActionGroup.OPEN)
+    ADD = ("Add", "Add", Icon.ADD, "", True, RowActionGroup.OPEN)
+    INFORMATION = ("Information", "", None, "", False, RowActionGroup.INSPECT)
+    EXPORT_VIDEO = ("Export video", "", None, "", False, RowActionGroup.INSPECT)
+    HIDE = ("Hide", "", None, "Skip it in playback", False, RowActionGroup.VISIBILITY)
+    UNHIDE = ("Unhide", "", None, "Play it again", False, RowActionGroup.VISIBILITY)
+    RENAME = ("Rename", "", None, "", False, RowActionGroup.EDIT)
+    REMOVE = ("Remove", "", None, "", False, RowActionGroup.EDIT)
 
     def __init__(
         self,
@@ -117,7 +116,6 @@ class RowAction(Enum):
         button_text: str,
         icon: Icon | None,
         tooltip: str,
-        primary: bool,
         inline: bool,
         group: RowActionGroup,
     ) -> None:
@@ -125,7 +123,6 @@ class RowAction(Enum):
         self.button_text = button_text
         self.icon = icon
         self.tooltip = tooltip
-        self.primary = primary
         self.inline = inline
         self.group = group
 

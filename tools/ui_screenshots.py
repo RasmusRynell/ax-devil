@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
+    QVBoxLayout,
     QWidget,
 )
 from pytestqt.qtbot import QtBot
@@ -73,6 +74,8 @@ from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.video_player.engine.data_types import HoverHit
 from ax_devil.modules.video_player.ui.hover_chip import HoverChip
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
+from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed, LiveFeedStatus
+from ax_devil.modules.video_viewer.live_video_viewer import LiveStatusPanel
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
@@ -173,6 +176,7 @@ def _tree_row(window: QWidget, label: str) -> tuple[QTreeWidget, QTreeWidgetItem
 
 
 def _open_video(qtbot: QtBot, window: QWidget, label: str) -> OfflineVideoViewerWidget:
+    _show_sidebar(window, "Offline")
     previous = set(window.findChildren(OfflineVideoViewerWidget))
 
     def can_open() -> bool:
@@ -420,6 +424,28 @@ def test_screenshots(
                 _show_sidebar(window, view_id.capitalize())
                 qtbot.wait(500)
                 window.grab().save(str(OUT / f"{theme}-{text_size.value}-view-{view_id}{suffix}.png"))
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_live_status_screenshots(qtbot: QtBot, theme: str) -> None:
+    """Save Pause and Retry over the video scrim, including the light theme's contrasting controls."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    apply_theme(theme)
+    parent = QWidget()
+    parent.setObjectName("videoStandIn")
+    parent.setStyleSheet("#videoStandIn { background: #4a5a46; }")
+    qtbot.addWidget(parent)
+    layout = QVBoxLayout(parent)
+    panel = LiveStatusPanel(parent)
+    layout.addWidget(panel)
+    panel.show_connection_status(LiveConnectionStatus((LiveFeedStatus(LiveFeed.VIDEO).failed("Connection lost"),)))
+    parent.show()
+    for text_size in TEXT_SIZES:
+        apply_text_size(text_size.body_px)
+        for size_name, width in (("wide", 1000), ("narrow", 640)):
+            parent.resize(width, parent.sizeHint().height())
+            QApplication.processEvents()
+            parent.grab().save(str(OUT / f"{theme}-{text_size.value}-live-status-{size_name}.png"))
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

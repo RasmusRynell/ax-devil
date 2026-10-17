@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QGuiApplication, QShowEvent
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
@@ -21,8 +21,8 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow
-from ax_devil.modules.chrome.palette_css import palette_color_css, qcolor_to_css
-from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
+from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import DEFAULT_SHORTCUTS
 from ax_devil.modules.workspace.core import RecentWorkspace, workspace_file_stem
 
@@ -96,7 +96,7 @@ class StartPanel(QWidget):
         buttons.setSpacing(Space.S)
         for action_id, icon in self._OPEN_ACTIONS:
             buttons.addWidget(self._open_button(action_id, icon))
-        self._open_buttons[self._OPEN_ACTIONS[0][0]].setDefault(True)  # The theme fills it in the accent color.
+        self._open_buttons[self._OPEN_ACTIONS[0][0]].setDefault(True)
         layout.addLayout(buttons)
 
         layout.addSpacing(Space.L)
@@ -161,6 +161,7 @@ class StartPanel(QWidget):
         # Shrink with the sidebar instead of setting its minimum width; the labels fit at the default width.
         button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setIcon(icon.icon())
         button.clicked.connect(lambda _checked=False: self._trigger(action_id))
         self._open_buttons[action_id] = button
         return button
@@ -170,45 +171,17 @@ class StartPanel(QWidget):
             self._shortcut_manager.get_action(action_id).trigger()
 
     def _apply_appearance(self) -> None:
-        # Icons take the color of their button's text. The application palette has it: this widget's stylesheet
-        # resolves its own palette from the theme's partial one, whose highlighted text is wrong.
-        app_palette = QGuiApplication.palette()
         side = TextRole.BODY.px
         # A wider icon box centers the icon in it, which spaces the icon from the label.
         icon_size = QSize(side + Space.S, side)
-        for index, (action_id, icon) in enumerate(self._OPEN_ACTIONS):
-            role = app_palette.ColorRole.HighlightedText if index == 0 else app_palette.ColorRole.WindowText
-            button = self._open_buttons[action_id]
-            button.setIcon(icon.icon(app_palette.color(role)))
+        for button in self._open_buttons.values():
             button.setIconSize(icon_size)
         palette = self.palette()
-        text = palette.ColorRole.WindowText
         muted = palette_color_css(palette, palette.ColorRole.PlaceholderText)
-        # The secondary buttons use the body text color on a light fill instead of the theme's accent-colored text
-        # on a near-invisible border, so they read clearly and leave the accent to the primary button. The primary
-        # button gets a border in its fill color, so its icon and label line up with theirs.
         self.setStyleSheet(
             f"""
             #AxDevilStartBody {{ background: transparent; }}
             #AxDevilStartBody QPushButton {{ text-align: left; padding-left: {Space.M}px; padding-right: {Space.M}px; }}
-            #AxDevilStartBody QPushButton:default {{
-                border: 1px solid {qcolor_to_css(app_palette.color(app_palette.ColorRole.Highlight))};
-                padding-top: {Space.XS}px;
-                padding-bottom: {Space.XS}px;
-            }}
-            #AxDevilStartBody QPushButton:!default {{
-                color: palette(window-text);
-                background: {palette_color_css(palette, text, alpha=0.06)};
-                border: 1px solid {palette_color_css(palette, text, alpha=0.22)};
-                border-radius: {Radius.CONTROL}px;
-            }}
-            #AxDevilStartBody QPushButton:!default:hover {{
-                background: {palette_color_css(palette, text, alpha=0.12)};
-                border-color: {palette_color_css(palette, text, alpha=0.32)};
-            }}
-            #AxDevilStartBody QPushButton:!default:pressed {{
-                background: {palette_color_css(palette, text, alpha=0.18)};
-            }}
             """
         )
         self._recent_heading.setStyleSheet(f"color: {muted}; padding-top: {Space.S}px;")
