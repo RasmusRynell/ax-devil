@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QLineEdit, QWidget
+from PySide6.QtWidgets import QDialog, QLineEdit, QWidget
 
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 
@@ -21,3 +21,16 @@ class RenameDialog(BaseDialog):
     def name(self) -> str:
         """Return the entered name without surrounding whitespace."""
         return self._name_edit.text().strip()
+
+
+def ask_new_name(parent: QWidget | None, current: str, default_name: str) -> str | None:
+    """Ask for a new name for something now called *current*, whose name without a label of its own is *default_name*.
+
+    Return None when the user cancels, and an empty string when the name entered is empty or *default_name*, which
+    returns the thing to its default name; otherwise return the name entered.
+    """
+    with RenameDialog(current, parent) as dialog:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        name = dialog.name()
+    return "" if name == default_name else name

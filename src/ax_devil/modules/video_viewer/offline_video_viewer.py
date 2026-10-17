@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QPoint, Qt, QThread, Signal
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -38,6 +40,7 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
 )
 from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
 from ax_devil.modules.video_viewer.offline_viewer_runtime import (
+    OfflineLane,
     OfflineSession,
     show_video_on_controls,
     video_details,
@@ -51,7 +54,7 @@ from ax_devil.modules.workspace.core import (
     SeekableVideoContent,
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
-from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
+from ax_devil.modules.workspace.ui.viewer_widget import SHARED_ACTION_IDS, ViewerWidget
 
 logger = get_logger(__name__)
 
@@ -261,6 +264,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
         runtime.playbackFinished.connect(lambda: self._sync_global_playback_state(False))
 
         runtime.set_playback_speed(self._playback_speed)
+        for lane in runtime.lanes:
+            lane.display.contextMenuRequested.connect(partial(self._show_lane_menu, lane))
 
         if self._viewer_host is not None:
             self._viewer_host.set_content(runtime.container)
@@ -338,6 +343,30 @@ class OfflineVideoViewerWidget(ViewerWidget):
         for lane in runtime.lanes:
             lane.display.controlsRequested.connect(self._global_control_visibility.on_mouse_move)
             lane.display.controlsHideRequested.connect(self._global_control_visibility.on_mouse_leave)
+
+    def _show_lane_menu(self, lane: OfflineLane, global_pos: QPoint) -> None:
+        """Show what can be done with *lane* at *global_pos*, after a right click on it has focused it.
+
+        Export is the lane's own action, the same one its media tools button triggers; the rest are the window's
+        actions, which act on the focused lane. Leaving the lane out asks for the same change the sidebar's eye does.
+        """
+        menu = QMenu(self.window())
+        menu.setToolTipsVisible(True)
+        menu.addAction(lane.export_action)
+        for action_id in SHARED_ACTION_IDS:
+            if (action := self._shared_actions.get(action_id)) is not None:
+                menu.addAction(action)
+        ref = self._content.lane_consideration_ref(self._current_index, lane.lane_index)
+        if ref in {item.ref for item in self._content.consideration_items()}:
+            menu.addSeparator()
+            leave_out = QAction("Leave out of playback", menu)
+            leave_out.setToolTip("Hides this lane. Bring it back with its eye in the sidebar.")
+            leave_out.triggered.connect(lambda _checked=False: self.consideration_change_requested.emit(ref, False))
+            menu.addAction(leave_out)
+        try:
+            menu.exec(global_pos)
+        finally:
+            menu.deleteLater()
 
     def _sync_global_current_frame(self, frame: int) -> None:
         if self._has_active_global_controls() and self._global_controls is not None:

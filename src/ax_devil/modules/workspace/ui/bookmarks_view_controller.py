@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QObject
@@ -70,9 +69,8 @@ class BookmarksViewController(QObject):
                     return
 
     def rename_bookmark(self, bookmark_id: str, name: str) -> None:
-        """Make *name* the bookmark's note; an empty name, or the label it shows without a note, clears the note."""
-        bookmark = self._store.workspace.bookmark(bookmark_id)
-        self._store.edit_bookmark(bookmark_id, note="" if name == replace(bookmark, note="").label else name)
+        """Make *name* the bookmark's note; an empty name clears the note."""
+        self._store.edit_bookmark(bookmark_id, note=name)
 
     def export_csv(self, path: Path) -> None:
         """Write every bookmark to *path* as CSV, in the order the view lists them; report a failure to the user."""

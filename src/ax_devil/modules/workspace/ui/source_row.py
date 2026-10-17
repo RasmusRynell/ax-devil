@@ -71,7 +71,7 @@ def section_caption(
 
 def _action_button(action: RowAction) -> SmallButton:
     """Return the button that offers *action*."""
-    button = SmallButton(action.label, action.icon, ButtonKind.PRIMARY if action.primary else ButtonKind.NORMAL)
+    button = SmallButton(action.button_text, action.icon, ButtonKind.PRIMARY if action.primary else ButtonKind.NORMAL)
     button.setFixedWidth(button.sizeHint().width())
     button.setToolTip(action.tooltip)
     return button
@@ -87,30 +87,31 @@ def row_look(row: WorkspaceBrowserRow) -> tuple[object, ...]:
         row.is_mark_muted,
         row.is_dimmed,
         row.is_open,
-        row.action,
+        row.inline_action,
         row.tooltip,
     )
 
 
 class SourceRow(ListRow):
-    """*row* as a list row: its kind's mark, its name over its detail, and its action.
+    """*row* as a list row: its kind's mark, its name over its detail, and its inline action.
 
     The mark is muted and the name dimmed as the row says; a row open in a viewer is the list row's active one.
-    Hovering shows the full name over the row's tooltip. ``action_requested`` carries the row whose action was
+    Hovering shows the full name over the row's tooltip. ``action_requested`` carries the row and the inline action
     pressed; a click on the row itself is ``activated``. Kind colors are drawn for the palette at construction, so
     owners build rows again when the theme changes.
     """
 
-    action_requested = Signal(object)  # WorkspaceBrowserRow
+    action_requested = Signal(object, object)  # WorkspaceBrowserRow, RowAction
 
     row: WorkspaceBrowserRow
     """The row the widget shows; the tree sets it to the current row while its look is unchanged."""
 
     def __init__(self, row: WorkspaceBrowserRow, parent: QWidget | None = None) -> None:
         trailing: list[QWidget] = []
-        if row.action is not None:
-            button = _action_button(row.action)
-            button.clicked.connect(lambda _checked=False: self.action_requested.emit(self.row))
+        if (inline := row.inline_action) is not None:
+            action = inline.action
+            button = _action_button(action)
+            button.clicked.connect(lambda _checked=False: self.action_requested.emit(self.row, action))
             trailing.append(button)
         icon, color = _KIND_MARKS[row.icon_kind]
         mark = KindColor.MUTED if row.is_mark_muted else color

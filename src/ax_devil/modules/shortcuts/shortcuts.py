@@ -89,6 +89,7 @@ DEFAULT_SHORTCUTS: tuple[ShortcutDefinition, ...] = (
     ShortcutDefinition("view.reset_zoom", "Reset Zoom", "View", QKeySequence("Ctrl+0"), acts_on_viewer=True),
     ShortcutDefinition("view.render_catalogs", "Render Catalogs", "View", QKeySequence("Ctrl+R")),
     ShortcutDefinition("view.add_bookmark", "Add Bookmark", "View", QKeySequence("M"), acts_on_viewer=True),
+    ShortcutDefinition("view.export_video", "Export Video", "View", QKeySequence("Ctrl+E"), acts_on_viewer=True),
     # Application
     ShortcutDefinition("app.new_workspace", "New Workspace", "Application"),
     ShortcutDefinition(
@@ -127,6 +128,9 @@ DEFAULT_SHORTCUTS: tuple[ShortcutDefinition, ...] = (
     ),
     ShortcutDefinition("app.exit", "Exit", "Application", QKeySequence("Ctrl+Q")),
     ShortcutDefinition("app.debug_metrics", "Debug Metrics", "Application", QKeySequence("Ctrl+D")),
+    ShortcutDefinition("app.plugins", "Plugins", "Application"),
+    ShortcutDefinition("app.quick_setup", "Quick Setup", "Application"),
+    ShortcutDefinition("app.about", "About", "Application"),
     ShortcutDefinition(
         "app.keyboard_shortcuts",
         "Keyboard Shortcuts",

@@ -1,7 +1,7 @@
 """Sidebar row projection over Workspace items, their Content, consideration state, and open items.
 
-The rows also carry what every sidebar view shows of them, the action a row offers and whether it is idle, so the
-views render one look without deciding it again.
+The rows also carry what every sidebar view shows of them, the actions a row offers and whether it is idle, so the
+views render one look and one menu without deciding it again.
 """
 
 from __future__ import annotations
@@ -75,19 +75,68 @@ class Facet:
     value: str
 
 
+class RowActionGroup(Enum):
+    """The set of related actions a row's menu keeps together, split from the next by a separator."""
+
+    OPEN = "open"
+    INSPECT = "inspect"
+    VISIBILITY = "visibility"
+    EDIT = "edit"
+
+
 class RowAction(Enum):
-    """The one action a row offers at its right: its button text, icon, hover text, and whether it is the main one."""
+    """Something the user can do with a row, in the order a row's menu lists it, grouped by *group*.
 
-    START_STREAM = ("Start stream", None, "", True)
-    STOP_STREAM = ("Stop stream", None, "", True)
-    RESCAN = ("", Icon.REFRESH, "Rescan", False)
-    ADD = ("Add", Icon.ADD, "", True)
+    Each action has its menu text and hover text; an *inline* one is also the button at the row's right, with its own
+    button text and icon, and *primary* marks the main one.
+    """
 
-    def __init__(self, label: str, icon: Icon | None, tooltip: str, primary: bool) -> None:
-        self.label = label
+    OPEN = ("Open", "", None, "Replace the preview (unpinned) pane", False, False, RowActionGroup.OPEN)
+    OPEN_TO_SIDE = (
+        "Open to the Side",
+        "",
+        None,
+        "Open pinned in a new split (Ctrl+double-click)",
+        False,
+        False,
+        RowActionGroup.OPEN,
+    )
+    START_STREAM = ("Start stream", "Start stream", None, "", True, True, RowActionGroup.OPEN)
+    STOP_STREAM = ("Stop stream", "Stop stream", None, "", True, True, RowActionGroup.OPEN)
+    RESCAN = ("Rescan", "", Icon.REFRESH, "Rescan", False, True, RowActionGroup.OPEN)
+    ADD = ("Add", "Add", Icon.ADD, "", True, True, RowActionGroup.OPEN)
+    INFORMATION = ("Information", "", None, "", False, False, RowActionGroup.INSPECT)
+    EXPORT_VIDEO = ("Export video", "", None, "", False, False, RowActionGroup.INSPECT)
+    HIDE = ("Hide", "", None, "Skip it in playback", False, False, RowActionGroup.VISIBILITY)
+    UNHIDE = ("Unhide", "", None, "Play it again", False, False, RowActionGroup.VISIBILITY)
+    RENAME = ("Rename", "", None, "", False, False, RowActionGroup.EDIT)
+    REMOVE = ("Remove", "", None, "", False, False, RowActionGroup.EDIT)
+
+    def __init__(
+        self,
+        menu_text: str,
+        button_text: str,
+        icon: Icon | None,
+        tooltip: str,
+        primary: bool,
+        inline: bool,
+        group: RowActionGroup,
+    ) -> None:
+        self.menu_text = menu_text
+        self.button_text = button_text
         self.icon = icon
         self.tooltip = tooltip
         self.primary = primary
+        self.inline = inline
+        self.group = group
+
+
+@dataclass(frozen=True, slots=True)
+class OfferedAction:
+    """A *action* a row offers; with a *disabled_reason* it is listed but cannot be done, and the reason says why."""
+
+    action: RowAction
+    disabled_reason: str = ""
 
 
 _SECTION_BY_ITEM_KIND = {
@@ -139,8 +188,8 @@ class WorkspaceBrowserRow:
     """Whether the detail may take multiple lines instead of being elided."""
     facts: tuple[str, ...] = ()
     """Lines that open the hover text, starting with what kind of row this is."""
-    action: RowAction | None = None
-    """The action the row offers, if any."""
+    actions: tuple[OfferedAction, ...] = ()
+    """The actions the row offers, in menu order; the first inline one is the button at the row's right."""
     add: Callable[[], None] | None = None
     """What the Add action of a row for something the Workspace does not hold does: add it, or ask how."""
     idle: bool = False
@@ -152,10 +201,19 @@ class WorkspaceBrowserRow:
     expanded_at_first: bool = False
     """Whether the row shows the rows under it until the user collapses it."""
 
+    def offered(self, action: RowAction) -> OfferedAction | None:
+        """Return *action* as the row offers it, or None when it does not."""
+        return next((offered for offered in self.actions if offered.action is action), None)
+
+    @property
+    def inline_action(self) -> OfferedAction | None:
+        """Return the action shown as a button on the row, if it offers one."""
+        return next((offered for offered in self.actions if offered.action.inline), None)
+
     @property
     def is_available(self) -> bool:
         """Return whether the row stands for something the Workspace does not hold yet, which its Add adds."""
-        return self.action is RowAction.ADD
+        return self.offered(RowAction.ADD) is not None
 
     @property
     def is_mark_muted(self) -> bool:
@@ -211,6 +269,31 @@ class RowOrder:
 WORKSPACE_ORDER = RowOrder("Workspace order", lambda _row: ())
 """Rows as the workspace, or whatever feeds the view, lists them."""
 BY_NAME = RowOrder("Name", lambda row: (row.label.casefold(),))
+
+
+def _with_actions(row: WorkspaceBrowserRow, inline: RowAction | None = None) -> WorkspaceBrowserRow:
+    """Return *row* offering what its fields allow, and *inline* as its button.
+
+    A row that cannot open still offers Open, which says why. Export needs the row open in a viewer, Hide or Unhide
+    is for a row playback can skip, and Rename needs an item that keeps a new name.
+    """
+    offered: list[OfferedAction] = []
+    if row.activation_target is not None or row.unavailable_reason is not None:
+        offered.append(OfferedAction(RowAction.OPEN))
+    if row.activation_target is not None:
+        offered.append(OfferedAction(RowAction.OPEN_TO_SIDE))
+    if inline is not None:
+        offered.append(OfferedAction(inline))
+    if row.information_factory is not None:
+        offered.append(OfferedAction(RowAction.INFORMATION))
+    if row.export_target is not None:
+        offered.append(OfferedAction(RowAction.EXPORT_VIDEO, "" if row.is_open else "Open it first"))
+    if row.consideration_ref is not None:
+        offered.append(OfferedAction(RowAction.HIDE if row.is_considered else RowAction.UNHIDE))
+    if row.item is not None:
+        offered.append(OfferedAction(RowAction.RENAME, "" if row.item.renamable else "This item cannot be renamed"))
+        offered.append(OfferedAction(RowAction.REMOVE))
+    return replace(row, actions=tuple(offered))
 
 
 def _counted(count: int, noun: str, plural: str = "") -> str:
@@ -316,25 +399,29 @@ class _RowProjection:
 
     def _pending_row(self, item: WorkspaceItem) -> WorkspaceBrowserRow:
         """Build the single row of an item that is still resolving; it opens nothing until its Content arrives."""
-        return WorkspaceBrowserRow(
-            row_id=item.id,
-            label=item.display_name,
-            icon_kind=_section_of(item).icon_kind,
-            item=item,
-            idle=True,
+        return _with_actions(
+            WorkspaceBrowserRow(
+                row_id=item.id,
+                label=item.display_name,
+                icon_kind=_section_of(item).icon_kind,
+                item=item,
+                idle=True,
+            )
         )
 
     def _unavailable_row(self, item: WorkspaceItem, reason: str) -> WorkspaceBrowserRow:
         """Build the single row of an item that could not resolve."""
-        return WorkspaceBrowserRow(
-            row_id=item.id,
-            label=item.display_name,
-            icon_kind="unavailable",
-            item=item,
-            unavailable_reason=reason,
-            information_factory=partial(build_unavailable_information, item.display_name, reason),
+        return _with_actions(
+            WorkspaceBrowserRow(
+                row_id=item.id,
+                label=item.display_name,
+                icon_kind="unavailable",
+                item=item,
+                unavailable_reason=reason,
+                information_factory=partial(build_unavailable_information, item.display_name, reason),
+            ),
             # A playlist that failed may resolve once its files are back; nothing else can be resolved again.
-            action=RowAction.RESCAN if _section_of(item) is BrowserSection.PLAYLISTS else None,
+            inline=RowAction.RESCAN if _section_of(item) is BrowserSection.PLAYLISTS else None,
         )
 
     def _content_row(
@@ -350,42 +437,46 @@ class _RowProjection:
             taking_part = sum(child.is_considered for child in children)
             entries = _counted(total, "entry", "entries")
             excluded = f", {total - taking_part} hidden" if taking_part < total else ""
-            return WorkspaceBrowserRow(
-                row_id=content.content_id,
-                label=content.display_name,
-                icon_kind="playlist",
-                activation_target=(content, 0),
-                item=item,
-                information_factory=partial(build_playlist_information, content),
-                is_open=self._is_content_open(content.content_id, open_items),
-                children=children,
-                location=content.source_location,
-                facts=(f"Playlist · {entries}{excluded}",),
-                action=RowAction.RESCAN,
-                expanded_at_first=total <= EXPANDED_AT_FIRST_LIMIT,
+            return _with_actions(
+                WorkspaceBrowserRow(
+                    row_id=content.content_id,
+                    label=content.display_name,
+                    icon_kind="playlist",
+                    activation_target=(content, 0),
+                    item=item,
+                    information_factory=partial(build_playlist_information, content),
+                    is_open=self._is_content_open(content.content_id, open_items),
+                    children=children,
+                    location=content.source_location,
+                    facts=(f"Playlist · {entries}{excluded}",),
+                    expanded_at_first=total <= EXPANDED_AT_FIRST_LIMIT,
+                ),
+                inline=RowAction.RESCAN,
             )
 
         if not content.is_live:
             self._file_paths[content.content_id] = PurePath(content.source_location)
         overlays = f" · {_counted(len(content.overlays), 'overlay')}" if content.overlays else ""
         is_open = self._is_content_open(content.content_id, open_items)
-        return WorkspaceBrowserRow(
-            row_id=content.content_id,
-            label=content.display_name,
-            icon_kind=self._icon_kind_for_video(content),
-            activation_target=None if content.is_live else (content, 0),
-            item=item,
-            information_factory=partial(build_video_information, content),
-            export_target=None if content.is_live else content.on_screen_item(),
-            is_open=is_open,
-            children=self._video_lane_rows(content),
-            location=content.source_location,
-            detail=content.source_location
-            if content.is_live and content.source_location != content.display_name
-            else "",
-            facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
-            action=(RowAction.STOP_STREAM if is_open else RowAction.START_STREAM) if content.is_live else None,
-            idle=content.is_live and not is_open,
+        return _with_actions(
+            WorkspaceBrowserRow(
+                row_id=content.content_id,
+                label=content.display_name,
+                icon_kind=self._icon_kind_for_video(content),
+                activation_target=None if content.is_live else (content, 0),
+                item=item,
+                information_factory=partial(build_video_information, content),
+                export_target=None if content.is_live else content.on_screen_item(),
+                is_open=is_open,
+                children=self._video_lane_rows(content),
+                location=content.source_location,
+                detail=content.source_location
+                if content.is_live and content.source_location != content.display_name
+                else "",
+                facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
+                idle=content.is_live and not is_open,
+            ),
+            inline=(RowAction.STOP_STREAM if is_open else RowAction.START_STREAM) if content.is_live else None,
         )
 
     def _playlist_entry_row(
@@ -406,19 +497,23 @@ class _RowProjection:
         row_id = f"{playlist.content_id}/entry/{entry_index}"
         if entry.source_location is not None:
             self._file_paths[row_id] = PurePath(entry.source_location)
-        return WorkspaceBrowserRow(
-            row_id=row_id,
-            label=entry.display_label(entry_index),
-            icon_kind=self._icon_kind_for_playlist_entry(entry),
-            activation_target=(playlist, entry_index),
-            consideration_ref=ConsiderationItemRef.playlist_entry(playlist.content_id, entry_index),
-            information_factory=partial(build_playlist_entry_information, playlist, entry, entry_index),
-            export_target=open_item,
-            is_considered=self._is_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, entry_index)),
-            is_open=open_item in open_items,
-            children=children,
-            location=entry.source_location,
-            facts=(f"Entry {entry_index + 1} of {len(playlist.entries)}",),
+        return _with_actions(
+            WorkspaceBrowserRow(
+                row_id=row_id,
+                label=entry.display_label(entry_index),
+                icon_kind=self._icon_kind_for_playlist_entry(entry),
+                activation_target=(playlist, entry_index),
+                consideration_ref=ConsiderationItemRef.playlist_entry(playlist.content_id, entry_index),
+                information_factory=partial(build_playlist_entry_information, playlist, entry, entry_index),
+                export_target=open_item,
+                is_considered=self._is_considered(
+                    ConsiderationItemRef.playlist_entry(playlist.content_id, entry_index)
+                ),
+                is_open=open_item in open_items,
+                children=children,
+                location=entry.source_location,
+                facts=(f"Entry {entry_index + 1} of {len(playlist.entries)}",),
+            )
         )
 
     def _video_lane_rows(self, video: SeekableVideoContent | LiveVideoContent) -> tuple[WorkspaceBrowserRow, ...]:
@@ -434,16 +529,18 @@ class _RowProjection:
             if not video.is_live:
                 self._file_paths[row_id] = PurePath(lane.source_location)
             rows.append(
-                WorkspaceBrowserRow(
-                    row_id=row_id,
-                    label=lane.display_name,
-                    icon_kind="overlay",
-                    activation_target=None if video.is_live else (video, 0),
-                    consideration_ref=lane_ref if consideration_item is not None else None,
-                    information_factory=partial(build_video_lane_information, video, lane),
-                    is_considered=(self._is_considered(lane_ref) if consideration_item is not None else True),
-                    location=lane.source_location,
-                    facts=(_lane_fact(lane),),
+                _with_actions(
+                    WorkspaceBrowserRow(
+                        row_id=row_id,
+                        label=lane.display_name,
+                        icon_kind="overlay",
+                        activation_target=None if video.is_live else (video, 0),
+                        consideration_ref=lane_ref if consideration_item is not None else None,
+                        information_factory=partial(build_video_lane_information, video, lane),
+                        is_considered=(self._is_considered(lane_ref) if consideration_item is not None else True),
+                        location=lane.source_location,
+                        facts=(_lane_fact(lane),),
+                    )
                 )
             )
         return tuple(rows)
@@ -459,25 +556,27 @@ class _RowProjection:
         lane = entry.lanes[lane_index]
         row_id = f"{playlist.content_id}/entry/{entry_index}/lane/{lane_index}"
         self._file_paths[row_id] = PurePath(lane.source_location)
-        return WorkspaceBrowserRow(
-            row_id=row_id,
-            label=lane.display_name,
-            icon_kind="overlay",
-            activation_target=(playlist, entry_index),
-            consideration_ref=ConsiderationItemRef.playlist_lane(playlist.content_id, entry_index, lane_index),
-            information_factory=partial(
-                build_playlist_lane_information,
-                playlist,
-                entry,
-                entry_index,
-                lane,
-                lane_index,
-            ),
-            is_considered=self._is_considered(
-                ConsiderationItemRef.playlist_lane(playlist.content_id, entry_index, lane_index)
-            ),
-            location=lane.source_location,
-            facts=(_lane_fact(lane),),
+        return _with_actions(
+            WorkspaceBrowserRow(
+                row_id=row_id,
+                label=lane.display_name,
+                icon_kind="overlay",
+                activation_target=(playlist, entry_index),
+                consideration_ref=ConsiderationItemRef.playlist_lane(playlist.content_id, entry_index, lane_index),
+                information_factory=partial(
+                    build_playlist_lane_information,
+                    playlist,
+                    entry,
+                    entry_index,
+                    lane,
+                    lane_index,
+                ),
+                is_considered=self._is_considered(
+                    ConsiderationItemRef.playlist_lane(playlist.content_id, entry_index, lane_index)
+                ),
+                location=lane.source_location,
+                facts=(_lane_fact(lane),),
+            )
         )
 
     def _icon_kind_for_video(self, video: SeekableVideoContent | LiveVideoContent) -> WorkspaceBrowserIconKind:

@@ -7,16 +7,18 @@ from contextlib import contextmanager
 from typing import cast
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QGuiApplication
-from PySide6.QtWidgets import QDialog, QFrame, QMenu, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
+from PySide6.QtGui import QAction, QGuiApplication, QKeyEvent
+from PySide6.QtWidgets import QFrame, QMenu, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space
-from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
-from ax_devil.modules.workspace.core.items import WorkspaceItem
-from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
-from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
-from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
+from ax_devil.modules.workspace.ui.browser_rows import (
+    BrowserSection,
+    RowAction,
+    RowActionGroup,
+    WorkspaceBrowserRow,
+    WorkspaceBrowserSection,
+)
 from ax_devil.modules.workspace.ui.source_row import SourceRow, row_look, section_accessible_text, section_caption
 
 ROW_ROLE = Qt.ItemDataRole.UserRole
@@ -26,6 +28,14 @@ _HIDDEN_ROLE = Qt.ItemDataRole.UserRole + 1
 """The data role holding, on a section's item, how many of its rows the filter leaves out."""
 
 RowPredicate = Callable[[WorkspaceBrowserRow], bool]
+
+_KEY_ACTIONS = {
+    Qt.Key.Key_Return: RowAction.OPEN,
+    Qt.Key.Key_Enter: RowAction.OPEN,
+    Qt.Key.Key_F2: RowAction.RENAME,
+    Qt.Key.Key_Delete: RowAction.REMOVE,
+}
+"""The action each key asks of the selected row; Ctrl opens to the side."""
 
 
 class SectionTree(QTreeWidget):
@@ -43,22 +53,13 @@ class SectionTree(QTreeWidget):
     changed, so a collapsed row builds the widgets of its rows only once it is expanded; filtering reads row data, never
     widgets.
 
-    ``row_activated`` carries a double-clicked row and whether Ctrl asked for it to the side, ``row_action_requested``
-    a row whose action was pressed, and ``row_consideration_changed`` a consideration item and whether the user's
-    Hide or Unhide asks for it to take part in playback. Right-clicking a row offers its menu, the same in every view,
-    as far as the row has them, in groups split by separators: Open (Open, Open to the Side, the row's action),
-    Inspect (Information, Export), Visibility (Hide or Unhide) and Edit (Rename, Remove); the other signals carry what
-    the user picks there.
+    ``row_action_requested`` carries a row and the ``RowAction`` the user asked of it, however they asked: the row's
+    button, its right-click menu (``build_row_menu``), a double-click (Open, or Open to the Side with Ctrl), or a key on
+    the selected row (Enter opens, F2 renames, Delete removes). Asking for an action the row does not offer, or offers
+    disabled, is for the receiver to ignore.
     """
 
-    row_activated = Signal(object, bool)  # WorkspaceBrowserRow, to the side
-    row_action_requested = Signal(object)  # WorkspaceBrowserRow
-    row_consideration_changed = Signal(object, bool)  # ConsiderationItemRef, considered
-    content_activated = Signal(object, int)  # Content, start index
-    content_open_to_side_requested = Signal(object, int)  # Content, start index
-    item_remove_requested = Signal(str)  # item id
-    item_rename_requested = Signal(str, str)  # item id, new label; empty for the default name
-    export_requested = Signal(object)  # OnScreenWorkspaceItem
+    row_action_requested = Signal(object, object)  # WorkspaceBrowserRow, RowAction
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -75,7 +76,7 @@ class SectionTree(QTreeWidget):
         """Whether the tree itself is folding or unfolding sections, so the change is not the user's."""
         self.setColumnCount(1)
         self.setHeaderHidden(True)
-        self.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
+        self.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self.setExpandsOnDoubleClick(False)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -86,8 +87,11 @@ class SectionTree(QTreeWidget):
         # Section rows sit undecorated at the root, so the rows under them indent as top-level rows; a section's
         # caption draws its own arrow, and a click on it folds the section.
         self.setRootIsDecorated(False)
-        # The row widgets draw their own hover and open edge.
-        self.setStyleSheet("QTreeView::item:hover, QTreeView::item:selected { background: transparent; }")
+        # The row widgets draw their own hover and open edge; the selected row, which keys act on, takes the hover look.
+        self.setStyleSheet(
+            "QTreeView::item:hover { background: transparent; }"
+            " QTreeView::item:selected { background: palette(midlight); }"
+        )
         self.itemExpanded.connect(self._install_children)
         self.itemExpanded.connect(self._on_folded_or_unfolded)
         self.itemCollapsed.connect(self._on_folded_or_unfolded)
@@ -313,117 +317,68 @@ class SectionTree(QTreeWidget):
         return shown
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
-        """Report a double-clicked row, to the side with Ctrl, and show the rows under it and above it."""
+        """Ask to open a double-clicked row, to the side with Ctrl, and show the rows under it and above it."""
         if item.parent() is None:
             return
         self._reveal(item)
         to_side = bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier)
-        self.row_activated.emit(_row_of(item), to_side)
+        self.row_action_requested.emit(_row_of(item), RowAction.OPEN_TO_SIDE if to_side else RowAction.OPEN)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        """Ask for the action of a key (Enter, F2, Delete) on the selected row; other keys move and fold as Qt does."""
+        action = _KEY_ACTIONS.get(Qt.Key(event.key()))
+        item = self.currentItem()
+        if action is None or item is None or item.parent() is None:
+            super().keyPressEvent(event)
+            return
+        if action is RowAction.OPEN and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            action = RowAction.OPEN_TO_SIDE
+        self.row_action_requested.emit(_row_of(item), action)
 
     def _on_context_menu(self, position: QPoint) -> None:
         """Show the menu of the row under a right click, if it has anything to offer."""
         item = self.itemAt(position)
         if item is None or item.parent() is None:
             return
-        menu = self._build_context_menu(_row_of(item))
-        try:
-            if menu.actions():
-                menu.exec(self.viewport().mapToGlobal(position))
-        finally:
-            menu.deleteLater()
-
-    def _build_context_menu(self, row: WorkspaceBrowserRow) -> QMenu:
-        """Build the context menu for one row: its groups of actions in a fixed order, split by separators."""
-        menu = QMenu(self)
-        groups = (
-            self._open_actions(row, menu),
-            self._inspect_actions(row, menu),
-            self._visibility_actions(row, menu),
-            self._edit_actions(row, menu),
+        row = _row_of(item)
+        show_row_menu(
+            row, self, self.viewport().mapToGlobal(position), lambda action: self.row_action_requested.emit(row, action)
         )
-        for group in (group for group in groups if group):
-            if menu.actions():
-                menu.addSeparator()
-            menu.addActions(group)
-        return menu
 
-    def _open_actions(self, row: WorkspaceBrowserRow, menu: QMenu) -> list[QAction]:
-        """Return the actions that open *row* in the preview pane or a new split, then the action the row offers."""
-        actions: list[QAction] = []
-        if row.activation_target is not None:
-            content, start_index = row.activation_target
-            open_action = QAction("Open", menu)
-            open_action.setToolTip("Replace the preview (unpinned) pane")
-            open_action.triggered.connect(lambda _checked=False: self.content_activated.emit(content, start_index))
-            side_action = QAction("Open to the Side", menu)
-            side_action.setToolTip("Open pinned in a new split (Ctrl+double-click)")
-            side_action.triggered.connect(
-                lambda _checked=False: self.content_open_to_side_requested.emit(content, start_index)
-            )
-            actions += [open_action, side_action]
-        if (row_action := row.action) is not None:
-            action = QAction(row_action.label or row_action.tooltip, menu)
-            action.triggered.connect(lambda _checked=False: self.row_action_requested.emit(row))
-            actions.append(action)
-        return actions
 
-    def _inspect_actions(self, row: WorkspaceBrowserRow, menu: QMenu) -> list[QAction]:
-        """Return the actions that show or export what *row* is."""
-        actions: list[QAction] = []
-        if (information_factory := row.information_factory) is not None:
-            info_action = QAction("Information", menu)
-            info_action.triggered.connect(
-                lambda _checked=False, factory=information_factory: self._show_item_information(factory())
-            )
-            actions.append(info_action)
-        if (export_target := row.export_target) is not None:
-            export_action = QAction("Export video" if row.is_open else "Export video (open it first)", menu)
-            export_action.setEnabled(row.is_open)
-            export_action.triggered.connect(lambda _checked=False: self.export_requested.emit(export_target))
-            actions.append(export_action)
-        return actions
+def show_row_menu(
+    row: WorkspaceBrowserRow, parent: QWidget | None, global_pos: QPoint, pick: Callable[[RowAction], None]
+) -> None:
+    """Show the menu of *row* at *global_pos* and call *pick* with the action chosen; a row offering none shows
+    nothing."""
+    menu = build_row_menu(row, parent, pick)
+    try:
+        if menu.actions():
+            menu.exec(global_pos)
+    finally:
+        menu.deleteLater()
 
-    def _visibility_actions(self, row: WorkspaceBrowserRow, menu: QMenu) -> list[QAction]:
-        """Return Hide or Unhide for a row that can be hidden from playback."""
-        if (ref := row.consideration_ref) is None:
-            return []
-        action = QAction("Hide" if row.is_considered else "Unhide", menu)
-        action.triggered.connect(lambda _checked=False: self.row_consideration_changed.emit(ref, not row.is_considered))
-        return [action]
 
-    def _edit_actions(self, row: WorkspaceBrowserRow, menu: QMenu) -> list[QAction]:
-        """Return the actions that rename or remove the item *row* stands for."""
-        if (workspace_item := row.item) is None:
-            return []
-        rename_action = QAction("Rename", menu)
-        rename_action.setEnabled(workspace_item.renamable)
-        rename_action.triggered.connect(
-            lambda _checked=False, value=workspace_item, shown=row.label: self._rename_item(value, shown)
-        )
-        remove_action = QAction("Remove", menu)
-        remove_action.triggered.connect(
-            lambda _checked=False, item_id=workspace_item.id: self.item_remove_requested.emit(item_id)
-        )
-        return [rename_action, remove_action]
+def build_row_menu(row: WorkspaceBrowserRow, parent: QWidget | None, pick: Callable[[RowAction], None]) -> QMenu:
+    """Build the menu of *row*: every action it offers, in order, calling *pick* with the one chosen.
 
-    def _rename_item(self, item: WorkspaceItem, shown_name: str) -> None:
-        """Ask for a new name for *item* and request the rename when the user confirms it.
-
-        *shown_name* is the label of the row the user clicked. An unlabeled item shows its default name there, which
-        can differ from ``item.display_name`` when several playlists share the row. Keeping that name means no label.
-        """
-        with RenameDialog(item.label or shown_name, self) as dialog:
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return
-            name = dialog.name()
-        if not item.label and name == shown_name:
-            name = ""
-        self.item_rename_requested.emit(item.id, name)
-
-    def _show_item_information(self, info: WorkspaceItemInfo) -> None:
-        """Display a simple modal summary for one workspace tree item."""
-        with WorkspaceItemInfoDialog(info, self) as dialog:
-            dialog.exec()
+    The actions are in groups, split by separators. An action the row offers disabled is listed greyed, with its
+    reason as the hover text.
+    """
+    menu = QMenu(parent)
+    menu.setToolTipsVisible(True)
+    previous: RowActionGroup | None = None
+    for offered in row.actions:
+        action = offered.action
+        if previous is not None and action.group is not previous:
+            menu.addSeparator()
+        previous = action.group
+        entry = QAction(action.menu_text, menu)
+        entry.setEnabled(not offered.disabled_reason)
+        entry.setToolTip(offered.disabled_reason or action.tooltip)
+        entry.triggered.connect(lambda _checked=False, action=action: pick(action))
+        menu.addAction(entry)
+    return menu
 
 
 def _row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:

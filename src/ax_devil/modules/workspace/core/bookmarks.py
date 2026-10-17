@@ -115,9 +115,14 @@ class Bookmark:
             raise ValueError(f"A bookmark time must be a finite, non-negative number: {self.time_s}")
 
     @property
+    def default_label(self) -> str:
+        """Return what the bookmark is called without a note: its frame."""
+        return f"Frame {self.frame}"
+
+    @property
     def label(self) -> str:
-        """Return the note, or the frame when there is none."""
-        return self.note or f"Frame {self.frame}"
+        """Return the note, or the default label when there is none."""
+        return self.note or self.default_label
 
     def to_json(self) -> dict[str, Any]:
         """Return every field as JSON; the kind is its value."""

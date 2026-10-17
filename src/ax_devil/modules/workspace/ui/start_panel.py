@@ -8,10 +8,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QGuiApplication, QMouseEvent, QShowEvent
+from PySide6.QtGui import QGuiApplication, QShowEvent
 from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
@@ -21,8 +19,8 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
-from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.chrome.palette_css import palette_color_css, qcolor_to_css
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import DEFAULT_SHORTCUTS
@@ -59,70 +57,6 @@ def _home_relative(folder: Path) -> str:
         return str(folder)
 
 
-class _RecentRow(QFrame):
-    """One recent workspace: its name and folder, and when it was last opened or saved; clicking it opens it."""
-
-    clicked = Signal()
-
-    def __init__(self, path: Path, used: date, today: date, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.path = path
-        self._used = used
-        self.setObjectName("AxDevilRecentRow")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(str(path))
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(Space.M, Space.S, Space.M, Space.S)
-        layout.setSpacing(Space.M)
-        self._icon = QLabel(self)
-        layout.addWidget(self._icon, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        text = QVBoxLayout()
-        text.setContentsMargins(0, 0, 0, 0)
-        text.setSpacing(0)
-        self.name_label = ElidedLabel(workspace_file_stem(path), Qt.TextElideMode.ElideRight, self)
-        self.folder_label = ElidedLabel(_home_relative(path.parent), Qt.TextElideMode.ElideMiddle, self)
-        TextRole.MONO_SMALL.apply(self.folder_label)
-        text.addWidget(self.name_label)
-        text.addWidget(self.folder_label)
-        layout.addLayout(text, 1)
-
-        self.date_label = QLabel(self)
-        TextRole.SMALL.apply(self.date_label)
-        self.refresh_date(today)
-        layout.addWidget(self.date_label, 0, Qt.AlignmentFlag.AlignTop)
-        follow_appearance(self, self._apply_appearance)
-
-    def refresh_date(self, today: date) -> None:
-        """Show how long before *today* the workspace was last opened or saved."""
-        self.date_label.setText(recent_date(self._used, today))
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        """Open this workspace on a left click."""
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.clicked.emit()
-            return
-        super().mouseReleaseEvent(event)
-
-    def _apply_appearance(self) -> None:
-        side = TextRole.BODY.px
-        self._icon.setPixmap(Icon.BROWSE.icon().pixmap(side, side))
-        palette = self.palette()
-        muted = palette_color_css(palette, palette.ColorRole.PlaceholderText)
-        self.setStyleSheet(
-            f"""
-            #AxDevilRecentRow {{ border-radius: {Radius.CONTROL}px; background: transparent; }}
-            #AxDevilRecentRow:hover {{ background: palette(midlight); }}
-            #AxDevilRecentRow QLabel {{ background: transparent; }}
-            """
-        )
-        self.folder_label.setStyleSheet(f"color: {muted};")
-        self.date_label.setStyleSheet(f"color: {muted};")
-
-
 class StartPanel(QWidget):
     """Open a workspace, a video, a camera, or a playlist, or reopen a recent workspace.
 
@@ -143,7 +77,8 @@ class StartPanel(QWidget):
         super().__init__(parent)
         self.setObjectName("AxDevilStartPanel")
         self._shortcut_manager: ShortcutManager | None = None
-        self._recent_rows: list[_RecentRow] = []
+        self._recents: tuple[RecentWorkspace, ...] = ()
+        self._recent_rows: list[ListRow] = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -194,23 +129,28 @@ class StartPanel(QWidget):
         for row in self._recent_rows:
             self._recent_list.removeWidget(row)
             row.deleteLater()
+        self._recents = tuple(recents)
         today = _today()
-        self._recent_rows = [_RecentRow(recent.path, recent.used.date(), today, self) for recent in recents]
-        for row in self._recent_rows:
-            row.clicked.connect(lambda path=row.path: self.recent_workspace_requested.emit(path))
+        self._recent_rows = []
+        for recent in self._recents:
+            row = ListRow(
+                workspace_file_stem(recent.path),
+                icon=Icon.BROWSE.icon(),
+                subtitle=_home_relative(recent.path.parent),
+                detail=recent_date(recent.used.date(), today),
+                parent=self,
+            )
+            row.setToolTip(str(recent.path))
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.activated.connect(lambda path=recent.path: self.recent_workspace_requested.emit(path))
+            self._recent_rows.append(row)
             self._recent_list.addWidget(row)
         self._recent_heading.setVisible(bool(self._recent_rows))
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """Recompute the relative dates, which go stale while the app stays open across midnight."""
         super().showEvent(event)
-        today = _today()
-        for row in self._recent_rows:
-            row.refresh_date(today)
-
-    def recent_rows(self) -> list[_RecentRow]:
-        """Return the recent workspace rows, newest first."""
-        return list(self._recent_rows)
+        self.set_recent_workspaces(self._recents)
 
     def open_button(self, action_id: str) -> QPushButton:
         """Return the button that triggers *action_id*."""

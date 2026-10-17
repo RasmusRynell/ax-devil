@@ -52,6 +52,26 @@ def test_intake_creates_seekable_content_for_valid_file_overlay_selection() -> N
     assert content.overlays[0].display_name == "overlay"
 
 
+def test_intake_creates_one_overlay_per_file_and_rejects_the_selection_when_any_handler_is_unknown() -> None:
+    intake = WorkspaceIntake(_OptionProvider())
+    first, second = OverlayFile(Path("/tmp/a.jsonl"), "FILE"), OverlayFile(Path("/tmp/b.jsonl"), "FILE")
+
+    content = intake.create_seekable_video(
+        video_path=Path("/tmp/video.mp4"), display_name="video.mp4", overlays=(first, second)
+    )
+
+    assert [overlay.source_spec for overlay in content.overlays] == [
+        FileOverlaySourceSpec(path=first.path, handler_type="FILE"),
+        FileOverlaySourceSpec(path=second.path, handler_type="FILE"),
+    ]
+    with pytest.raises(ValueError, match="Unknown overlay file handler type: MISSING"):
+        intake.create_seekable_video(
+            video_path=Path("/tmp/video.mp4"),
+            display_name="video.mp4",
+            overlays=(first, OverlayFile(second.path, "MISSING")),
+        )
+
+
 def test_intake_rejects_unknown_live_overlay_handler_before_creating_content() -> None:
     intake = WorkspaceIntake(_OptionProvider())
 

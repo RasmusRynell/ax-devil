@@ -7,6 +7,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
+from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.workspace.ui.section_tree import SectionTree
@@ -54,8 +55,8 @@ def titles(tree: SectionTree) -> list[str]:
     return [row_texts(row)[0] for row in shown_rows(tree)]
 
 
-def row_texts(row: SourceRow) -> list[str]:
-    """Return the name a row shows, and its detail line when it has one."""
+def row_texts(row: ListRow) -> list[str]:
+    """Return the name a list row shows, and its detail line when it has one."""
     return [label.full_text() for label in row.findChildren(ElidedLabel)]
 
 

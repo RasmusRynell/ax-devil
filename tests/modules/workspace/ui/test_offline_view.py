@@ -178,15 +178,6 @@ def test_the_location_order_lists_rows_by_where_they_come_from_and_those_without
     assert titles(view.tree) == ["b.mp4", "a.mp4", "no-location.mp4"]
 
 
-def test_add_video_under_the_tree_asks_the_session_to_add_a_video(
-    qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
-) -> None:
-    session = _session(qtbot, tmp_path, render_catalog_manager)
-
-    with qtbot.waitSignal(session.add_video_requested, timeout=1000):
-        button(_view(session), "Add video").click()
-
-
 def test_add_video_opens_the_add_video_dialog(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> None:
     window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)

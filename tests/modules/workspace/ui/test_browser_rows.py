@@ -53,6 +53,11 @@ def item_rows(
     return tuple(row for section in browser_sections(store, open_items) for row in section.rows)
 
 
+def inline_action(row: WorkspaceBrowserRow) -> RowAction | None:
+    """Return the action *row* shows as a button, if any."""
+    return None if row.inline_action is None else row.inline_action.action
+
+
 def _store(*contents: Content) -> WorkspaceStore:
     """Return a store with one item per content."""
     store = WorkspaceStore(inline_resolver(FakeResolutionContext()))
@@ -107,6 +112,9 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert row.children[0].consideration_ref == ConsiderationItemRef.video_lane(video.content_id, 0)
     assert row.children[0].is_considered
     assert not row.children[1].is_considered
+    assert RowAction.HIDE in _offers(row.children[0]), "a lane playback uses can be hidden"
+    assert RowAction.UNHIDE in _offers(row.children[1]) and RowAction.HIDE not in _offers(row.children[1])
+    assert {RowAction.HIDE, RowAction.UNHIDE}.isdisjoint(_offers(row)), "the video itself is not hidden"
 
 
 def test_live_rows_use_live_icon_and_embedded_overlay_child() -> None:
@@ -500,7 +508,7 @@ def test_cameras_offer_start_stream_while_idle_and_stop_stream_while_a_viewer_sh
     closed = item_rows(store)[0]
     opened = item_rows(store, frozenset({OnScreenWorkspaceItem(kind="video", content_id=live.content_id)}))[0]
 
-    assert (closed.action, opened.action) == (RowAction.START_STREAM, RowAction.STOP_STREAM)
+    assert (inline_action(closed), inline_action(opened)) == (RowAction.START_STREAM, RowAction.STOP_STREAM)
     assert (closed.is_dimmed, opened.is_dimmed) == (True, False), "a camera is dimmed while nothing shows it"
 
 
@@ -514,13 +522,61 @@ def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_actio
 
     rows = {row.label: row for row in item_rows(store)}
 
-    assert rows["Suite"].action is RowAction.RESCAN
-    assert rows["Broken"].action is RowAction.RESCAN and rows["Broken"].unavailable_reason is not None
-    assert rows["missing.mp4"].action is None
-    assert rows["clip.mp4"].action is None and not rows["clip.mp4"].idle
+    assert inline_action(rows["Suite"]) is RowAction.RESCAN
+    assert inline_action(rows["Broken"]) is RowAction.RESCAN and rows["Broken"].unavailable_reason is not None
+    assert inline_action(rows["missing.mp4"]) is None
+    assert inline_action(rows["clip.mp4"]) is None and not rows["clip.mp4"].idle
     nested = [child for row in rows.values() for child in row.children]
     nested += [lane for row in nested for lane in row.children]
-    assert nested and all(child.action is None for child in nested)
+    assert nested and all(inline_action(child) is None for child in nested)
+
+
+def _offers(row: WorkspaceBrowserRow) -> dict[RowAction, str]:
+    """Return what *row* offers, each action with the reason it is disabled; empty for an enabled one."""
+    return {offered.action: offered.disabled_reason for offered in row.actions}
+
+
+def test_a_video_row_offers_export_only_once_it_is_open_and_nested_rows_offer_no_item_edits() -> None:
+    state, video = store_with(make_video("test.mp4", overlay_count=1))
+    open_items = frozenset({OnScreenWorkspaceItem(kind="video", content_id=video.content_id)})
+
+    closed = item_rows(state)[0]
+    opened = item_rows(state, open_items)[0]
+
+    assert list(_offers(closed)) == [
+        RowAction.OPEN,
+        RowAction.OPEN_TO_SIDE,
+        RowAction.INFORMATION,
+        RowAction.EXPORT_VIDEO,
+        RowAction.RENAME,
+        RowAction.REMOVE,
+    ]
+    assert _offers(closed)[RowAction.EXPORT_VIDEO] != ""
+    assert _offers(opened)[RowAction.EXPORT_VIDEO] == ""
+    assert list(_offers(closed.children[0])) == [
+        RowAction.OPEN,
+        RowAction.OPEN_TO_SIDE,
+        RowAction.INFORMATION,
+        RowAction.HIDE,
+    ]
+
+
+def test_a_camera_cannot_open_or_export_and_an_item_that_cannot_be_renamed_says_so() -> None:
+    store = _store_of_items(
+        LiveStreamItem(host="192.0.2.10", label="Gate"), UnreadableItem.from_raw({"kind": "radar", "id": "r1"}, "no")
+    )
+
+    camera, unreadable = item_rows(store)
+
+    assert list(_offers(camera)) == [
+        RowAction.START_STREAM,
+        RowAction.INFORMATION,
+        RowAction.RENAME,
+        RowAction.REMOVE,
+    ]
+    assert _offers(unreadable)[RowAction.OPEN] == "", "opening an item that failed says why, so it is offered"
+    assert _offers(unreadable)[RowAction.RENAME] != ""
+    assert _offers(unreadable)[RowAction.REMOVE] == ""
 
 
 def test_an_item_still_loading_is_idle_and_marked_with_its_kind() -> None:
@@ -529,7 +585,7 @@ def test_an_item_still_loading_is_idle_and_marked_with_its_kind() -> None:
     sections = build_browser_sections([ItemResolution.pending(item) for item in items], lambda _ref: True)
 
     rows = [row for section in sections for row in section.rows]
-    assert [(row.icon_kind, row.idle, row.action) for row in rows] == [
+    assert [(row.icon_kind, row.idle, inline_action(row)) for row in rows] == [
         ("live_video", True, None),
         ("playlist", True, None),
     ]

@@ -55,7 +55,7 @@ shared frame; their rules are in the [chrome README](../../src/ax_devil/modules/
 `WorkspaceSession` is the one public Workspace facade. It creates and wires the objects in the diagram above; the store,
 views, split view and controller are composed details, not separate session APIs. It owns adding content: the Add
 dialogs, whoever opens them, pass their result to `add_items` or `add_resolved`, so every entry point adds items the
-same way. The lifecycle (kept workspace, New-workspace save question, recents) is in
+same way. The lifecycle (unsaved-edits copy, New-workspace save question, recents) is in
 [Workspace](workspace.md#lifecycle). The window title carries the workspace name and unsaved mark, and the custom
 `TitleBar` follows it, so both show whichever sidebar view is on screen.
 

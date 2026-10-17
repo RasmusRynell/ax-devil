@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLineEdit, QSplitter, QTreeWidget, QTreeWidgetItem
+from PySide6.QtWidgets import QLineEdit, QMenu, QSplitter, QTreeWidget, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
@@ -18,6 +18,7 @@ from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
+    ItemResolution,
     LiveOverlayMode,
     LiveRTSPStreamSpec,
     LiveStreamItem,
@@ -36,8 +37,10 @@ from ax_devil.modules.workspace.core import (
     load_workspace,
     save_workspace,
 )
+from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
-from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
+from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrowserRow
+from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
@@ -48,10 +51,18 @@ from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from ax_devil.modules.workspace.ui.workspace_view import WorkspaceView
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.widgets import required_child
-from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, content_item, inline_resolver
+from tests.helpers.workspace import (
+    DummyViewer,
+    FakePrompts,
+    FakeResolutionContext,
+    content_item,
+    inline_resolver,
+    recent_workspace_names,
+)
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
 _LIVE_VIEWER = "ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget"
+_ENTERED_NAME = "ax_devil.modules.workspace.ui.workspace_controller.ask_new_name"
 
 
 def _item_rows(workspace_session: WorkspaceSession) -> list[QTreeWidgetItem]:
@@ -93,6 +104,17 @@ def _is_open(item: QTreeWidgetItem) -> bool:
 
 def _store(session: WorkspaceSession) -> WorkspaceStore:
     return session._workspace_store
+
+
+def _ask(session: WorkspaceSession, item_id: str, action: RowAction) -> None:
+    """Ask the sidebar's tree for *action* on the first row of the item *item_id*, as its menu or a key does."""
+    row = next(
+        row
+        for section in session._workspace_controller.sections()
+        for row in section.rows
+        if row.item is not None and row.item.id == item_id
+    )
+    _browser(session).tree.row_action_requested.emit(row, action)
 
 
 def _focused(session: WorkspaceSession) -> DummyViewer:
@@ -176,15 +198,14 @@ def workspace_session(
 def test_removing_content_in_the_sidebar_closes_every_viewer_of_its_item(
     workspace_session: WorkspaceSession,
 ) -> None:
-    browser = _browser(workspace_session)
 
     with patch(_OFFLINE_VIEWER, DummyViewer):
         workspace_session.add_items([content_item(_make_video("duplicate"))])
         [content] = _store(workspace_session).contents()
-        browser.tree.content_open_to_side_requested.emit(content, 0)
+        _ask(workspace_session, content.item_id, RowAction.OPEN_TO_SIDE)
         assert _center(workspace_session).get_widget_count() == 2
 
-        browser.tree.item_remove_requested.emit(content.item_id)
+        _ask(workspace_session, content.item_id, RowAction.REMOVE)
 
     assert _center(workspace_session).get_widget_count() == 0
     assert _store(workspace_session).workspace.items == ()
@@ -290,7 +311,7 @@ def test_removing_one_content_of_an_item_removes_the_whole_item(
     with patch(_OFFLINE_VIEWER, DummyViewer):
         session.add_items([PlaylistItem(label="Runs", resolver="runs"), kept])
         assert len(_item_rows(session)) == 3
-        _browser(session).tree.item_remove_requested.emit(_store(session).contents()[1].item_id)
+        _ask(session, _store(session).contents()[1].item_id, RowAction.REMOVE)
 
     assert _store(session).workspace.items == (kept,)
     assert len(_item_rows(session)) == 1
@@ -546,7 +567,7 @@ def test_replaced_viewer_stops_receiving_consideration_updates(
 
     stored_second = _store(workspace_session).contents()[1]
     item_ref = ConsiderationItemRef.video_lane(stored_second.content_id, 0)
-    _browser(workspace_session).tree.row_consideration_changed.emit(item_ref, False)
+    _store(workspace_session).set_item_considered(item_ref, False)
 
     assert first_widget.cleaned_up
     assert first_widget.refresh_calls == []
@@ -558,7 +579,6 @@ def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_previ
 ) -> None:
     first = _make_video("first.mp4")
     second = _make_video("second.mp4")
-    browser = _browser(workspace_session)
 
     def shown_names() -> list[str]:
         leaves = _center(workspace_session).findChildren(LeafContainer)
@@ -570,13 +590,13 @@ def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_previ
         assert shown_names() == ["second.mp4"]
 
         stored_first = _store(workspace_session).contents()[0]
-        browser.tree.content_open_to_side_requested.emit(stored_first, 0)
+        _ask(workspace_session, stored_first.item_id, RowAction.OPEN_TO_SIDE)
         assert shown_names() == ["first.mp4", "second.mp4"]
 
-        browser.tree.content_activated.emit(stored_first, 0)
+        _ask(workspace_session, stored_first.item_id, RowAction.OPEN)
 
     assert shown_names() == ["first.mp4", "first.mp4"]
-    browser.tree.item_remove_requested.emit(stored_first.item_id)
+    _ask(workspace_session, stored_first.item_id, RowAction.REMOVE)
     assert _center(workspace_session).get_widget_count() == 0
 
 
@@ -692,7 +712,7 @@ def test_launch_opens_on_the_start_panel_with_the_unsaved_workspace_among_the_re
     assert _store(launched).workspace.items == ()
     assert _item_rows(launched) == []
     assert _center(launched).get_widget_count() == 0
-    [recent] = launched._start_panel.recent_rows()
+    [recent] = launched.lifecycle.recent_workspaces()
     assert recent.path.parent == tmp_path / "state" / "unsaved-workspaces"
     assert load_workspace(recent.path).items == (clip,)
 
@@ -709,7 +729,7 @@ def test_saved_workspace_is_listed_on_the_start_panel(
 
     saved = tmp_path / "Lot.ax-devil.workspace"
     assert [entry.path for entry in session.lifecycle.recent_workspaces()] == [saved]
-    assert [row.path for row in session._start_panel.recent_rows()] == [saved]
+    assert recent_workspace_names(session._start_panel) == ["Lot"]
 
 
 def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
@@ -717,18 +737,88 @@ def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: Wor
     with patch(_OFFLINE_VIEWER, DummyViewer):
         workspace_session.add_items([clip])
     viewer = _focused(workspace_session)
-    browser = _browser(workspace_session)
 
-    browser.tree.item_rename_requested.emit(clip.id, "North gate")
+    with patch(_ENTERED_NAME, return_value="North gate"):
+        _ask(workspace_session, clip.id, RowAction.RENAME)
 
     assert viewer._title_label.text() == "North gate"
     assert _row(_required_item_row(workspace_session)).label == "North gate"
     assert _store(workspace_session).is_modified
 
-    browser.tree.item_rename_requested.emit(clip.id, "")
+    with patch(_ENTERED_NAME, return_value=""):
+        _ask(workspace_session, clip.id, RowAction.RENAME)
 
     assert viewer._title_label.text() == "lot.mp4"
     assert _row(_required_item_row(workspace_session)).label == "lot.mp4"
+
+
+def test_adding_a_live_stream_adds_the_camera_without_starting_it(
+    workspace_session: WorkspaceSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    camera = ItemResolution.of(
+        LiveStreamItem(host="192.0.2.10", label="Entrance"), default_resolution_context(), CancelToken()
+    )
+    monkeypatch.setattr(AddLiveStreamDialog, "exec", lambda dialog: AddLiveStreamDialog.DialogCode.Accepted)
+    monkeypatch.setattr(AddLiveStreamDialog, "get_result", lambda dialog: camera)
+
+    with patch(_LIVE_VIEWER, DummyViewer):
+        workspace_session.add_live_stream()
+
+    assert [item.display_name for item in _store(workspace_session).workspace.items] == ["Entrance"]
+    assert workspace_session.focused_widget() is None
+
+
+def test_export_waits_for_the_row_to_be_open(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
+    first, second = _video_item(tmp_path, "first.mp4"), _video_item(tmp_path, "second.mp4")
+    with patch(_OFFLINE_VIEWER, DummyViewer), patch.object(DummyViewer, "export_video") as export:
+        workspace_session.add_items([first])
+        workspace_session.add_items([second])  # Opens in the preview pane in place of the first.
+        _ask(workspace_session, first.id, RowAction.EXPORT_VIDEO)
+        export.assert_not_called()
+
+        _ask(workspace_session, second.id, RowAction.EXPORT_VIDEO)
+        export.assert_called_once_with()
+
+
+def test_information_on_a_row_shows_the_information_of_that_item(
+    workspace_session: WorkspaceSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _video_item(tmp_path, "first.mp4"), _video_item(tmp_path, "second.mp4")
+    with patch(_OFFLINE_VIEWER, DummyViewer):
+        workspace_session.add_items([first, second])
+    shown: list[str] = []
+
+    def record(dialog: WorkspaceItemInfoDialog) -> int:
+        shown.append(dialog.windowTitle())
+        return WorkspaceItemInfoDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(WorkspaceItemInfoDialog, "exec", record)
+
+    _ask(workspace_session, second.id, RowAction.INFORMATION)
+
+    assert shown == ["second.mp4"]
+
+
+def test_choosing_open_from_a_menu_whose_item_was_removed_meanwhile_opens_nothing(
+    workspace_session: WorkspaceSession, tmp_path: Path
+) -> None:
+    clip = _video_item(tmp_path, "lot.mp4")
+    with patch(_OFFLINE_VIEWER, DummyViewer):
+        workspace_session.add_items([clip])
+        tree = _tree(workspace_session)
+        position = tree.visualItemRect(_required_item_row(workspace_session)).center()
+
+        def remove_then_choose() -> None:
+            menu = tree.findChildren(QMenu)[-1]
+            menu.close()
+            _store(workspace_session).remove_item(clip.id)
+            next(entry for entry in menu.actions() if entry.text() == "Open").trigger()
+
+        QTimer.singleShot(0, remove_then_choose)
+        tree.customContextMenuRequested.emit(position)
+
+    assert _store(workspace_session).workspace.items == ()
+    assert _center(workspace_session).get_widget_count() == 0
 
 
 def test_unsaved_workspace_goes_to_the_storage_folder_saved_after_launch(

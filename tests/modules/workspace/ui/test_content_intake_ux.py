@@ -9,10 +9,12 @@ import pytest
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QScrollArea, QToolButton, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QScrollArea, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.workspace.core import (
+    OverlayChoice,
     OverlayFile,
     RecentWorkspace,
     VideoFileSelection,
@@ -26,7 +28,7 @@ from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.start_panel import StartPanel, recent_date
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeWidget
 from tests.helpers.shortcuts import make_shortcut_manager
-from tests.helpers.workspace import PlainViewerWidget
+from tests.helpers.workspace import PlainViewerWidget, recent_workspace_names
 
 
 class _OptionProvider:
@@ -56,27 +58,32 @@ def test_overlay_decoder_matching_uses_declared_extensions_and_keeps_undeclared_
     assert WorkspaceDecoderOption(handler_type="ANY", display_name="Any").may_read(Path("notes.pdf"))
 
 
-def test_dropped_files_pair_one_video_with_one_overlay_and_open_other_videos_alone() -> None:
-    """One video plus one overlay pairs up; ambiguous overlays wait for a decoder; other drops open each video."""
+def test_dropped_files_pair_one_video_with_its_overlays_and_open_other_videos_alone() -> None:
+    """One video takes each readable data file as an overlay; ambiguous ones wait for a decoder."""
     intake = WorkspaceIntake(_OptionProvider())
     video = Path("/clips/cam.MP4")
+    gt, tracks, scene = Path("/clips/gt.txt"), Path("/clips/tracks.TXT"), Path("/clips/scene.jsonl")
 
-    assert video_file_selections([video, Path("/clips/gt.txt")], intake) == (
-        VideoFileSelection(video, Path("/clips/gt.txt"), "TXT"),
+    assert video_file_selections([video, gt], intake) == (VideoFileSelection(video, (OverlayChoice(gt, "TXT"),)),)
+    assert video_file_selections([gt, video, tracks], intake) == (
+        VideoFileSelection(video, (OverlayChoice(gt, "TXT"), OverlayChoice(tracks, "TXT"))),
     )
-    [ambiguous] = video_file_selections([Path("/clips/scene.jsonl"), video], intake)
-    assert ambiguous == VideoFileSelection(video, Path("/clips/scene.jsonl"))
+    [ambiguous] = video_file_selections([scene, video, gt], intake)
+    assert ambiguous == VideoFileSelection(video, (OverlayChoice(scene), OverlayChoice(gt, "TXT")))
     assert ambiguous.needs_decoder
+    assert video_file_selections([video, Path("/clips/notes.pdf"), gt], intake) == (
+        VideoFileSelection(video, (OverlayChoice(gt, "TXT"),)),
+    )
     assert video_file_selections([video, Path("/clips/notes.pdf")], intake) == (VideoFileSelection(video),)
-    assert video_file_selections([video, Path("/clips/b.mkv"), Path("/clips/gt.txt")], intake) == (
+    assert video_file_selections([video, Path("/clips/b.mkv"), gt], intake) == (
         VideoFileSelection(video),
         VideoFileSelection(Path("/clips/b.mkv")),
     )
-    assert video_file_selections([Path("/clips/gt.txt")], intake) == ()
+    assert video_file_selections([gt], intake) == ()
 
 
 def test_video_selection_becomes_an_item_named_after_the_video_unless_named() -> None:
-    selection = VideoFileSelection(Path("/clips/cam.mp4"), Path("/clips/gt.txt"), "TXT")
+    selection = VideoFileSelection(Path("/clips/cam.mp4"), (OverlayChoice(Path("/clips/gt.txt"), "TXT"),))
 
     item = selection.to_item()
     assert (item.display_name, item.video, item.overlays) == (
@@ -85,6 +92,14 @@ def test_video_selection_becomes_an_item_named_after_the_video_unless_named() ->
         (OverlayFile(Path("/clips/gt.txt"), "TXT"),),
     )
     assert selection.to_item("Gate").label == "Gate"
+
+
+def test_an_overlay_still_waiting_for_a_decoder_is_left_out_of_the_item() -> None:
+    selection = VideoFileSelection(
+        Path("/clips/cam.mp4"), (OverlayChoice(Path("/clips/gt.txt"), "TXT"), OverlayChoice(Path("/clips/scene.jsonl")))
+    )
+
+    assert selection.to_item().overlays == (OverlayFile(Path("/clips/gt.txt"), "TXT"),)
 
 
 def _row_center(welcome: WelcomeWidget, label: str) -> QPointF:
@@ -141,12 +156,12 @@ def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_works
 
     panel.open_button("app.open_workspace").click()
     panel.open_button("app.add_live_stream").click()
-    rows = panel.recent_rows()
-    QTest.mouseClick(rows[1], Qt.MouseButton.LeftButton, pos=rows[1].rect().center())
+    second = panel.findChildren(ListRow)[1]
+    QTest.mouseClick(second, Qt.MouseButton.LeftButton, pos=second.rect().center())
 
     assert triggered == ["app.open_workspace", "app.add_live_stream"]
     assert panel.open_button("app.add_live_stream").text() == manager.get_action("app.add_live_stream").text()
-    assert [row.name_label.full_text() for row in rows] == ["Parking lot", "Exp 3"]
+    assert recent_workspace_names(panel) == ["Parking lot", "Exp 3"]
     assert requested == [recent[1]]
 
 
@@ -177,12 +192,12 @@ def test_start_panel_dates_recents_by_last_use_without_their_files_and_recompute
     panel = StartPanel()
     qtbot.addWidget(panel)
     panel.set_recent_workspaces([RecentWorkspace(tmp_path / "unmounted" / "A.ax-devil.workspace", used)])
-    assert panel.recent_rows()[0].date_label.text() == "today"
+    assert any(label.text() == "today" for label in panel.findChildren(QLabel))
 
     monkeypatch.setattr(start_panel, "_today", lambda: used.date() + timedelta(days=30))
     panel.show()
 
-    assert panel.recent_rows()[0].date_label.text() == "Oct 10"
+    assert any(label.text() == "Oct 10" for label in panel.findChildren(QLabel))
 
 
 def test_start_panel_never_overflows_a_narrow_sidebar(qtbot: QtBot, tmp_path: Path) -> None:
@@ -197,10 +212,10 @@ def test_start_panel_never_overflows_a_narrow_sidebar(qtbot: QtBot, tmp_path: Pa
     panel.show()
     QApplication.processEvents()
 
-    row = panel.recent_rows()[0]
+    [row] = panel.findChildren(ListRow)
     assert panel.minimumSizeHint().width() <= 160
     assert row.geometry().right() < panel.width()
-    assert row.date_label.geometry().right() <= row.width()
+    assert all(label.geometry().right() <= row.width() for label in row.findChildren(QLabel))
     assert all(button.geometry().right() < panel.width() for button in panel._open_buttons.values())
 
 

@@ -32,6 +32,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     BY_NAME,
     BrowserSection,
     Facet,
+    OfferedAction,
     RowAction,
     RowOrder,
     WorkspaceBrowserRow,
@@ -127,7 +128,7 @@ def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> Workspace
         wrap_detail=True,
         facts=("Camera on the network", *details),
         warning=None if can_add else _NOT_SIGNED_IN,
-        action=RowAction.ADD if can_add else None,
+        actions=(OfferedAction(RowAction.ADD),) if can_add else (),
         add=add if can_add else None,
         idle=not can_add,
         search_terms=_camera_search_terms(camera),
@@ -168,7 +169,7 @@ def _with_scan(
             row,
             icon_kind="unavailable",
             warning=_REFUSED,
-            action=None if row.action is RowAction.START_STREAM else row.action,
+            actions=tuple(offered for offered in row.actions if offered.action is not RowAction.START_STREAM),
         )
     return row
 
@@ -202,7 +203,7 @@ def _platform(camera: DiscoveredCamera) -> str:
 def _streaming(sections: Sections) -> str:
     """Return how many of the workspace's cameras *sections* list as streaming, or nothing for none."""
     count = sum(
-        row.action is RowAction.STOP_STREAM
+        row.offered(RowAction.STOP_STREAM) is not None
         for section in sections
         if section.kind is BrowserSection.LIVE
         for row in section.rows

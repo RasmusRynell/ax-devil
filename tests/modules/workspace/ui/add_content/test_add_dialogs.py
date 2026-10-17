@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QComboBox,
     QLabel,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QToolButton,
     QWidget,
 )
 from pytestqt.qtbot import QtBot
@@ -31,6 +33,7 @@ from ax_devil.modules.workspace.core import (
     LiveStreamItem,
     LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
+    OverlayChoice,
     OverlayFile,
     PlaylistContent,
     PlaylistEntry,
@@ -44,7 +47,7 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
-from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
+from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog, OverlayFileRow
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from tests.helpers.forms import form_field
@@ -296,6 +299,27 @@ def video_dialog(qtbot: QtBot, video_intake: None) -> AddVideoDialog:
     return dialog
 
 
+def _overlay_rows(dialog: QWidget) -> list[OverlayFileRow]:
+    return dialog.findChildren(OverlayFileRow)
+
+
+def _row_path(row: OverlayFileRow) -> QLineEdit:
+    edit = row.findChild(QLineEdit)
+    assert edit is not None
+    return edit
+
+
+def _row_handler(row: OverlayFileRow) -> QComboBox:
+    combo = row.findChild(QComboBox)
+    assert combo is not None
+    return combo
+
+
+def _click(dialog: QWidget, kind: type[QAbstractButton], text: str) -> None:
+    """Click the button the user sees named *text*, or whose accessible name is *text*."""
+    next(b for b in dialog.findChildren(kind) if text in (b.text(), b.accessibleName())).click()
+
+
 def test_add_video_keeps_ok_disabled_and_says_why_until_selection_is_complete(
     video_dialog: AddVideoDialog, tmp_path: Path
 ) -> None:
@@ -305,13 +329,14 @@ def test_add_video_keeps_ok_disabled_and_says_why_until_selection_is_complete(
     overlay = tmp_path / "overlay.jsonl"
     overlay.write_text("{}\n")
     video_edit = form_field(video_dialog, "Video File", QLineEdit)
-    overlay_edit = form_field(video_dialog, "Overlay File", QLineEdit)
+    [row] = _overlay_rows(video_dialog)
+    overlay_edit = _row_path(row)
     steps = [
         (video_edit, "", "Choose a video file to continue."),
         (video_edit, str(tmp_path / "missing.mp4"), "Video file not found."),
         (video_edit, str(video), ""),
-        (overlay_edit, str(tmp_path / "missing.jsonl"), "Overlay file not found."),
-        (overlay_edit, str(overlay), "Choose the data handler that reads the overlay file."),
+        (overlay_edit, str(tmp_path / "missing.jsonl"), "Overlay file not found: missing.jsonl"),
+        (overlay_edit, str(overlay), "Choose the data handler that reads overlay.jsonl."),
     ]
     for edit, text, message in steps:
         edit.setText(text)
@@ -322,7 +347,7 @@ def test_add_video_keeps_ok_disabled_and_says_why_until_selection_is_complete(
     video_dialog.accept()
     assert video_dialog.get_result() is None
 
-    _select(form_field(video_dialog, "Data Handler", QComboBox), "TRACKS")
+    _select(_row_handler(row), "TRACKS")
     _ok(video_dialog).click()
 
     assert _recipe(video_dialog.get_result()) == ("video.mp4", video, (OverlayFile(overlay, "TRACKS"),))
@@ -338,8 +363,9 @@ def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
     overlay.write_text("1,1,0,0,1,1,1,-1,-1,-1\n")
     pdf = tmp_path / "notes.pdf"
     pdf.write_bytes(b"")
-    handler = form_field(video_dialog, "Data Handler", QComboBox)
-    overlay_edit = form_field(video_dialog, "Overlay File", QLineEdit)
+    [row] = _overlay_rows(video_dialog)
+    handler = _row_handler(row)
+    overlay_edit = _row_path(row)
 
     assert not handler.isEnabled()
     form_field(video_dialog, "Video File", QLineEdit).setText(str(video))
@@ -364,20 +390,90 @@ def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
 
 
 def test_add_video_prefills_a_dropped_selection(qtbot: QtBot, video_intake: None, tmp_path: Path) -> None:
-    """A dropped video and ambiguous overlay open the dialog filled in, waiting only for the handler."""
+    """A dropped video and overlays open the dialog filled in, waiting only for the ambiguous handler."""
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"")
-    overlay = tmp_path / "scene.jsonl"
-    overlay.write_text("{}\n")
+    scene = tmp_path / "scene.jsonl"
+    scene.write_text("{}\n")
+    gt = tmp_path / "gt.txt"
+    gt.write_text("1,1,0,0,1,1,1,-1,-1,-1\n")
 
-    dialog = AddVideoDialog(initial=VideoFileSelection(video, overlay))
+    dialog = AddVideoDialog(initial=VideoFileSelection(video, (OverlayChoice(scene), OverlayChoice(gt, "TXT"))))
     qtbot.addWidget(dialog)
 
+    rows = _overlay_rows(dialog)
+    assert [_row_path(row).text() for row in rows] == [str(scene), str(gt)]
     assert not _ok(dialog).isEnabled()
-    assert _shows(dialog, "Choose the data handler that reads the overlay file.")
-    _select(form_field(dialog, "Data Handler", QComboBox), "FRAME")
+    assert _shows(dialog, "Choose the data handler that reads scene.jsonl.")
+    _select(_row_handler(rows[0]), "FRAME")
     _ok(dialog).click()
-    assert _recipe(dialog.get_result()) == ("clip.mp4", video, (OverlayFile(overlay, "FRAME"),))
+    assert _recipe(dialog.get_result()) == (
+        "clip.mp4",
+        video,
+        (OverlayFile(scene, "FRAME"), OverlayFile(gt, "TXT")),
+    )
+
+
+def test_add_video_with_two_overlay_rows_makes_the_item_a_dropped_pair_makes(
+    video_dialog: AddVideoDialog, tmp_path: Path
+) -> None:
+    """Add overlay adds a row for another file, and the item has one overlay per row, in row order."""
+    video, first, second = tmp_path / "clip.mp4", tmp_path / "gt.txt", tmp_path / "scene.jsonl"
+    for path in (video, first, second):
+        path.write_bytes(b"")
+    form_field(video_dialog, "Video File", QLineEdit).setText(str(video))
+
+    _click(video_dialog, QPushButton, "Add overlay")
+    first_row, second_row = _overlay_rows(video_dialog)
+    _row_path(first_row).setText(str(first))
+    _row_path(second_row).setText(str(second))
+    assert _shows(video_dialog, "Choose the data handler that reads scene.jsonl.")
+    _select(_row_handler(second_row), "TRACKS")
+    _ok(video_dialog).click()
+
+    item = video_dialog.get_result()
+    assert _recipe(item) == ("clip.mp4", video, (OverlayFile(first, "TXT"), OverlayFile(second, "TRACKS")))
+    assert item is not None
+    assert item.overlays == (
+        VideoFileSelection(video, (OverlayChoice(first, "TXT"), OverlayChoice(second, "TRACKS"))).to_item().overlays
+    )
+
+
+def test_add_video_overlay_rows_can_be_removed_and_empty_rows_are_ignored(
+    video_dialog: AddVideoDialog, tmp_path: Path
+) -> None:
+    """A row without a file adds nothing, a removed row leaves its file out, and no overlay at all is fine."""
+    video, overlay = tmp_path / "clip.mp4", tmp_path / "gt.txt"
+    video.write_bytes(b"")
+    overlay.write_bytes(b"")
+    form_field(video_dialog, "Video File", QLineEdit).setText(str(video))
+    _click(video_dialog, QPushButton, "Add overlay")
+    empty, filled = _overlay_rows(video_dialog)
+    _row_path(filled).setText(str(overlay))
+    assert _ok(video_dialog).isEnabled()
+
+    _click(empty, QToolButton, "Remove overlay")
+    assert _overlay_rows(video_dialog) == [filled]
+    _click(filled, QToolButton, "Remove overlay")
+    assert _overlay_rows(video_dialog) == []
+    _ok(video_dialog).click()
+
+    assert _recipe(video_dialog.get_result()) == ("clip.mp4", video, ())
+
+
+def test_add_video_rows_added_to_a_shown_dialog_fit_without_scrolling(video_dialog: AddVideoDialog) -> None:
+    """Adding overlay rows grows the open dialog instead of starting a scroll bar."""
+    video_dialog.show()
+    QApplication.processEvents()
+    for _ in range(3):
+        _click(video_dialog, QPushButton, "Add overlay")
+    QApplication.processEvents()
+    QApplication.processEvents()
+
+    assert len(_overlay_rows(video_dialog)) == 4
+    scroll = video_dialog.findChild(QScrollArea)
+    assert scroll is not None
+    assert scroll.verticalScrollBar().maximum() == 0
 
 
 def _assert_blocked(dialog: AddLiveStreamDialog, reason: str) -> None:

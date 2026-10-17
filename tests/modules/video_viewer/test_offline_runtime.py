@@ -10,7 +10,7 @@ from typing import TypeVar, cast
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QAction, QImage
 from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
@@ -248,6 +248,7 @@ def _lane(
         name="lane",
         display=cast(FrameDisplay, display),
         overlay_source=cast(FileOverlaySource | None, overlay_source),
+        export_action=QAction("Export video"),
         video_source=cast(FileFrameSource | None, video_source),
         source_index=source_index,
         overlay_policy=overlay_policy,

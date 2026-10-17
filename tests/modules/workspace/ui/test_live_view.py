@@ -33,6 +33,7 @@ from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem, Workspace, WorkspaceItem
+from ax_devil.modules.workspace.ui.browser_rows import RowAction
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
@@ -450,7 +451,7 @@ def test_a_camera_starts_only_with_its_start_button(live: _Live) -> None:
 
     expand(live.view.tree, "Dock")
     for title in ("Entrance", "Dock", "RTSP"):
-        live.view.tree.row_activated.emit(row(live.view.tree, title).row, False)
+        live.view.tree.row_action_requested.emit(row(live.view.tree, title).row, RowAction.OPEN)
 
     assert live.center.get_widget_count() == 0, "neither a camera nor its overlay row starts the stream"
     live.press("Entrance")

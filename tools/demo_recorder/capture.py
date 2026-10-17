@@ -28,6 +28,7 @@ from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_viewer.export.encoder import CompressionPreset, VideoEncoder
+from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.workspace.core import OverlayFile, VideoItem
 
@@ -158,9 +159,9 @@ def capture(args: argparse.Namespace) -> None:
         window.resize(args.width, args.height)
         window.move(0, 0)
         session.add_items([_item(args)])
-        wait_until(lambda: session.focused_offline_viewer() is not None, "the video to open")
-        viewer = session.focused_offline_viewer()
-        assert viewer is not None
+        wait_until(lambda: session.focused_widget() is not None, "the video to open")
+        viewer = session.focused_widget()
+        assert isinstance(viewer, OfflineVideoViewerWidget)
         wait_until(lambda: viewer._runtime is not None, "video and overlays to open")
         runtime = viewer._runtime
         assert runtime is not None

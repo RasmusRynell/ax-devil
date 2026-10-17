@@ -29,11 +29,30 @@ from ax_devil.modules.workspace.core import WorkspaceItem, workspace_file_stem
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 
 if TYPE_CHECKING:
-    from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
     from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 
 APP_NAME = "ax-devil"
+
+# The shortcuts that act on the focused viewer. The other ``acts_on_viewer`` shortcuts, Add Bookmark and lane
+# fullscreen, are wired to the session and the window.
+_VIEWER_COMMANDS: dict[str, Callable[[ViewerWidget], None]] = {
+    "playback.play_pause": lambda viewer: viewer.toggle_playback(),
+    "playback.step_forward": lambda viewer: viewer.step_frames(1),
+    "playback.step_backward": lambda viewer: viewer.step_frames(-1),
+    "playback.step_forward_10": lambda viewer: viewer.step_frames(10),
+    "playback.step_backward_10": lambda viewer: viewer.step_frames(-10),
+    "playback.speed_down": lambda viewer: viewer.decrease_playback_speed(),
+    "playback.speed_up": lambda viewer: viewer.increase_playback_speed(),
+    "navigation.next_entry": lambda viewer: viewer.step_next_entry(),
+    "navigation.prev_entry": lambda viewer: viewer.step_prev_entry(),
+    "view.toggle_info": lambda viewer: viewer.toggle_info_overlay(),
+    "view.toggle_media_tools": lambda viewer: viewer.toggle_media_tools(),
+    "view.zoom_in": lambda viewer: viewer.zoom(ZoomStep.IN),
+    "view.zoom_out": lambda viewer: viewer.zoom(ZoomStep.OUT),
+    "view.reset_zoom": lambda viewer: viewer.zoom(ZoomStep.RESET),
+    "view.export_video": lambda viewer: viewer.export_video(),
+}
 
 
 def window_title(name: str, modified: bool) -> str:
@@ -85,9 +104,6 @@ class MainWindow(ChromeWindow):
         self._setup_menu_bar()
         self._setup_central_widget()
         self._workspace_session.state_changed.connect(self._update_title)
-        self._workspace_session.add_live_stream_requested.connect(lambda: self._on_add_live_stream(start=False))
-        self._workspace_session.add_video_requested.connect(self._shortcut_manager.get_action("app.add_video").trigger)
-        self._workspace_session.add_playlist_requested.connect(self._on_add_playlist)
         self._update_title()
         # Every way of quitting passes here, including quitting after an error without closing this window.
         app = QApplication.instance()
@@ -159,15 +175,15 @@ class MainWindow(ChromeWindow):
         file_menu.addSeparator()
 
         add_video_action = sm.get_action("app.add_video")
-        add_video_action.triggered.connect(self._on_add_video)
+        add_video_action.triggered.connect(lambda: session.add_video())  # Not ``checked`` as the selection.
         file_menu.addAction(add_video_action)
 
         add_live_action = sm.get_action("app.add_live_stream")
-        add_live_action.triggered.connect(lambda: self._on_add_live_stream(start=True))
+        add_live_action.triggered.connect(lambda: session.add_live_stream())
         file_menu.addAction(add_live_action)
 
         add_playlist_action = sm.get_action("app.add_playlist")
-        add_playlist_action.triggered.connect(lambda: self._on_add_playlist())  # Not ``checked`` as the resolver id.
+        add_playlist_action.triggered.connect(lambda: session.add_playlist())  # Not ``checked`` as the resolver id.
         file_menu.addAction(add_playlist_action)
 
         file_menu.addSeparator()
@@ -214,6 +230,7 @@ class MainWindow(ChromeWindow):
         view_menu.addAction(sm.get_action("view.toggle_info"))
         view_menu.addSeparator()
         view_menu.addAction(sm.get_action("view.add_bookmark"))
+        view_menu.addAction(sm.get_action("view.export_video"))
         view_menu.addSeparator()
         render_catalogs_action = sm.get_action("view.render_catalogs")
         render_catalogs_action.setObjectName("renderCatalogsAction")
@@ -228,7 +245,7 @@ class MainWindow(ChromeWindow):
         open_debug_action.triggered.connect(self.show_debug_window)
         debug_menu.addAction(open_debug_action)
 
-        plugins_action = QAction("Plug-ins", self)
+        plugins_action = sm.get_action("app.plugins")
         plugins_action.triggered.connect(self.show_plugins)
         debug_menu.addAction(plugins_action)
 
@@ -244,11 +261,11 @@ class MainWindow(ChromeWindow):
         help_menu = menu_bar.addMenu("Help")
         assert help_menu is not None
 
-        quick_setup_action = QAction("Quick Setup", self)
+        quick_setup_action = sm.get_action("app.quick_setup")
         quick_setup_action.triggered.connect(self.show_quick_setup)
         help_menu.addAction(quick_setup_action)
 
-        about_action = QAction("About", self)
+        about_action = sm.get_action("app.about")
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
 
@@ -268,53 +285,15 @@ class MainWindow(ChromeWindow):
         self.setCentralWidget(self._workspace_session.widget())
 
     def _connect_shortcut_actions(self) -> None:
-        """Wire shortcut actions to viewer routing methods."""
+        """Wire shortcut actions to the focused viewer, the session, and the window."""
         sm = self._shortcut_manager
-
-        sm.get_action("playback.play_pause").triggered.connect(
-            lambda: self._route_to_focused_widget(lambda widget: widget.toggle_playback())
-        )
-        sm.get_action("playback.step_forward").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.step_frames(1))
-        )
-        sm.get_action("playback.step_backward").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.step_frames(-1))
-        )
-        sm.get_action("playback.step_forward_10").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.step_frames(10))
-        )
-        sm.get_action("playback.step_backward_10").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.step_frames(-10))
-        )
-        sm.get_action("playback.speed_down").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.decrease_playback_speed())
-        )
-        sm.get_action("playback.speed_up").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.increase_playback_speed())
-        )
-        sm.get_action("navigation.next_entry").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.step_next_entry())
-        )
-        sm.get_action("navigation.prev_entry").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.step_prev_entry())
-        )
-        sm.get_action("view.toggle_info").triggered.connect(
-            lambda: self._route_to_offline_viewer(lambda viewer: viewer.toggle_info_overlay())
-        )
-        sm.get_action("view.toggle_media_tools").triggered.connect(
-            lambda: self._route_to_focused_widget(lambda widget: widget.toggle_media_tools())
-        )
+        for action_id, command in _VIEWER_COMMANDS.items():
+            sm.get_action(action_id).triggered.connect(
+                lambda _=False, command=command: self._route_to_focused_widget(command)
+            )
         sm.get_action("view.add_bookmark").triggered.connect(lambda: self._workspace_session.bookmark_focused_viewer())
         sm.get_action("view.toggle_fullscreen").triggered.connect(self._toggle_fullscreen)
         sm.get_action("view.toggle_sidebar").triggered.connect(self._workspace_session.widget().toggle_sidebar)
-        for action_id, step in (
-            ("view.zoom_in", ZoomStep.IN),
-            ("view.zoom_out", ZoomStep.OUT),
-            ("view.reset_zoom", ZoomStep.RESET),
-        ):
-            sm.get_action(action_id).triggered.connect(
-                lambda _=False, step=step: self._route_to_focused_widget(lambda widget: widget.zoom(step))
-            )
         sm.get_action("view.toggle_lane_fullscreen").triggered.connect(self._lane_fullscreen.toggle)
 
     def _toggle_fullscreen(self) -> None:
@@ -324,17 +303,11 @@ class MainWindow(ChromeWindow):
         else:
             self.showFullScreen()
 
-    def _route_to_focused_widget(self, action: Callable[["ViewerWidget"], None]) -> None:
+    def _route_to_focused_widget(self, action: Callable[[ViewerWidget], None]) -> None:
         """Run *action* against the focused viewer widget when one exists."""
         widget = self._workspace_session.focused_widget()
         if widget is not None:
             action(widget)
-
-    def _route_to_offline_viewer(self, action: Callable[["OfflineVideoViewerWidget"], None]) -> None:
-        """Run *action* against the focused offline viewer when one exists."""
-        viewer = self._workspace_session.focused_offline_viewer()
-        if viewer is not None:
-            action(viewer)
 
     def _on_keyboard_shortcuts(self) -> None:
         """Open the keyboard shortcuts settings dialog."""
@@ -354,38 +327,6 @@ class MainWindow(ChromeWindow):
         self._workspace_session.refresh_scan_defaults()
         if restart:
             restart_application(self)
-
-    def _on_add_video(self) -> None:
-        """Handle File -> Add Video action."""
-        from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
-
-        with AddVideoDialog(self) as dialog:
-            if dialog.exec() == AddVideoDialog.DialogCode.Accepted:
-                result = dialog.get_result()
-                if result is not None:
-                    self._workspace_session.add_items([result])
-
-    def _on_add_live_stream(self, start: bool) -> None:
-        """Handle File -> Add Live Stream, which starts the stream; the Live view's Add manually only adds it."""
-        from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
-
-        with AddLiveStreamDialog(self) as dialog:
-            if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
-                result = dialog.get_result()
-                if result is not None:
-                    self._workspace_session.add_resolved([result], open_first=start)
-                    self._logger.info(f"Added live stream: {result.item.display_name}")
-
-    def _on_add_playlist(self, resolver_id: str | None = None) -> None:
-        """Handle File -> Add Playlist, or Add on a resolver in the Offline view, which opens with *resolver_id*."""
-        from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
-
-        with AddPlaylistDialog(self._workspace_session.resolver, self, resolver_id=resolver_id) as dialog:
-            if dialog.exec() == AddPlaylistDialog.DialogCode.Accepted:
-                result = dialog.get_result()
-                if result is not None:
-                    self._workspace_session.add_resolved([result])
-                    self._logger.info(f"Added playlist: {result.item.display_name}")
 
     def show_catalog_viewer(self) -> None:
         """Show the render catalog viewer, as View → Render Catalogs does."""
