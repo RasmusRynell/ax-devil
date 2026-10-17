@@ -134,6 +134,7 @@ def test_missing_paths_names_fields_no_record_has() -> None:
     query = compile_query("speed>1 -zoom:2 conf>0.5 zoom>3 car")
     assert query.missing_paths([_CAR, _PERSON]) == ("zoom",)
     assert query.missing_paths([]) == ()
+    assert query.missing_paths([_record(("empty",))]) == ("speed", "zoom", "conf")
     assert compile_query("debug.latency>1").missing_paths([_CAR]) == ("debug.latency",)
     assert compile_query("car").missing_paths([_CAR]) == ()
 

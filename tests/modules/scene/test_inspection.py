@@ -260,12 +260,28 @@ def test_entity_fields_group_by_role_and_omit_empty_groups() -> None:
     assert _paths(_inspection_entity(), FieldGroup.MOTION)[("velocity_in_world_space", "speed")] == 1.25
 
 
-def test_debug_values_that_cannot_be_compared_to_empty_do_not_raise() -> None:
+def test_debug_leaves_keep_reported_empties_and_searchable_bytes_and_arrays_do_not_raise() -> None:
     entity = _inspection_entity()
     observation = entity.latest_observation
     assert observation is not None
-    observation.debug = {"frame": np.zeros((2, 2)), "empty": np.zeros(0)}
-    assert ("frame",) in _paths(entity, FieldGroup.DEBUG)
+    observation.debug = {
+        "frame": np.zeros((2, 2)),
+        "empty": np.zeros(0),
+        "text": "",
+        "blank": b"",
+        "list": [],
+        "map": {"inner": {}},
+        "absent": None,
+        "serial": b"\x00\xff",
+        "blob": bytes(range(40)),
+    }
+    debug = _paths(entity, FieldGroup.DEBUG)
+    assert ("frame",) in debug
+    assert (debug[("text",)], debug[("blank",)], debug[("list",)], debug[("map", "inner")]) == ("", "", "[]", "{}")
+    assert ("absent",) not in debug
+    assert debug[("serial",)] == "00ff"
+    assert debug[("blob",)] == f"{bytes(range(32)).hex()}... (40 bytes)"
+    assert compile_query("serial:00ff").matches(entity_record(entity))
 
 
 def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range() -> None:

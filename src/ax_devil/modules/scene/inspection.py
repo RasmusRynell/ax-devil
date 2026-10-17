@@ -27,6 +27,7 @@ _VALUE = "font-weight:400;"
 _MONO = "font-family:monospace;font-weight:400;"
 _INDENT = "&nbsp;&nbsp;&nbsp;&nbsp;"
 _MAX_PER_ROW = 4
+_MAX_DEBUG_BYTES = 32
 
 
 class FieldGroup(Enum):
@@ -105,7 +106,7 @@ def entity_fields(entity: Entity) -> tuple[tuple[FieldGroup, tuple[InspectionFie
         for name, value in _dataclass_items(observation, skip={"classification", "confidence"}):
             prefix = () if name in _UNPREFIXED_OBSERVATION_FIELDS else (name,)
             group = _OBSERVATION_GROUPS.get(name, FieldGroup.RAW)
-            grouped[group].extend(_flatten(value, prefix))
+            grouped[group].extend((_debug_leaves if name == "debug" else _flatten)(value, prefix))
     return tuple((group, tuple(items)) for group, items in grouped.items() if items)
 
 
@@ -162,6 +163,29 @@ def _classification_fields(observation: Observation) -> Iterator[InspectionField
 def _flatten_items(items: Iterable[tuple[str, Any]]) -> Iterator[InspectionField]:
     for name, value in items:
         yield from _flatten(value, (name,))
+
+
+def _debug_leaves(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
+    """Yield every debug leaf; reported empty values stay as ``""``, ``[]`` or ``{}`` and bytes as searchable hex."""
+    if value is None:
+        return
+    if isinstance(value, str):
+        yield InspectionField(path, value)
+    elif isinstance(value, bytes):
+        shown = value[:_MAX_DEBUG_BYTES].hex()
+        yield InspectionField(path, shown if len(value) <= _MAX_DEBUG_BYTES else f"{shown}... ({len(value)} bytes)")
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            yield from _debug_leaves(item, (*path, str(key)))
+        if not value:
+            yield InspectionField(path, "{}")
+    elif isinstance(value, list | tuple):
+        for index, item in enumerate(value):
+            yield from _debug_leaves(item, (*path, str(index)))
+        if not value:
+            yield InspectionField(path, "[]")
+    else:
+        yield from _flatten(value, path)
 
 
 def _flatten(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
