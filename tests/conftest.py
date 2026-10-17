@@ -33,7 +33,6 @@ from tests.helpers.video import create_test_video
 _USER_FOLDERS = (
     REAL_HOME / ".ax_devil" / "configs",
     REAL_HOME / ".ax_devil" / "render_catalogs",
-    REAL_HOME / ".ax_devil" / "plugins",
     REAL_DATA_HOME / "ax-devil",
 )
 """The user's own ax-devil data. Logs, caches and window state are left out: a running app changes them."""

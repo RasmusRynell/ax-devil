@@ -6,7 +6,7 @@ import sys
 import traceback
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 
@@ -151,13 +151,11 @@ def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click
             f"Unknown playlist resolver '{resolver_id}'. Available resolvers: {available_list}."
         ) from exc
 
-    plugin_class = record.plugin_class
-    if record.status != PluginStatus.LOADED or plugin_class is None:
+    if record.status != PluginStatus.LOADED or record.plugin_class is None:
         raise click.ClickException(f"Playlist resolver '{resolver_id}' is not available.")
-    if not issubclass(plugin_class, PlaylistResolverPlugin):
-        raise click.ClickException(f"Playlist resolver '{resolver_id}' is invalid.")
 
-    command = plugin_class.create_cli_command()
+    # The loader only registers PlaylistResolverPlugin subclasses under this plugin type.
+    command = cast(type[PlaylistResolverPlugin], record.plugin_class).create_cli_command()
     if command is None:
         raise click.ClickException(f"Playlist resolver '{resolver_id}' does not provide a CLI command.")
     return command

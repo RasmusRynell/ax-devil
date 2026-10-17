@@ -255,7 +255,6 @@ def _fill_sidebar_views(
     RuntimePluginRegistry.mark_failed(
         DECODER_PLUGIN_TYPE,
         "old-model-decoder",
-        Path("old_model_decoder"),
         "old-model-decoder",
         "Plugin requires API 1, but this app has API 2",
     )

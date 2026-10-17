@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import Mock
 
 from ax_devil.modules.plugin_manager.catalog import (
@@ -51,7 +50,6 @@ def _record(
             file_to_scene_decoders=files,
             payload_to_scene_decoders=payloads,
         ),
-        entrypoint=Path(f"/plugins/{plugin_id}"),
         package=package,
         status=PluginStatus.FAILED if error else PluginStatus.LOADED,
         error=error,
@@ -66,7 +64,6 @@ def _resolver(plugin_id: str, package: str | None, description: str | None = Non
             display_name=plugin_id,
             description=description,
         ),
-        entrypoint=Path(f"/plugins/{plugin_id}"),
         package=package,
         status=PluginStatus.LOADED,
     )

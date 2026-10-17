@@ -156,7 +156,7 @@ without additional decoding; request speed alone cannot prove a cache hit.
 imported, so configuration, render catalogs, window state, logs, caches and plugins all land there; the folder is
 removed when the owning process ends, and nested runs reuse it without deleting their parent's home.
 The session hooks in `tests/conftest.py` record the user's real
-`~/.ax_devil/configs`, `render_catalogs` and `plugins` and the plugin data folder before the run, and fail it if any of
+`~/.ax_devil/configs` and `render_catalogs` and the plugin data folder before the run, and fail it if any of
 them changed. After each test the shared configuration is pointed back at the suite's own file, so a test that switches
 it cannot affect later ones. A test that needs files uses `tmp_path`.
 

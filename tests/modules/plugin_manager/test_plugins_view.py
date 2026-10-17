@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -37,7 +36,6 @@ def _record(
         definition=DecoderPluginDefinition(
             plugin_type=DECODER_PLUGIN_TYPE, plugin_id=plugin_id, display_name=plugin_id, file_to_scene_decoders=files
         ),
-        entrypoint=Path(f"/plugins/{plugin_id}"),
         package=package,
         status=PluginStatus.FAILED if error else PluginStatus.LOADED,
         error=error,

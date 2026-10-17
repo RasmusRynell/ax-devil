@@ -75,7 +75,7 @@ def plugin_name(path: Path) -> str:
         name = project["name"]
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", name):
             raise ValueError(f"Invalid plugin distribution name in {path}")
-        name = re.sub(r"[-_.]+", "-", name.lower())
+        name = canonicalize_name(name)
         if name == "ax-devil" or not any(project.get("entry-points", {}).get(group) for group in ENTRY_POINT_GROUPS):
             raise ValueError(f"{path} must declare an ax-devil plugin entry point")
         return name
@@ -152,6 +152,50 @@ def _write_project(project: Path, host: Host, plugins: dict[str, str], indexes: 
     (project / "pyproject.toml").write_text(f"{content}\n", encoding="utf-8")
 
 
+def _sync_and_validate(project: Path, upgrade: bool, upgrade_packages: tuple[str, ...]) -> None:
+    """Install *project*'s locked plugins into its own environment, then import them there to check they load."""
+    # Explicit paths prevent an inherited uv environment from targeting the base .venv.
+    environment = {**os.environ, "UV_PROJECT_ENVIRONMENT": str(project / ".venv")}
+    for key in (
+        "VIRTUAL_ENV",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "UV_FROZEN",
+        "UV_LOCKED",
+        "UV_NO_SYNC",
+        "UV_NO_EDITABLE",
+        "UV_NO_SOURCES",
+        "UV_NO_SOURCES_PACKAGE",
+    ):
+        environment.pop(key, None)
+    # Run the bundled binary directly: `python -m uv` would point uv at the base environment via VIRTUAL_ENV.
+    command = [
+        find_uv_bin(),
+        "sync",
+        "--project",
+        str(project),
+        "--python",
+        sys.executable,
+        "--no-default-groups",
+    ]
+    if upgrade:
+        command.append("--upgrade")
+    for package in upgrade_packages:
+        command.extend(["--upgrade-package", package])
+    subprocess.run(command, env=environment, check=True)
+    subprocess.run(
+        [
+            str(project / ".venv/bin/python"),
+            "-I",
+            "-m",
+            "ax_devil.modules.plugin_installation.validate",
+            str(project),
+        ],
+        env={**environment, "QT_QPA_PLATFORM": "offscreen"},
+        check=True,
+    )
+
+
 def change_plugins(
     host: Host,
     *,
@@ -220,46 +264,7 @@ def change_plugins(
             _write_project(project, host, plugins, configured_indexes)
             if (current / "uv.lock").is_file():
                 shutil.copyfile(current / "uv.lock", project / "uv.lock")
-            # Explicit paths prevent an inherited uv environment from targeting the base .venv.
-            environment = {**os.environ, "UV_PROJECT_ENVIRONMENT": str(project / ".venv")}
-            for key in (
-                "VIRTUAL_ENV",
-                "PYTHONPATH",
-                "PYTHONHOME",
-                "UV_FROZEN",
-                "UV_LOCKED",
-                "UV_NO_SYNC",
-                "UV_NO_EDITABLE",
-                "UV_NO_SOURCES",
-                "UV_NO_SOURCES_PACKAGE",
-            ):
-                environment.pop(key, None)
-            # Run the bundled binary directly: `python -m uv` would point uv at the base environment via VIRTUAL_ENV.
-            command = [
-                find_uv_bin(),
-                "sync",
-                "--project",
-                str(project),
-                "--python",
-                sys.executable,
-                "--no-default-groups",
-            ]
-            if upgrade:
-                command.append("--upgrade")
-            for package in upgrade_packages:
-                command.extend(["--upgrade-package", package])
-            subprocess.run(command, env=environment, check=True)
-            subprocess.run(
-                [
-                    str(project / ".venv/bin/python"),
-                    "-I",
-                    "-m",
-                    "ax_devil.modules.plugin_installation.validate",
-                    str(project),
-                ],
-                env={**environment, "QT_QPA_PLATFORM": "offscreen"},
-                check=True,
-            )
+            _sync_and_validate(project, upgrade, upgrade_packages)
             previous = current.resolve() if current.is_symlink() else None
             pending.unlink(missing_ok=True)
             pending.symlink_to(project.name, target_is_directory=True)

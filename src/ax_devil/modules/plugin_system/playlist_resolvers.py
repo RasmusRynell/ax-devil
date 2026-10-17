@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QWidget
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.background_jobs import JobScope, background_jobs
 
-from .base import PluginBase, PluginDefinitionBase
+from .base import PluginBase
 
 if TYPE_CHECKING:
     from ax_devil.modules.workspace.core import PlaylistContent, PlaylistSettings
@@ -61,16 +61,6 @@ class PlaylistResolverPlugin(PluginBase):
     def plugin_type(cls) -> str:
         """Return the generic plugin category for playlist resolver bundles."""
         return PLAYLIST_RESOLVER_PLUGIN_TYPE
-
-    @classmethod
-    def definition(cls) -> PluginDefinitionBase:
-        """Bundle playlist resolver metadata into a single definition object."""
-        return PluginDefinitionBase(
-            plugin_type=cls.plugin_type(),
-            plugin_id=cls.plugin_id(),
-            display_name=cls.display_name(),
-            description=cls.description(),
-        )
 
     # -- Instance methods for runtime integration ---------------------------
 
