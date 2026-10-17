@@ -16,8 +16,13 @@ _ARROW_PX = Space.L
 _RULE_ALPHA = 0.12
 
 
-def paint_section_caption(painter: QPainter, rect: QRect, palette: QPalette, text: str, mark: QColor) -> None:
-    """Draw a caption in *rect*: *mark* as a small square, *text*, and a rule from the text to the right edge."""
+def paint_section_caption(
+    painter: QPainter, rect: QRect, palette: QPalette, text: str, mark: QColor, aside: str = ""
+) -> None:
+    """Draw a caption in *rect*: *mark* as a small square, *text*, and a rule from the text to the right edge.
+
+    A non-empty *aside* is drawn muted at the right edge, elided to the room the text leaves, with the rule between.
+    """
     rect = rect.adjusted(Space.S, 0, -Space.S, 0)
     center_y = rect.center().y()
     painter.save()
@@ -37,11 +42,22 @@ def paint_section_caption(painter: QPainter, rect: QRect, palette: QPalette, tex
         text,
     )
     rule_left = text_left + QFontMetrics(font).horizontalAdvance(text) + Space.S
-    if rule_left < rect.right():
+    rule_right = rect.right()
+    if aside and rule_left < rect.right():
+        aside_font = TextRole.SMALL.font()
+        painter.setFont(aside_font)
+        shown = QFontMetrics(aside_font).elidedText(aside, Qt.TextElideMode.ElideRight, rect.right() - rule_left)
+        painter.drawText(
+            QRect(rule_left, rect.top(), rect.right() - rule_left + 1, rect.height()),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            shown,
+        )
+        rule_right = rect.right() - QFontMetrics(aside_font).horizontalAdvance(shown) - Space.S
+    if rule_left < rule_right:
         rule = QColor(palette.color(QPalette.ColorRole.Text))
         rule.setAlphaF(_RULE_ALPHA)
         painter.setPen(rule)
-        painter.drawLine(rule_left, center_y + 1, rect.right(), center_y + 1)
+        painter.drawLine(rule_left, center_y + 1, rule_right, center_y + 1)
     painter.restore()
 
 
@@ -66,6 +82,7 @@ class SectionCaption(QWidget):
         self._text = f"{counted}  · {note}" if note else counted
         self._mark = mark
         self._folded = folded
+        self._aside = ""
         if folded is not None:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         follow_appearance(self, lambda: self.setFixedHeight(Height.ROW.px))
@@ -73,6 +90,16 @@ class SectionCaption(QWidget):
     def text(self) -> str:
         """Return the text the caption shows."""
         return self._text
+
+    def set_aside(self, text: str) -> None:
+        """Show *text* muted at the right end of the caption, elided to fit; the caption keeps its height when it is
+        empty."""
+        self._aside = text
+        self.update()
+
+    def aside(self) -> str:
+        """Return the text shown at the right end of the caption."""
+        return self._aside
 
     def paintEvent(self, _event: object) -> None:  # noqa: N802
         """Draw the caption, after its arrow when it folds."""
@@ -89,4 +116,4 @@ class SectionCaption(QWidget):
             self.style().drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorBranch, arrow, painter, self)
             # The caption keeps its own inset before the mark; the arrow stands in most of it.
             rect = rect.adjusted(_ARROW_PX - Space.S, 0, 0, 0)
-        paint_section_caption(painter, rect, self.palette(), self._text, self._mark(self.palette()))
+        paint_section_caption(painter, rect, self.palette(), self._text, self._mark(self.palette()), self._aside)

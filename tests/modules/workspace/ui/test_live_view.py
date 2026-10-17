@@ -13,7 +13,6 @@ from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QLabel,
     QLineEdit,
     QMenu,
     QProgressBar,
@@ -27,6 +26,7 @@ from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.chrome.menu_button import MenuButton
+from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -483,6 +483,11 @@ def test_nothing_scans_until_rescan_is_pressed(qtbot: QtBot, live: _Live) -> Non
     assert captions(live.view.tree) == ["On the network, 0"]
 
 
+def _scan_caption(live: _Live) -> SectionCaption:
+    [caption] = [found for found in live.view.findChildren(SectionCaption) if found.text() == "Scan settings"]
+    return caption
+
+
 def test_the_scan_button_waits_and_progress_shows_while_a_scan_runs(live: _Live) -> None:
     progress = live.view.findChild(QProgressBar)
     assert progress is not None
@@ -492,13 +497,13 @@ def test_the_scan_button_waits_and_progress_shows_while_a_scan_runs(live: _Live)
     live.button("Rescan").click()
     assert not live.button("Rescan").isEnabled()
     assert not progress.isHidden()
-    assert "Scanning…" in live.texts()
+    assert _scan_caption(live).aside() == "Scanning…"
 
     live.scanner.gate.set()
     live.wait_for_scan()
 
     assert progress.isHidden()
-    assert "Scanning…" not in live.texts()
+    assert _scan_caption(live).aside() == ""
 
 
 def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: _Live, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -578,7 +583,8 @@ def test_a_failed_scan_says_so_and_keeps_the_reason_on_hover(live: _Live) -> Non
     live.button("Rescan").click()
     live.wait_for_scan()
 
-    [failed] = [label for label in live.view.findChildren(QLabel) if label.text() == "Scan failed"]
+    failed = _scan_caption(live)
+    assert failed.aside() == "Scan failed"
     assert "Network is unreachable" in failed.toolTip()
 
 
@@ -635,7 +641,8 @@ def test_an_invalid_ip_range_scans_nothing_and_says_why_on_hover(live: _Live) ->
     live.ip_range().setText("camera")
     live.button("Rescan").click()
 
-    [invalid] = [label for label in live.view.findChildren(QLabel) if label.text() == "Invalid IP range"]
+    invalid = _scan_caption(live)
+    assert invalid.aside() == "Invalid IP range"
     assert "camera" in invalid.toolTip()
     assert live.scanner.calls == 0
     assert live.button("Rescan").isEnabled()
