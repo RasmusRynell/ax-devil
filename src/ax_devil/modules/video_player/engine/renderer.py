@@ -490,11 +490,15 @@ class VideoFrameRenderer(QWidget):
         self._chip.hide_chip()
 
     def _on_overlay_preference_changed(self, preference: OverlayPreference, enabled: bool) -> None:
-        """Drop the hover chip and the selection when object interaction is turned off."""
-        if preference is OverlayPreference.HOVER and not enabled:
+        """Drop the hover chip and the selection when object interaction is turned off; box a kept id when it is on."""
+        if preference is not OverlayPreference.HOVER:
+            return
+        if enabled:
+            self._refresh_selected_bounds()
+        else:
             self._clear_hover()
             self._set_selected(None)
-            self._request_repaint()
+        self._request_repaint()
 
     def _hit_test(self, nx: float, ny: float) -> HoverHit | None:
         """Return hover hit for normalized point, if an interaction provider is available."""

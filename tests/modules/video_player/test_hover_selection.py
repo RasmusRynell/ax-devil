@@ -174,7 +174,10 @@ def test_turning_object_interaction_off_clears_the_chip_and_the_selection(qtbot:
         assert changes == ["entity-1", None]
         _click(qtbot, viewport, ON_OBJECT)
         assert changes == ["entity-1", None]
+        viewport.select_target("entity-1")  # The panel moves to an object while interaction is off.
+        assert viewport._selected_bounds is None
         settings.set_overlay_enabled(OverlayPreference.HOVER, True)
+        assert viewport._selected_bounds == (0.10, 0.10, 0.20, 0.20)  # Turning it on boxes the kept selection.
         _move(viewport, ON_OBJECT)
         assert _chip(viewport).isVisible()
     finally:

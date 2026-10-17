@@ -278,8 +278,8 @@ def test_opening_the_panel_does_not_bring_back_a_selection_cleared_on_the_video_
     panel.link_selection(display)
     shown = _record(panel.objectSelected)
 
-    display.viewport.selectionChanged.emit("a")
-    display.viewport.selectionChanged.emit(None)  # Clicking empty video while the panel is collapsed.
+    display.viewport._set_selected("a")  # The renderer's own path for a click on an object, then on empty video.
+    display.viewport._set_selected(None)
     panel.show()
     qtbot.waitExposed(panel)
 
