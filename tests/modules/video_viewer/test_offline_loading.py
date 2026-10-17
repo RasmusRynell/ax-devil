@@ -439,6 +439,12 @@ def test_a_viewer_opened_at_a_frame_shows_it_paused_and_reports_it_as_the_bookma
     assert (position.target, position.frame) == (BookmarkTarget("item"), 6)
     assert position.time_s == pytest.approx(0.6, abs=0.01)  # The time of the frame on screen: frame 6, never 0.
     assert widget._runtime is not None and not widget._runtime.is_playing
+
+    runtime = widget._runtime
+    widget.show_frame(2)  # A bookmark of the open entry seeks it in place, without reopening the video.
+
+    qtbot.waitUntil(lambda: (shown := widget.bookmark_position()) is not None and shown.frame == 2)
+    assert widget._runtime is runtime and not runtime.is_playing
     widget.cleanup()
 
 

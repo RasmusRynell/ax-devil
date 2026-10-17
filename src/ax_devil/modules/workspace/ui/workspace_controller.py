@@ -12,7 +12,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem
+from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem, entry_target
 from ax_devil.modules.workspace.ui.browser_rows import (
     RowAction,
     WorkspaceBrowserRow,
@@ -83,17 +83,36 @@ class WorkspaceController(QObject):
         """Return the rows of every item, grouped in sections."""
         return self._sections
 
-    def open_content(
-        self, content: Content, start_index: int = 0, *, to_side: bool = False, start_frame: int | None = None
-    ) -> None:
+    def open_content(self, content: Content, start_index: int = 0, *, to_side: bool = False) -> None:
         """Open *content*, from its playlist entry *start_index*, as a double click in the browser does.
 
-        It replaces the preview pane, or opens in a new split with *to_side*; open viewers pause. With *start_frame*,
-        the entry opens paused at that frame instead of playing from the start.
+        It replaces the preview pane, or opens in a new split with *to_side*; open viewers pause.
         """
         place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
         self._pause_all_viewers()
-        self._open_content(content, start_index=start_index, place=place, start_frame=start_frame)
+        self._open_content(content, start_index=start_index, place=place)
+
+    def show_frame(self, content: Content, entry_index: int, frame: int) -> None:
+        """Show *frame* of entry *entry_index* of *content* paused; a viewer already showing that entry seeks there
+        and takes focus, otherwise the entry opens as ``open_content`` would.
+        """
+        target = entry_target(content, entry_index)
+        self._pause_all_viewers()
+        viewer = next(
+            (
+                widget
+                for widget in (self._center_area.get_focused_widget(), *self._widget_item_ids)
+                if widget is not None and widget.bookmark_target() == target
+            ),
+            None,
+        )
+        if viewer is not None:
+            viewer.show_frame(frame)
+            self._center_area.focus_widget(viewer)
+        else:
+            self._open_content(
+                content, start_index=entry_index, place=self._center_area.replace_or_open, start_frame=frame
+            )
 
     def connect_tree(self, tree: SectionTree) -> None:
         """Carry out what the user asks of the rows of *tree*, however they asked: see ``perform_row_action``."""

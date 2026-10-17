@@ -93,8 +93,9 @@ theme follow the rest of the app.
 
 The Workspace, Live and Offline views are one `SectionsView` each, fed by one `SectionsViewController`: a view is the
 Workspace's sections of the kinds it is about, plus what its concept adds. Workspace shows every section the Workspace
-holds (`HELD_SECTIONS`) and nothing it does not hold. `LiveViewController` and `OfflineViewController` compose what is
-their own into theirs: cameras a scan found, what the scan learned about held cameras, and playlist resolvers.
+holds (`HELD_SECTIONS`) and nothing it does not hold. `LiveViewController` composes what is its own into its sections:
+cameras a scan found and what the scan learned about held cameras. Live's scan settings and Offline's Add list are
+`FooterPanel`s pinned at the bottom of their view.
 
 `SectionsView` is also the one shell, with a fixed layout that views fill rather than change; see the
 [workspace module README](../../src/ax_devil/modules/workspace/README.md#sidebar-view-shell).

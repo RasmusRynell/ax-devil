@@ -47,11 +47,13 @@ from ax_devil.modules.video_viewer.offline_viewer_runtime import (
 )
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
+    BookmarkTarget,
     ConsiderationItemRef,
     ConsiderationQuery,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
+    entry_target,
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.viewer_widget import SHARED_ACTION_IDS, ViewerWidget
@@ -565,6 +567,18 @@ class OfflineVideoViewerWidget(ViewerWidget):
     def current_on_screen_item(self) -> OnScreenWorkspaceItem:
         """Return the workspace item shown by this viewer."""
         return self._content.on_screen_item(self._current_index)
+
+    def bookmark_target(self) -> BookmarkTarget:
+        """Return the target of the entry shown."""
+        return entry_target(self._content, self._current_index)
+
+    def show_frame(self, frame: int) -> None:
+        """Show *frame* of the entry shown, paused; an entry still opening opens at it instead."""
+        if self._runtime is None:
+            self._open_entry(self._current_index, frame)
+            return
+        self.pause_playback()
+        self._jump_to_frame(frame)
 
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the entry and frame on screen, or None before the entry shows its first frame."""

@@ -61,8 +61,9 @@ the Workspace, beside the items, so they are saved and make the Workspace modifi
   share one. A renamed or removed entry leaves its target orphaned. Orphaned targets and their bookmarks are kept;
   only removing their item removes them.
 - A viewer reports the frame on screen as a `BookmarkPosition`, and opening a bookmark opens the Content at its entry
-  and frame through `open_content(..., start_frame=)`, paused. Building the groups the Bookmarks view shows, their
-  order, orphan detection and filtering are pure functions in `bookmark_rows.py`.
+  and frame, paused, through `WorkspaceController.show_frame`, which reuses a viewer already showing that entry. Building
+  the groups the Bookmarks view shows, their order, orphan detection and filtering are pure functions in
+  `bookmark_rows.py`.
 - Only an item whose `bookmarkable` is true takes new bookmarks or review changes (never a live stream; see
   [Sidebar](../domain/invariants.md#sidebar)). Bookmarks a file already holds load whatever their item, so ones on
   an `UnreadableItem` are saved back.

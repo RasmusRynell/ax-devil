@@ -25,7 +25,7 @@ SHARED_ACTION_IDS = ("view.toggle_media_tools", "view.toggle_lane_fullscreen", "
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-    from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition
+    from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition, BookmarkTarget
     from ax_devil.modules.workspace.core.content import ConsiderationItemRef, OnScreenWorkspaceItem
 
 
@@ -335,6 +335,13 @@ class ViewerWidget(QFrame):
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the frame on screen as a bookmark would mark it, or None when nothing on screen can be bookmarked."""
         return None
+
+    def bookmark_target(self) -> BookmarkTarget | None:
+        """Return the target of the entry shown, or None when nothing shown can be bookmarked."""
+        return None
+
+    def show_frame(self, frame: int) -> None:
+        """Show *frame* of the entry shown, paused, when supported by the hosted tool."""
 
     def refresh_item_consideration(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Refresh viewer state after an item consideration change.

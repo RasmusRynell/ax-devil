@@ -265,6 +265,28 @@ def test_a_saved_workspace_reopens_on_its_bookmarks_and_a_bookmark_opens_its_ent
     assert (viewer.start_index, viewer.start_frame) == (1, 54)
 
 
+def test_a_bookmark_of_an_entry_already_open_seeks_that_viewer_instead_of_opening_another(
+    session: WorkspaceSession,
+) -> None:
+    _bookmark_both(session)
+    _click(_row(session, "Car 8 deleted"))
+    viewer = session.focused_widget()
+    assert isinstance(viewer, DummyViewer) and viewer.start_frame == 30
+    viewer.set_pinned(True)
+    session._workspace_controller.open_content(_store(session).contents()[2], to_side=True)
+    assert session.focused_widget() is not viewer
+    count = session._center_area.get_widget_count()
+
+    _click(_row(session, "Bicycle 6 disappears"))
+
+    assert session.focused_widget() is viewer
+    assert viewer.shown_frames == [20]
+    assert session._center_area.get_widget_count() == count
+    _click(_row(session, "Clean tracks"))  # Another entry still opens a viewer of its own.
+    opened = session.focused_widget()
+    assert isinstance(opened, DummyViewer) and (opened.start_index, opened.start_frame) == (1, 54)
+
+
 def test_a_bookmark_whose_entry_is_gone_is_shown_missing_and_opens_nothing(session: WorkspaceSession) -> None:
     _video_id, playlist, _live = _items(session)
     _add(session, BookmarkTarget(playlist, "night/run_09.mp4"), 12, BookmarkKind.NOTE, "")

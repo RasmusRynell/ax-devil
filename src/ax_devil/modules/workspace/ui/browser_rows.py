@@ -53,8 +53,6 @@ class BrowserSection(Enum):
     OTHER = ("Other", "unavailable", False)
     NETWORK = ("On the network", "live_video", True, "No new cameras")
     """Cameras a network scan found."""
-    ADD_FROM = ("Add from", "playlist", True)
-    """The playlist resolvers that can add playlists."""
 
     def __init__(self, title: str, icon_kind: WorkspaceBrowserIconKind, addable: bool, empty_text: str = "") -> None:
         self.title = title

@@ -8,15 +8,14 @@ from enum import Enum
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QResizeEvent
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QProgressBar, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QProgressBar, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
-from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.device_discovery.network_scan import Login
+from ax_devil.modules.workspace.ui.footer_panel import FooterPanel
 from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
@@ -32,7 +31,7 @@ class ScanStatus(Enum):
     FAILED = "Scan failed"
 
 
-class ScanSettingsPanel(QWidget):
+class ScanSettingsPanel(FooterPanel):
     """The settings of the network scan: the IP range with Rescan, whether to sign in and the logins to try, and, in
     its header, how the last scan went.
 
@@ -44,7 +43,7 @@ class ScanSettingsPanel(QWidget):
     logins_edited = Signal(object)  # tuple[Login, ...]
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
+        super().__init__("Scan settings", parent)
         self._ip_range = QLineEdit(self)
         self._ip_range.setPlaceholderText("IP range, such as 192.168.1.0/24")
         self._ip_range.returnPressed.connect(self._request_scan)
@@ -73,25 +72,14 @@ class ScanSettingsPanel(QWidget):
             "QProgressBar::chunk { background: palette(highlight); border-radius: 0px; }"
         )
         self._scan_progress.hide()
-        self._caption = SectionCaption("Scan settings", None, KindColor.MUTED.color)
 
         line = QHBoxLayout()
         line.setSpacing(Space.M)
         line.addWidget(self._ip_range, 1)
         line.addWidget(self._scan_button)
-        controls = QWidget(self)
-        controls_layout = QVBoxLayout(controls)
-        controls_layout.setContentsMargins(Space.M, 0, Space.M, 0)
-        controls_layout.setSpacing(Space.S)
-        controls_layout.addLayout(line)
-        controls_layout.addWidget(self._sign_in)
-        controls_layout.addWidget(self._logins)
-        self.setStyleSheet(SEE_THROUGH)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, Space.S, 0, 0)
-        layout.setSpacing(Space.XS)
-        layout.addWidget(self._caption)
-        layout.addWidget(controls)
+        self.controls_layout.addLayout(line)
+        self.controls_layout.addWidget(self._sign_in)
+        self.controls_layout.addWidget(self._logins)
 
     def set_scan_range(self, text: str) -> None:
         """Put *text* in the IP range field."""
@@ -119,8 +107,8 @@ class ScanSettingsPanel(QWidget):
         scanning = status is ScanStatus.SCANNING
         self._scan_button.setEnabled(not scanning)
         self._scan_progress.setVisible(scanning)
-        self._caption.set_aside(status.value)
-        self._caption.setToolTip(reason)
+        self.caption.set_aside(status.value)
+        self.caption.setToolTip(reason)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         """Keep the progress line across the top edge."""
