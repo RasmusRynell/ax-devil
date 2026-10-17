@@ -442,9 +442,9 @@ class MediaToolsPanel(QWidget):
         return page
 
     def _build_event_page(self, key: EventPageKey) -> EventPage:
-        page = EventPage(key.event)
+        page = EventPage(key)
         page.objectActivated.connect(self._open_object)
-        page.eventActivated.connect(self._open_event)
+        page.eventActivated.connect(self._open_event_page)
         return page
 
     def _on_page_changed(self, key: PageKey | None) -> None:

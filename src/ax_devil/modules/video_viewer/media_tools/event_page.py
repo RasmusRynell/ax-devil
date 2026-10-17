@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from PySide6.QtCore import QRect, Qt, Signal
@@ -19,6 +20,7 @@ from ax_devil.modules.object_inspection.frame_labels import format_frame_time
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import EntityId, Scene
 from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
+from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
 from ax_devil.modules.video_viewer.media_tools.presence import Presence
 from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
 
@@ -84,21 +86,24 @@ class EventPage(QWidget):
     *Go to frame* and the events of the same moment need a ``SceneHistory``: a live stream has none, and its frames
     cannot be sought, so there the page shows the title, the time and the objects only. An involved object is dimmed
     while it is not in the displayed frame. Clicking one emits ``objectActivated`` with its id and clicking another
-    event emits ``eventActivated``. A page that is not shown keeps only the latest frame and catches up when it is.
+    event emits ``eventActivated`` with its ``EventPageKey``; an equal event reported twice is another event, so the
+    page leaves out only its own occurrence. A page that is not shown keeps only the latest frame and catches up when
+    it is.
     """
 
     frameRequested = Signal(int)  # video frame index
     objectActivated = Signal(str)  # entity id
-    eventActivated = Signal(object)  # FrameEvent
+    eventActivated = Signal(object)  # EventPageKey
 
-    def __init__(self, event: FrameEvent, parent: QWidget | None = None) -> None:
-        """Create the page of *event*."""
+    def __init__(self, page_key: EventPageKey, parent: QWidget | None = None) -> None:
+        """Create the page of the event *page_key* names."""
         super().__init__(parent)
-        self._event = event
+        self._key = page_key
+        self._event = event = page_key.event
         self._history: SceneHistory | None = None
         self._scene: Scene | None = None
         self._frame: int | None = None
-        self._simultaneous: tuple[FrameEvent, ...] = ()
+        self._simultaneous: tuple[EventPageKey, ...] = ()
         self._dirty = True
         self.setStyleSheet(SEE_THROUGH)
 
@@ -130,8 +135,8 @@ class EventPage(QWidget):
         self._objects.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
         self._moment_model = RowTableModel(
             (
-                Column("Kind", CellKind.TAG, lambda other: Labeled(other.kind, other.kind), width_chars=9),
-                Column("Event", CellKind.TEXT, event_summary, stretch=True),
+                Column("Kind", CellKind.TAG, lambda other: Labeled(other.event.kind, other.event.kind), width_chars=9),
+                Column("Event", CellKind.TEXT, lambda other: event_summary(other.event), stretch=True),
                 Column("", CellKind.CHEVRON, lambda other: None),
             ),
             self,
@@ -166,13 +171,14 @@ class EventPage(QWidget):
         """
         self._history = history
         sequence = self._event.frame_id.sequence_id
-        self._simultaneous = (
-            ()
-            if history is None
-            else tuple(
-                other for other in history.events if other.frame_id.sequence_id == sequence and other != self._event
-            )
-        )
+        seen: Counter[FrameEvent] = Counter()
+        keys: list[EventPageKey] = []
+        for other in () if history is None else history.events:
+            key = EventPageKey(other, seen[other])
+            seen[other] += 1
+            if other.frame_id.sequence_id == sequence and key != self._key:
+                keys.append(key)
+        self._simultaneous = tuple(keys)
         self._request_refresh()
 
     def update_scene(self, scene: Scene | None, frame_index: int) -> None:
@@ -271,7 +277,7 @@ class EventPage(QWidget):
             layout.replaceWidget(self._moment_caption, fresh)
             self._moment_caption.deleteLater()
             self._moment_caption = fresh
-        self._moment_model.set_rows(self._simultaneous, id)
+        self._moment_model.set_rows(self._simultaneous, lambda key: key)
         self._moment_caption.setVisible(bool(self._simultaneous))
         self._moment.setVisible(bool(self._simultaneous))
         self._fit_tables()
