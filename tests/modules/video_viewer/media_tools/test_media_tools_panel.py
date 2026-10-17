@@ -31,10 +31,10 @@ from ax_devil.modules.scene.model import (
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.event_page import EventPage
-from ax_devil.modules.video_viewer.media_tools.events_page import LIVE_EVENT_LIMIT
+from ax_devil.modules.video_viewer.media_tools.events_page import LIVE_EVENT_LIMIT, EventsPage
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
-from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey
+from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey, PageKey
 from ax_devil.modules.video_viewer.media_tools.row_table import (
     _DIMMED_ROLE,
     CellKind,
@@ -452,9 +452,14 @@ def _open_last_live_event(panel: MediaToolsPanel) -> SmallButton | None:
     return _button(panel, "Next in list")
 
 
+@pytest.mark.parametrize("hidden", [False, True])
 @pytest.mark.parametrize("held", [1, LIVE_EVENT_LIMIT])
 def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
-    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, held: int
+    qtbot: QtBot,
+    render_catalog_selection: SceneRenderCatalogSelection,
+    monkeypatch: pytest.MonkeyPatch,
+    held: int,
+    hidden: bool,
 ) -> None:
     panel = _panel(qtbot, render_catalog_selection)
     panel.update_scene(_deleting_scene(1, *(f"o{n}" for n in range(held))), _frame(1), {})
@@ -465,7 +470,21 @@ def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
     resets: list[None] = []
     events_table.rows_model.modelReset.connect(lambda: resets.append(None))
 
+    lookups: list[None] = []
+    neighbor = EventsPage.neighbor
+
+    def counting_neighbor(page: EventsPage, key: PageKey, delta: int) -> PageKey | None:
+        lookups.append(None)
+        return neighbor(page, key, delta)
+
+    monkeypatch.setattr(EventsPage, "neighbor", counting_neighbor)
+    if hidden:
+        panel.hide()
+
     panel.update_scene(_deleting_scene(2, "new"), _frame(2), {})
+    if hidden:
+        assert lookups == []  # A collapsed panel does no list work per event.
+        panel.show()
     assert next_button.isEnabled()
     assert resets == []  # The hidden list is not rebuilt per event.
     next_button.click()

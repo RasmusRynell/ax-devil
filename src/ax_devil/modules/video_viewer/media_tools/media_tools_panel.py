@@ -379,9 +379,10 @@ class MediaToolsPanel(QWidget):
     def _refresh_event_steps(self) -> None:
         """Enable ▲▼ of an open event page again when live events rotate under it, even at a constant count.
 
-        Only for pages opened from the events list; asking another list would rebuild it while hidden.
+        Only for pages opened from the events list, and only while the panel shows: asking would refilter the list per
+        event, and `showEvent` catches up when the panel opens again.
         """
-        if self._stack.root() is self._events:
+        if self.isVisible() and self._stack.root() is self._events:
             self._stack.refresh_steps()
 
     def _show_pending_object(self) -> None:
