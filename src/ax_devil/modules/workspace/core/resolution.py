@@ -25,7 +25,7 @@ class PlaylistResolver(Protocol):
         """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
         ...
 
-    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
         """Return the files and folders the playlists *settings* describe are read from, so a change to them resolves
         the item again."""
         ...

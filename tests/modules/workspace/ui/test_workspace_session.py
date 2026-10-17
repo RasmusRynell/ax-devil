@@ -261,7 +261,7 @@ class _ClipsFolder(FakeResolver):
         entries = tuple(PlaylistEntry(_make_video(clip).standalone_lanes(), True) for clip in clips)
         return [PlaylistContent(display_name="Runs", entries=entries)]
 
-    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
         return SourcePaths(folders=frozenset({self.folder}))
 
 

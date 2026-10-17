@@ -62,14 +62,22 @@ class _Loaded:
 
 
 def _scan(store: SceneRenderCatalogStore, known: tuple[Path, ...], context: JobContext[None]) -> _Scan:
-    """List the catalogs and fingerprint them, the chosen default and every path in *known*; runs on a worker."""
+    """List the catalogs and fingerprint them, the chosen default and every path in *known*; runs on a worker.
+
+    The folder and the files it holds are fingerprinted before the listing reads them, so a catalog created or saved
+    meanwhile differs from the baseline and is found by the first check.
+    """
     token = context.token
+    folders = frozenset({store.catalogs_dir})
+    before = SourcePaths(
+        files=frozenset((*store.built_in_catalog_paths, *sorted(store.catalogs_dir.glob("*.json")), *known)),
+        folders=folders,
+    ).snapshot(token)
     listing = store.list_catalogs_with_errors(token)
     listed = (catalog.path for catalog in listing.catalogs)
     invalid = (error.path for error in listing.errors)
     files = dict.fromkeys((store.built_in_catalog_path, *listed, *invalid, *known, listing.chosen_default_path))
-    paths = SourcePaths(files=frozenset(files), folders=frozenset({store.catalogs_dir}))
-    return _Scan(listing, paths.snapshot(token))
+    return _Scan(listing, before | SourcePaths(files=frozenset(files), folders=folders).snapshot(token))
 
 
 def _load_revision(loader: SceneRenderCatalogLoader, path: Path, _context: JobContext[None]) -> _Loaded:

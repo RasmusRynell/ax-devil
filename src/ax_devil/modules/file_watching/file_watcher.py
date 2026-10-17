@@ -182,11 +182,14 @@ class FileWatcher(QObject):
     def _sync_watches(self) -> set[str]:
         """Watch exactly what the registrations ask for, again the paths a replaced file left; return what was added."""
         desired: set[str] = set()
+        named: set[str] = set()
         for registration in self._registrations.values():
             desired |= registration.watches
-        if len(desired) > MAX_FOLDERS:
+            named.update(os.path.normpath(file) for file in registration.paths.files)
+        directories = sorted(desired - named)
+        if len(directories) > MAX_FOLDERS:  # Only folders are capped: a named file always keeps its own watch.
             self._warn_capped()
-            desired = set(sorted(desired)[:MAX_FOLDERS])
+            desired = (desired & named) | set(directories[:MAX_FOLDERS])
         current = set(self._watcher.files()) | set(self._watcher.directories())
         if current - desired:
             self._watcher.removePaths(sorted(current - desired))
@@ -215,12 +218,14 @@ def _covers(paths: SourcePaths, path: Path) -> bool:
 def _carried_baseline(registered: _Registration, sources: SourceSnapshot) -> dict[Path, Fingerprint]:
     """Return the baseline for *sources*' paths: what *registered* last reported on, else what *sources* found.
 
-    Only a path *registered* had a fingerprint for keeps it; a path new to the key, even inside a folder it covered,
-    starts from *sources*, so being added to the key is not a change.
+    A file or folder *registered* named keeps its baseline, absence included, so one that appeared meanwhile is a
+    change. Any other path, even inside a folder it covered, starts from *sources*: being added to the key is not one.
     """
     baseline = {path: fp for path, fp in registered.baseline.items() if _covers(sources.paths, path)}
+    named = registered.paths.files | registered.paths.folders
     for path, fingerprint in sources.fingerprints.items():
-        baseline.setdefault(path, fingerprint)
+        if path not in named:
+            baseline.setdefault(path, fingerprint)
     return baseline
 
 

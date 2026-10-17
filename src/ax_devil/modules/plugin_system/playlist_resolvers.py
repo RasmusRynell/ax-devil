@@ -71,7 +71,7 @@ class PlaylistResolverPlugin(PluginBase):
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
 
-    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
         """Return the files and folders the playlists *settings* describe are read from; the default is none.
 
         The overlay files the resolved playlists name are watched whatever this returns.

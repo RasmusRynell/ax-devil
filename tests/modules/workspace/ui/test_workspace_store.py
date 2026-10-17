@@ -643,6 +643,7 @@ class _Folder(FakeResolver):
 
     def __init__(self, *clips: str) -> None:
         self.clips = list(clips)
+        self.root = Path("/runs")
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         if not self.clips:
@@ -655,8 +656,8 @@ class _Folder(FakeResolver):
         )
         return [PlaylistContent(display_name="Runs", entries=entries)]
 
-    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
-        return SourcePaths(folders=frozenset({Path("/runs")}))
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
+        return SourcePaths(folders=frozenset({self.root}))
 
 
 def _entry_names(store: WorkspaceStore) -> list[str]:
@@ -697,8 +698,12 @@ def test_a_change_resolves_the_item_again_and_keeps_exclusions_only_of_what_stil
     watcher.report(runs.id, Path("/runs/c.mp4"))
     assert _entry_names(store) == ["a.mp4", "b.mp4"]
     folder.clips = ["a.mp4", "b.mp4", "c.mp4"]
+    folder.root = Path("/moved")
     watcher.report(runs.id, Path("/runs/c.mp4"))
     assert [considered(index) for index in range(3)] == [False, True, True]
+    assert watcher.watched[runs.id].paths.folders == {Path("/runs"), Path("/moved")}, (
+        "an item keeps watching what an earlier result was read from, which a viewer may still show"
+    )
 
     assert changes == [
         frozenset({Path("/runs/d.mp4"), Path("/runs/hidden.mp4")}),

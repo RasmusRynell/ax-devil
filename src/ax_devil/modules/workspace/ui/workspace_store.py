@@ -369,12 +369,12 @@ class WorkspaceStore(QObject):
         """Store *current* as the item's result in place of *previous*, watch what it was read from, and return it.
 
         Exclusions name entries, so they stay with the same ones: an entry that is gone loses its exclusion and one that
-        is new starts at its default. A failed result keeps watching what the last success was read from, since
-        restoring those files is what makes the item resolve again.
+        is new starts at its default. An item keeps watching everything it was ever read from while it lives: viewers
+        may still show what an earlier result named, and restoring those files is what makes it resolve again.
         """
         if current.error is not None:
             logger.warning(f"Could not open {current.item.display_name}: {current.error}")
-            current = replace(current, sources=current.sources | previous.sources)
+        current = replace(current, sources=current.sources | previous.sources)
         self._resolutions[current.item.id] = current
         before, after = _defaults(previous), _defaults(current)
         self._not_considered = {ref for ref in self._not_considered if ref not in before or ref in after} | {

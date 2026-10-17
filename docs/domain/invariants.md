@@ -15,8 +15,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   Runtime sources are created when a viewer opens content: offline by `open_entry_media`, live by `StreamMediaController`.
 - Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
   only from `WorkspaceItem.resolve`. The Workspace, the store, and the file format never branch on item kind.
-- Content ids derive from the owning item's id and the Content's position, and Content records its item's id, so ids
-  are the same on every resolution. Content built outside resolution has empty ids and is never top-level Content.
+- Content ids derive from the owning item's id and never change between resolutions (see
+  [Workspace](../architecture/workspace.md)), and Content records its item's id. Content built outside resolution has
+  empty ids and is never top-level Content.
 - Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
 - An item's label is what the user named it, or empty. An empty label shows `default_name`, derived from the recipe
   when displayed; derived names such as an expanded host are never stored or saved.

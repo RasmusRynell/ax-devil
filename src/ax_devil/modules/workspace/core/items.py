@@ -107,7 +107,7 @@ class WorkspaceItem(ABC):
         """Return the network hosts the item connects to, as entered and expanded; none for items that do not."""
         return ()
 
-    def source_paths(self, context: ResolutionContext) -> SourcePaths:
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
         """Return the files and folders this item's Content is read from, so a change to them makes it stale; none by
         default.
 
@@ -221,7 +221,7 @@ class VideoItem(WorkspaceItem):
         )
         return {"video": _path_from_json(data, "video", base_dir), "overlays": overlays}
 
-    def source_paths(self, context: ResolutionContext) -> SourcePaths:
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
         """Return the overlay files; changes to the video file do not matter."""
         return SourcePaths(files=frozenset(overlay.path for overlay in self.overlays))
 
@@ -443,10 +443,10 @@ class PlaylistItem(WorkspaceItem):
         """Return the resolver id; resolved playlists keep the names their resolver gives them."""
         return self.resolver
 
-    def source_paths(self, context: ResolutionContext) -> SourcePaths:
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
         """Return the paths the resolver reads from, or none when it is missing or names none."""
         try:
-            return context.playlist_resolver(self.resolver).source_paths(deepcopy(self.settings))
+            return context.playlist_resolver(self.resolver).source_paths(deepcopy(self.settings), token)
         except ItemResolutionError:
             return SourcePaths()  # Resolving reports the missing resolver.
         except Exception as exc:  # A plugin may fail in any way; resolving reports its failure.
@@ -566,7 +566,7 @@ class ItemResolution:
         The item's source paths are fingerprinted before anything is read, so a change made while resolving is
         reported once the result is watched. A path the Content names too keeps that fingerprint.
         """
-        sources = item.source_paths(context).snapshot(token)
+        sources = item.source_paths(context, token).snapshot(token)
         contents: tuple[Content, ...] = ()
         error: ItemResolutionError | None = None
         try:

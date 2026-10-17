@@ -94,7 +94,7 @@ class StaticDecoderOptions:
 class FakeResolver(PlaylistResolver):
     """Base of test playlist resolvers: it reads no files, so nothing is watched unless a test says so."""
 
-    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
         return SourcePaths()
 
 

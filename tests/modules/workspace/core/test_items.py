@@ -276,7 +276,7 @@ def test_a_resolution_carries_what_the_item_reads_as_it_was_before_resolving(tmp
     manifest.write_text("one", encoding="utf-8")
 
     class _Rewriting(FakeResolver):
-        def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+        def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
             return SourcePaths(files=frozenset({manifest}))
 
         def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:

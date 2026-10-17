@@ -13,7 +13,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.core.cancellation import NEVER
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import BackgroundJobs
-from ax_devil.modules.file_watching import FileWatcher
+from ax_devil.modules.file_watching import FileWatcher, file_watcher
 from tests.helpers.workspace import wait_for_background_work
 
 
@@ -148,3 +148,34 @@ def test_a_file_that_does_not_exist_yet_is_reported_when_it_appears(qtbot: QtBot
 
     _wait_for_reports(qtbot, reports, 1)
     assert reports == [frozenset({detections})]
+
+
+def test_a_file_that_appeared_before_it_was_watched_again_with_others_is_still_reported(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    appearing, other = tmp_path / "a.txt", tmp_path / "b.txt"
+    other.write_text("new to the watcher")
+    watcher, reports = _watch(qtbot, SourcePaths(files=frozenset({appearing})))
+
+    appearing.write_text("generated")
+    watcher.watch("item", SourcePaths(files=frozenset({appearing, other})).snapshot(NEVER))
+
+    _wait_for_reports(qtbot, reports, 1)
+    assert reports == [frozenset({appearing})]
+
+
+def test_a_named_file_beyond_the_folder_limit_is_still_reported_when_rewritten(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(file_watcher, "MAX_FOLDERS", 2)
+    files = [tmp_path / f"folder{index}" / "overlay.txt" for index in range(5)]
+    for file in files:
+        file.parent.mkdir()
+        file.write_text("first")
+    _watcher, reports = _watch(qtbot, SourcePaths(files=frozenset(files)))
+    qtbot.wait(300)  # The check that follows setting the watches would find the rewrite without any event.
+
+    _rewrite(files[-1])
+
+    _wait_for_reports(qtbot, reports, 1)
+    assert reports == [frozenset({files[-1]})]
