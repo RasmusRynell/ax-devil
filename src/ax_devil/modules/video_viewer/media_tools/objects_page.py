@@ -225,7 +225,6 @@ class ObjectsPage(QWidget):
 
     objectActivated = Signal(str)  # noqa: N815  # entity id
     countChanged = Signal(int)  # noqa: N815
-    orderChanged = Signal()  # noqa: N815  # While hidden: the listed objects or their order may have changed
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create an empty page in Frame scope."""
@@ -349,7 +348,8 @@ class ObjectsPage(QWidget):
     def neighbor(self, key: PageKey, delta: int) -> PageKey | None:
         """Return the page *delta* rows from *key* in the listed order, or None past either end or off the list.
 
-        The order is the latest one even while the page is hidden behind an open object page.
+        The order is the latest one even while the page is hidden behind an open object page; the hidden list is
+        only rebuilt here, when a page asks, never as frames arrive.
         """
         if self._stale:
             self._apply()
@@ -459,7 +459,6 @@ class ObjectsPage(QWidget):
             self._apply()
         else:
             self._stale = True
-            self.orderChanged.emit()
 
     def _apply(self) -> None:
         self._stale = False

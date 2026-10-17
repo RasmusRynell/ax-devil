@@ -256,8 +256,32 @@ def test_object_page_steps_use_the_list_as_it_is_now(
     assert selected == ["a", "c"]  # "b" has left the frame.
 
     panel.update_scene(_scene(_entity("c", conf=0.5)), _frame(2), {})
+    _click(panel, "Previous in list")  # The list no longer has "a" before it.
     previous_button = _button(panel, "Previous in list")
-    assert previous_button is not None and not previous_button.isEnabled()  # The list no longer has "a" before it.
+    assert selected == ["a", "c"] and previous_button is not None and not previous_button.isEnabled()
+
+
+def test_scene_updates_behind_an_open_object_page_do_not_rebuild_the_hidden_list(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.update_scene(_scene(_entity("a"), _entity("b")), _frame(0), {})
+    _open(panel, "a")
+    rebuilt: list[int] = []
+    set_rows = RowTableModel.set_rows
+
+    def counted(self: RowTableModel, *args: Any) -> None:
+        rebuilt.append(1)
+        set_rows(self, *args)
+
+    monkeypatch.setattr(RowTableModel, "set_rows", counted)
+
+    for index in range(1, 4):
+        panel.update_scene(_scene(_entity("a"), _entity("b")), _frame(index), {})
+
+    assert not rebuilt
+    _click(panel, "Back (Esc)")
+    assert _ids(panel) == ["a", "b"]
 
 
 def test_unchanged_rows_are_not_sorted_again(qtbot: QtBot) -> None:
