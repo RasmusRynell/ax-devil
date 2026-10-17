@@ -107,9 +107,10 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   an item still resolving is one pending row that opens nothing.
 - Workspace items resolve off the GUI thread through `ItemResolver`; `WorkspaceStore` commits a result only while its
   item and Workspace are still current.
-- Only adding items opens a viewer. Opening, creating, or restoring a Workspace lists its items and opens and connects
+- Only adding items opens a viewer. Opening or creating a Workspace lists its items and opens and connects
   nothing.
-- Closing never prompts and keeps the current Workspace for the next launch. Creating a new Workspace asks whether to
+- Launching never opens a Workspace on its own, and closing never prompts: a modified Workspace is saved as a copy
+  that joins the recent workspaces, never over its own file. Creating a new Workspace asks whether to
   save modified changes first (a forced choice with no Cancel button), and nothing is replaced unless the answer,
   including any Save As, completes. Opening a saved Workspace discards current edits without asking.
 
@@ -230,7 +231,7 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Settings changes apply on OK. Settings that need a restart carry one shared marker, and saving one offers to restart
   after the exit-time saves. [Quick Setup](../settings.md#quick-setup) is the one exception.
 - Saves validate every editable field, replace the configuration atomically, and only then emit runtime change
-  signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart, except the workspace backup and recent workspaces, which use
+  signals; failed saves leave active viewers untouched. Startup storage locations stay active until restart, except the unsaved-workspace copies and recent workspaces, which use
   the storage folder saved now.
 - Runtime-mutable settings are consumed through `GlobalSettings` signals, not by polling `ConfigManager`. Settings
   live in one immutable `SettingsState` that setters replace whole.

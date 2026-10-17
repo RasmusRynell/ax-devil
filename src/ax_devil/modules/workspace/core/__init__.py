@@ -66,7 +66,6 @@ from ax_devil.modules.workspace.core.workspace import (
     workspace_file_path,
     workspace_file_stem,
 )
-from ax_devil.modules.workspace.core.workspace_backup import WorkspaceBackup
 
 __all__ = [
     "Bookmark",
@@ -112,7 +111,6 @@ __all__ = [
     "VideoItem",
     "WORKSPACE_FILE_SUFFIX",
     "Workspace",
-    "WorkspaceBackup",
     "WorkspaceFileError",
     "WorkspaceDecoderOption",
     "WorkspaceDecoderOptionProvider",

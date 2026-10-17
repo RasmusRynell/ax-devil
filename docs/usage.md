@@ -13,11 +13,11 @@ sidebar's **Recent workspaces** list, and `ax-devil open <file>` open one. The W
 workspace name, with `●` while it has unsaved changes; click the name to change it. The name is saved in the workspace
 file and is separate from the file's name, which is what the recent lists show.
 
-Closing never asks. The workspace, unsaved changes included, is kept in the storage folder and reopened by the next
-plain `ax-devil` launch, with its items listed and nothing opened or streaming. Opening a saved workspace discards
-unsaved changes without asking; creating a new workspace asks whether to save them first. Starting a new workspace
-from `ax-devil local`, `live`, or `playlist` also asks before replacing unsaved changes. A workspace is called
-Untitled until you name it.
+Closing never asks, and a plain `ax-devil` launch always opens on the empty start panel. A workspace closed with
+unsaved changes is saved as a copy in the storage folder's `unsaved-workspaces` folder and listed among the recent
+workspaces; its own file is not touched. Opening a saved workspace discards unsaved changes without asking; creating a
+new workspace asks whether to save them first. `ax-devil local`, `live`, and `playlist` start a new Untitled workspace
+with what they open. A workspace is called Untitled until you name it.
 
 A workspace saves what you added, not how you looked at it: file paths (relative to the workspace file when they are
 in its folder), live stream settings, and playlist resolver settings. Open viewers, layouts, playback positions, and

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
@@ -46,7 +45,7 @@ class WorkspaceStore(QObject):
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
     item_rescanned = Signal(object)  # ItemResolution, the item's new result
-    workspace_replaced = Signal()  # another Workspace was opened, created, or restored; every item may be new
+    workspace_replaced = Signal()  # another Workspace was opened or created; every item may be new
     bookmarks_changed = Signal()  # bookmarks or reviewed targets changed
     state_changed = Signal()  # is_modified, the name, or the path changed
 
@@ -55,9 +54,6 @@ class WorkspaceStore(QObject):
         self._resolver = resolver
         self._workspace = Workspace()
         self._saved_workspace = self._workspace
-        self._awaiting_saved = False  # a restored Workspace's saved state is still being read
-        self._read_saved: Callable[[], tuple[Workspace, Workspace]] | None = None  # reads it, for finish_restore
-        self._cancel_read: Callable[[], None] | None = None  # cancels the background read of the saved state
         self._resolutions: dict[str, ItemResolution] = {}
         self._not_considered: set[ConsiderationItemRef] = set()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
@@ -94,14 +90,12 @@ class WorkspaceStore(QObject):
         """
         self.replace_workspace(load_workspace(path))
 
-    def replace_workspace(self, current: Workspace, saved: Workspace | None = None) -> None:
-        """Make *current* the Workspace, with *saved* as its last saved state (*current* itself when None).
+    def replace_workspace(self, current: Workspace) -> None:
+        """Make *current* the Workspace and its saved state, and resolve every item again in the background.
 
-        Every item is resolved again, in the background, and exclusions start from their defaults. Restoring a kept
-        Workspace passes the file's content as *saved*, so its unsaved edits still count as modified.
+        Exclusions start from their defaults.
         """
-        self._workspace = current
-        self._saved_workspace = current if saved is None else saved
+        self._workspace = self._saved_workspace = current
         self._resolutions = {item.id: ItemResolution.pending(item) for item in current.items}
         self._not_considered = set()
         self._generation += 1
@@ -109,35 +103,10 @@ class WorkspaceStore(QObject):
         self._resolving, self._rescans = {}, {}
         for cancel in cancels:
             cancel()
-        self._settle_saved()
         self.workspace_replaced.emit()
         self.bookmarks_changed.emit()
         self._announce_state()
         self._resolve(current.items, open_first=False)
-
-    def restore_workspace(
-        self, kept: Workspace, load_saved: Callable[[Workspace], tuple[Workspace, Workspace]]
-    ) -> None:
-        """Make *kept* the Workspace now and publish its saved state when *load_saved* has read it in the background.
-
-        Until then *kept* counts as saved. *load_saved* returns ``(current, saved)`` and may take long; when it reports
-        a different path, the Workspace takes that path. Its result is dropped when another Workspace replaced this one
-        or the user saved meanwhile, or ``finish_restore`` published it first.
-        """
-        self.replace_workspace(kept)
-        self._awaiting_saved = True
-        self._read_saved = partial(load_saved, kept)
-        generation = self._generation
-        self._cancel_read = self._resolver.run(self._read_saved, partial(self._publish_saved, generation))
-
-    def finish_restore(self) -> None:
-        """Read the saved state of a restored Workspace now, on the calling thread, when it is still pending.
-
-        Call it before a decision that needs the real saved state, such as asking about unsaved edits; it blocks as
-        long as the file read takes. The background result that arrives later is dropped.
-        """
-        if self._awaiting_saved and self._read_saved is not None:
-            self._publish_saved(self._generation, self._read_saved())
 
     def save_workspace(self, path: Path | None = None) -> None:
         """Save the Workspace to *path*, or to its own file when None, and mark it as saved.
@@ -149,7 +118,6 @@ class WorkspaceStore(QObject):
         if target is None:
             raise ValueError("A workspace without a file needs a path to be saved.")
         self._workspace = self._saved_workspace = save_workspace(self._workspace, target)
-        self._settle_saved()
         self._announce_state()
 
     def rename_workspace(self, name: str) -> None:
@@ -336,24 +304,6 @@ class WorkspaceStore(QObject):
         self._resolutions.update((item.id, ItemResolution.pending(item)) for item in items)
         self.items_added.emit(list(items))
         self._announce_state()
-
-    def _publish_saved(self, generation: int, loaded: tuple[Workspace, Workspace]) -> None:
-        """Take the saved state read for a restored Workspace, unless the Workspace was replaced or saved since."""
-        if generation != self._generation or not self._awaiting_saved:
-            return
-        current, saved = loaded
-        self._settle_saved()
-        self._workspace = replace(self._workspace, path=current.path)
-        self._saved_workspace = saved
-        self._announce_state()
-
-    def _settle_saved(self) -> None:
-        """Stop waiting for a restored Workspace's saved state, and cancel its background read if still queued."""
-        self._awaiting_saved = False
-        self._read_saved = None
-        cancel, self._cancel_read = self._cancel_read, None
-        if cancel is not None:
-            cancel()
 
     def _resolve(self, items: Sequence[WorkspaceItem], *, open_first: bool) -> None:
         """Resolve *items* in the background and commit the results to the Workspace they belong to.

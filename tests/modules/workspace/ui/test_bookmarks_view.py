@@ -32,7 +32,6 @@ from ax_devil.modules.workspace.core import (
     RecentWorkspaces,
     SeekableVideoContent,
     VideoItem,
-    WorkspaceBackup,
 )
 from ax_devil.modules.workspace.ui.bookmarks_view import BOOKMARKS_VIEW_ID, BookmarksView
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
@@ -68,7 +67,7 @@ def session(
     session = WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
         resolver=ItemResolver(FakeResolutionContext(resolvers={"night": _NightShift()}), in_background=False),
-        backup=WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json"),
+        unsaved_folder=tmp_path / "state" / "unsaved-workspaces",
         recent_workspaces=RecentWorkspaces(lambda: tmp_path / "state" / "recent-workspaces.json"),
         prompts=FakePrompts(),
     )

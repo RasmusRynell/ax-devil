@@ -91,7 +91,7 @@ class MainWindow(ChromeWindow):
         # Every way of quitting passes here, including quitting after an error without closing this window.
         app = QApplication.instance()
         if app is not None:
-            app.aboutToQuit.connect(self._workspace_session.lifecycle.keep_workspace)
+            app.aboutToQuit.connect(self._workspace_session.lifecycle.keep_unsaved_changes)
         self._lane_fullscreen = LaneFullscreenController(
             self,
             [
@@ -391,7 +391,7 @@ class MainWindow(ChromeWindow):
         show_catalog_viewer(self._render_catalog_manager, parent=self)
 
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
-        """Restore the kept workspace, then open what the command line asked for; see ``WorkspaceSession.launch``."""
+        """Open what the command line asked for, if anything; see ``WorkspaceLifecycle.launch``."""
         self._workspace_session.scan_network_on_startup()
         self._workspace_session.lifecycle.launch(items, workspace_file)
 

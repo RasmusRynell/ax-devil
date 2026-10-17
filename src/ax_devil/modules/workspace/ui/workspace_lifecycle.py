@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
@@ -12,9 +13,9 @@ from ax_devil.modules.workspace.core import (
     RecentWorkspace,
     RecentWorkspaces,
     Workspace,
-    WorkspaceBackup,
     WorkspaceFileError,
     WorkspaceItem,
+    save_workspace,
     workspace_file_path,
 )
 from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice, WorkspacePrompts
@@ -26,9 +27,9 @@ logger = get_logger(__name__)
 class WorkspaceLifecycle(QObject):
     """Decide when the Workspace in *store* is replaced, saved, kept, and remembered; build no widgets.
 
-    The lifecycle works like VS Code: quitting never asks and keeps the current Workspace in *backup*; launching
-    restores it. Starting a new Workspace asks before discarding edits; opening a saved Workspace discards them.
-    Opened and saved files join *recent_workspaces*.
+    Launching starts with an empty Workspace. Quitting never asks; a Workspace with unsaved edits is saved as a copy
+    in the folder *unsaved_folder* names and joins *recent_workspaces* like any opened or saved file. Starting a new
+    Workspace asks before discarding edits; opening a saved Workspace discards them.
     """
 
     recent_workspaces_changed = Signal()
@@ -37,14 +38,14 @@ class WorkspaceLifecycle(QObject):
         self,
         store: WorkspaceStore,
         prompts: WorkspacePrompts,
-        backup: WorkspaceBackup,
+        unsaved_folder: Callable[[], Path],
         recent_workspaces: RecentWorkspaces,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._store = store
         self._prompts = prompts
-        self._backup = backup
+        self._unsaved_folder = unsaved_folder
         self._recent_workspaces = recent_workspaces
 
     def recent_workspaces(self) -> tuple[RecentWorkspace, ...]:
@@ -52,21 +53,29 @@ class WorkspaceLifecycle(QObject):
         return self._recent_workspaces.entries()
 
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
-        """Restore the kept Workspace, then open *workspace_file* or start a new Workspace with *items*, if given.
-
-        The restored Workspace lists its items and opens nothing; its saved file is read in the background.
-        When the user cancels replacing it, it stays.
-        """
-        kept = self._backup.restore()
-        self._store.restore_workspace(kept, self._backup.load_saved)
+        """Open *workspace_file* or start a new Workspace with *items*, if given; otherwise stay empty."""
         if workspace_file is not None:
             self.open_workspace(workspace_file)
-        elif items and not self.new_workspace(items):
-            logger.info(f"Kept the restored workspace; {len(items)} item(s) from the command line were not added")
+        elif items:
+            self.new_workspace(items)
 
-    def keep_workspace(self) -> None:
-        """Keep the current Workspace, unsaved edits included, for the next launch."""
-        self._backup.keep(self._store.workspace)
+    def keep_unsaved_changes(self) -> None:
+        """Save a Workspace with unsaved edits as a copy and list it in the recent workspaces; call when quitting.
+
+        The Workspace's own file is not touched. A failure is logged, since quitting must not be stopped by it.
+        """
+        if not self._store.is_modified:
+            return
+        workspace = self._store.workspace
+        copy = workspace_file_path(
+            self._unsaved_folder() / f"{workspace.suggested_file_stem} {datetime.now():%Y-%m-%d %H-%M-%S}"
+        )
+        try:
+            save_workspace(workspace, copy)
+        except (WorkspaceFileError, OSError) as exc:
+            logger.warning(f"Could not keep the unsaved workspace in {copy}: {exc}")
+            return
+        self._recent_workspaces.record(copy)
 
     def new_workspace(self, items: Sequence[WorkspaceItem] = ()) -> bool:
         """Replace the Workspace with a new Untitled one holding *items*; return False when the user cancels."""
@@ -127,7 +136,6 @@ class WorkspaceLifecycle(QObject):
 
     def _settle_unsaved_changes(self) -> bool:
         """Return whether the current Workspace may be replaced, asking to save it first when it is modified."""
-        self._store.finish_restore()
         if not self._store.is_modified:
             return True
         choice = self._prompts.ask_save_changes(self._store.workspace.name)

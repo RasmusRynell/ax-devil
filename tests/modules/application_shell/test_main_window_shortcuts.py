@@ -23,7 +23,7 @@ from ax_devil.modules.workspace.core import (
     LiveStreamItem,
     RecentWorkspaces,
     VideoItem,
-    WorkspaceBackup,
+    load_workspace,
 )
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.live_view import LiveView
@@ -338,14 +338,15 @@ def test_add_live_stream_starts_the_stream_only_from_the_file_menu_not_from_add_
     assert (session.focused_widget() is not None) == from_file_menu
 
 
-def test_quitting_keeps_the_workspace_even_without_closing_the_window(
+def test_quitting_keeps_unsaved_edits_even_without_closing_the_window(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
-    """Quitting after an unexpected error skips closing the window; unsaved edits are still kept."""
+    """Quitting after an unexpected error skips closing the window; unsaved edits still become a recent workspace."""
     window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     session = window._workspace_session
-    session.lifecycle._backup = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json")
+    session.lifecycle._unsaved_folder = lambda: tmp_path / "unsaved"
+    session.lifecycle._recent_workspaces = RecentWorkspaces(lambda: tmp_path / "recent.json")
     video = tmp_path / "lot.mp4"
     video.write_bytes(b"")
     with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
@@ -356,8 +357,9 @@ def test_quitting_keeps_the_workspace_even_without_closing_the_window(
     assert app is not None
     app.aboutToQuit.emit()
 
-    current = WorkspaceBackup(lambda: tmp_path / "workspace-backup.json").restore()
-    assert current.items == session._workspace_store.workspace.items
+    [recent] = session.lifecycle.recent_workspaces()
+    assert recent.path.parent == tmp_path / "unsaved"
+    assert load_workspace(recent.path).items == session._workspace_store.workspace.items
 
 
 def test_changing_storage_in_settings_refreshes_the_start_panels_recent_workspaces(

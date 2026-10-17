@@ -32,8 +32,8 @@ from ax_devil.modules.workspace.core import (
     SeekableVideoContent,
     VideoItem,
     Workspace,
-    WorkspaceBackup,
     WorkspaceItem,
+    load_workspace,
     save_workspace,
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
@@ -146,11 +146,11 @@ def _session(
     context: FakeResolutionContext | None = None,
     prompts: WorkspacePrompts | None = None,
 ) -> WorkspaceSession:
-    """Return a session whose backup, recents, and prompts never touch the user's files or desktop."""
+    """Return a session whose unsaved copies, recents, and prompts never touch the user's files or desktop."""
     return WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
         resolver=ItemResolver(context or default_resolution_context(), in_background=False),
-        backup=WorkspaceBackup(lambda: tmp_path / "state" / "workspace-backup.json"),
+        unsaved_folder=tmp_path / "state" / "unsaved-workspaces",
         recent_workspaces=RecentWorkspaces(lambda: tmp_path / "state" / "recent-workspaces.json"),
         prompts=prompts or FakePrompts(),
     )
@@ -675,23 +675,26 @@ def test_sidebar_default_width_follows_text_size_until_dragged(workspace_session
     assert splitter.sizes()[0] == dragged
 
 
-def test_restored_workspace_lists_its_items_and_opens_no_viewer(
+def test_launch_opens_on_the_start_panel_with_the_unsaved_workspace_among_the_recent_ones(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
-    kept = _session(render_catalog_manager, tmp_path)
-    qtbot.addWidget(kept.widget())
+    quit_session = _session(render_catalog_manager, tmp_path)
+    qtbot.addWidget(quit_session.widget())
     clip = _video_item(tmp_path, "clip.mp4")
     with patch(_OFFLINE_VIEWER, DummyViewer):
-        kept.add_items([clip])
-    kept.lifecycle.keep_workspace()
+        quit_session.add_items([clip])
+    quit_session.lifecycle.keep_unsaved_changes()
 
-    restored = _session(render_catalog_manager, tmp_path)
-    qtbot.addWidget(restored.widget())
-    restored.lifecycle.launch()
+    launched = _session(render_catalog_manager, tmp_path)
+    qtbot.addWidget(launched.widget())
+    launched.lifecycle.launch()
 
-    assert _store(restored).workspace.items == (clip,)
-    assert len(_item_rows(restored)) == 1
-    assert _center(restored).get_widget_count() == 0
+    assert _store(launched).workspace.items == ()
+    assert _item_rows(launched) == []
+    assert _center(launched).get_widget_count() == 0
+    [recent] = launched._start_panel.recent_rows()
+    assert recent.path.parent == tmp_path / "state" / "unsaved-workspaces"
+    assert load_workspace(recent.path).items == (clip,)
 
 
 def test_saved_workspace_is_listed_on_the_start_panel(
@@ -728,7 +731,7 @@ def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: Wor
     assert _row(_required_item_row(workspace_session)).label == "lot.mp4"
 
 
-def test_kept_workspace_goes_to_the_storage_folder_saved_after_launch(
+def test_unsaved_workspace_goes_to_the_storage_folder_saved_after_launch(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
     config = ConfigManager()
@@ -752,10 +755,13 @@ def test_kept_workspace_goes_to_the_storage_folder_saved_after_launch(
     )
     qtbot.addWidget(session.widget())
 
-    session.lifecycle.keep_workspace()
+    with patch(_OFFLINE_VIEWER, DummyViewer):
+        session.add_items([_video_item(tmp_path, "lot.mp4")])
 
-    assert (tmp_path / "changed" / "workspace-backup.json").is_file()
-    assert not (tmp_path / "launched" / "workspace-backup.json").exists()
+    session.lifecycle.keep_unsaved_changes()
+
+    assert list((tmp_path / "changed" / "unsaved-workspaces").iterdir())
+    assert not (tmp_path / "launched").exists() or not list((tmp_path / "launched").rglob("*.workspace"))
 
 
 def _press_row_action(session: WorkspaceSession, label: str) -> None:

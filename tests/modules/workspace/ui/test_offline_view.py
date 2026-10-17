@@ -33,7 +33,6 @@ from ax_devil.modules.workspace.core import (
     PlaylistSettings,
     RecentWorkspaces,
     VideoItem,
-    WorkspaceBackup,
 )
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.offline_view import OfflineView
@@ -81,7 +80,7 @@ def _session(
     session = WorkspaceSession(
         render_catalog_manager=render_catalog_manager,
         resolver=ItemResolver(FakeResolutionContext(resolvers=resolvers), in_background=in_background),
-        backup=WorkspaceBackup(lambda: tmp_path / "workspace-backup.json"),
+        unsaved_folder=tmp_path / "unsaved-workspaces",
         recent_workspaces=RecentWorkspaces(lambda: tmp_path / "recent-workspaces.json"),
         prompts=FakePrompts(),
     )
