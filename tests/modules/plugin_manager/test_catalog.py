@@ -37,7 +37,7 @@ def _payload_handler(handler_type: str, name: str) -> PayloadToSceneDecoderDefin
 
 def _record(
     plugin_id: str,
-    origin: str,
+    package: str | None,
     *,
     files: tuple[FileToSceneDecoderDefinition, ...] = (),
     payloads: tuple[PayloadToSceneDecoderDefinition, ...] = (),
@@ -52,13 +52,13 @@ def _record(
             payload_to_scene_decoders=payloads,
         ),
         entrypoint=Path(f"/plugins/{plugin_id}"),
-        origin=origin,
+        package=package,
         status=PluginStatus.FAILED if error else PluginStatus.LOADED,
         error=error,
     )
 
 
-def _resolver(plugin_id: str, origin: str, description: str | None = None) -> PluginRecord:
+def _resolver(plugin_id: str, package: str | None, description: str | None = None) -> PluginRecord:
     return PluginRecord(
         definition=PluginDefinitionBase(
             plugin_type=PLAYLIST_RESOLVER_PLUGIN_TYPE,
@@ -67,7 +67,7 @@ def _resolver(plugin_id: str, origin: str, description: str | None = None) -> Pl
             description=description,
         ),
         entrypoint=Path(f"/plugins/{plugin_id}"),
-        origin=origin,
+        package=package,
         status=PluginStatus.LOADED,
     )
 
@@ -79,10 +79,10 @@ def _section(groups: tuple[PluginGroup, ...], section: Section) -> tuple[PluginE
 def test_records_are_grouped_into_failed_installed_and_built_in() -> None:
     groups = plugin_catalog(
         [
-            _record("mot", "builtin", files=(_file_handler("MOT_FILE", "mot"),)),
-            _resolver("folder_pair", "builtin"),
-            _record("yolo", "package:yolo-detections", files=(_file_handler("YOLO", "yolo"),)),
-            _record("old", "package:old-model-decoder", error="requires plugin API 1, host provides 2"),
+            _record("mot", None, files=(_file_handler("MOT_FILE", "mot"),)),
+            _resolver("folder_pair", None),
+            _record("yolo", "yolo-detections", files=(_file_handler("YOLO", "yolo"),)),
+            _record("old", "old-model-decoder", error="requires plugin API 1, host provides 2"),
         ],
         {"yolo-detections": "yolo-detections>=0.2", "old-model-decoder": "old-model-decoder"},
         VERSIONS.get,
@@ -106,9 +106,9 @@ def test_records_are_grouped_into_failed_installed_and_built_in() -> None:
 def test_a_plugin_with_one_decoder_is_a_single_row_that_names_the_decoder_only_when_it_differs() -> None:
     groups = plugin_catalog(
         [
-            _record("mot", "builtin", files=(_file_handler("MOT_FILE", "MOT Annotations"),)),
-            _record("uvg", "builtin", files=(_file_handler("UVG", "uvg", "Detections with polygons"),)),
-            _resolver("folder_pair", "builtin", "Match videos and overlays by file name."),
+            _record("mot", None, files=(_file_handler("MOT_FILE", "MOT Annotations"),)),
+            _record("uvg", None, files=(_file_handler("UVG", "uvg", "Detections with polygons"),)),
+            _resolver("folder_pair", None, "Match videos and overlays by file name."),
         ],
         {},
         VERSIONS.get,
@@ -126,7 +126,7 @@ def test_a_decoder_that_reads_files_and_live_messages_under_one_handler_type_is_
         [
             _record(
                 "adf",
-                "builtin",
+                None,
                 files=(_file_handler("ADF_FRAME", "ADF Frame"), _file_handler("ADF_TRACKS", "ADF Tracks")),
                 payloads=(_payload_handler("ADF_FRAME", "ADF Frame"), _payload_handler("ADF_LIVE_ONLY", "ADF Live")),
             )
@@ -146,9 +146,9 @@ def test_a_decoder_that_reads_files_and_live_messages_under_one_handler_type_is_
 def test_a_package_lists_everything_it_provides_under_one_row_with_its_version() -> None:
     groups = plugin_catalog(
         [
-            _resolver("lab_runs", "package:Lab_Experiments", "Load lab runs."),
-            _record("lab_tracks", "package:Lab_Experiments", files=(_file_handler("LAB", "Lab tracks"),)),
-            _record("lab_boxes", "package:Lab_Experiments", files=(_file_handler("BOX", "Lab boxes"),)),
+            _resolver("lab_runs", "lab-experiments", "Load lab runs."),
+            _record("lab_tracks", "lab-experiments", files=(_file_handler("LAB", "Lab tracks"),)),
+            _record("lab_boxes", "lab-experiments", files=(_file_handler("BOX", "Lab boxes"),)),
         ],
         {"lab-experiments": "/home/me/lab-experiments"},
         VERSIONS.get,
@@ -166,9 +166,9 @@ def test_a_package_lists_everything_it_provides_under_one_row_with_its_version()
 def test_a_package_with_a_failed_part_is_listed_as_failed_with_the_first_reason() -> None:
     groups = plugin_catalog(
         [
-            _record("yolo", "package:yolo-detections"),
-            _record("yolo_live", "package:yolo-detections", error="does not implement decode"),
-            _record("yolo_extra", "package:yolo-detections", error="PLUGIN_CLASS missing or invalid"),
+            _record("yolo", "yolo-detections"),
+            _record("yolo_live", "yolo-detections", error="does not implement decode"),
+            _record("yolo_extra", "yolo-detections", error="PLUGIN_CLASS missing or invalid"),
         ],
         {"yolo-detections": "yolo-detections"},
         VERSIONS.get,
@@ -191,7 +191,7 @@ def test_a_selected_package_that_loaded_nothing_is_still_listed_for_removal() ->
 def test_only_packages_in_the_selection_can_be_changed() -> None:
     """A package installed some other way, or a failed built-in plugin, is listed without update or remove."""
     groups = plugin_catalog(
-        [_record("pip_plugin", "package:pip-plugin"), _record("mot", "builtin", error="duplicate handler_type")],
+        [_record("pip_plugin", "pip-plugin"), _record("mot", None, error="duplicate handler_type")],
         {},
         VERSIONS.get,
     )

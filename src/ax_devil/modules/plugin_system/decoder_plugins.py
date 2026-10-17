@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
@@ -69,9 +70,9 @@ class DecoderPlugin(PluginBase):
         return ()
 
     @classmethod
-    def scene_model_version(cls) -> tuple[int, int] | None:
+    @abstractmethod
+    def scene_model_version(cls) -> tuple[int, int]:
         """Return the ``(major, minor)`` Scene model version this plugin builds Scenes for."""
-        return None
 
     @classmethod
     def payload_to_scene_decoders(cls) -> Sequence[PayloadToSceneDecoderDefinition]:
@@ -94,8 +95,6 @@ class DecoderPlugin(PluginBase):
     def validate_registration(cls, registry: type[RuntimePluginRegistry]) -> str | None:
         """Reject incompatible Scene model versions and duplicate file/payload handler types."""
         version = cls.scene_model_version()
-        if version is None:
-            return "must explicitly declare scene_model_version"
         host_major, host_minor = SCENE_MODEL_VERSION
         if version[0] != host_major or version[1] > host_minor:
             return (

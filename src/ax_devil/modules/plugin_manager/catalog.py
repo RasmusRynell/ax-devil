@@ -8,8 +8,6 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import cast
 
-from packaging.utils import canonicalize_name
-
 from ax_devil.launcher import plugin_root
 from ax_devil.modules.plugin_installation.project import selected_plugins
 from ax_devil.modules.plugin_system import (
@@ -24,9 +22,6 @@ from ax_devil.modules.plugin_system import (
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-_BUILTIN_ORIGIN = "builtin"
-_PACKAGE_ORIGIN = "package:"
 
 
 class Reads(Enum):
@@ -102,21 +97,20 @@ def plugin_catalog(
 ) -> tuple[PluginGroup, ...]:
     """Return the non-empty sections for *records*, the installation's *selection*, and the installed versions.
 
-    Packages go by their normalized name. A package with any plugin that failed to load is listed as failed, with the
-    first failure's reason. A selected package with no plugins loaded, such as one installed since the app started,
-    is listed as installed. Each built-in plugin is a row of its own.
+    Packages go by their normalized name, as the records carry it. A package with any plugin that failed to load is
+    listed as failed, with the first failure's reason. A selected package with no plugins loaded, such as one
+    installed since the app started, is listed as installed. Each built-in plugin is a row of its own.
     """
     failed: dict[str, PluginEntry] = {}
     loaded: dict[str, list[PluginPart]] = {name: [] for name in selection}
     built_in: list[PluginEntry] = []
     for record in records:
-        distribution = _distribution(record)
         if record.status is PluginStatus.FAILED:
-            name = distribution or record.definition.plugin_id
+            name = record.package or record.definition.plugin_id
             failed.setdefault(name, _failed_entry(name, record, selection))
-        elif distribution is not None:
-            loaded.setdefault(distribution, []).extend(_parts(record))
-        elif record.origin == _BUILTIN_ORIGIN:
+        elif record.package is not None:
+            loaded.setdefault(record.package, []).extend(_parts(record))
+        else:
             built_in.append(_entry(Section.BUILT_IN, record.definition.display_name, _parts(record)))
 
     installed = [
@@ -150,13 +144,6 @@ def installed_version(distribution: str) -> str | None:
         return importlib.metadata.version(distribution)
     except importlib.metadata.PackageNotFoundError:
         return None
-
-
-def _distribution(record: PluginRecord) -> str | None:
-    """Return the normalized name of the package that installed *record*'s plugin; None when it is not a package."""
-    if record.origin.startswith(_PACKAGE_ORIGIN):
-        return canonicalize_name(record.origin.removeprefix(_PACKAGE_ORIGIN))
-    return None
 
 
 def _failed_entry(name: str, record: PluginRecord, selection: Selection) -> PluginEntry:

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from packaging.utils import canonicalize_name
+
 from ax_devil.modules.settings.logging_config import get_logger
 
 from .base import PLUGIN_API_VERSION, PluginBase
@@ -80,25 +82,23 @@ class ApplicationPluginLoader:
 
         for index, entrypoint in enumerate(entrypoints):
             entrypoint_path = Path("<unknown>")
-            origin = "unknown"
-            plugin_id_hint = f"<entrypoint-{index}>"
+            plugin_id_hint = entrypoint.name or f"<entrypoint-{index}>"
+            package = cls._entrypoint_package(entrypoint)
             try:
-                plugin_id_hint = entrypoint.name
                 entrypoint_path = cls._entrypoint_path(entrypoint)
-                origin = cls._entrypoint_origin(entrypoint)
                 plugin_cls = entrypoint.load()
             except Exception as exc:
                 reason = f"entry-point discovery failed: {exc}"
                 if isinstance(exc, ImportError) and (exc.name or "").startswith("ax_devil."):
                     reason = f"incompatible with this ax-devil version: {exc}"
-                cls._fail(family, plugin_id_hint, entrypoint_path, origin, reason, exc)
+                cls._fail(family, plugin_id_hint, entrypoint_path, package, reason, exc)
                 continue
 
             cls._register_plugin_class(
                 family,
                 plugin_cls,
                 entrypoint_path,
-                origin,
+                package,
                 plugin_id_hint=plugin_id_hint,
             )
 
@@ -108,14 +108,14 @@ class ApplicationPluginLoader:
         try:
             module = importlib.import_module(f"{family.builtin_package}.{name}.plugin")
         except Exception as exc:
-            cls._fail(family, name, entrypoint, "builtin", f"import failed: {exc}", exc)
+            cls._fail(family, name, entrypoint, None, f"import failed: {exc}", exc)
             return
 
         cls._register_plugin_class(
             family,
             getattr(module, "PLUGIN_CLASS", None),
             entrypoint,
-            "builtin",
+            None,
             plugin_id_hint=name,
         )
 
@@ -125,7 +125,7 @@ class ApplicationPluginLoader:
         family: PluginFamily,
         plugin_cls: object,
         entrypoint: Path,
-        origin: str,
+        package: str | None,
         *,
         plugin_id_hint: str,
     ) -> None:
@@ -133,32 +133,27 @@ class ApplicationPluginLoader:
         failure_prefix = "plugin validation failed: "
         try:
             if not isinstance(plugin_cls, type) or not issubclass(plugin_cls, family.plugin_base_class):
-                cls._fail(family, plugin_id_hint, entrypoint, origin, "PLUGIN_CLASS missing or invalid")
+                cls._fail(family, plugin_id_hint, entrypoint, package, "PLUGIN_CLASS missing or invalid")
                 return
 
             plugin_cls = cast(type[PluginBase], plugin_cls)
 
-            api_declaring_class = next(base for base in plugin_cls.__mro__ if "required_api_version" in base.__dict__)
-            if origin != "builtin" and api_declaring_class is PluginBase:
-                cls._fail(family, plugin_id_hint, entrypoint, origin, "must explicitly declare required_api_version")
+            unimplemented = sorted(getattr(plugin_cls, "__abstractmethods__", ()))
+            if unimplemented:
+                reason = f"does not implement {', '.join(unimplemented)}"
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, reason)
                 return
 
             required_api_version = plugin_cls.required_api_version()
             if required_api_version != PLUGIN_API_VERSION:
                 reason = f"requires plugin API {required_api_version}, host provides {PLUGIN_API_VERSION}"
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, reason)
-                return
-
-            unimplemented = sorted(getattr(plugin_cls, "__abstractmethods__", ()))
-            if unimplemented:
-                reason = f"does not implement {', '.join(unimplemented)}"
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, reason)
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, reason)
                 return
 
             if plugin_cls.plugin_type() != family.plugin_type:
                 declared = plugin_cls.plugin_type()
                 reason = f"PLUGIN_CLASS declared plugin_type={declared!r}, expected {family.plugin_type!r}"
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, reason)
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, reason)
                 return
 
             try:
@@ -168,46 +163,46 @@ class ApplicationPluginLoader:
             if existing is not None and existing.status == PluginStatus.LOADED:
                 logger.warning(
                     f"Duplicate plugin id {family.plugin_type}:{plugin_cls.plugin_id()} from {entrypoint}; "
-                    f"keeping the plugin already loaded from {existing.origin}"
+                    f"keeping the plugin already loaded from {existing.source}"
                 )
                 return
 
             validation_error = plugin_cls.validate_registration(RuntimePluginRegistry)
             if validation_error is not None:
-                cls._fail(family, plugin_cls.plugin_id(), entrypoint, origin, validation_error)
+                cls._fail(family, plugin_cls.plugin_id(), entrypoint, package, validation_error)
                 return
 
             failure_id = plugin_cls.plugin_id()
             failure_prefix = ""
-            RuntimePluginRegistry.register_plugin(plugin_cls, entrypoint, origin)
+            RuntimePluginRegistry.register_plugin(plugin_cls, entrypoint, package)
             logger.debug(f"Registered plugin {plugin_cls.plugin_type()}:{plugin_cls.plugin_id()} from {entrypoint}")
         except Exception as exc:
-            cls._fail(family, failure_id, entrypoint, origin, f"{failure_prefix}{exc}", exc)
+            cls._fail(family, failure_id, entrypoint, package, f"{failure_prefix}{exc}", exc)
 
     @staticmethod
     def _fail(
         family: PluginFamily,
         plugin_id: str,
         entrypoint: Path,
-        origin: str,
+        package: str | None,
         reason: str,
         exc: Exception | None = None,
     ) -> None:
-        """Record a plugin that cannot load; ``_warn_about_failures`` reports it once per origin."""
-        logger.debug(f"Plugin {family.plugin_type}:{plugin_id} from {origin} failed to load: {reason}", exc_info=exc)
-        RuntimePluginRegistry.mark_failed(family.plugin_type, plugin_id, entrypoint, origin, reason)
+        """Record a plugin that cannot load; ``_warn_about_failures`` reports it once per source."""
+        logger.debug(f"Plugin {family.plugin_type}:{plugin_id} failed to load: {reason}", exc_info=exc)
+        RuntimePluginRegistry.mark_failed(family.plugin_type, plugin_id, entrypoint, package, reason)
 
     @staticmethod
     def _warn_about_failures() -> None:
-        """Log one warning per origin whose plugins failed to load, naming the first failure."""
-        failed_by_origin: dict[str, list[PluginRecord]] = {}
+        """Log one warning per source (a package, or the built-in plugins) whose plugins failed to load."""
+        failed_by_source: dict[str, list[PluginRecord]] = {}
         for record in RuntimePluginRegistry.list_plugins():
             if record.status is PluginStatus.FAILED:
-                failed_by_origin.setdefault(record.origin, []).append(record)
-        for origin, records in failed_by_origin.items():
+                failed_by_source.setdefault(record.source, []).append(record)
+        for source, records in failed_by_source.items():
             first = records[0].definition
             logger.warning(
-                f"{len(records)} plugin(s) from {origin} failed to load, e.g. "
+                f"{len(records)} plugin(s) from {source} failed to load, e.g. "
                 f"{first.plugin_type}:{first.plugin_id}: {records[0].error} (see the Plugins view)"
             )
 
@@ -219,11 +214,10 @@ class ApplicationPluginLoader:
         return Path(entrypoint.value.split(":", maxsplit=1)[0])
 
     @staticmethod
-    def _entrypoint_origin(entrypoint: importlib.metadata.EntryPoint) -> str:
+    def _entrypoint_package(entrypoint: importlib.metadata.EntryPoint) -> str:
+        """Return the normalized name of the distribution that provides *entrypoint*."""
         distribution = entrypoint.dist
-        if distribution is None:
-            return f"package:{entrypoint.name}"
-        return f"package:{distribution.name}"
+        return canonicalize_name(entrypoint.name if distribution is None else distribution.name)
 
 
 __all__ = ["ApplicationPluginLoader", "PluginFamily"]

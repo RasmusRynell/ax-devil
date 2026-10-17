@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ax_devil.modules.plugin_system import (
+    PLUGIN_API_VERSION,
     DecoderPlugin,
     FileToSceneDecoderDefinition,
     PayloadToSceneDecoderDefinition,
@@ -20,6 +21,10 @@ class CVATPlugin(DecoderPlugin):
     @classmethod
     def display_name(cls) -> str:
         return "CVAT"
+
+    @classmethod
+    def required_api_version(cls) -> int:
+        return PLUGIN_API_VERSION
 
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:

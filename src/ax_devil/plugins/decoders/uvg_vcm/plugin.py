@@ -1,6 +1,6 @@
 """Built-in registration for native UVG-VCM file annotations."""
 
-from ax_devil.modules.plugin_system import DecoderPlugin, FileToSceneDecoderDefinition
+from ax_devil.modules.plugin_system import PLUGIN_API_VERSION, DecoderPlugin, FileToSceneDecoderDefinition
 from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
 
 from .provider import UVGVCMSceneDataProvider
@@ -20,6 +20,11 @@ class UVGVCMPlugin(DecoderPlugin):
     def display_name(cls) -> str:
         """Return the name used in plugin listings."""
         return "UVG-VCM"
+
+    @classmethod
+    def required_api_version(cls) -> int:
+        """Declare the plugin API this plugin is built for."""
+        return PLUGIN_API_VERSION
 
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:

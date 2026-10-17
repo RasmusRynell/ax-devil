@@ -38,12 +38,12 @@ def _resolver_row(record: PluginRecord, add: Callable[[], None]) -> WorkspaceBro
     comes from show on hover."""
     definition = record.definition
     description = " ".join((definition.description or "").split())
-    origin = f"From {record.package}." if record.package else ""
+    source = f"From {record.package}." if record.package else ""
     return WorkspaceBrowserRow(
         row_id=f"resolver/{definition.plugin_id}",
         label=definition.display_name,
         icon_kind="playlist",
-        facts=tuple(line for line in ("Playlist resolver", description, origin) if line),
+        facts=tuple(line for line in ("Playlist resolver", description, source) if line),
         action=RowAction.ADD,
         add=add,
     )

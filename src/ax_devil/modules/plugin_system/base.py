@@ -46,9 +46,9 @@ class PluginBase(ABC):
         return None
 
     @classmethod
+    @abstractmethod
     def required_api_version(cls) -> int:
-        """Return the ax-devil plugin API version required by this plugin."""
-        return PLUGIN_API_VERSION
+        """Return the ax-devil plugin API version this plugin is built for; every plugin declares it."""
 
     @classmethod
     def definition(cls) -> PluginDefinitionBase:

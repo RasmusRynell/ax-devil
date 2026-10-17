@@ -239,12 +239,12 @@ def test_a_playlist_still_resolving_shows_loading_and_no_actions(
 def _external_resolver() -> PluginRecord:
     builtin = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "folder_pair")
     definition = PluginDefinitionBase(PLAYLIST_RESOLVER_PLUGIN_TYPE, "runs", "Experiment Runs", "Open each run.")
-    return replace(builtin, definition=definition, origin="package:lab-experiments")
+    return replace(builtin, definition=definition, package="lab-experiments")
 
 
 def _failed_resolver() -> PluginRecord:
     definition = PluginDefinitionBase(PLAYLIST_RESOLVER_PLUGIN_TYPE, "broken", "Broken", None)
-    return PluginRecord(definition, Path("broken"), "package:broken", PluginStatus.FAILED, error="import failed")
+    return PluginRecord(definition, Path("broken"), "broken", PluginStatus.FAILED, error="import failed")
 
 
 def test_add_from_lists_the_loaded_resolvers_whenever_the_view_is_shown(

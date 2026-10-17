@@ -58,7 +58,7 @@ class ExternalDecoder(DecoderPlugin):
         return 3
 
     @classmethod
-    def scene_model_version(cls) -> tuple[int, int] | None:
+    def scene_model_version(cls) -> tuple[int, int]:
         return SCENE_MODEL_VERSION
 
     @classmethod
@@ -116,21 +116,29 @@ class WrongType(ExternalDecoder):
         return "wrong-type"
 
 
-class UndeclaredSceneModel(ExternalDecoder):
+class UndeclaredSceneModel(DecoderPlugin):
     @classmethod
-    def scene_model_version(cls) -> tuple[int, int] | None:
-        return None
+    def required_api_version(cls) -> int:
+        return 3
+
+    @classmethod
+    def plugin_id(cls) -> str:
+        return PLUGIN_ID
+
+    @classmethod
+    def display_name(cls) -> str:
+        return "Undeclared"
 
 
 class NewerSceneMajor(ExternalDecoder):
     @classmethod
-    def scene_model_version(cls) -> tuple[int, int] | None:
+    def scene_model_version(cls) -> tuple[int, int]:
         return (SCENE_MODEL_VERSION[0] + 1, 0)
 
 
 class NewerSceneMinor(ExternalDecoder):
     @classmethod
-    def scene_model_version(cls) -> tuple[int, int] | None:
+    def scene_model_version(cls) -> tuple[int, int]:
         return (SCENE_MODEL_VERSION[0], SCENE_MODEL_VERSION[1] + 1)
 
 
@@ -151,7 +159,7 @@ def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.Mon
     resolver = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "external-resolver")
     assert (decoder.status, decoder.plugin_class) == (PluginStatus.LOADED, ExternalDecoder)
     assert (resolver.status, resolver.plugin_class) == (PluginStatus.LOADED, ExternalResolver)
-    assert decoder.origin == "package:example-distribution"
+    assert decoder.package == "example-distribution"
     assert decoder.entrypoint == Path("/site-packages/example-distribution")
     assert (
         RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "mot_challenge").status is PluginStatus.LOADED
@@ -168,12 +176,12 @@ def test_installed_entry_points_register_beside_builtins(monkeypatch: pytest.Mon
             id="host-name-missing",
         ),
         pytest.param(object, "PLUGIN_CLASS missing or invalid", id="not-a-plugin"),
-        pytest.param(UndeclaredApi, "must explicitly declare required_api_version", id="undeclared-api"),
+        pytest.param(UndeclaredApi, "does not implement required_api_version", id="undeclared-api"),
         pytest.param(BrokenApiDeclaration, "plugin validation failed: broken API declaration", id="raising-api"),
         pytest.param(FutureApi, "requires plugin API 999, host provides 3", id="future-api"),
         pytest.param(PreviousApi, "requires plugin API 1, host provides 3", id="previous-api"),
         pytest.param(WrongType, "expected 'decoder'", id="wrong-family"),
-        pytest.param(UndeclaredSceneModel, "must explicitly declare scene_model_version", id="no-scene-model"),
+        pytest.param(UndeclaredSceneModel, "does not implement scene_model_version", id="no-scene-model"),
         pytest.param(NewerSceneMajor, f"built for Scene model {SCENE_MODEL_VERSION[0] + 1}.0", id="scene-major"),
         pytest.param(
             NewerSceneMinor, f"built for Scene model {SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1] + 1}", id="minor"
@@ -190,7 +198,20 @@ def test_rejected_plugin_is_recorded_with_its_reason(monkeypatch: pytest.MonkeyP
     resolver = RuntimePluginRegistry.get_plugin(PLAYLIST_RESOLVER_PLUGIN_TYPE, "external-resolver")
     assert resolver.status is PluginStatus.LOADED
     decoders = RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE)
-    assert any(other.origin == "builtin" and other.status is PluginStatus.LOADED for other in decoders)
+    assert any(other.package is None and other.status is PluginStatus.LOADED for other in decoders)
+
+
+@pytest.mark.parametrize(
+    ("plugin", "missing"),
+    [(UndeclaredApi, "required_api_version, scene_model_version"), (UndeclaredSceneModel, "scene_model_version")],
+)
+def test_a_missing_version_declaration_is_named_instead_of_reported_as_a_bad_version(
+    monkeypatch: pytest.MonkeyPatch, plugin: Any, missing: str
+) -> None:
+    _load_installed(monkeypatch, decoders=[_entry_point(plugin)])
+
+    record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID)
+    assert (record.status, record.error) == (PluginStatus.FAILED, f"does not implement {missing}")
 
 
 def test_resolver_without_headless_resolve_fails_to_load_and_says_why(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -234,7 +255,9 @@ def test_registration_failure_is_recorded_under_the_plugin_id(monkeypatch: pytes
     assert record.error == "registration failed"
 
 
-def test_a_builtin_that_fails_to_import_is_listed_as_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_builtin_that_fails_to_import_is_listed_as_failed(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """A broken built-in shows in the Plugins view like any other failed plugin, and the rest still load."""
     import_module = importlib.import_module
 
@@ -243,13 +266,16 @@ def test_a_builtin_that_fails_to_import_is_listed_as_failed(monkeypatch: pytest.
             raise ImportError("mot is broken")
         return import_module(name)
 
+    caplog.set_level(WARNING, logger="ax_devil.ax_devil.modules.plugin_system.loader")
     monkeypatch.setattr(importlib, "import_module", broken_mot)
     _load_installed(monkeypatch)
 
     record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, "mot")
-    assert (record.status, record.origin) == (PluginStatus.FAILED, "builtin")
+    assert (record.status, record.package) == (PluginStatus.FAILED, None)
     assert record.error is not None and "mot is broken" in record.error
     assert any(r.status is PluginStatus.LOADED for r in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE))
+    warnings = [m for m in caplog.messages if "failed to load" in m]
+    assert len(warnings) == 1 and warnings[0].startswith("1 plugin(s) from built-in failed to load")
 
 
 def test_a_package_whose_plugins_fail_is_warned_about_once(
@@ -276,7 +302,13 @@ def test_a_package_whose_plugins_fail_is_warned_about_once(
     )
 
     warnings = [message for message in caplog.messages if "failed to load" in message]
-    assert len(warnings) == 1 and "2 plugin(s) from package:suite" in warnings[0]
+    assert len(warnings) == 1 and "2 plugin(s) from suite" in warnings[0]
+
+
+def test_a_package_is_recorded_by_its_normalized_distribution_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    _load_installed(monkeypatch, decoders=[_entry_point(ExternalDecoder, distribution="Lab_Experiments")])
+
+    assert RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID).package == "lab-experiments"
 
 
 def test_failures_sharing_a_plugin_id_are_all_kept(
@@ -289,7 +321,7 @@ def test_failures_sharing_a_plugin_id_are_all_kept(
     )
 
     failed = [r for r in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE) if r.status is PluginStatus.FAILED]
-    assert sorted(r.origin for r in failed) == ["package:one", "package:two"]
+    assert sorted(str(r.package) for r in failed) == ["one", "two"]
     assert len([m for m in caplog.messages if "failed to load" in m]) == 2
 
 
@@ -301,7 +333,7 @@ def test_valid_plugin_replaces_failed_same_id(monkeypatch: pytest.MonkeyPatch) -
 
     record = RuntimePluginRegistry.get_plugin(DECODER_PLUGIN_TYPE, PLUGIN_ID)
     assert record.status is PluginStatus.LOADED
-    assert record.origin == "package:valid"
+    assert record.package == "valid"
 
 
 def test_duplicate_plugin_id_does_not_replace_loaded_plugin(
