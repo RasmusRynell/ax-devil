@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import cast
 from unittest.mock import patch
@@ -29,6 +30,7 @@ from ax_devil.modules.workspace.core import (
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
+    PlaylistResolver,
     PlaylistSettings,
     RecentWorkspaces,
     SeekableVideoContent,
@@ -59,6 +61,7 @@ from tests.helpers.workspace import (
     inline_resolver,
     quit_app,
     recent_workspace_names,
+    wait_for_background_work,
 )
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
@@ -237,44 +240,54 @@ def test_views_follow_the_rows_and_open_and_close_content_through_the_controller
         assert _center(workspace_session).get_widget_count() == 1
 
 
-class _TwoPlaylists:
+class _TwoPlaylists(PlaylistResolver):
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [_make_playlist("train"), _make_playlist("test")]
 
 
-class _NamedPlaylist:
+class _NamedPlaylist(PlaylistResolver):
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [_make_playlist(str(settings["name"]))]
 
 
-class _GrowingPlaylist:
-    """A playlist that gains an entry on every resolve."""
+class _ClipsFolder(PlaylistResolver):
+    """A playlist with an entry for each ``.mp4`` file in a folder, which it asks to have watched."""
 
-    def __init__(self) -> None:
-        self.clips = ["first.mp4"]
+    def __init__(self, folder: Path) -> None:
+        self.folder = folder
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
-        entries = tuple(PlaylistEntry(_make_video(clip).standalone_lanes(), True) for clip in self.clips)
-        self.clips.append(f"clip{len(self.clips)}.mp4")
+        clips = sorted(path.name for path in self.folder.glob("*.mp4"))
+        entries = tuple(PlaylistEntry(_make_video(clip).standalone_lanes(), True) for clip in clips)
         return [PlaylistContent(display_name="Runs", entries=entries)]
 
+    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
+        return [self.folder]
 
-def test_a_rescan_updates_the_rows_and_leaves_open_viewers_as_they_are(
+
+def test_files_regenerated_on_disk_update_the_rows_and_leave_open_viewers_as_they_are(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
-    session = _session(render_catalog_manager, tmp_path, FakeResolutionContext(resolvers={"runs": _GrowingPlaylist()}))
+    folder = tmp_path / "runs"
+    folder.mkdir()
+    (folder / "first.mp4").touch()
+    session = _session(
+        render_catalog_manager, tmp_path, FakeResolutionContext(resolvers={"runs": _ClipsFolder(folder)})
+    )
     qtbot.addWidget(session.widget())
-    runs = PlaylistItem(label="Runs", resolver="runs")
+    threads = set(threading.enumerate())
 
     with patch(_OFFLINE_VIEWER, DummyViewer):
-        session.add_items([runs])
+        session.add_items([PlaylistItem(label="Runs", resolver="runs")])
         viewer = _focused(session)
         shown = viewer.payload
-        _store(session).rescan_item(runs.id)
+        wait_for_background_work(qtbot, threads)  # The folder is now watched; later files are changes.
+        (folder / "second.mp4").touch()
+
+        qtbot.waitUntil(lambda: _required_item_row(session).childCount() == 2, timeout=10_000)
 
     assert _center(session).get_widget_count() == 1
     assert viewer.payload is shown
-    assert _required_item_row(session).childCount() == 2
 
 
 def test_replacing_the_workspace_closes_viewers_even_when_an_item_id_is_kept(
@@ -892,29 +905,3 @@ def test_connect_and_disconnect_in_the_workspace_view_open_and_close_the_camera(
 
     assert _center(workspace_session).get_widget_count() == 0
     assert not _is_open(_required_item_row(workspace_session))
-
-
-def test_rescan_in_the_workspace_view_resolves_the_playlist_again(
-    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
-) -> None:
-    class Growing:
-        """A resolver whose playlist gains an entry each time it is resolved."""
-
-        def __init__(self) -> None:
-            self.entries = 0
-
-        def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
-            self.entries += 1
-            lanes = _make_video("clip.mp4").standalone_lanes()
-            return [PlaylistContent(display_name="Runs", entries=(PlaylistEntry(lanes, True),) * self.entries)]
-
-    session = _session(render_catalog_manager, tmp_path, FakeResolutionContext(resolvers={"folder_pair": Growing()}))
-    qtbot.addWidget(session.widget())
-    session.widget().show()
-    _store(session).replace_workspace(Workspace(items=(PlaylistItem(resolver="folder_pair"),)))
-    assert _required_item_row(session).childCount() == 1
-
-    _press_row_action(session, "Runs")
-
-    assert _required_item_row(session).childCount() == 2
-    assert _center(session).get_widget_count() == 0

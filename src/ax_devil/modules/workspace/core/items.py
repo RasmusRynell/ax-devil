@@ -12,6 +12,7 @@ from typing import Any, ClassVar, TypeVar
 from uuid import uuid4
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference, integer_default
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.content import Content, LiveOverlayMode, numbered_when_shared
@@ -105,6 +106,13 @@ class WorkspaceItem(ABC):
     def hosts(self) -> tuple[str, ...]:
         """Return the network hosts the item connects to, as entered and expanded; none for items that do not."""
         return ()
+
+    def watched_paths(self, context: ResolutionContext) -> SourcePaths:
+        """Return the files and folders whose changes make this item's Content stale; none by default.
+
+        Pure: it reads no file, since it runs on the GUI thread.
+        """
+        return SourcePaths()
 
     def with_label(self: _ItemT, label: str) -> _ItemT:
         """Return this item renamed to *label*, keeping its id.
@@ -209,6 +217,10 @@ class VideoItem(WorkspaceItem):
             OverlayFile(_path_from_json(entry, "path", base_dir), _read(entry, "decoder", str)) for entry in entries
         )
         return {"video": _path_from_json(data, "video", base_dir), "overlays": overlays}
+
+    def watched_paths(self, context: ResolutionContext) -> SourcePaths:
+        """Return the overlay files; changes to the video file do not matter."""
+        return SourcePaths(files=frozenset(overlay.path for overlay in self.overlays))
 
     def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Return the seekable video, after checking that its files exist."""
@@ -427,6 +439,17 @@ class PlaylistItem(WorkspaceItem):
     def default_name(self) -> str:
         """Return the resolver id; resolved playlists keep the names their resolver gives them."""
         return self.resolver
+
+    def watched_paths(self, context: ResolutionContext) -> SourcePaths:
+        """Return the folders the resolver reads from, or none when it is missing or names none."""
+        try:
+            folders = context.playlist_resolver(self.resolver).watched_folders(deepcopy(self.settings))
+        except ItemResolutionError:
+            return SourcePaths()
+        except Exception as exc:  # A plugin may fail in any way; the item stays, unwatched.
+            logger.warning(f"Playlist resolver '{self.resolver}' could not name its watched folders: {exc}")
+            return SourcePaths()
+        return SourcePaths(folders=frozenset(folders))
 
     def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings.

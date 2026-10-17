@@ -57,6 +57,11 @@ class FolderPairResolverPlugin(PlaylistResolverPlugin):
         """Return the playlist of matched video and overlay files the settings describe."""
         return resolve_settings(settings, token)
 
+    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
+        """Return the video and overlay folders, whose files decide which pairs match."""
+        folders = (settings.get("videos_dir"), settings.get("overlays_dir"))
+        return [Path(folder) for folder in folders if isinstance(folder, str) and folder]
+
     def create_settings_widget(self) -> PlaylistResolverWidget:
         from .settings_widget import FolderPairSettingsWidget
 

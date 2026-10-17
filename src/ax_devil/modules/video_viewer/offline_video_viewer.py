@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
+from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt, QThread, Signal
 from PySide6.QtGui import QAction
@@ -49,6 +50,7 @@ from ax_devil.modules.workspace.core import (
     BookmarkPosition,
     ConsiderationItemRef,
     ConsiderationQuery,
+    Content,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
@@ -97,6 +99,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._content = content
         self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
+        self._consideration_query = consideration_query
         self._navigation = OfflineViewerNavigation(content, consideration_query)
         # A start frame belongs to the requested entry, which opens even when the workspace excludes it, so the frame
         # is never moved to another video. Without one, an excluded entry gives way to the next considered one.
@@ -236,6 +239,104 @@ class OfflineVideoViewerWidget(ViewerWidget):
             QMessageBox.warning(self, "Offline Viewer", f"Failed to load entry {index + 1}: {error}")
             return
         self._install_entry(runtime, start_frame)
+
+    def shown_source_paths(self) -> frozenset[Path]:
+        """Return the overlay files of the entry on screen; the video files are not included."""
+        entries = self._get_entries()
+        if not entries:
+            return frozenset()
+        return entries[self._current_index].source_paths().files
+
+    def reload(self, content: Content) -> None:
+        """Read the entry on screen again from *content*, keeping the frame, play state and everything the viewer holds.
+
+        The new media opens in the background while the current entry stays on screen and playing. When it is ready it
+        replaces the current one at the frame the current one is on then, clamped to the new length, and playing if it
+        was. When it cannot be shown, the current entry stays and a warning says why. Zoom and the media tools reset,
+        as for any entry change.
+        """
+        if self._is_cleaned_up:
+            return
+        if not isinstance(content, (SeekableVideoContent, PlaylistContent)):
+            self.show_warning(f"Could not reload {self.get_display_name()}: it is no longer a local video.")
+            return
+        key = self._content.bookmark_entries[self._current_index]
+        if key not in content.bookmark_entries:
+            self.show_warning(f"Could not reload {self.get_display_name()}: its entry is gone.")
+            return
+        index = content.bookmark_entries.index(key)
+        if (len(content.entries) > 1) != (self._entry_count() > 1):
+            self.show_warning(f"Could not reload {self.get_display_name()}: its number of entries changed.")
+            return
+        navigation = OfflineViewerNavigation(content, self._consideration_query)
+        if self._runtime is None:
+            # Nothing is shown to keep: take the new content and open its entry as any entry opens.
+            self._swap_content(content, navigation, index)
+            if self._initial_entry_loaded:
+                self._open_entry(index)
+            return
+        entry = content.entries[index]
+        lane_indices = tuple(
+            lane_index for lane_index in range(len(entry.lanes)) if navigation.is_lane_considered(index, lane_index)
+        )
+        self._opening.submit(
+            self._opening_jobs,
+            "reload offline entry",
+            partial(open_entry_media, entry, lane_indices, QThread.currentThread()),
+            on_result=partial(self._on_reload_opened, content, navigation, index),
+            on_error=lambda error: self._on_reload_opened(content, navigation, index, EntryMedia(error=str(error))),
+            on_discard=release_media,
+        )
+
+    def _swap_content(
+        self, content: SeekableVideoContent | PlaylistContent, navigation: OfflineViewerNavigation, index: int
+    ) -> None:
+        """Hold *content* and its *navigation* from now on, with entry *index* as the current one."""
+        moved = index != self._current_index
+        self._content = content
+        self._display_name = content.display_name
+        self._navigation = navigation
+        self._current_index = index
+        self._update_nav_state()
+        if moved:
+            self.current_entry_changed.emit(index)
+        self.on_screen_item_changed.emit(self.current_on_screen_item())
+
+    def _on_reload_opened(
+        self,
+        content: SeekableVideoContent | PlaylistContent,
+        navigation: OfflineViewerNavigation,
+        index: int,
+        media: EntryMedia,
+    ) -> None:
+        """Replace the entry on screen with the reloaded one, or keep it and say why that was not possible."""
+        runtime = self._runtime
+        error = media.error
+        reloaded: OfflineSession | None = None
+        if error is None and runtime is not None:
+            try:
+                reloaded = OfflineSession.build(
+                    self,
+                    media,
+                    render_catalog_manager=self._render_catalog_manager,
+                    use_lane_controls=len(content.entries) == 1,
+                    lane_visibility=self._lane_visibility,
+                    pane_title=content.display_name,
+                )
+            except Exception as exc:
+                logger.exception(f"Failed to build displays for the reloaded entry {index + 1}")
+                error = str(exc)
+        if reloaded is None or runtime is None:
+            release_media(media)
+            if error is not None:
+                self.show_warning(f"Could not reload {self.get_display_name()}: {error}.")
+            return
+        frame, playing = runtime.current_frame, runtime.is_playing
+        self._teardown_runtime()
+        self._swap_content(content, navigation, index)
+        self._install_entry(reloaded, frame)
+        if playing:
+            self._start_playback()
 
     def _show_loading_indicator(self) -> LoadingIndicator:
         if self._loading_indicator is None:

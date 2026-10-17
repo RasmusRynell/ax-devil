@@ -74,11 +74,18 @@ its row opens nothing. A result for an item removed meanwhile, or for a Workspac
 for an item renamed meanwhile is named after the new label. Renaming never resolves again: `ItemResolution` keeps the
 Content as named without a label and names it after the item.
 
-`WorkspaceStore.rescan_item` resolves an item again on request, for example after files were added to a playlist's
-folder. The new result, an error included, replaces the old one only while the item and Workspace are still current.
-Exclusions stay for Content that still exists and are dropped for Content that is gone. A rescan never opens a viewer,
-never changes what open viewers show, since they keep the Content they opened, and never makes the Workspace
-modified, since results are never saved.
+The store watches what each item was read from and resolves it again when that changes, so the UI follows regenerated
+files. A Video Item names its overlay files and a Playlist Item the folders its resolver reads (`watched_folders`,
+pure); what an item's Content names (`Content.source_paths()`: overlay files, never video files) is watched too, so a
+resolver that names no folder still gets its files. The
+[`FileWatcher`](../../src/ax_devil/modules/file_watching/README.md) reports the paths that changed, then the item
+resolves again, and `sources_changed` carries the item and those paths. The new result, an error included, replaces the old one only while the item and Workspace are still current, the latest
+request wins, and a change while the item first resolves makes it resolve once more. Exclusions stay for Content that
+still exists and are dropped for Content that is gone. This never opens a viewer, never changes what open viewers
+show, since they keep the Content they opened, and never makes the Workspace modified, since results are never saved;
+an entry list that changed shows no banner. A viewer whose on-screen overlay files changed is offered a reload and
+never reloaded by itself; reloading reads the data again in place and keeps the playhead, and if that fails the viewer
+keeps showing what it had.
 
 An item that fails to resolve stays in the Workspace with its reason, shown as one unavailable row; when the user added
 it, they are also told at once. The Add Live Stream and Add Playlist dialogs resolve their item first and stay open

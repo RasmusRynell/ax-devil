@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, BinaryIO, Protocol
 
 from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.modules.cache import CacheManager, IndexedFrameCache
@@ -32,18 +34,30 @@ class SourceFingerprint:
 
     mtime_ns: int
     size: int
+    inode: int
 
     @classmethod
     def from_path(cls, file_path: Path) -> "SourceFingerprint":
+        """Fingerprint the file currently at ``file_path``."""
         if not file_path.is_file():
             raise FileNotFoundError(f"File not found: {file_path}")
-        stat_result = file_path.stat()
-        return cls(mtime_ns=int(stat_result.st_mtime_ns), size=int(stat_result.st_size))
+        return cls.from_stat(file_path.stat())
+
+    @classmethod
+    def from_stat(cls, stat_result: os.stat_result) -> "SourceFingerprint":
+        """Fingerprint the file a ``stat`` or ``fstat`` result describes."""
+        return cls(
+            mtime_ns=int(stat_result.st_mtime_ns),
+            size=int(stat_result.st_size),
+            inode=int(stat_result.st_ino),
+        )
 
     def to_metadata(self) -> dict[str, int]:
+        """Return the JSON-compatible form persisted with the artifact."""
         return {
             "mtime_ns": self.mtime_ns,
             "size": self.size,
+            "inode": self.inode,
         }
 
 
@@ -181,6 +195,18 @@ def _persisted_metadata(metadata: dict[str, Any], history: SceneHistoryRecords) 
     return {**metadata, _HISTORY_KEY: history.to_metadata()}
 
 
+def _write_text_atomically(path: Path, text: str) -> None:
+    """Write *text* to a temporary sibling and replace *path*, so readers never see a partial file."""
+    descriptor, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file_obj:
+            file_obj.write(text)
+        os.replace(temporary_name, path)
+    except BaseException:
+        Path(temporary_name).unlink(missing_ok=True)
+        raise
+
+
 def build_scene_artifact_identity(
     *,
     context: SceneStoreContext,
@@ -294,13 +320,12 @@ class IndexedFrameSceneStore:
 
     def _rebuild(self) -> SceneCatalog:
         logger.debug(f"Rebuilding indexed frame store for {self._file_path.name}")
+        # Taken before reading, so a write during the build reads as newer than the cached artifact.
+        fingerprint = SourceFingerprint.from_path(self._file_path)
         payloads = self._context.iter_payloads()
         decoder = self._context.decoder_factory()
         build_result = self._context.build_scene_maps(payloads, decoder)
-        artifact_identity = build_scene_artifact_identity(
-            context=self._context,
-            fingerprint=SourceFingerprint.from_path(self._file_path),
-        )
+        artifact_identity = build_scene_artifact_identity(context=self._context, fingerprint=fingerprint)
         collector = SceneHistoryCollector()
         for timestamp_key, scene in build_result.scene_map.items():
             collector.add(timestamp_key, scene)
@@ -351,7 +376,9 @@ class SourceIndexedSceneStore:
         self._file_path = Path(file_path)
         self._context = context
         self._decoder = context.decoder_factory()
-        self._source_handle: Any | None = None
+        # Held from construction so the catalog describes exactly this inode, even if the path is replaced later.
+        self._source_handle: BinaryIO | None = self._file_path.open("rb")
+        self._source_changed = False
         cache_manager = CacheManager()
         self._index_path = cache_manager.get_cache_path(
             cache_type=cache_namespace,
@@ -359,7 +386,11 @@ class SourceIndexedSceneStore:
             suffix=".scene-index.json",
         )
         self._line_locations: dict[int, tuple[int, int]] = {}
-        self._catalog = self._load_or_build()
+        try:
+            self._catalog = self._load_or_build()
+        except BaseException:
+            self.close()
+            raise
 
     @property
     def catalog(self) -> SceneCatalog:
@@ -397,7 +428,7 @@ class SourceIndexedSceneStore:
             cached_frames=line_locations.keys(),
             expected_artifact_identity=build_scene_artifact_identity(
                 context=self._context,
-                fingerprint=SourceFingerprint.from_path(self._file_path),
+                fingerprint=self._source_fingerprint(),
             ),
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,
             restore_additional_state=self._context.restore_additional_state_from_cache,
@@ -411,6 +442,8 @@ class SourceIndexedSceneStore:
 
     def _rebuild(self) -> SceneCatalog:
         logger.debug(f"Building source index store for {self._file_path.name}")
+        # Taken before reading, so a write during the build reads as newer than the cached artifact.
+        fingerprint = self._source_fingerprint()
         line_locations: dict[int, tuple[int, int]] = {}
         timestamp_to_sequence: dict[int, int] = {}
         sequence_to_timestamp: dict[int, int] = {}
@@ -419,65 +452,63 @@ class SourceIndexedSceneStore:
         candidate_lines = 0  # Lines that held a record, whether or not it could be decoded.
         skipped = SkippedRecords("lines", "Objects on skipped lines are not shown.")
 
-        with self._file_path.open("rb") as file_obj:
-            raw_line_number = 0
-            while True:
-                offset = file_obj.tell()
-                raw_line = file_obj.readline()
-                if not raw_line:
-                    break
-                raw_line_number += 1
-                try:
-                    decoded_line = raw_line.decode("utf-8")
-                except UnicodeDecodeError as exc:
-                    logger.warning(
-                        f"{self._file_path.name} [{self._context.decoder_name}] line {raw_line_number - 1}: {exc}"
-                    )
-                    candidate_lines += 1
-                    skipped.add(f"line {raw_line_number}: not valid UTF-8")
-                    continue
-
-                normalized_line = self._context.normalize_payload(decoded_line)
-                if normalized_line is None:
-                    continue
-
-                total_lines += 1
+        file_obj = self._open_source_handle()
+        file_obj.seek(0)
+        raw_line_number = 0
+        while True:
+            offset = file_obj.tell()
+            raw_line = file_obj.readline()
+            if not raw_line:
+                break
+            raw_line_number += 1
+            try:
+                decoded_line = raw_line.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                logger.warning(
+                    f"{self._file_path.name} [{self._context.decoder_name}] line {raw_line_number - 1}: {exc}"
+                )
                 candidate_lines += 1
-                payload_index = total_lines - 1
-                try:
-                    scene = self._decoder.decode(normalized_line)
-                    if scene is None:
-                        logger.debug(f"Decoder returned no scene for line {payload_index}, skipping")
-                        continue
-                except Exception as exc:
-                    logger.warning(f"{self._file_path.name} [{self._context.decoder_name}] line {payload_index}: {exc}")
-                    skipped.add(f"line {raw_line_number}: {exc}")
-                    continue
+                skipped.add(f"line {raw_line_number}: not valid UTF-8")
+                continue
 
-                timestamp_key = self._context.extract_timestamp_key(scene)
-                if timestamp_key is None:
-                    logger.warning(
-                        f"{self._file_path.name} [{self._context.decoder_name}] line {payload_index}: "
-                        "scene has no timestamp, skipping"
-                    )
-                    continue
+            normalized_line = self._context.normalize_payload(decoded_line)
+            if normalized_line is None:
+                continue
 
-                sequence_key = self._context.extract_sequence_key(scene, payload_index)
-                timestamp_to_sequence[timestamp_key] = sequence_key
-                previous_timestamp = sequence_to_timestamp.get(sequence_key)
-                if previous_timestamp is not None and previous_timestamp != timestamp_key:
-                    logger.debug(
-                        f"Sequence {sequence_key} already mapped to {previous_timestamp}, updating to {timestamp_key}"
-                    )
-                sequence_to_timestamp[sequence_key] = timestamp_key
-                line_locations[timestamp_key] = (offset, len(raw_line))
-                collector.add(timestamp_key, scene)
+            total_lines += 1
+            candidate_lines += 1
+            payload_index = total_lines - 1
+            try:
+                scene = self._decoder.decode(normalized_line)
+                if scene is None:
+                    logger.debug(f"Decoder returned no scene for line {payload_index}, skipping")
+                    continue
+            except Exception as exc:
+                logger.warning(f"{self._file_path.name} [{self._context.decoder_name}] line {payload_index}: {exc}")
+                skipped.add(f"line {raw_line_number}: {exc}")
+                continue
+
+            timestamp_key = self._context.extract_timestamp_key(scene)
+            if timestamp_key is None:
+                logger.warning(
+                    f"{self._file_path.name} [{self._context.decoder_name}] line {payload_index}: "
+                    "scene has no timestamp, skipping"
+                )
+                continue
+
+            sequence_key = self._context.extract_sequence_key(scene, payload_index)
+            timestamp_to_sequence[timestamp_key] = sequence_key
+            previous_timestamp = sequence_to_timestamp.get(sequence_key)
+            if previous_timestamp is not None and previous_timestamp != timestamp_key:
+                logger.debug(
+                    f"Sequence {sequence_key} already mapped to {previous_timestamp}, updating to {timestamp_key}"
+                )
+            sequence_to_timestamp[sequence_key] = timestamp_key
+            line_locations[timestamp_key] = (offset, len(raw_line))
+            collector.add(timestamp_key, scene)
 
         self._line_locations = line_locations
-        artifact_identity = build_scene_artifact_identity(
-            context=self._context,
-            fingerprint=SourceFingerprint.from_path(self._file_path),
-        )
+        artifact_identity = build_scene_artifact_identity(context=self._context, fingerprint=fingerprint)
         history = collector.records()
         warning = skipped.warning(candidate_lines)
         warnings = (warning,) if warning is not None else ()
@@ -496,7 +527,7 @@ class SourceIndexedSceneStore:
             "line_locations": {str(key): [offset, length] for key, (offset, length) in line_locations.items()},
         }
         self._index_path.parent.mkdir(parents=True, exist_ok=True)
-        self._index_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        _write_text_atomically(self._index_path, json.dumps(payload, separators=(",", ":")))
         return SceneCatalog(
             total_lines=total_lines,
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,
@@ -509,13 +540,21 @@ class SourceIndexedSceneStore:
         )
 
     def load_scene(self, timestamp_key: int) -> Scene | None:
+        if self._source_changed:
+            return None
         location = self._line_locations.get(timestamp_key)
         if location is None:
             return None
-        handle = self._ensure_source_handle()
+        handle = self._open_source_handle()
         offset, length = location
         handle.seek(offset)
         raw_line = handle.read(length)
+        # A writer that rewrites the file in place moves the offsets under the index; stop serving instead of
+        # decoding the wrong bytes. A rename-replace leaves this inode untouched and keeps serving it.
+        if self._source_fingerprint() != self._catalog.artifact_identity.source_fingerprint:
+            self._source_changed = True
+            logger.warning(f"{self._file_path.name} changed while open; no longer serving overlays from it")
+            return None
         try:
             decoded_line = raw_line.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -534,10 +573,13 @@ class SourceIndexedSceneStore:
             )
             return None
 
-    def _ensure_source_handle(self) -> Any:
+    def _open_source_handle(self) -> BinaryIO:
         if self._source_handle is None:
-            self._source_handle = self._file_path.open("rb")
+            raise ValueError(f"Scene store for {self._file_path.name} is closed")
         return self._source_handle
+
+    def _source_fingerprint(self) -> SourceFingerprint:
+        return SourceFingerprint.from_stat(os.fstat(self._open_source_handle().fileno()))
 
     def close(self) -> None:
         if self._source_handle is not None:

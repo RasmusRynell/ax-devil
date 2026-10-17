@@ -12,6 +12,7 @@ from PySide6.QtCore import QCoreApplication, QObject
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import NEVER, CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.workspace.core import (
     Bookmark,
@@ -25,6 +26,7 @@ from ax_devil.modules.workspace.core import (
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
+    PlaylistResolver,
     PlaylistSettings,
     VideoItem,
     Workspace,
@@ -35,10 +37,10 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_playlist, make_video
-from tests.helpers.workspace import FakeResolutionContext, content_item, inline_resolver
+from tests.helpers.workspace import FakeFileWatcher, FakeResolutionContext, content_item, inline_resolver
 
 
-class _TwoPlaylists:
+class _TwoPlaylists(PlaylistResolver):
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [make_playlist("train"), make_playlist("test")]
 
@@ -197,7 +199,7 @@ def test_unknown_and_out_of_range_refs_are_ignored() -> None:
     assert store.is_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0))
 
 
-class _CountingResolver:
+class _CountingResolver(PlaylistResolver):
     def __init__(self) -> None:
         self.calls = 0
 
@@ -365,7 +367,7 @@ def test_clearing_a_saved_label_shows_each_kinds_default_name_after_reopening(tm
     assert [content.display_name for content in store.contents()] == ["lot.mp4", "camera.local"]
 
 
-class _BlockingResolver:
+class _BlockingResolver(PlaylistResolver):
     """Resolve to two playlists once the test releases it, recording the thread it ran on."""
 
     def __init__(self) -> None:
@@ -629,23 +631,33 @@ def test_replacing_the_workspace_signals_that_bookmarks_changed(tmp_path: Path) 
     assert changes == [(bookmark,), ()]
 
 
-class _Folder:
+class _Folder(PlaylistResolver):
     """A resolver over a folder the test changes: one playlist with an entry per clip, or an error once it is empty.
 
-    Clips named ``hidden…`` are left out by default.
+    Clips named ``hidden…`` are left out by default; each has one overlay file. ``watched_when_resolving`` records
+    what the store had registered with the watcher each time the resolver ran.
     """
 
     def __init__(self, *clips: str) -> None:
         self.clips = list(clips)
+        self.watcher: FakeFileWatcher | None = None
+        self.watched_when_resolving: list[dict[str, SourcePaths]] = []
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
+        if self.watcher is not None:
+            self.watched_when_resolving.append(dict(self.watcher.watched))
         if not self.clips:
             raise OSError("Folder not found: /runs")
         entries = tuple(
-            PlaylistEntry(make_video(clip).standalone_lanes(), default_considered=not clip.startswith("hidden"))
+            PlaylistEntry(
+                make_video(clip, overlay_count=1).standalone_lanes(), default_considered=not clip.startswith("hidden")
+            )
             for clip in self.clips
         )
         return [PlaylistContent(display_name="Runs", entries=entries)]
+
+    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
+        return [Path("/runs")]
 
 
 def _entry_names(store: WorkspaceStore) -> list[str]:
@@ -653,9 +665,34 @@ def _entry_names(store: WorkspaceStore) -> list[str]:
     return [entry.display_label(index) for playlist in playlists for index, entry in enumerate(playlist.entries)]
 
 
-def test_rescanning_follows_the_folder_and_keeps_exclusions_only_of_what_still_exists(tmp_path: Path) -> None:
+def _folder_store(folder: _Folder) -> tuple[WorkspaceStore, FakeFileWatcher]:
+    watcher = FakeFileWatcher()
+    folder.watcher = watcher
+    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})), watcher=watcher)
+    return store, watcher
+
+
+def test_the_files_an_item_was_read_from_are_watched_from_before_it_resolves_until_it_goes() -> None:
+    folder = _Folder("a.mp4")
+    store, watcher = _folder_store(folder)
+    runs, video = PlaylistItem(resolver="folder"), content_item(make_video("clip.mp4", overlay_count=1))
+    runs_folder = SourcePaths(folders=frozenset({Path("/runs")}))
+    overlay = SourcePaths(files=frozenset({Path("/tmp/Overlay 1.txt")}))
+
+    store.add_items([runs, video])
+
+    [watched_when_resolving] = folder.watched_when_resolving
+    assert watched_when_resolving[runs.id] == runs_folder, "a change while resolving must be noticed"
+    assert watcher.watched == {runs.id: runs_folder | overlay, video.id: overlay}
+    store.remove_item(runs.id)
+    assert list(watcher.watched) == [video.id]
+    store.replace_workspace(Workspace())
+    assert watcher.watched == {}
+
+
+def test_a_change_resolves_the_item_again_and_keeps_exclusions_only_of_what_still_exists(tmp_path: Path) -> None:
     folder = _Folder("a.mp4", "b.mp4", "c.mp4")
-    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})))
+    store, watcher = _folder_store(folder)
     runs = PlaylistItem(label="Runs", resolver="folder")
     store.add_items([runs])
     store.save_workspace(tmp_path / "runs.ax-devil.workspace")
@@ -666,82 +703,92 @@ def test_rescanning_follows_the_folder_and_keeps_exclusions_only_of_what_still_e
 
     store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
     store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 2), False)
-    rescanned: list[ItemResolution] = []
+    changes: list[tuple[str, frozenset[Path]]] = []
     state_changes: list[None] = []
-    store.item_rescanned.connect(rescanned.append)
+    store.sources_changed.connect(lambda item_id, paths: changes.append((item_id, paths)))
     store.state_changed.connect(lambda: state_changes.append(None))
 
     folder.clips = ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "hidden.mp4"]
-    store.rescan_item(runs.id)
+    watcher.report(runs.id, Path("/runs/d.mp4"), Path("/runs/hidden.mp4"))
     assert _entry_names(store) == ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "hidden.mp4"]
     assert [considered(index) for index in range(5)] == [False, True, False, True, False]
 
     folder.clips = ["a.mp4", "b.mp4"]
-    store.rescan_item(runs.id)
+    watcher.report(runs.id, Path("/runs/c.mp4"))
     assert _entry_names(store) == ["a.mp4", "b.mp4"]
     folder.clips = ["a.mp4", "b.mp4", "c.mp4"]
-    store.rescan_item(runs.id)
+    watcher.report(runs.id, Path("/runs/c.mp4"))
     assert [considered(index) for index in range(3)] == [False, True, True]
 
-    assert len(rescanned) == 3 and rescanned[-1] == store.resolution(runs.id)
+    assert [paths for _item_id, paths in changes] == [
+        frozenset({Path("/runs/d.mp4"), Path("/runs/hidden.mp4")}),
+        frozenset({Path("/runs/c.mp4")}),
+        frozenset({Path("/runs/c.mp4")}),
+    ]
+    assert {item_id for item_id, _paths in changes} == {runs.id}
     assert [content.display_name for content in store.contents()] == ["Runs"]
     assert not store.is_modified and state_changes == []
 
 
-def test_a_rescan_that_inserts_an_entry_before_an_excluded_one_keeps_that_entry_excluded() -> None:
+def test_a_change_that_inserts_an_entry_before_an_excluded_one_keeps_that_entry_excluded() -> None:
     folder = _Folder("b.mp4", "c.mp4")
-    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})))
+    store, watcher = _folder_store(folder)
     runs = PlaylistItem(label="Runs", resolver="folder")
     store.add_items([runs])
     [playlist] = store.contents()
     store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
 
     folder.clips = ["a.mp4", "b.mp4", "c.mp4"]
-    store.rescan_item(runs.id)
+    watcher.report(runs.id, Path("/runs/a.mp4"))
 
-    [rescanned] = (cast(PlaylistContent, content) for content in store.contents())
+    [changed] = (cast(PlaylistContent, content) for content in store.contents())
     considered = {
-        entry.display_label(index): store.is_item_considered(rescanned.entry_consideration_ref(index))
-        for index, entry in enumerate(rescanned.entries)
+        entry.display_label(index): store.is_item_considered(changed.entry_consideration_ref(index))
+        for index, entry in enumerate(changed.entries)
     }
     assert considered == {"a.mp4": True, "b.mp4": False, "c.mp4": True}
 
 
-def test_a_rescan_that_fails_shows_the_item_as_unavailable_until_it_resolves_again() -> None:
+def test_a_change_that_makes_resolving_fail_shows_the_item_as_unavailable_until_it_resolves_again() -> None:
     folder = _Folder("a.mp4")
-    store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})))
+    store, watcher = _folder_store(folder)
     runs = PlaylistItem(label="Runs", resolver="folder")
     store.add_items([runs])
 
     folder.clips = []
-    store.rescan_item(runs.id)
+    watcher.report(runs.id, Path("/runs/a.mp4"))
     error = store.resolution(runs.id).error
     assert error is not None and "Folder not found" in str(error)
     assert store.contents() == ()
+    watched = watcher.watched[runs.id]
+    assert Path("/runs") in watched.folders and Path("/tmp/Overlay 1.txt") in watched.files, (
+        "an item that cannot resolve keeps what it watched, so restoring those files helps"
+    )
 
     folder.clips = ["b.mp4"]
-    store.rescan_item(runs.id)
+    watcher.report(runs.id, Path("/runs/b.mp4"))
     assert store.resolution(runs.id).error is None
     assert _entry_names(store) == ["b.mp4"]
 
 
-def test_rescan_results_for_a_removed_item_or_a_replaced_workspace_are_dropped(
+def test_results_after_a_change_for_a_removed_item_or_a_replaced_workspace_are_dropped(
     qtbot: QtBot, blocking: _BlockingResolver
 ) -> None:
     baseline = set(threading.enumerate())
     resolver = ItemResolver(
         FakeResolutionContext(resolvers={"runs": blocking, "quick": _TwoPlaylists()}), jobs=BackgroundJobs()
     )
-    store = WorkspaceStore(resolver)
+    watcher = FakeFileWatcher()
+    store = WorkspaceStore(resolver, watcher=watcher)
     resolved_at_once = FakeResolutionContext(resolvers={"runs": _TwoPlaylists()})
     removed, replaced = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
     store.add_resolved(
         [ItemResolution.of(removed, resolved_at_once, NEVER), ItemResolution.of(replaced, resolved_at_once, NEVER)]
     )
-    rescanned: list[ItemResolution] = []
-    store.item_rescanned.connect(rescanned.append)
-    store.rescan_item(removed.id)
-    store.rescan_item(replaced.id)
+    changed: list[str] = []
+    store.sources_changed.connect(lambda item_id, _paths: changed.append(item_id))
+    watcher.report(removed.id)
+    watcher.report(replaced.id)
     qtbot.waitUntil(lambda: len(blocking.threads) == 2)
 
     store.remove_item(removed.id)
@@ -750,33 +797,35 @@ def test_rescan_results_for_a_removed_item_or_a_replaced_workspace_are_dropped(
     blocking.release.set()
 
     _wait_for_jobs_since(qtbot, baseline)
-    assert rescanned == []
+    assert changed == []
     assert [content.display_name for content in store.contents()] == ["Kept / train", "Kept / test"]
 
 
-def test_rescanning_an_unknown_or_still_resolving_item_does_nothing(
-    qtbot: QtBot, blocking: _BlockingResolver, caplog: pytest.LogCaptureFixture
+def test_changes_to_an_unknown_item_do_nothing_and_those_to_one_still_resolving_resolve_it_once_more(
+    qtbot: QtBot, blocking: _BlockingResolver
 ) -> None:
     baseline = set(threading.enumerate())
-    resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": blocking}), jobs=BackgroundJobs())
-    store = WorkspaceStore(resolver)
+    watcher = FakeFileWatcher()
+    store = WorkspaceStore(
+        ItemResolver(FakeResolutionContext(resolvers={"runs": blocking}), jobs=BackgroundJobs()), watcher=watcher
+    )
     runs = PlaylistItem(resolver="runs")
     store.add_items([runs])
-    rescanned: list[ItemResolution] = []
-    store.item_rescanned.connect(rescanned.append)
+    changes: list[tuple[str, frozenset[Path]]] = []
+    store.sources_changed.connect(lambda item_id, paths: changes.append((item_id, paths)))
 
-    store.rescan_item("unknown")
-    store.rescan_item(runs.id)
+    watcher.report("unknown", Path("/runs/x.txt"))
+    watcher.report(runs.id, Path("/runs/a.txt"))
+    watcher.report(runs.id, Path("/runs/b.txt"))
+    assert len(blocking.threads) <= 1
     blocking.release.set()
 
     _wait_for_jobs_since(qtbot, baseline)
-    assert not store.resolution(runs.id).is_pending
-    assert len(blocking.threads) == 1
-    assert rescanned == []
-    assert "unknown" in caplog.text
+    assert len(blocking.threads) == 2, "the first resolution, and one more for all the changes meanwhile"
+    assert changes == [(runs.id, frozenset({Path("/runs/a.txt"), Path("/runs/b.txt")}))]
 
 
-class _ScriptedResolver:
+class _ScriptedResolver(PlaylistResolver):
     """Resolve once at once, then hold each later request until the test finishes it with its own playlist name."""
 
     def __init__(self) -> None:
@@ -795,37 +844,39 @@ class _ScriptedResolver:
         return [make_playlist(name)]
 
 
-def test_an_older_rescan_finishing_last_does_not_overwrite_the_newer_result(qtbot: QtBot) -> None:
+def test_an_older_resolution_finishing_last_does_not_overwrite_the_newer_result(qtbot: QtBot) -> None:
     scripted = _ScriptedResolver()
     baseline = set(threading.enumerate())
     resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": scripted}), jobs=BackgroundJobs())
-    store = WorkspaceStore(resolver)
+    watcher = FakeFileWatcher()
+    store = WorkspaceStore(resolver, watcher=watcher)
     runs = PlaylistItem(resolver="runs")
     store.add_items([runs])
     qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
-    rescanned: list[ItemResolution] = []
-    store.item_rescanned.connect(rescanned.append)
+    changed: list[str] = []
+    store.sources_changed.connect(lambda item_id, _paths: changed.append(item_id))
 
-    store.rescan_item(runs.id)
+    watcher.report(runs.id)
     qtbot.waitUntil(lambda: len(scripted.requests) == 1)
-    store.rescan_item(runs.id)
+    watcher.report(runs.id)
     qtbot.waitUntil(lambda: len(scripted.requests) == 2)
     (older_release, _), (newer_release, newer_name) = scripted.requests
     newer_release.set()
-    qtbot.waitUntil(lambda: len(rescanned) == 1)
+    qtbot.waitUntil(lambda: len(changed) == 1)
     older_release.set()
     _wait_for_jobs_since(qtbot, baseline)
 
     assert [content.display_name for content in store.contents()] == [newer_name]
-    assert len(rescanned) == 1
+    assert len(changed) == 1
 
 
-def test_repeated_rescans_waiting_for_a_worker_never_run_but_the_latest(qtbot: QtBot) -> None:
+def test_repeated_changes_waiting_for_a_worker_resolve_only_once(qtbot: QtBot) -> None:
     scripted = _ScriptedResolver()
     baseline = set(threading.enumerate())
     jobs = BackgroundJobs(max_workers=1)
     resolver = ItemResolver(FakeResolutionContext(resolvers={"runs": scripted}), jobs=jobs)
-    store = WorkspaceStore(resolver)
+    watcher = FakeFileWatcher()
+    store = WorkspaceStore(resolver, watcher=watcher)
     runs = PlaylistItem(resolver="runs")
     store.add_items([runs])
     qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
@@ -833,13 +884,13 @@ def test_repeated_rescans_waiting_for_a_worker_never_run_but_the_latest(qtbot: Q
     jobs.scope(owner).submit("busy", lambda _job: busy.wait(5), on_result=lambda _: None, on_error=lambda _: None)
 
     for _ in range(3):
-        store.rescan_item(runs.id)
+        watcher.report(runs.id)
     busy.set()
     qtbot.waitUntil(lambda: len(scripted.requests) == 1)
     scripted.requests[0][0].set()
     _wait_for_jobs_since(qtbot, baseline)
 
-    assert len(scripted.requests) == 1, "the two rescans the latest replaced never took a worker"
+    assert len(scripted.requests) == 1, "the two resolutions the latest replaced never took a worker"
 
 
 def _wait_for_jobs_since(qtbot: QtBot, baseline: set[threading.Thread]) -> None:
@@ -848,7 +899,7 @@ def _wait_for_jobs_since(qtbot: QtBot, baseline: set[threading.Thread]) -> None:
     QCoreApplication.processEvents()
 
 
-class _CooperativeResolver:
+class _CooperativeResolver(PlaylistResolver):
     """Hold one call until its owning workspace operation cancels it."""
 
     def __init__(self, block_call: int = 1) -> None:
@@ -911,21 +962,22 @@ def test_added_items_publish_once_in_input_order_when_later_items_finish_first(
     assert [[result.item for result in results] for results in deliveries] == [[slow, quick]]
 
 
-def test_superseding_an_active_rescan_interrupts_it_before_the_next_scan(qtbot: QtBot) -> None:
-    """One workspace worker is enough for a replacement scan because its predecessor polls the job token."""
+def test_superseding_an_active_resolution_interrupts_it_before_the_next_one(qtbot: QtBot) -> None:
+    """One workspace worker is enough for a replacement because its predecessor polls the job token."""
     resolver = _CooperativeResolver(block_call=2)
     context = FakeResolutionContext(resolvers={"runs": resolver})
-    store = WorkspaceStore(ItemResolver(context, jobs=BackgroundJobs(max_workers=1)))
+    watcher = FakeFileWatcher()
+    store = WorkspaceStore(ItemResolver(context, jobs=BackgroundJobs(max_workers=1)), watcher=watcher)
     runs = PlaylistItem(resolver="runs")
-    delivered: list[ItemResolution] = []
-    store.item_rescanned.connect(delivered.append)
+    delivered: list[str] = []
+    store.sources_changed.connect(lambda item_id, _paths: delivered.append(item_id))
     try:
         store.add_items([runs])
         qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
-        store.rescan_item(runs.id)
+        watcher.report(runs.id)
         qtbot.waitUntil(resolver.started.is_set)
 
-        store.rescan_item(runs.id)
+        watcher.report(runs.id)
 
         qtbot.waitUntil(lambda: bool(delivered), timeout=2000)
         assert resolver.stopped.is_set()

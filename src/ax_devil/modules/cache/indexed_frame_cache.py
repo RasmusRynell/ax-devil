@@ -3,7 +3,9 @@ from __future__ import annotations
 import gzip
 import json
 import mmap
+import os
 import pickle
+import tempfile
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -163,14 +165,26 @@ class IndexedFrameCache:
         }
         header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
 
-        with self.cache_file.open("wb") as fh:
-            fh.write(header_bytes + b"\n")
-            for enc in encoded_frames:
-                fh.write(enc)
+        # Replace atomically: a reader may still have the old file open or mapped.
+        descriptor, temporary_name = tempfile.mkstemp(
+            dir=self.cache_file.parent, prefix=f"{self.cache_file.name}.", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as fh:
+                fh.write(header_bytes + b"\n")
+                for enc in encoded_frames:
+                    fh.write(enc)
+            os.replace(temporary_name, self.cache_file)
+        except BaseException:
+            Path(temporary_name).unlink(missing_ok=True)
+            raise
 
         logger.debug(f"Cached {len(items)} frames ({self.cache_file.stat().st_size} bytes) → {self.cache_file.name}")
 
-        self.close()  # purge any stale handles/header
+        # Drop handles on the replaced file and open the new one now, so a rebuild landing later cannot pair
+        # this provider's catalog with a newer file.
+        self.close()
+        self._ensure_open()
 
     # -- read ------------------------------------------------------------
 

@@ -22,6 +22,7 @@ from ax_devil.modules.workspace.core import (
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
+    PlaylistResolver,
     PlaylistSettings,
     SeekableVideoContent,
     VideoItem,
@@ -322,7 +323,7 @@ def test_same_named_rows_without_locations_are_numbered() -> None:
     assert [(row.children[0].label, row.children[0].detail) for row in rows] == [("clip.mp4", ""), ("clip.mp4", "")]
 
 
-class _FixedPlaylists:
+class _FixedPlaylists(PlaylistResolver):
     """A playlist resolver that returns the playlists it was built with."""
 
     def __init__(self, *playlists: PlaylistContent) -> None:
@@ -512,7 +513,7 @@ def test_cameras_offer_start_stream_while_idle_and_stop_stream_while_a_viewer_sh
     assert (closed.is_dimmed, opened.is_dimmed) == (True, False), "a camera is dimmed while nothing shows it"
 
 
-def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_action(tmp_path: Path) -> None:
+def test_only_cameras_offer_an_inline_action(tmp_path: Path) -> None:
     store = _store_of_items(
         PlaylistItem(resolver="fixed"),
         PlaylistItem(label="Broken", resolver="missing"),
@@ -522,8 +523,8 @@ def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_actio
 
     rows = {row.label: row for row in item_rows(store)}
 
-    assert inline_action(rows["Suite"]) is RowAction.RESCAN
-    assert inline_action(rows["Broken"]) is RowAction.RESCAN and rows["Broken"].unavailable_reason is not None
+    assert inline_action(rows["Suite"]) is None
+    assert inline_action(rows["Broken"]) is None and rows["Broken"].unavailable_reason is not None
     assert inline_action(rows["missing.mp4"]) is None
     assert inline_action(rows["clip.mp4"]) is None and not rows["clip.mp4"].idle
     nested = [child for row in rows.values() for child in row.children]

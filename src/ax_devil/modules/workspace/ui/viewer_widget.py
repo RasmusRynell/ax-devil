@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
@@ -10,6 +11,7 @@ from PySide6.QtGui import QAction, QContextMenuEvent, QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
@@ -24,7 +26,7 @@ SHARED_ACTION_IDS = ("view.toggle_media_tools", "view.toggle_lane_fullscreen", "
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
     from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition
-    from ax_devil.modules.workspace.core.content import ConsiderationItemRef, OnScreenWorkspaceItem
+    from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Content, OnScreenWorkspaceItem
 
 
 class ViewerWidget(QFrame):
@@ -46,6 +48,7 @@ class ViewerWidget(QFrame):
         self._logger = logger
         self._pinned: bool = False
         self._shared_actions: Mapping[str, QAction] = {}
+        self._banner: QWidget | None = None
 
         # Set up the base widget structure
         self._setup_base_ui()
@@ -106,6 +109,14 @@ class ViewerWidget(QFrame):
 
         # Add header widget to main layout
         self._main_layout.addWidget(self._header_widget)
+
+        # Room for one banner between the header and the content; takes no space while empty
+        self._banner_host = QWidget()
+        self._banner_layout = QVBoxLayout(self._banner_host)
+        self._banner_layout.setContentsMargins(Space.S, Space.S, Space.S, Space.S)
+        self._banner_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self._banner_host.hide()
+        self._main_layout.addWidget(self._banner_host)
 
         # Content area for subclass widgets
         self._content_layout = QVBoxLayout()
@@ -278,6 +289,41 @@ class ViewerWidget(QFrame):
     def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
         """Return the workspace item currently visible in the widget."""
         return None
+
+    def banner(self) -> QWidget | None:
+        """Return the banner shown between the header and the content, or None."""
+        return self._banner
+
+    def set_banner(self, banner: QWidget | None) -> None:
+        """Show *banner* between the header and the content in place of the one shown; None clears it."""
+        previous, self._banner = self._banner, banner
+        if previous is not None:
+            self._banner_layout.removeWidget(previous)
+            previous.hide()
+            previous.deleteLater()
+        if banner is not None:
+            self._banner_layout.addWidget(banner)
+            banner.show()
+        self._banner_host.setVisible(banner is not None)
+
+    def show_warning(self, message: str) -> None:
+        """Show *message* in a banner the user can dismiss, in place of any banner shown."""
+        warning = Banner(message, "Dismiss")
+        warning.action.clicked.connect(lambda: self.set_banner(None))
+        self.set_banner(warning)
+
+    def shown_source_paths(self) -> frozenset[Path]:
+        """Return the files the content on screen was read from, which changing makes the content out of date.
+
+        Empty for a viewer that reads no files, such as a live stream.
+        """
+        return frozenset()
+
+    def reload(self, content: Content) -> None:
+        """Show the data of *content*, the same thing as was shown but read again, keeping the playhead.
+
+        Does nothing in viewers that read no files. A viewer that cannot show *content* keeps what it shows and says so.
+        """
 
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the frame on screen as a bookmark would mark it, or None when nothing on screen can be bookmarked."""

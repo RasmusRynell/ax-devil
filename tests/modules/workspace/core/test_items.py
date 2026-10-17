@@ -20,6 +20,7 @@ from ax_devil.modules.workspace.core import (
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
+    PlaylistResolver,
     PlaylistSettings,
     SeekableVideoContent,
     VideoItem,
@@ -48,7 +49,7 @@ def _playlist(name: str) -> PlaylistContent:
     )
 
 
-class _Resolver:
+class _Resolver(PlaylistResolver):
     """A playlist resolver that records the settings it was given and returns fixed playlists."""
 
     def __init__(self, playlists: list[PlaylistContent], error: Exception | None = None) -> None:
@@ -254,7 +255,7 @@ def test_playlist_item_that_cannot_resolve_fails_with_a_reason(resolvers: dict[s
 
 
 def test_playlist_item_keeps_its_own_copy_of_the_settings_from_the_caller_and_the_resolver() -> None:
-    class _MutatingResolver:
+    class _MutatingResolver(PlaylistResolver):
         def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
             cast(dict[str, Any], settings)["root"] = "/changed/by/plugin"
             return [_playlist("MOT")]

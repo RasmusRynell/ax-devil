@@ -103,7 +103,6 @@ class RowAction(Enum):
     )
     START_STREAM = ("Start stream", "Start stream", None, "", True, True, RowActionGroup.OPEN)
     STOP_STREAM = ("Stop stream", "Stop stream", None, "", True, True, RowActionGroup.OPEN)
-    RESCAN = ("Rescan", "", Icon.REFRESH, "Rescan", False, True, RowActionGroup.OPEN)
     ADD = ("Add", "Add", Icon.ADD, "", True, True, RowActionGroup.OPEN)
     INFORMATION = ("Information", "", None, "", False, False, RowActionGroup.INSPECT)
     EXPORT_VIDEO = ("Export video", "", None, "", False, False, RowActionGroup.INSPECT)
@@ -419,9 +418,7 @@ class _RowProjection:
                 item=item,
                 unavailable_reason=reason,
                 information_factory=partial(build_unavailable_information, item.display_name, reason),
-            ),
-            # A playlist that failed may resolve once its files are back; nothing else can be resolved again.
-            inline=RowAction.RESCAN if _section_of(item) is BrowserSection.PLAYLISTS else None,
+            )
         )
 
     def _content_row(
@@ -450,8 +447,7 @@ class _RowProjection:
                     location=content.source_location,
                     facts=(f"Playlist · {entries}{excluded}",),
                     expanded_at_first=total <= EXPANDED_AT_FIRST_LIMIT,
-                ),
-                inline=RowAction.RESCAN,
+                )
             )
 
         if not content.is_live:

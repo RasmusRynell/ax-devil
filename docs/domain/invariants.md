@@ -188,7 +188,10 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file provider artifacts invalidate unless their complete identity matches: source fingerprint, decoder name,
   explicit artifact version, Scene model version, and provider-owned decode options. Cache files (by default under
-  `~/.ax_devil/caches/`) can always be rebuilt.
+  `~/.ax_devil/caches/`) can always be rebuilt. The source fingerprint includes the inode and is taken before the
+  source is read, so a file written during indexing reads as changed on the next open. Cache files are written to a
+  temporary sibling and atomically replaced. An open source-indexed store holds its source file open, and stops
+  serving once that file is rewritten in place, since its byte offsets no longer match; a replaced file leaves it valid.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
   history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
   sequence frame, and omits events outside the video; an object is present on exactly the frames whose looked-up sample contains it, under the same

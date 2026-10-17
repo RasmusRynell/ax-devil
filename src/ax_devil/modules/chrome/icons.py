@@ -44,7 +44,6 @@ class Icon(Enum):
     WORKSPACE = ("layout-list", False)
     BOOKMARK = ("bookmark", False)
     PLUGIN = ("plug", False)
-    REFRESH = ("refresh-cw", False)
     ADD = ("plus", False)
     CHECK = ("check", False)
     SEARCH = ("search", False)

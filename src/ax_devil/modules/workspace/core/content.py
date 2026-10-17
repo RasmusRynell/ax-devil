@@ -8,6 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, cast
 
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
 
@@ -165,6 +166,10 @@ class FileOverlaySourceSpec:
         """Return the overlay file path for source labels and tooltips."""
         return str(self.path)
 
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay file."""
+        return SourcePaths(files=frozenset({self.path}))
+
     def info_fields(self) -> InfoFields:
         """Return the overlay file path and decoder."""
         return (("path", self.path), ("handler type", self.handler_type))
@@ -192,8 +197,18 @@ class LiveRTSPStreamSpec:
         )
 
 
+class _ReadsNoFiles:
+    """What a live overlay source gives ``source_paths``: it reads no files."""
+
+    __slots__ = ()
+
+    def source_paths(self) -> SourcePaths:
+        """Return no paths."""
+        return SourcePaths()
+
+
 @dataclass(frozen=True, slots=True)
-class LiveRTSPOverlaySourceSpec:
+class LiveRTSPOverlaySourceSpec(_ReadsNoFiles):
     """Description of embedded RTSP analytics payloads and decoder selection."""
 
     handler_type: str
@@ -206,7 +221,7 @@ class LiveRTSPOverlaySourceSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class LiveMQTTOverlaySourceSpec:
+class LiveMQTTOverlaySourceSpec(_ReadsNoFiles):
     """Description of MQTT analytics payloads and decoder selection."""
 
     handler_type: str
@@ -232,7 +247,7 @@ class LiveMQTTOverlaySourceSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class LiveWebSocketOverlaySourceSpec:
+class LiveWebSocketOverlaySourceSpec(_ReadsNoFiles):
     """Description of Axis DataHub WebSocket analytics payloads."""
 
     handler_type: str
@@ -274,6 +289,10 @@ class OverlayContent:
         """Return the kind owned by this overlay's source specification."""
         return self.source_spec.source_kind
 
+    def source_paths(self) -> SourcePaths:
+        """Return the files this overlay is read from."""
+        return self.source_spec.source_paths()
+
 
 @dataclass(frozen=True, slots=True)
 class LiveVideoContent:
@@ -311,6 +330,10 @@ class LiveVideoContent:
     def overlay_spec(self) -> LiveOverlaySourceSpec | None:
         """Return the source spec of the live overlay, or None for plain video."""
         return cast(LiveOverlaySourceSpec, self.overlays[0].source_spec) if self.overlays else None
+
+    def source_paths(self) -> SourcePaths:
+        """Return no paths: a live stream reads no files."""
+        return SourcePaths()
 
     def info_fields(self) -> InfoFields:
         """Return the content type, overlay count, and stream settings."""
@@ -362,6 +385,10 @@ class SeekableVideoContent:
     def source_location(self) -> str:
         """Return the video file path, shown to tell same-named items apart."""
         return str(self.source_spec.path)
+
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay files; the video file is not watched, as changes to it do not matter."""
+        return SourcePaths.merged(overlay.source_paths() for overlay in self.overlays)
 
     def info_fields(self) -> InfoFields:
         """Return the content type, overlay count, and video file settings."""
@@ -442,6 +469,10 @@ class EntryLane:
         """Return the overlay source kind, or no-source for a plain video lane."""
         return self.overlay.source_kind if self.overlay is not None else OverlaySourceKind.NO_SOURCE
 
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay file the lane is read from, if any."""
+        return self.overlay.source_paths() if self.overlay is not None else SourcePaths()
+
     @property
     def source_location(self) -> str:
         """Return the overlay file location, or the video location for plain and live lanes."""
@@ -486,6 +517,10 @@ class PlaylistEntry:
             return self.lanes[0].video.source_location
         return None
 
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay files of all lanes."""
+        return SourcePaths.merged(lane.source_paths() for lane in self.lanes)
+
     def should_show_lane_children(self) -> bool:
         """Return whether UI consumers should render child lanes for this entry."""
         return len(self.lanes) > 1 or any(lane.source_kind != OverlaySourceKind.NO_SOURCE for lane in self.lanes)
@@ -517,6 +552,10 @@ class PlaylistContent:
     def source_location(self) -> None:
         """Return None because playlists are resolved from several sources."""
         return None
+
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay files of all entries."""
+        return SourcePaths.merged(entry.source_paths() for entry in self.entries)
 
     def info_fields(self) -> InfoFields:
         """Return the content type and entry and lane counts."""

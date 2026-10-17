@@ -28,6 +28,7 @@ from ax_devil.modules.workspace.core import (
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
+    PlaylistResolver,
     PlaylistSettings,
     RecentWorkspaces,
     SeekableVideoContent,
@@ -48,7 +49,7 @@ def _video(name: str) -> SeekableVideoContent:
     return SeekableVideoContent(display_name=name, source_spec=FileVideoSourceSpec(path=Path(f"/tmp/{name}")))
 
 
-class _NightShift:
+class _NightShift(PlaylistResolver):
     """A resolver that finds the same two runs every time."""
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:

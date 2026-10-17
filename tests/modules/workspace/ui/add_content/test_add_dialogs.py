@@ -785,7 +785,7 @@ def test_live_stream_numeric_defaults_handle_changed_environment(
     assert form_field(dialog, "Topic Channel", QSpinBox).value() == (8883 if valid else 1)
 
 
-class _Resolver:
+class _Resolver(PlaylistResolver):
     """Resolve settings naming an existing root into one playlist, and fail for any other root."""
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:

@@ -41,7 +41,7 @@ def test_binary_frames_support_direct_access(tmp_path: Path, use_mmap: bool, com
 
 @pytest.mark.parametrize("use_mmap", [False, True])
 def test_open_cache_reads_survive_path_removal(tmp_path: Path, use_mmap: bool) -> None:
-    """An open reader owns its handle until close, independently of the file path."""
+    """An open reader owns its handle until close, independently of the file path or a replacing save."""
     cache_path = tmp_path / "test.frames"
     with patch.object(CacheManager, "get_cache_path", return_value=cache_path):
         cache = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap)
@@ -49,6 +49,11 @@ def test_open_cache_reads_survive_path_removal(tmp_path: Path, use_mmap: bool) -
             assert cache.load_frame(0) is None
             cache.save({0: "first", 3041: "later"})
             assert cache.load_frame(0) == "first"
+            writer = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap)
+            writer.save({0: "replaced"})
+            assert cache.load_frame(0) == "first"
+            assert writer.load_frame(0) == "replaced"
+            writer.close()
             cache_path.unlink()
             assert cache.load_frame(3041) == "later"
             cache.close()
