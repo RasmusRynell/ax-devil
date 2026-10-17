@@ -460,9 +460,14 @@ def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
     panel.update_scene(_deleting_scene(1, *(f"o{n}" for n in range(held))), _frame(1), {})
     next_button = _open_last_live_event(panel)  # At the limit, the next event drops the oldest and keeps the count.
     assert next_button is not None and not next_button.isEnabled()
+    events_table = panel.events_page.findChild(RowTableView)
+    assert events_table is not None
+    resets: list[None] = []
+    events_table.rows_model.modelReset.connect(lambda: resets.append(None))
 
     panel.update_scene(_deleting_scene(2, "new"), _frame(2), {})
     assert next_button.isEnabled()
+    assert resets == []  # The hidden list is not rebuilt per event.
     next_button.click()
 
     (page,) = [p for p in panel.findChildren(EventPage) if p.isVisible()]
