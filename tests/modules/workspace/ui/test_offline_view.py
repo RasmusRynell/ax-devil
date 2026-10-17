@@ -46,7 +46,6 @@ from tests.helpers.contents import make_video
 from tests.helpers.section_tree import (
     captions,
     double_click,
-    press,
     row,
     row_action,
     row_texts,
