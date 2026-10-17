@@ -100,7 +100,8 @@ their own into theirs: cameras a scan found, what the scan learned about held ca
 [workspace module README](../../src/ax_devil/modules/workspace/README.md#sidebar-view-shell).
 
 Every view shows a browser row the same way. The projection (`browser_rows.py`) decides a row's look and the
-`RowAction`s it offers, each disabled with a reason where it cannot be done yet (Export until the row is open).
+`RowAction`s it offers, each disabled with a reason where it cannot be done yet (Export until the row is open). A row's
+menu lists them in groups split by separators: Open, Inspect, Hide or Unhide, and Edit.
 `SectionTree` has one outgoing request for a row, `row_action_requested(row, RowAction)`, whichever gesture asked. It
 never checks that the row offers the action; `WorkspaceController.perform_row_action` does, and carries it out for every
 view (`connect_tree`).

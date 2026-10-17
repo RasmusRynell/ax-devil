@@ -33,7 +33,7 @@ from tests.modules.video_viewer.test_offline_video_viewer import (  # noqa: F401
 pytestmark = pytest.mark.usefixtures("_background", "_stub_spec_source_opening")
 
 _EXPORT_DIALOG = "ax_devil.modules.video_viewer.export.ExportDialog"
-_LEAVE_OUT = "Leave out of playback"
+_HIDE = "Hide"
 
 
 class _Open(NamedTuple):
@@ -103,8 +103,8 @@ def _lane_rows(session: WorkspaceSession) -> list[WorkspaceBrowserRow]:
     return list(entry_row.children)
 
 
-def _leave_out(menu: QMenu) -> QAction:
-    return next(entry for entry in menu.actions() if entry.text() == _LEAVE_OUT)
+def _hide(menu: QMenu) -> QAction:
+    return next(entry for entry in menu.actions() if entry.text() == _HIDE)
 
 
 def test_the_lane_menu_offers_export_the_windows_actions_and_leaving_the_lane_out(opened: _Open) -> None:
@@ -117,7 +117,7 @@ def test_the_lane_menu_offers_export_the_windows_actions_and_leaving_the_lane_ou
     texts = [action.text() for action in listed]
     assert texts[0] == "Export video"
     assert opened.manager.get_action("view.add_bookmark").text() in texts
-    assert texts[-1] == _LEAVE_OUT
+    assert texts[-1] == _HIDE
     assert "sidebar" in listed[-1].toolTip()
 
 
@@ -142,7 +142,7 @@ def test_leaving_a_lane_out_from_its_menu_changes_the_state_the_sidebar_shows(op
     session, viewer = opened.session, opened.viewer
     before = [row.is_considered for row in _lane_rows(session)]
 
-    _right_click_lane(opened, opened.lanes[1], lambda menu: _leave_out(menu).trigger())
+    _right_click_lane(opened, opened.lanes[1], lambda menu: _hide(menu).trigger())
 
     rows = _lane_rows(session)
     assert before == [True, True]

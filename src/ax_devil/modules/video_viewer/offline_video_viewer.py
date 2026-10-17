@@ -348,7 +348,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         """Show what can be done with *lane* at *global_pos*, after a right click on it has focused it.
 
         Export is the lane's own action, the same one its media tools button triggers; the rest are the window's
-        actions, which act on the focused lane. Leaving the lane out asks for the same change the sidebar's eye does.
+        actions, which act on the focused lane. Hide asks for the same change the sidebar's Hide does.
         """
         menu = QMenu(self.window())
         menu.setToolTipsVisible(True)
@@ -359,10 +359,10 @@ class OfflineVideoViewerWidget(ViewerWidget):
         ref = self._content.lane_consideration_ref(self._current_index, lane.lane_index)
         if ref in {item.ref for item in self._content.consideration_items()}:
             menu.addSeparator()
-            leave_out = QAction("Leave out of playback", menu)
-            leave_out.setToolTip("Hides this lane. Bring it back with its eye in the sidebar.")
-            leave_out.triggered.connect(lambda _checked=False: self.consideration_change_requested.emit(ref, False))
-            menu.addAction(leave_out)
+            hide = QAction("Hide", menu)
+            hide.setToolTip("Skip this lane in playback. Bring it back with Unhide in the sidebar.")
+            hide.triggered.connect(lambda _checked=False: self.consideration_change_requested.emit(ref, False))
+            menu.addAction(hide)
         try:
             menu.exec(global_pos)
         finally:
