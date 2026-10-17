@@ -39,7 +39,7 @@ class _Absence:
     next_seen: int | None = None
 
 
-class _TitleRow(QWidget):
+class TitleRow(QWidget):
     """The object's class-colored dot, its id in monospace, its class and a pill for its state."""
 
     def __init__(self, entity_id: str, parent: QWidget) -> None:
@@ -52,6 +52,13 @@ class _TitleRow(QWidget):
         self.setStyleSheet("background: transparent;")
         self.setToolTip(entity_id)
         follow_appearance(self, lambda: self.setFixedHeight(Height.PANE_HEADER.px))
+
+    def set_entity_id(self, entity_id: str) -> None:
+        """Show another object's *entity_id*."""
+        if entity_id != self._entity_id:
+            self._entity_id = entity_id
+            self.setToolTip(entity_id)
+            self.update()
 
     def set_content(self, class_name: str, pill: str, pill_category: str | None, *, dimmed: bool) -> None:
         """Show the *class_name* and the *pill*; a pill with a *pill_category* is colored by it, else muted."""
@@ -169,7 +176,7 @@ class ObjectPage(QWidget):
         self._built = True
         layout = self.layout()
         assert isinstance(layout, QVBoxLayout)
-        self._title = _TitleRow(self._entity_id, self)
+        self._title = TitleRow(self._entity_id, self)
         layout.addWidget(self._title)
 
         self._strip = PresenceStrip(self)

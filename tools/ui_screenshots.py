@@ -326,6 +326,11 @@ def test_screenshots(
     catalog_viewer.show()
     qtbot.waitUntil(lambda: bool(catalog_viewer.sheet_titles()), timeout=10000)
     qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
+    sheet = catalog_viewer._current_sheet()
+    assert sheet is not None
+    selected = str(next(iter(sheet.scene.entities)))
+    catalog_viewer._renderer.select_target(selected)
+    catalog_viewer._renderer.selectionChanged.emit(selected)
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         catalog_viewer.resize(*WINDOW_SIZES["narrow"])

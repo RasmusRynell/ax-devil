@@ -15,6 +15,7 @@ Code lives in `src/ax_devil/modules/catalog_viewer/`. File watching belongs to `
 | `sheets.py` | Example sheets: **Overview** (every object type and relation), **Street** (a camera view with overlaps, occlusion and the frame edge), one sheet per object type (sizes, confidences, long ids, movement, edges, over bright, busy and dark ground), one per relation, and **Crowd** (48 objects at night). Ids and attribute values look like real decoder output and are seeded, so sheets are stable. |
 | `street.py`, `footage.py` | The street scene and the painted backgrounds the sheets draw over. |
 | `window.py` | `CatalogViewerWindow`, the catalog window: catalog choice, **New copy**, **Delete**, **Apply to all**, **Use as default**, live/error status and a tab per sheet. One window per manager; it redraws only when visible and something changed. |
+| `inspector.py` | `ObjectInspector`, the read-only side panel of the window: clicking a sheet object shows its generated attributes in the same grouped, selectable fields view the media tools use, so authors can read and copy them; clicking empty video clears it. |
 | `cli.py` | `ax-devil catalog` opens the window; `list`, `check [FILE]`, `render [FILE] --out DIR [--sheet KEY]`, `new NAME [--from FILE]`, `use FILE` and `reference`. `render` writes exactly the sheets the window shows, so an agent can look at its work. |
 | `reference.py` | Generates the language reference `ax-devil catalog reference` prints from the runtime definitions, so it cannot drift. |
 
