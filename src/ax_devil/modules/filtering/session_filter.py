@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
 
-from ax_devil.modules.scene.filtering import matches_id_query, process_scene
+from ax_devil.modules.scene.filtering import process_scene
 from ax_devil.modules.scene.model import Scene
 
 from .filter_config import FilterConfig, FilterOption, FilterState
@@ -48,17 +48,12 @@ class SessionFilter(QObject):
     @property
     def cache_identity(self) -> Hashable:
         """Return an opaque identity for the current filtering behavior."""
-        return (id(self._config), tuple(self._state.items()), self._state.id_query)
+        return (id(self._config), tuple(self._state.items()))
 
     @property
     def enabled_count(self) -> int:
         """Return the number of enabled controls."""
         return sum(enabled for _, enabled in self._state.items())
-
-    @property
-    def id_query(self) -> str:
-        """Return the current entity-id search."""
-        return self._state.id_query
 
     def is_enabled(self, option_id: str) -> bool:
         """Return whether a control is enabled."""
@@ -78,24 +73,15 @@ class SessionFilter(QObject):
             self._state.set_enabled(option.id, enabled)
         self.changed.emit()
 
-    def set_id_query(self, query: str) -> None:
-        """Search entity ids using trimmed text and notify after an effective change."""
-        query = query.strip()
-        if query != self._state.id_query:
-            self._state.id_query = query
-            self.changed.emit()
-
     def process_scene(self, scene: Scene) -> Scene:
         """Project a Scene using the decoder's predicates and current search."""
         return process_scene(scene, self._config, self._state)
 
     def filter_history(self, objects: Sequence[ObjectHistory]) -> list[ObjectHistory]:
-        """Keep recorded objects using id search and the decoder's classification policy."""
+        """Keep recorded objects using the decoder's classification policy."""
         kept_by_types: dict[tuple[str, ...], bool] = {}
         kept: list[ObjectHistory] = []
         for history in objects:
-            if not matches_id_query(history.entity_id, self._state):
-                continue
             keep = kept_by_types.get(history.types)
             if keep is None:
                 keep = kept_by_types[history.types] = history_type_filter_keeps(
@@ -108,5 +94,5 @@ class SessionFilter(QObject):
     def snapshot(self) -> SessionFilter:
         """Return a detached filter unaffected by subsequent session edits."""
         snapshot = SessionFilter(self._config)
-        snapshot._state = FilterState(self._config, initial=dict(self._state.items()), id_query=self._state.id_query)
+        snapshot._state = FilterState(self._config, initial=dict(self._state.items()))
         return snapshot

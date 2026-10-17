@@ -76,11 +76,11 @@ class FilterConfig:
 
 
 class FilterState:
-    """Mutable toggle state built from a FilterConfig, plus a free-text entity id query."""
+    """Mutable toggle state built from a FilterConfig."""
 
-    __slots__ = ("_options", "_flags", "id_query")
+    __slots__ = ("_options", "_flags")
 
-    def __init__(self, config: FilterConfig, initial: Mapping[str, bool] | None = None, *, id_query: str = "") -> None:
+    def __init__(self, config: FilterConfig, initial: Mapping[str, bool] | None = None) -> None:
         self._options: dict[str, FilterOption] = {option.id: option for option in config.options}
         flags = {option.id: option.default_enabled for option in config.options}
 
@@ -91,7 +91,6 @@ class FilterState:
                 flags[option_id] = bool(enabled)
 
         self._flags: dict[str, bool] = flags
-        self.id_query = id_query
 
     def is_enabled(self, option_id: str) -> bool:
         """Return whether the given option id is currently enabled."""

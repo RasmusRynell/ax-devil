@@ -25,7 +25,7 @@ class OverlayPreference(str, Enum):
         """Describe what the preference shows."""
         descriptions = {
             OverlayPreference.LANE_NAMES: "Name each video lane; names hide while frame info is shown.",
-            OverlayPreference.HOVER: "Highlight the object under the pointer and show its details; click to pin them.",
+            OverlayPreference.HOVER: "Name the object under the pointer; click to select it and open its page.",
         }
         return descriptions[self]
 

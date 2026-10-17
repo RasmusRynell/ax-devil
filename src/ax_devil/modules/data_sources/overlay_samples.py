@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.load_warning import LoadWarning
 from ax_devil.modules.data_sources.alignment_diagnostics import (
     analyze_overlay_alignment,
     analyze_overlay_sequence_alignment,
@@ -55,26 +56,29 @@ class OverlaySamples:
     timestamp_to_sequence: Mapping[int, int]
     records: SceneHistoryRecords
     policy: TimestampFallbackPolicy
+    load_warnings: tuple[LoadWarning, ...] = ()  # What the decoder could not load from the file.
 
     def analyze_alignment(
         self, handler_type: str, video_timeline: FrameTimeline, token: CancelToken
     ) -> OverlayAlignmentReport:
         """Analyze how these samples align to decoded video timestamps; polls *token*."""
         if self.sequence_lookup:
-            return analyze_overlay_sequence_alignment(
+            report = analyze_overlay_sequence_alignment(
                 handler_type=handler_type,
                 total_video_frames=video_timeline.count,
                 overlay_sequences=self.sequences,
                 policy=self.policy,
                 token=token,
             )
-        return analyze_overlay_alignment(
-            handler_type=handler_type,
-            video_timeline=video_timeline,
-            overlay_timestamps_us=self.timestamps_us,
-            policy=self.policy,
-            token=token,
-        )
+        else:
+            report = analyze_overlay_alignment(
+                handler_type=handler_type,
+                video_timeline=video_timeline,
+                overlay_timestamps_us=self.timestamps_us,
+                policy=self.policy,
+                token=token,
+            )
+        return replace(report, load_warnings=self.load_warnings)
 
     def scene_history(
         self,

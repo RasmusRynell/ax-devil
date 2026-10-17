@@ -249,6 +249,22 @@ class SceneHistory:
         """Return the history of *entity_id*, or None when it is never shown in the video."""
         return self._objects_by_id.get(entity_id)
 
+    def nearest_event(self, event: FrameEvent) -> FrameEvent | None:
+        """Return the event with *event*'s kind, label and objects that lies nearest to its frame, or None.
+
+        After the history is replaced an event may sit on another frame, or be gone.
+        """
+        frame = event.frame_id.sequence_id
+        return min(
+            (
+                other
+                for other in self.events
+                if (other.kind, other.label, other.entity_ids) == (event.kind, event.label, event.entity_ids)
+            ),
+            key=lambda other: abs(other.frame_id.sequence_id - frame),
+            default=None,
+        )
+
     def events_involving(self, entity_id: str) -> tuple[FrameEvent, ...]:
         """Return the events involving *entity_id* in frame order."""
         return tuple(self._events_by_id.get(entity_id, ()))

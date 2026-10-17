@@ -11,6 +11,7 @@ from typing import Any
 
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.core.load_warning import SkippedRecords
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import (
     OverlayLookupMatchType,
@@ -213,6 +214,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             timestamp_to_sequence=self._timestamp_to_sequence,
             records=catalog.history,
             policy=self._timestamp_fallback_policy,
+            load_warnings=catalog.warnings,
         )
         self._metadata = SceneDecoderFileMetadata(
             file_path=str(self.file_path),
@@ -258,6 +260,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         """Produce scene/timestamp/sequence maps from the decoded payloads."""
         decoded_scenes: list[tuple[int, Scene]] = []
         total_lines = 0
+        skipped = SkippedRecords("records", "Objects in skipped records are not shown.")
 
         for line_num, payload in enumerate(payloads):
             total_lines += 1
@@ -269,9 +272,12 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                 decoded_scenes.append((line_num, scene))
             except Exception as exc:
                 logger.warning(f"Line {line_num}: {exc}")
+                skipped.add(f"record {line_num + 1}: {exc}")
                 continue
 
-        return self._build_scene_result_from_scenes(decoded_scenes, total_lines=total_lines)
+        result = self._build_scene_result_from_scenes(decoded_scenes, total_lines=total_lines)
+        warning = skipped.warning(total_lines)
+        return replace(result, warnings=(warning,)) if warning is not None else result
 
     def _build_scene_result_from_scenes(
         self,

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.load_warning import LoadWarning
 
 _GOOD_ALIGNMENT_RATIO = 0.8
 _MIN_TIMELINE_END_WARNING_US = 1_000_000
@@ -150,6 +151,7 @@ class OverlayAlignmentReport:
     sequence_matches: int = 0
     video_end_timestamp_us: int | None = None
     overlay_last_timestamp_us: int | None = None
+    load_warnings: tuple[LoadWarning, ...] = ()
 
     @property
     def policy_matches(self) -> int:
@@ -196,8 +198,10 @@ class OverlayAlignmentReport:
 
     @property
     def has_alignment_warning(self) -> bool:
-        """Return whether timestamp matching or timeline coverage needs attention."""
-        return self.unmatched_overlay_frames > 0 or self.has_suspicious_last_overlay_timestamp
+        """Return whether the decoder skipped records, or timestamp matching or timeline coverage needs attention."""
+        return (
+            self.unmatched_overlay_frames > 0 or self.has_suspicious_last_overlay_timestamp or bool(self.load_warnings)
+        )
 
     @property
     def tolerance_text(self) -> str:
@@ -211,7 +215,13 @@ class OverlayAlignmentReport:
 
     @property
     def alignment_issue_text(self) -> str:
-        """Return a plain-language explanation of suspicious overlay timing."""
+        """Return a plain-language explanation of what the decoder skipped and of suspicious overlay timing."""
+        texts = [warning.text for warning in self.load_warnings]
+        if timing_text := self._timing_issue_text():
+            texts.append(timing_text)
+        return "\n".join(texts)
+
+    def _timing_issue_text(self) -> str:
         issues: list[str] = []
         last_overlay_timestamp_offset_us = self.last_overlay_timestamp_offset_us
         if self.has_suspicious_last_overlay_timestamp and last_overlay_timestamp_offset_us is not None:

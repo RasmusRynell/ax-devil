@@ -28,6 +28,7 @@ class Icon(Enum):
     CLOSE = ("x", False)
     EXPORT = ("download", False)
     MENU = ("chevron-down", False)
+    CHEVRON_UP = ("chevron-up", False)
     MORE = ("ellipsis", False)
     DRAG = ("grip-vertical", False)
     PIN = ("pin", False)
@@ -52,6 +53,7 @@ class Icon(Enum):
     SCAN = ("wifi", False)
     FILE = ("file-text", False)
     BROADCAST = ("radio", False)
+    HELP = ("circle-help", False)
 
     def __init__(self, file_stem: str, filled: bool) -> None:
         self.file_stem = file_stem

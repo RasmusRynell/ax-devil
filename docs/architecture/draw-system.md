@@ -10,7 +10,7 @@ rules are in its README.
 [rendering README](../../src/ax_devil/modules/scene/rendering/README.md).
 
 `ax_devil.modules.video_player` owns generic drawing. It knows about video frames, prepared geometry, paths and
-glyphs, Qt Quick display and image export, viewport math, hover card placement, and metrics collection. It must not
+glyphs, Qt Quick display and image export, viewport math, hover chip placement and selection highlight, and metrics collection. It must not
 become Scene-aware. See the [video player README](../../src/ax_devil/modules/video_player/README.md).
 
 The boundary object is `VideoOverlayData`. Scene code supplies a `drawing_generator`, `interaction_provider`, and

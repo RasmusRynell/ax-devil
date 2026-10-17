@@ -54,5 +54,7 @@ points, run `plugins update` with the same launch command. Upgrades, removal and
 ## Writing it well
 
 - Match the built-in model's structure; keep the plugin to the few files the model uses.
-- Fail loudly on a file that is not the expected format; skip and log single malformed records.
+- Fail loudly on a file that is not the expected format. For a malformed record, raise `ValueError` naming the
+  problem: ax-devil skips the record and warns on the lane. Return `None` only for a record with no overlay.
+  A provider that parses the whole file puts a `LoadWarning` in `SceneBuildResult.warnings`.
 - To change how the decoded objects look, follow the `render-catalog` skill; the plugin only supplies the data.

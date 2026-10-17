@@ -10,6 +10,7 @@ Application (`app.py`)         -> logging, config, settings, plugins, Qt event l
 Application Shell              -> MainWindow, menus, app-wide dialogs including Settings
 Workspace                      -> core: Workspace, items, content, intake (Qt-free); ui: store, browser rows, panes, viewers
 Video Viewer                   -> live/offline workflows, media tools, Scene presentation, catalog viewer
+Object Inspection              -> fields tree and title row of an object, used by media tools and the catalog viewer
 Video Player                   -> reusable frame display, viewport, drawing preparation
 Runtime Modules                -> Scene, filtering, data sources, synchronization, cache, plugins
 Supporting Modules             -> diagnostics, shortcuts, chrome, background jobs

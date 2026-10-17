@@ -14,11 +14,9 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QLabel,
-    QListView,
     QPushButton,
-    QTabWidget,
+    QTabBar,
     QToolButton,
-    QWidget,
 )
 from pytestqt.qtbot import QtBot
 
@@ -47,7 +45,7 @@ from ax_devil.modules.video_viewer import (
     scene_frame_presenter,
 )
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
-from ax_devil.modules.video_viewer.media_tools.event_log_widget import EventLogModel
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
@@ -418,13 +416,27 @@ def _displays(widget: OfflineVideoViewerWidget) -> list[FrameDisplay]:
     return displays
 
 
-def _event_texts(panel: MediaToolsPanel) -> list[str]:
-    """Return the event rows the panel lists now."""
+def _show_events(widget: OfflineVideoViewerWidget) -> None:
+    """Show the viewer with its side panels open on their Events tab; the page lists events only while shown."""
 
-    view = panel.event_log.findChild(QListView)
+    widget.show()
+    for side_panel in widget.findChildren(DraggablePanel):
+        side_panel.expand()
+    for tabs in widget.findChildren(QTabBar, "mediaToolsTabs"):
+        tabs.setCurrentIndex(1)
+
+
+def _events_view(panel: MediaToolsPanel) -> RowTableView:
+    view = panel.events_page.findChild(RowTableView)
     assert view is not None
-    model = view.model()
-    return [model.data(model.index(row, 0)) for row in range(model.rowCount())]
+    return view
+
+
+def _event_texts(panel: MediaToolsPanel) -> list[str]:
+    """Return the labels of the events the panel lists now."""
+
+    model = _events_view(panel).rows_model
+    return [cast(Any, model.row_at(row)).event.label for row in range(model.rowCount())]
 
 
 def _alignment_text(timing: TimingDiagnosticsWidget) -> str:
@@ -1010,30 +1022,16 @@ class TestOfflineVideoViewerWidget:
         )
         widget = self._open(qtbot, content)
         panels = widget.findChildren(MediaToolsPanel)
-        event_logs = [panel.event_log for panel in panels]
+        _show_events(widget)
+        event_pages = [panel.events_page for panel in panels]
+        assert all(page.isVisible() for page in event_pages)
+        assert [_event_texts(panel) for panel in panels] == [["Delete first"], ["Delete second"]]
 
-        def event_model(log: QWidget) -> EventLogModel:
-            view = log.findChild(QListView)
-            assert view is not None
-            return cast(EventLogModel, view.model())
-
-        assert [event_model(log).data(event_model(log).index(0, 0)) for log in event_logs] == [
-            "#20 00:00:00.020 Delete first",
-            "#20 00:00:00.020 Delete second",
-        ]
-
-        widget.show()
-        for side_panel in widget.findChildren(DraggablePanel):
-            side_panel.expand()
-        for tabs in widget.findChildren(QTabWidget, "mediaToolsTabs"):
-            tabs.setCurrentIndex(1)
-        assert all(log.isVisible() for log in event_logs)
-
-        event_logs[1].frameRequested.emit(20)
+        panels[1].frameRequested.emit(20)
         assert frame_sources[0].get_current_frame() == 20
         frame_sources[0].frameReady.emit(_frame_data(20))
         QCoreApplication.processEvents()
-        qtbot.waitUntil(lambda: [event_model(log).position_row() for log in event_logs] == [0, 0])
+        qtbot.waitUntil(lambda: [cast(Any, _events_view(panel)).position for panel in panels] == [(0, 1), (0, 1)])
 
         panels[0].frameRequested.emit(12)
         assert frame_sources[0].get_current_frame() == 12
@@ -1047,20 +1045,21 @@ class TestOfflineVideoViewerWidget:
         (timing,) = widget.findChildren(TimingDiagnosticsWidget)
         (source,) = overlay_sources
         assert isinstance(source, _SpecFileOverlaySource)
+        _show_events(widget)
         panel.overlay_controls.settingsChanged.emit(OverlayPersistenceSettings(enabled=True, timeout_ms=1500))
         qtbot.waitUntil(lambda: source.history_selections[-1] == (True, 1_500_000), timeout=5000)
 
         def shows(history: str, tolerance: str) -> Callable[[], bool]:
             def shown() -> bool:
                 alignment = _alignment_text(timing)
-                return _event_texts(panel) == [f"#20 00:00:00.020 {history}"] and f"tol {tolerance}" in alignment
+                return _event_texts(panel) == [history] and f"tol {tolerance}" in alignment
 
             return shown
 
         qtbot.waitUntil(shows("Delete only", "50 ms"), timeout=5000)
 
         panel.overlay_controls.settingsChanged.emit(OverlayPersistenceSettings(enabled=False))
-        qtbot.waitUntil(lambda: _event_texts(panel) == ["#20 00:00:00.020 Delete only (no sticky)"], timeout=5000)
+        qtbot.waitUntil(lambda: _event_texts(panel) == ["Delete only (no sticky)"], timeout=5000)
         assert source.history_selections[-1] == (False, None)
 
         timing.timestampFallbackPolicyChanged.emit(TimestampFallbackPolicy(tolerance_us=0))
@@ -1081,6 +1080,7 @@ class TestOfflineVideoViewerWidget:
         assert isinstance(source, _SpecFileOverlaySource)
         notice = panel.findChild(QLabel, "historyOutOfDateNotice")
         assert notice is not None
+        _show_events(widget)
         qtbot.waitUntil(lambda: "tol 50 ms" in _alignment_text(timing), timeout=5000)
         assert notice.isHidden()
 
@@ -1091,14 +1091,14 @@ class TestOfflineVideoViewerWidget:
         for text in (notice.text(), _alignment_text(timing), indicator.toolTip()):
             assert "lane '" in text
             assert "frame index unreadable" in text
-        assert _event_texts(panel) == ["#20 00:00:00.020 Delete only"]
+        assert _event_texts(panel) == ["Delete only"]
         assert "tol 50 ms" in _alignment_text(timing)
 
         source.failure = None
         timing.timestampFallbackPolicyChanged.emit(TimestampFallbackPolicy(tolerance_us=10_000))
 
         qtbot.waitUntil(lambda: notice.isHidden() and "tol 10 ms" in _alignment_text(timing), timeout=5000)
-        assert _event_texts(panel) == ["#20 00:00:00.020 Delete only"]
+        assert _event_texts(panel) == ["Delete only"]
         assert "frame index unreadable" not in _alignment_text(timing)
         assert indicator.isHidden()
 
@@ -1507,9 +1507,10 @@ class TestOfflineVideoViewerWidget:
             _attach_offline_widget(qtbot, widget)
             lane = _session(widget).lanes[0]
             assert lane.tools_panel is not None and lane.presenter is not None
-            export_button = lane.tools_panel.findChild(QToolButton, "exportVideoButton")
-            assert export_button is not None
-            assert lane.presenter.scene_render_catalog is None and not export_button.isEnabled()
+            more_button = lane.tools_panel.findChild(QToolButton, "mediaToolsMoreButton")
+            assert more_button is not None and more_button.menu() is not None
+            assert lane.export_action in more_button.menu().actions()
+            assert lane.presenter.scene_render_catalog is None and not lane.export_action.isEnabled()
 
             with (
                 patch("ax_devil.modules.video_viewer.export.ExportDialog") as dialog_type,
@@ -1525,7 +1526,7 @@ class TestOfflineVideoViewerWidget:
                 dialog_type.assert_not_called()
 
                 release.set()
-                qtbot.waitUntil(export_button.isEnabled, timeout=10_000)
+                qtbot.waitUntil(lane.export_action.isEnabled, timeout=10_000)
                 widget.export_video()
                 exported = dialog_type.call_args.args[0]
 

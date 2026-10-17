@@ -125,10 +125,11 @@ class LaneViewer(VideoFrameRenderer):
             opacity: float,
             target: QRectF,
             scale: float,
-            highlight: tuple[float, float, float, float] | None,
+            hovered: tuple[float, float, float, float] | None,
+            selected: tuple[float, float, float, float] | None = None,
         ) -> None:
             started = perf_counter()
-            set_overlays(drawing, opacity, target, scale, highlight)
+            set_overlays(drawing, opacity, target, scale, hovered, selected)
             self._stages["binding"] += (perf_counter() - started) * 1000
             self.drawing = drawing
 
