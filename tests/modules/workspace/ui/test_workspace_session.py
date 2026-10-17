@@ -711,6 +711,28 @@ def test_launch_restores_unsaved_changes_with_a_banner_and_discard_returns_to_th
     assert list((tmp_path / "state" / "unsaved-workspaces").glob("*.ax-devil.workspace")) == []
 
 
+def test_keeping_restored_unsaved_changes_only_hides_the_banner(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    quit_session = _session(render_catalog_manager, tmp_path)
+    qtbot.addWidget(quit_session.widget())
+    edit = _video_item(tmp_path, "edit.mp4")
+    with patch(_OFFLINE_VIEWER, DummyViewer):
+        quit_session.add_items([edit])
+    quit_app(quit_session.lifecycle)
+    launched = _session(render_catalog_manager, tmp_path)
+    qtbot.addWidget(launched.widget())
+    launched.lifecycle.launch()
+    banner = launched.widget().findChild(Banner)
+    assert banner is not None and banner.dismiss is not None
+
+    banner.dismiss.click()
+
+    assert banner.isHidden()
+    assert _store(launched).is_modified
+    assert _store(launched).workspace.items == (edit,)
+
+
 def test_saved_workspace_is_listed_on_the_start_panel(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:

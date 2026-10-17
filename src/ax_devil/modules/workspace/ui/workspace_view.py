@@ -20,7 +20,7 @@ class WorkspaceView(SectionsView):
     """Show every section the workspace holds, or the start panel while there is none.
 
     The header carries the workspace's name, which a click edits, and a mark while it has unsaved changes. A banner
-    says when the unsaved changes were restored from the last run, and offers to discard them.
+    says when the unsaved changes were restored from the last run, and offers to keep or discard them.
     """
 
     discard_requested = Signal()
@@ -36,7 +36,7 @@ class WorkspaceView(SectionsView):
             empty_page=start_panel,
             parent=parent,
         )
-        self._restored = Banner("Restored unsaved changes", "Discard")
+        self._restored = Banner("Restored unsaved changes", "Discard changes", dismiss_text="Keep")
         self._restored.action.clicked.connect(self.discard_requested)
         self._restored.hide()
         self.set_footer_panel(self._restored)

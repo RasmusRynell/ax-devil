@@ -1,4 +1,4 @@
-"""A strip that tells the user something needs attention, with the one action that deals with it."""
+"""A strip that tells the user something needs attention, with the action that deals with it."""
 
 from __future__ import annotations
 
@@ -15,9 +15,14 @@ _FILL_ALPHA = 0.12
 
 
 class Banner(QFrame):
-    """A warning-colored message with an action button; connect to ``action`` to react to a click."""
+    """A warning-colored message with an action button; connect to ``action`` to react to a click.
 
-    def __init__(self, message: str, action_text: str, parent: QWidget | None = None) -> None:
+    Give *dismiss_text* for a button beside the action that only hides the banner.
+    """
+
+    def __init__(
+        self, message: str, action_text: str, dismiss_text: str | None = None, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("AxDevilBanner")
         layout = QHBoxLayout(self)
@@ -29,6 +34,11 @@ class Banner(QFrame):
         TextRole.SMALL.apply(text)
         text.setWordWrap(True)
         layout.addWidget(text, 1)
+        self.dismiss: SmallButton | None = None
+        if dismiss_text is not None:
+            self.dismiss = SmallButton(dismiss_text, parent=self)
+            self.dismiss.clicked.connect(self.hide)
+            layout.addWidget(self.dismiss)
         self.action = SmallButton(action_text, parent=self)
         layout.addWidget(self.action)
         follow_appearance(self, self._apply_appearance)

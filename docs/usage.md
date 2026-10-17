@@ -12,7 +12,7 @@ which is what the recent lists show. A workspace is called Untitled until you na
 
 ax-devil never asks about unsaved changes. They are kept as a copy in the storage folder's `unsaved-workspaces` folder
 and listed among the recent workspaces; the workspace's own file is not touched. A plain `ax-devil` launch restores
-them, with a banner offering to discard them, unless another window already has them open. `ax-devil local`, `live` and
+them, with a banner offering to keep or discard them, unless another window already has them open. `ax-devil local`, `live` and
 `playlist` start a new Untitled workspace with what they open. The design is in [Workspace](architecture/workspace.md#lifecycle).
 
 A workspace saves what you added, not how you looked at it: file paths (relative to the workspace file when they are
