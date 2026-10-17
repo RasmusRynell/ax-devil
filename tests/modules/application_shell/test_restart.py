@@ -1,4 +1,4 @@
-"""Restarting keeps the global options but leaves out the command line's content, so the kept workspace is restored."""
+"""A restart keeps the global options but leaves out the command line's content: the new process starts empty."""
 
 from __future__ import annotations
 

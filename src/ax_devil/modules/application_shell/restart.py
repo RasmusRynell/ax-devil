@@ -20,7 +20,7 @@ def restart_application(main_window: QWidget) -> None:
 
     The main window closes first, so its own cleanup (leaving lane fullscreen, stopping viewers and workers) runs even
     when another window refuses to close. The new process is started by `relaunch_if_requested`, which the app calls
-    after its exit-time saves, so the restarted session reads what this one saved.
+    after its exit-time saves, so the restarted session lists the unsaved edits this one kept.
     """
     app = QApplication.instance()
     if app is None:

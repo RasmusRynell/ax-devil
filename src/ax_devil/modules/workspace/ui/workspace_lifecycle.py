@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -18,10 +19,13 @@ from ax_devil.modules.workspace.core import (
     save_workspace,
     workspace_file_path,
 )
+from ax_devil.modules.workspace.core.legacy_backup import LEGACY_BACKUP_FILE, read_legacy_backup
 from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice, WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 logger = get_logger(__name__)
+
+_COPY_STEM_BYTES = 150  # Leaves room for the date, a number, and the extension within a file name's 255 bytes.
 
 
 class WorkspaceLifecycle(QObject):
@@ -29,7 +33,8 @@ class WorkspaceLifecycle(QObject):
 
     Launching starts with an empty Workspace. Quitting never asks; a Workspace with unsaved edits is saved as a copy
     in the folder *unsaved_folder* names and joins *recent_workspaces* like any opened or saved file. Starting a new
-    Workspace asks before discarding edits; opening a saved Workspace discards them.
+    Workspace asks before discarding edits; opening a saved Workspace discards them. The first launch after an upgrade
+    keeps the edits of the ``workspace-backup.json`` that earlier versions left beside *unsaved_folder* the same way.
     """
 
     recent_workspaces_changed = Signal()
@@ -54,6 +59,7 @@ class WorkspaceLifecycle(QObject):
 
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
         """Open *workspace_file* or start a new Workspace with *items*, if given; otherwise stay empty."""
+        self._keep_legacy_backup()
         if workspace_file is not None:
             self.open_workspace(workspace_file)
         elif items:
@@ -66,16 +72,7 @@ class WorkspaceLifecycle(QObject):
         """
         if not self._store.is_modified:
             return
-        workspace = self._store.workspace
-        copy = workspace_file_path(
-            self._unsaved_folder() / f"{workspace.suggested_file_stem} {datetime.now():%Y-%m-%d %H-%M-%S}"
-        )
-        try:
-            save_workspace(workspace, copy)
-        except (WorkspaceFileError, OSError) as exc:
-            logger.warning(f"Could not keep the unsaved workspace in {copy}: {exc}")
-            return
-        self._recent_workspaces.record(copy)
+        self._save_copy(self._store.workspace)
 
     def new_workspace(self, items: Sequence[WorkspaceItem] = ()) -> bool:
         """Replace the Workspace with a new Untitled one holding *items*; return False when the user cancels."""
@@ -140,6 +137,60 @@ class WorkspaceLifecycle(QObject):
             return True
         choice = self._prompts.ask_save_changes(self._store.workspace.name)
         return choice is SaveChoice.DISCARD or (choice is SaveChoice.SAVE and self.save_workspace())
+
+    def _save_copy(self, workspace: Workspace) -> bool:
+        """Save *workspace* as a new file in the unsaved folder and record it; return whether that worked."""
+        copy: Path | None = None
+        try:
+            copy = self._reserve_copy_path(workspace)
+            save_workspace(workspace, copy)
+        except (WorkspaceFileError, OSError) as exc:
+            logger.warning(
+                f"Could not keep the unsaved workspace {workspace.name!r} in {self._unsaved_folder()}: {exc}"
+            )
+            if copy is not None:
+                copy.unlink(missing_ok=True)
+            return False
+        self._recent_workspaces.record(copy)
+        return True
+
+    def _reserve_copy_path(self, workspace: Workspace) -> Path:
+        """Create and return an empty file named after *workspace* and now that no other file or instance has.
+
+        The name is cut to a length every file system accepts. Creating the file is what claims the name, so instances
+        saving at the same moment get different files.
+        """
+        folder = self._unsaved_folder()
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = workspace.suggested_file_stem.encode()[:_COPY_STEM_BYTES].decode(errors="ignore")
+        stem = f"{stem} {datetime.now():%Y-%m-%d %H-%M-%S}"
+        number = 1
+        while True:
+            path = workspace_file_path(folder / (stem if number == 1 else f"{stem} {number}"))
+            try:
+                os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+            except FileExistsError:
+                number += 1
+            else:
+                return path
+
+    def _keep_legacy_backup(self) -> None:
+        """Keep the unsaved edits in an earlier version's backup as a recent workspace, then delete the backup.
+
+        A backup that cannot be read or holds no edits is deleted without a copy; one whose copy cannot be saved stays
+        for the next launch.
+        """
+        backup = self._unsaved_folder().parent / LEGACY_BACKUP_FILE
+        if not backup.is_file():
+            return
+        unsaved = read_legacy_backup(backup)
+        if unsaved is not None and not self._save_copy(unsaved):
+            return
+        try:
+            backup.unlink()
+        except OSError as exc:
+            logger.warning(f"Could not delete the earlier version's workspace backup {backup}: {exc}")
+        self.recent_workspaces_changed.emit()
 
     def _remember(self, path: Path) -> None:
         """Record *path* as the most recent workspace file."""

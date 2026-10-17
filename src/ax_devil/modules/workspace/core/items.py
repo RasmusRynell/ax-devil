@@ -462,8 +462,9 @@ def _playlist_display_name(label: str, playlist_name: str, *, several: bool) -> 
 class UnreadableItem(WorkspaceItem):
     """An item the file held but this version cannot read: an unknown kind, or a known kind with malformed JSON.
 
-    It never resolves, and it is written back exactly as it was read, so saving does not lose it. Raw JSON without an
-    id gets a new id on every read, so unreadable items compare by what they hold, not by id; a reopened or restored
+    It never resolves, and it is written back exactly as it was read, so saving does not lose it. Its JSON is not
+    understood, so relative paths in it are not rewritten when the workspace is saved to another folder. Raw JSON
+    without an id gets a new id on every read, so unreadable items compare by what they hold, not by id; a reopened
     workspace is then not modified by them alone.
     """
 

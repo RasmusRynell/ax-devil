@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ from ax_devil.modules.workspace.core import (
     load_workspace,
     save_workspace,
 )
+from ax_devil.modules.workspace.ui import workspace_lifecycle
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
 from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -102,6 +105,92 @@ def test_a_quit_keeps_unsaved_edits_of_a_saved_workspace_beside_its_untouched_fi
     assert original.path == tmp_path / "Lot.ax-devil.workspace"
     assert load_workspace(copy.path).items == (saved_clip, edit)
     assert saving.store.is_modified
+
+
+def test_quitting_instances_with_the_same_workspace_name_at_the_same_moment_keep_both_copies(
+    launches: _Launches, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> _Frozen:
+            return cls(2026, 1, 2, 3, 4, 5)
+
+    monkeypatch.setattr(workspace_lifecycle, "datetime", _Frozen)
+    clips = [_video(tmp_path, "a.mp4"), _video(tmp_path, "b.mp4")]
+    for clip in clips:
+        instance = launches.new()
+        instance.store.add_items([clip])
+        instance.store.rename_workspace("Parking lot")
+        instance.lifecycle.keep_unsaved_changes()
+
+    copies = launches.new().lifecycle.recent_workspaces()
+    assert sorted(load_workspace(copy.path).items[0].id for copy in copies) == sorted(clip.id for clip in clips)
+
+
+@pytest.mark.parametrize("name", ["x" * 400, "\u00e5" * 400], ids=["ascii", "multibyte"])
+def test_a_quit_keeps_unsaved_edits_of_a_workspace_with_a_very_long_name(
+    launches: _Launches, tmp_path: Path, name: str
+) -> None:
+    launch = launches.new()
+    launch.store.add_items([_video(tmp_path, "a.mp4")])
+    launch.store.rename_workspace(name)
+
+    launch.lifecycle.keep_unsaved_changes()
+
+    [copy] = launch.lifecycle.recent_workspaces()
+    assert load_workspace(copy.path).name == name
+
+
+def _write_legacy_backup(state: Path, name: str, items: list[VideoItem], saved_file: Path | None = None) -> Path:
+    """Write the ``workspace-backup.json`` that earlier versions kept on quit."""
+    backup = state / "workspace-backup.json"
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    document = {
+        "name": name,
+        "path": str(saved_file) if saved_file else None,
+        "items": [i.to_json(None) for i in items],
+    }
+    backup.write_text(json.dumps(document))
+    return backup
+
+
+def test_the_first_launch_after_an_upgrade_lists_the_unsaved_edits_of_the_earlier_versions_backup(
+    launches: _Launches, tmp_path: Path
+) -> None:
+    clip = _video(tmp_path, "lot.mp4")
+    backup = _write_legacy_backup(tmp_path / "state", "Parking lot", [clip])
+    launch = launches.new()
+    changed: list[None] = []
+    launch.lifecycle.recent_workspaces_changed.connect(lambda: changed.append(None))
+
+    launch.lifecycle.launch()
+
+    assert not backup.exists()
+    assert changed
+    assert launch.store.workspace == Workspace()
+    [recent] = launch.lifecycle.recent_workspaces()
+    assert launch.lifecycle.open_workspace(recent.path)
+    assert (launch.store.workspace.items, launch.store.workspace.name) == ((clip,), "Parking lot")
+    launches.new().lifecycle.launch()
+    assert len(launch.lifecycle.recent_workspaces()) == 1
+
+
+def test_an_earlier_versions_backup_without_unsaved_edits_or_unreadable_is_dropped_without_a_recent_workspace(
+    launches: _Launches, tmp_path: Path
+) -> None:
+    saved_file = tmp_path / "Lot.ax-devil.workspace"
+    clip = _video(tmp_path, "a.mp4")
+    save_workspace(Workspace(name="Lot", items=(clip,)), saved_file)
+    unchanged = _write_legacy_backup(tmp_path / "state", "Lot", [clip], saved_file)
+    launches.new().lifecycle.launch()
+    assert not unchanged.exists()
+
+    unchanged.write_text("{ not json")
+    launch = launches.new()
+    launch.lifecycle.launch()
+
+    assert not unchanged.exists()
+    assert launch.lifecycle.recent_workspaces() == ()
 
 
 def test_a_quit_without_unsaved_edits_keeps_nothing(launches: _Launches, tmp_path: Path) -> None:

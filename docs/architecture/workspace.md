@@ -50,7 +50,7 @@ file format, and the store do not branch on kind.
 ## Bookmarks
 
 While reviewing local videos and playlists, a user bookmarks frames and marks each video reviewed. Both are part of
-the Workspace, beside the items, so they are saved, kept between launches, and make the Workspace modified.
+the Workspace, beside the items, so they are saved and make the Workspace modified.
 
 - A Bookmark Target is an item id plus an entry key that Content gives itself (`bookmark_entries`): empty for a Video
   Item, "<playlist name>/<entry title>" for a playlist entry. Entries have no id and their indexes shift when a
