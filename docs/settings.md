@@ -88,6 +88,6 @@ Keep these private:
 
 **View → Show Lane Names** toggles the names drawn at the top of each video lane.
 Names stay in place while zooming and hide only while frame info is shown.
-**View → Object Hover and Click Details** toggles object highlighting, hover cards, and click-to-pin details.
+**View → Object Hover and Click Details** toggles object highlighting, hover chips, and click-to-select.
 Both preferences apply immediately to open viewers and are saved in the active configuration.
 They are also available under **Settings → General → Video Overlays**.

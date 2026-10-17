@@ -227,6 +227,7 @@ class LiveVideoViewerWidget(ViewerWidget):
             overlay_settings=OverlayPersistenceSettings.default_enabled(),
         )
         display.set_side_panel_widget(tools_panel)
+        tools_panel.link_selection(display)
         controller.attach_scene_filter(filter_model)
         controller.attach_scene_inspector(tools_panel)
         tools_panel.catalogViewerRequested.connect(self._open_catalog_viewer)

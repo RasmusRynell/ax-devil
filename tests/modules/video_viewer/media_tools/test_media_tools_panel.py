@@ -27,6 +27,7 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
+from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey
@@ -231,6 +232,30 @@ def test_object_page_steps_follow_the_listed_order(
     assert selected == ["c", "b", "c", "a"]
     next_button = _button(panel, "Next in list")
     assert next_button is not None and not next_button.isEnabled()
+
+
+def test_the_selection_on_the_video_and_the_open_object_page_follow_each_other(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    panel = _panel(qtbot, render_catalog_selection)
+    display = FrameDisplay()
+    qtbot.addWidget(display)
+    panel.link_selection(display)
+    panel.update_scene(_scene(_entity("a", conf=0.3), _entity("b", conf=0.9)), _frame(0), {})
+    shown = _record(panel.objectSelected)
+    clicked = _record(display.objectSelected)
+
+    display.viewport.selectionChanged.emit("a")  # A click on a on the video opens its page.
+    assert shown == ["a"] and _view(panel) is None
+
+    _click(panel, "Previous in list")  # Stepping to b in the panel selects b on the video; no echo comes back.
+    assert shown == ["a", "b"] and display.viewport._selected_id == "b" and clicked == ["a"]
+
+    display.viewport.selectionChanged.emit(None)  # Clearing the selection leaves the page open.
+    assert shown == ["a", "b"] and _view(panel) is None
+
+    _click(panel, "Back (Esc)")  # Going back from the object clears the selection on the video.
+    assert display.viewport._selected_id is None
 
 
 def test_object_page_outside_the_frame_goes_to_where_the_object_was_and_will_be(

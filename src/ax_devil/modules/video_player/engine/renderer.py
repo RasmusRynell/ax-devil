@@ -17,13 +17,13 @@ from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.video_transforms import calculate_aspect_preserving_fit
 
-from ..ui.entity_hover_card import EntityHoverCard
+from ..ui.hover_chip import HoverChip
 from .data_types import (
     HoverHit,
     HoverInteractionProvider,
     VideoFrameWithOverlays,
 )
-from .quick.surface import QuickSurface
+from .quick.surface import Bounds, QuickSurface
 from .render_context import RenderContext
 from .viewport_state import NormalizedViewport, ViewportState, ZoomStep
 
@@ -40,6 +40,7 @@ class VideoFrameRenderer(QWidget):
     """Viewport interaction, coalesced Quick frame preparation, and display diagnostics."""
 
     viewportChanged = Signal(object)  # NormalizedViewport
+    selectionChanged = Signal(object)  # Id of the object the user selected by clicking it, or None when cleared
 
     def __init__(
         self,
@@ -64,8 +65,8 @@ class VideoFrameRenderer(QWidget):
         )
         self._cached_render_context: RenderContext | None = None
         self._hover_hit: HoverHit | None = None
-        self._hover_highlight_overlay: tuple[float, float, float, float] | None = None
-        self._pinned_target_id: str | None = None
+        self._selected_id: str | None = None
+        self._selected_bounds: Bounds | None = None
         self._did_pan_during_drag = False
         self._stable_viewport: NormalizedViewport | None = None
         self._quick = QuickSurface(self)
@@ -74,7 +75,7 @@ class VideoFrameRenderer(QWidget):
         self._prepare_timer = QTimer(self)
         self._prepare_timer.setSingleShot(True)
         self._prepare_timer.timeout.connect(self._prepare_quick_frame)
-        self._hover_card = EntityHoverCard(self)
+        self._chip = HoverChip(self)
 
         GlobalSettings().overlay_preference_changed.connect(self._on_overlay_preference_changed)
         self.destroyed.connect(
@@ -85,14 +86,13 @@ class VideoFrameRenderer(QWidget):
     def display_frame(self, video_frame: VideoFrameWithOverlays) -> None:
         get_render_metrics_store().submit(self._metrics_instance_id, self._frame_identity(video_frame))
         self._video_frame = video_frame
-        if self._pinned_target_id is not None:
-            self._refresh_pinned_selection()
-        else:
-            self._refresh_hover_from_cursor()
+        self._refresh_selected_bounds()
+        self._refresh_hover_from_cursor()
         self._request_repaint()
 
     def clear(self) -> None:
-        self._clear_selection()
+        self._set_selected(None)
+        self._clear_hover()
         self._video_frame = None
         get_render_metrics_store().reset(self._metrics_instance_id)
         self._stable_viewport = None
@@ -103,10 +103,8 @@ class VideoFrameRenderer(QWidget):
 
     def refresh_last_frame(self) -> None:
         if self._video_frame is not None:
-            if self._pinned_target_id is not None:
-                self._refresh_pinned_selection()
-            else:
-                self._refresh_hover_from_cursor()
+            self._refresh_selected_bounds()
+            self._refresh_hover_from_cursor()
             self._request_repaint()
 
     def _request_repaint(self) -> None:
@@ -132,7 +130,14 @@ class VideoFrameRenderer(QWidget):
         compose_start = perf_counter() if capture else 0.0
         drawing, opacity = frame.prepare_overlays(context, surface.drawing_buffer(target, context.scale_factor))
         draw_start = perf_counter() if capture else 0.0
-        surface.set_overlays(drawing, opacity, target, context.scale_factor, self._hover_highlight_overlay)
+        surface.set_overlays(
+            drawing,
+            opacity,
+            target,
+            context.scale_factor,
+            self._hover_hit.bounds if self._hover_hit is not None else None,
+            self._selected_bounds,
+        )
         draw_end = perf_counter() if capture else 0.0
         if surface.isHidden():
             surface.show()
@@ -222,10 +227,7 @@ class VideoFrameRenderer(QWidget):
         self._preserve_viewport_on_resize(event)
         super().resizeEvent(event)
         self._quick.setGeometry(self.rect())
-        if self._pinned_target_id is not None:
-            self._refresh_pinned_selection()
-        else:
-            self._clear_hover()
+        self._clear_hover()
         self._request_repaint()
 
     def _aspect_respected_rect(self, img_size: QtCore.QSize) -> QtCore.QRectF:
@@ -340,9 +342,6 @@ class VideoFrameRenderer(QWidget):
             self._store_stable_viewport(base)
             self.setCursor(Qt.CursorShape.OpenHandCursor)
 
-        if self._pinned_target_id is not None:
-            self._refresh_pinned_selection()
-
         self._request_repaint()
         self._emit_viewport_changed()
 
@@ -363,15 +362,10 @@ class VideoFrameRenderer(QWidget):
             base = self._base_rect(self._video_frame.frame.image.size())
             self._viewport.update_pan(event.position(), base, QtCore.QRectF(self.rect()))
             self._store_stable_viewport(base)
-            if self._pinned_target_id is not None:
-                self._refresh_pinned_selection()
-            else:
-                self._clear_hover()
+            self._clear_hover()
             self._request_repaint()
             self._emit_viewport_changed()
             event.accept()
-        elif self._pinned_target_id is not None:
-            super().mouseMoveEvent(event)
         else:
             self._update_hover(event)
             super().mouseMoveEvent(event)
@@ -380,8 +374,15 @@ class VideoFrameRenderer(QWidget):
         self._clear_hover()
         super().leaveEvent(event)
 
+    def select_target(self, target_id: str | None) -> None:
+        """Select the object *target_id*, or clear the selection with None; does not emit ``selectionChanged``.
+
+        An id that is not in the displayed frame stays selected and gets its box when it appears.
+        """
+        self._set_selected(target_id, emit=False)
+
     def _handle_click_selection(self, pos: QtCore.QPointF) -> bool:
-        """Handle click-to-pin selection. Returns True when click was in video area."""
+        """Select the object under a click, or clear the selection on empty video. Returns True in the video area."""
         target = self._hover_target_rect()
         if target is None or not target.contains(pos):
             return False
@@ -390,18 +391,28 @@ class VideoFrameRenderer(QWidget):
         ny = (pos.y() - target.y()) / target.height()
 
         hit = self._hit_test(nx, ny)
-        if hit is None:
-            self._clear_selection()
-            return True
-
-        self._pinned_target_id = hit.target_id
-        if self._update_hover_hit(hit):
-            self._request_repaint()
-        self._show_hover_card_for_hit(hit, target)
+        self._set_selected(hit.target_id if hit is not None else None)
         return True
 
+    def _set_selected(self, target_id: str | None, *, emit: bool = True) -> None:
+        if target_id == self._selected_id:
+            return
+        self._selected_id = target_id
+        self._refresh_selected_bounds()
+        self._request_repaint()
+        if emit:
+            self.selectionChanged.emit(target_id)
+
+    def _refresh_selected_bounds(self) -> None:
+        """Follow the selected object in the displayed frame; it has no box while it is not in the frame."""
+        hit = None
+        provider = self._interaction_provider()
+        if self._selected_id is not None and provider is not None:
+            hit = provider.get_hit_by_id(self._selected_id)
+        self._selected_bounds = hit.bounds if hit is not None else None
+
     def _update_hover(self, event: QMouseEvent) -> None:
-        """Hit-test entities at the cursor position and update the hover card."""
+        """Hit-test entities at the cursor position and update the hover chip."""
         self._update_hover_at_position(event.position())
 
     def _refresh_hover_from_cursor(self) -> None:
@@ -417,31 +428,8 @@ class VideoFrameRenderer(QWidget):
 
         self._update_hover_at_position(QtCore.QPointF(cursor_pos))
 
-    def _refresh_pinned_selection(self) -> None:
-        """Refresh pinned selection against the latest frame/provider state."""
-        if self._pinned_target_id is None:
-            return
-
-        target = self._hover_target_rect()
-        interaction_provider = self._interaction_provider()
-        if target is None or interaction_provider is None:
-            self._clear_selection()
-            return
-
-        hit = interaction_provider.get_hit_by_id(self._pinned_target_id)
-        if hit is None:
-            self._clear_selection()
-            return
-
-        if self._update_hover_hit(hit):
-            self._request_repaint()
-        self._show_hover_card_for_hit(hit, target)
-
     def _update_hover_at_position(self, pos: QtCore.QPointF) -> None:
         """Hit-test entities at a widget-space cursor position and update hover UI."""
-        if self._pinned_target_id is not None:
-            return
-
         target = self._hover_target_rect()
         if target is None:
             self._clear_hover()
@@ -457,38 +445,31 @@ class VideoFrameRenderer(QWidget):
         hit = self._hit_test(nx, ny)
         if self._update_hover_hit(hit):
             self._request_repaint()  # Repaint to show/hide highlight
-        self._show_hover_card_for_hit(hit, target)
+        self._show_hover_chip_for_hit(hit, target)
 
     def _hover_target_rect(self) -> QtCore.QRectF | None:
         if self._video_frame is None or self._video_frame.overlays is None:
             return None
         return self._aspect_respected_rect(self._video_frame.frame.image.size())
 
-    def _show_hover_card_for_hit(self, hit: HoverHit | None, target: QtCore.QRectF) -> None:
+    def _show_hover_chip_for_hit(self, hit: HoverHit | None, target: QtCore.QRectF) -> None:
         if hit is None:
-            self._hover_card.hide_card()
+            self._chip.hide_chip()
             return
 
-        anchor = self._hover_card_anchor_point(hit, target)
-        avoid_rect = self._hover_card_avoid_rect(hit, target)
-        self._hover_card.show_for(
-            hit.target_id,
-            hit.card_html,
-            int(anchor.x()),
-            int(anchor.y()),
-            avoid_rect=avoid_rect,
-            interactive=self._pinned_target_id is not None,
-        )
+        anchor = self._hover_chip_anchor_point(hit, target)
+        avoid_rect = self._hover_chip_avoid_rect(hit, target)
+        self._chip.show_for(hit, int(anchor.x()), int(anchor.y()), avoid_rect=avoid_rect)
 
-    def _hover_card_anchor_point(self, hit: HoverHit, target: QtCore.QRectF) -> QtCore.QPointF:
+    def _hover_chip_anchor_point(self, hit: HoverHit, target: QtCore.QRectF) -> QtCore.QPointF:
         """Return widget-space anchor point near the target bounds."""
         x, y, w, _h = hit.bounds
         anchor_x = target.x() + (x + w) * target.width()
         anchor_y = target.y() + y * target.height()
         return QtCore.QPointF(anchor_x, anchor_y)
 
-    def _hover_card_avoid_rect(self, hit: HoverHit, target: QtCore.QRectF) -> tuple[int, int, int, int]:
-        """Return widget-space bounds that the hover card should avoid covering when possible."""
+    def _hover_chip_avoid_rect(self, hit: HoverHit, target: QtCore.QRectF) -> tuple[int, int, int, int]:
+        """Return widget-space bounds that the hover chip should avoid covering when possible."""
         x, y, w, h = hit.bounds
         rect_x = round(target.x() + x * target.width())
         rect_y = round(target.y() + y * target.height())
@@ -500,30 +481,19 @@ class VideoFrameRenderer(QWidget):
         """Retain the hit and rebuild the highlight only when its geometry changes."""
         previous = self._hover_hit
         self._hover_hit = hit
-        bounds = hit.bounds if hit else None
-        if bounds == (previous.bounds if previous else None):
-            return False
-        self._hover_highlight_overlay = bounds
-        return True
+        return (hit.bounds if hit else None) != (previous.bounds if previous else None)
 
-    def _clear_hover(self, *, force: bool = False) -> None:
-        if self._pinned_target_id is not None and not force:
-            return
-
-        if self._hover_hit is not None or self._hover_highlight_overlay is not None:
+    def _clear_hover(self) -> None:
+        if self._hover_hit is not None:
             self._hover_hit = None
-            self._hover_highlight_overlay = None
             self._request_repaint()
-        self._hover_card.hide_card()
-
-    def _clear_selection(self) -> None:
-        self._pinned_target_id = None
-        self._clear_hover(force=True)
+        self._chip.hide_chip()
 
     def _on_overlay_preference_changed(self, preference: OverlayPreference, enabled: bool) -> None:
-        """Drop the hover card and pinned selection when object interaction is turned off."""
+        """Drop the hover chip and the selection when object interaction is turned off."""
         if preference is OverlayPreference.HOVER and not enabled:
-            self._clear_selection()
+            self._clear_hover()
+            self._set_selected(None)
             self._request_repaint()
 
     def _hit_test(self, nx: float, ny: float) -> HoverHit | None:
