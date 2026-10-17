@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
 from ax_devil.modules.chrome.section_caption import SectionCaption
-from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.ui.browser_rows import (
@@ -71,7 +71,7 @@ def section_caption(
 
 def _action_button(action: RowAction) -> SmallButton:
     """Return the button that offers *action*."""
-    button = SmallButton(action.button_text, action.icon, ButtonKind.PRIMARY if action.primary else ButtonKind.NORMAL)
+    button = SmallButton(action.button_text, action.icon)
     button.setFixedWidth(button.sizeHint().width())
     button.setToolTip(action.tooltip)
     return button

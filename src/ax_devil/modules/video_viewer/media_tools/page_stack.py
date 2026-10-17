@@ -14,7 +14,7 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
-from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent
 
@@ -106,7 +106,7 @@ class PageStack(QWidget):
         header_layout = QHBoxLayout(self._header)
         header_layout.setContentsMargins(Space.M, 0, Space.M, 0)
         header_layout.setSpacing(Space.S)
-        self._back_button = SmallButton("", kind=ButtonKind.OUTLINE, parent=self._header)
+        self._back_button = SmallButton("", parent=self._header)
         self._back_button.setToolTip("Back (Esc)")
         self._back_button.clicked.connect(self.back)
         self._title = ElidedLabel("", Qt.TextElideMode.ElideRight, self._header)

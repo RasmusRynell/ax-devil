@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QLayout, QLayoutItem, QWidget, QWi
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.palette_css import qcolor_to_css
-from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 
@@ -123,7 +123,6 @@ class Banner(QFrame):
         message: str,
         action_text: str,
         dismiss_text: str | None = None,
-        action_kind: ButtonKind = ButtonKind.PRIMARY,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -135,10 +134,10 @@ class Banner(QFrame):
         buttons: list[SmallButton] = []
         self.dismiss: SmallButton | None = None
         if dismiss_text is not None:
-            self.dismiss = SmallButton(dismiss_text, kind=ButtonKind.OUTLINE, parent=self)
+            self.dismiss = SmallButton(dismiss_text, parent=self)
             self.dismiss.clicked.connect(self.hide)
             buttons.append(self.dismiss)
-        self.action = SmallButton(action_text, kind=action_kind, parent=self)
+        self.action = SmallButton(action_text, parent=self)
         buttons.append(self.action)
         self.setLayout(_BannerLayout(self, text, buttons))
         follow_appearance(self, self._apply_appearance)

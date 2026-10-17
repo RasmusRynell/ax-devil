@@ -22,6 +22,7 @@ choosing its own sizes and colors.
 | Palette color with alpha in a stylesheet | `palette_color_css` | `modules/chrome/palette_css.py` |
 | Status-colored text | `StatusColor.<NAME>.css(palette)` | `modules/chrome/theme.py` |
 | Icons | `Icon.<NAME>.icon()` follows the theme on its own; pass a color only for status or the video scrim. Add a Lucide SVG to `src/ax_devil/resources/icons/` for a new one | `modules/chrome/icons.py` |
+| Action button | `QPushButton`, or `SmallButton` for compact rows; appearance comes from the shared theme | `modules/chrome/theme.py`, `small_button.py` |
 | Button that opens a menu (`Filter ⌄`) | `MenuButton(text, menu)` | `modules/chrome/menu_button.py` |
 | Folder button beside a path field | `BrowseButton(what, browse)` | `modules/chrome/browse_button.py` |
 | Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
@@ -40,8 +41,9 @@ content, how dialogs get their size, and which pixels are exempt.
 ```python
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import StatusColor
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 
 layout = QVBoxLayout(panel)
 layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
@@ -50,14 +52,7 @@ layout.setSpacing(Space.S)
 title = QLabel("Entities")
 TextRole.STRONG.apply(title)  # roles, never setPointSize / font-size literals; follows text-size changes
 
-button.setStyleSheet(f"""
-    QToolButton {{
-        border-radius: {Radius.CONTROL}px;
-        padding: {Space.XS}px {Space.M}px;
-        color: palette(text);
-    }}
-    QToolButton:hover {{ background: palette(midlight); }}
-""")  # no font in stylesheets: it would override the role font
+button = SmallButton("Rescan", Icon.SCAN)
 
 
 def apply_appearance() -> None:  # anything sized from text, or colored from the palette in code
@@ -73,6 +68,11 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
 
 - **Body text needs nothing.** Widgets inherit the application font and palette and follow changes on their own,
   and so do icons from `Icon.<NAME>.icon()` without a color (`pin.setIcon(Icon.PIN.icon())`).
+- **Action buttons follow Rescan:** neutral text and icons, transparent at rest, with a subtle neutral tint on hover
+  and press. Main, secondary and default actions share this look; use the shared theme instead of local fills,
+  outlines or primary variants. Default means the Enter-key action, not visual emphasis. Keep a visible keyboard-focus
+  outline and muted disabled state. Blue accents identify checked controls, selected tabs and focused input borders;
+  preserve checkbox hover feedback. Controls over video keep their contrasting white-on-scrim appearance.
 - **Icons, not glyphs.** Use an `Icon` for buttons and markers instead of text characters such as `×`, `⋯` or `«`.
 - **React through `follow_appearance`,** not a `changeEvent` override for `PaletteChange`.
 - **Muted text uses `PlaceholderText`.** Dates, paths and section captions take that palette color, which stays readable

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolBut
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -129,29 +129,18 @@ class ViewerWidget(QFrame):
         # Scope styles to this widget and its header using object names
         self.setObjectName("ViewerWidgetRoot")
         self.setStyleSheet(
-            f"""
-            #ViewerWidgetRoot {{
+            """
+            #ViewerWidgetRoot {
                 border: 0px solid palette(Mid);
                 border-radius: 0px;
-            }}
+            }
 
             /* Draggable header bar */
-            #ViewerWidgetHeader {{
+            #ViewerWidgetHeader {
                 border-bottom: 0px;
                 border-radius: 0px;
-            }}
+            }
 
-            #ViewerWidgetHeader QToolButton {{
-                border: none;
-                border-radius: {Radius.CONTROL}px;
-                background-color: transparent;
-            }}
-            #ViewerWidgetHeader QToolButton:hover {{
-                background-color: palette(Midlight);
-            }}
-            #ViewerWidgetHeader QToolButton:pressed {{
-                background-color: palette(Mid);
-            }}
             """
         )
 

@@ -42,14 +42,24 @@ class LiveStatusPanel(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setObjectName("LiveStatusPanel")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("""
-            #LiveStatusPanel {
+        self.setStyleSheet(f"""
+            #LiveStatusPanel {{
                 background: rgba(0, 0, 0, 140);
-            }
-            #LiveStatusPanel QLabel {
+            }}
+            #LiveStatusPanel .QWidget {{ background: transparent; }}
+            #LiveStatusPanel QLabel {{
                 background: transparent;
                 color: white;
-            }
+            }}
+            #LiveStatusPanel QPushButton {{
+                background: transparent;
+                color: white;
+                border: 1px solid transparent;
+                padding: {Space.S}px {Space.M}px;
+            }}
+            #LiveStatusPanel QPushButton:hover:enabled {{ background: rgba(255, 255, 255, 20); }}
+            #LiveStatusPanel QPushButton:pressed:enabled {{ background: rgba(255, 255, 255, 36); }}
+            #LiveStatusPanel QPushButton:disabled {{ color: rgba(255, 255, 255, 100); }}
         """)
         TextRole.STRONG.apply(self)
 
@@ -61,14 +71,6 @@ class LiveStatusPanel(QWidget):
         rows.addLayout(layout)
 
         self._pause_button = QPushButton(self)
-        self._pause_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: white;
-                padding: {Space.S}px {Space.M}px;
-                border: none;
-            }}
-        """)
         self._pause_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._pause_button.setToolTip("Pause")
         self._pause_button.clicked.connect(self.pauseToggled.emit)
