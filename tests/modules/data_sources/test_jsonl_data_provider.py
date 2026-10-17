@@ -118,6 +118,8 @@ def test_blank_and_invalid_lines_are_skipped(tmp_path: Path) -> None:
         timestamps = sorted(provider.get_available_frames())
         assert provider.get_total_frames() == 3
         assert [later - earlier for earlier, later in zip(timestamps, timestamps[1:])] == [1_000_000, 1_000_000]
+        [warning] = provider.samples().load_warnings
+        assert warning.problem == "Skipped 2 of 5 lines"
     finally:
         provider.close()
 

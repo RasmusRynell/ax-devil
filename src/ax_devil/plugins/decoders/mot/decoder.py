@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import TypedDict
 
+from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.predicate_utils import make_classification_predicate
 from ax_devil.modules.scene.model import (
@@ -54,15 +54,6 @@ class MOTFramePayload(TypedDict):
     detections: list[MOTDetectionPayload]
 
 
-@dataclass(frozen=True, slots=True)
-class MOTFileStats:
-    """Summary information derived while parsing a MOT annotations file."""
-
-    total_frames: int
-    total_detections: int
-    max_frame_index: int
-
-
 # MOT Challenge class ID mapping
 MOT_CLASSES: dict[int, str] = {
     1: "person",  # Pedestrian
@@ -86,7 +77,6 @@ __all__ = [
     "MOTBoundingBoxPayload",
     "MOTDetectionPayload",
     "MOTFramePayload",
-    "MOTFileStats",
     "MOT_CLASSES",
     "build_mot_filter_config",
     "decode_mot_frame",
@@ -153,10 +143,6 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
             logger.debug(f"Skipping detection with malformed bbox values: {bbox_payload} (error: {exc})")
             continue
 
-        if box_width < 0 or box_height < 0:
-            logger.debug(f"Skipping detection with negative dimensions: {bbox_payload}")
-            continue
-
         normalized_bbox = BoundingBox.from_xywh(
             left / width,
             top / height,
@@ -216,22 +202,26 @@ def prepare_mot_frame_payloads(
     *,
     width: int = DEFAULT_FRAME_WIDTH,
     height: int = DEFAULT_FRAME_HEIGHT,
-) -> tuple[list[MOTDecoderPayload], MOTFileStats]:
-    """Convert MOT CSV rows into serialised JSON payloads (one per frame)."""
-    frames: dict[int, list[MOTDetectionPayload]] = {}
-    total_detections = 0
-    max_frame_index = -1
+) -> tuple[list[MOTDecoderPayload], LoadWarning | None]:
+    """Convert MOT CSV rows into serialised JSON payloads (one per frame), and a warning naming the rows skipped.
 
-    for raw_line in rows:
+    *rows* are the file's lines in order, so reasons name real line numbers; blank lines are not rows.
+    """
+    frames: dict[int, list[MOTDetectionPayload]] = {}
+    total_rows = 0
+    skipped = SkippedRecords("rows", "Objects on skipped rows are not shown.")
+
+    for line_number, raw_line in enumerate(rows, start=1):
         line = raw_line.strip()
         if not line:
             continue
+        total_rows += 1
 
         parts = line.split(",")
         num_parts = len(parts)
 
         if num_parts not in (7, 9, 10):
-            logger.debug(f"Skipping MOT line with unexpected column count ({num_parts}): {line}")
+            skipped.add(f"line {line_number}: expected 7, 9 or 10 columns, got {num_parts}")
             continue
 
         try:
@@ -258,15 +248,16 @@ def prepare_mot_frame_payloads(
                 source = "gt"
                 confidence = None
         except (ValueError, TypeError) as exc:
-            logger.debug(f"Skipping MOT line due to parse error: {line} (error: {exc})")
+            skipped.add(f"line {line_number}: {exc}")
             continue
 
         if frame_number < 0:
-            logger.debug(f"Skipping frame with negative index (after conversion): {frame_number}")
+            skipped.add(f"line {line_number}: frame number {frame_number + 1} is below 1")
             continue
 
-        max_frame_index = max(max_frame_index, frame_number)
-        total_detections += 1
+        if bb_width < 0 or bb_height < 0:
+            skipped.add(f"line {line_number}: negative box width or height")
+            continue
 
         bbox_payload: MOTBoundingBoxPayload = {
             "left": bb_left,
@@ -297,13 +288,7 @@ def prepare_mot_frame_payloads(
         }
         payloads.append(json.dumps(payload, separators=(",", ":")))
 
-    stats = MOTFileStats(
-        total_frames=len(frames),
-        total_detections=total_detections,
-        max_frame_index=max_frame_index,
-    )
-
-    return payloads, stats
+    return payloads, skipped.warning(total_rows)
 
 
 def _normalise_label(label: str) -> str:

@@ -1,6 +1,7 @@
 """Plugin-host runtime contracts and discovery machinery."""
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
+from ax_devil.core.load_warning import LoadWarning
 from ax_devil.modules.background_jobs import JobContext, JobScope, LatestRequest
 
 from .base import PLUGIN_API_VERSION, PluginBase, PluginDefinitionBase
@@ -36,6 +37,7 @@ __all__ = [
     "JobContext",
     "JobScope",
     "LatestRequest",
+    "LoadWarning",
     "PLUGIN_API_VERSION",
     "PLAYLIST_RESOLVER_PLUGIN_TYPE",
     "PayloadToSceneDecoderDefinition",

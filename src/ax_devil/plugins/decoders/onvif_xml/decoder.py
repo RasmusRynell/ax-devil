@@ -210,8 +210,8 @@ def _classifications_from_obj(obj: ET.Element) -> list[Classification]:
 ###############################################################################
 
 
-def extract_frame_xml(xml: str) -> str:
-    """Extract frame XML from ONVIF metadata structure.
+def extract_frame_xml(xml: str) -> str | None:
+    """Extract frame XML from ONVIF metadata structure, or None for an ONVIF metadata stream without a frame.
 
     Handles both direct frame XML and nested structures like:
     <MetadataStream><VideoAnalytics><Frame>...</Frame></VideoAnalytics></MetadataStream>
@@ -234,15 +234,19 @@ def extract_frame_xml(xml: str) -> str:
             break
 
     if frame is None:
+        if root.tag == f"{{{NS['tt']}}}MetadataStream":
+            return None  # ONVIF metadata without a frame, such as an event.
         raise ValueError("No <tt:Frame>/<tt:SampleFrame> elements found")
 
     # Convert the found frame element back to string
     return ET.tostring(frame, encoding="unicode")
 
 
-def decode_onvif_xml(xml: str) -> Scene:
-    """Convert ONVIF metadata → `Scene` (assumes one frame)."""
+def decode_onvif_xml(xml: str) -> Scene | None:
+    """Convert ONVIF metadata → `Scene` (assumes one frame); None for a frameless metadata stream, such as an event."""
     frame_xml = extract_frame_xml(xml)
+    if frame_xml is None:
+        return None
     root = ET.fromstring(frame_xml)
     frame = root
 

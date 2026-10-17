@@ -59,15 +59,16 @@ class OverlayAlignmentIndicator(QLabel):
             self.setToolTip(self._out_of_date)
             self.setVisible(True)
             return
-        if report is None or report.total_overlay_frames <= 0:
+        if report is None or not report.has_alignment_warning:
             self.setVisible(False)
             return
-        if not report.has_alignment_warning:
-            self.setVisible(False)
-            return
-        percent = report.policy_match_ratio * 100.0
         self.setPixmap(self._weak_pixmap if report.has_poor_policy_alignment else self._caution_pixmap)
-        self.setToolTip(f"Overlay timestamp match {percent:.0f}%.\n{report.alignment_issue_text}")
+        match_line = (
+            f"Overlay timestamp match {report.policy_match_ratio * 100.0:.0f}%.\n"
+            if report.total_overlay_frames > 0
+            else ""
+        )
+        self.setToolTip(f"{match_line}{report.alignment_issue_text}")
         self.setVisible(True)
 
     def enterEvent(self, event: QEnterEvent) -> None:  # noqa: N802
