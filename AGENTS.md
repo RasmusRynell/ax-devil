@@ -27,7 +27,7 @@ that task. `.claude/skills` links to the same folder for Claude Code.
 | Skill | Use it when |
 |-------|-------------|
 | `.agents/skills/review/SKILL.md` | Reviewing changes for real problems, module depth, architectural ownership, tests worth merging, and documentation placement |
-| `.agents/skills/write-tests/SKILL.md` | Adding tests, writing regression coverage, changing assertions, or repairing flaky tests |
+| `.agents/skills/write-tests/SKILL.md` | Deciding whether a test is worth having, deleting tests, writing regression coverage, changing assertions, or repairing flaky tests |
 | `.agents/skills/render-catalog/SKILL.md` | Changing how overlays on video look: boxes, labels, colors, sizes, arrows, badges |
 | `.agents/skills/write-ui/SKILL.md` | Adding or restyling application UI: windows, dialogs, panels, fonts, spacing, colors, text size |
 | `.agents/skills/write-plugin/SKILL.md` | Writing a decoder or playlist resolver plugin, for the user's own data or to ship with ax-devil |
@@ -83,8 +83,11 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
   `QT_QPA_PLATFORM=offscreen make test`.
 - For prose-only documentation or agent-instruction changes, validate affected links, examples, and consistency,
   instead of running the application checks.
-- Update tests when behavior changes.
-- Before adding to a doc, apply the placement rule under Project Rules; most changes need no doc edit.
+- Tests: delete the tests of code you remove, merge or change before writing new ones. Add a test only for a deep
+  module or a rule with real user consequences, once, at the layer that owns it (see the write-tests skill). A change
+  that removes or merges code leaves test lines flat or lower; a net increase needs a stated reason.
+- Docs: most changes need no doc edit. Before adding to a doc, apply the placement rule under Where A Fact Belongs and delete
+  or collapse what the new text makes redundant. Net doc growth needs a stated reason.
 
 ## Project Guidance
 
@@ -105,7 +108,7 @@ uv run ax-devil --help  # Every command; each has its own --help
 - Keep device credentials out of the repo — use `AX_DEVIL_TARGET_*` env vars or config overrides.
 - Tests must never read or write the user's real files. The suite runs in its own home folder and fails if `~/.ax_devil` changes; a test that needs files uses `tmp_path` (see `docs/runbooks/testing.md`).
 - Agent verification runs offscreen or on a private display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
-- When changing names, structure, or shared terminology, carry the change through the affected code, tests, comments, and docs, or explicitly note what is intentionally left unchanged. Unless the user says otherwise.
+- When changing names, structure, or shared terminology, carry the change through code, tests and comments. Update a doc only where it states a rule the change affects.
 - Documentation follows the placement rule below. The default for a feature or fix is no documentation change.
 
 ### Where A Fact Belongs
@@ -122,7 +125,7 @@ A fact lives at the narrowest layer that covers every reader who needs it:
 | One module | That module's `README.md` under `src/ax_devil/modules/` (create a short one if needed) |
 | One class or function | Its docstring or a comment at the surprising line |
 | Already enforced by a type, validation, or test | Nowhere |
-| Someone using the app | `README.md`, `docs/usage.md`, `docs/settings.md`, `docs/plugins.md`, `docs/datasets/` |
+| Someone using the app | `README.md`, `docs/usage.md`, `docs/settings.md`, `docs/plugins.md`, `docs/datasets/`, only for a rule or a thing the UI and `--help` cannot show. Never list routes, menus, shortcuts, buttons, gestures or flags, or describe UI the user sees directly |
 
 Each fact has one home; link to it instead of repeating it. When a fact moves layers, delete it from the old home.
 

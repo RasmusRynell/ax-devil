@@ -1,73 +1,65 @@
 ---
 name: write-tests
-description: Add and improve ax-devil tests that protect meaningful behavior without coupling to incidental implementation choices. Use when adding tests, writing regression coverage, changing assertions, or repairing flaky tests in this repository.
+description: Decide whether and where an ax-devil test is worth having, delete tests that no longer earn their place, and write the few that protect meaningful behavior. Use when adding, deleting or changing tests, writing regression coverage, changing assertions, or repairing flaky tests in this repository.
 ---
 
 # Write Tests
 
-Follow [AGENTS.md](../../../AGENTS.md) and the [testing runbook](../../../docs/runbooks/testing.md).
-The runbook owns fixtures, isolation, Qt lifecycle rules, and test commands. Read the relevant
+Follow [AGENTS.md](../../../AGENTS.md) and the [testing runbook](../../../docs/runbooks/testing.md), which owns
+fixtures, isolation, Qt lifecycle rules and commands. Read the relevant
 [domain invariants](../../../docs/domain/invariants.md) when establishing a requirement.
+
+## Delete First, Then Decide
+
+Delete the tests of code you removed, merged or changed before writing anything new. Do not re-point an
+implementation-coupled test at a rename: delete it, and if a user-visible behavior is lost, cover it at its owner.
+A change that removes or merges code leaves test lines flat or lower; a net increase needs a stated reason.
+
+Add a test only for a deep module (small interface, real behavior behind it) or a rule with real user consequences,
+once, at the layer that owns the decision. Do not test:
+
+- different routes reaching the same method or result;
+- wiring, private state or names, or production accessors added only for tests;
+- a matrix of artificial states with no bug behind it;
+- constructor echoes or deleted names.
 
 ## Establish What Matters
 
-Before writing an assertion, answer:
+Before writing an assertion, answer: what supported action reaches this behavior, what would go wrong for the user if
+it broke, what observation separates that failure from acceptable behavior, and would a harmless refactor break the
+assertion?
 
-1. What supported action or input reaches this behavior?
-2. What would go wrong for the user if it broke?
-3. What observation distinguishes that failure from acceptable behavior?
-4. Would a harmless refactor or design change break the proposed assertion?
+Ground expectations in the request, an established contract, or a confirmed bug, not the current implementation;
+clarify unclear intended behavior first. Strengthen an existing relevant test before adding another.
 
-Ground expectations in the request, an established contract, or a confirmed bug, not merely the current
-implementation. If the intended behavior is unclear and changes what counts as correct, clarify it first.
-Do not invent requirements to justify coverage. Strengthen an existing relevant test before adding another;
-omit or remove a redundant test that protects no meaningful behavior.
+## Choose And Assert
 
-## Choose The Smallest Useful Test
+Exercise the behavior through a stable interface at the lowest level that can expose the real failure: a pure
+function, controller, component, or integrated workflow. Use widget interactions only for layout, focus, input or
+rendering. Keep owned behavior real; fake external devices, transports and processes at their boundaries. Use small,
+realistic inputs and relevant boundary cases.
 
-Read the owning code and a neighboring test. Exercise the behavior through a stable interface at the lowest
-level that can expose the real failure: a pure function, controller, component, or integrated workflow.
-User-focused testing does not mean every test must drive the GUI end to end. Use widget interactions when
-the concern is actual layout, focus, input, or rendering, rather than a decision owned by a controller.
+Assert outcomes: correct frames and overlays, usable controls, preserved settings, valid output, released resources.
+An internal observation is acceptable evidence for a real concern, such as a worker stopping or a cache avoiding a
+decode, but never freezes incidental attributes or call sequences.
 
-Keep owned behavior real where practical; fake external devices, transports, and processes at their boundaries.
-Do not mock away the behavior under test. Use small, realistic inputs and relevant boundary cases, not a large
-matrix of artificial states. Scale coverage with the risk and affected contracts.
-
-## Assert The Requirement
-
-Assert outcomes such as correct frames and overlays, usable controls, preserved settings, valid output,
-or released resources. Internal observations can be useful evidence for a real concern, such as a worker
-stopping or a cache avoiding another decode, but should not freeze incidental attributes or call sequences.
-
-For UI tests, distinguish usability from styling. A panel reaching exactly 280 pixels is not by itself a
-user requirement. Depending on the actual bug, test that controls remain reachable, content is not
-unintentionally clipped, or the layout recovers after resizing. Scrolling may be the intended way to keep
-content accessible; do not impose a blanket rule against scrollbars.
-
-Exact values are appropriate when they express a real contract: exported image dimensions, frame identity,
-timestamp matching, or specified numeric output. Relationships or justified tolerances suit requirements
-that allow variation. Do not copy today's output, import a production constant just to make an expectation
-follow the implementation, or add a tolerance merely to turn a failure green. Derive the expectation
-independently from the requirement; shared constants are fine when they genuinely define that contract.
+Distinguish usability from styling: a panel reaching exactly 280 pixels is not a requirement; test that controls stay
+reachable, content is not clipped, or the layout recovers after resizing. Exact values are right only for a real
+contract such as exported dimensions, frame identity or timestamp matching. Derive the expectation from the
+requirement: do not copy today's output, import a production constant to follow the implementation, or add a
+tolerance merely to turn a failure green.
 
 ## Make It Reliable
 
-Follow the runbook's offline, temporary-storage, offscreen/private-display, and cleanup rules. Reuse existing
-fixtures and helpers rather than introducing a test framework or exposing internals only for tests.
-Wait for the completion or observable state relevant to the assertion, not arbitrary sleeps or a related
-widget's intermediate animation value. Keep waits bounded so broken behavior still fails.
+Follow the runbook's isolation and cleanup rules and reuse its fixtures. Wait for the observable state the assertion
+needs, not arbitrary sleeps or an intermediate animation value, with bounded waits so broken behavior still fails.
 
-For a flaky test, first decide whether its assertion protects a real requirement. If it does, distinguish
-a product defect from a synchronization problem before repairing it. If it does not, rewrite or remove it;
-do not merely increase the timeout, relax the comparison, or retry until it passes.
+For a flaky test, first decide whether its assertion protects a real requirement. If it does, tell a product defect
+from a synchronization problem before repairing it; if not, delete it. Never just raise the timeout, relax the
+comparison, or retry.
 
 ## Verify And Finish
 
-Run the focused test first. For regression coverage, verify that it fails for the known defect and passes
-with the fix when practical; otherwise explain the verification limit. For new behavior, check that a
-plausible wrong result would fail the assertions. A passing test alone does not establish useful coverage.
-
-Run the checks required by AGENTS.md for test/code changes. Report the behavior protected, the checks run,
-and any remaining limits. Keep test names about behavior and avoid adding fixtures, comments, or abstractions
-that do not make the test easier to understand or maintain.
+Run the focused test first. For regression coverage, verify that it fails for the known defect and passes with the
+fix when practical; otherwise explain the limit. For new behavior, check that a plausible wrong result would fail. Run the checks AGENTS.md requires. Report the behavior protected, the
+tests deleted, the net test-line change (with a reason if it grew), the checks run, and any remaining limits.

@@ -94,9 +94,10 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
 
   Scrolling is right only for content that grows with the user's data, such as a list of rows.
 - **A new user preference** follows `ThemeMode` and `TextSize` in `modules/settings/`: a `str` enum with
-  `label` and `from_config`, a `GlobalSettings` property, a row in the Settings dialog, and a paragraph in
-  `docs/settings.md`. Apply it live when Qt allows; mark it `(requires restart)` only when it cannot;
-  saving such a change offers to restart ax-devil.
+  `label` and `from_config`, a `GlobalSettings` property, and a row in the Settings dialog. Document it in
+  `docs/settings.md` only for what its dialog text cannot show (a rule, a consequence, a security caveat). Apply it
+  live when Qt allows; mark it `(requires restart)` only when it cannot; saving such a change offers to restart
+  ax-devil.
 
 ## Check it
 

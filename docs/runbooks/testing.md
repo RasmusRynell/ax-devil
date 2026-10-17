@@ -138,10 +138,12 @@ Config and settings tests live under `tests/modules/settings/`.
 
 ## Writing a new test
 
-Each new test should protect a meaningful failure: wrong frames or overlays, lost settings, leaked workers,
-failed plugin loading, or damaged output. Prefer strengthening an existing case over adding another smoke test.
-Assert observable output using explicit expectations; avoid constructor echoes, deleted-name checks and exact
-internal call sequences. Fake external transports or processes, while keeping owned components real where practical.
+Delete the tests of code you remove or merge first; test each rule once, at the layer that owns it. A new test
+should protect a meaningful failure: wrong frames or overlays, lost settings, leaked workers, failed plugin loading,
+or damaged output. Prefer strengthening an existing case over adding another smoke test.
+Assert observable output using explicit expectations; avoid constructor echoes, deleted-name checks, route-equivalence
+checks, private state and exact internal call sequences. Fake external transports or processes, while keeping owned
+components real where practical.
 Use events/signals for worker completion, not arbitrary sleeps or elapsed-time thresholds as proof of correctness.
 Keep generated media tiny and reuse it when independent tests can safely share an immutable fixture.
 `video_file_factory(duration, fps)` reuses generated video files; each caller must own and close its decoder,
