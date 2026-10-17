@@ -576,7 +576,9 @@ class SplitView(QWidget):
         if isinstance(parent, QSplitter):
             index = parent.indexOf(old_child)
             prev_sizes = parent.sizes()
-            parent.replaceWidget(index, new_child)
+            # Not QSplitter.replaceWidget: PySide does not record the new parent, so freeing the old splitter
+            # below invalidates the Qt-created wrappers (such as QML items) inside the moved subtree.
+            parent.insertWidget(index, new_child)
             old_child.setParent(None)
             if prev_sizes and len(prev_sizes) == parent.count():
                 parent.setSizes(prev_sizes)

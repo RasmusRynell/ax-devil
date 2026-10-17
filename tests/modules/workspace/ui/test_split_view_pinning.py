@@ -1,13 +1,15 @@
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRectF
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QAbstractButton
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
+from ax_devil.modules.video_player.engine.quick.surface import QuickSurface
 from ax_devil.modules.workspace.ui.split_view import SplitDirection, SplitView
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeItem
+from tests.drawing_helpers import PolylineCall, prepare_calls
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import PlainViewerWidget
 
@@ -307,3 +309,41 @@ def test_pin_button_and_pinned_state_stay_in_sync(qtbot: QtBot) -> None:
 
     pin_button.click()
     assert widget.is_pinned()
+
+
+class _SurfaceWidget(PlainViewerWidget):
+    """Viewer widget hosting a video surface, as a playing viewer does."""
+
+    def _setup_widget_ui(self) -> None:
+        self.surface = QuickSurface()
+        self.get_content_layout().addWidget(self.surface)
+
+
+def _present_polyline(surface: QuickSurface) -> None:
+    target = QRectF(0, 0, 200, 100)
+    drawing = prepare_calls([PolylineCall(((0.1, 0.1), (0.9, 0.5), (0.3, 0.9)))], surface.drawing_buffer(target, 100))
+    surface.set_overlays(drawing, 1, target, 100, None)
+    QCoreApplication.processEvents()
+
+
+def test_collapsing_a_split_keeps_the_moved_pane_overlays_usable(qtbot: QtBot) -> None:
+    """Dragging a pane so its split collapses must not break overlay drawing in the pane that moved up."""
+    sv = _make_split_view(qtbot)
+    sv.resize(900, 600)
+    left = _make_dummy(qtbot)
+    hosting = _SurfaceWidget()
+    dragged = _make_dummy(qtbot)
+    qtbot.addWidget(hosting)
+    for widget in (left, hosting, dragged):
+        sv.add_viewer_widget(widget)
+    QCoreApplication.processEvents()  # Let the layout give the surface a size.
+    _present_polyline(hosting.surface)
+    assert hosting.surface._overlays._paths.items
+    left_leaf = sv._leaf_for_widget(left)
+    dragged_id = sv._id_for_widget(dragged)
+    assert left_leaf is not None and dragged_id is not None
+
+    sv._handle_drop(left_leaf, dragged_id, SplitDirection.TOP)
+
+    _present_polyline(hosting.surface)
+    assert all(isValid(path.item) for path in hosting.surface._overlays._paths.items)
