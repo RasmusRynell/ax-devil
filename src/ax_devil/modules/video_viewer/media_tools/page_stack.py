@@ -33,9 +33,10 @@ class ObjectPageKey:
 
 @dataclass(frozen=True, slots=True)
 class EventPageKey:
-    """The page of one event."""
+    """The page of one event; equal events of a list are told apart by their ``occurrence``, counted from 0."""
 
     event: FrameEvent
+    occurrence: int = 0
 
     @property
     def title(self) -> str:

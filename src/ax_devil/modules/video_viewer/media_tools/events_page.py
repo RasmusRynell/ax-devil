@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from functools import cached_property
 from typing import Any
@@ -42,8 +43,9 @@ _OBJECT = "object"
 class _EventRow:
     """An event of the list; what a query searches is built when a query first asks for it."""
 
-    def __init__(self, event: FrameEvent) -> None:
+    def __init__(self, event: FrameEvent, occurrence: int) -> None:
         self.event = event
+        self.occurrence = occurrence  # Among the equal events of the list, which a decoder may report twice.
         self.frame = event.frame_id.sequence_id
 
     @cached_property
@@ -55,7 +57,7 @@ class _EventRow:
 
 def _key(row: Any) -> EventPageKey:
     """Identify a row by the page it opens."""
-    return EventPageKey(row.event)
+    return EventPageKey(row.event, row.occurrence)
 
 
 class _EventsTable(RowTableView):
@@ -120,12 +122,12 @@ class EventsPage(QWidget):
     scrolled away from it. Queries search the fields ``kind`` and ``object`` (any involved id) and the label as free
     text.
 
-    A click or Enter on a row emits ``eventActivated`` with its ``FrameEvent``. The page is a ``RowSource``: it orders
+    A click or Enter on a row emits ``eventActivated`` with its ``EventPageKey``. The page is a ``RowSource``: it orders
     the events the event page steps through and marks the one that page came from. While hidden it keeps only the
     latest frame and applies it when shown, and keeps the scroll position the user left it at.
     """
 
-    eventActivated = Signal(object)  # noqa: N815  # FrameEvent
+    eventActivated = Signal(object)  # noqa: N815  # EventPageKey
     countChanged = Signal(int)  # noqa: N815  # events held, before the query narrows them
     rowsChanged = Signal()  # noqa: N815  # events were added, dropped or replaced; at the live limit the count stays
 
@@ -178,7 +180,7 @@ class EventsPage(QWidget):
         layout.addLayout(self._stack, 1)
 
         self._query_bar.queryChanged.connect(self._on_query_changed)
-        self._view.rowActivated.connect(lambda row: self.eventActivated.emit(row.event))
+        self._view.rowActivated.connect(lambda row: self.eventActivated.emit(_key(row)))
         self._view.verticalScrollBar().valueChanged.connect(self._on_scrolled)
         self.set_history(history)
 
@@ -191,7 +193,11 @@ class EventsPage(QWidget):
         """List the events of *history* in frame order, or start an empty live list with None; drops live events."""
         self._history = history
         events = sorted(history.events, key=lambda event: event.frame_id.sequence_id) if history is not None else ()
-        self._rows = [_EventRow(event) for event in events]
+        seen: Counter[FrameEvent] = Counter()
+        self._rows = []
+        for event in events:
+            self._rows.append(_EventRow(event, seen[event]))
+            seen[event] += 1
         self._following = True
         self._changed()
 
@@ -281,7 +287,10 @@ class EventsPage(QWidget):
             return
         scroll_bar = self._view.verticalScrollBar()
         following = self.isVisible() and scroll_bar.value() == scroll_bar.maximum()
-        self._rows.extend(_EventRow(event) for event in events)
+        last = {row.event: row.occurrence for row in self._rows}  # Rows are in order, so the latest occurrence wins.
+        for event in events:
+            last[event] = occurrence = last.get(event, -1) + 1
+            self._rows.append(_EventRow(event, occurrence))
         del self._rows[: max(0, len(self._rows) - LIVE_EVENT_LIMIT)]
         self._changed()
         if following and self.isVisible():

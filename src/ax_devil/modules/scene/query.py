@@ -2,8 +2,8 @@
 
 Syntax: bare words search free text; ``path:value`` and ``path=value`` compare equal; ``path>n``, ``<``, ``>=`` and
 ``<=`` compare numbers; a leading ``-`` negates a term; ``a OR b`` joins adjacent terms; everything else is ANDed.
-Values may be quoted (``class:"traffic light"``); ``\\"`` is a literal quote. Compiling never fails: incomplete
-terms are ignored and malformed comparisons search as plain text.
+Values may be quoted (``class:"traffic light"``, or ``note:""`` for an empty value); ``\\"`` is a literal quote.
+Compiling never fails: incomplete terms are ignored and malformed comparisons search as plain text.
 """
 
 from __future__ import annotations
@@ -179,8 +179,10 @@ def _parse_word(text: str, start: int, end: int) -> tuple[list[QueryToken], _Ter
             return [*tokens, QueryToken(start, end, TokenKind.INVALID)], None
         return [*tokens, QueryToken(start, end, TokenKind.TEXT)], _Term(None, ":", value, negated)
     path, op = found.group(1), found.group(2)
-    value = _unquote(rest[found.end() :])
-    if not value:
+    raw = rest[found.end() :]
+    value = _unquote(raw)
+    # An explicit ``""`` asks for the empty value; a bare or half-typed value is still being typed.
+    if not value and raw != '""':
         return [*tokens, QueryToken(start, end, TokenKind.INVALID)], None
     if op in _COMPARATORS and _number(value) is None:
         return [*tokens, QueryToken(start, end, TokenKind.INVALID)], _Term(None, ":", _unquote(rest), negated)
