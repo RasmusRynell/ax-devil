@@ -112,10 +112,22 @@ def test_comparison_with_non_number_searches_as_text() -> None:
     assert not compile_query("conf>abc").matches(_CAR)
 
 
-def test_integer_too_large_for_a_float_does_not_match_or_raise() -> None:
-    record = _record(debug__big=10**1000)
-    assert not compile_query("big>5").matches(record)
-    assert not compile_query("big:5").matches(record)
+def test_integers_compare_exactly_beyond_float_precision() -> None:
+    record = _record(debug__big=2**53, debug__huge=10**1000)
+    assert compile_query("big:9007199254740992").matches(record)
+    assert not compile_query("big:9007199254740993").matches(record)
+    assert compile_query("big<9007199254740993").matches(record)
+    assert not compile_query("big>=9007199254740993").matches(record)
+    assert compile_query("huge>5").matches(record)  # too large for a float, and compared without raising
+    assert not compile_query("huge:5").matches(record)
+
+
+def test_escaped_quote_matches_a_literal_quote_in_a_value() -> None:
+    record = _record(('car "alpha"',), debug__message='car "alpha"')
+    assert compile_query(r'message:"car \"alpha\""').matches(record)
+    assert compile_query(r"\"alpha\"").matches(record)
+    assert not compile_query('message:"car alpha"').matches(record)
+    assert _kinds(r'message:"car \"alpha\"" x')[2:] == [(r'"car \"alpha\""', TokenKind.VALUE), ("x", TokenKind.TEXT)]
 
 
 def test_missing_paths_names_fields_no_record_has() -> None:
