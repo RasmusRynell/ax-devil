@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from html import escape
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPaintEvent, QPalette, QPixmap, QShowEvent
+from PySide6.QtGui import QGuiApplication, QIcon, QMouseEvent, QPainter, QPaintEvent, QPalette, QPixmap, QShowEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -46,7 +46,7 @@ class PresenceStrip(QWidget):
         self._event_frames = tuple(event.frame_id.sequence_id for event in events)
         self._frame_count = max(frame_count, 1)
         self._current_frame: int | None = None
-        self._color = QColor(type_color(history.types[0] if history.types else ""))
+        self._type = history.types[0] if history.types else ""
         self.setFixedHeight(_STRIP_HEIGHT)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -65,10 +65,11 @@ class PresenceStrip(QWidget):
         groove = QRectF(0.0, 3.0, float(self.width()), height - 6.0)
         palette = self.palette()
         painter.fillRect(groove, palette.brush(QPalette.ColorRole.Mid))
+        color = type_color(self._type, palette)
         for first, last in self._history.spans:
             left = self._x(first)
             right = self._x(last + 1)
-            painter.fillRect(QRectF(left, groove.top(), max(1.0, right - left), groove.height()), self._color)
+            painter.fillRect(QRectF(left, groove.top(), max(1.0, right - left), groove.height()), color)
         for frame in self._event_frames:
             painter.fillRect(QRectF(self._x(frame), 0.0, 1.0, height), palette.brush(QPalette.ColorRole.Text))
         if self._current_frame is not None:
@@ -281,7 +282,7 @@ def _dot_icon(object_type: str) -> QIcon:
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(type_color(object_type)))
+    painter.setBrush(type_color(object_type, QGuiApplication.palette()))
     painter.drawEllipse(1, 1, 8, 8)
     painter.end()
     return QIcon(pixmap)

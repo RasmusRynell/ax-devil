@@ -6,6 +6,7 @@ Both apply immediately; widgets that style themselves follow through ``chrome.ap
 import atexit
 from enum import Enum
 from typing import cast
+from zlib import crc32
 
 import qdarktheme
 import qdarktheme._main as qdarktheme_main
@@ -235,3 +236,23 @@ class KindColor(Enum):
     def color(self, palette: QPalette) -> QColor:
         """Return the accent appropriate to the surface's palette."""
         return _pick(palette, self.value)
+
+
+_CATEGORY_COLORS = (
+    ("#6ea8f7", "#2a62c4"),
+    ("#e0a35c", "#a35f12"),
+    ("#8bc47c", "#3a7a2c"),
+    ("#e07f9d", "#b02f5c"),
+    ("#4fc3c3", "#117a7a"),
+    ("#b18cf0", "#6f45c2"),
+    ("#d6c25a", "#7d6a00"),
+    ("#e5806b", "#b04125"),
+)
+
+
+def category_color(key: str, palette: QPalette) -> QColor:
+    """Return a color for the category named *key* (a class or an event kind), with contrast on the surface *palette*.
+
+    The same name gets the same color in every session, whatever its case.
+    """
+    return _pick(palette, _CATEGORY_COLORS[crc32(key.casefold().encode()) % len(_CATEGORY_COLORS)])
