@@ -371,3 +371,29 @@ def test_event_page_opens_from_the_events_list_and_leads_to_an_involved_object_a
     assert _button(panel, "Go to frame") is not None  # The event page again, and the list is still beneath it.
     _click(panel, "Back (Esc)")
     assert events_view.isVisible() and events_view.rows_model.highlight() == EventPageKey(event)
+
+
+def test_event_page_follows_its_event_through_a_history_replacement_and_closes_when_it_is_gone(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    def merge(frame: int) -> FrameEvent:
+        return FrameEvent(_frame(frame), "Merge", "Merge a → b", ("a", "b"))
+
+    delete = FrameEvent(_frame(6), "Delete", "Delete a", ("a",))
+    panel = _panel(qtbot, render_catalog_selection, _history(events=(merge(3), delete)))
+    requested = _record(panel.frameRequested)
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+    _click_row(events_view, EventPageKey(merge(3)))
+
+    panel.set_scene_history(_history(events=(merge(5), delete)))
+    _click(panel, "Go to frame")
+    _click(panel, "Next in list")  # The list it came from has the new order too.
+    _click(panel, "Go to frame")
+    assert requested == [5, 6]
+
+    panel.set_scene_history(_history(events=(merge(5),)))
+    assert events_view.isVisible() and _button(panel, "Go to frame") is None

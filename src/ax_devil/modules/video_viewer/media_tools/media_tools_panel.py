@@ -109,8 +109,8 @@ class MediaToolsSection(Enum):
             MediaToolsSection.EVENTS: (
                 "Scene events such as deletes and renames, listed on the video frame where each takes effect.\n\n"
                 "For files, the list holds every event in the overlay, each on the first frame at or after its "
-                "sample. Events on the displayed frame are highlighted. Click an event to open its page; "
-                "double-click it to jump to its frame. For live streams, events are added when their overlay is "
+                "sample. Events on the displayed frame are highlighted. Click an event to open its page, "
+                "which can jump to its frame. For live streams, events are added when their overlay is "
                 "first shown. Times are the video position for files and UTC clock time for live streams.\n\n"
                 "Search by kind:merge or object:17, or by text in the label; ? shows the syntax."
             ),
@@ -167,6 +167,11 @@ class MediaToolsPanel(QWidget):
             ObjectPageKey: self._build_object_page,
             EventPageKey: self._build_event_page,
         }
+        # Where a page's key is in a replaced history; an object page does not depend on it.
+        self._key_resolvers: dict[type, Callable[[Any], PageKey | None]] = {
+            ObjectPageKey: lambda key: key,
+            EventPageKey: self._resolve_event_key,
+        }
         self._fold_state: dict[str, bool] = {}
         self.filter_model = filter_model
         self._filter_widget = EntityFilterWidget(filter_model=self.filter_model, show_title=False)
@@ -186,7 +191,6 @@ class MediaToolsPanel(QWidget):
         self._events = EventsPage(scene_history, self)
         self._events.setObjectName("mediaToolsEvents")
         self._events.eventActivated.connect(self._open_event)
-        self._events.frameRequested.connect(self.frameRequested.emit)
         roots: list[tuple[MediaToolsSection, QWidget]] = [
             (MediaToolsSection.OBJECTS, self._objects),
             (MediaToolsSection.EVENTS, self._events),
@@ -347,8 +351,11 @@ class MediaToolsPanel(QWidget):
         self._history_notice.setVisible(False)
         self._objects.set_history(history, self.filter_model)
         self._events.set_history(history)
+        # An open event may now sit on another frame, or be gone; its page then follows it, or closes.
+        self._stack.remap(lambda key: self._key_resolvers[type(key)](key))
         if self._followed is not None:
             self._followed.set_history(history)
+        self._stack.refresh_steps()
 
     def mark_history_out_of_date(self, reason: str) -> None:
         """Say why the history shown is out of date; the next `set_scene_history` replaces the notice."""
@@ -385,6 +392,10 @@ class MediaToolsPanel(QWidget):
 
     def _open_event(self, event: FrameEvent) -> None:
         self._stack.push(EventPageKey(event), self._events)
+
+    def _resolve_event_key(self, key: EventPageKey) -> EventPageKey | None:
+        event = self._history.nearest_event(key.event) if self._history is not None else key.event
+        return None if event is None else EventPageKey(event)
 
     def _build_page(self, key: PageKey) -> QWidget:
         """Build the page of *key*, which follows the displayed frame from now on."""

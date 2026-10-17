@@ -202,6 +202,35 @@ class PageStack(QWidget):
         if key is not None:
             self._replace_top(key, entry.origin)
 
+    def remap(self, resolve: Callable[[PageKey], PageKey | None]) -> None:
+        """Re-point the drilled pages after what they show was replaced: each key becomes ``resolve(key)``.
+
+        The first page whose key resolves to None, and every page above it, is closed. Nothing is rebuilt when no key
+        changed.
+        """
+        kept: list[_Entry] = []
+        for entry in self._entries:
+            key = resolve(entry.key)
+            if key is None:
+                break
+            kept.append(_Entry(key, entry.origin))
+        if kept == self._entries:
+            return
+        had_focus = self._holds_focus()
+        if not kept:
+            self._clear_highlight()
+        self._discard_page()
+        self._entries[:] = kept
+        if kept:
+            origin = kept[0].origin
+            if origin is not None:
+                origin.highlight(kept[0].key)
+            self._open_top(had_focus)
+        else:
+            self._pages.setCurrentWidget(self._root)
+            self._header.hide()
+            self._after_change(had_focus)
+
     def refresh_steps(self) -> None:
         """Enable ▲▼ again from the list's current order, which changes under an open page as frames arrive."""
         if self._entries:
