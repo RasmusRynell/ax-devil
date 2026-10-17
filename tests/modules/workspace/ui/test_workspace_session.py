@@ -12,12 +12,12 @@ from PySide6.QtWidgets import QLineEdit, QMenu, QSplitter, QTreeWidget, QTreeWid
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import (
-    ConsiderationItemRef,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
     ItemResolution,
@@ -30,7 +30,6 @@ from ax_devil.modules.workspace.core import (
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
-    PlaylistResolver,
     PlaylistSettings,
     RecentWorkspaces,
     SeekableVideoContent,
@@ -57,6 +56,7 @@ from tests.helpers.workspace import (
     DummyViewer,
     FakePrompts,
     FakeResolutionContext,
+    FakeResolver,
     content_item,
     inline_resolver,
     quit_app,
@@ -240,17 +240,17 @@ def test_views_follow_the_rows_and_open_and_close_content_through_the_controller
         assert _center(workspace_session).get_widget_count() == 1
 
 
-class _TwoPlaylists(PlaylistResolver):
+class _TwoPlaylists(FakeResolver):
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [_make_playlist("train"), _make_playlist("test")]
 
 
-class _NamedPlaylist(PlaylistResolver):
+class _NamedPlaylist(FakeResolver):
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [_make_playlist(str(settings["name"]))]
 
 
-class _ClipsFolder(PlaylistResolver):
+class _ClipsFolder(FakeResolver):
     """A playlist with an entry for each ``.mp4`` file in a folder, which it asks to have watched."""
 
     def __init__(self, folder: Path) -> None:
@@ -261,8 +261,8 @@ class _ClipsFolder(PlaylistResolver):
         entries = tuple(PlaylistEntry(_make_video(clip).standalone_lanes(), True) for clip in clips)
         return [PlaylistContent(display_name="Runs", entries=entries)]
 
-    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
-        return [self.folder]
+    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+        return SourcePaths(folders=frozenset({self.folder}))
 
 
 def test_files_regenerated_on_disk_update_the_rows_and_leave_open_viewers_as_they_are(
@@ -559,7 +559,7 @@ def test_replaced_viewer_stops_receiving_consideration_updates(
         second_widget = _focused(workspace_session)
 
     stored_second = _store(workspace_session).contents()[1]
-    item_ref = ConsiderationItemRef.video_lane(stored_second.content_id, 0)
+    item_ref = stored_second.lane_consideration_ref(0, 0)
     _store(workspace_session).set_item_considered(item_ref, False)
 
     assert first_widget.cleaned_up

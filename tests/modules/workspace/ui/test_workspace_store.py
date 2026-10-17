@@ -14,6 +14,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import BackgroundJobs
+from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
 from ax_devil.modules.workspace.core import (
     Bookmark,
     BookmarkKind,
@@ -26,7 +27,6 @@ from ax_devil.modules.workspace.core import (
     PlaylistContent,
     PlaylistEntry,
     PlaylistItem,
-    PlaylistResolver,
     PlaylistSettings,
     VideoItem,
     Workspace,
@@ -37,12 +37,16 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_playlist, make_video
-from tests.helpers.workspace import FakeFileWatcher, FakeResolutionContext, content_item, inline_resolver
+from tests.helpers.workspace import FakeFileWatcher, FakeResolutionContext, FakeResolver, content_item, inline_resolver
 
 
-class _TwoPlaylists(PlaylistResolver):
+class _TwoPlaylists(FakeResolver):
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         return [make_playlist("train"), make_playlist("test")]
+
+
+def _playlist(store: WorkspaceStore, index: int = 0) -> PlaylistContent:
+    return cast(PlaylistContent, store.contents()[index])
 
 
 def _store() -> WorkspaceStore:
@@ -92,7 +96,7 @@ def test_removing_an_item_removes_all_its_content_and_exclusions_with_one_signal
     runs = PlaylistItem(label="Runs", resolver="runs")
     kept = content_item(make_video("kept.mp4"))
     store.add_items([runs, kept])
-    excluded = ConsiderationItemRef.playlist_entry(store.contents()[1].content_id, 0)
+    excluded = _playlist(store, 1).entry_consideration_ref(0)
     store.set_item_considered(excluded, False)
     removed: list[WorkspaceItem] = []
 
@@ -115,7 +119,7 @@ def test_renaming_an_item_renames_its_content_and_keeps_its_ids_and_exclusions()
     video = content_item(make_video("clip.mp4", overlay_count=2), label="Clip")
     store.add_items([video])
     [before] = store.contents()
-    lane = ConsiderationItemRef.video_lane(before.content_id, 1)
+    lane = before.lane_consideration_ref(0, 1)
     store.set_item_considered(lane, False)
     renamed: list[WorkspaceItem] = []
     store.item_renamed.connect(renamed.append)
@@ -167,9 +171,9 @@ def _playlist_with_hidden_parts() -> Content:
 def test_content_defaults_seed_exclusions_and_changes_signal_only_when_they_change() -> None:
     store = _store()
     store.add_items([content_item(_playlist_with_hidden_parts())])
-    [playlist] = store.contents()
-    entry = ConsiderationItemRef.playlist_entry(playlist.content_id, 0)
-    hidden_lane = ConsiderationItemRef.playlist_lane(playlist.content_id, 1, 1)
+    playlist = _playlist(store)
+    entry = playlist.entry_consideration_ref(0)
+    hidden_lane = playlist.lane_consideration_ref(1, 1)
     changes: list[tuple[ConsiderationItemRef, bool]] = []
     store.item_consideration_changed.connect(lambda ref, considered: changes.append((ref, considered)))
 
@@ -185,21 +189,21 @@ def test_content_defaults_seed_exclusions_and_changes_signal_only_when_they_chan
 def test_unknown_and_out_of_range_refs_are_ignored() -> None:
     store = _store()
     store.add_items([content_item(make_playlist())])
-    [playlist] = store.contents()
+    playlist = _playlist(store)
     changes: list[object] = []
     store.item_consideration_changed.connect(lambda *args: changes.append(args))
 
     for ref in (
-        ConsiderationItemRef.video_lane("nonexistent", 0),
-        ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 99),
+        ConsiderationItemRef("nonexistent", "", 0),
+        playlist.lane_consideration_ref(0, 99),
     ):
         store.set_item_considered(ref, False)
         assert store.is_item_considered(ref)
     assert changes == []
-    assert store.is_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0))
+    assert store.is_item_considered(playlist.lane_consideration_ref(0, 0))
 
 
-class _CountingResolver(PlaylistResolver):
+class _CountingResolver(FakeResolver):
     def __init__(self) -> None:
         self.calls = 0
 
@@ -367,7 +371,7 @@ def test_clearing_a_saved_label_shows_each_kinds_default_name_after_reopening(tm
     assert [content.display_name for content in store.contents()] == ["lot.mp4", "camera.local"]
 
 
-class _BlockingResolver(PlaylistResolver):
+class _BlockingResolver(FakeResolver):
     """Resolve to two playlists once the test releases it, recording the thread it ran on."""
 
     def __init__(self) -> None:
@@ -631,21 +635,16 @@ def test_replacing_the_workspace_signals_that_bookmarks_changed(tmp_path: Path) 
     assert changes == [(bookmark,), ()]
 
 
-class _Folder(PlaylistResolver):
+class _Folder(FakeResolver):
     """A resolver over a folder the test changes: one playlist with an entry per clip, or an error once it is empty.
 
-    Clips named ``hidden…`` are left out by default; each has one overlay file. ``watched_when_resolving`` records
-    what the store had registered with the watcher each time the resolver ran.
+    Clips named ``hidden…`` are left out by default; each has one overlay file.
     """
 
     def __init__(self, *clips: str) -> None:
         self.clips = list(clips)
-        self.watcher: FakeFileWatcher | None = None
-        self.watched_when_resolving: list[dict[str, SourcePaths]] = []
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
-        if self.watcher is not None:
-            self.watched_when_resolving.append(dict(self.watcher.watched))
         if not self.clips:
             raise OSError("Folder not found: /runs")
         entries = tuple(
@@ -656,8 +655,8 @@ class _Folder(PlaylistResolver):
         )
         return [PlaylistContent(display_name="Runs", entries=entries)]
 
-    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
-        return [Path("/runs")]
+    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+        return SourcePaths(folders=frozenset({Path("/runs")}))
 
 
 def _entry_names(store: WorkspaceStore) -> list[str]:
@@ -667,27 +666,8 @@ def _entry_names(store: WorkspaceStore) -> list[str]:
 
 def _folder_store(folder: _Folder) -> tuple[WorkspaceStore, FakeFileWatcher]:
     watcher = FakeFileWatcher()
-    folder.watcher = watcher
     store = WorkspaceStore(inline_resolver(FakeResolutionContext(resolvers={"folder": folder})), watcher=watcher)
     return store, watcher
-
-
-def test_the_files_an_item_was_read_from_are_watched_from_before_it_resolves_until_it_goes() -> None:
-    folder = _Folder("a.mp4")
-    store, watcher = _folder_store(folder)
-    runs, video = PlaylistItem(resolver="folder"), content_item(make_video("clip.mp4", overlay_count=1))
-    runs_folder = SourcePaths(folders=frozenset({Path("/runs")}))
-    overlay = SourcePaths(files=frozenset({Path("/tmp/Overlay 1.txt")}))
-
-    store.add_items([runs, video])
-
-    [watched_when_resolving] = folder.watched_when_resolving
-    assert watched_when_resolving[runs.id] == runs_folder, "a change while resolving must be noticed"
-    assert watcher.watched == {runs.id: runs_folder | overlay, video.id: overlay}
-    store.remove_item(runs.id)
-    assert list(watcher.watched) == [video.id]
-    store.replace_workspace(Workspace())
-    assert watcher.watched == {}
 
 
 def test_a_change_resolves_the_item_again_and_keeps_exclusions_only_of_what_still_exists(tmp_path: Path) -> None:
@@ -696,16 +676,16 @@ def test_a_change_resolves_the_item_again_and_keeps_exclusions_only_of_what_stil
     runs = PlaylistItem(label="Runs", resolver="folder")
     store.add_items([runs])
     store.save_workspace(tmp_path / "runs.ax-devil.workspace")
-    [playlist] = store.contents()
+    playlist = _playlist(store)
 
     def considered(index: int) -> bool:
-        return store.is_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, index))
+        return store.is_item_considered(_playlist(store).entry_consideration_ref(index))
 
-    store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
-    store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 2), False)
-    changes: list[tuple[str, frozenset[Path]]] = []
+    store.set_item_considered(playlist.entry_consideration_ref(0), False)
+    store.set_item_considered(playlist.entry_consideration_ref(2), False)
+    changes: list[frozenset[Path]] = []
     state_changes: list[None] = []
-    store.sources_changed.connect(lambda item_id, paths: changes.append((item_id, paths)))
+    store.sources_changed.connect(changes.append)
     store.state_changed.connect(lambda: state_changes.append(None))
 
     folder.clips = ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "hidden.mp4"]
@@ -720,12 +700,11 @@ def test_a_change_resolves_the_item_again_and_keeps_exclusions_only_of_what_stil
     watcher.report(runs.id, Path("/runs/c.mp4"))
     assert [considered(index) for index in range(3)] == [False, True, True]
 
-    assert [paths for _item_id, paths in changes] == [
+    assert changes == [
         frozenset({Path("/runs/d.mp4"), Path("/runs/hidden.mp4")}),
         frozenset({Path("/runs/c.mp4")}),
         frozenset({Path("/runs/c.mp4")}),
     ]
-    assert {item_id for item_id, _paths in changes} == {runs.id}
     assert [content.display_name for content in store.contents()] == ["Runs"]
     assert not store.is_modified and state_changes == []
 
@@ -735,18 +714,37 @@ def test_a_change_that_inserts_an_entry_before_an_excluded_one_keeps_that_entry_
     store, watcher = _folder_store(folder)
     runs = PlaylistItem(label="Runs", resolver="folder")
     store.add_items([runs])
-    [playlist] = store.contents()
-    store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
+    playlist = _playlist(store)
+    store.set_item_considered(playlist.entry_consideration_ref(0), False)
 
     folder.clips = ["a.mp4", "b.mp4", "c.mp4"]
     watcher.report(runs.id, Path("/runs/a.mp4"))
 
-    [changed] = (cast(PlaylistContent, content) for content in store.contents())
+    changed = _playlist(store)
     considered = {
         entry.display_label(index): store.is_item_considered(changed.entry_consideration_ref(index))
         for index, entry in enumerate(changed.entries)
     }
     assert considered == {"a.mp4": True, "b.mp4": False, "c.mp4": True}
+
+
+def test_an_open_viewer_and_the_sidebar_exclude_the_same_entries_after_entries_are_inserted() -> None:
+    folder = _Folder("b.mp4", "c.mp4", "d.mp4")
+    store, watcher = _folder_store(folder)
+    runs = PlaylistItem(label="Runs", resolver="folder")
+    store.add_items([runs])
+    old = _playlist(store)  # What a viewer opened on b.mp4 keeps.
+
+    folder.clips = ["a.mp4", "b.mp4", "c.mp4", "d.mp4"]
+    watcher.report(runs.id, Path("/runs/a.mp4"))
+    new = _playlist(store)
+    store.set_item_considered(new.entry_consideration_ref(2), False)  # The sidebar hides c.mp4.
+
+    assert OfflineViewerNavigation(old, store).find_next_considered_index(0) == 2, "the viewer steps to d.mp4"
+
+    store.set_item_considered(old.entry_consideration_ref(0), False)  # The viewer hides b.mp4.
+
+    assert [store.is_item_considered(new.entry_consideration_ref(index)) for index in range(3)] == [True, False, False]
 
 
 def test_a_change_that_makes_resolving_fail_shows_the_item_as_unavailable_until_it_resolves_again() -> None:
@@ -760,10 +758,11 @@ def test_a_change_that_makes_resolving_fail_shows_the_item_as_unavailable_until_
     error = store.resolution(runs.id).error
     assert error is not None and "Folder not found" in str(error)
     assert store.contents() == ()
-    watched = watcher.watched[runs.id]
+    watched = store.resolution(runs.id).sources.paths
     assert Path("/runs") in watched.folders and Path("/tmp/Overlay 1.txt") in watched.files, (
         "an item that cannot resolve keeps what it watched, so restoring those files helps"
     )
+    assert watcher.watched[runs.id].paths == watched
 
     folder.clips = ["b.mp4"]
     watcher.report(runs.id, Path("/runs/b.mp4"))
@@ -785,8 +784,8 @@ def test_results_after_a_change_for_a_removed_item_or_a_replaced_workspace_are_d
     store.add_resolved(
         [ItemResolution.of(removed, resolved_at_once, NEVER), ItemResolution.of(replaced, resolved_at_once, NEVER)]
     )
-    changed: list[str] = []
-    store.sources_changed.connect(lambda item_id, _paths: changed.append(item_id))
+    delivered: list[list[ItemResolution]] = []
+    store.items_resolved.connect(lambda results, _added: delivered.append(results))
     watcher.report(removed.id)
     watcher.report(replaced.id)
     qtbot.waitUntil(lambda: len(blocking.threads) == 2)
@@ -797,35 +796,11 @@ def test_results_after_a_change_for_a_removed_item_or_a_replaced_workspace_are_d
     blocking.release.set()
 
     _wait_for_jobs_since(qtbot, baseline)
-    assert changed == []
+    assert [result.item for results in delivered for result in results] == [kept], "only the new Workspace's own result"
     assert [content.display_name for content in store.contents()] == ["Kept / train", "Kept / test"]
 
 
-def test_changes_to_an_unknown_item_do_nothing_and_those_to_one_still_resolving_resolve_it_once_more(
-    qtbot: QtBot, blocking: _BlockingResolver
-) -> None:
-    baseline = set(threading.enumerate())
-    watcher = FakeFileWatcher()
-    store = WorkspaceStore(
-        ItemResolver(FakeResolutionContext(resolvers={"runs": blocking}), jobs=BackgroundJobs()), watcher=watcher
-    )
-    runs = PlaylistItem(resolver="runs")
-    store.add_items([runs])
-    changes: list[tuple[str, frozenset[Path]]] = []
-    store.sources_changed.connect(lambda item_id, paths: changes.append((item_id, paths)))
-
-    watcher.report("unknown", Path("/runs/x.txt"))
-    watcher.report(runs.id, Path("/runs/a.txt"))
-    watcher.report(runs.id, Path("/runs/b.txt"))
-    assert len(blocking.threads) <= 1
-    blocking.release.set()
-
-    _wait_for_jobs_since(qtbot, baseline)
-    assert len(blocking.threads) == 2, "the first resolution, and one more for all the changes meanwhile"
-    assert changes == [(runs.id, frozenset({Path("/runs/a.txt"), Path("/runs/b.txt")}))]
-
-
-class _ScriptedResolver(PlaylistResolver):
+class _ScriptedResolver(FakeResolver):
     """Resolve once at once, then hold each later request until the test finishes it with its own playlist name."""
 
     def __init__(self) -> None:
@@ -853,8 +828,8 @@ def test_an_older_resolution_finishing_last_does_not_overwrite_the_newer_result(
     runs = PlaylistItem(resolver="runs")
     store.add_items([runs])
     qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
-    changed: list[str] = []
-    store.sources_changed.connect(lambda item_id, _paths: changed.append(item_id))
+    delivered: list[list[ItemResolution]] = []
+    store.items_resolved.connect(lambda results, _added: delivered.append(results))
 
     watcher.report(runs.id)
     qtbot.waitUntil(lambda: len(scripted.requests) == 1)
@@ -862,12 +837,12 @@ def test_an_older_resolution_finishing_last_does_not_overwrite_the_newer_result(
     qtbot.waitUntil(lambda: len(scripted.requests) == 2)
     (older_release, _), (newer_release, newer_name) = scripted.requests
     newer_release.set()
-    qtbot.waitUntil(lambda: len(changed) == 1)
+    qtbot.waitUntil(lambda: len(delivered) == 1)
     older_release.set()
     _wait_for_jobs_since(qtbot, baseline)
 
     assert [content.display_name for content in store.contents()] == [newer_name]
-    assert len(changed) == 1
+    assert len(delivered) == 1
 
 
 def test_repeated_changes_waiting_for_a_worker_resolve_only_once(qtbot: QtBot) -> None:
@@ -899,7 +874,7 @@ def _wait_for_jobs_since(qtbot: QtBot, baseline: set[threading.Thread]) -> None:
     QCoreApplication.processEvents()
 
 
-class _CooperativeResolver(PlaylistResolver):
+class _CooperativeResolver(FakeResolver):
     """Hold one call until its owning workspace operation cancels it."""
 
     def __init__(self, block_call: int = 1) -> None:
@@ -969,11 +944,11 @@ def test_superseding_an_active_resolution_interrupts_it_before_the_next_one(qtbo
     watcher = FakeFileWatcher()
     store = WorkspaceStore(ItemResolver(context, jobs=BackgroundJobs(max_workers=1)), watcher=watcher)
     runs = PlaylistItem(resolver="runs")
-    delivered: list[str] = []
-    store.sources_changed.connect(lambda item_id, _paths: delivered.append(item_id))
+    delivered: list[list[ItemResolution]] = []
     try:
         store.add_items([runs])
         qtbot.waitUntil(lambda: not store.resolution(runs.id).is_pending)
+        store.items_resolved.connect(lambda results, _added: delivered.append(results))
         watcher.report(runs.id)
         qtbot.waitUntil(resolver.started.is_set)
 

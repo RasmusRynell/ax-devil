@@ -9,9 +9,11 @@ from functools import partial
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Signal, SignalInstance
+from PySide6.QtCore import QObject, QTimer, Signal, SignalInstance
 
+from ax_devil.core.source_paths import Fingerprint, SourcePaths, SourceSnapshot
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest, background_jobs
+from ax_devil.modules.file_watching import FileWatcher
 from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalog,
     SceneRenderCatalogLoader,
@@ -34,23 +36,21 @@ FILE_CHECK_DELAY_MS = 150
 LISTING_RETRY_DELAY_MS = 5000
 """How long to wait before listing again after the first listing failed, until one succeeds."""
 
+_WATCH_KEY = "catalogs"
+
 _POOL = "render-catalogs"
 _POOL_WORKERS = 2
 """Catalog files may sit on slow storage, so listing and loading never share workers with other background work."""
-
-Fingerprint = tuple[int, int]
-"""A file's modification time and size, which change whenever a catalog is saved or replaced."""
 
 T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
 class _Scan:
-    """What a worker found on disk: the listing, the catalog files' fingerprints, and what to watch."""
+    """What a worker found on disk: the listing, and the catalog files and their folder as they were."""
 
     listing: SceneRenderCatalogListing
-    fingerprints: dict[Path, Fingerprint | None]
-    watchable: tuple[Path, ...]
+    snapshot: SourceSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,40 +61,20 @@ class _Loaded:
     revision: SceneRenderCatalogRevision
 
 
-def _fingerprint(path: Path) -> Fingerprint:
-    stat = path.stat()
-    return (stat.st_mtime_ns, stat.st_size)
-
-
-def _fingerprint_or_none(path: Path) -> Fingerprint | None:
-    try:
-        return _fingerprint(path)
-    except OSError:
-        return None
-
-
 def _scan(store: SceneRenderCatalogStore, known: tuple[Path, ...], context: JobContext[None]) -> _Scan:
     """List the catalogs and fingerprint them, the chosen default and every path in *known*; runs on a worker."""
     token = context.token
     listing = store.list_catalogs_with_errors(token)
     listed = (catalog.path for catalog in listing.catalogs)
     invalid = (error.path for error in listing.errors)
-    files = tuple(dict.fromkeys((store.built_in_catalog_path, *listed, *invalid)))
-    fingerprints = {
-        path: _fingerprint_or_none(path)
-        for path in token.polled(dict.fromkeys((*known, *files, listing.chosen_default_path)))
-    }
-    directories = {store.catalogs_dir, *(path.parent for path in files)}
-    watchable = (
-        *(path for path in files if fingerprints[path] is not None),
-        *(path for path in directories if path.exists()),
-    )
-    return _Scan(listing, fingerprints, watchable)
+    files = dict.fromkeys((store.built_in_catalog_path, *listed, *invalid, *known, listing.chosen_default_path))
+    paths = SourcePaths(files=frozenset(files), folders=frozenset({store.catalogs_dir}))
+    return _Scan(listing, paths.snapshot(token))
 
 
 def _load_revision(loader: SceneRenderCatalogLoader, path: Path, _context: JobContext[None]) -> _Loaded:
     """Read and compile *path*; runs on a worker. The fingerprint comes first, so a later save reads as newer."""
-    fingerprint = _fingerprint(path)
+    fingerprint = Fingerprint.of_stat(path.stat())
     return _Loaded(fingerprint, loader.load_revision(path))
 
 
@@ -184,16 +164,9 @@ class SceneRenderCatalogManager(QObject):
         self._scan_waiters: list[_Waiter[SceneRenderCatalogListing]] = []
         self._status = ""
         self._initialized = False
-        self._on_disk: dict[Path, Fingerprint | None] = {}
-        self._unreported: set[Path] = set()
-        self._changes_wanted = False
-        self._watcher = QFileSystemWatcher(self)
-        self._file_check = QTimer(self)
-        self._file_check.setSingleShot(True)
-        self._file_check.setInterval(FILE_CHECK_DELAY_MS)
-        self._file_check.timeout.connect(self._check_files)
-        self._watcher.fileChanged.connect(lambda _path: self._file_check.start())
-        self._watcher.directoryChanged.connect(lambda _path: self._file_check.start())
+        self._catalog_files: frozenset[Path] = frozenset()
+        self._watcher = FileWatcher(self, quiet_ms=FILE_CHECK_DELAY_MS)
+        self._watcher.changed.connect(self._files_changed)
         self._listing_retry = QTimer(self)
         self._listing_retry.setSingleShot(True)
         self._listing_retry.setInterval(LISTING_RETRY_DELAY_MS)
@@ -384,7 +357,7 @@ class SceneRenderCatalogManager(QObject):
         """
         waiter = _Waiter(on_done, on_failed)
         self._scan_waiters.append(waiter)
-        known = tuple(dict.fromkeys((*self._on_disk, *self._compiled_catalogs)))
+        known = tuple(self._compiled_catalogs)
         self._scan_request.submit(
             self._jobs,
             "render catalog listing",
@@ -478,32 +451,19 @@ class SceneRenderCatalogManager(QObject):
         """Take a worker's findings: follow what changed on disk, then tell listeners and the watcher."""
         waiters, self._scan_waiters = self._scan_waiters, []
         self._listing = scan.listing
-        changed = {path for path, now in scan.fingerprints.items() if self._on_disk.get(path, now) != now}
-        self._on_disk.update(scan.fingerprints)
-        self._unreported |= changed
-        stale = [
-            path
-            for path, (read, _revision) in self._compiled_catalogs.items()
-            if scan.fingerprints.get(path, read) != read
-        ]
+        fingerprints = scan.snapshot.fingerprints
+        stale = [path for path, (read, _revision) in self._compiled_catalogs.items() if fingerprints.get(path) != read]
         for path in stale:
             del self._compiled_catalogs[path]
-        for path in changed & self._loads.keys():
-            self._start_load(path, self._loads[path])
-        self._watch(scan.watchable)
+        self._catalog_files = scan.snapshot.paths.files
+        self._watcher.watch(_WATCH_KEY, scan.snapshot)
         self._listing_ready = self._listing_discovered = True
         self.catalogListingChanged.emit(self._listing)
         self._publish_listing_status()
-        if self._changes_wanted:
-            self._changes_wanted = False
-            reported, self._unreported = sorted(self._unreported), set()
-            for path in reported:
-                logger.info(f"Render catalog file changed: {path}")
-                self.catalogFileChanged.emit(path)
         for waiter in waiters:
             waiter.succeed(self._listing)
         for path in stale:
-            if path not in self._loads and scan.fingerprints.get(path) is not None:
+            if path not in self._loads and path in fingerprints:
                 self.request_revision(path, on_loaded=self._usability_changed, on_failed=self._usability_changed)
 
     def _scan_failed(self, error: Exception) -> None:
@@ -530,20 +490,21 @@ class SceneRenderCatalogManager(QObject):
         self._status = status
         self.catalogStatusChanged.emit(status)
 
-    def _watch(self, watchable: tuple[Path, ...]) -> None:
-        """Watch the catalog files and the directories holding them that a worker found, and are not watched yet."""
-        watched = set(self._watcher.files()) | set(self._watcher.directories())
-        missing = [str(path) for path in watchable if str(path) not in watched]
-        if missing:
-            self._watcher.addPaths(missing)
+    def _files_changed(self, _key: str, paths: frozenset[Path]) -> None:
+        """Restart the reads of changed catalog files, then list again and report each once the listing is current.
 
-    def _check_files(self) -> None:
-        """Refresh the listing, and report every known catalog file that changed, appeared again or disappeared.
-
-        Editors often save by replacing the file, which ends the watch on it; the listing refresh watches it again.
+        The listing drops the compiled catalogs that changed and compiles them again in the background.
         """
-        self._changes_wanted = True
-        self.refresh_catalogs()
+        changed = sorted(paths & self._catalog_files)
+        for path in changed:
+            if (load := self._loads.get(path)) is not None:
+                self._start_load(path, load)
+        self.refresh_catalogs(on_done=lambda _listing: self._report_changed(changed))
+
+    def _report_changed(self, changed: list[Path]) -> None:
+        for path in changed:
+            logger.info(f"Render catalog file changed: {path}")
+            self.catalogFileChanged.emit(path)
 
 
 class SceneRenderCatalogSelection(QObject):

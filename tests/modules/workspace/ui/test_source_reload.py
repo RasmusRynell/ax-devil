@@ -20,7 +20,7 @@ from ax_devil.modules.workspace.core import OverlayFile, RecentWorkspaces, Video
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
-from ax_devil.modules.workspace.ui.source_change_prompt import offer_reload
+from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.plugins.decoders.mot.provider import MOTChallengeSceneDataProvider
 from tests.helpers.workspace import FakePrompts, PlainViewerWidget
 
@@ -52,8 +52,13 @@ def _shown_boxes(viewer: OfflineVideoViewerWidget) -> int:
     return len(overlay.content.entities)
 
 
+def _banner(viewer: ViewerWidget) -> Banner | None:
+    """Return the banner the viewer shows, or None."""
+    return next((banner for banner in viewer.findChildren(Banner) if not banner.isHidden()), None)
+
+
 def _banner_text(viewer: OfflineVideoViewerWidget) -> str:
-    banner = viewer.banner()
+    banner = _banner(viewer)
     assert banner is not None
     return " ".join(label.text() for label in banner.findChildren(QLabel))
 
@@ -104,20 +109,20 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
             )
         )
         assert _shown_boxes(viewer) == 1
-        assert viewer.banner() is None
+        assert _banner(viewer) is None
 
         _write_boxes(overlay, 2)
-        qtbot.waitUntil(lambda: viewer.banner() is not None, timeout=_WAIT_FOR_WATCHER_MS)
+        qtbot.waitUntil(lambda: _banner(viewer) is not None, timeout=_WAIT_FOR_WATCHER_MS)
         assert "Source changed, reload current viewer?" in _banner_text(viewer)
         assert _shown_boxes(viewer) == 1  # Nothing changes until the user agrees.
 
         old_runtime = viewer._runtime
-        banner = viewer.banner()
+        banner = _banner(viewer)
         assert isinstance(banner, Banner)
         banner.action.click()
         qtbot.waitUntil(lambda: viewer._runtime is not old_runtime)
         qtbot.waitUntil(lambda: viewer._runtime is not None and viewer._runtime.presented_frame is not None)
-        assert viewer.banner() is None
+        assert _banner(viewer) is None
         assert viewer._runtime is not None
         assert viewer._runtime.presented_frame is not None and viewer._runtime.presented_frame.frame == 2
         assert viewer._runtime.is_playing is False
@@ -125,12 +130,12 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
         assert _shown_boxes(viewer) == 2
 
         overlay.write_text(_BROKEN, encoding="utf-8")
-        qtbot.waitUntil(lambda: viewer.banner() is not None, timeout=_WAIT_FOR_WATCHER_MS)
+        qtbot.waitUntil(lambda: _banner(viewer) is not None, timeout=_WAIT_FOR_WATCHER_MS)
         shown = viewer._runtime
-        banner = viewer.banner()
+        banner = _banner(viewer)
         assert isinstance(banner, Banner)
         banner.action.click()
-        qtbot.waitUntil(lambda: viewer.banner() is not None)
+        qtbot.waitUntil(lambda: _banner(viewer) is not None)
         assert "Could not reload" in _banner_text(viewer)
         assert "Unreadable overlay file" in _banner_text(viewer)
         assert viewer._runtime is shown
@@ -140,22 +145,27 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
 
 
 def test_changes_arriving_while_an_offer_waits_keep_the_one_banner(qtbot: QtBot) -> None:
-    """Several changes show one offer; Dismiss removes it until the next change."""
-    viewer = PlainViewerWidget()
+    """Several changes show one offer; Dismiss removes it until the next change, and Reload reloads."""
+
+    class Reloadable(PlainViewerWidget):
+        reloads = 0
+
+        def reload(self) -> None:
+            self.reloads += 1
+
+    viewer = Reloadable()
     qtbot.addWidget(viewer)
-    reloads: list[str] = []
 
     for _ in range(3):
-        offer_reload(viewer, lambda: reloads.append("reload"))
-    first = viewer.banner()
-    assert isinstance(first, Banner)
-    assert first.dismiss is not None
+        viewer.offer_reload()
+    first = _banner(viewer)
+    assert first is not None and first.dismiss is not None
     first.dismiss.click()
-    assert viewer.banner() is None
+    assert _banner(viewer) is None
 
-    offer_reload(viewer, lambda: reloads.append("reload"))
-    second = viewer.banner()
-    assert isinstance(second, Banner)
+    viewer.offer_reload()
+    second = _banner(viewer)
+    assert second is not None
     second.action.click()
-    assert reloads == ["reload"]
-    assert viewer.banner() is None
+    assert viewer.reloads == 1
+    assert _banner(viewer) is None

@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.plugin_system import PLUGIN_API_VERSION, PlaylistResolverPlugin, PlaylistResolverWidget
 from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
 from ax_devil.plugins.playlist_resolvers.folder_pair.resolver import resolve_settings
@@ -57,10 +58,10 @@ class FolderPairResolverPlugin(PlaylistResolverPlugin):
         """Return the playlist of matched video and overlay files the settings describe."""
         return resolve_settings(settings, token)
 
-    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
+    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
         """Return the video and overlay folders, whose files decide which pairs match."""
         folders = (settings.get("videos_dir"), settings.get("overlays_dir"))
-        return [Path(folder) for folder in folders if isinstance(folder, str) and folder]
+        return SourcePaths(folders=frozenset(Path(folder) for folder in folders if isinstance(folder, str) and folder))
 
     def create_settings_widget(self) -> PlaylistResolverWidget:
         from .settings_widget import FolderPairSettingsWidget

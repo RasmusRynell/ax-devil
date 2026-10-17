@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from ax_devil.core.source_paths import SourcePaths
+from ax_devil.modules.background_jobs.request import Cancel
 from ax_devil.modules.file_watching import FileWatcher
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import (
@@ -39,11 +40,13 @@ class WorkspaceStore(QObject):
     Workspace is modified or what it is called. A change to bookmarks or reviewed targets emits ``bookmarks_changed``
     once, also when removing an item removed some of them and whenever another Workspace replaces this one.
 
-    The files an item's Content was read from are watched. When they change, the item resolves again and its new
-    result, an error included, replaces the old one while the item and Workspace are still current; then
-    ``sources_changed`` reports the changed paths. Exclusions stay for Content that still exists and are dropped for
-    Content that is gone. Resolving again never opens a viewer, never changes what open viewers show, since they keep
-    the immutable Content they opened, and never makes the Workspace modified, as results are never saved.
+    What an item was read from (``ItemResolution.sources``) is watched once its first result arrives. When it changes,
+    ``sources_changed`` reports the changed paths and the item resolves again; the new result, an error included,
+    replaces the old one while the item and Workspace are still current and arrives as ``items_resolved`` without
+    opening anything. An error keeps the files the last success was read from watched. Exclusions stay for Content
+    that still exists and are dropped for Content that is gone. Resolving again never opens a viewer, never changes
+    what open viewers show, since they keep the immutable Content they opened, and never makes the Workspace modified,
+    as results are never saved.
     """
 
     items_added = Signal(list)  # list[WorkspaceItem]; they may still be resolving
@@ -51,7 +54,7 @@ class WorkspaceStore(QObject):
     item_removed = Signal(object)  # WorkspaceItem
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
-    sources_changed = Signal(str, object)  # item id, frozenset[Path] of the files that changed; the item resolved again
+    sources_changed = Signal(object)  # frozenset[Path] of the watched paths that changed; their items resolve again
     workspace_replaced = Signal()  # another Workspace was opened or created; every item may be new
     bookmarks_changed = Signal()  # bookmarks or reviewed targets changed
     state_changed = Signal()  # is_modified, the name, or the path changed
@@ -68,10 +71,7 @@ class WorkspaceStore(QObject):
         self._resolutions: dict[str, ItemResolution] = {}
         self._not_considered: set[ConsiderationItemRef] = set()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
-        self._reresolving: dict[str, Callable[[], None]] = {}  # cancel each re-resolving item's newest request
-        self._changed_sources: dict[str, set[Path]] = {}  # changed files of each item not yet resolved again
-        self._changed_while_pending: set[str] = set()  # items to resolve once more when their first result arrives
-        self._watched: dict[str, SourcePaths] = {}  # what each item's last successful resolution asked to watch
+        self._reresolving: dict[str, Cancel] = {}  # cancel each re-resolving item's newest request
         # Ordered GUI-side batches; each item has its own cancellable worker.
         self._resolving: dict[int, _ResolutionBatch] = {}
         self._batch_count = 0
@@ -118,8 +118,6 @@ class WorkspaceStore(QObject):
         self._generation += 1
         cancels = [*(batch.cancel for batch in self._resolving.values()), *self._reresolving.values()]
         self._resolving, self._reresolving = {}, {}
-        self._changed_sources, self._changed_while_pending = {}, set()
-        self._watched = {}
         self._watcher.clear()
         for cancel in cancels:
             cancel()
@@ -167,14 +165,11 @@ class WorkspaceStore(QObject):
         item = self._workspace.item(item_id)
         before = self._workspace
         self._workspace = self._workspace.remove_item(item_id)
-        removed_ids = {content.content_id for content in self._resolutions.pop(item_id).contents}
+        del self._resolutions[item_id]
         self._watcher.unwatch(item_id)
         self._cancel_reresolving(item_id)
         self._cancel_resolving(item_id)
-        self._changed_sources.pop(item_id, None)
-        self._changed_while_pending.discard(item_id)
-        self._watched.pop(item_id, None)
-        self._not_considered = {ref for ref in self._not_considered if ref.content_id not in removed_ids}
+        self._not_considered = {ref for ref in self._not_considered if ref.item_id != item_id}
         logger.debug(f"Item removed: {item.display_name} ({item_id})")
         self.item_removed.emit(item)
         if _bookmark_state(before) != _bookmark_state(self._workspace):
@@ -240,23 +235,15 @@ class WorkspaceStore(QObject):
         self._apply_bookmarks(workspace)
 
     def _on_sources_changed(self, item_id: str, paths: frozenset[Path]) -> None:
-        """Resolve the item whose files changed again, as soon as it has a first result."""
+        """Report the changed *paths* and resolve the item that was read from them again.
+
+        The latest request is the one that counts: the earlier one is cancelled, so its result never arrives, and one
+        still waiting its turn never runs.
+        """
         if not self._workspace.has_item(item_id):
             return
         logger.debug(f"Sources of {self._workspace.item(item_id).display_name} changed: {sorted(paths)}")
-        self._changed_sources.setdefault(item_id, set()).update(paths)
-        self._reresolve(item_id)
-
-    def _reresolve(self, item_id: str) -> None:
-        """Resolve the item with *item_id* again in the background and replace its result when the new one arrives.
-
-        An item that is still resolving the first time is resolved once more when that result arrives, however often
-        its files changed meanwhile. Otherwise the latest request is the one that counts: the earlier one is
-        cancelled, so its result never arrives, and one still waiting its turn never runs.
-        """
-        if self._resolutions[item_id].is_pending:
-            self._changed_while_pending.add(item_id)
-            return
+        self.sources_changed.emit(paths)
         self._cancel_reresolving(item_id)
         self._reresolving[item_id] = self._resolver.resolve(
             self._workspace.item(item_id), partial(self._apply_reresolved, self._generation)
@@ -338,8 +325,6 @@ class WorkspaceStore(QObject):
         opens. Otherwise each result is published independently, so a slow item never holds back the others.
         """
         generation = self._generation
-        for item in items:  # Before resolving, so a change made while it runs is compared with what it started from.
-            self._watcher.watch(item.id, item.watched_paths(self._resolver.context))
         batches = [items] if open_first else [[item] for item in items]
         for batch in batches:
             if batch:
@@ -366,50 +351,37 @@ class WorkspaceStore(QObject):
             waiting = self._resolutions.get(resolution.item.id)
             if waiting is None or not waiting.is_pending:
                 continue
-            current = resolution.renamed(waiting.item)
-            if current.error is not None:
-                logger.warning(f"Could not open {current.item.display_name}: {current.error}")
-            self._resolutions[current.item.id] = current
-            self._not_considered.update(ref for ref, considered in _defaults(current).items() if not considered)
-            self._watch_sources(current)
-            committed.append(current)
+            committed.append(self._take(resolution.renamed(waiting.item), waiting))
         if committed:
             self.items_resolved.emit(committed, open_first)
-        for resolution in committed:
-            if resolution.item.id in self._changed_while_pending:
-                self._changed_while_pending.discard(resolution.item.id)
-                self._reresolve(resolution.item.id)
 
     def _apply_reresolved(self, generation: int, resolution: ItemResolution) -> None:
         """Replace an item's result with its new one, unless its Workspace was replaced; a removed item's or a
         superseded resolution was cancelled and never arrives."""
-        item_id = resolution.item.id
         if generation != self._generation:
             return
+        item_id = resolution.item.id
         self._reresolving.pop(item_id, None)
-        current = resolution.renamed(self._workspace.item(item_id))
+        current = self._take(resolution.renamed(self._workspace.item(item_id)), self._resolutions[item_id])
+        self.items_resolved.emit([current], False)
+
+    def _take(self, current: ItemResolution, previous: ItemResolution) -> ItemResolution:
+        """Store *current* as the item's result in place of *previous*, watch what it was read from, and return it.
+
+        Exclusions name entries, so they stay with the same ones: an entry that is gone loses its exclusion and one that
+        is new starts at its default. A failed result keeps watching what the last success was read from, since
+        restoring those files is what makes the item resolve again.
+        """
         if current.error is not None:
             logger.warning(f"Could not open {current.item.display_name}: {current.error}")
-        previous = self._resolutions[item_id]
-        self._resolutions[item_id] = current
-        self._not_considered = _carried_exclusions(self._not_considered, previous, current)
-        self._watch_sources(current)
-        self.sources_changed.emit(item_id, frozenset(self._changed_sources.pop(item_id, ())))
-
-    def _watch_sources(self, resolution: ItemResolution) -> None:
-        """Watch the files the item and its Content were read from, so a change to them resolves the item again.
-
-        A resolution that failed or has no Content keeps what the last successful one watched, since restoring those
-        files is what makes the item resolve again.
-        """
-        item_id = resolution.item.id
-        paths = resolution.item.watched_paths(self._resolver.context)
-        if resolution.error is None and resolution.contents:
-            paths |= SourcePaths.merged(content.source_paths() for content in resolution.contents)
-            self._watched[item_id] = paths
-        else:
-            paths |= self._watched.get(item_id, SourcePaths())
-        self._watcher.watch(item_id, paths)
+            current = replace(current, sources=current.sources | previous.sources)
+        self._resolutions[current.item.id] = current
+        before, after = _defaults(previous), _defaults(current)
+        self._not_considered = {ref for ref in self._not_considered if ref not in before or ref in after} | {
+            ref for ref, considered in after.items() if ref not in before and not considered
+        }
+        self._watcher.watch(current.item.id, current.sources)
+        return current
 
 
 class _ResolutionBatch:
@@ -418,7 +390,7 @@ class _ResolutionBatch:
     def __init__(self, items: Sequence[WorkspaceItem], done: Callable[[tuple[ItemResolution, ...]], None]) -> None:
         self._items = tuple(items)
         self._results: dict[str, ItemResolution | None] = dict.fromkeys(item.id for item in items)
-        self._cancels: dict[str, Callable[[], None]] = {}
+        self._cancels: dict[str, Cancel] = {}
         self._done = done
 
     def start(self, resolver: ItemResolver) -> None:
@@ -466,38 +438,4 @@ def _defaults(resolution: ItemResolution) -> dict[ConsiderationItemRef, bool]:
         consideration.ref: consideration.default_considered
         for content in resolution.contents
         for consideration in content.consideration_items()
-    }
-
-
-def _identities(resolution: ItemResolution) -> dict[ConsiderationItemRef, tuple[object, ...]]:
-    """Return what names each consideration item of *resolution*'s Content across rescans, by its ref.
-
-    A ref's entry index shifts when a rescan inserts or removes entries, so an entry is named by its Bookmark Target
-    entry instead, and a lane by its index within that entry.
-    """
-    return {
-        consideration.ref: (
-            consideration.ref.kind,
-            consideration.ref.content_id,
-            content.bookmark_entries[consideration.ref.entry_index],
-            consideration.ref.lane_index,
-        )
-        for content in resolution.contents
-        for consideration in content.consideration_items()
-    }
-
-
-def _carried_exclusions(
-    not_considered: set[ConsiderationItemRef], previous: ItemResolution, current: ItemResolution
-) -> set[ConsiderationItemRef]:
-    """Return *not_considered* with the exclusions of *previous* moved to the same items of *current*.
-
-    An item that is gone loses its exclusion, and one that is new starts at its default.
-    """
-    before, after = _identities(previous), _identities(current)
-    excluded = {before[ref] for ref in not_considered if ref in before}
-    known = set(before.values())
-    defaults = _defaults(current)
-    return {ref for ref in not_considered if ref not in before} | {
-        ref for ref, identity in after.items() if identity in excluded or (identity not in known and not defaults[ref])
     }

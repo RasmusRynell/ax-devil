@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any, Protocol
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.workspace.core.content import PlaylistContent
 from ax_devil.modules.workspace.core.intake import WorkspaceIntake
 
@@ -25,13 +25,10 @@ class PlaylistResolver(Protocol):
         """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
         ...
 
-    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
-        """Return the folders the playlists *settings* describe are read from, so adding or removing files there
-        resolves them again; the default is none.
-
-        Pure: it opens no file and lists no folder, since it runs on the GUI thread.
-        """
-        return []
+    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+        """Return the files and folders the playlists *settings* describe are read from, so a change to them resolves
+        the item again."""
+        ...
 
 
 class ResolutionContext(Protocol):

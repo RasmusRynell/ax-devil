@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
-from ax_devil.core.source_paths import SourcePaths
+from ax_devil.core.source_paths import SourcePaths, SourceSnapshot
 from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.file_watching import FileWatcher
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -26,6 +26,7 @@ from ax_devil.modules.workspace.core import (
     LiveVideoContent,
     PlaylistContent,
     PlaylistResolver,
+    PlaylistSettings,
     ResolutionContext,
     SeekableVideoContent,
     WorkspaceDecoderOption,
@@ -88,6 +89,13 @@ class StaticDecoderOptions:
         return self._live_options
 
 
+class FakeResolver(PlaylistResolver):
+    """Base of test playlist resolvers: it reads no files, so nothing is watched unless a test says so."""
+
+    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
+        return SourcePaths()
+
+
 class FakeResolutionContext:
     """Resolution context with a test intake and playlist resolvers keyed by id."""
 
@@ -114,10 +122,10 @@ class FakeFileWatcher(FileWatcher):
 
     def __init__(self) -> None:
         super().__init__()
-        self.watched: dict[str, SourcePaths] = {}
+        self.watched: dict[str, SourceSnapshot] = {}
 
-    def watch(self, key: str, paths: SourcePaths) -> None:
-        self.watched[key] = paths
+    def watch(self, key: str, sources: SourceSnapshot) -> None:
+        self.watched[key] = sources
 
     def unwatch(self, key: str) -> None:
         self.watched.pop(key, None)
@@ -223,7 +231,7 @@ class DummyViewer(ViewerWidget):
             return OnScreenWorkspaceItem(
                 kind="playlist_entry",
                 content_id=self.payload.content_id,
-                entry_index=self.start_index,
+                entry=self.payload.bookmark_entries[self.start_index],
             )
         return None
 

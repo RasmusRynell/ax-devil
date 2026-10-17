@@ -52,12 +52,12 @@ from tests.helpers.section_tree import (
 )
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.widgets import button
-from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext
+from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, FakeResolver
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
 
 
-class _Folder(PlaylistResolver):
+class _Folder(FakeResolver):
     """A playlist resolver over a folder the test fills: one playlist with an entry per clip, two lanes in the first."""
 
     def __init__(self, count: int) -> None:
@@ -226,7 +226,7 @@ def test_a_playlist_that_failed_says_why_on_hover_and_offers_no_action(
     assert row_action(failed) == ""
 
 
-class _Blocking(PlaylistResolver):
+class _Blocking(FakeResolver):
     """A resolver that answers once the test releases it."""
 
     def __init__(self) -> None:

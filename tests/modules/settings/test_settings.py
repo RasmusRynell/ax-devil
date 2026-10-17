@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections.abc import Iterator
 from dataclasses import replace
@@ -296,11 +297,11 @@ def test_invalid_transport_and_failed_save_do_not_partially_apply(
     assert changes == []
     port.setText("8883")
 
-    def fail_replace(self: Path, target: Path) -> Path:
+    def fail_replace(source: str, target: Path) -> None:
         raise OSError("Read-only configuration")
 
     with monkeypatch.context() as patcher:
-        patcher.setattr(Path, "replace", fail_replace)
+        patcher.setattr(os, "replace", fail_replace)
         assert not click_ok(dialog)
     assert settings.snapshot() == previous_snapshot
     assert config.config_path.read_bytes() == previous_document

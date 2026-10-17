@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QContextMenuEvent, QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.chrome.icons import Icon
@@ -26,7 +26,7 @@ SHARED_ACTION_IDS = ("view.toggle_media_tools", "view.toggle_lane_fullscreen", "
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
     from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition
-    from ax_devil.modules.workspace.core.content import ConsiderationItemRef, Content, OnScreenWorkspaceItem
+    from ax_devil.modules.workspace.core.content import ConsiderationItemRef, OnScreenWorkspaceItem
 
 
 class ViewerWidget(QFrame):
@@ -49,6 +49,7 @@ class ViewerWidget(QFrame):
         self._pinned: bool = False
         self._shared_actions: Mapping[str, QAction] = {}
         self._banner: QWidget | None = None
+        self._reload_offer: Banner | None = None
 
         # Set up the base widget structure
         self._setup_base_ui()
@@ -279,11 +280,7 @@ class ViewerWidget(QFrame):
         """Return the workspace item currently visible in the widget."""
         return None
 
-    def banner(self) -> QWidget | None:
-        """Return the banner shown between the header and the content, or None."""
-        return self._banner
-
-    def set_banner(self, banner: QWidget | None) -> None:
+    def _set_banner(self, banner: QWidget | None) -> None:
         """Show *banner* between the header and the content in place of the one shown; None clears it."""
         previous, self._banner = self._banner, banner
         if previous is not None:
@@ -298,20 +295,41 @@ class ViewerWidget(QFrame):
     def show_warning(self, message: str) -> None:
         """Show *message* in a banner the user can dismiss, in place of any banner shown."""
         warning = Banner(message, "Dismiss")
-        warning.action.clicked.connect(lambda: self.set_banner(None))
-        self.set_banner(warning)
+        warning.action.clicked.connect(lambda: self._set_banner(None))
+        self._set_banner(warning)
 
-    def shown_source_paths(self) -> frozenset[Path]:
-        """Return the files the content on screen was read from, which changing makes the content out of date.
+    def source_paths(self) -> SourcePaths:
+        """Return the files and folders the content on screen was read from, which changing makes it out of date.
 
         Empty for a viewer that reads no files, such as a live stream.
         """
-        return frozenset()
+        return SourcePaths()
 
-    def reload(self, content: Content) -> None:
-        """Show the data of *content*, the same thing as was shown but read again, keeping the playhead.
+    def offer_reload(self) -> None:
+        """Ask in a banner whether to ``reload``, unless that offer is already shown.
 
-        Does nothing in viewers that read no files. A viewer that cannot show *content* keeps what it shows and says so.
+        Changes arriving one after another never stack offers; ``reload`` runs only when the user clicks Reload, so it
+        reads the newest data then. Dismiss removes the offer until the next change.
+        """
+        if self._reload_offer is not None and self._reload_offer is self._banner:
+            return
+        offer = Banner("Source changed, reload current viewer?", "Reload", dismiss_text="Dismiss")
+        self._reload_offer = offer
+        offer.action.clicked.connect(self._accept_reload_offer)
+        if offer.dismiss is not None:
+            offer.dismiss.clicked.connect(lambda: self._set_banner(None))
+        self._set_banner(offer)
+
+    def _accept_reload_offer(self) -> None:
+        """Take the offer down and reload."""
+        self._set_banner(None)
+        self.reload()
+
+    def reload(self) -> None:
+        """Read the content on screen again from its files, keeping the playhead.
+
+        Does nothing in viewers that read no files. A viewer that cannot show the new data keeps what it shows and says
+        so.
         """
 
     def bookmark_position(self) -> BookmarkPosition | None:

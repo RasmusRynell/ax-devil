@@ -27,8 +27,8 @@ Workspace file (JSON)  <->  Workspace + Workspace Items   ->  Content   ->  View
 - Items are the saved truth. Content is derived from items and is never written to disk. Runtime sources are created
   only when a viewer opens Content.
 - Session state — open panes, splits, current frame, play state, exclusions, window geometry — is not part of the
-  Workspace, and a Workspace never depends on it. Exclusions are therefore not saved and need no keys that survive a
-  resolver re-run. Bookmarks are saved, and pay that cost; see [Bookmarks](#bookmarks).
+  Workspace, and a Workspace never depends on it. Exclusions are not saved; they name entries by their Bookmark Target
+  entry, so they survive a re-run. Bookmarks are saved; see [Bookmarks](#bookmarks).
 - `workspace/core` holds the model and the file format; `workspace/ui` is one Qt interface on top of it. The import
   rule between them is in [invariants](../domain/invariants.md#content-model).
 
@@ -37,8 +37,9 @@ Workspace file (JSON)  <->  Workspace + Workspace Items   ->  Content   ->  View
 Item kinds are open-ended: a kind is one `WorkspaceItem` subclass registered in `ITEM_KINDS`, and the Workspace, the
 file format, and the store do not branch on kind.
 
-- Content identity is derived, never random: the Content at position *i* of item *x* has `content_id` `x/i`, so
-  resolving the same item again yields the same ids, and the UI can group and remove an item's Content as a whole.
+- Content identity is derived, never random: a playlist of item *x* has `content_id` `x/<playlist name>` (its numbered
+  `source_name`), other Content `x/0`, so resolving the same item again yields the same ids even when a resolver
+  returns a different set of playlists.
 - An item shows its `label`, or its default name when the label is empty: a video's file name, a stream's host with
   any `$VARIABLE` expanded, a playlist's names from its resolver. The default name is derived when shown and never
   saved. Renaming an item to an empty name, or to the name its row already shows while unlabeled, empties its label.
@@ -74,18 +75,12 @@ its row opens nothing. A result for an item removed meanwhile, or for a Workspac
 for an item renamed meanwhile is named after the new label. Renaming never resolves again: `ItemResolution` keeps the
 Content as named without a label and names it after the item.
 
-The store watches what each item was read from and resolves it again when that changes, so the UI follows regenerated
-files. A Video Item names its overlay files and a Playlist Item the folders its resolver reads (`watched_folders`,
-pure); what an item's Content names (`Content.source_paths()`: overlay files, never video files) is watched too, so a
-resolver that names no folder still gets its files. The
-[`FileWatcher`](../../src/ax_devil/modules/file_watching/README.md) reports the paths that changed, then the item
-resolves again, and `sources_changed` carries the item and those paths. The new result, an error included, replaces the old one only while the item and Workspace are still current, the latest
-request wins, and a change while the item first resolves makes it resolve once more. Exclusions stay for Content that
-still exists and are dropped for Content that is gone. This never opens a viewer, never changes what open viewers
-show, since they keep the Content they opened, and never makes the Workspace modified, since results are never saved;
-an entry list that changed shows no banner. A viewer whose on-screen overlay files changed is offered a reload and
-never reloaded by itself; reloading reads the data again in place and keeps the playhead, and if that fails the viewer
-keeps showing what it had.
+The store watches what each item was read from (`WorkspaceItem.source_paths`, plus the overlay files its Content
+names, never video files) and resolves the item again when the
+[`FileWatcher`](../../src/ax_devil/modules/file_watching/README.md) reports a change, so rows follow regenerated files.
+Sources are fingerprinted before they are read, so a change made while resolving is still noticed. A new result, an
+error included, replaces the old one and never opens a viewer or makes the Workspace modified. An open viewer
+showing a changed overlay file is offered a reload and is never reloaded by itself.
 
 An item that fails to resolve stays in the Workspace with its reason, shown as one unavailable row; when the user added
 it, they are also told at once. The Add Live Stream and Add Playlist dialogs resolve their item first and stay open

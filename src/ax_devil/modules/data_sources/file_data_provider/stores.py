@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -12,7 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol
 
+from ax_devil.core.atomic_file import write_atomically
 from ax_devil.core.load_warning import LoadWarning, SkippedRecords
+from ax_devil.core.source_paths import Fingerprint
 from ax_devil.modules.cache import CacheManager, IndexedFrameCache
 from ax_devil.modules.data_sources.scene_history import SceneHistoryCollector, SceneHistoryRecords
 from ax_devil.modules.scene.decoding import (
@@ -29,43 +30,10 @@ _WARNINGS_KEY = "load_warnings"
 
 
 @dataclass(frozen=True, slots=True)
-class SourceFingerprint:
-    """Filesystem fingerprint used to invalidate derived artifacts."""
-
-    mtime_ns: int
-    size: int
-    inode: int
-
-    @classmethod
-    def from_path(cls, file_path: Path) -> "SourceFingerprint":
-        """Fingerprint the file currently at ``file_path``."""
-        if not file_path.is_file():
-            raise FileNotFoundError(f"File not found: {file_path}")
-        return cls.from_stat(file_path.stat())
-
-    @classmethod
-    def from_stat(cls, stat_result: os.stat_result) -> "SourceFingerprint":
-        """Fingerprint the file a ``stat`` or ``fstat`` result describes."""
-        return cls(
-            mtime_ns=int(stat_result.st_mtime_ns),
-            size=int(stat_result.st_size),
-            inode=int(stat_result.st_ino),
-        )
-
-    def to_metadata(self) -> dict[str, int]:
-        """Return the JSON-compatible form persisted with the artifact."""
-        return {
-            "mtime_ns": self.mtime_ns,
-            "size": self.size,
-            "inode": self.inode,
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class SceneArtifactIdentity:
     """Complete identity of a persisted scene store artifact."""
 
-    source_fingerprint: SourceFingerprint
+    source_fingerprint: Fingerprint
     decoder_name: str
     artifact_version: int
     decode_options: dict[str, Any]
@@ -74,7 +42,7 @@ class SceneArtifactIdentity:
     def to_metadata(self) -> dict[str, Any]:
         """Return the JSON-compatible form persisted with the artifact."""
         return {
-            "source_fingerprint": self.source_fingerprint.to_metadata(),
+            "source_fingerprint": list(self.source_fingerprint),
             "decoder_name": self.decoder_name,
             "artifact_version": self.artifact_version,
             "scene_model_version": list(self.scene_model_version),
@@ -195,22 +163,10 @@ def _persisted_metadata(metadata: dict[str, Any], history: SceneHistoryRecords) 
     return {**metadata, _HISTORY_KEY: history.to_metadata()}
 
 
-def _write_text_atomically(path: Path, text: str) -> None:
-    """Write *text* to a temporary sibling and replace *path*, so readers never see a partial file."""
-    descriptor, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as file_obj:
-            file_obj.write(text)
-        os.replace(temporary_name, path)
-    except BaseException:
-        Path(temporary_name).unlink(missing_ok=True)
-        raise
-
-
 def build_scene_artifact_identity(
     *,
     context: SceneStoreContext,
-    fingerprint: SourceFingerprint,
+    fingerprint: Fingerprint,
 ) -> SceneArtifactIdentity:
     """Combine source freshness with the provider-owned decode identity."""
     return SceneArtifactIdentity(
@@ -301,7 +257,7 @@ class IndexedFrameSceneStore:
                 cached_frames = self._cache.available_frames()
                 artifact_identity = build_scene_artifact_identity(
                     context=self._context,
-                    fingerprint=SourceFingerprint.from_path(self._file_path),
+                    fingerprint=Fingerprint.of_stat(self._file_path.stat()),
                 )
                 catalog = parse_scene_catalog(
                     raw_metadata=cached_metadata,
@@ -321,7 +277,7 @@ class IndexedFrameSceneStore:
     def _rebuild(self) -> SceneCatalog:
         logger.debug(f"Rebuilding indexed frame store for {self._file_path.name}")
         # Taken before reading, so a write during the build reads as newer than the cached artifact.
-        fingerprint = SourceFingerprint.from_path(self._file_path)
+        fingerprint = Fingerprint.of_stat(self._file_path.stat())
         payloads = self._context.iter_payloads()
         decoder = self._context.decoder_factory()
         build_result = self._context.build_scene_maps(payloads, decoder)
@@ -526,8 +482,8 @@ class SourceIndexedSceneStore:
             "metadata": _persisted_metadata(metadata, history),
             "line_locations": {str(key): [offset, length] for key, (offset, length) in line_locations.items()},
         }
-        self._index_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_text_atomically(self._index_path, json.dumps(payload, separators=(",", ":")))
+        with write_atomically(self._index_path) as index_file:
+            index_file.write(json.dumps(payload, separators=(",", ":")))
         return SceneCatalog(
             total_lines=total_lines,
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,
@@ -578,8 +534,8 @@ class SourceIndexedSceneStore:
             raise ValueError(f"Scene store for {self._file_path.name} is closed")
         return self._source_handle
 
-    def _source_fingerprint(self) -> SourceFingerprint:
-        return SourceFingerprint.from_stat(os.fstat(self._open_source_handle().fileno()))
+    def _source_fingerprint(self) -> Fingerprint:
+        return Fingerprint.of_stat(os.fstat(self._open_source_handle().fileno()))
 
     def close(self) -> None:
         if self._source_handle is not None:

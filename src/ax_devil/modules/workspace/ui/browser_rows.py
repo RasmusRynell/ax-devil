@@ -487,7 +487,8 @@ class _RowProjection:
                 self._playlist_lane_row(playlist, entry, entry_index, lane_index)
                 for lane_index in range(len(entry.lanes))
             )
-        row_id = f"{playlist.content_id}/entry/{entry_index}"
+        row_id = f"{playlist.content_id}/entry/{playlist.bookmark_entries[entry_index]}"
+        ref = playlist.entry_consideration_ref(entry_index)
         if entry.source_location is not None:
             self._file_paths[row_id] = PurePath(entry.source_location)
         return _with_actions(
@@ -496,12 +497,10 @@ class _RowProjection:
                 label=entry.display_label(entry_index),
                 icon_kind=self._icon_kind_for_playlist_entry(entry),
                 activation_target=(playlist, entry_index),
-                consideration_ref=ConsiderationItemRef.playlist_entry(playlist.content_id, entry_index),
+                consideration_ref=ref,
                 information_factory=partial(build_playlist_entry_information, playlist, entry, entry_index),
                 export_target=open_item,
-                is_considered=self._is_considered(
-                    ConsiderationItemRef.playlist_entry(playlist.content_id, entry_index)
-                ),
+                is_considered=self._is_considered(ref),
                 is_open=open_item in open_items,
                 children=children,
                 location=entry.source_location,
@@ -516,7 +515,7 @@ class _RowProjection:
         for lane_index, lane in enumerate(video.standalone_lanes()):
             if lane.source_kind == OverlaySourceKind.NO_SOURCE:
                 continue
-            lane_ref = ConsiderationItemRef.video_lane(video.content_id, lane_index)
+            lane_ref = video.lane_consideration_ref(0, lane_index)
             consideration_item = consideration_items.get(lane_ref)
             row_id = f"{video.content_id}/lane/{lane_index}"
             if not video.is_live:
@@ -547,7 +546,8 @@ class _RowProjection:
     ) -> WorkspaceBrowserRow:
         """Build a row for one playlist lane."""
         lane = entry.lanes[lane_index]
-        row_id = f"{playlist.content_id}/entry/{entry_index}/lane/{lane_index}"
+        row_id = f"{playlist.content_id}/entry/{playlist.bookmark_entries[entry_index]}/lane/{lane_index}"
+        ref = playlist.lane_consideration_ref(entry_index, lane_index)
         self._file_paths[row_id] = PurePath(lane.source_location)
         return _with_actions(
             WorkspaceBrowserRow(
@@ -555,7 +555,7 @@ class _RowProjection:
                 label=lane.display_name,
                 icon_kind="overlay",
                 activation_target=(playlist, entry_index),
-                consideration_ref=ConsiderationItemRef.playlist_lane(playlist.content_id, entry_index, lane_index),
+                consideration_ref=ref,
                 information_factory=partial(
                     build_playlist_lane_information,
                     playlist,
@@ -564,9 +564,7 @@ class _RowProjection:
                     lane,
                     lane_index,
                 ),
-                is_considered=self._is_considered(
-                    ConsiderationItemRef.playlist_lane(playlist.content_id, entry_index, lane_index)
-                ),
+                is_considered=self._is_considered(ref),
                 location=lane.source_location,
                 facts=(_lane_fact(lane),),
             )

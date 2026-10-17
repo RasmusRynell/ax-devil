@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.file_watching import FileWatcher
@@ -17,12 +18,12 @@ from tests.helpers.workspace import wait_for_background_work
 
 
 def _watch(qtbot: QtBot, paths: SourcePaths) -> tuple[FileWatcher, list[frozenset[Path]]]:
-    """Return a watcher of *paths* whose baseline is taken, and the list its reports are appended to."""
+    """Return a watcher of a snapshot of *paths* whose first check is done, and the list its reports are appended to."""
     watcher = FileWatcher(quiet_ms=50, jobs=BackgroundJobs(max_workers=2))
     reports: list[frozenset[Path]] = []
     watcher.changed.connect(lambda _key, changed: reports.append(changed))
     threads = set(threading.enumerate())
-    watcher.watch("item", paths)
+    watcher.watch("item", paths.snapshot(NEVER))
     wait_for_background_work(qtbot, threads)
     return watcher, reports
 
@@ -86,7 +87,7 @@ def test_a_file_rewritten_in_place_inside_a_watched_folder_is_deliberately_not_r
     assert reports == [frozenset({tmp_path / "images"})]
 
 
-def test_watching_more_paths_keeps_the_baseline_so_a_change_made_meanwhile_is_reported(
+def test_watching_more_paths_keeps_what_was_reported_on_so_a_change_made_meanwhile_is_reported(
     qtbot: QtBot, tmp_path: Path
 ) -> None:
     detections = tmp_path / "det.txt"
@@ -96,7 +97,43 @@ def test_watching_more_paths_keeps_the_baseline_so_a_change_made_meanwhile_is_re
     watcher, reports = _watch(qtbot, SourcePaths(files=frozenset({detections})))
 
     _rewrite(detections)
-    watcher.watch("item", SourcePaths(files=frozenset({detections, other})))
+    watcher.watch("item", SourcePaths(files=frozenset({detections, other})).snapshot(NEVER))
+
+    _wait_for_reports(qtbot, reports, 1)
+    assert reports == [frozenset({detections})]
+
+
+def test_a_file_newly_named_inside_a_watched_folder_is_not_a_change_but_its_rewrite_is(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    folder = tmp_path / "overlays"
+    folder.mkdir()
+    watcher, reports = _watch(qtbot, SourcePaths(folders=frozenset({folder})))
+    catalog = folder / "catalog.json"
+    catalog.write_text("created after the first snapshot")
+    named = SourcePaths(files=frozenset({catalog}), folders=frozenset({folder}))
+    threads = set(threading.enumerate())
+
+    watcher.watch("item", named.snapshot(NEVER))
+    wait_for_background_work(qtbot, threads)
+    _wait_for_reports(qtbot, reports, 1)
+    assert reports == [frozenset({folder})]  # The folder gained an entry; the file itself is not a change.
+
+    _rewrite(catalog)
+    _wait_for_reports(qtbot, reports, 2)
+    assert reports == [frozenset({folder}), frozenset({catalog})]
+
+
+def test_a_change_made_between_the_snapshot_and_watching_is_reported(qtbot: QtBot, tmp_path: Path) -> None:
+    detections = tmp_path / "det.txt"
+    detections.write_text("first")
+    snapshot = SourcePaths(files=frozenset({detections})).snapshot(NEVER)
+    _rewrite(detections)
+    watcher = FileWatcher(quiet_ms=50, jobs=BackgroundJobs(max_workers=2))
+    reports: list[frozenset[Path]] = []
+    watcher.changed.connect(lambda _key, changed: reports.append(changed))
+
+    watcher.watch("item", snapshot)
 
     _wait_for_reports(qtbot, reports, 1)
     assert reports == [frozenset({detections})]

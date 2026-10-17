@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from ax_devil.modules.workspace.core import (
-    ConsiderationItemRef,
     EntryLane,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
@@ -180,7 +179,7 @@ def test_seekable_video_lane_is_considered_by_default_and_live_has_no_items() ->
 
     [seekable_item] = seekable.consideration_items()
 
-    assert seekable_item.ref == ConsiderationItemRef.video_lane(seekable.content_id, 0)
+    assert seekable_item.ref == seekable.lane_consideration_ref(0, 0)
     assert seekable_item.default_considered
     assert live.consideration_items() == ()
 

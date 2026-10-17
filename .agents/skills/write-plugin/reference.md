@@ -122,9 +122,10 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
     module without Qt imports and free of shared mutable state. Poll the required `CancelToken` between filesystem
     operations and pass it through to helpers; callers without cancellation pass `NEVER` from
     `ax_devil.core.cancellation`. Let `Cancelled` escape so removed items and superseded resolutions stop quietly.
-  - `watched_folders(settings)` is optional and returns the `list[Path]` of folders the resolver reads, so adding or
-    removing files there resolves the playlist again; default `[]`. It must be pure: it runs on the GUI thread, so open
-    and list nothing. The overlay files the returned `PlaylistContent` names, and their folders, are watched anyway.
+  - `source_paths(settings)` is optional and returns the `SourcePaths` (files and folders, from
+    `ax_devil.core.source_paths`) the resolver reads, so a change to them resolves the playlist again; default empty.
+    It runs on the same background thread as `resolve`. The overlay files the returned `PlaylistContent` names are
+    watched anyway.
   - `create_settings_widget()` is required: a `PlaylistResolverWidget` that edits settings and calls
     `submit_settings(settings)` when the user is ready. Slow work in the form, such as scanning a folder, goes through
     `self.jobs.submit(name, work, on_result=..., on_error=...)`: `work(job: JobContext)` runs on a worker thread and

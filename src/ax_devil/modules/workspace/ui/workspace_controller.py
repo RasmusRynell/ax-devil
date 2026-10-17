@@ -22,7 +22,6 @@ from ax_devil.modules.workspace.ui.browser_rows import (
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import ask_new_name
 from ax_devil.modules.workspace.ui.section_tree import show_row_menu
-from ax_devil.modules.workspace.ui.source_change_prompt import offer_reload
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
@@ -243,26 +242,11 @@ class WorkspaceController(QObject):
         if row.item is not None:
             self._workspace_store.remove_item(row.item.id)
 
-    def _on_sources_changed(self, item_id: str, paths: frozenset[Path]) -> None:
-        """Refresh the rows, and offer every viewer of the item whose on-screen files are among *paths* to reload."""
-        self._publish_sections()
-        for widget, widget_item_id in tuple(self._widget_item_ids.items()):
-            if widget_item_id == item_id and not widget.shown_source_paths().isdisjoint(paths):
-                offer_reload(widget, partial(self._reload_viewer, widget))
-
-    def _reload_viewer(self, widget: ViewerWidget) -> None:
-        """Reload *widget* from what its item resolves to now; the viewer says so if there is nothing to show."""
-        item_id = self._widget_item_ids.get(widget)
-        shown = widget.current_on_screen_item()
-        if item_id is None or shown is None:
-            return
-        resolution = self._workspace_store.resolution(item_id)
-        content = next((each for each in resolution.contents if each.content_id == shown.content_id), None)
-        if content is None:
-            reason = resolution.error or "the source no longer provides it"
-            widget.show_warning(f"Could not reload {widget.get_display_name()}: {reason}.")
-            return
-        widget.reload(content)
+    def _on_sources_changed(self, paths: frozenset[Path]) -> None:
+        """Offer every open viewer that shows one of the changed *paths* to reload."""
+        for widget in tuple(self._widget_item_ids):
+            if widget.source_paths().files & paths:
+                widget.offer_reload()
 
     def _on_item_renamed(self, item: WorkspaceItem) -> None:
         """Show the item's new name in the rows and in the header of every viewer showing its Content."""

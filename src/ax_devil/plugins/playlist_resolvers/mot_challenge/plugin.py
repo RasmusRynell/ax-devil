@@ -11,6 +11,7 @@ from pathlib import Path
 import click
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.plugin_system import PLUGIN_API_VERSION, PlaylistResolverPlugin, PlaylistResolverWidget
 from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
 from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import resolve_settings
@@ -55,10 +56,10 @@ class MOTChallengeResolverPlugin(PlaylistResolverPlugin):
         """Return the playlist of the MOT sequences the settings describe."""
         return resolve_settings(settings, token)
 
-    def watched_folders(self, settings: PlaylistSettings) -> list[Path]:
+    def source_paths(self, settings: PlaylistSettings) -> SourcePaths:
         """Return the dataset folder, whose sequences come and go with its subfolders."""
         root = settings.get("root")
-        return [Path(root)] if isinstance(root, str) and root else []
+        return SourcePaths(folders=frozenset({Path(root)})) if isinstance(root, str) and root else SourcePaths()
 
     def create_settings_widget(self) -> PlaylistResolverWidget:
         from .settings_widget import MOTChallengeSettingsWidget

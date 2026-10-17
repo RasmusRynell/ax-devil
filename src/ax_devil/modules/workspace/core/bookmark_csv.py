@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import csv
-import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
+
+from ax_devil.core.atomic_file import write_atomically
 
 
 class BookmarkCsvRow(NamedTuple):
@@ -28,16 +29,7 @@ def write_bookmarks_csv(path: Path, rows: Iterable[BookmarkCsvRow]) -> None:
 
     The previous file at *path* is replaced only after the new one is written; raises ``OSError`` when it cannot be.
     """
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="", dir=path.parent, delete=False) as file:
-            temporary_path = Path(file.name)
-            writer = csv.writer(file)
-            writer.writerow(BOOKMARK_CSV_HEADER)
-            writer.writerows(
-                (row.target, row.entry, row.frame, f"{row.time_s:.3f}", row.kind, row.note) for row in rows
-            )
-        temporary_path.replace(path)
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
+    with write_atomically(path, newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(BOOKMARK_CSV_HEADER)
+        writer.writerows((row.target, row.entry, row.frame, f"{row.time_s:.3f}", row.kind, row.note) for row in rows)
