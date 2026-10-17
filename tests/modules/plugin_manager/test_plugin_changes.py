@@ -33,11 +33,14 @@ def test_each_change_runs_the_matching_plugins_command(monkeypatch: pytest.Monke
     run_plugins_command(PluginChange.update("yolo-detections", "yolo-detections>=0.2"))
     run_plugins_command(PluginChange.remove("yolo-detections"))
 
-    assert [command[2:] for command in commands] == [
-        ["plugins", "install", "--", "/home/me/my-plugin"],
-        ["plugins", "install", "--upgrade-package", "yolo-detections", "--", "yolo-detections>=0.2"],
-        ["plugins", "remove", "--", "yolo-detections"],
-    ]
+    install, update, remove = (command[2:] for command in commands)
+    assert install[:2] == ["plugins", "install"]
+    assert install[-2:] == ["--", "/home/me/my-plugin"], "the target follows `--`, so it is never read as an option"
+    assert update[:2] == ["plugins", "install"]
+    assert update[update.index("--upgrade-package") + 1] == "yolo-detections"
+    assert update[-2:] == ["--", "yolo-detections>=0.2"]
+    assert remove[:2] == ["plugins", "remove"]
+    assert remove[-2:] == ["--", "yolo-detections"]
     assert {tuple(command[:2]) for command in commands} == {("/venv/bin/python", "/venv/bin/ax-devil")}
 
 

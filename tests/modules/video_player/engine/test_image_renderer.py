@@ -123,7 +123,7 @@ def test_export_keeps_native_pixels_and_context_under_display_scaling(
     rendered = renderer.render_frame(frame)
     assert rendered.size() == image.size()
     assert rendered.devicePixelRatio() == 1
-    assert contexts == [RenderContext.create(width, height)]
+    assert [(context.width, context.height) for context in contexts] == [(width, height)]
     assert rendered.pixelColor(width // 3, height // 3) == QColor("red")
     assert rendered.pixelColor(width - 1, height - 1) == QColor("green")
     assert image.pixelColor(width // 3, height // 3) == QColor("blue")

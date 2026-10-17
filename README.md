@@ -83,7 +83,7 @@ arrive over RTSP, MQTT, or Axis DataHub WebSocket.
 - **Comparison lanes** — play several overlays on the same video in sync, for example a detector run against
   ground truth.
 - **Playlists** — group recordings and comparison lanes into a review sequence.
-- **Export** — save video with overlays drawn in (keeps source frame timing, no audio).
+- **Export** — save video with overlays drawn in.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/docs/media/demo-compare.webp" alt="Two comparison lanes on the same highway recording: a simulated detector run (DET) beside ground truth (GT)" width="100%" />
@@ -117,7 +117,7 @@ Decoded data works with the existing filtering, inspection, and rendering.
 ax-devil plugins install /path/to/your-plugin
 ```
 
-Restart ax-devil to load it. Plugins run with your user permissions.
+Plugins run with your user permissions.
 [Writing plugins →](https://github.com/RasmusRynell/ax-devil/blob/main/.agents/skills/write-plugin/SKILL.md) ·
 [Installing and managing plugins →](https://github.com/RasmusRynell/ax-devil/blob/main/docs/plugins.md)
 
@@ -134,9 +134,6 @@ QT_QPA_PLATFORM=offscreen make test
 [Module map](https://github.com/RasmusRynell/ax-devil/blob/main/docs/architecture/module-map.md) ·
 [Testing](https://github.com/RasmusRynell/ax-devil/blob/main/docs/runbooks/testing.md) ·
 [Issues](https://github.com/RasmusRynell/ax-devil/issues)
-
-Configuration and logs may contain camera credentials.
-[Redact them before sharing.](https://github.com/RasmusRynell/ax-devil/blob/main/docs/settings.md#configuration-and-local-data)
 
 ## License
 

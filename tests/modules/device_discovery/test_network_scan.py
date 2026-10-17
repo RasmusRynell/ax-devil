@@ -6,10 +6,10 @@ from __future__ import annotations
 import json
 import queue
 import threading
-import time
 from collections.abc import Callable, Collection, Iterator, Sequence
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -118,17 +118,23 @@ def test_low_impact_scan_runs_fewer_probes_at_once_and_still_finds_every_device(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     hosts = tuple(f"192.0.2.{index}" for index in range(1, 97))
-    lock = threading.Lock()
+    gate = threading.Condition()
+    arrived = 0
     active = 0
     peak = 0
 
+    def workers_alive() -> int:
+        return sum(thread.name == "network-scan" for thread in threading.enumerate())
+
     def identify(host: str, ports: Collection[int], logins: Sequence[Login], token: CancelToken) -> DiscoveredCamera:
-        nonlocal active, peak
-        with lock:
+        nonlocal active, arrived, peak
+        with gate:
             active += 1
+            arrived += 1
             peak = max(peak, active)
-        threading.Event().wait(0.05)  # Long enough for the probes of a wider scan to overlap.
-        with lock:
+            gate.notify_all()
+            # Hold the probe until every worker of this scan has one, so the peak is the scan's full width.
+            gate.wait_for(lambda: arrived >= workers_alive(), timeout=10)
             active -= 1
         return DiscoveredCamera(host, "AXIS Q1656", "")
 
@@ -136,8 +142,8 @@ def test_low_impact_scan_runs_fewer_probes_at_once_and_still_finds_every_device(
     monkeypatch.setattr(network_scan, "_identify", identify)
 
     def scan(*, low_impact: bool) -> int:
-        nonlocal peak
-        peak = 0
+        nonlocal arrived, peak
+        arrived = peak = 0
         cameras = scan_network(targets=hosts, low_impact=low_impact)
         assert tuple(camera.host for camera in cameras) == hosts
         return peak
@@ -264,7 +270,7 @@ def test_a_scan_cancelled_while_probing_ports_queues_no_device_for_identificatio
         return {"127.0.0.1": {80}}
 
     monkeypatch.setattr(network_scan, "_open_ports", probe_then_get_cancelled)
-    monkeypatch.setattr(queue, "SimpleQueue", RecordingQueue)
+    monkeypatch.setattr(network_scan, "queue", SimpleNamespace(SimpleQueue=RecordingQueue))  # Only the scan's queue.
 
     with pytest.raises(Cancelled):
         scan_network(targets=["127.0.0.1"], token=token)
@@ -275,27 +281,35 @@ def test_a_scan_cancelled_while_probing_ports_queues_no_device_for_identificatio
 def test_cancelling_a_scan_stops_its_workers_even_while_they_wait_to_try_a_login_again(
     serve: Callable[..., _Device], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    device = serve(axis=True, turned_away=1)
+    serve(axis=True, turned_away=1)
     monkeypatch.setattr(network_scan, "_RATE_LIMIT_RETRY_SECONDS", (60.0, 60.0))
     token = CancelToken()
+    waiting = threading.Event()
+    wait = CancelToken.wait
 
-    def cancel_once_the_device_has_turned_a_login_away() -> None:
-        while not device.authorizations:
-            time.sleep(0.01)
-        time.sleep(0.2)  # Long enough for the worker to be in its wait.
+    def wait_and_report(self: CancelToken, seconds: float) -> None:
+        if seconds == 60.0:  # A worker is now waiting to try its login again.
+            waiting.set()
+        wait(self, seconds)
+
+    monkeypatch.setattr(CancelToken, "wait", wait_and_report)
+
+    def cancel_once_a_worker_waits_to_try_a_login_again() -> None:
+        waiting.wait(5)
         token.cancel()
 
-    canceller = threading.Thread(target=cancel_once_the_device_has_turned_a_login_away)
+    canceller = threading.Thread(target=cancel_once_a_worker_waits_to_try_a_login_again)
     canceller.start()
 
     with pytest.raises(Cancelled):
         scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")], token=token)
 
     canceller.join(5)
-    deadline = time.monotonic() + 5
-    while any(t.name == "network-scan" for t in threading.enumerate()) and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert not any(t.name == "network-scan" for t in threading.enumerate()), "no worker sleeps on through the wait"
+    assert waiting.is_set()
+    workers = [thread for thread in threading.enumerate() if thread.name == "network-scan"]
+    for worker in workers:
+        worker.join(5)
+    assert not any(worker.is_alive() for worker in workers), "no worker sleeps on through the wait"
 
 
 def test_another_web_server_is_not_listed_and_does_not_hide_the_axis_one(serve: Callable[..., _Device]) -> None:

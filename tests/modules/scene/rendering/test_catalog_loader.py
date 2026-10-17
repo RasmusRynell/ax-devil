@@ -49,14 +49,14 @@ def test_catalog_loader_load_path_validates_structure(tmp_path: Path, field: str
 
 
 def test_catalog_loader_compile_reports_structural_errors() -> None:
-    with pytest.raises(TemplateRuntimeError, match="(Unknown fields|Expected an object|not of type)"):
+    with pytest.raises(TemplateRuntimeError, match=r"missing fields \['recipes', 'templates'\]"):
         SceneRenderCatalogLoader().validate_document(
             {"metadata": {"id": "broken", "name": "Broken", "schema_version": 3}},
         )
 
     document = catalog_document()
     _recipes(document)["fallbacks"][0]["bindings"] = []
-    with pytest.raises(TemplateRuntimeError, match="(Unknown fields|Expected an object|not of type)"):
+    with pytest.raises(TemplateRuntimeError, match=r"bindings: \[\] is not of type 'object'"):
         SceneRenderCatalogLoader().validate_document(document)
 
 

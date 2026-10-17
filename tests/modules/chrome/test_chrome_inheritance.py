@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
@@ -13,49 +15,57 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
 from tests.helpers.shortcuts import make_shortcut_manager
 
+_Built = tuple[list[QWidget], list[QWidget]]  # Windows that own the children, and the children to check.
+
 
 def _direct_window_border(window: QWidget) -> QWidget | None:
     """Return the direct custom-frame border child for a window."""
     return window.findChild(QWidget, "AxDevilWindowBorder", Qt.FindChildOption.FindDirectChildrenOnly)
 
 
-@pytest.mark.parametrize("custom_frame", [True, False])
-def test_child_chrome_window_honors_explicit_frame_choice(qtbot: QtBot, custom_frame: bool) -> None:
+def _explicit_child_window(qtbot: QtBot, _catalogs: SceneRenderCatalogManager, custom_frame: bool) -> _Built:
+    """A child window whose frame is chosen explicitly, regardless of its parent's."""
     parent = ChromeWindow(use_custom_frame=True)
-    child = ChromeWindow(parent=parent, use_custom_frame=custom_frame, show_custom_frame_border=custom_frame)
     qtbot.addWidget(parent)
-    assert (child.findChild(QWidget, "AxDevilTitleBar") is not None) is custom_frame
-    assert (_direct_window_border(child) is not None) is custom_frame
+    child = ChromeWindow(parent=parent, use_custom_frame=custom_frame, show_custom_frame_border=custom_frame)
+    return [parent], [child]
 
 
-@pytest.mark.parametrize("custom_frame", [True, False])
-def test_dialog_and_tool_windows_share_parent_chrome_policy(
-    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, custom_frame: bool
-) -> None:
+def _dialog_and_tool_windows(qtbot: QtBot, catalogs: SceneRenderCatalogManager, custom_frame: bool) -> _Built:
+    """A dialog and a tool window that follow their parent main window's frame."""
     window = MainWindow(
-        shortcut_manager=make_shortcut_manager(),
-        render_catalog_manager=render_catalog_manager,
-        use_custom_frame=custom_frame,
+        shortcut_manager=make_shortcut_manager(), render_catalog_manager=catalogs, use_custom_frame=custom_frame
     )
     qtbot.addWidget(window)
-    dialog = BaseDialog(parent=window, title="Shared Chrome")
-    debug_window = DebugWindow(parent=window, use_custom_frame=window_uses_custom_frame(window))
     assert not window.shows_custom_frame_border
     assert _direct_window_border(window) is None
-    for child in (dialog, debug_window):
-        assert bool(child.windowFlags() & Qt.WindowType.FramelessWindowHint) is custom_frame
-        assert child.shows_custom_frame_border is custom_frame
-        assert (child.findChild(QWidget, "AxDevilTitleBar") is not None) is custom_frame
-        assert (_direct_window_border(child) is not None) is custom_frame
+    dialog = BaseDialog(parent=window, title="Shared Chrome")
+    debug_window = DebugWindow(parent=window, use_custom_frame=window_uses_custom_frame(window))
+    return [window], [dialog, debug_window]
 
 
-@pytest.mark.parametrize("custom_frame", [True, False])
-def test_shortcut_editor_opened_from_settings_inherits_chrome(qtbot: QtBot, custom_frame: bool) -> None:
-    """A nested dialog preserves the same frame policy through its dialog parent."""
+def _nested_shortcut_editor(qtbot: QtBot, _catalogs: SceneRenderCatalogManager, custom_frame: bool) -> _Built:
+    """A dialog opened from another dialog keeps the frame policy of the window above both."""
     parent = ChromeWindow(use_custom_frame=custom_frame)
     qtbot.addWidget(parent)
     settings = SettingsDialog(parent)
-    shortcuts = ShortcutsDialog(make_shortcut_manager(), settings)
-    assert bool(shortcuts.windowFlags() & Qt.WindowType.FramelessWindowHint) is custom_frame
-    assert (shortcuts.findChild(QWidget, "AxDevilTitleBar") is not None) is custom_frame
-    assert (_direct_window_border(shortcuts) is not None) is custom_frame
+    return [parent, settings], [ShortcutsDialog(make_shortcut_manager(), settings)]
+
+
+@pytest.mark.parametrize("custom_frame", [True, False])
+@pytest.mark.parametrize(
+    "build",
+    [_explicit_child_window, _dialog_and_tool_windows, _nested_shortcut_editor],
+    ids=lambda build: build.__name__,
+)
+def test_child_windows_get_the_expected_frame(
+    qtbot: QtBot,
+    render_catalog_manager: SceneRenderCatalogManager,
+    build: Callable[..., _Built],
+    custom_frame: bool,
+) -> None:
+    _owners, children = build(qtbot, render_catalog_manager, custom_frame)  # Owners must outlive the checks.
+    for child in children:
+        assert bool(child.windowFlags() & Qt.WindowType.FramelessWindowHint) is custom_frame
+        assert (child.findChild(QWidget, "AxDevilTitleBar") is not None) is custom_frame
+        assert (_direct_window_border(child) is not None) is custom_frame

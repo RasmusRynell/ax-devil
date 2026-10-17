@@ -1,5 +1,6 @@
 """Transactional prepared output, retained reuse and complete target invalidation."""
 
+from collections.abc import Callable
 from dataclasses import replace
 
 import numpy as np
@@ -11,7 +12,7 @@ from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRun
 from ax_devil.modules.video_player.engine.drawing import DrawingStyle, LabelContent, LabelRun, Paint, label_sprite
 from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.drawing_helpers import BoxCall, CircleCall, LabelCall, TextCall
+from tests.drawing_helpers import BoxCall, CircleCall, DrawCall, LabelCall, TextCall
 
 pytestmark = pytest.mark.usefixtures("qapp")
 
@@ -137,21 +138,6 @@ def test_bulk_geometry_beyond_one_batch_keeps_every_row() -> None:
     assert sum(mesh.operation_count for mesh in drawing.meshes) == count
 
 
-def test_moving_labels_keep_live_layouts_beyond_the_inactive_cache_capacity() -> None:
-    """An active working set must not reshape itself when its positions change."""
-    buffer = DrawingBuffer(_SETTINGS)
-    for i in range(1500):
-        TextCall(0.1, 0.1, f"Label {i}", _STYLE).submit(buffer)
-    first = buffer.finish()
-    buffer.reset(_SETTINGS)
-    for i in range(1500):
-        TextCall(0.2, 0.2, f"Label {i}", _STYLE).submit(buffer)
-    second = buffer.finish()
-    assert len(first.texts) == len(second.texts) == 1500
-    assert all(a.block is b.block for a, b in zip(first.texts, second.texts))
-    assert all(a.position != b.position for a, b in zip(first.texts, second.texts))
-
-
 def test_reused_vertex_storage_cannot_mutate_a_published_drawing() -> None:
     """Qt may consume an earlier drawing after the scratch buffer has been refilled."""
     buffer = DrawingBuffer(_SETTINGS)
@@ -231,19 +217,36 @@ def test_label_text_keeps_its_pixel_size_at_different_logical_dpi(dpi: int) -> N
     assert ink_bounds(actual.image) == ink_bounds(reference.image)
 
 
-def test_moving_labels_keep_live_sprites_beyond_the_inactive_cache_capacity() -> None:
-    """An unchanged visible label must keep its pixels and texture even after LRU eviction."""
+def _text_at(x: float, index: int) -> DrawCall:
+    return TextCall(x, x, f"Label {index}", _STYLE)
+
+
+def _label_at(x: float, index: int) -> DrawCall:
+    return LabelCall(x, x, "top-left", _label(f"Object {index}"))
+
+
+@pytest.mark.parametrize(
+    ("make_call", "count", "items", "shaped"),
+    [
+        pytest.param(_text_at, 1500, "texts", "block", id="text-layouts"),
+        pytest.param(_label_at, 1025, "labels", "sprite", id="label-sprites"),
+    ],
+)
+def test_moving_labels_keep_live_shaping_beyond_the_inactive_cache_capacity(
+    make_call: Callable[[float, int], DrawCall], count: int, items: str, shaped: str
+) -> None:
+    """An active working set must keep its shaped text or pixels and texture when only positions change."""
     buffer = DrawingBuffer(_SETTINGS)
-    for index in range(1025):
-        LabelCall(0.1, 0.1, "top-left", _label(f"Object {index}")).submit(buffer)
-    first = buffer.finish()
+    for index in range(count):
+        make_call(0.1, index).submit(buffer)
+    first = getattr(buffer.finish(), items)
     buffer.reset(_SETTINGS)
-    for index in range(1025):
-        LabelCall(0.2, 0.2, "top-left", _label(f"Object {index}")).submit(buffer)
-    second = buffer.finish()
-    assert len(first.labels) == len(second.labels) == 1025
-    assert all(a.sprite is b.sprite for a, b in zip(first.labels, second.labels))
-    assert all(a.position != b.position for a, b in zip(first.labels, second.labels))
+    for index in range(count):
+        make_call(0.2, index).submit(buffer)
+    second = getattr(buffer.finish(), items)
+    assert len(first) == len(second) == count
+    assert all(getattr(a, shaped) is getattr(b, shaped) for a, b in zip(first, second))
+    assert all(a.position != b.position for a, b in zip(first, second))
 
 
 @pytest.mark.parametrize("dpr", [1.0, 1.5, 2.0])

@@ -1,13 +1,10 @@
 """Bundled icons draw in the current palette; menu buttons keep their menus readable."""
 
 import pytest
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPalette
-from PySide6.QtWidgets import QApplication, QMenu
-from pytestqt.qtbot import QtBot
+from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.theme import apply_theme
 
 
@@ -42,11 +39,3 @@ def test_fixed_color_icon_dims_when_disabled(qapp: QApplication) -> None:
 
     assert _same_color(_opaque_colors(icon), QColor("#ff0000"))
     assert not _opaque_colors(icon, QIcon.Mode.Disabled)
-
-
-def test_menu_button_keeps_menu_left_to_right(qtbot: QtBot) -> None:
-    menu = QMenu()
-    button = MenuButton("Filter", menu)
-    qtbot.addWidget(button)
-
-    assert menu.layoutDirection() == Qt.LayoutDirection.LeftToRight

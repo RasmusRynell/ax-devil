@@ -2,8 +2,8 @@
 
 import json
 import os
+import select
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -55,16 +55,14 @@ def test_failed_launcher_does_not_leave_a_recording_process(tmp_path: Path) -> N
     with path.open("w") as log:
         assert run_capture([sys.executable, "-c", launcher], dict(os.environ), log) == 7
     pid = int(path.read_text().strip())
-    status = Path(f"/proc/{pid}/stat")
-    deadline = time.monotonic() + 5
-    while status.exists():
-        try:
-            if status.read_text().split()[2] == "Z":
-                break  # Dead; its new parent will reap it.
-        except (FileNotFoundError, ProcessLookupError):  # Gone between the check and the read.
-            break
-        assert time.monotonic() < deadline, f"Recording child {pid} survived cleanup"
-        time.sleep(0.01)
+    try:
+        process = os.pidfd_open(pid)  # Becomes readable when the process exits, even if it is not our child.
+    except ProcessLookupError:
+        return  # Already gone.
+    try:
+        assert select.select([process], [], [], 5)[0], f"Recording child {pid} survived cleanup"
+    finally:
+        os.close(process)
 
 
 def test_synthetic_detection_preserves_ground_truth_and_repeats(tmp_path: Path) -> None:

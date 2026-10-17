@@ -3,6 +3,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QAbstractButton
 from pytestqt.qtbot import QtBot
+from shiboken6 import isValid
 
 from ax_devil.modules.workspace.ui.split_view import SplitDirection, SplitView
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
@@ -231,6 +232,9 @@ def test_parent_destruction_does_not_reenter_split_view_layout(qtbot: QtBot) -> 
     sv.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     QCoreApplication.processEvents()
+
+    # The regression is a crash or exception raised while the host is destroyed; reaching here without one passes.
+    assert not isValid(sv)
 
 
 def _welcome_rows(split_view: SplitView) -> dict[str, WelcomeItem]:

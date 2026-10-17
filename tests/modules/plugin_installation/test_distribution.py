@@ -50,7 +50,8 @@ def test_distribution_lifecycle(plugin: Path, tmp_path: Path, installer: str) ->
     }
     for key in ("VIRTUAL_ENV", "PYTHONPATH", "PYTHONHOME", "UV_PROJECT_ENVIRONMENT"):
         environment.pop(key, None)
-    # Preserve the usual download cache when isolating HOME; do not copy credentials/config.
+    # Path.home() is the suite's temporary home (tests/__init__.py), so downloads are cached there for the run's
+    # installs and never in the user's real uv cache; no credentials or configuration are copied.
     environment["UV_CACHE_DIR"] = os.environ.get("UV_CACHE_DIR", str(Path.home() / ".cache/uv"))
 
     def run(*arguments: str, success: bool = True) -> subprocess.CompletedProcess[str]:

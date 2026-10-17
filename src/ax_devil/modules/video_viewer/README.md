@@ -53,16 +53,3 @@ Do not move Workspace session/layout behavior, reusable player primitives, or pu
 - A lane's whole-file analyses (scene history, overlay alignment) run on a worker over a snapshot, poll cancellation
   and stop early once superseded. When one fails, the last results stay shown, marked out of date with the lane and
   reason, until a later change succeeds: a sync change for either, a sticky change for the history only.
-
-## Testing focus
-
-- Live workflow, controller and connection status behavior: `tests/modules/video_viewer/test_live_video_viewer.py`,
-  `tests/modules/video_viewer/test_stream_media_controller.py` and `tests/modules/video_viewer/test_live_connection.py`.
-- Offline workflow and playlist navigation: `tests/modules/video_viewer/test_offline_video_viewer.py`.
-- Offline session playback, direct overlay lookup, source pooling, and lane frame-request behavior:
-  `tests/modules/video_viewer/test_offline_runtime.py` and relevant widget-level cases in
-  `tests/modules/video_viewer/test_offline_video_viewer.py`.
-- Viewer media tools and overlay persistence:
-  `tests/modules/video_viewer/media_tools/` and `tests/modules/video_viewer/test_overlay_persistence.py`.
-- Export job output and dialog cancellation: `tests/modules/video_viewer/export/`.
-- Scene-to-player presenter behavior: `tests/modules/video_viewer/test_scene_frame_presenter.py`.

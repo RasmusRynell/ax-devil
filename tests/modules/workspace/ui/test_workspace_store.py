@@ -507,29 +507,18 @@ def _jobs_with_a_busy_worker() -> tuple[BackgroundJobs, threading.Event, QObject
     return jobs, busy, owner
 
 
-def test_removing_an_item_stops_its_queued_resolution(qtbot: QtBot) -> None:
+@pytest.mark.parametrize("batched", [False, True], ids=["added-separately", "added-in-one-batch"])
+def test_removing_an_item_skips_only_its_queued_resolution(qtbot: QtBot, batched: bool) -> None:
     resolver = _CountingResolver()
     baseline = set(threading.enumerate())
     jobs, busy, _owner = _jobs_with_a_busy_worker()
     store = WorkspaceStore(ItemResolver(FakeResolutionContext(resolvers={"runs": resolver}), jobs=jobs))
     removed, kept = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
-    store.add_items([removed])
-    store.add_items([kept])
-
-    store.remove_item(removed.id)
-    busy.set()
-
-    _wait_for_jobs_since(qtbot, baseline)
-    assert resolver.calls == 1 and not store.resolution(kept.id).is_pending
-
-
-def test_removing_one_item_of_a_queued_batch_skips_only_that_item(qtbot: QtBot) -> None:
-    resolver = _CountingResolver()
-    baseline = set(threading.enumerate())
-    jobs, busy, _owner = _jobs_with_a_busy_worker()
-    store = WorkspaceStore(ItemResolver(FakeResolutionContext(resolvers={"runs": resolver}), jobs=jobs))
-    removed, kept = PlaylistItem(resolver="runs"), PlaylistItem(resolver="runs")
-    store.add_items([removed, kept])
+    if batched:
+        store.add_items([removed, kept])
+    else:
+        store.add_items([removed])
+        store.add_items([kept])
 
     store.remove_item(removed.id)
     busy.set()

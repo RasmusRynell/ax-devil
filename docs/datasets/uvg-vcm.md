@@ -24,7 +24,6 @@ for sequence in VolleyballGame FloorballGame JobFair TrafficLights HighwayDrive;
 done
 ```
 
-The dataset's current downloads are all 3840×2160 at 60 fps, with 420 frames for Floorball and 600 for the others.
 Before substituting or transcoding videos, check their frame counts and preserve frame order. The decoder aligns
 by frame number, so dropping frames or changing the start point misaligns overlays. Keep attribution outside
 the two pairing folders; Folder Pair scans their files and matches stems.
@@ -51,21 +50,10 @@ the visible labels and geometry, as they do for other decoders.
 
 - Only the reviewed object-detection/tracking JSON format declaring `"version": "1.0"` is supported.
   Frame keys must be consecutive strings `"1"` through the sequence length. An empty array is an explicit empty frame.
-- Source frame 1 maps to video frame 0. No capture timestamp or frame rate is invented by the annotation decoder.
-- Box coordinates are already normalized. They remain unchanged, including coordinates slightly outside the image.
-- Class IDs use the dataset's contiguous 1–80 category list, rather than the sparse IDs in COCO JSON exports.
-  Optional `class_name` must agree with the ID. Original records remain available in observation debug data.
-- Normal track IDs become entity IDs without prefixes. If an ID occurs more than once in one frame, **every**
-  colliding detection is displayed separately with a frame-local `ambiguous:…` ID. No persistent identity is guessed.
-  The original `track_id` remains a classification attribute, and a warning reports affected source frames,
-  including when loading a cached file. This occurs in four frames of the published Volleyball v1.0 annotations.
-- `iscrowd` and `mask_color`, when present, are retained as attributes. The source has no detector-confidence field:
-  observation confidence stays absent. The required classification score is 1.0 for the supplied ground-truth label;
-  catalogs displaying classification scores may show that value.
+- Source frame 1 maps to video frame 0. Box coordinates are already normalized and are kept unchanged.
 - A JSON `polygon` replaces the box geometry with a normalized polygon. Highway Drive includes these polygons.
   Separate PNG segmentation masks, pose JSON, panoptic JSON, and oriented-detection formats are not decoded here.
 - Malformed annotations fail loading with frame/field context; whole frames are not silently discarded.
-  The existing derived Scene cache retains class filters and history, and invalidates when the source changes.
 
 ## Attribution and license
 

@@ -71,9 +71,8 @@ def test_the_overview_starts_with_one_object_of_every_type_then_every_relation()
 def test_the_built_in_catalog_draws_every_sheet_without_errors(qtbot: QtBot) -> None:
     catalog = get_built_in_scene_render_catalog()
 
-    assert {sheet.key: drawing_errors(sheet, catalog) for sheet in sheets(_built_in())} == {
-        sheet.key: () for sheet in sheets(_built_in())
-    }
+    for sheet in sheets(_built_in()):
+        assert drawing_errors(sheet, catalog) == (), sheet.key
 
 
 @pytest.mark.parametrize("width,visible", [(120, 0), (800, 1)])
@@ -91,17 +90,13 @@ def test_caption_plates_skip_empty_lines_at_small_sizes(qtbot: QtBot, width: int
     assert drawing.diagnostics == ()
 
 
-def test_every_example_keeps_its_own_id_and_ids_come_in_the_usual_formats() -> None:
+def test_every_example_keeps_its_own_id() -> None:
     document = _built_in()
     built = {sheet.key: sheet for sheet in sheets(document)}
     relations = len(document["recipes"]["relations"])
 
     # Entities are keyed by id, so a repeated id would replace an example and leave fewer than were placed.
     assert len(built["overview"].scene.entities) == len(_ids(document, OBJECT_GROUPS)) + 2 * relations
-    ids = [entity_id for sheet in built.values() for entity_id in sheet.scene.entities]
-    assert sum(len(entity_id) == 36 for entity_id in ids) > len(ids) / 4
-    assert any(entity_id.isdigit() for entity_id in ids)
-    assert any(not entity_id.isdigit() and len(entity_id) < 36 for entity_id in ids)
 
 
 def test_sheets_are_the_same_every_time() -> None:

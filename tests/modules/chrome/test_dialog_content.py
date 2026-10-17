@@ -95,7 +95,11 @@ def test_information_tree_sizes_to_rows_and_scrolls_large_payload(qtbot: QtBot) 
         dialog.show()
         QApplication.processEvents()
         heights.append(dialog.height())
-        assert (dialog._tree.verticalScrollBar().maximum() > 0) is (count == 100)
+        scrollable = dialog._tree.verticalScrollBar().maximum() > 0
+        if count == 100:
+            assert scrollable
+        else:
+            assert not scrollable
         screen = dialog.screen()
         assert screen is not None
         assert screen.availableGeometry().contains(dialog.frameGeometry())

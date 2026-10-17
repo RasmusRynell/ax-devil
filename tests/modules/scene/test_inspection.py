@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 import pytest
@@ -22,6 +23,11 @@ from ax_devil.modules.scene.model import (
 )
 
 _TS = datetime(2024, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _text(html: str) -> str:
+    """Return the readable text of a hover card, one field per line."""
+    return re.sub(r"<[^>]+>", "", html.replace("<br/>", "\n")).replace("&nbsp;", " ")
 
 
 def _make_entity(*, motion_state: MotionState = MotionState.Moving) -> Entity:
@@ -51,12 +57,10 @@ def test_hover_html_includes_entity_and_observation_fields_without_field_specifi
     assert observation is not None
     observation.frame_number = 17
 
-    html = build_entity_hover_html(entity)
+    text = _text(build_entity_hover_html(entity))
 
-    assert "end_reason" in html
-    assert "left_scene" in html
-    assert "frame_number" in html
-    assert "17" in html
+    assert "end_reason: left_scene" in text
+    assert "frame_number: 17" in text
 
 
 @pytest.mark.parametrize("confidence", [None, Score(0.0), Score(0.8516)])
@@ -102,21 +106,17 @@ def test_hover_html_surfaces_custom_classification_attributes() -> None:
         ),
     ]
 
-    html = build_entity_hover_html(entity)
+    text = _text(build_entity_hover_html(entity))
 
-    assert "carries_bag" in html
-    assert "false" in html
-    assert "face_visible" in html
-    assert "0.72" in html
-    assert "free_text" in html
-    assert "decoder-defined" in html
-    assert "upper_body_color" in html
-    assert "blue" in html
-    assert "black" in html
-    assert "vehicle_type" in html
-    assert "truck" in html
-    assert "bus" in html
-    assert "confidence: 0.73" in html
+    assert "carries_bag: false" in text
+    assert "face_visible: 0.72" in text
+    assert "free_text: decoder-defined" in text
+    assert "upper_body_color:" in text
+    assert "blue" in text
+    assert "black" in text
+    assert "vehicle_type:" in text
+    assert "truck (score: 0.17, confidence: 0.73)" in text
+    assert "bus" in text
 
 
 def test_hover_html_surfaces_nested_observation_debug() -> None:
@@ -130,16 +130,14 @@ def test_hover_html_surfaces_nested_observation_debug() -> None:
         }
     }
 
-    html = build_entity_hover_html(entity)
+    text = _text(build_entity_hover_html(entity))
 
-    assert "debug" in html
-    assert "motion_debug" in html
-    assert "motion_by_velocity" in html
-    assert "velocity_estimator" in html
-    assert "normalized_speed" in html
-    assert "0.42" in html
-    assert "observation_count" in html
-    assert "17" in html
+    assert "debug" in text
+    assert "motion_debug" in text
+    assert re.search(r"motion_by_velocity\W*true", text)
+    assert "velocity_estimator" in text
+    assert re.search(r"normalized_speed\W*0\.42", text)
+    assert re.search(r"observation_count\W*17", text)
 
 
 def test_hover_html_surfaces_image_metadata_without_dumping_bytes() -> None:
@@ -147,13 +145,14 @@ def test_hover_html_surfaces_image_metadata_without_dumping_bytes() -> None:
     bbox = BoundingBox.from_xywh(0.2, 0.3, 0.4, 0.5)
     entity.images.append(Image(timestamp=_TS, bounding_box=bbox, data=b"abc"))
 
-    html = build_entity_hover_html(entity)
+    text = _text(build_entity_hover_html(entity))
 
-    assert "images" in html
-    assert "timestamp" in html
-    assert "bounding_box" in html
-    assert "3 bytes" in html
-    assert "abc" not in html
+    assert "images:" in text
+    assert "timestamp=2024-07-01T12:00:00+00:00" in text
+    assert "bounding_box=(0.200, 0.300, 0.400, 0.500)" in text
+    assert "data=3 bytes" in text
+    assert "abc" not in text
+    assert "YWJj" not in text  # base64 of b"abc"
 
 
 def test_hover_retains_every_debug_field() -> None:

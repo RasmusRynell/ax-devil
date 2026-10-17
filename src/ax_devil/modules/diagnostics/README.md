@@ -54,11 +54,9 @@ Superseded submissions since the previous paint are attached to each observation
 frame-minus-overlay time in milliseconds, unavailable without a match. File lookup statistics count unique
 timestamps, not calls, and outcome sets can overlap after policy changes.
 
-**Export format.** Diagnostics JSON schema version 6 contains the snapshot capture time (`captured_at`), independently
-timestamped source observations, viewer/source links, cache budget and reserved bytes, paint intervals, rebuild
-reasons, per-paint source context, the inspection selection, and recent paint history. Paint, submission and source
-observation clocks are process-monotonic seconds; frame timestamps remain source microseconds, never wall-clock
-latency. The top-level UTC timestamp identifies export time.
+**Export format.** The diagnostics JSON is built by `dashboard_snapshot.py` and versioned by its `schema_version`.
+Paint, submission and source observation clocks are process-monotonic seconds; frame timestamps remain source
+microseconds, never wall-clock latency.
 
 ## Performance recording
 
@@ -79,10 +77,8 @@ Starting another recording replaces the previous one; closing the diagnostics wi
 discards its temporary storage. Saved files remain on disk. Source paths and function names are
 collected; source contents, local variables, arguments, and return values are not.
 
-The version-1 `ax-devil-stack-samples` JSON format stores millisecond timestamps relative to recording
-start, nominal interval, stop duration, frame/stack lists, thread labels, and ordered snapshots
-of `[time_ms, [[thread_id, stack_id], ...]]`. Thread identifiers are recording-local strings. A changed Python `Thread` object or an observed
-absence starts a new identity, preserving prior labels when native identifiers are recycled.
-For Qt/native threads without a distinct Python `Thread` object, reuse entirely between samples
-cannot be detected; their identity is best-effort. Disk use grows with
-recording duration; in-memory dictionaries grow with distinct frames and stacks, not snapshot count.
+The `ax-devil-stack-samples` format is written by `trace_recorder.py`. Thread identifiers are recording-local strings.
+A changed Python `Thread` object or an observed absence starts a new identity, preserving prior labels when native
+identifiers are recycled. For Qt/native threads without a distinct Python `Thread` object, reuse entirely between
+samples cannot be detected; their identity is best-effort. Disk use grows with recording duration; in-memory
+dictionaries grow with distinct frames and stacks, not snapshot count.

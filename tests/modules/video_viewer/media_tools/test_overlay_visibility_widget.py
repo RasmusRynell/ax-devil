@@ -5,21 +5,28 @@ from pathlib import Path
 from PySide6.QtWidgets import QCheckBox, QPushButton
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.scene.rendering import OverlayFeature, SceneRenderCatalogManager
+from ax_devil.modules.scene.rendering import OverlayFeature, SceneRenderCatalogManager, SceneRenderCatalogSelection
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.video_viewer.media_tools.overlay_visibility_widget import OverlayVisibilityWidget
 from tests.catalog_helpers import wait_for_catalogs
 
 
-def test_controls_retain_unsupported_choices_and_reset(
+def _visibility_widget(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
-) -> None:
+) -> tuple[OverlayVisibilityWidget, SceneRenderCatalogSelection, QCheckBox, QPushButton]:
     selection = render_catalog_manager.create_selection()
     widget = OverlayVisibilityWidget(selection)
     qtbot.addWidget(widget)
     confidence = widget.findChild(QCheckBox, "overlayFeature_confidence")
     reset = widget.findChild(QPushButton, "overlayVisibilityReset")
     assert confidence is not None and reset is not None
+    return widget, selection, confidence, reset
+
+
+def test_controls_retain_unsupported_choices_and_reset(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    _, selection, confidence, reset = _visibility_widget(qtbot, render_catalog_manager)
     confidence.setChecked(False)
     assert OverlayFeature.CONFIDENCE in selection.visibility.disabled
     minimal: Path = next(path for path in BUILT_IN_CATALOG_PATHS if path.stem == "minimal")
@@ -31,7 +38,12 @@ def test_controls_retain_unsupported_choices_and_reset(
     assert confidence.isEnabled() and not confidence.isChecked()
     reset.click()
     assert confidence.isChecked() and not reset.isEnabled()
-    widget.cleanup()
+
+
+def test_cleaned_up_controls_stop_observing_the_selection(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    widget, selection, confidence, _ = _visibility_widget(qtbot, render_catalog_manager)
     widget.cleanup()
     selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
-    assert confidence.isChecked()  # Closed controls no longer observe the selection.
+    assert confidence.isChecked()

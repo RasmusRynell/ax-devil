@@ -79,13 +79,10 @@ Plugins live in `$XDG_DATA_HOME/ax-devil/plugins-<location-hash>/` (normally und
 standalone installation has its own plugin selection, kept across upgrades at the same location; moving a checkout or
 installing elsewhere starts a new one. Keep the project metadata there if you want to keep your selections.
 
-A change keeps the environment it replaces for app instances still running, so close them before
-`plugins remove --all`, which deletes every environment. Simultaneous launches wait for one rebuild. Keeping an old
-environment never rolls back the base app, and editable plugin sources are shared across environments, so neither
-is a source-code rollback.
+Close other running ax-devil instances before `plugins remove --all`, which deletes every plugin environment.
 
 Plugin environments reinstall the app from where it came from: an editable checkout, a package index, a wheel file or a
 Git URL, which must stay available. A non-editable install from a local directory is rejected, because the directory can
-change while the version stays the same. Plugin management needs Unix file locking and targets Linux; other platforms
-can run the base app but are not validated for plugins. How the runtime is built and validated is in the [Plugin System
+change while the version stays the same. Plugin management targets Linux; other platforms can run the base app but are
+not validated for plugins. How the runtime is built and validated is in the [Plugin System
 invariants](domain/invariants.md#plugin-system).

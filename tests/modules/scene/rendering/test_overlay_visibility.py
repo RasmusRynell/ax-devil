@@ -117,7 +117,7 @@ def test_hidden_component_with_unknown_feature_is_rejected() -> None:
     marker = document["templates"]["marker"]
     marker["steps"][0]["visible"] = False
     marker["feature"] = "unknown"
-    with pytest.raises(TemplateRuntimeError):
+    with pytest.raises(TemplateRuntimeError, match=r"templates\.marker\.feature: 'unknown' is not one of"):
         SceneRenderCatalogLoader().validate_revision(document)
 
 

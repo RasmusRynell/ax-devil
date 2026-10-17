@@ -13,18 +13,18 @@ from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.template_runtime.definitions import OPERATIONS
 from ax_devil.modules.scene.rendering.template_runtime.schema import catalog_schema
 
-DEFINITIONS = Path("src/ax_devil/modules/scene/rendering/catalog_definitions")
+DEFINITIONS = Path(__file__).resolve().parents[4] / "src/ax_devil/modules/scene/rendering/catalog_definitions"
 
 
 def test_packaged_schema_matches_authoritative_definitions() -> None:
     schema = catalog_schema()
-    assert json.loads((DEFINITIONS / "catalog.schema.json").read_text()) == schema
+    assert json.loads((DEFINITIONS / "catalog.schema.json").read_text(encoding="utf-8")) == schema
     assert schema["$defs"]["functionName"]["enum"] == sorted(OPERATIONS)
 
 
 @pytest.mark.parametrize("path", BUILT_IN_CATALOG_PATHS, ids=lambda path: path.stem)
 def test_built_in_catalogs_match_generated_schema(path: Path) -> None:
-    Draft202012Validator(catalog_schema()).validate(json.loads(path.read_text()))
+    Draft202012Validator(catalog_schema()).validate(json.loads(path.read_text(encoding="utf-8")))
 
 
 def test_schema_accepts_nested_expression_forms() -> None:

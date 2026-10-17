@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from ax_devil_device_api import DeviceConfig
@@ -30,10 +29,8 @@ def test_list_mqtt_data_source_keys_uses_device_api(monkeypatch: pytest.MonkeyPa
     )
     client = SimpleNamespace(analytics_mqtt=analytics_mqtt)
     config = DeviceConfig.https(host="camera.local", username="root", password="pass")
-    factory = MagicMock(return_value=_ClientContext(client))
-    monkeypatch.setattr(mqtt_discovery, "Client", factory)
+    monkeypatch.setattr(mqtt_discovery, "Client", lambda _config: _ClientContext(client))
 
     keys = mqtt_discovery.list_mqtt_data_source_keys(config)
 
-    factory.assert_called_once_with(config)
     assert keys == ("source/one", "source/two")

@@ -1,4 +1,4 @@
-"""test_transforms.py.
+"""test_video_transforms.py.
 
 Comprehensive tests for video frame transformation utilities.
 Tests all core math: aspect preservation and centering.
