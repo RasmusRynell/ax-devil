@@ -118,8 +118,8 @@ Stop stream, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `List
 (`section_tree.py`) lists sections of them under captions that fold on a click.
 `WorkspaceController.connect_tree` serves every view's tree, so a row behaves the same in all
 of them: a double-click opens a row that has something to open, its action runs through `perform_row_action`, and
-its right-click menu (owned by `SectionTree`) offers, in groups split by separators, Open, Inspect (Information, Export),
-Hide or Unhide (a hidden row stays listed, dimmed, and playback skips it), and Edit (Rename, Remove). A playlist row
+its right-click menu (owned by `SectionTree`) offers, in groups split by separators, Open (plus the row's action, such as Start stream), Inspect (Information,
+Export), Hide or Unhide (a hidden row stays listed, dimmed, and playback skips it), and Edit (Rename, Remove). A playlist row
 starts expanded to its entries; its lane rows stay collapsed until an entry opens.
 
 ## Workspace Controller

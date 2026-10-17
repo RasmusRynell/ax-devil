@@ -40,8 +40,8 @@ first shows everything in it, and the others show one part of it, with their own
 application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
 
 - **Live** lists the workspace's cameras with **Start stream** and **Stop stream**; a camera streams while its viewer
-  is open. A camera starts only with **Start stream**, never by double-clicking it or from its right-click menu, and
-  it can start before ax-devil has checked its login. With sign-in on, ax-devil checks each camera's saved login when
+  is open. A camera starts only with **Start stream**, on its row or in its right-click menu, never by
+  double-clicking it, and it can start before ax-devil has checked its login. With sign-in on, ax-devil checks each camera's saved login when
   its workspace opens; a camera that refuses it gets a warning triangle, with the reason on hover, and loses **Start
   stream**. Right-click a camera for the same menu as in the Workspace view, such as **Rename** and **Remove**. The search
   matches found cameras also by serial number and firmware, and the cameras in the workspace too once a scan found
