@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QMouseEvent
+from PySide6.QtCore import QRect, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QMouseEvent, QPainter, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -13,6 +13,7 @@ from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 
 _ICON_PX = 16
+_EDGE_PX = 2
 _MUTED = "color: palette(placeholder-text);"
 
 
@@ -22,6 +23,19 @@ def muted_label(text: str, role: TextRole = TextRole.SMALL) -> QLabel:
     role.apply(label)
     label.setStyleSheet(_MUTED)
     return label
+
+
+def paint_row_background(painter: QPainter, rect: QRect, palette: QPalette, *, active: bool, hovered: bool) -> None:
+    """Fill *rect* the way a ``ListRow`` looks, for rows that paint themselves.
+
+    An active or hovered row gets the midlight background; an active row also gets the accent edge on its left.
+    """
+    if active or hovered:
+        painter.fillRect(rect, palette.color(QPalette.ColorRole.Midlight))
+    if active:
+        painter.fillRect(
+            QRect(rect.left(), rect.top(), _EDGE_PX, rect.height()), palette.color(QPalette.ColorRole.Highlight)
+        )
 
 
 class ListRow(QFrame):
@@ -91,7 +105,7 @@ class ListRow(QFrame):
         # draws it, so a wrapped subtitle would get room for a line it never uses.
         self.setStyleSheet(
             f"""
-            #AxDevilListRow {{ border-left: 2px solid {edge}; background: {background}; }}
+            #AxDevilListRow {{ border-left: {_EDGE_PX}px solid {edge}; background: {background}; }}
             #AxDevilListRow:hover {{ background: palette(midlight); }}
             #AxDevilListRow QLabel {{ border: none; }}
             """

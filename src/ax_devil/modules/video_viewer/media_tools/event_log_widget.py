@@ -42,7 +42,7 @@ from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 
-from .frame_labels import CURRENT_FRAME_HIGHLIGHT, format_frame_time
+from .frame_labels import current_frame_highlight, format_frame_time
 
 LIVE_EVENT_LIMIT = 1000
 """Live logs keep only this many of the newest events."""
@@ -63,10 +63,9 @@ class EventRowState(enum.Enum):
         """Return the text palette role for rows in this state."""
         return QPalette.ColorRole.PlaceholderText if self is EventRowState.UPCOMING else QPalette.ColorRole.Text
 
-    @property
-    def background(self) -> QColor | None:
-        """Return the row highlight for this state, if any."""
-        return CURRENT_FRAME_HIGHLIGHT if self is EventRowState.CURRENT else None
+    def background(self, palette: QPalette) -> QColor | None:
+        """Return the row highlight for this state on the surface *palette* belongs to, if any."""
+        return current_frame_highlight(palette) if self is EventRowState.CURRENT else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,8 +217,9 @@ class EventLogDelegate(QStyledItemDelegate):
         painter.save()
         painter.setClipRect(option.rect)
         rect = option.rect
-        if state.background is not None:
-            painter.fillRect(rect, state.background)
+        background = state.background(option.palette)
+        if background is not None:
+            painter.fillRect(rect, background)
         style_option = QStyleOptionViewItem(option)
         self.initStyleOption(style_option, index)
         style_option.text = ""

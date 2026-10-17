@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.theme import StatusColor
+from ax_devil.modules.chrome.theme import KindColor, StatusColor, category_color
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
@@ -48,24 +48,8 @@ from ax_devil.modules.scene.inspection import debug_section_html, entity_detail_
 from ax_devil.modules.scene.model import Entity, MotionState, Scene
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 
-from .frame_labels import CURRENT_FRAME_HIGHLIGHT, format_short_frame_time
+from .frame_labels import current_frame_highlight, format_short_frame_time
 
-_TYPE_COLORS: dict[str, str] = {
-    "human": "#4e8ef7",
-    "head": "#4e8ef7",
-    "face": "#4e8ef7",
-    "bag": "#4e8ef7",
-    "animal": "#7aa36d",
-    "vehicle": "#d89a52",
-    "vehicle_other": "#d89a52",
-    "car": "#d89a52",
-    "bus": "#d89a52",
-    "truck": "#d89a52",
-    "bike": "#d89a52",
-    "bicycle": "#d89a52",
-    "license_plate": "#d89a52",
-}
-_DEFAULT_TYPE_COLOR = "#7f7f7f"
 _ENTITY_ROLE = Qt.ItemDataRole.UserRole + 1
 _DETAIL_ROLE = Qt.ItemDataRole.UserRole + 3
 _EXPANDED_ROLE = Qt.ItemDataRole.UserRole + 4
@@ -363,7 +347,7 @@ class EntityListDelegate(QStyledItemDelegate):
             if item.expanded:
                 painter.fillRect(rect, option.palette.brush(QPalette.ColorRole.AlternateBase))
             if item.visible:
-                painter.fillRect(rect, CURRENT_FRAME_HIGHLIGHT)
+                painter.fillRect(rect, current_frame_highlight(option.palette))
         style.drawPrimitive(QStyle.PrimitiveElement.PE_PanelItemViewItem, style_option, painter, style_option.widget)
         if isinstance(item, EntityListItem):
             palette = QPalette(option.palette)
@@ -418,7 +402,7 @@ class EntityListDelegate(QStyledItemDelegate):
         dot_top = top + (self._summary_height - _DOT_DIAMETER) // 2
         x = left
         for object_type in item.types or ("",):
-            painter.setBrush(QColor(type_color(object_type)))
+            painter.setBrush(type_color(object_type, palette))
             painter.drawEllipse(x, dot_top, _DOT_DIAMETER, _DOT_DIAMETER)
             x += _DOT_DIAMETER + Space.XS
         x += Space.S - Space.XS
@@ -713,9 +697,11 @@ def split_id_and_class(room: int, id_width: int, class_width: int, gap: int) -> 
     return id_room, min(class_width, max(0, room - gap - id_room))
 
 
-def type_color(object_type: str) -> str:
-    """Return the accent color for an object type."""
-    return _TYPE_COLORS.get(object_type.lower(), _DEFAULT_TYPE_COLOR)
+def type_color(object_type: str, palette: QPalette) -> QColor:
+    """Return the dot color for an object type; an untyped entity gets the muted gray."""
+    if not object_type:
+        return KindColor.MUTED.color(palette)
+    return category_color(object_type, palette)
 
 
 def _confidence_color(confidence: float) -> StatusColor:
