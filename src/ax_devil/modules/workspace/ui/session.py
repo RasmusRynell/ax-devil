@@ -19,7 +19,6 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import (
     ItemResolution,
     RecentWorkspaces,
-    WorkspaceBackup,
     WorkspaceItem,
     video_file_selections,
 )
@@ -61,7 +60,7 @@ class WorkspaceSession(QObject):
     """Compose the workspace UI around one store and its lifecycle, and tear it down.
 
     *resolver* resolves items, by default with the installed plugins through *jobs*, the application's background jobs
-    unless given, which also run network scans. *backup*,
+    unless given, which also run network scans. *unsaved_folder*,
     *recent_workspaces*, and *prompts* go to the ``WorkspaceLifecycle``; *prompts* defaults to dialogs over the window.
     """
 
@@ -76,7 +75,7 @@ class WorkspaceSession(QObject):
         render_catalog_manager: SceneRenderCatalogManager,
         resolver: ItemResolver | None = None,
         jobs: BackgroundJobs | None = None,
-        backup: WorkspaceBackup | None = None,
+        unsaved_folder: Path | None = None,
         recent_workspaces: RecentWorkspaces | None = None,
         prompts: WorkspacePrompts | None = None,
     ) -> None:
@@ -122,7 +121,7 @@ class WorkspaceSession(QObject):
         self._lifecycle = WorkspaceLifecycle(
             self._workspace_store,
             prompts or DialogPrompts(self._window),
-            backup or WorkspaceBackup(partial(_storage_file, "workspace-backup.json")),
+            (lambda: unsaved_folder) if unsaved_folder is not None else partial(_storage_file, "unsaved-workspaces"),
             recent_workspaces or RecentWorkspaces(partial(_storage_file, "recent-workspaces.json")),
             parent=self,
         )

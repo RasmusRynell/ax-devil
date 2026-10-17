@@ -1,4 +1,4 @@
-"""Restart ax-devil with its global options, restoring the kept workspace instead of the command line's content."""
+"""Restart ax-devil with its global options, without the command line's content."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def restart_application(main_window: QWidget) -> None:
 
     The main window closes first, so its own cleanup (leaving lane fullscreen, stopping viewers and workers) runs even
     when another window refuses to close. The new process is started by `relaunch_if_requested`, which the app calls
-    after its exit-time saves, so the restarted session reads what this one saved.
+    after its exit-time saves, so the restarted session lists the unsaved edits this one kept.
     """
     app = QApplication.instance()
     if app is None:
@@ -34,8 +34,9 @@ def restart_application(main_window: QWidget) -> None:
 def relaunch_if_requested(app: QCoreApplication, global_options: Sequence[str]) -> None:
     """Start ax-devil again with *global_options* when a restart was requested; call last on exit.
 
-    The command line's subcommand and content are left out, so the new process has nothing to open and restores the
-    kept workspace. It starts through the launcher that started this process, so it runs the current plugin selection.
+    The command line's subcommand and content are left out, so the new process has nothing to open and lands on the
+    start panel; unsaved edits are among the recent workspaces. It starts through the launcher that started this
+    process, so it runs the current plugin selection.
     """
     if not app.property(_RESTART_PROPERTY):
         return

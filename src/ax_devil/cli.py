@@ -126,7 +126,7 @@ def cli(
 ) -> None:
     """View video, live Axis cameras, and analytics overlays.
 
-    Run without a command to reopen the last workspace.
+    Run without a command to open the start panel.
     """
     setup_logging(console_log_level="WARNING", console_only=True)
     ctx.obj = _build_runtime_context(log_level=log_level, config=config, debug=debug)

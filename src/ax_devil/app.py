@@ -40,7 +40,7 @@ class Application:
         open_catalog_viewer: bool = False,
     ):
         """Store launch parameters: the Workspace Items to start a new workspace with, or the workspace file to open,
-        and whether to show the catalog viewer on start. Without either, the kept workspace is restored."""
+        and whether to show the catalog viewer on start. Without either, the start panel stays."""
         self.log_level = log_level
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self.debug = debug

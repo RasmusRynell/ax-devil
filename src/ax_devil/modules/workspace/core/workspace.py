@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -11,6 +12,7 @@ from ax_devil.modules.workspace.core.items import WorkspaceItem
 
 UNTITLED_NAME = "Untitled"
 WORKSPACE_FILE_SUFFIX = ".ax-devil.workspace"
+_NOT_IN_FILE_NAME = re.compile(r"[/\\\x00-\x1f\x7f]")  # Path separators and control characters.
 
 
 def workspace_file_path(path: Path) -> Path:
@@ -67,8 +69,8 @@ class Workspace:
 
     @property
     def suggested_file_stem(self) -> str:
-        """Return the name as one file name component, for suggesting where to save or export."""
-        stem = self.name.replace("/", "-").replace("\\", "-")
+        """Return the name as one file name component, with path separators and control characters replaced by "-"."""
+        stem = _NOT_IN_FILE_NAME.sub("-", self.name)
         return stem if stem.strip(".") else "-"  # "." and ".." would walk the path instead of naming a file.
 
     def has_item(self, item_id: str) -> bool:

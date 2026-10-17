@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterator
-from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -501,89 +500,11 @@ def test_replacing_a_workspace_stops_a_running_added_batch_before_its_next_item(
     assert [content.display_name for content in store.contents()] == ["Requested / train", "Requested / test"]
 
 
-class _SlowSavedFile:
-    """Read the saved state of a restored workspace only when the test releases it."""
-
-    def __init__(self, saved: Workspace) -> None:
-        self.saved = saved
-        self.release = threading.Event()
-        self.started = threading.Event()
-
-    def __call__(self, kept: Workspace) -> tuple[Workspace, Workspace]:
-        self.started.set()
-        self.release.wait(5)
-        return kept, self.saved
-
-
-def _restorable(tmp_path: Path) -> tuple[Workspace, Workspace]:
-    """Return a kept workspace with an unsaved extra item, and the saved one it grew from."""
-    saved = Workspace(path=tmp_path / "Lot.ax-devil.workspace", items=(VideoItem(video=tmp_path / "a.mp4"),))
-    return saved.add_items([VideoItem(video=tmp_path / "b.mp4")]), saved
-
-
-def test_a_restored_workspace_is_usable_before_its_slow_saved_file_is_read(qtbot: QtBot, tmp_path: Path) -> None:
-    kept, saved = _restorable(tmp_path)
-    store = WorkspaceStore(ItemResolver(FakeResolutionContext()))
-    slow = _SlowSavedFile(saved)
-
-    store.restore_workspace(kept, slow)
-
-    assert store.workspace == kept and not store.is_modified
-    slow.release.set()
-    qtbot.waitUntil(lambda: store.is_modified, timeout=2000)
-
-
-def test_a_saved_file_that_cannot_be_read_leaves_the_restored_items_untitled(qtbot: QtBot, tmp_path: Path) -> None:
-    kept, _saved = _restorable(tmp_path)
-    store = WorkspaceStore(ItemResolver(FakeResolutionContext()))
-
-    store.restore_workspace(kept, lambda workspace: (replace(workspace, path=None), Workspace()))
-
-    qtbot.waitUntil(lambda: store.workspace.path is None, timeout=2000)
-    assert store.workspace.items == kept.items and store.is_modified
-
-
-def test_a_saved_state_arriving_after_the_workspace_was_replaced_or_saved_is_dropped(
-    qtbot: QtBot, tmp_path: Path
-) -> None:
-    kept, saved = _restorable(tmp_path)
-    store = WorkspaceStore(ItemResolver(FakeResolutionContext()))
-    replaced_slow, saved_slow = _SlowSavedFile(saved), _SlowSavedFile(saved)
-
-    store.restore_workspace(kept, replaced_slow)
-    replaced_slow.started.wait(2)
-    other = Workspace(items=(VideoItem(video=tmp_path / "c.mp4"),))
-    store.replace_workspace(other)
-    replaced_slow.release.set()
-    store.restore_workspace(kept, saved_slow)
-    saved_slow.started.wait(2)
-    store.save_workspace(tmp_path / "Mine.ax-devil.workspace")
-    saved_slow.release.set()
-
-    qtbot.wait(200)
-    assert store.workspace.path == tmp_path / "Mine.ax-devil.workspace" and not store.is_modified
-
-
 def _jobs_with_a_busy_worker() -> tuple[BackgroundJobs, threading.Event, QObject]:
     """Return a one-worker pool whose only worker is held until the returned event is set."""
     jobs, busy, owner = BackgroundJobs(max_workers=1), threading.Event(), QObject()
     jobs.scope(owner).submit("busy", lambda _job: busy.wait(5), on_result=lambda _: None, on_error=lambda _: None)
     return jobs, busy, owner
-
-
-def test_saving_a_restored_workspace_stops_its_queued_saved_file_read(qtbot: QtBot, tmp_path: Path) -> None:
-    kept, saved = _restorable(tmp_path)
-    baseline = set(threading.enumerate())
-    jobs, busy, _owner = _jobs_with_a_busy_worker()
-    store = WorkspaceStore(ItemResolver(FakeResolutionContext(), jobs=jobs))
-    slow = _SlowSavedFile(saved)
-    store.restore_workspace(kept, slow)
-
-    store.save_workspace(tmp_path / "Mine.ax-devil.workspace")
-    busy.set()
-
-    _wait_for_jobs_since(qtbot, baseline)
-    assert not slow.started.is_set()
 
 
 def test_removing_an_item_stops_its_queued_resolution(qtbot: QtBot) -> None:

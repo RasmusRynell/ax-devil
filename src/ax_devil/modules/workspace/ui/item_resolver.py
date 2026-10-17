@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from functools import partial
-from typing import Any
 
 from PySide6.QtCore import QObject
 
 from ax_devil.core.cancellation import NEVER, CancelToken
-from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, background_jobs
+from ax_devil.modules.background_jobs import BackgroundJobs, background_jobs
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ItemResolution, ItemResolutionError, ResolutionContext, WorkspaceItem
 
@@ -55,17 +53,6 @@ class ItemResolver(QObject):
             on_error=lambda error: done(ItemResolution(item, error=ItemResolutionError(str(error)))),
         )
 
-    def run(self, work: Callable[[], Any], done: Callable[[Any], None]) -> Callable[[], None]:
-        """Call *work* on a worker thread and hand its result to *done* on the GUI thread; return a canceller.
-
-        *work* must not touch Qt objects or shared state. When it raises, the failure is logged and *done* is not
-        called.
-        """
-        if self._jobs is None:
-            done(work())
-            return _nothing
-        return self._jobs.submit("workspace", partial(_call, work), on_result=done, on_error=_logged)
-
 
 def _resolve_item(item: WorkspaceItem, context: ResolutionContext, token: CancelToken) -> ItemResolution:
     """Record unexpected failures like resolution errors, so no item waits forever."""
@@ -76,13 +63,5 @@ def _resolve_item(item: WorkspaceItem, context: ResolutionContext, token: Cancel
         return ItemResolution(item, error=ItemResolutionError(str(exc)))
 
 
-def _call(work: Callable[[], Any], _job: JobContext[None]) -> Any:
-    return work()
-
-
 def _nothing() -> None:
     """Cancel work that already finished."""
-
-
-def _logged(_error: Exception) -> None:
-    """Drop a failure the background jobs already logged."""

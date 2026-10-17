@@ -50,7 +50,7 @@ file format, and the store do not branch on kind.
 ## Bookmarks
 
 While reviewing local videos and playlists, a user bookmarks frames and marks each video reviewed. Both are part of
-the Workspace, beside the items, so they are saved, kept between launches, and make the Workspace modified.
+the Workspace, beside the items, so they are saved and make the Workspace modified.
 
 - A Bookmark Target is an item id plus an entry key that Content gives itself (`bookmark_entries`): empty for a Video
   Item, "<playlist name>/<entry title>" for a playlist entry. Entries have no id and their indexes shift when a
@@ -89,14 +89,12 @@ commands only build items; their failures are reported in the app like any other
 The app behaves like VS Code. `WorkspaceLifecycle` (`workspace/ui/workspace_lifecycle.py`) makes these decisions over
 the store; it asks the user through `WorkspacePrompts` and builds no widgets.
 
-- Quitting never prompts and keeps the current Workspace, unsaved edits included, in `workspace-backup.json` in the
-  storage folder saved at that time. Credentials are kept as entered, as in a workspace file.
-- Every launch first restores the kept Workspace at once. The file at its kept path, read again on a worker thread so a
-  slow filesystem cannot freeze the window, is the saved state, so unsaved edits are still marked modified once it
-  arrives; when the file can no longer be read, the items stay, without a file.
-- Restored, opened, and new Workspaces list their items and open and connect nothing; only adding items opens a viewer.
-  A CLI launch with content then starts an Untitled Workspace with those items after asking about unsaved edits, and
-  `ax-devil open <file>` opens a saved one without asking and discards them.
+- Every launch starts with an empty Workspace and no prompt; the start panel offers the recent workspaces. A CLI launch
+  with content starts an Untitled Workspace with those items, and `ax-devil open <file>` opens a saved one.
+- Quitting never prompts. A Workspace with unsaved edits is saved as a copy in `unsaved-workspaces` in the storage
+  folder saved at that time and recorded as a recent workspace, so the edits are one click away; the Workspace's own
+  file is not touched. Credentials are saved as entered, as in a workspace file. Copies are not deleted.
+- Opened and new Workspaces list their items and open and connect nothing; only adding items opens a viewer.
 - Creating a new Workspace with unsaved edits asks Save / Don't Save, with no way to dismiss it. Saving a Workspace
   that has no file goes through Save As, and cancelling that cancels the whole action. A file that cannot be read or
   written is reported and changes nothing.

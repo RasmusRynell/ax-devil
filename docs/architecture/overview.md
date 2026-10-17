@@ -54,7 +54,7 @@ Content also declares its supported consideration items. Playlist entries, visib
 
 ## Workspace Items And Intake
 
-Bare `ax-devil` launch reopens the workspace kept at the last close; `ax-devil open` opens a saved one. Everything
+Bare `ax-devil` launch opens the empty start panel; `ax-devil open` opens a saved workspace. Everything
 that adds content — `ax-devil local`, `ax-devil live`, resolver commands, the Add dialogs, and desktop file drops —
 creates Workspace Items
 (`VideoItem`, `LiveStreamItem`, `PlaylistItem` in `workspace/core/items.py`); the store resolves them into Content. The
@@ -88,7 +88,7 @@ The factory returns the constructed widget and a status message. Offline viewers
   background (see [Workspace](workspace.md#resolution))
 - consideration refs (exclusions)
 
-It signals item changes, `workspace_replaced` when another Workspace is opened, created, or restored, and
+It signals item changes, `workspace_replaced` when another Workspace is opened or created, and
 `state_changed` when the modified flag, name, or path changes.
 
 `build_browser_sections` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query, and the open

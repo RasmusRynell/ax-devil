@@ -17,7 +17,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | App bootstrap, config wiring, logging setup, plugin loading | `src/ax_devil/app.py` |
 | CLI commands and maintenance entry points | `src/ax_devil/cli.py` |
 | Main window menus, app-wide dialogs (including Settings and Quick Setup), diagnostics window launch | `src/ax_devil/modules/application_shell/` |
-| Workspace model: the Workspace, Workspace Items and their resolution, file format, kept workspace and recent workspaces, content, intake, item information (Qt-free) | `src/ax_devil/modules/workspace/core/` |
+| Workspace model: the Workspace, Workspace Items and their resolution, file format, recent workspaces, content, intake, item information (Qt-free) | `src/ax_devil/modules/workspace/core/` |
 | Workspace interface: `WorkspaceStore`, plugin-backed background resolution, browser rows and the section tree that shows them, add-content and rename dialogs, workspace lifecycle and prompts, split-view hosting, `ViewerWidget`, viewer factory, session/controller, the activity bar, sidebar host and the Workspace, Live, Offline and Bookmarks views | `src/ax_devil/modules/workspace/ui/` |
 | Live/offline viewer workflows, media tools, offline entry opening (`open_entry_media`, `EntryMedia`), `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation | `src/ax_devil/modules/video_player/` |
