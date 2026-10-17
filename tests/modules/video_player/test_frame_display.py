@@ -52,7 +52,7 @@ def test_info_overlay_temporarily_hides_opted_in_mounted_widget(qtbot: QtBot) ->
     display.mount_overlay(
         lane_name,
         position=OverlayPosition.TOP_LEFT,
-        hide_while_inspecting=True,
+        hide_while_info_shown=True,
     )
     display.mount_overlay(persistent_status, position=OverlayPosition.TOP_RIGHT)
 

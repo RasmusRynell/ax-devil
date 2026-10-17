@@ -47,13 +47,13 @@ class _ManagedOverlay:
 
     widget: QWidget
     position: OverlayPosition
-    hide_while_inspecting: bool
+    hide_while_info_shown: bool
     preference: OverlayPreference | None
 
     @property
     def viewport_owns_visibility(self) -> bool:
         """Return whether the viewport shows and hides this widget instead of its owner."""
-        return self.hide_while_inspecting or self.preference is not None
+        return self.hide_while_info_shown or self.preference is not None
 
 
 class _InfoHud(QWidget):
@@ -254,7 +254,7 @@ class FrameViewport(VideoFrameRenderer):
         overlay: QWidget,
         *,
         position: OverlayPosition = OverlayPosition.BOTTOM_CENTER,
-        hide_while_inspecting: bool = False,
+        hide_while_info_shown: bool = False,
         preference: OverlayPreference | None = None,
     ) -> None:
         overlay.setParent(self)
@@ -262,7 +262,7 @@ class FrameViewport(VideoFrameRenderer):
             _ManagedOverlay(
                 widget=overlay,
                 position=position,
-                hide_while_inspecting=hide_while_inspecting,
+                hide_while_info_shown=hide_while_info_shown,
                 preference=preference,
             )
         )
@@ -296,13 +296,12 @@ class FrameViewport(VideoFrameRenderer):
         self._update_overlay_visibility()
 
     def _update_overlay_visibility(self) -> None:
-        """Hide opted-in overlays while the frame is inspected (zoomed in or showing info) or turned off."""
-        inspecting = self._overlay_visible or self._viewport.zoom_level > self._viewport.zoom_min
+        """Hide opted-in overlays while the info HUD covers the corner, or when their preference is off."""
         settings = GlobalSettings()
         for managed in self._overlays:
             if managed.viewport_owns_visibility:
                 managed.widget.setVisible(
-                    not (managed.hide_while_inspecting and inspecting)
+                    not (managed.hide_while_info_shown and self._overlay_visible)
                     and (managed.preference is None or settings.is_overlay_enabled(managed.preference))
                 )
 
