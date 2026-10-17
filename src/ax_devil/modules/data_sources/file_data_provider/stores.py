@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.modules.cache import CacheManager, IndexedFrameCache
 from ax_devil.modules.data_sources.scene_history import SceneHistoryCollector, SceneHistoryRecords
 from ax_devil.modules.scene.decoding import (
@@ -22,6 +23,7 @@ from ax_devil.modules.settings.logging_config import get_logger
 logger = get_logger(__name__)
 
 _HISTORY_KEY = "history"
+_WARNINGS_KEY = "load_warnings"
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +79,7 @@ class SceneCatalog:
     available_frame_ids: set[int]
     artifact_identity: SceneArtifactIdentity
     history: SceneHistoryRecords
+    warnings: tuple[LoadWarning, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +89,7 @@ class SceneBuildResult:
     scene_map: dict[int, Scene]
     timestamp_to_sequence: dict[int, int]
     total_lines: int
+    warnings: tuple[LoadWarning, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,10 +160,12 @@ def build_default_metadata_payload(
     sequence_lookup_enabled: bool,
     timestamp_to_sequence: dict[int, int],
     artifact_identity: SceneArtifactIdentity,
+    warnings: tuple[LoadWarning, ...],
 ) -> dict[str, Any]:
     """Build the common metadata payload for persisted store artifacts."""
     return {
         "total_lines": total_lines,
+        _WARNINGS_KEY: [warning.to_metadata() for warning in warnings],
         "artifact_identity": artifact_identity.to_metadata(),
         "processed_at": datetime.now().isoformat(),
         "sequence_lookup_enabled": sequence_lookup_enabled,
@@ -211,6 +217,14 @@ def parse_scene_catalog(
     if history is None:
         return None
 
+    raw_warnings = raw_metadata.get(_WARNINGS_KEY)
+    if not isinstance(raw_warnings, list):
+        return None
+    parsed_warnings = [LoadWarning.from_metadata(raw) for raw in raw_warnings]
+    warnings = tuple(warning for warning in parsed_warnings if warning is not None)
+    if len(warnings) != len(parsed_warnings):
+        return None
+
     raw_metadata["sequence_lookup_enabled"] = sequence_lookup_enabled
     try:
         restore_additional_state(raw_metadata)
@@ -226,6 +240,7 @@ def parse_scene_catalog(
         available_frame_ids=set(cached_frames),
         artifact_identity=expected_artifact_identity,
         history=history,
+        warnings=warnings,
     )
 
 
@@ -295,6 +310,7 @@ class IndexedFrameSceneStore:
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,
             timestamp_to_sequence=build_result.timestamp_to_sequence,
             artifact_identity=artifact_identity,
+            warnings=build_result.warnings,
         )
         additional_metadata = self._context.collect_additional_cache_metadata()
         if additional_metadata:
@@ -308,6 +324,7 @@ class IndexedFrameSceneStore:
             available_frame_ids=set(build_result.scene_map.keys()),
             artifact_identity=artifact_identity,
             history=history,
+            warnings=build_result.warnings,
         )
 
     def load_scene(self, timestamp_key: int) -> Scene | None:
@@ -399,6 +416,8 @@ class SourceIndexedSceneStore:
         sequence_to_timestamp: dict[int, int] = {}
         collector = SceneHistoryCollector()
         total_lines = 0
+        candidate_lines = 0  # Lines that held a record, whether or not it could be decoded.
+        skipped = SkippedRecords("lines", "Objects on skipped lines are not shown.")
 
         with self._file_path.open("rb") as file_obj:
             raw_line_number = 0
@@ -414,6 +433,8 @@ class SourceIndexedSceneStore:
                     logger.warning(
                         f"{self._file_path.name} [{self._context.decoder_name}] line {raw_line_number - 1}: {exc}"
                     )
+                    candidate_lines += 1
+                    skipped.add(f"line {raw_line_number}: not valid UTF-8")
                     continue
 
                 normalized_line = self._context.normalize_payload(decoded_line)
@@ -421,6 +442,7 @@ class SourceIndexedSceneStore:
                     continue
 
                 total_lines += 1
+                candidate_lines += 1
                 payload_index = total_lines - 1
                 try:
                     scene = self._decoder.decode(normalized_line)
@@ -429,6 +451,7 @@ class SourceIndexedSceneStore:
                         continue
                 except Exception as exc:
                     logger.warning(f"{self._file_path.name} [{self._context.decoder_name}] line {payload_index}: {exc}")
+                    skipped.add(f"line {raw_line_number}: {exc}")
                     continue
 
                 timestamp_key = self._context.extract_timestamp_key(scene)
@@ -456,11 +479,14 @@ class SourceIndexedSceneStore:
             fingerprint=SourceFingerprint.from_path(self._file_path),
         )
         history = collector.records()
+        warning = skipped.warning(candidate_lines)
+        warnings = (warning,) if warning is not None else ()
         metadata = build_default_metadata_payload(
             total_lines=total_lines,
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,
             timestamp_to_sequence=timestamp_to_sequence,
             artifact_identity=artifact_identity,
+            warnings=warnings,
         )
         additional_metadata = self._context.collect_additional_cache_metadata()
         if additional_metadata:
@@ -479,6 +505,7 @@ class SourceIndexedSceneStore:
             available_frame_ids=set(line_locations.keys()),
             artifact_identity=artifact_identity,
             history=history,
+            warnings=warnings,
         )
 
     def load_scene(self, timestamp_key: int) -> Scene | None:

@@ -18,9 +18,10 @@ _HOVER_ALPHA = 0.08
 
 
 class ButtonKind(Enum):
-    """How much a button stands out: a plain action, the main one, or one that discards something."""
+    """How much a button stands out: a plain action, a bordered one such as Back, the main one, or one that discards."""
 
     NORMAL = "normal"
+    OUTLINE = "outline"
     PRIMARY = "primary"
     DANGER = "danger"
 
@@ -29,7 +30,7 @@ class SmallButton(QPushButton):
     """A button one row high, with an optional icon; give an empty *text* for an icon-only button.
 
     A plain or danger button has no fill at rest, so it takes the color behind it; hovering tints it. The outline is
-    always the color of the fill, so the button reads as one shape.
+    always the color of the fill, so the button reads as one shape, except an outline button, which keeps a border.
     """
 
     def __init__(
@@ -56,17 +57,20 @@ class SmallButton(QPushButton):
         elif self._kind is ButtonKind.DANGER:
             text = StatusColor.ERROR.color(palette)
             hover_fill = qcolor_to_css(text, alpha=_HOVER_ALPHA)
+        outlined = self._kind is ButtonKind.OUTLINE
+        border = palette_color_css(palette, QPalette.ColorRole.Mid) if outlined else fill
+        hover_border = border if outlined else hover_fill
         padding = Space.S if not self.text() else Space.M
         self.setStyleSheet(
             f"""
             QPushButton {{
-                border: 1px solid {fill};
+                border: 1px solid {border};
                 border-radius: {Radius.CONTROL}px;
                 padding: 0 {padding}px;
                 background: {fill};
                 color: {text.name()};
             }}
-            QPushButton:hover {{ background: {hover_fill}; border-color: {hover_fill}; }}
+            QPushButton:hover {{ background: {hover_fill}; border-color: {hover_border}; }}
             """
         )
         if self._icon is not None:

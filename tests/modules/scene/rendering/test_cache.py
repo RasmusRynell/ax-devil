@@ -235,25 +235,14 @@ def test_primitive_build_reasons_follow_changed_inputs_and_clear_on_reuse() -> N
     assert _build_reasons(overlay) == ()
 
 
-def test_hover_formats_only_selected_entity_and_reuses_its_card(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ax_devil.modules.scene.rendering import cache as module
+def test_hover_hit_summarizes_the_entity_once_and_omits_what_the_decoder_did_not_report() -> None:
+    overlay = CachedSceneOverlay(scene=_classified_scene())
 
-    calls: list[EntityId] = []
+    first = overlay.get_hit_by_id("object-1")
 
-    def format_card(entity: Entity) -> str:
-        calls.append(entity.id)
-        return f"card:{entity.id}"
-
-    monkeypatch.setattr(module, "build_entity_hover_html", format_card)
-    scene = _motion_scene()
-    overlay = CachedSceneOverlay(scene=scene)
-    assert overlay.hit_test(-1, -1) is None
-    assert calls == []
-    entity_id = next(iter(scene.entities))
-    first = overlay.get_hit_by_id(str(entity_id))
     assert first is not None
-    assert first.card_html == f"card:{entity_id}"
-    assert overlay.get_hit_by_id(str(entity_id)) is first
+    assert (first.label, first.detail, first.color_key) == ("object-1 human", "conf 0.90", "human")  # No speed.
+    assert overlay.get_hit_by_id("object-1") is first
 
 
 @pytest.mark.parametrize(
@@ -278,7 +267,7 @@ def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettin
     assert overlay.prepare_drawing(context, DrawingBuffer(changed)) is second
 
 
-def test_cached_scene_overlay_tracks_search_and_toggle_all_without_new_scene() -> None:
+def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:
     scene = _classified_scene()
     model = SessionFilter(build_default_filter_config())
     overlay = CachedSceneOverlay(scene=scene, scene_filter=model)
@@ -286,13 +275,6 @@ def test_cached_scene_overlay_tracks_search_and_toggle_all_without_new_scene() -
     settings = DrawingSettings.for_context(context)
     first = overlay.prepare_drawing(context, DrawingBuffer(settings))
     assert len(first) > 0
-
-    model.set_id_query("missing")
-    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
-    assert overlay.hit_test(0.2, 0.3) is None
-
-    model.set_id_query("")
-    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) > 0
     assert overlay.hit_test(0.2, 0.3) is not None
 
     model.toggle_all()

@@ -1,15 +1,21 @@
-"""Shared frame labels and highlight for media tools that point at video frames."""
+"""Shared frame labels and highlight for tools that point at video frames."""
 
 from __future__ import annotations
 
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPalette
 
 from ax_devil.core.data_types import FrameIdentifier
 
-CURRENT_FRAME_HIGHLIGHT = QColor(78, 142, 247, 70)
-"""Background of rows that belong to the displayed frame."""
+_HIGHLIGHT_ALPHA = 0.27
 
 _US_PER_DAY = 86_400_000_000
+
+
+def current_frame_highlight(palette: QPalette) -> QColor:
+    """Return the background of rows that belong to the displayed frame: the palette's highlight, see-through."""
+    color = QColor(palette.color(QPalette.ColorRole.Highlight))
+    color.setAlphaF(_HIGHLIGHT_ALPHA)
+    return color
 
 
 def format_frame_time(timestamp_us: float) -> str:

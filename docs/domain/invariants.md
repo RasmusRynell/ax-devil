@@ -83,8 +83,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   Recipe routing is catalog policy: UI code never switches on classification strings.
 - `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
   not rendered.
-- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows
-  `Observation.debug`; `Scene.debug` is kept for diagnostics only. Filtering, rendering, synchronization, and
+- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows and queries
+  `Observation.debug`; `Scene.debug` is kept for diagnostics only. Scene filtering, rendering, synchronization, and
   hit-testing never read either.
 - Changing Scene model dataclass fields requires bumping `SCENE_MODEL_VERSION`: major when breaking, minor when
   additive. Decoder plugins declaring another major, or a newer minor, fail to load; the Plugins view lists them and flags its button.

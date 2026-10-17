@@ -19,13 +19,18 @@ def test_det_and_gt_rows_are_grouped_into_frames_and_unsupported_rows_skipped() 
         "0,0,0,0,0,0",
         "not,a,valid,row",
         "  ",
+        "a,b",
+        "c,d",
     ]
 
-    payloads, stats = prepare_mot_frame_payloads(rows, width=1920, height=1080)
+    payloads, warning = prepare_mot_frame_payloads(rows, width=1920, height=1080)
     scenes = [decode_mot_frame(payload) for payload in payloads]
 
-    assert (stats.total_frames, stats.total_detections) == (2, 3)
     assert [(scene.time_slice.start, len(scene.entities)) for scene in scenes] == [(0, 2), (1, 1)]
+    assert warning is not None
+    assert warning.problem == "Skipped 4 of 7 rows"
+    assert [reason.split(":")[0] for reason in warning.reasons] == ["line 4", "line 5", "line 7"]  # Only three kept.
+    assert warning.more_reasons
 
 
 def test_gt_row_decodes_normalized_box_class_and_visibility() -> None:

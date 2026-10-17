@@ -7,7 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
+from ax_devil.core.cancellation import NEVER
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.plugin_system import get_file_decoder_factory
 from ax_devil.modules.scene.model import EntityId
 from ax_devil.plugins.decoders.mot.plugin import MOT_FILE
@@ -20,6 +22,7 @@ SAMPLE_ROWS = [
     "1,1,0,0,64,48,0.9,1,0.8",
     "1,2,32,24,64,48,0.7,7,0.25",
     "2,3,10,12,40,50,0.5,3,0.4",
+    "2,4,10,12,40",
 ]
 
 
@@ -48,7 +51,16 @@ def test_registered_mot_handler_reads_frames_from_csv(tmp_path: Path) -> None:
 def test_mot_provider_reopens_from_warm_cache_without_parsing(tmp_path: Path) -> None:
     csv_path = tmp_path / "mot.csv"
     _write_csv(csv_path)
-    MOTChallengeSceneDataProvider(csv_path, width=640, height=480).close()
+    timeline = FrameTimeline.from_timestamps((0, 1_000_000))
+
+    def assert_skipped_row_is_warned(provider: MOTChallengeSceneDataProvider) -> None:
+        report = provider.samples().analyze_alignment("MOT_FILE", timeline, NEVER)
+        assert report.has_alignment_warning
+        assert [warning.problem for warning in report.load_warnings] == ["Skipped 1 of 4 rows"]
+
+    cold_provider = MOTChallengeSceneDataProvider(csv_path, width=640, height=480)
+    assert_skipped_row_is_warned(cold_provider)
+    cold_provider.close()
 
     with patch(
         "ax_devil.plugins.decoders.mot.provider.prepare_mot_frame_payloads",
@@ -57,6 +69,7 @@ def test_mot_provider_reopens_from_warm_cache_without_parsing(tmp_path: Path) ->
         warm_provider = MOTChallengeSceneDataProvider(csv_path, width=640, height=480)
         try:
             assert warm_provider.get_total_frames() == 2
+            assert_skipped_row_is_warned(warm_provider)
             scene = warm_provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_monotime_us=1.0))
             assert scene is not None
             assert set(scene.entities) == {"3"}

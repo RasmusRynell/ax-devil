@@ -134,6 +134,7 @@ class WorkspaceSession(QObject):
         self._window.files_dropped.connect(self.open_files)
         self._workspace_store.state_changed.connect(self.state_changed)
         self._workspace_store.state_changed.connect(self._show_workspace_state)
+        self._workspace_store.workspace_replaced.connect(self._show_bookmarks_of_new_workspace)
         self._workspace_view.title_edited.connect(self._workspace_store.rename_workspace)
         self._lifecycle.recovered.connect(self._show_restored)
         self._workspace_store.workspace_replaced.connect(partial(self._workspace_view.set_restored, False))
@@ -149,6 +150,11 @@ class WorkspaceSession(QObject):
     def _show_restored(self) -> None:
         self._workspace_view.set_restored(True)
         self._window.show_view(WORKSPACE_VIEW_ID)
+
+    def _show_bookmarks_of_new_workspace(self) -> None:
+        """Show the Bookmarks view when the Workspace just opened has bookmarks, so its spots are one click away."""
+        if self._workspace_store.bookmarks:
+            self.show_sidebar_view(BOOKMARKS_VIEW_ID)
 
     def widget(self) -> ApplicationWindow:
         """Return the composed viewer widget tree."""

@@ -26,6 +26,7 @@ class FrameDisplay(QWidget):
 
     aboutToCleanup = Signal()
     viewportChanged = Signal(object)  # NormalizedViewport
+    objectSelected = Signal(object)  # Id of the object the user clicked, or None when a click on empty video cleared it
     controlsRequested = Signal()
     controlsHideRequested = Signal()
     sidePanelToggled = Signal(bool)  # True when the side panel opens, False when it closes
@@ -45,6 +46,7 @@ class FrameDisplay(QWidget):
         self._main_layout.setSpacing(0)
         self._main_layout.addWidget(self._viewport, 1)
         self._viewport.viewportChanged.connect(self.viewportChanged)
+        self._viewport.selectionChanged.connect(self.objectSelected)
 
         self._visibility = ControlVisibilityController(
             timer_parent=self,
@@ -84,6 +86,10 @@ class FrameDisplay(QWidget):
     def set_viewport(self, viewport: NormalizedViewport) -> None:
         """Apply viewport state without emitting ``viewportChanged``."""
         self._viewport.set_viewport(viewport)
+
+    def select_object(self, entity_id: str | None) -> None:
+        """Select *entity_id* on the video, or clear the selection with None; ``objectSelected`` is not emitted."""
+        self._viewport.select_target(entity_id)
 
     def mount_overlay(
         self,

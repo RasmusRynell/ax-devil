@@ -137,7 +137,7 @@ class BookmarksView(ViewPanel):
                     active=row.bookmark.id == self._active_id,
                     indent=Space.XL,
                 )
-                if not group.missing:
+                if group.found is not None:
                     bookmark_row.activated.connect(
                         lambda bookmark_id=row.bookmark.id: self.bookmark_activated.emit(bookmark_id)
                     )

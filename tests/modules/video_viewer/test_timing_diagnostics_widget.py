@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtWidgets import QLabel
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.load_warning import LoadWarning
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 from ax_devil.modules.video_viewer.timing_diagnostics_widget import OverlayAlignmentIndicator, TimingDiagnosticsWidget
@@ -51,6 +54,18 @@ def test_alignment_indicator_explains_a_single_unmatched_overlay(qtbot: QtBot) -
     assert indicator.isVisible()
     assert not indicator.pixmap().isNull()
     assert "no frame within" in indicator.toolTip()
+
+
+def test_alignment_indicator_shows_a_load_warning_when_no_overlay_frames_loaded(qtbot: QtBot) -> None:
+    indicator = _shown_indicator(qtbot)
+    warning = LoadWarning("Skipped 1 of 3 rows", ("line 2: bad",), "Objects on skipped rows are not shown.")
+    report = replace(_alignment_report(total_overlay_frames=0, exact_matches=0), load_warnings=(warning,))
+
+    indicator.update_alignment_report(report)
+
+    assert indicator.isVisible()
+    assert "Skipped 1 of 3 rows" in indicator.toolTip()
+    assert "100%" not in indicator.toolTip()
 
 
 def test_alignment_indicator_shown_for_timeline_end_mismatch(qtbot: QtBot) -> None:
