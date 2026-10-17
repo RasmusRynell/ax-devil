@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QGuiApplication, QKeySequence
+from PySide6.QtGui import QFontMetrics, QGuiApplication, QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.copy_cell import copy_column_px
+from ax_devil.modules.chrome.theme import apply_text_size
+from ax_devil.modules.chrome.tokens import TextRole, body_px
 from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
 
 _UUID = "0f8fad5b-d9cb-469f-a165-70867728950e"
@@ -92,6 +95,15 @@ def test_dragged_column_width_is_kept_and_double_click_fits_it_to_content(qtbot:
     again.resize(700, 200)
     assert again.columnWidth(1) == fitted + 40
 
+    # A width dragged at one text size never goes below what the column needs at another.
+    _drag_divider(again, 1, -400)
+    size = body_px()
+    apply_text_size(size + 6)
+    try:
+        assert again.columnWidth(1) >= QFontMetrics(TextRole.CAPTION.font()).horizontalAdvance("CLASS")
+    finally:
+        apply_text_size(size)
+
     header = view.header()
     edge = QPoint(header.sectionViewportPosition(1) + header.sectionSize(1), _DIVIDER_Y)
     QTest.mouseDClick(header.viewport(), Qt.MouseButton.LeftButton, pos=edge)
@@ -103,7 +115,7 @@ def test_copy_column_and_ctrl_c_copy_the_full_text_of_the_row(qtbot: QtBot) -> N
     model = view.rows_model
     clipboard = QGuiApplication.clipboard()
     assert clipboard is not None
-    assert view.columnWidth(model.copy_section) == 22
+    assert view.columnWidth(model.copy_section) == copy_column_px()
 
     clipboard.setText("")
     rect = view.visualRect(model.index(0, model.copy_section))
@@ -159,10 +171,12 @@ def test_ids_are_cut_only_to_a_floor_while_columns_can_be_hidden_and_the_copy_co
     empty.show()
     qtbot.waitExposed(empty)
     assert empty.isColumnHidden(3)
+    narrowest = empty.minimumSizeHint().width()
     model.set_rows(list(_ROWS), lambda row: row[0])
     assert not empty.isColumnHidden(3)
+    assert empty.minimumSizeHint().width() == narrowest
 
-    # The scroll bar takes room, which the layout around the table is told.
+    # The minimum width does not depend on the rows: long values, many rows and a scroll bar leave it unchanged.
     holder = QWidget()
     qtbot.addWidget(holder)
     layout = QVBoxLayout(holder)
@@ -170,9 +184,12 @@ def test_ids_are_cut_only_to_a_floor_while_columns_can_be_hidden_and_the_copy_co
     layout.addWidget(tall)
     holder.resize(700, 40)
     holder.show()
-    without_bar = layout.totalMinimumSize().width()
-    tall.rows_model.set_rows([(f"{n}{_UUID}", "car", "0.5", "0") for n in range(50)], lambda row: row[0])
-    assert layout.totalMinimumSize().width() > without_bar
+    before = layout.totalMinimumSize().width()
+    tall.rows_model.set_rows(
+        [(f"{n}{_UUID}", "bicycle, human, vehicle", "100%", "10:25-12:03") for n in range(50)], lambda row: row[0]
+    )
+    assert tall.verticalScrollBar().maximum() > 0
+    assert layout.totalMinimumSize().width() == before
 
     # A timestamp is never cut, even in the narrowest table.
     times = RowTableModel([Column("Time", CellKind.MONO, lambda row: "00:00:00.666", width_chars=12), _columns()[1]])

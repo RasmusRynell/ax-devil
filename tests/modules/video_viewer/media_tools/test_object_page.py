@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 
 import pytest
-from PySide6.QtCore import QModelIndex, QPoint, Qt
+from PySide6.QtCore import QModelIndex, QPoint, QRect, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.object_inspection.fields_view import FieldRow, FieldsView, RowFonts
+from ax_devil.modules.object_inspection import fields_view
+from ax_devil.modules.object_inspection.fields_view import FieldRow, FieldsView, RowFonts, Section, id_row
+from ax_devil.modules.scene.inspection import InspectionField
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -38,6 +41,14 @@ def test_copy_icons_copy_the_full_id_and_the_raw_section_as_json(qtbot: QtBot, m
     )
     scene = Scene(time_slice=TimeSlice(start=0, end=0))
     scene.add_entity(entity)
+    made: list[None] = []
+    to_json = fields_view._json_of
+
+    def counting_json(items: Sequence[InspectionField]) -> str:
+        made.append(None)
+        return to_json(items)
+
+    monkeypatch.setattr(fields_view, "_json_of", counting_json)
     page = ObjectPage(_ID, {"Raw": False})
     qtbot.addWidget(page)
     page.resize(200, 400)  # Too narrow for the whole id
@@ -46,6 +57,8 @@ def test_copy_icons_copy_the_full_id_and_the_raw_section_as_json(qtbot: QtBot, m
     fields = page.findChild(FieldsView)
     assert fields is not None
     model = fields.model()
+    fields.grab()
+    assert made == []  # Painting the Raw caption does not build the JSON it would copy
     copy_x = fields.viewport().width() - 5
 
     def copy_at(index: QModelIndex) -> str:
@@ -76,3 +89,21 @@ def test_copy_icons_copy_the_full_id_and_the_raw_section_as_json(qtbot: QtBot, m
     monkeypatch.setattr(FieldRow, "label_px", counting)
     page.update_scene(scene, 1)  # A frame that only brings new values measures no label again
     assert measured == []
+
+
+def test_fields_view_minimum_width_does_not_depend_on_its_rows(qtbot: QtBot) -> None:
+    view = FieldsView({})
+    qtbot.addWidget(view)
+    view.show()
+    long_label = "candidates.human.attributes.confidence"
+    widths = set()
+    for sections, lead in (
+        ((), ()),
+        ((Section("A", (FieldRow("x", "1"),)),), (id_row(_ID),)),
+        ((Section("A", (FieldRow(long_label, "1"),)),), ()),
+        ((Section("A", tuple(FieldRow(f"k{n}", "1") for n in range(300))),), ()),  # Enough rows for a scroll bar
+    ):
+        view.set_sections(sections, lead)
+        widths.add(view.minimumSizeHint().width())
+    assert len(widths) == 1  # The panel does not change width from one object to the next
+    assert FieldRow(long_label, "1").cut_text(QRect(0, 0, 400, 20), RowFonts.current(), 60) is not None  # and the label

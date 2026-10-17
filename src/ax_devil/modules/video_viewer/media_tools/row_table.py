@@ -50,7 +50,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.chip import paint_tag
-from ax_devil.modules.chrome.copy_cell import COPY_PX, COPY_TOOLTIP, CopiedMark, paint_copy_icon
+from ax_devil.modules.chrome.copy_cell import COPY_TOOLTIP, CopiedMark, copy_column_px, paint_copy_icon
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import paint_row_background
 from ax_devil.modules.chrome.theme import FLUSH_VIEW, category_color
@@ -142,11 +142,11 @@ _COMFORTABLE_CHARS = {
 }
 _LEAST_CHARS = {
     CellKind.ID_DOT: 10,
-    CellKind.TEXT: 12,
+    CellKind.TEXT: 8,
     CellKind.MONO: 6,
     CellKind.NUMBER: 4,
     CellKind.PRESENCE: 4,
-    CellKind.TAG: 12,
+    CellKind.TAG: 6,
     CellKind.ID_CHIPS: _MIN_ID_CHARS + 4,  # An id, then room for ", +n".
 }
 # The text role of the kinds that show a single text.
@@ -489,7 +489,7 @@ class _CellDelegate(QStyledItemDelegate):
         # What the view tells about the pointer and the last copy, for the copy column's icon.
         self.hover_row = -1
         self.copied_key: Hashable | None = None
-        # The last shown column before the copy column, which gets more room on its right to keep clear of the icon.
+        # The last shown column, which gets more room on its right to keep its text clear of the edge and the copy icon.
         self.last_section = -1
         self.tail_px = 0
         # The row and the elision of the cell being painted, for the painters.
@@ -669,9 +669,12 @@ class RowTableView(QTreeView):
         self._laying_out = False
         self._natural: list[int] = []  # Per column: its width for its longest value.
         self._floor: list[int] = []  # Per column: the narrowest it is before other columns are hidden.
-        self._minimum: list[int] = []  # Per column: the narrowest it ever shrinks to.
+        self._minimum: list[int] = []  # Per column: the narrowest it is for the minimum size; independent of the rows.
+        self._least: list[int] = []  # Per column: the narrowest it is shrunk to for its rows.
         self._empty: list[bool] = []  # Per column: whether it shows nothing in any row.
-        self._tail = -1  # The last shown column before the copy column; it is wider by the delegate's tail_px.
+        self._tail = (
+            -1
+        )  # The last shown column; it is wider by the delegate's tail_px, to keep its text off the right edge.
         self._user_widths = _REMEMBERED_WIDTHS.setdefault(table_key, {}) if table_key is not None else {}
         self._delegate = _CellDelegate(model, self)
         self._copied = CopiedMark(self, self._copied_changed)
@@ -702,8 +705,6 @@ class RowTableView(QTreeView):
         model.modelAboutToBeReset.connect(self._save_scroll)
         model.modelReset.connect(self._rows_changed)
         model.valuesChanged.connect(self._values_changed)
-        self._bar_shown = False
-        self.verticalScrollBar().rangeChanged.connect(self._scroll_range_changed)
         model.modelReset.connect(self._restore_scroll)
         self.clicked.connect(self._activate_index)
         follow_appearance(self, self._apply_metrics)
@@ -731,15 +732,21 @@ class RowTableView(QTreeView):
         return self._delegate.shown_text(self._rows_model.index(row, section), self.columnWidth(section))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
-        """Return the width of the columns that are never hidden, at their narrowest, and the scroll bar if shown."""
+        """Return the width of the columns that are never hidden, at their narrowest, and of the scroll bar.
+
+        It depends on the columns and the text size only, never on the rows, so the panel around the table keeps
+        its width as contents change.
+        """
         never_hidden = [
             self._minimum[section]
             for section, column in enumerate(self._rows_model.columns)
             if column.priority == 0 or column.stretch or column.cell is CellKind.COPY
         ]
         bar = self.verticalScrollBar()
-        scroll = bar.sizeHint().width() if bar.maximum() > 0 else 0
-        tail = self._delegate.tail_px if self._rows_model.copy_section >= 0 else 0
+        scroll = (
+            bar.sizeHint().width() if self.verticalScrollBarPolicy() != Qt.ScrollBarPolicy.ScrollBarAlwaysOff else 0
+        )
+        tail = self._delegate.tail_px
         return QSize(sum(never_hidden) + tail + scroll, super().minimumSizeHint().height())
 
     def viewportEvent(self, event: QEvent) -> bool:  # noqa: N802
@@ -846,19 +853,12 @@ class RowTableView(QTreeView):
         """Fit the columns to the new rows; the rows' set only changes with a model reset."""
         self._measure()
         self._layout_columns()
-        self.updateGeometry()
 
     def _values_changed(self) -> None:
         """Fit the columns again if one has started or stopped showing anything; value-only updates measure nothing."""
         columns = self._rows_model
         if any(columns.is_blank(section) != blank for section, blank in enumerate(self._empty)):
             self._rows_changed()
-
-    def _scroll_range_changed(self, minimum: int, maximum: int) -> None:
-        """Tell the layout the minimum width when the scroll bar, which it includes, appears or goes."""
-        if (maximum > 0) != self._bar_shown:
-            self._bar_shown = maximum > 0
-            self.updateGeometry()
 
     def _real(self, shown: Sequence[int]) -> list[int]:
         """Return the sections among *shown* that are not the copy column."""
@@ -877,15 +877,18 @@ class RowTableView(QTreeView):
 
     def _measure(self) -> None:
         """Measure every column: its width for its longest value, the width below which other columns are hidden, the
-        narrowest it ever shrinks to, and whether it shows nothing at all.
+        narrowest it is shrunk to for its rows, and whether it shows nothing at all.
+
+        The minimum size comes from the column definitions and fonts alone: *width_chars* characters or the title,
+        whichever is wider. Values never enter it, so it does not change as rows come and go.
         """
         mono = QFontMetrics(TextRole.MONO.font())
         caption = QFontMetrics(TextRole.CAPTION.font())
-        self._natural, self._floor, self._minimum, self._empty = [], [], [], []
+        self._natural, self._floor, self._minimum, self._least, self._empty = [], [], [], [], []
         for section, column in enumerate(self._rows_model.columns):
             if column.cell is CellKind.COPY:
-                for sizes in (self._natural, self._floor, self._minimum):
-                    sizes.append(COPY_PX)
+                for sizes in (self._natural, self._floor, self._minimum, self._least):
+                    sizes.append(copy_column_px())
                 self._empty.append(False)
                 continue
             chrome = self._delegate.chrome_px(column.cell)
@@ -894,34 +897,32 @@ class RowTableView(QTreeView):
             if column.sort_key is not None:
                 title += TextRole.CAPTION.px + Space.XS
             least_chars = column.width_chars if column.width_chars is not None else _LEAST_CHARS[column.cell]
-            texts: list[str] = []
-            char: float = mono.horizontalAdvance("0")
-            if column.cell in _TEXT_ROLES:
-                metrics = QFontMetrics(_TEXT_ROLES[column.cell].font())
-                texts = self._rows_model.column_texts(section)
-                widest = max(texts, key=metrics.horizontalAdvance, default="")
-                if widest:  # What a character costs in the text shown, not in an average one.
-                    char = metrics.horizontalAdvance(widest) / len(widest)
+            role = _TEXT_ROLES.get(column.cell, TextRole.MONO)
+            metrics = mono if role is TextRole.MONO else QFontMetrics(role.font())
+            char = metrics.horizontalAdvance("0") if role is TextRole.MONO else metrics.averageCharWidth()
             # One pixel of slack: Qt elides text whose advance is exactly the width it is given.
             least = math.ceil(least_chars * char) + chrome + 1
             comfortable = math.ceil(max(_COMFORTABLE_CHARS[column.cell], least_chars) * char) + chrome + 1
             if column.cell in _TEXT_ROLES:
+                texts = self._rows_model.column_texts(section)
                 longest = max((metrics.horizontalAdvance(text) + 1 for text in texts), default=0) + chrome
                 if column.priority > 0 and not column.stretch:  # Shown whole, or hidden.
-                    least = comfortable = longest
+                    comfortable = longest
             else:
                 longest = comfortable
             pad = _pad(section)
-            hard = max(min(least, longest), title) + pad
             self._natural.append(max(longest, title) + pad)
-            self._minimum.append(hard)
             self._floor.append(max(min(comfortable, longest), title) + pad)
+            self._minimum.append(max(least, title) + pad)
+            self._least.append(min(self._minimum[-1], self._floor[-1]))
             self._empty.append(self._rows_model.is_blank(section))
 
     def _pref(self, section: int) -> int:
         """Return the width *section* would like: the one the user gave it, else the width of its content."""
-        natural = self._natural[section] + (self._delegate.tail_px if section == self._tail else 0)
-        return self._user_widths.get(self._rows_model.columns[section].title, natural)
+        tail = self._delegate.tail_px if section == self._tail else 0
+        saved = self._user_widths.get(self._rows_model.columns[section].title)
+        # A width saved at another text size may be below what the column now needs at the very least.
+        return self._natural[section] + tail if saved is None else max(saved, self._least[section] + tail)
 
     def _floor_of(self, section: int) -> int:
         """Return the width below which *section* is not shrunk while other columns can be hidden."""
@@ -929,9 +930,7 @@ class RowTableView(QTreeView):
 
     def _least_of(self, section: int) -> int:
         """Return the narrowest *section* is ever shrunk to."""
-        return min(
-            self._minimum[section] + (self._delegate.tail_px if section == self._tail else 0), self._pref(section)
-        )
+        return min(self._least[section] + (self._delegate.tail_px if section == self._tail else 0), self._pref(section))
 
     def _fit(self, preferred: dict[int, int], room: int, floors: dict[int, int]) -> dict[int, int]:
         """Return *preferred* widths, or all shrunk toward their *floors* in proportion to what they can give up if
@@ -963,7 +962,7 @@ class RowTableView(QTreeView):
             return sum(self._floor_of(s) if s in (copy, absorber) else self._pref(s) for s in shown)
 
         def point_tail() -> None:
-            self._tail = self._real(shown)[-1] if copy >= 0 else -1
+            self._tail = self._real(shown)[-1]
 
         def hide(candidates: list[int]) -> None:
             shown.remove(max(candidates, key=lambda section: (columns[section].priority, section)))
@@ -977,7 +976,7 @@ class RowTableView(QTreeView):
             hide([s for s in hideable() if self._empty[s]])
         while sum(self._floor_of(s) for s in shown) > available and hideable():
             hide(hideable())
-        copy_px = COPY_PX if copy in shown else 0
+        copy_px = copy_column_px() if copy in shown else 0
         absorber = self._absorber_of(shown)
         real = self._real(shown)
         floors = {section: self._floor_of(section) for section in real}
@@ -996,7 +995,7 @@ class RowTableView(QTreeView):
             widths = {**auto, **self._fit(own, spare - sum(auto.values()), floors), absorber: floors[absorber]}
         widths[absorber] += max(0, available - copy_px - sum(widths.values()))
         if copy in shown:
-            widths[copy] = COPY_PX
+            widths[copy] = copy_column_px()
         return widths
 
     def _layout_columns(self) -> None:
@@ -1007,7 +1006,7 @@ class RowTableView(QTreeView):
             return
         widths = self._column_widths(self.viewport().width())
         last = self._real(sorted(widths))[-1]
-        self._delegate.last_section = last if self._rows_model.copy_section >= 0 else -1
+        self._delegate.last_section = last
         header = self.header()
         self._laying_out = True
         try:
@@ -1035,9 +1034,9 @@ class RowTableView(QTreeView):
         saved = self._user_widths.get(title)
         shown = [other for other in range(len(columns)) if not self._header.isSectionHidden(other)]
         self._user_widths[title] = new  # Provisionally, to know which column then takes the leftover.
-        copy_px = COPY_PX if self._rows_model.copy_section in shown else 0
+        copy_px = copy_column_px() if self._rows_model.copy_section in shown else 0
         reserved = copy_px + sum(self._floor_of(other) for other in self._real(shown) if other != section)
-        applied = max(self._minimum[section], min(new, self.viewport().width() - reserved))
+        applied = max(self._least[section], min(new, self.viewport().width() - reserved))
         if applied == old and saved is None:
             del self._user_widths[title]
         else:

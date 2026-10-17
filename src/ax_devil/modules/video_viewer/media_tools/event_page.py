@@ -88,7 +88,7 @@ class EventPage(QWidget):
         self._details.set_sections(
             (),
             (
-                FieldRow("kind", event_summary(event), copy=event.label, tag=event.kind, min_chars=0),
+                FieldRow("kind", event_summary(event), copy=event.label, tag=event.kind),
                 FieldRow("time", format_frame_time(frame_id.timestamp_monotime_us)),
                 FieldRow("frame", f"#{frame_id.sequence_id}"),
             ),

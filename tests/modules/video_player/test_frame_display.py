@@ -8,6 +8,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.appearance import notify_text_size_applied
 from ax_devil.modules.video_player.constants import VIDEO_MIN_WIDTH
 from ax_devil.modules.video_player.ui.draggable import DraggableHandle, DraggablePanel, panel_width
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
@@ -246,13 +247,18 @@ def test_side_panel_opening_during_resize_keeps_content_and_video_visible(qtbot:
     assert not display.viewport.size().isEmpty()
 
 
-def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
-    """Content that grows, as after a larger text size, widens the open panel instead of being clipped."""
+def test_side_panel_width_ignores_content_changes_until_the_text_size_is_applied(qtbot: QtBot) -> None:
+    """Content that changes size does not move the panel; a text-size change refits it to the content."""
     _window, display, panel, content = _display_in_window(qtbot, 1200)
     display.set_side_panel_open(True)
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    width = panel.width()
 
     content.setMinimumWidth(620)
+    QCoreApplication.processEvents()
+    assert panel.width() == width
+
+    notify_text_size_applied()
     qtbot.waitUntil(lambda: panel.width() >= 620)
     assert display.is_side_panel_open()
 

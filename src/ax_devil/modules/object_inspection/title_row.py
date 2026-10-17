@@ -46,7 +46,18 @@ class TitleRow(QWidget):
         painter.drawEllipse(QRect(rect.left(), rect.top() + (rect.height() - dot) // 2, dot, dot))
         painter.setOpacity(1.0)
         left = rect.left() + dot + Space.M
-        left += self._draw(painter, left, rect, TextRole.STRONG.font(), self._class_name, rect.right() - left) + Space.M
+        pill_px = QFontMetrics(TextRole.SMALL.font()).horizontalAdvance(self._pill) + 2 * Space.M if self._pill else 0
+        # The state is short and says more than the class does, so the class gives way to it.
+        class_room = rect.right() + 1 - left - (pill_px + Space.M if pill_px else 0)
+        class_px = self._draw(painter, left, rect, TextRole.STRONG.font(), self._class_name, class_room)
+        left += class_px + Space.M
+        cut = (
+            class_px < QFontMetrics(TextRole.STRONG.font()).horizontalAdvance(self._class_name)
+            or left + pill_px > rect.right() + 1
+        )
+        tip = f"{self._class_name} {self._pill}".strip() if cut else ""
+        if tip != self.toolTip():
+            self.setToolTip(tip)
         if self._pill and left < rect.right():
             color = (
                 category_color(self._pill_category, palette)

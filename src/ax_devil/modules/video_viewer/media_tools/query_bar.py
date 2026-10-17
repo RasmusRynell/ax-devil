@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.scene.query import Query, QueryToken, TokenKind, compile_query, tokenize
@@ -81,8 +82,8 @@ class QueryBar(QWidget):
         self._help.setToolTip("Query syntax")
         self._help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        self._note = QLabel(self)
-        self._note.setWordWrap(True)
+        # One line that never widens the page: a long field path is cut in the middle, whole in the tooltip.
+        self._note = ElidedLabel("", Qt.TextElideMode.ElideMiddle, self)
         self._note.setStyleSheet(_MUTED)
         TextRole.SMALL.apply(self._note)
         self._note.hide()
@@ -122,7 +123,7 @@ class QueryBar(QWidget):
 
     def set_note(self, note: str) -> None:
         """Show ``note`` as a muted line beneath the field; an empty note hides the line."""
-        self._note.setText(note)
+        self._note.set_full_text(note)
         self._note.setVisible(bool(note))
 
     def _apply_appearance(self) -> None:

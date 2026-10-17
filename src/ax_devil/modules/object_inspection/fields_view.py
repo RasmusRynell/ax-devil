@@ -51,7 +51,7 @@ from PySide6.QtWidgets import (
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.chip import paint_tag
-from ax_devil.modules.chrome.copy_cell import COPY_PX, COPY_TOOLTIP, CopiedMark, paint_copy_icon
+from ax_devil.modules.chrome.copy_cell import COPY_TOOLTIP, CopiedMark, copy_column_px, paint_copy_icon
 from ax_devil.modules.chrome.list_row import paint_row_background
 from ax_devil.modules.chrome.section_caption import paint_section_caption
 from ax_devil.modules.chrome.theme import FLUSH_VIEW, category_color
@@ -66,6 +66,8 @@ EVENTS_SECTION = "Events"
 _ITEM_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 _ARROW_PX = Space.M  # Rows and captions start here, so their text lines up with other content at Space.M plus this.
 _VALUE_CHARS = 14  # The characters of a value, such as an id, that stay visible however narrow the view is.
+_ID_CHARS = 20  # The characters of a long value, such as an id, that the label column leaves where it can.
+_LABEL_CHARS = 14  # The characters of a label that stay visible; a longer label is cut in the middle at the narrowest.
 _EVENT_TEXT_CHARS = (
     4  # An event's text is left out when it has less room than this, rather than shown as a lone ellipsis.
 )
@@ -128,8 +130,8 @@ class Row(ABC):
         """Return the width the row's label needs in the label column, 0 if it has none."""
         return 0
 
-    def value_min_px(self, fonts: RowFonts) -> int:
-        """Return the width the row's value keeps before its label gives way."""
+    def value_px(self, fonts: RowFonts) -> int:
+        """Return the width the row's value needs, 0 if it has none."""
         return 0
 
     def cut_text(self, rect: QRect, fonts: RowFonts, label_width: int) -> str | None:
@@ -150,7 +152,7 @@ class FieldRow(Row):
     """A *label* in muted text and its *text* in monospace, with a thin bar for a score, or after a colored *tag*.
 
     Copying gives *copy*, the value in full (the text itself if not given); a long value is cut in the way *elide*
-    says, but keeps at least *min_chars* characters visible after its tag.
+    says.
     """
 
     def __init__(
@@ -162,10 +164,8 @@ class FieldRow(Row):
         fraction: float | None = None,
         tag: str | None = None,
         elide: Qt.TextElideMode = Qt.TextElideMode.ElideRight,
-        min_chars: int = _VALUE_CHARS,
     ) -> None:
         self.label = label
-        self._min_chars = min_chars
         self._text = text
         self._copy = text if copy is None else copy
         self._fraction = fraction
@@ -193,9 +193,9 @@ class FieldRow(Row):
         """Return the width of the label."""
         return fonts.body_metrics.horizontalAdvance(self.label) + 1
 
-    def value_min_px(self, fonts: RowFonts) -> int:
-        """Return the width of the tag and *min_chars* characters."""
-        return self._tag_width() + self._min_chars * fonts.mono_metrics.averageCharWidth()
+    def value_px(self, fonts: RowFonts) -> int:
+        """Return the width of the tag and the text."""
+        return self._tag_width() + fonts.mono_metrics.horizontalAdvance(self._text) + 1
 
     def _tag_width(self) -> int:
         """Return the width of the tag and the gap after it, or 0 without a tag."""
@@ -269,11 +269,17 @@ class EventRow(Row):
         """Return the width of the time."""
         return fonts.mono_metrics.horizontalAdvance(self.label) + 1
 
-    def value_min_px(self, fonts: RowFonts) -> int:
-        """Return the width of the kind tag."""
+    def _tag_px(self) -> int:
+        """Return the width of the kind tag and the gap after it."""
         event = self.event
         assert event is not None
-        return QFontMetrics(TextRole.SMALL.font()).horizontalAdvance(event.kind) + 2 * Space.M
+        return QFontMetrics(TextRole.SMALL.font()).horizontalAdvance(event.kind) + 3 * Space.M
+
+    def value_px(self, fonts: RowFonts) -> int:
+        """Return the width of the tag and the label."""
+        event = self.event
+        assert event is not None
+        return self._tag_px() + fonts.body_metrics.horizontalAdvance(event.label)
 
     def _value_left(self, rect: QRect, label_width: int) -> int:
         return rect.left() + label_width + Space.M
@@ -310,8 +316,7 @@ class EventRow(Row):
         """Return the whole event if its time, kind or label is cut off."""
         event = self.event
         assert event is not None
-        tag = QFontMetrics(TextRole.SMALL.font()).horizontalAdvance(event.kind) + 3 * Space.M
-        shown = rect.right() + 1 - self._value_left(rect, label_width) - tag
+        shown = rect.right() + 1 - self._value_left(rect, label_width) - self._tag_px()
         if (
             fonts.mono_metrics.horizontalAdvance(self.label) > label_width
             or fonts.body_metrics.horizontalAdvance(event.label) > shown
@@ -440,6 +445,11 @@ class FieldsModel(QAbstractItemModel):
             return self._lead[index.row()] if index.row() < len(self._lead) else None
         return self._sections[index.internalId() - 1].rows[index.row()]
 
+    def has_copy_at(self, index: QModelIndex | QPersistentModelIndex) -> bool:
+        """Return whether the row or caption at *index* has a copy icon, without making the text it would copy."""
+        section = self.section_at(index)
+        return self.row_at(index) is not None or (section is not None and section.copy is not None)
+
     def copy_text_at(self, index: QModelIndex | QPersistentModelIndex) -> str | None:
         """Return what copying the row or caption at *index* puts on the clipboard, or ``None`` if it has no copy."""
         row, section = self.row_at(index), self.section_at(index)
@@ -498,7 +508,7 @@ class FieldsModel(QAbstractItemModel):
 
 def _row_area(rect: QRect) -> QRect:
     """Return the part of a row's *rect* its content gets: after the fold arrow's indent and before the copy column."""
-    return rect.adjusted(_ARROW_PX, 0, -(COPY_PX + Space.S), 0)
+    return rect.adjusted(_ARROW_PX, 0, -(copy_column_px() + Space.S), 0)
 
 
 class _Delegate(QStyledItemDelegate):
@@ -537,7 +547,7 @@ class _Delegate(QStyledItemDelegate):
             return super().helpEvent(event, view, option, index)
         text = None
         row = self._fields.row_at(index)
-        if self._fields.copy_text_at(index) is not None and event.pos().x() > option.rect.right() - COPY_PX:
+        if self._fields.has_copy_at(index) and event.pos().x() > option.rect.right() - copy_column_px():
             text = COPY_TOOLTIP
         elif row is not None:
             text = row.cut_text(_row_area(option.rect), self.fonts, self.label_width)
@@ -555,17 +565,18 @@ class _Delegate(QStyledItemDelegate):
         """
         row, section = self._fields.row_at(index), self._fields.section_at(index)
         palette = QGuiApplication.palette()  # The view's own palette has the theme's selection colors.
-        has_copy = self._fields.copy_text_at(index) is not None
+        has_copy = self._fields.has_copy_at(index)
+        copy_px = copy_column_px()
         painter.save()
         painter.setClipRect(option.rect)
-        body = option.rect.adjusted(0, 0, -COPY_PX if has_copy else 0, 0)
+        body = option.rect.adjusted(0, 0, -copy_px if has_copy else 0, 0)
         if row is not None:
             row.paint(painter, _row_area(option.rect), palette, self.fonts, self.label_width)
         elif section is not None:
             self._paint_section(painter, option, body, palette, section, self._view.isExpanded(index))
         if has_copy:
             copied = self.copied is not None and self.copied.key == self._fields.copy_key_at(index)
-            copy_rect = QRect(option.rect.right() - COPY_PX + 1, option.rect.top(), COPY_PX, option.rect.height())
+            copy_rect = QRect(option.rect.right() - copy_px + 1, option.rect.top(), copy_px, option.rect.height())
             paint_copy_icon(painter, copy_rect, palette, bright=index == self.hover, copied=copied)
         painter.restore()
 
@@ -615,7 +626,6 @@ class FieldsView(QTreeView):
         self._delegate = _Delegate(self, self._fields_model)
         self._measured = (0, 0)
         self._measured_for = -1
-        self._minimum_width = 0
         self._copied = CopiedMark(self, lambda: self.viewport().update())
         self._delegate.copied = self._copied
         self.setModel(self._fields_model)
@@ -688,7 +698,7 @@ class FieldsView(QTreeView):
         index = self.indexAt(position)
         if (
             event.button() == Qt.MouseButton.LeftButton
-            and position.x() >= self.viewport().width() - COPY_PX
+            and position.x() >= self.viewport().width() - copy_column_px()
             and self._copy(index)
         ):
             self.selectionModel().setCurrentIndex(index, QItemSelectionModel.SelectionFlag.NoUpdate)
@@ -749,42 +759,56 @@ class FieldsView(QTreeView):
             self._syncing = False
 
     def _measure(self) -> tuple[int, int]:
-        """Return the width of the longest label and the room the values keep, measured again only when the rows or
-        the fonts change, not when a frame only brings new values.
+        """Return the width of the longest label and of the widest value, measured again only when the rows or the
+        fonts change, not when a frame only brings new values.
         """
         if self._measured_for != self._fields_model.structure:
             fonts = self._delegate.fonts
             rows = self._fields_model.rows()
             self._measured = (
                 max((row.label_px(fonts) for row in rows), default=0),
-                max((row.value_min_px(fonts) for row in rows), default=0),
+                max((row.value_px(fonts) for row in rows), default=0),
             )
             self._measured_for = self._fields_model.structure
         return self._measured
 
     def _fit_labels(self) -> None:
-        """Make the label column as wide as the longest label, unless that leaves the values too little room; the
-        view is never narrower than that, so no label and no value's minimum is cut.
+        """Make the label column as wide as the longest label, but leave a long value such as an id its room where
+        it can, and the label at least a third of the row; a cut label is cut in the middle.
         """
-        longest, value_room = self._measure()
+        fonts = self._delegate.fonts
+        longest, widest = self._measure()
         inner = _row_area(QRect(0, 0, self.viewport().width(), 1)).width()
-        width = min(longest, max(inner - Space.M - value_room, inner // 3))
+        value_room = min(widest, _ID_CHARS * fonts.mono_metrics.averageCharWidth())
+        width = min(longest, max(inner // 3, inner - Space.M - value_room))
         if width != self._delegate.label_width:
             self._delegate.label_width = width
             self.viewport().update()
-        around = -_row_area(QRect(0, 0, 0, 1)).width()  # What a row spends on the arrow and the copy column.
-        minimum = longest + Space.M + value_room + around
-        if minimum != self._minimum_width:
-            self._minimum_width = minimum
-            self.updateGeometry()
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
-        """Return the width that shows every label and the start of every value."""
-        return QSize(self._minimum_width, super().minimumSizeHint().height())
+        """Return a width that does not depend on the rows: some of every label, the start of a value and the scroll
+        bar if there may be one, so the panel does not change width from one object to the next.
+        """
+        fonts = self._delegate.fonts
+        around = -_row_area(QRect(0, 0, 0, 1)).width()  # What a row spends on the arrow and the copy column.
+        bar = (
+            0
+            if self.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            else self.verticalScrollBar().sizeHint().width()
+        )
+        width = (
+            _LABEL_CHARS * fonts.body_metrics.averageCharWidth()
+            + Space.M
+            + _VALUE_CHARS * fonts.mono_metrics.averageCharWidth()
+            + around
+            + bar
+        )
+        return QSize(width, super().minimumSizeHint().height())
 
     def _apply_metrics(self) -> None:
         self._measured_for = -1
         self._delegate.load_metrics()
         self._fit_labels()
+        self.updateGeometry()
         self.doItemsLayout()
         self.viewport().update()

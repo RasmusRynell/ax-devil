@@ -6,11 +6,11 @@ Allows adding any widget to a side panel that can be expanded/collapsed via drag
 
 from typing import Protocol
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QPropertyAnimation, QSize, Qt, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QPropertyAnimation, QSize, Qt, Signal
 from PySide6.QtGui import QCursor, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPalette
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
-from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.appearance import follow_appearance, on_text_size_applied
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
@@ -184,7 +184,6 @@ class DraggablePanel(FadingWidget):
         self._user_width: int | None = None  # The width the user last dragged to; kept for the session.
         self._dragged_width = 0  # Where the handle is, which may be narrower than the panel can get.
         self._pane_width: int | None = None
-        self._fitted_width = 0  # The open width the panel was last fitted for.
 
         # Animation components (will be initialized in _setup_animations)
         self.animation: QPropertyAnimation
@@ -206,7 +205,9 @@ class DraggablePanel(FadingWidget):
 
         self._setup_animations()
         self._setup_ui()
-        follow_appearance(self, self._refit)  # The default width follows the text size.
+        # Refit only when the pane or the appearance changes, never on content changes: the width stays put.
+        follow_appearance(self, self._refit)
+        on_text_size_applied(self._refit)  # The new text size has reached the content, so its minimum is final.
 
         # Start collapsed
         self.setFixedWidth(self.collapsed_width)
@@ -255,7 +256,6 @@ class DraggablePanel(FadingWidget):
 
     def _refit(self) -> None:
         """Give an open panel the open width for the current pane and content; a closed panel stays closed."""
-        self._fitted_width = self.expanded_width
         if self.is_collapsed:
             return
         if self.animation.state() == QAbstractAnimation.State.Running:
@@ -271,15 +271,6 @@ class DraggablePanel(FadingWidget):
             return 0
         margins = self._content_layout.contentsMargins()
         return content.minimumSizeHint().expandedTo(content.minimumSize()).width() + margins.left() + margins.right()
-
-    def event(self, event: QEvent) -> bool:
-        """Refit an open panel when its content's size changes, as after a live text-size change.
-
-        A width the user dragged to stays until the content size changes.
-        """
-        if event.type() == QEvent.Type.LayoutRequest and self.expanded_width != self._fitted_width:
-            self._refit()
-        return super().event(event)
 
     def _setup_animations(self) -> None:
         """Setup smooth animations for expand/collapse."""

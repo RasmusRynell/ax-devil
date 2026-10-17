@@ -34,7 +34,6 @@ from ax_devil.modules.video_viewer.media_tools.presence import Presence
 from ax_devil.modules.video_viewer.media_tools.query_bar import QueryBar
 from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
 
-_FILE_NOTE = "File scope filters id, class and events. Attribute filters apply in Frame scope."
 _MUTED = "color: palette(placeholder-text);"
 # Paths every record has, whatever the scope, so a query that names only these never needs the entity's full fields.
 _ID = "id"
@@ -391,7 +390,7 @@ class ObjectsPage(QWidget):
         )
 
     def _table(self, columns: Sequence[Column], key: str, sort_column: int, order: Qt.SortOrder) -> _ScopeTable:
-        model = RowTableModel(columns, self, copy_text=lambda row: row.entity_id)
+        model = RowTableModel(columns, self)
         view = RowTableView(model, self, table_key=key)
         view.sort_by(sort_column, order)
         view.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
@@ -485,7 +484,7 @@ class ObjectsPage(QWidget):
             query = self._query
             rows = [] if history is None else [self._file_row(history, objects) for objects in histories]
             self._file_shown = [row for row in rows if query.matches(row.record)]
-        self._show(self._file_shown, len(histories), _FILE_NOTE, "No objects in the file")
+        self._show(self._file_shown, len(histories), "", "No objects in the file")
 
     def _show(self, shown: Sequence[Any], total: int, note: str, none_text: str) -> None:
         """Put *shown* of *total* objects in the table of the current scope, along with the note under the query."""

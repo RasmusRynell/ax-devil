@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from enum import Enum
 from functools import partial
 from html import escape
 from typing import Any
 
-from PySide6.QtCore import Signal
-from PySide6.QtGui import QAction, QShowEvent
+from PySide6.QtCore import QSize, Signal
+from PySide6.QtGui import QAction, QFontMetrics, QShowEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
     QLayout,
@@ -48,6 +50,8 @@ from .scene_render_catalog_selector import SceneRenderCatalogSelector
 
 _HISTORY_NOTICE_MARGINS = (0, Space.M, Space.M, 0)
 _MENU_CONTENT_MARGINS = (Space.M, Space.M, Space.M, Space.M)
+_MIN_CHARS = 37
+"""The panel's narrowest width in average characters of body text: room for the widest page header and list."""
 
 
 class MediaToolsSection(Enum):
@@ -258,6 +262,14 @@ class MediaToolsPanel(QWidget):
         self.filter_model.changed.connect(self._on_filter_changed)
         self._on_filter_changed()
 
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Return the same narrowest width whichever page shows, so the panel never changes width with its contents.
+
+        It comes from the text size alone. Every page's own minimum is at most this, so none of them is cut.
+        """
+        width = _MIN_CHARS * QFontMetrics(QApplication.font()).averageCharWidth()
+        return QSize(width, super().minimumSizeHint().height())
+
     def _build_menu(self, export_action: QAction | None, timing_controls: QWidget | None) -> None:
         """Fill the overflow menu: one submenu per control group, then the viewer's export command."""
         catalog_menu = self._section_menu(MediaToolsSection.RENDER_CATALOG, self._catalog_selector)
@@ -369,7 +381,8 @@ class MediaToolsPanel(QWidget):
 
     def mark_history_out_of_date(self, reason: str) -> None:
         """Say why the history shown is out of date; the next `set_scene_history` replaces the notice."""
-        self._history_notice.setText(reason)
+        # An error names paths and lanes, which are one word to a label; it may break after their separators.
+        self._history_notice.setText(re.sub(r"([/\\._:-])", "\\1\u200b", reason))
         self._history_notice.setVisible(True)
 
     def show_object(self, entity_id: str) -> None:
