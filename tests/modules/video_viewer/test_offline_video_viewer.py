@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListView,
     QPushButton,
-    QTabWidget,
+    QTabBar,
     QToolButton,
     QWidget,
 )
@@ -1025,7 +1025,7 @@ class TestOfflineVideoViewerWidget:
         widget.show()
         for side_panel in widget.findChildren(DraggablePanel):
             side_panel.expand()
-        for tabs in widget.findChildren(QTabWidget, "mediaToolsTabs"):
+        for tabs in widget.findChildren(QTabBar, "mediaToolsTabs"):
             tabs.setCurrentIndex(1)
         assert all(log.isVisible() for log in event_logs)
 
@@ -1507,9 +1507,10 @@ class TestOfflineVideoViewerWidget:
             _attach_offline_widget(qtbot, widget)
             lane = _session(widget).lanes[0]
             assert lane.tools_panel is not None and lane.presenter is not None
-            export_button = lane.tools_panel.findChild(QToolButton, "exportVideoButton")
-            assert export_button is not None
-            assert lane.presenter.scene_render_catalog is None and not export_button.isEnabled()
+            more_button = lane.tools_panel.findChild(QToolButton, "mediaToolsMoreButton")
+            assert more_button is not None and more_button.menu() is not None
+            assert lane.export_action in more_button.menu().actions()
+            assert lane.presenter.scene_render_catalog is None and not lane.export_action.isEnabled()
 
             with (
                 patch("ax_devil.modules.video_viewer.export.ExportDialog") as dialog_type,
@@ -1525,7 +1526,7 @@ class TestOfflineVideoViewerWidget:
                 dialog_type.assert_not_called()
 
                 release.set()
-                qtbot.waitUntil(export_button.isEnabled, timeout=10_000)
+                qtbot.waitUntil(lane.export_action.isEnabled, timeout=10_000)
                 widget.export_video()
                 exported = dialog_type.call_args.args[0]
 

@@ -15,7 +15,7 @@ from typing import Any
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QListView
+from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.theme import setup_theme
@@ -28,6 +28,7 @@ from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_viewer.export.encoder import CompressionPreset, VideoEncoder
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.workspace.core import OverlayFile, VideoItem
@@ -199,7 +200,7 @@ def capture(args: argparse.Namespace) -> None:
                 first_lane.display.set_side_panel_open(True)
                 QTest.qWait(250)  # Let the opening animation finish; source-frame readiness is checked separately.
                 if first_lane.tools_panel is not None:
-                    view = first_lane.tools_panel.entity_list.findChild(QListView)
+                    view = first_lane.tools_panel.objects_page.findChild(RowTableView)
                     if view is not None and view.model().rowCount() > 0:
                         rectangle = view.visualRect(view.model().index(0, 0))
                         QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=rectangle.center())

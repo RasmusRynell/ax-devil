@@ -3,30 +3,22 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
-    QLineEdit,
-    QScrollArea,
+    QMenu,
     QSpinBox,
-    QTabWidget,
     QToolButton,
 )
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.filtering import build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
-from ax_devil.modules.scene.model import Entity, EntityId, Scene, TimeSlice
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
-from ax_devil.modules.video_viewer.media_tools import (
-    MediaToolsPanel,
-    MediaToolsSection,
-    OverlayPersistenceControls,
-)
+from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel, OverlayPersistenceControls
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from tests.catalog_helpers import create_catalog
 
@@ -117,53 +109,45 @@ def test_media_tools_panel_open_catalogs_button_requests_catalog_management(
         open_button.click()
 
 
-@pytest.mark.parametrize("button_name", ["entityFilterButton", "renderCatalogButton"])
-def test_media_tools_popups_allow_changing_filters_and_catalog(
-    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, small_catalog_path: Path, button_name: str
+def _submenu(panel: MediaToolsPanel, title: str) -> QMenu:
+    """Return the submenu of the panel's overflow menu whose title starts with *title*."""
+    more_button = panel.findChild(QToolButton, "mediaToolsMoreButton")
+    assert more_button is not None and more_button.menu() is not None
+    (action,) = [action for action in more_button.menu().actions() if action.text().startswith(title)]
+    submenu = action.menu()
+    assert isinstance(submenu, QMenu)
+    return submenu
+
+
+@pytest.mark.parametrize("title", ["Overlay filter", "Catalog"])
+def test_media_tools_menu_allows_changing_filters_and_catalog(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, small_catalog_path: Path, title: str
 ) -> None:
-    """The visible toolbar buttons expose working filter and catalog controls."""
+    """The overflow menu's filter and catalog submenus expose working controls."""
     catalog = create_catalog(qtbot, render_catalog_selection.manager, "Review", base_catalog_path=small_catalog_path)
     panel = MediaToolsPanel(
         render_catalog_selection=render_catalog_selection, filter_model=SessionFilter(build_default_filter_config())
     )
     qtbot.addWidget(panel)
     panel.show()
-    button = panel.findChild(QToolButton, button_name)
-    assert button is not None and button.isVisible()
-    menu = button.menu()
-    assert menu is not None
-    changed: list[bool] = []
-
-    def interact() -> None:
-        try:
-            assert menu.isVisible()
-            if button_name == "entityFilterButton":
-                checkbox = panel.filter_widget.findChild(QCheckBox)
-                assert checkbox is not None and checkbox.isVisible()
-                QTest.mouseClick(checkbox, Qt.MouseButton.LeftButton)
-            else:
-                combo = panel.catalog_selector.findChild(QComboBox, "renderCatalogCombo")
-                assert combo is not None and combo.isVisible()
-                combo.setCurrentIndex(combo.findData(str(catalog.path)))
-            changed.append(True)
-        finally:
-            menu.close()
-
-    signal = (
-        panel.filter_model.changed
-        if button_name == "entityFilterButton"
-        else render_catalog_selection.activeCatalogChanged
-    )
-    with qtbot.waitSignal(signal):
-        # QToolButton's popup runs a nested event loop; interact once that menu opens.
-        QTimer.singleShot(0, interact)
-        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
-    assert changed == [True]
-    if button_name == "renderCatalogButton":
+    submenu = _submenu(panel, title)
+    submenu.popup(panel.mapToGlobal(QPoint(0, 0)))
+    assert submenu.isVisible()
+    if title == "Overlay filter":
+        checkbox = panel.filter_widget.findChild(QCheckBox)
+        assert checkbox is not None and checkbox.isVisible()
+        with qtbot.waitSignal(panel.filter_model.changed):
+            QTest.mouseClick(checkbox, Qt.MouseButton.LeftButton)
+    else:
+        combo = panel.catalog_selector.findChild(QComboBox, "renderCatalogCombo")
+        assert combo is not None and combo.isVisible()
+        with qtbot.waitSignal(render_catalog_selection.activeCatalogChanged):
+            combo.setCurrentIndex(combo.findData(str(catalog.path)))
         assert render_catalog_selection.active_catalog_path() == catalog.path
+    submenu.close()
 
 
-def test_media_tools_panel_id_search_and_filter_button_track_filter_state(
+def test_media_tools_panel_filter_menu_tracks_filter_state(
     qtbot: QtBot,
     render_catalog_selection: SceneRenderCatalogSelection,
 ) -> None:
@@ -171,50 +155,11 @@ def test_media_tools_panel_id_search_and_filter_button_track_filter_state(
         render_catalog_selection=render_catalog_selection, filter_model=SessionFilter(build_default_filter_config())
     )
     qtbot.addWidget(panel)
-    search = panel.findChild(QLineEdit, "entityIdSearch")
-    button = panel.findChild(QToolButton, "entityFilterButton")
-    assert search is not None and button is not None
-    scene = Scene(time_slice=TimeSlice(start=0, end=0))
-    for entity_id in ("Track-12", "track-34"):
-        scene.add_entity(Entity(id=EntityId(entity_id)))
-
-    with qtbot.waitSignal(panel.filter_model.changed):
-        search.setText(" K-1 ")
-    assert list(panel.filter_model.process_scene(scene).entities) == [EntityId("Track-12")]
+    submenu = _submenu(panel, "Overlay filter")
+    assert submenu.title() == "Overlay filter"
 
     total = len(panel.filter_model.options)
     checkbox = panel.filter_widget.findChild(QCheckBox)
     assert checkbox is not None
     checkbox.setChecked(False)
-    assert button.text() == f"Filter {total - 1}/{total}"
-
-
-@pytest.mark.parametrize("dismiss_key", [Qt.Key.Key_Escape, None])
-def test_section_help_stays_open_on_mouse_move(
-    qtbot: QtBot,
-    render_catalog_selection: SceneRenderCatalogSelection,
-    dismiss_key: Qt.Key | None,
-) -> None:
-    """Clicked help survives pointer movement and dismisses with Escape or a click."""
-    panel = MediaToolsPanel(render_catalog_selection=render_catalog_selection, filter_model=SessionFilter())
-    qtbot.addWidget(panel)
-    panel.show()
-    tabs = panel.findChild(QTabWidget, "mediaToolsTabs")
-    assert tabs is not None
-    options = panel.findChild(QScrollArea, "mediaToolsOptions")
-    assert options is not None
-    tabs.setCurrentWidget(options)
-    button = panel.findChild(QToolButton, "mediaToolsSectionInfo_overlay_persistence")
-    assert button is not None
-    assert button.isVisible()
-    assert MediaToolsSection.OVERLAY_PERSISTENCE.title in button.toolTip()
-    QTest.mouseClick(button, Qt.MouseButton.LeftButton)
-    popup = QApplication.activePopupWidget()
-    assert popup is not None
-    QTest.mouseMove(popup, popup.rect().center())
-    assert popup.isVisible()
-    if dismiss_key is None:
-        QTest.mouseClick(popup, Qt.MouseButton.LeftButton)
-    else:
-        QTest.keyClick(popup, dismiss_key)
-    assert QApplication.activePopupWidget() is None
+    assert submenu.title() == f"Overlay filter {total - 1}/{total}"

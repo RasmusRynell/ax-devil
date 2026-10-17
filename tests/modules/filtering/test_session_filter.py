@@ -5,7 +5,7 @@ from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Entity, EntityId, Scene, TimeSlice
 
 
-def test_detached_snapshot_keeps_decoder_predicates_and_search_after_session_edits() -> None:
+def test_detached_snapshot_keeps_decoder_predicates_after_session_edits() -> None:
     config = FilterConfig(
         options=(
             FilterOption(
@@ -22,12 +22,10 @@ def test_detached_snapshot_keeps_decoder_predicates_and_search_after_session_edi
     scene.add_entity(Entity(id=EntityId("Track-B")))
     scene.add_entity(Entity(id=EntityId("other-A")))
     model.set_enabled("tracks", False)
-    model.set_id_query(" -a ")
     snapshot = model.snapshot()
 
     model.set_enabled("tracks", True)
-    model.set_id_query("B")
-    assert list(model.process_scene(scene).entities) == ["Track-B"]
+    assert list(model.process_scene(scene).entities) == ["Track-A", "Track-B", "other-A"]
     assert list(snapshot.process_scene(scene).entities) == ["other-A"]
     assert not snapshot.supports_history_filtering
 
