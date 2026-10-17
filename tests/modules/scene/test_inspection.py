@@ -278,7 +278,8 @@ def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range(
     assert items[("attributes", "make")].value == "volvo"
     assert items[("candidates", "car")].fraction == 0.69
     assert items[("candidates", "bus")].fraction is None
-    assert [path[1] for path in items if path[0] == "candidates"] == ["bus", "car", "truck"]
+    assert items[("candidates", "bus", "attributes", "make")].value == "volvo"
+    assert [path[1] for path in items if path[0] == "candidates" and len(path) == 2] == ["bus", "car", "truck"]
 
 
 def test_conf_falls_back_to_primary_score_unless_observation_reports_confidence() -> None:
