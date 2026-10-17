@@ -52,7 +52,7 @@ from ax_devil.modules.workspace.ui.add_content.analytics_choice import Analytics
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from tests.helpers.dialogs import visible_texts
 from tests.helpers.forms import form_field
-from tests.helpers.workspace import FakeResolutionContext, inline_resolver
+from tests.helpers.workspace import FakeResolutionContext, FakeResolver, inline_resolver
 
 
 def _dialog_context() -> FakeResolutionContext:
@@ -785,7 +785,7 @@ def test_live_stream_numeric_defaults_handle_changed_environment(
     assert form_field(dialog, "Topic Channel", QSpinBox).value() == (8883 if valid else 1)
 
 
-class _Resolver:
+class _Resolver(FakeResolver):
     """Resolve settings naming an existing root into one playlist, and fail for any other root."""
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:

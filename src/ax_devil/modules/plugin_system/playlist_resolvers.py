@@ -8,6 +8,8 @@ Plugin authors implement:
 * ``resolve(settings, token)`` — headless; returns the playlists the settings describe and raises ``ValueError`` or
   ``OSError`` with a user-facing message when the settings are missing, invalid, or point at nothing. It runs on a
   worker thread, possibly beside another call, so it touches no Qt objects and no shared mutable state.
+* ``source_paths(settings)`` — optional; the files and folders the playlists are read from, so a change to them
+  resolves the item again. It runs on a worker thread like ``resolve``; the default is none.
 * ``create_settings_widget()`` — returns a widget that edits settings and calls ``submit_settings(settings)`` when
   the user is ready. Work that would freeze the form, such as scanning a folder, runs through the widget's ``jobs``.
 * ``create_cli_command()`` — optional; builds settings from CLI arguments and passes a ``PlaylistItem`` to the runner
@@ -24,6 +26,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import JobScope, background_jobs
 
 from .base import PluginBase
@@ -67,6 +70,13 @@ class PlaylistResolverPlugin(PluginBase):
     @abstractmethod
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
+
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
+        """Return the files and folders the playlists *settings* describe are read from; the default is none.
+
+        The overlay files the resolved playlists name are watched whatever this returns.
+        """
+        return SourcePaths()
 
     @abstractmethod
     def create_settings_widget(self) -> PlaylistResolverWidget:

@@ -418,7 +418,7 @@ def test_an_unavailable_row_shows_its_reason(qtbot: QtBot) -> None:
 
 def _hidden(label: str) -> WorkspaceBrowserRow:
     """Return a playlist entry row the user hid from playback."""
-    ref = ConsiderationItemRef.playlist_entry("playlist-id", 0)
+    ref = ConsiderationItemRef("item-id", "Suite/a.mp4")
     return WorkspaceBrowserRow(row_id=label, label=label, icon_kind="video", consideration_ref=ref, is_considered=False)
 
 

@@ -365,10 +365,17 @@ def test_discovers_sorted_sequences_with_metadata_and_skips_other_folders(tmp_pa
 
 
 def test_discovers_train_and_test_split_sequences_from_dataset_root(tmp_path: Path) -> None:
-    _make_sequence(tmp_path / "train", "MOT17-02-DPM", create_gt=True)
-    _make_sequence(tmp_path / "test", "MOT17-01-DPM", create_gt=False)
+    train = _make_sequence(tmp_path / "train", "MOT17-02-DPM", create_gt=True)
+    test = _make_sequence(tmp_path / "test", "MOT17-01-DPM", create_gt=False)
 
     assert [seq.name for seq in discover_sequences(tmp_path, NEVER)] == ["MOT17-01-DPM", "MOT17-02-DPM"]
+    sources = MOTChallengeResolverPlugin().source_paths({"root": str(tmp_path)}, NEVER)
+    assert sources.folders == {tmp_path} and sources.files == {train / "seqinfo.ini", test / "seqinfo.ini"}, (
+        "a correction to a sequence's seqinfo.ini resolves the playlist again"
+    )
+    assert MOTChallengeResolverPlugin().source_paths({"root": str(tmp_path / "gone")}, NEVER).folders == {
+        tmp_path / "gone"
+    }
 
 
 def test_discovery_rejects_missing_root(tmp_path: Path) -> None:

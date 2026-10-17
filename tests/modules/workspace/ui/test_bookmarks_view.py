@@ -38,7 +38,7 @@ from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext
+from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, FakeResolver
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
 _LIVE_VIEWER = "ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget"
@@ -48,7 +48,7 @@ def _video(name: str) -> SeekableVideoContent:
     return SeekableVideoContent(display_name=name, source_spec=FileVideoSourceSpec(path=Path(f"/tmp/{name}")))
 
 
-class _NightShift:
+class _NightShift(FakeResolver):
     """A resolver that finds the same two runs every time."""
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:

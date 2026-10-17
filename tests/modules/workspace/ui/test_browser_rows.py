@@ -9,7 +9,6 @@ import pytest
 
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.workspace.core import (
-    ConsiderationItemRef,
     Content,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
@@ -36,7 +35,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
 )
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.contents import make_live_video, make_playlist, make_video
-from tests.helpers.workspace import FakeResolutionContext, content_item, inline_resolver, store_with
+from tests.helpers.workspace import FakeResolutionContext, FakeResolver, content_item, inline_resolver, store_with
 
 
 def browser_sections(
@@ -68,16 +67,8 @@ def _store(*contents: Content) -> WorkspaceStore:
 def test_open_items_are_inputs_to_browser_projection() -> None:
     playlist = make_playlist()
     state, playlist = store_with(playlist)
-    first_open_item = frozenset(
-        {
-            OnScreenWorkspaceItem(kind="playlist_entry", content_id=playlist.content_id, entry_index=0),
-        }
-    )
-    second_open_item = frozenset(
-        {
-            OnScreenWorkspaceItem(kind="playlist_entry", content_id=playlist.content_id, entry_index=1),
-        }
-    )
+    first_open_item = frozenset({playlist.on_screen_item(0)})
+    second_open_item = frozenset({playlist.on_screen_item(1)})
 
     first_rows = item_rows(state, first_open_item)
     second_rows = item_rows(state, second_open_item)
@@ -91,7 +82,7 @@ def test_open_items_are_inputs_to_browser_projection() -> None:
 def test_video_rows_include_overlay_children_targets_refs_and_information() -> None:
     video = make_video("test.mp4", overlay_count=2)
     state, video = store_with(video)
-    state.set_item_considered(ConsiderationItemRef.video_lane(video.content_id, 1), False)
+    state.set_item_considered(video.lane_consideration_ref(0, 1), False)
     open_items = frozenset({OnScreenWorkspaceItem(kind="video", content_id=video.content_id)})
 
     row = item_rows(state, open_items)[0]
@@ -109,7 +100,7 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert ("handler type", "AXIS_JSON") in information.children[0].fields
     assert [child.label for child in row.children] == ["Overlay 1", "Overlay 2"]
     assert row.children[0].activation_target == (video, 0)
-    assert row.children[0].consideration_ref == ConsiderationItemRef.video_lane(video.content_id, 0)
+    assert row.children[0].consideration_ref == video.lane_consideration_ref(0, 0)
     assert row.children[0].is_considered
     assert not row.children[1].is_considered
     assert RowAction.HIDE in _offers(row.children[0]), "a lane playback uses can be hidden"
@@ -144,9 +135,7 @@ def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads
         ),
     )
     state, playlist = store_with(playlist)
-    open_items = frozenset(
-        {OnScreenWorkspaceItem(kind="playlist_entry", content_id=playlist.content_id, entry_index=1)}
-    )
+    open_items = frozenset({playlist.on_screen_item(1)})
 
     row = item_rows(state, open_items)[0]
     first_entry = row.children[0]
@@ -161,9 +150,9 @@ def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads
     assert ("resolver", "Synthetic") in row.information_factory().fields
     assert first_entry.label == "a.mp4"
     assert first_entry.activation_target == (playlist, 0)
-    assert first_entry.consideration_ref == ConsiderationItemRef.playlist_entry(playlist.content_id, 0)
+    assert first_entry.consideration_ref == playlist.entry_consideration_ref(0)
     assert not first_entry.is_open
-    assert first_entry.children[0].consideration_ref == ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0)
+    assert first_entry.children[0].consideration_ref == playlist.lane_consideration_ref(0, 0)
     assert first_entry.information_factory is not None
     assert ("note", "first entry") in first_entry.information_factory().fields
     assert second_entry.is_open
@@ -322,7 +311,7 @@ def test_same_named_rows_without_locations_are_numbered() -> None:
     assert [(row.children[0].label, row.children[0].detail) for row in rows] == [("clip.mp4", ""), ("clip.mp4", "")]
 
 
-class _FixedPlaylists:
+class _FixedPlaylists(FakeResolver):
     """A playlist resolver that returns the playlists it was built with."""
 
     def __init__(self, *playlists: PlaylistContent) -> None:
@@ -448,7 +437,7 @@ def test_a_playlists_tooltip_counts_entries_and_those_hidden() -> None:
 
     assert item_rows(store)[0].tooltip.splitlines()[0] == "Playlist · 3 entries"
 
-    store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 1), False)
+    store.set_item_considered(playlist.entry_consideration_ref(1), False)
 
     row = item_rows(store)[0]
     assert row.detail == ""
@@ -512,7 +501,7 @@ def test_cameras_offer_start_stream_while_idle_and_stop_stream_while_a_viewer_sh
     assert (closed.is_dimmed, opened.is_dimmed) == (True, False), "a camera is dimmed while nothing shows it"
 
 
-def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_action(tmp_path: Path) -> None:
+def test_only_cameras_offer_an_inline_action(tmp_path: Path) -> None:
     store = _store_of_items(
         PlaylistItem(resolver="fixed"),
         PlaylistItem(label="Broken", resolver="missing"),
@@ -522,8 +511,8 @@ def test_playlists_ready_or_failed_offer_rescan_and_nothing_else_offers_an_actio
 
     rows = {row.label: row for row in item_rows(store)}
 
-    assert inline_action(rows["Suite"]) is RowAction.RESCAN
-    assert inline_action(rows["Broken"]) is RowAction.RESCAN and rows["Broken"].unavailable_reason is not None
+    assert inline_action(rows["Suite"]) is None
+    assert inline_action(rows["Broken"]) is None and rows["Broken"].unavailable_reason is not None
     assert inline_action(rows["missing.mp4"]) is None
     assert inline_action(rows["clip.mp4"]) is None and not rows["clip.mp4"].idle
     nested = [child for row in rows.values() for child in row.children]

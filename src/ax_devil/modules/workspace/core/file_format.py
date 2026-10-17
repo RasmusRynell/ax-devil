@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
-import stat
-import tempfile
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, NoReturn
 
+from ax_devil.core.atomic_file import write_atomically
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.bookmarks import bookmarks_from_json, bookmarks_to_json
 from ax_devil.modules.workspace.core.items import item_from_json
@@ -142,15 +140,5 @@ def write_json_file(path: Path, document: Any) -> None:
 
     Raises ``OSError`` when writing fails, and ``TypeError`` or ``ValueError`` when *document* is not JSON.
     """
-    temporary: Path | None = None
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as file:
-            temporary = Path(file.name)
-            file.write(f"{json.dumps(document, indent=2, allow_nan=False)}\n")
-        if path.exists():
-            os.chmod(temporary, stat.S_IMODE(path.stat().st_mode))
-        temporary.replace(path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    with write_atomically(path) as file:
+        file.write(f"{json.dumps(document, indent=2, allow_nan=False)}\n")

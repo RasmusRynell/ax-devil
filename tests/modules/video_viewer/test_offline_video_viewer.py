@@ -23,6 +23,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
 from ax_devil.modules.background_jobs import BackgroundJobs
+from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.data_sources.base import SeekableFrameSource
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
@@ -52,7 +53,6 @@ from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, Of
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.timing_diagnostics_widget import OverlayAlignmentIndicator, TimingDiagnosticsWidget
 from ax_devil.modules.workspace.core import (
-    ConsiderationItemRef,
     EntryLane,
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
@@ -462,6 +462,13 @@ def _nav_label(widget: OfflineVideoViewerWidget) -> QLabel:
     return next(label for label in labels if label.text().startswith("Entry "))
 
 
+def _shown_entry_index(widget: OfflineVideoViewerWidget) -> int:
+    """Return the index of the entry the viewer reports as on screen."""
+    item = widget.current_on_screen_item()
+    assert item is not None
+    return widget._content.bookmark_entries.index(item.entry)
+
+
 def _session(widget: OfflineVideoViewerWidget) -> OfflineSession:
     """Return the shown entry's session, for lane state the viewer does not expose (presenters, overlay sources)."""
 
@@ -487,6 +494,12 @@ def _lane_entry(*videos: SeekableVideoContent) -> PlaylistEntry:
         ),
         default_considered=True,
     )
+
+
+def _warning_text(widget: OfflineVideoViewerWidget) -> str:
+    """Return the text of the one banner the viewer shows."""
+    (banner,) = [banner for banner in widget.findChildren(Banner) if not banner.isHidden()]
+    return " ".join(label.text() for label in banner.findChildren(QLabel))
 
 
 def _stub_frame_source() -> MagicMock:
@@ -675,34 +688,48 @@ class TestOfflineVideoViewerWidget:
         assert len(opened) == 1
 
         widget.cleanup()
-        entry_ref = ConsiderationItemRef.playlist_entry(playlist.content_id, 0)
+        entry_ref = playlist.entry_consideration_ref(0)
         workspace_store.set_item_considered(entry_ref, False)
         widget.refresh_item_consideration(entry_ref, False)
-        lane_ref = ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 0)
+        lane_ref = playlist.lane_consideration_ref(0, 0)
         widget.refresh_item_consideration(lane_ref, True)
 
         assert len(opened) == 1
         assert _displays(widget) == []
 
+    def test_a_change_to_another_playlist_of_the_same_item_does_not_reopen_the_entry_on_screen(
+        self, qtbot: QtBot
+    ) -> None:
+        opened: list[_TrackedFrameSource] = []
+        video = _make_seekable_content("A", frame_source_opener=_make_tracked_frame_source_opener("A", opened))
+        entries = (PlaylistEntry(lanes=video.standalone_lanes(), default_considered=True),)
+        workspace_store, playlist = store_with(PlaylistContent(display_name="Runs", entries=entries))
+        widget = self._open(qtbot, playlist, workspace_store)
+        other = PlaylistContent(display_name="Other", entries=entries, item_id=playlist.item_id)
+
+        widget.refresh_item_consideration(other.lane_consideration_ref(0, 0), False)
+
+        assert len(opened) == 1
+
     def test_playlist_navigation_buttons_step_between_entries(self, qtbot: QtBot) -> None:
         widget = self._open(qtbot, _playlist("A", "B"))
         previous, following = _nav_button(widget, "Previous entry"), _nav_button(widget, "Next entry")
 
-        assert widget.current_on_screen_item().entry_index == 0
+        assert _shown_entry_index(widget) == 0
         assert _nav_label(widget).text() == "Entry 1 / 2"
         assert not previous.isEnabled() and following.isEnabled()
 
         following.click()
 
-        assert widget.current_on_screen_item().entry_index == 1
+        assert _shown_entry_index(widget) == 1
         assert _nav_label(widget).text() == "Entry 2 / 2"
         assert previous.isEnabled() and not following.isEnabled()
 
         widget.step_next_entry()
-        assert widget.current_on_screen_item().entry_index == 1
+        assert _shown_entry_index(widget) == 1
 
         previous.click()
-        assert widget.current_on_screen_item().entry_index == 0
+        assert _shown_entry_index(widget) == 0
 
     def test_navigation_controls_position_stays_stable_while_loading(
         self, qtbot: QtBot, deferred_background: _DeferredBackground
@@ -729,28 +756,28 @@ class TestOfflineVideoViewerWidget:
     def test_playlist_navigation_skips_disabled_entries(self, qtbot: QtBot) -> None:
         playlist = _playlist("A", "B", "C")
         workspace_store, playlist = store_with(playlist)
-        workspace_store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 1), False)
+        workspace_store.set_item_considered(playlist.entry_consideration_ref(1), False)
         widget = self._open(qtbot, playlist, workspace_store)
 
         widget.step_next_entry()
-        assert widget.current_on_screen_item().entry_index == 2
+        assert _shown_entry_index(widget) == 2
 
         widget.step_prev_entry()
-        assert widget.current_on_screen_item().entry_index == 0
+        assert _shown_entry_index(widget) == 0
 
     def test_playlist_starts_on_first_enabled_entry(self, qtbot: QtBot) -> None:
         playlist = _playlist("A", "B")
         workspace_store, playlist = store_with(playlist)
-        workspace_store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
+        workspace_store.set_item_considered(playlist.entry_consideration_ref(0), False)
         widget = self._open(qtbot, playlist, workspace_store)
 
-        assert widget.current_on_screen_item().entry_index == 1
+        assert _shown_entry_index(widget) == 1
 
     def test_a_bookmark_opens_its_entry_at_its_frame_even_when_the_entry_is_excluded(self, qtbot: QtBot) -> None:
         """Opening a bookmark of an excluded entry shows that entry, not the next considered one."""
         playlist = _playlist("A", "B")
         workspace_store, playlist = store_with(playlist)
-        workspace_store.set_item_considered(ConsiderationItemRef.playlist_entry(playlist.content_id, 0), False)
+        workspace_store.set_item_considered(playlist.entry_consideration_ref(0), False)
         widget = OfflineVideoViewerWidget(
             playlist,
             consideration_query=workspace_store,
@@ -760,20 +787,31 @@ class TestOfflineVideoViewerWidget:
         )
         _attach_offline_widget(qtbot, widget)
 
-        assert widget.current_on_screen_item().entry_index == 0
+        assert _shown_entry_index(widget) == 0
         assert widget._runtime is not None and widget._runtime.current_frame == 5
+
+    def test_source_paths_are_the_overlay_files_of_the_considered_lanes_on_screen(self, qtbot: QtBot) -> None:
+        """A hidden lane's overlay file is not watched for the entry on screen, so rewriting it offers no reload."""
+        video = _make_seekable_content("A", overlays=(_make_overlay_content("first"), _make_overlay_content("second")))
+        workspace_store, video = store_with(video)
+        widget = self._open(qtbot, video, workspace_store)
+        assert widget.source_paths().files == {Path("/tmp/first.txt"), Path("/tmp/second.txt")}
+
+        workspace_store.set_item_considered(video.lane_consideration_ref(0, 1), False)
+
+        assert widget.source_paths().files == {Path("/tmp/first.txt")}
 
     def test_excluding_current_playlist_entry_navigates_to_next_considered(self, qtbot: QtBot) -> None:
         playlist = _playlist("A", "B")
         workspace_store, playlist = store_with(playlist)
         widget = self._open(qtbot, playlist, workspace_store)
-        assert widget.current_on_screen_item().entry_index == 0
+        assert _shown_entry_index(widget) == 0
 
-        entry_ref = ConsiderationItemRef.playlist_entry(playlist.content_id, 0)
+        entry_ref = playlist.entry_consideration_ref(0)
         workspace_store.set_item_considered(entry_ref, False)
         widget.refresh_item_consideration(entry_ref, False)
 
-        assert widget.current_on_screen_item().entry_index == 1
+        assert _shown_entry_index(widget) == 1
 
     def test_single_video_pane_names_it_once_and_describes_it_in_the_header(self, qtbot: QtBot) -> None:
         """A lane named like its pane shows no name on the video; the header shows the video's size, rate and length."""
@@ -826,8 +864,7 @@ class TestOfflineVideoViewerWidget:
         source.pause.assert_called()
         source.set_playback_speed.assert_any_call(1.1)
 
-    @patch("ax_devil.modules.video_viewer.offline_video_viewer.QMessageBox.warning")
-    def test_navigation_failure_warns_and_stays_on_failed_entry(self, mock_warning: MagicMock, qtbot: QtBot) -> None:
+    def test_navigation_failure_warns_and_stays_on_failed_entry(self, qtbot: QtBot) -> None:
         """A failed entry leaves the viewer empty on it, with its opened sources released, and stepping still works."""
         opened: list[_TrackedFrameSource] = []
 
@@ -849,16 +886,15 @@ class TestOfflineVideoViewerWidget:
 
         widget.step_next_entry()
 
-        assert widget.current_on_screen_item().entry_index == 1
+        assert _shown_entry_index(widget) == 1
         assert _displays(widget) == []
-        mock_warning.assert_called_once()
-        assert "broken entry" in mock_warning.call_args.args[2]
+        assert "broken entry" in _warning_text(widget)
         assert len(opened) == 1
         _assert_frame_source_disposed(opened[0])
 
         widget.step_prev_entry()
 
-        assert widget.current_on_screen_item().entry_index == 0
+        assert _shown_entry_index(widget) == 0
         assert len(_displays(widget)) == 1
 
     def test_navigating_while_loading_opens_the_newest_entry(
@@ -884,7 +920,7 @@ class TestOfflineVideoViewerWidget:
         assert _displays(widget) == []
         _assert_frame_source_disposed(sources["A"][0])
         widget.step_next_entry()
-        assert widget.current_on_screen_item().entry_index == 2
+        assert _shown_entry_index(widget) == 2
         assert _nav_label(widget).text() == "Entry 3 / 3"
 
         deferred_background.finish_next()
@@ -910,8 +946,7 @@ class TestOfflineVideoViewerWidget:
         assert _displays(widget) == []
         assert all(source.stop_calls == 1 for source in opened)
 
-    @patch("ax_devil.modules.video_viewer.offline_video_viewer.QMessageBox.warning")
-    def test_display_build_failure_warns_and_releases_the_entry(self, mock_warning: MagicMock, qtbot: QtBot) -> None:
+    def test_display_build_failure_warns_and_releases_the_entry(self, qtbot: QtBot) -> None:
         """A failure while building an entry's displays is reported like a failed open, with its sources released."""
         opened: list[_TrackedFrameSource] = []
         content = _make_seekable_content("A", frame_source_opener=_make_tracked_frame_source_opener("A", opened))
@@ -922,7 +957,7 @@ class TestOfflineVideoViewerWidget:
             widget.on_workspace_attached()
 
         assert _displays(widget) == []
-        assert "broken display" in mock_warning.call_args.args[2]
+        assert "broken display" in _warning_text(widget)
         assert len(opened) == 1
         _assert_frame_source_disposed(opened[0])
 
@@ -1147,7 +1182,7 @@ class TestOfflineVideoViewerWidget:
             ),
         )
         workspace_store, playlist = store_with(playlist)
-        workspace_store.set_item_considered(ConsiderationItemRef.playlist_lane(playlist.content_id, 1, 0), False)
+        workspace_store.set_item_considered(playlist.lane_consideration_ref(1, 0), False)
         widget = self._open(qtbot, playlist, workspace_store)
         widget.show()
         (controls,) = _transports(widget)
@@ -1186,7 +1221,7 @@ class TestOfflineVideoViewerWidget:
         widget.show()
 
         for entry_index, lane_count in enumerate((1, 2, 1)):
-            assert widget.current_on_screen_item().entry_index == entry_index
+            assert _shown_entry_index(widget) == entry_index
             QCoreApplication.processEvents()
             displays = _displays(widget)
             assert len(displays) == lane_count
@@ -1332,7 +1367,7 @@ class TestOfflineVideoViewerWidget:
         assert len(overlay_sources) == 2
         _assert_no_stale_renderers(widget, baseline_frame_viewports)
 
-        lane_ref = ConsiderationItemRef.playlist_lane(playlist.content_id, 0, 1)
+        lane_ref = playlist.lane_consideration_ref(0, 1)
         workspace_store.set_item_considered(lane_ref, False)
         widget.refresh_item_consideration(lane_ref, False)
 
@@ -1376,7 +1411,7 @@ class TestOfflineVideoViewerWidget:
         assert len(overlay_sources) == 3
         _assert_no_stale_renderers(widget, baseline_frame_viewports)
 
-        lane_ref = ConsiderationItemRef.video_lane(content.content_id, 1)
+        lane_ref = content.lane_consideration_ref(0, 1)
         workspace_store.set_item_considered(lane_ref, False)
         widget.refresh_item_consideration(lane_ref, False)
 
@@ -1589,7 +1624,7 @@ class TestMediaToolsToggle:
 
         widget.step_next_entry()
 
-        assert widget.current_on_screen_item().entry_index == 1
+        assert _shown_entry_index(widget) == 1
         assert [display.is_side_panel_open() for display in _displays(widget)] == [False]
 
     def test_new_viewer_starts_closed_after_another_viewer_opened_tools(self, qtbot: QtBot) -> None:

@@ -85,14 +85,14 @@ only by a newer command or select, so a file change or another view's apply neve
 across views wins. A selection created before the first listing waits for it, and its owner calls `cleanup()` when it
 ends, since pending requests keep their callbacks alive. Overlays of selection-backed presenters draw nothing until a
 catalog arrives, so the GUI thread never compiles the built-in catalog.
-The manager caches a compiled catalog with the file's modification time and size taken just before it was read. A
+The manager caches a compiled catalog with the file's fingerprint (inode, size, modification time) taken just before it was read. A
 listing that finds a file changed drops the entry, restarts a load of that file still running, compiles cached
 catalogs that changed again in the background and emits `catalogUsabilityChanged`; a read that fails drops its entry
 the same way. **Apply to all** and **Use as
 default** are enabled only for a listed catalog the manager holds compiled, so one never loaded is not eligible
 and asking never reads a file.
-The manager watches every listed file, invalid ones included, and their directories and, after 150 ms of quiet,
-lists again and reloads each selection whose
+The manager gives every listed file, invalid ones included, and the catalogs folder to a shared `FileWatcher` and, after
+150 ms of quiet, lists again and reloads each selection whose
 active path changed; other selections are untouched. Live viewers share one selection between controller and media
 tools; offline lanes each own one.
 

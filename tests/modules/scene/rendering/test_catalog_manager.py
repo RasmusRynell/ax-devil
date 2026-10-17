@@ -708,6 +708,26 @@ def test_a_missing_chosen_default_that_appears_later_is_reported_as_changed(
     assert changed.args == [ghost]
 
 
+def test_a_catalog_created_while_the_first_listing_runs_is_still_discovered(
+    qtbot: QtBot, tmp_path: Path, small_catalog_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SceneRenderCatalogStore(tmp_path)
+    list_catalogs = store.list_catalogs_with_errors
+    late: list[SceneRenderCatalogFile] = []
+
+    def list_then_create(token: CancelToken) -> SceneRenderCatalogListing:
+        listing = list_catalogs(token)
+        if not late:
+            late.append(store.create_catalog("Late", base_catalog_path=small_catalog_path))
+        return listing
+
+    monkeypatch.setattr(store, "list_catalogs_with_errors", list_then_create)
+
+    manager = create_ready_catalog_manager(qtbot, store)
+
+    qtbot.waitUntil(lambda: late[0].path in [catalog.path for catalog in manager.listing().catalogs], timeout=10_000)
+
+
 def test_catalog_actions_follow_whether_a_catalog_loads_and_is_the_chosen_default(
     qtbot: QtBot, tmp_path: Path, small_catalog_path: Path
 ) -> None:

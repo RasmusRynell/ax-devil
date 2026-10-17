@@ -1,7 +1,6 @@
 """On-demand Python stack sampling with a disk-backed recording history."""
 
 import json
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -11,6 +10,7 @@ from time import monotonic
 from types import FrameType
 from typing import BinaryIO
 
+from ax_devil.core.atomic_file import write_atomically
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -142,25 +142,18 @@ class TraceRecorder:
             "stacks": list(self._stacks),
             "threads": self._threads,
         }
-        temporary_path: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as output:
-                temporary_path = Path(output.name)
-                header = json.dumps(metadata, separators=(",", ":"))
-                output.write(f'{header[:-1]},"samples":[\n')
-                self._spool.seek(0)
-                for index in range(self.sample_count):
-                    line = self._spool.readline()
-                    if not line.endswith(b"\n"):
-                        raise OSError("The temporary recording is incomplete.")
-                    if index:
-                        output.write(",\n")
-                    output.write(line.decode("utf-8").rstrip("\n"))
-                output.write("\n]}\n")
-            os.replace(temporary_path, path)
-        finally:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
+        with write_atomically(path) as output:
+            header = json.dumps(metadata, separators=(",", ":"))
+            output.write(f'{header[:-1]},"samples":[\n')
+            self._spool.seek(0)
+            for index in range(self.sample_count):
+                line = self._spool.readline()
+                if not line.endswith(b"\n"):
+                    raise OSError("The temporary recording is incomplete.")
+                if index:
+                    output.write(",\n")
+                output.write(line.decode("utf-8").rstrip("\n"))
+            output.write("\n]}\n")
         logger.info(f"Performance samples saved to {path}")
 
     def cleanup(self) -> None:

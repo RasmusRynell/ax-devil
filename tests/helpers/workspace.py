@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,9 +10,12 @@ from typing import Any, ClassVar, TypeVar, cast
 
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QWidget
+from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths, SourceSnapshot
 from ax_devil.modules.chrome.list_row import ListRow
+from ax_devil.modules.file_watching import FileWatcher
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
@@ -23,6 +27,7 @@ from ax_devil.modules.workspace.core import (
     LiveVideoContent,
     PlaylistContent,
     PlaylistResolver,
+    PlaylistSettings,
     ResolutionContext,
     SeekableVideoContent,
     WorkspaceDecoderOption,
@@ -86,6 +91,13 @@ class StaticDecoderOptions:
         return self._live_options
 
 
+class FakeResolver(PlaylistResolver):
+    """Base of test playlist resolvers: it reads no files, so nothing is watched unless a test says so."""
+
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
+        return SourcePaths()
+
+
 class FakeResolutionContext:
     """Resolution context with a test intake and playlist resolvers keyed by id."""
 
@@ -105,6 +117,27 @@ class FakeResolutionContext:
         if resolver_id not in self._resolvers:
             raise ItemResolutionError(f"Playlist resolver '{resolver_id}' is not installed.")
         return self._resolvers[resolver_id]
+
+
+class FakeFileWatcher(FileWatcher):
+    """A file watcher that watches no disk: it records what is registered, and ``report`` stands in for a change."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watched: dict[str, SourceSnapshot] = {}
+
+    def watch(self, key: str, sources: SourceSnapshot) -> None:
+        self.watched[key] = sources
+
+    def unwatch(self, key: str) -> None:
+        self.watched.pop(key, None)
+
+    def clear(self) -> None:
+        self.watched.clear()
+
+    def report(self, key: str, *paths: Path) -> None:
+        """Report that *paths* registered under *key* changed."""
+        self.changed.emit(key, frozenset(paths))
 
 
 class FakePrompts:
@@ -148,6 +181,12 @@ def quit_app(lifecycle: WorkspaceLifecycle) -> None:
 def inline_resolver(context: ResolutionContext | None = None) -> ItemResolver:
     """Return a resolver that resolves at once on the calling thread, with *context* or a fake one."""
     return ItemResolver(context or FakeResolutionContext(), in_background=False)
+
+
+def wait_for_background_work(qtbot: QtBot, threads_before: set[threading.Thread]) -> None:
+    """Wait until the workers started after *threads_before* ran out of jobs, then let the GUI thread take outcomes."""
+    qtbot.waitUntil(lambda: not set(threading.enumerate()) - threads_before)
+    QCoreApplication.processEvents()
 
 
 def store_with(content: ContentT) -> tuple[WorkspaceStore, ContentT]:
@@ -195,7 +234,7 @@ class DummyViewer(ViewerWidget):
             return OnScreenWorkspaceItem(
                 kind="playlist_entry",
                 content_id=self.payload.content_id,
-                entry_index=self.start_index,
+                entry=self.payload.bookmark_entries[self.start_index],
             )
         return None
 

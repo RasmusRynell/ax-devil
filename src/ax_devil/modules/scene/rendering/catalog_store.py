@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import re
-import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
 
+from ax_devil.core.atomic_file import write_atomically
 from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH, BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
@@ -237,16 +237,8 @@ def _write_catalog_document(destination: Path, document: Mapping[str, Any]) -> N
 
 def _write_text(destination: Path, text: str) -> None:
     """Replace *destination* atomically, keeping the previous file if writing fails."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent, delete=False) as output:
-            temporary_path = Path(output.name)
-            output.write(text)
-        temporary_path.replace(destination)
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
+    with write_atomically(destination) as output:
+        output.write(text)
 
 
 def _read_catalog_document(path: Path) -> dict[str, Any]:

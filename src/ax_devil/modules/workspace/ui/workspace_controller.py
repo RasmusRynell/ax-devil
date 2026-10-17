@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, QPoint, Signal
@@ -66,7 +67,6 @@ class WorkspaceController(QObject):
             RowAction.OPEN_TO_SIDE: partial(self._open_row, to_side=True),
             RowAction.START_STREAM: self._start_stream,
             RowAction.STOP_STREAM: self._stop_stream,
-            RowAction.RESCAN: self._rescan,
             RowAction.ADD: self._add,
             RowAction.INFORMATION: self._show_information,
             RowAction.EXPORT_VIDEO: self._export_video,
@@ -152,7 +152,7 @@ class WorkspaceController(QObject):
     def _connect_signals(self) -> None:
         self._workspace_store.items_added.connect(self._publish_sections)
         self._workspace_store.items_resolved.connect(self._on_items_resolved)
-        self._workspace_store.item_rescanned.connect(self._publish_sections)
+        self._workspace_store.sources_changed.connect(self._on_sources_changed)
         self._workspace_store.item_removed.connect(self._close_orphaned_viewers)
         self._workspace_store.workspace_replaced.connect(self._close_all_viewers)
         self._workspace_store.item_renamed.connect(self._on_item_renamed)
@@ -219,11 +219,6 @@ class WorkspaceController(QObject):
         if row.item is not None:
             self.close_item_viewers(row.item.id)
 
-    def _rescan(self, row: WorkspaceBrowserRow) -> None:
-        """Resolve the row's item again."""
-        if row.item is not None:
-            self._workspace_store.rescan_item(row.item.id)
-
     def _add(self, row: WorkspaceBrowserRow) -> None:
         """Do what the row's ``add`` does: add what it stands for, or ask how."""
         if row.add is not None:
@@ -265,6 +260,12 @@ class WorkspaceController(QObject):
         """Remove the row's item."""
         if row.item is not None:
             self._workspace_store.remove_item(row.item.id)
+
+    def _on_sources_changed(self, paths: frozenset[Path]) -> None:
+        """Offer every open viewer that shows one of the changed *paths* to reload."""
+        for widget in tuple(self._widget_item_ids):
+            if widget.source_paths().files & paths:
+                widget.offer_reload()
 
     def _on_item_renamed(self, item: WorkspaceItem) -> None:
         """Show the item's new name in the rows and in the header of every viewer showing its Content."""
