@@ -86,6 +86,7 @@ class MainWindow(ChromeWindow):
         self._setup_central_widget()
         self._workspace_session.state_changed.connect(self._update_title)
         self._workspace_session.add_live_stream_requested.connect(lambda: self._on_add_live_stream(start=False))
+        self._workspace_session.add_video_requested.connect(self._shortcut_manager.get_action("app.add_video").trigger)
         self._workspace_session.add_playlist_requested.connect(self._on_add_playlist)
         self._update_title()
         # Every way of quitting passes here, including quitting after an error without closing this window.

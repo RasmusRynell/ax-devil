@@ -111,7 +111,10 @@ The Workspace, Live and Offline views are one `SectionsView` (`sections_view.py`
 plus what its concept adds. Workspace shows every section the Workspace holds (`HELD_SECTIONS`) and nothing it does
 not hold. Live and Offline show their kinds, and their controllers (`LiveViewController`, `OfflineViewController`)
 compose what is their own into them: cameras a scan found, what the scan learned about held cameras, and playlist
-resolvers, whose Add runs the row's `add`. Their buttons, such as the scan settings, stay theirs.
+resolvers, whose Add runs the row's `add`.
+
+`SectionsView` is also the one shell, with a fixed layout that views fill rather than change; see the
+[workspace module README](../../src/ax_devil/modules/workspace/README.md#sidebar-view-shell).
 
 Every view shows a browser row the same way. The row decides its look and offers its one action (`RowAction`: Start stream,
 Stop stream, Rescan or Add); `SourceRow` (`source_row.py`) turns it into a `ListRow`, and `SectionTree`

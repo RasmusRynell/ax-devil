@@ -17,6 +17,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
+from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.plugin_system import (
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
     PluginDefinitionBase,
@@ -34,6 +35,7 @@ from ax_devil.modules.workspace.core import (
     RecentWorkspaces,
     VideoItem,
 )
+from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.offline_view import OfflineView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
@@ -49,6 +51,7 @@ from tests.helpers.section_tree import (
     titles,
 )
 from tests.helpers.shortcuts import make_shortcut_manager
+from tests.helpers.widgets import button
 from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
@@ -145,6 +148,62 @@ def test_videos_are_listed_beside_the_playlists_and_both_are_counted(
 
     assert captions(view.tree)[:2] == ["Videos, 1", "Playlists, 1"]
     assert "2" in texts(view)
+
+
+def test_the_location_order_lists_rows_by_where_they_come_from_and_those_without_one_last(
+    qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    session = _session(qtbot, tmp_path, render_catalog_manager)
+    view = _view(session)
+    view.set_sections(
+        (
+            WorkspaceBrowserSection(
+                BrowserSection.VIDEOS,
+                (
+                    WorkspaceBrowserRow("a", "a.mp4", "video", location="/data/zeta/a.mp4"),
+                    WorkspaceBrowserRow("n", "no-location.mp4", "video"),
+                    WorkspaceBrowserRow("b", "b.mp4", "video", location="/data/Alpha/b.mp4"),
+                ),
+            ),
+        )
+    )
+    assert titles(view.tree) == ["a.mp4", "no-location.mp4", "b.mp4"]
+
+    [sort] = [button for button in view.findChildren(MenuButton) if button.text() == "Sort"]
+    menu = sort.menu()
+    assert menu is not None
+    [location] = [action for action in menu.actions() if action.text() == "Location"]
+    location.trigger()
+
+    assert titles(view.tree) == ["b.mp4", "a.mp4", "no-location.mp4"]
+
+
+def test_add_video_under_the_tree_asks_the_session_to_add_a_video(
+    qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    session = _session(qtbot, tmp_path, render_catalog_manager)
+
+    with qtbot.waitSignal(session.add_video_requested, timeout=1000):
+        button(_view(session), "Add video").click()
+
+
+def test_add_video_opens_the_add_video_dialog(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> None:
+    window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    window.show()
+    window._workspace_session.show_sidebar_view("offline")
+    view = window.findChild(OfflineView)
+    assert view is not None
+    opened: list[BaseDialog] = []
+
+    def reject(dialog: BaseDialog) -> int:
+        opened.append(dialog)
+        return BaseDialog.DialogCode.Rejected
+
+    with patch.object(BaseDialog, "exec", reject):
+        button(view, "Add video").click()
+
+    assert [type(dialog).__name__ for dialog in opened] == ["AddVideoDialog"]
 
 
 def test_double_clicking_an_entry_opens_its_playlist_at_that_entry(

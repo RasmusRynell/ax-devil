@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLineEdit, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.icons import Icon
@@ -26,8 +26,11 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import (
+    BY_NAME,
+    WORKSPACE_ORDER,
     BrowserSection,
     Facet,
+    RowOrder,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
@@ -38,6 +41,10 @@ from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.source_row import SourceRow
 from tests.helpers.section_tree import caption, captions, titles
 from tests.helpers.widgets import required_child
+
+
+def _video_row(name: str) -> WorkspaceBrowserRow:
+    return WorkspaceBrowserRow(row_id=name, label=name, icon_kind="video")
 
 
 def _make_video(name: str = "test.mp4") -> SeekableVideoContent:
@@ -71,12 +78,18 @@ def _search(view: SectionsView) -> QLineEdit:
     return search
 
 
+def _menu_button(view: SectionsView, text: str) -> MenuButton | None:
+    """Return the toolbar button *text* if the view shows it, else None."""
+    [button] = [button for button in view.findChildren(MenuButton) if button.text() == text]
+    return button if button.isVisibleTo(view) else None
+
+
 def _filter_entries(view: SectionsView) -> dict[str, bool]:
-    """Return what the Filter offers, each entry with whether its rows are shown; empty while it is disabled."""
+    """Return what the Filter offers, each entry with whether its rows are shown; empty while it is absent."""
     [button] = [button for button in view.findChildren(MenuButton) if button.text() == "Filter"]
     menu = button.menu()
     assert menu is not None
-    if not button.isEnabled():
+    if not button.isVisibleTo(view):
         return {}
     return {action.text(): action.isChecked() for action in menu.actions() if not action.isSeparator()}
 
@@ -571,6 +584,92 @@ def _hidden(label: str) -> WorkspaceBrowserRow:
     """Return a playlist entry row the user hid from playback."""
     ref = ConsiderationItemRef.playlist_entry("playlist-id", 0)
     return WorkspaceBrowserRow(row_id=label, label=label, icon_kind="video", consideration_ref=ref, is_considered=False)
+
+
+def test_the_filter_is_absent_without_a_choice_and_appears_with_one(qtbot: QtBot) -> None:
+    view = _view_with(qtbot, _camera("Q1656", "Box Camera"))
+    assert _menu_button(view, "Filter") is None
+
+    _set_rows(view, (_camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker")))
+    assert _menu_button(view, "Filter") is not None
+
+    _set_rows(view, (_camera("Q1656", "Box Camera"),))
+    assert _menu_button(view, "Filter") is None
+
+
+def _choose_order(view: SectionsView, label: str) -> None:
+    """Pick the order *label* in the Sort, as the user does."""
+    sort = _menu_button(view, "Sort")
+    assert sort is not None
+    menu = sort.menu()
+    assert menu is not None
+    [action] = [action for action in menu.actions() if action.text() == label]
+    action.trigger()
+
+
+def _ordered_view(qtbot: QtBot, *orders: RowOrder) -> SectionsView:
+    view = _view_with(
+        qtbot,
+        *(WorkspaceBrowserRow(row_id=name, label=name, icon_kind="video") for name in ("b.mp4", "C.mp4", "a.mp4")),
+    )
+    view.set_orders(orders)
+    return view
+
+
+def test_sort_is_absent_with_one_order_and_lists_rows_as_given(qtbot: QtBot) -> None:
+    view = _ordered_view(qtbot, WORKSPACE_ORDER)
+
+    assert _menu_button(view, "Sort") is None
+    assert titles(view.tree) == ["b.mp4", "C.mp4", "a.mp4"]
+
+
+def test_choosing_an_order_lists_the_rows_again_and_the_order_survives_new_sections(qtbot: QtBot) -> None:
+    view = _ordered_view(qtbot, WORKSPACE_ORDER, BY_NAME)
+
+    _choose_order(view, "Name")
+    assert titles(view.tree) == ["a.mp4", "b.mp4", "C.mp4"]
+
+    _set_rows(view, tuple(_video_row(name) for name in ("b.mp4", "C.mp4", "0.mp4", "a.mp4")))
+    assert titles(view.tree) == ["0.mp4", "a.mp4", "b.mp4", "C.mp4"]
+
+
+def test_an_order_sorts_the_rows_of_each_section_but_not_the_rows_under_them(qtbot: QtBot) -> None:
+    view = _ordered_view(qtbot, WORKSPACE_ORDER, BY_NAME)
+    entries = (_video_row("z.mp4"), _video_row("y.mp4"))
+    view.set_sections(
+        (
+            WorkspaceBrowserSection(
+                BrowserSection.PLAYLISTS,
+                (
+                    replace(_video_row("Night"), icon_kind="playlist", children=entries),
+                    replace(_video_row("Day"), icon_kind="playlist"),
+                ),
+            ),
+        )
+    )
+    _tree(view).expandAll()
+
+    _choose_order(view, "Name")
+
+    assert titles(view.tree) == ["Day", "Night", "z.mp4", "y.mp4"]
+
+
+def test_the_footer_sits_under_the_tree_and_goes_with_the_toolbar_while_the_empty_page_shows(qtbot: QtBot) -> None:
+    empty = QLabel("Nothing yet")
+    view = SectionsView("test", "Test", Icon.WORKSPACE, empty_page=empty)
+    qtbot.addWidget(view)
+    add = view.add_footer_button("Add thing", Icon.ADD)
+    panel = QLabel("Panel")
+    view.set_footer_panel(panel)
+    view.resize(300, 500)
+    view.show()
+    assert empty.isVisibleTo(view) and not add.isVisibleTo(view) and not panel.isVisibleTo(view)
+
+    _set_rows(view, (_video_row("a.mp4"),))
+
+    assert not empty.isVisibleTo(view) and add.isVisibleTo(view) and panel.isVisibleTo(view)
+    tree_bottom = view.tree.mapTo(view, view.tree.rect().bottomLeft()).y()
+    assert tree_bottom <= add.mapTo(view, add.rect().topLeft()).y() < panel.mapTo(view, panel.rect().topLeft()).y()
 
 
 def _camera(name: str, product_type: str) -> WorkspaceBrowserRow:

@@ -148,10 +148,15 @@ class DeviceOrder(Enum):
         """Return the text shown for this order."""
         return self.value
 
+    def key(self, camera: DiscoveredCamera | None) -> tuple[Any, ...]:
+        """Return what to sort *camera* by in this order: by address among equals, and last when there is no camera."""
+        if camera is None:
+            return (True,)
+        return (False, *_ORDER_KEYS[self](camera), ipaddress.IPv4Address(camera.host))
+
     def sorted(self, cameras: Iterable[DiscoveredCamera]) -> list[DiscoveredCamera]:
-        """Return *cameras* in this order, by address among equals."""
-        by_address = sorted(cameras, key=lambda camera: ipaddress.IPv4Address(camera.host))
-        return sorted(by_address, key=_ORDER_KEYS[self])
+        """Return *cameras* in this order."""
+        return sorted(cameras, key=self.key)
 
 
 def _version(text: str) -> tuple[int, ...]:

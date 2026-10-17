@@ -9,8 +9,18 @@ from threading import Event
 from unittest.mock import patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QTimer
-from PySide6.QtWidgets import QCheckBox, QLabel, QLineEdit, QMenu, QProgressBar, QPushButton, QScrollArea, QWidget
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, QTimer
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QWidget,
+)
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
@@ -715,19 +725,45 @@ def test_search_finds_workspace_and_found_cameras_by_what_they_show_and_their_de
     assert list(live.rows()) == ["Entrance", "192.0.2.12", "192.0.2.13"]
 
 
-def test_found_cameras_follow_the_chosen_order(live: _Live) -> None:
+def test_held_and_found_cameras_follow_the_chosen_order(live: _Live) -> None:
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
     _scan(
         live,
+        DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", "12.10.1", uptime_seconds=60.0),
+        DiscoveredCamera("192.0.2.11", "AXIS M3086-V", "", "12.9.4", uptime_seconds=600.0),
         DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", "12.10.1", uptime_seconds=60.0),
         DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "", "12.9.4", uptime_seconds=600.0),
     )
-    assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]
+    assert list(live.rows()) == ["Entrance", "192.0.2.11", "192.0.2.12", "192.0.2.13"]
 
     live.choose("Sort", "Model")
-    assert list(live.rows()) == ["192.0.2.13", "192.0.2.12"]
+    assert list(live.rows()) == ["192.0.2.11", "Entrance", "192.0.2.13", "192.0.2.12"]
 
     live.choose("Sort", "Uptime")
-    assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]
+    assert list(live.rows()) == ["Entrance", "192.0.2.11", "192.0.2.12", "192.0.2.13"]
+
+
+def test_the_chosen_order_stays_while_cameras_are_found(live: _Live) -> None:
+    _scan(live, DiscoveredCamera("192.0.2.12", "AXIS Q1656", ""))
+    live.choose("Sort", "Model")
+
+    _scan(live, DiscoveredCamera("192.0.2.12", "AXIS Q1656", ""), DiscoveredCamera("192.0.2.13", "AXIS M3086-V", ""))
+
+    assert list(live.rows()) == ["192.0.2.13", "192.0.2.12"]
+
+
+def test_add_manually_and_the_scan_settings_sit_under_the_tree(live: _Live) -> None:
+    live.view.resize(360, 700)
+    live.view.show()
+    QApplication.processEvents()
+
+    def top(widget: QWidget) -> int:
+        return widget.mapTo(live.view, QPoint(0, 0)).y()
+
+    add_manually, rescan = live.button("Add manually"), live.button("Rescan")
+    assert top(live.view.tree) < top(add_manually) < top(rescan)
+    with live.qtbot.waitSignal(live.view.add_manually_requested, timeout=1000):
+        add_manually.click()
 
 
 def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live: _Live) -> None:
