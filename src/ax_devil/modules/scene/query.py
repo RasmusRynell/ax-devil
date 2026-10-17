@@ -135,9 +135,10 @@ class Query:
 
     def missing_paths(self, records: Iterable[QueryRecord]) -> tuple[str, ...]:
         """Return the field paths used by the query that no record has, in query order without repeats."""
-        keys = [key for record in records for key in record.fields]
-        if not keys:
+        supplied = list(records)
+        if not supplied:
             return ()
+        keys = [key for record in supplied for key in record.fields]
         paths = (term.path for group in self.groups for term in group if term.path is not None)
         missing = (path for path in paths if not any(_path_matches(path, key) for key in keys))
         return tuple(dict.fromkeys(missing))
