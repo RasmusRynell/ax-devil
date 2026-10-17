@@ -15,6 +15,7 @@ from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
+    BookmarkTarget,
     ConsiderationItemRef,
     ConsiderationQuery,
     Content,
@@ -27,6 +28,7 @@ from ax_devil.modules.workspace.core import (
     WorkspaceDecoderOption,
     WorkspaceIntake,
     WorkspaceItem,
+    entry_target,
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
@@ -171,6 +173,7 @@ class DummyViewer(ViewerWidget):
         self.start_index = start_index
         self.start_frame = start_frame
         self.position: BookmarkPosition | None = None
+        self.shown_frames: list[int] = []
         self.consideration_query = consideration_query
         self.render_catalog_manager = render_catalog_manager
         self.cleaned_up = False
@@ -199,6 +202,16 @@ class DummyViewer(ViewerWidget):
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the position a test gave, as the frame on screen."""
         return self.position
+
+    def bookmark_target(self) -> BookmarkTarget | None:
+        """Return the target of the entry shown, as a video viewer does; live content has none."""
+        if isinstance(self.payload, (SeekableVideoContent, PlaylistContent)):
+            return entry_target(self.payload, self.start_index)
+        return None
+
+    def show_frame(self, frame: int) -> None:
+        """Record the frame the workspace asked to show."""
+        self.shown_frames.append(frame)
 
     def cleanup(self) -> None:
         """Record that the workspace disposed this viewer."""
