@@ -27,10 +27,12 @@ def read_legacy_backup(backup: Path) -> Workspace | None:
 
     The file is a workspace file without a version and with the path of the workspace's own file or null, and with
     absolute item paths. There are no edits when it equals that file's content, or the empty Untitled Workspace
-    without a file. A file that cannot be read is logged and also gives None.
+    without a file. A file whose content is damaged is logged and also gives None. Raises ``OSError`` when the file
+    cannot be read now, which says nothing about its content.
     """
+    text = backup.read_text(encoding="utf-8")
     try:
-        document = json.loads(backup.read_text(encoding="utf-8"))
+        document = json.loads(text)
         if not isinstance(document, dict):
             raise ValueError("it is not a JSON object")
         saved_file = document.pop("path", None)
@@ -39,8 +41,8 @@ def read_legacy_backup(backup: Path) -> Workspace | None:
             converted = Path(folder) / "workspace"
             write_json_file(converted, document)
             kept = load_workspace(converted)
-    except (OSError, ValueError, WorkspaceFileError) as exc:
-        logger.warning(f"Ignoring unreadable workspace backup {backup}: {exc}")
+    except (ValueError, WorkspaceFileError) as exc:
+        logger.warning(f"Ignoring damaged workspace backup {backup}: {exc}")
         return None
     try:
         saved = load_workspace(Path(saved_file)) if isinstance(saved_file, str) else Workspace()

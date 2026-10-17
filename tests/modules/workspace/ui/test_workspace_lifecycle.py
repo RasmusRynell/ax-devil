@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -141,6 +142,20 @@ def test_a_quit_keeps_unsaved_edits_of_a_workspace_with_a_very_long_name(
     assert load_workspace(copy.path).name == name
 
 
+def test_a_quit_keeps_unsaved_edits_of_a_workspace_whose_name_has_characters_a_file_name_cannot_hold(
+    launches: _Launches, tmp_path: Path
+) -> None:
+    name = "Lot\x00 1\n2"
+    launch = launches.new()
+    launch.store.add_items([_video(tmp_path, "a.mp4")])
+    launch.store.rename_workspace(name)
+
+    launch.lifecycle.keep_unsaved_changes()
+
+    [copy] = launch.lifecycle.recent_workspaces()
+    assert load_workspace(copy.path).name == name
+
+
 def _write_legacy_backup(state: Path, name: str, items: list[VideoItem], saved_file: Path | None = None) -> Path:
     """Write the ``workspace-backup.json`` that earlier versions kept on quit."""
     backup = state / "workspace-backup.json"
@@ -191,6 +206,33 @@ def test_an_earlier_versions_backup_without_unsaved_edits_or_unreadable_is_dropp
 
     assert not unchanged.exists()
     assert launch.lifecycle.recent_workspaces() == ()
+
+
+def test_an_earlier_versions_backup_that_cannot_be_read_now_stays_for_the_next_launch(
+    launches: _Launches, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip = _video(tmp_path, "lot.mp4")
+    backup = _write_legacy_backup(tmp_path / "state", "Parking lot", [clip])
+    with monkeypatch.context() as patch:
+        real_read_text = Path.read_text
+
+        def unavailable(path: Path, *args: Any, **kwargs: Any) -> str:
+            if path == backup:
+                raise OSError("storage unavailable")
+            return real_read_text(path, *args, **kwargs)
+
+        patch.setattr(Path, "read_text", unavailable)
+        launch = launches.new()
+        launch.lifecycle.launch()
+        assert backup.exists()
+        assert launch.lifecycle.recent_workspaces() == ()
+
+    next_launch = launches.new()
+    next_launch.lifecycle.launch()
+
+    assert not backup.exists()
+    [recent] = next_launch.lifecycle.recent_workspaces()
+    assert load_workspace(recent.path).name == "Parking lot"
 
 
 def test_a_quit_without_unsaved_edits_keeps_nothing(launches: _Launches, tmp_path: Path) -> None:

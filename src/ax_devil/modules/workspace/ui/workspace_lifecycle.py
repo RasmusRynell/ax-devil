@@ -177,13 +177,17 @@ class WorkspaceLifecycle(QObject):
     def _keep_legacy_backup(self) -> None:
         """Keep the unsaved edits in an earlier version's backup as a recent workspace, then delete the backup.
 
-        A backup that cannot be read or holds no edits is deleted without a copy; one whose copy cannot be saved stays
-        for the next launch.
+        A backup that is damaged or holds no edits is deleted without a copy; one that cannot be read now or whose copy
+        cannot be saved stays for the next launch.
         """
         backup = self._unsaved_folder().parent / LEGACY_BACKUP_FILE
         if not backup.is_file():
             return
-        unsaved = read_legacy_backup(backup)
+        try:
+            unsaved = read_legacy_backup(backup)
+        except OSError as exc:
+            logger.warning(f"Could not read the earlier version's workspace backup {backup}, keeping it: {exc}")
+            return
         if unsaved is not None and not self._save_copy(unsaved):
             return
         try:
