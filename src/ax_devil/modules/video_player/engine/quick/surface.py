@@ -28,6 +28,10 @@ _HOVER_HIGHLIGHT_STYLE = DrawingStyle(
     brush_b=255,
     brush_a=30,
 )
+# Heavier than any catalog box, so the selected object reads at a glance; owned here, not by catalogs.
+_SELECTED_STYLE = DrawingStyle(pen_r=255, pen_g=255, pen_b=255, pen_width=0.009)
+
+Bounds = tuple[float, float, float, float]  # Normalized (x, y, width, height)
 
 
 class QuickSurface(QQuickWidget):
@@ -99,15 +103,21 @@ class QuickSurface(QQuickWidget):
         opacity: float,
         target: QRectF,
         scale: float,
-        highlight: tuple[float, float, float, float] | None,
+        hovered: Bounds | None,
+        selected: Bounds | None = None,
     ) -> None:
-        """Bind prepared output before Qt renders the corresponding video image."""
+        """Bind prepared output before Qt renders the corresponding video image.
+
+        *hovered* and *selected* are normalized boxes drawn above the overlays in their own styles.
+        """
         self._overlays.present(drawing, opacity)
         highlight_drawing = None
-        if highlight is not None:
+        if hovered is not None or selected is not None:
             buffer = DrawingBuffer(self.drawing_settings(target, scale))
-            x, y, width, height = (np.array([value]) for value in highlight)
-            buffer.boxes(x, y, width, height, Paint.of(_HOVER_HIGHLIGHT_STYLE))
+            for bounds, style in ((selected, _SELECTED_STYLE), (hovered, _HOVER_HIGHLIGHT_STYLE)):
+                if bounds is not None:
+                    x, y, width, height = (np.array([value]) for value in bounds)
+                    buffer.boxes(x, y, width, height, Paint.of(style))
             highlight_drawing = buffer.finish()
         self._highlight.present(highlight_drawing, 1.0)
 

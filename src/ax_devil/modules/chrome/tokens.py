@@ -107,7 +107,7 @@ def reserve_line(widget: QWidget) -> None:
 
 
 def _fixed_font() -> QFont:
-    # The generic family rich text also uses, so lists and hover cards show one monospace face.
+    # The generic family rich text also uses, so lists and hover chips show one monospace face.
     font = QFont("monospace")
     font.setStyleHint(QFont.StyleHint.Monospace)
     return font

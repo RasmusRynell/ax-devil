@@ -14,7 +14,6 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.theme import StatusColor, apply_text_size, apply_theme
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
-from ax_devil.modules.scene.inspection import build_entity_hover_html
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -26,7 +25,6 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.video_player.ui.controls import video_control_icon
-from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
 from ax_devil.modules.video_viewer.media_tools.events_page import EventsPage
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectsPage
@@ -80,12 +78,9 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     events.resize(500, 150)
     card = ObjectPage("person-1", {})
     card.resize(400, 300)
-    host = QWidget()
-    host.resize(500, 350)
-    hover = EntityHoverCard(host)
     browser = SectionsView("test", "Test", Icon.WORKSPACE)
     browser.resize(300, 150)
-    for widget in (entities, events, card, host, browser):
+    for widget in (entities, events, card, browser):
         qtbot.addWidget(widget)
         widget.show()
     entities.update_scene(scene, 5)
@@ -97,7 +92,6 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     (events_view,) = [view for view in events.findChildren(RowTableView) if view.isVisible()]
     card.set_history(history)
     card.update_scene(scene, 5)
-    hover.show_for("person-1", build_entity_hover_html(entity), 20, 20)
 
     for mode in ("light", "dark", "light"):
         apply_theme(mode)
@@ -115,8 +109,6 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
         assert _foreground_pixels(image, row_rect, dark=dark, light_limit=140) > 40, mode
         events_image = events_view.viewport().grab().toImage()
         assert _foreground_pixels(events_image, events_image.rect(), dark=dark) > 20, mode
-        hover_image = hover.grab().toImage()
-        assert _foreground_pixels(hover_image, QRect(10, 8, 150, 70), dark=dark) > 100, mode
         card_image = card.grab().toImage()
         assert _foreground_pixels(card_image, card_image.rect(), dark=dark) > 100, mode
 

@@ -7,14 +7,17 @@ import threading
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QPushButton, QTabBar
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer, show_catalog_viewer
-from ax_devil.modules.catalog_viewer.sheets import sheets
+from ax_devil.modules.catalog_viewer.inspector import ObjectInspector
+from ax_devil.modules.catalog_viewer.sheets import sheet_frame, sheets
 from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
+from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogFile,
     SceneRenderCatalogLoader,
@@ -23,7 +26,12 @@ from ax_devil.modules.scene.rendering import (
 )
 from ax_devil.modules.scene.rendering.catalog import CatalogJsonDocument
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
-from tests.catalog_helpers import GatedCatalogLoader, create_catalog, create_ready_catalog_manager, wait_for_catalogs
+from tests.catalog_helpers import (
+    GatedCatalogLoader,
+    create_catalog,
+    create_ready_catalog_manager,
+    wait_for_catalogs,
+)
 
 
 def _viewer(qtbot: QtBot, manager: SceneRenderCatalogManager, path: Path) -> CatalogViewerWindow:
@@ -83,6 +91,38 @@ def test_the_viewer_shows_a_tab_per_sheet(qtbot: QtBot, render_catalog_manager: 
     assert titles == [sheet.title for sheet in sheets(document)]
     assert titles
     assert window.error() is None
+
+
+def test_clicking_a_sheet_object_shows_its_generated_attributes_until_empty_video_is_clicked(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    path = render_catalog_manager.built_in_catalog_path()
+    window = _viewer(qtbot, render_catalog_manager, path)
+    window.resize(1400, 800)
+    renderer = window.findChild(VideoFrameRenderer, "catalogViewerRenderer")
+    inspector = window.findChild(ObjectInspector)
+    assert renderer is not None and inspector is not None
+    fields = inspector.findChild(FieldsView)
+    assert fields is not None and not fields.isVisible()
+    area = renderer.frame_display_rect()
+    assert area is not None
+    sheet = sheets(json.loads(path.read_text(encoding="utf-8")))[0]
+    provider = sheet_frame(sheet, SceneRenderCatalogLoader().load_path(path)).overlays
+    assert provider is not None and provider.interaction_provider is not None
+    points = [((nx + 0.5) / 20, (ny + 0.5) / 20) for nx in range(20) for ny in range(20)]
+    hit = next(hit for point in points if (hit := provider.interaction_provider.hit_test(*point)) is not None)
+    x, y, width, height = hit.bounds
+    on_object = (x + width / 2, y + height / 2)  # The middle of an object's box, away from its edges.
+    off_object = next(point for point in points if provider.interaction_provider.hit_test(*point) is None)
+
+    def click(point: tuple[float, float]) -> None:
+        pos = QPoint(round(area.x() + point[0] * area.width()), round(area.y() + point[1] * area.height()))
+        QTest.mouseClick(renderer, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, pos)
+
+    click(on_object)
+    assert fields.isVisible() and fields.model().rowCount() > 0
+    click(off_object)
+    assert not fields.isVisible()
 
 
 def test_catalog_change_notification_redraws_the_file(

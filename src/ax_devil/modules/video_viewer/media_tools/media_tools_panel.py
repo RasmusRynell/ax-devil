@@ -30,6 +30,7 @@ from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.synchronization.timestamp_matching import DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US
+from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 
@@ -92,7 +93,7 @@ class MediaToolsSection(Enum):
             ),
             MediaToolsSection.OVERLAY_DETAILS: (
                 "Choose which details this view draws. Choices apply immediately, including while paused. "
-                "Hidden details remain available in inspection and hover cards. Reset enables every detail."
+                "Hidden details remain available in inspection and the hover chip. Reset enables every detail."
             ),
             MediaToolsSection.RENDER_CATALOG: (
                 "Choose how overlay entities are drawn. The choice applies to this view only.\n\n"
@@ -369,6 +370,22 @@ class MediaToolsPanel(QWidget):
         self._pending_object = ObjectPageKey(entity_id)
         if self.isVisible():
             self._show_pending_object()
+
+    def link_selection(self, display: FrameDisplay) -> None:
+        """Keep the object selected on *display* and the object page open here the same.
+
+        Clicking an object on the video opens its page; moving between objects here moves the selection on the video.
+        Clearing the selection on the video leaves a page that is open, but drops an object chosen while the panel was
+        hidden so that opening the panel does not select it again.
+        """
+        display.objectSelected.connect(self._show_selected)
+        self.objectSelected.connect(display.select_object)
+
+    def _show_selected(self, entity_id: str | None) -> None:
+        if entity_id is None:
+            self._pending_object = None
+        else:
+            self.show_object(entity_id)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """Open the object chosen while the panel was hidden."""

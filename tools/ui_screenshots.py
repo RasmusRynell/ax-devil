@@ -8,8 +8,9 @@ Settings dialog does::
     PYTHONPATH=. uv run pytest -p tests.conftest tools/ui_screenshots.py -q
     PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/after uv run pytest -p tests.conftest tools/ui_screenshots.py -q
 
-``test_media_tools_screenshots`` adds ``<theme>-panel-*.png`` and ``<theme>-grid*.png`` shots of the media tools panel;
-run it alone with ``-k media_tools``.
+``test_media_tools_screenshots`` adds ``<theme>-panel-*.png``, ``<theme>-grid*.png``, ``<theme>-hover-chip.png`` and
+``<theme>-selected-object.png`` shots of the media tools panel and of picking objects on the video; run it alone with
+``-k media_tools``.
 
 Shots go to ``AX_DEVIL_UI_SHOTS`` (default ``/tmp/ax-devil-ui-shots``) as ``<theme>-<text size>-<surface>.png``.
 They are rendered at ``AX_DEVIL_UI_SHOTS_SCALE`` device pixels per logical pixel (default 2, as on a high-DPI screen).
@@ -29,11 +30,12 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
-from PySide6.QtCore import QPoint, QSize, QTimer
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import QEvent, QPoint, QPointF, QSize, Qt, QTimer
+from PySide6.QtGui import QMouseEvent, QPainter
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -56,13 +58,12 @@ from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
 from ax_devil.modules.plugin_system import DECODER_PLUGIN_TYPE, RuntimePluginRegistry
-from ax_devil.modules.scene.inspection import build_entity_hover_html
-from ax_devil.modules.scene.model import BoundingBox, Classification, Entity, EntityId, MotionState, Observation, Score
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
-from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
+from ax_devil.modules.video_player.engine.data_types import HoverHit
+from ax_devil.modules.video_player.ui.hover_chip import HoverChip
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
@@ -326,6 +327,11 @@ def test_screenshots(
     catalog_viewer.show()
     qtbot.waitUntil(lambda: bool(catalog_viewer.sheet_titles()), timeout=10000)
     qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
+    sheet = catalog_viewer._current_sheet()
+    assert sheet is not None
+    selected = str(next(iter(sheet.scene.entities)))
+    catalog_viewer._renderer.select_target(selected)
+    catalog_viewer._renderer.selectionChanged.emit(selected)
     for text_size in TEXT_SIZES:
         settings.text_size = text_size
         catalog_viewer.resize(*WINDOW_SIZES["narrow"])
@@ -474,41 +480,32 @@ def test_screenshots(
 
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_hover_screenshots(qtbot: QtBot, theme: str) -> None:
-    """Save compact and scrolling object inspectors in wide and narrow viewers."""
+    """Save the hover chip over a stand-in video, with and without detail, in wide and narrow viewers."""
     OUT.mkdir(parents=True, exist_ok=True)
     apply_theme(theme)
-    entity = Entity(id=EntityId("12d872dd-1285-536d-bc40-123456789abc"), motion_state=MotionState.Unknown)
-    entity.add_observation(
-        Observation(
-            geometry=BoundingBox.from_xywh(0.312, 0.142, 0.447, 0.847),
-            classification=[Classification(type="vehicle_other", score=Score(0.68))],
-            timestamp=datetime(1970, 1, 1, tzinfo=timezone.utc),
-            debug={
-                "recentMotion": {
-                    "trackConfident": True,
-                    "moteOverlap": {"currentIou": 0, "iou": 0, "longLived": False},
-                    "velocity": {"x": 0.04316, "y": -0.06882, "stdDevX": 0.344, "stdDevY": 0.5898},
-                    "positionStability": {f"metric_{index}": index / 100 for index in range(30)},
-                }
-            },
-        )
-    )
     parent = QWidget()
+    parent.setObjectName("videoStandIn")
+    parent.setStyleSheet("#videoStandIn { background: #4a5a46; }")
     qtbot.addWidget(parent)
     parent.show()
-    card = EntityHoverCard(parent)
+    chip = HoverChip(parent)
+    box = (0.312, 0.142, 0.2, 0.5)
+    hits = {
+        "detail": HoverHit(
+            "12d872dd", box, "12d872dd-1285-536d-bc40-123456789abc person", "conf 0.97 · speed 1.2", "person"
+        ),
+        "plain": HoverHit("12", box, "12 vehicle_other", "", "vehicle_other"),
+    }
     for text_size in TEXT_SIZES:
         apply_text_size(text_size.body_px)
         for size_name, size in (("wide", (1000, 640)), ("narrow", (320, 600))):
             parent.resize(*size)
-            card.show_for(str(entity.id), build_entity_hover_html(entity), 40, 40, interactive=True)
-            QApplication.processEvents()
-            parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-{size_name}.png"))
-            card.hide_card()
-            card.show_for("compact", "<b>Person</b><br/>ID: 12<br/>Confidence: 0.98", 40, 40, interactive=True)
-            QApplication.processEvents()
-            parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-compact-{size_name}.png"))
-            card.hide_card()
+            for name, hit in hits.items():
+                x, y = round(box[0] * size[0] + box[2] * size[0]), round(box[1] * size[1])
+                chip.show_for(hit, x, y)
+                QApplication.processEvents()
+                parent.grab().save(str(OUT / f"{theme}-{text_size.value}-hover-{name}-{size_name}.png"))
+                chip.hide_chip()
 
 
 def _shoot(window: QWidget, theme: str, name: str, menu: QMenu | None = None, anchor: QWidget | None = None) -> None:
@@ -549,6 +546,41 @@ def _with_merge_and_split(panel: MediaToolsPanel) -> FrameEvent:
     return rename
 
 
+def _object_point(viewport: FrameViewport, entity_id: str) -> QPoint:
+    """Return the widget position of the centre of object *entity_id*'s box, where a hit test finds that object."""
+    provider = viewport._interaction_provider()
+    target = viewport._hover_target_rect()
+    assert provider is not None and target is not None
+    hit = provider.get_hit_by_id(entity_id)
+    assert hit is not None
+    x, y, width, height = hit.bounds
+    centre = QPointF(target.x() + (x + width / 2) * target.width(), target.y() + (y + height / 2) * target.height())
+    found = viewport._hit_test((centre.x() - target.x()) / target.width(), (centre.y() - target.y()) / target.height())
+    assert found is not None and found.target_id == entity_id
+    return centre.toPoint()
+
+
+def _move_pointer(viewport: FrameViewport, pos: QPoint) -> None:
+    """Send *viewport* a mouse move to *pos*, as the pointer would, without touching any real input device."""
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(pos),
+        QPointF(viewport.mapToGlobal(pos)),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(viewport, event)
+
+
+def _click_object(viewport: FrameViewport, entity_id: str) -> None:
+    """Click object *entity_id* on *viewport*, then move the pointer onto empty video so the hover chip is gone."""
+    pos = _object_point(viewport, entity_id)
+    _move_pointer(viewport, pos)
+    cast(Any, QTest).mouseClick(viewport, Qt.MouseButton.LeftButton, pos=pos)
+    _move_pointer(viewport, QPoint(viewport.width() - 4, viewport.height() - 4))
+
+
 def _grid_panels(qtbot: QtBot, viewer: OfflineVideoViewerWidget) -> list[MediaToolsPanel]:
     """Open the side panel of every lane of *viewer* and return the panels."""
     runtime = viewer._runtime
@@ -575,7 +607,12 @@ def test_media_tools_screenshots(
     Add a shot with one more ``shoot`` call.
     """
     OUT.mkdir(parents=True, exist_ok=True)
-    for stale in (*OUT.glob(f"{theme}-panel-*.png"), *OUT.glob(f"{theme}-grid*.png")):
+    for stale in (
+        *OUT.glob(f"{theme}-panel-*.png"),
+        *OUT.glob(f"{theme}-grid*.png"),
+        *OUT.glob(f"{theme}-hover-chip.png"),
+        *OUT.glob(f"{theme}-selected-object.png"),
+    ):
         stale.unlink()
     monkeypatch.setattr(CacheManager, "_get_base_cache_dir", lambda self: tmp_path / "cache")
     apply_theme(theme)
@@ -615,6 +652,13 @@ def test_media_tools_screenshots(
     objects._query_bar.set_text("class:human conf>0.5")
     shoot("panel-objects-query")
     objects._query_bar.set_text("")
+    viewport = viewer.findChild(FrameViewport)
+    assert viewport is not None
+    _move_pointer(viewport, _object_point(viewport, "1"))
+    shoot("hover-chip")
+    _click_object(viewport, "1")
+    shoot("selected-object")
+    panel._stack.show_root(objects)
     panel.show_object("7")
     shoot("panel-object")
     panel.show_object("6")
@@ -669,6 +713,11 @@ def test_media_tools_screenshots(
     shoot("grid-events")
     for lane_panel in panels:
         lane_panel._tabs.setCurrentIndex(0)
+    selected_lane = grid.findChildren(FrameViewport)[1]
+    _click_object(selected_lane, "2")
+    shoot("grid-selected")
+    for lane_panel in panels:
+        lane_panel._stack.show_root(lane_panel.objects_page)
     for lane_panel in panels:
         lane_panel.show_object("7")
     qtbot.wait(500)

@@ -16,9 +16,9 @@ from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, category_color
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
+from ax_devil.modules.object_inspection.frame_labels import format_frame_time
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import EntityId, Scene
-from ax_devil.modules.video_viewer.media_tools.frame_labels import format_frame_time
 from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
 from ax_devil.modules.video_viewer.media_tools.presence import Presence

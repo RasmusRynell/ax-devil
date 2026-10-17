@@ -11,9 +11,9 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
+from ax_devil.modules.object_inspection.frame_labels import format_frame_time, format_short_frame_time
 from ax_devil.modules.scene.model import Delete, EntityId, Scene, TimeSlice
 from ax_devil.modules.video_viewer.media_tools.events_page import LIVE_EVENT_LIMIT, EventsPage
-from ax_devil.modules.video_viewer.media_tools.frame_labels import format_frame_time, format_short_frame_time
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 

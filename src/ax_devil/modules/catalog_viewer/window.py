@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.background_jobs import LatestRequest
+from ax_devil.modules.catalog_viewer.inspector import ObjectInspector
 from ax_devil.modules.catalog_viewer.sheets import Sheet, drawing_errors, sheet_frame, sheets
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -37,6 +38,7 @@ from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space
+from ax_devil.modules.scene.model import EntityId
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalog,
     SceneRenderCatalogFile,
@@ -140,12 +142,15 @@ class CatalogViewerWindow(ChromeWindow):
         self._tabs.setUsesScrollButtons(True)
         self._renderer = VideoFrameRenderer(self)
         self._renderer.setObjectName("catalogViewerRenderer")
+        self._inspector = ObjectInspector(self)
+        self._selected: str | None = None
         self._description = QLabel(self)
         self._description.setWordWrap(True)
         self._build()
 
         self._catalogs.activated.connect(lambda index: self.show_catalog(self._catalogs.itemData(index)))
         self._tabs.currentChanged.connect(lambda _index: self._redraw())
+        self._renderer.selectionChanged.connect(self._on_selected)
         self._new.clicked.connect(self._create_copy)
         self._delete.clicked.connect(self._delete_catalog)
         self._apply_to_all.clicked.connect(self._apply_catalog_to_all)
@@ -352,6 +357,22 @@ class CatalogViewerWindow(ChromeWindow):
             self._description.setText(sheet.description)
             self._description_status = None
         self._style_description()
+        self._show_selection()
+
+    def _on_selected(self, target_id: str | None) -> None:
+        self._selected = target_id
+        self._show_selection()
+
+    def _show_selection(self) -> None:
+        """Show the clicked object's attributes from the sheet shown; an object the sheet lacks is deselected."""
+        sheet = self._current_sheet()
+        entity = None
+        if sheet is not None and self._selected is not None:
+            entity = sheet.scene.entities.get(EntityId(self._selected))
+            if entity is None:
+                self._selected = None
+                self._renderer.select_target(None)
+        self._inspector.show_entity(entity)
 
     # Catalog files ---------------------------------------------------------------------------------------------
 
@@ -463,7 +484,11 @@ class CatalogViewerWindow(ChromeWindow):
         layout.addLayout(header)
         layout.addWidget(self._banner)
         layout.addWidget(self._tabs)
-        layout.addWidget(self._renderer, 1)
+        body = QHBoxLayout()
+        body.setSpacing(0)
+        body.addWidget(self._renderer, 1)
+        body.addWidget(self._inspector)
+        layout.addLayout(body, 1)
         layout.addWidget(self._description)
         self.setCentralWidget(central)
 
