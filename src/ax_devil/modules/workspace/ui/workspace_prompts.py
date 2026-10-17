@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
@@ -14,19 +13,8 @@ from ax_devil.modules.workspace.core import WORKSPACE_FILE_SUFFIX
 _FILE_FILTER = f"Workspaces (*{WORKSPACE_FILE_SUFFIX})"
 
 
-class SaveChoice(Enum):
-    """The answer to whether unsaved changes should be saved before they are replaced; there is no cancelling."""
-
-    SAVE = "save"
-    DISCARD = "discard"
-
-
 class WorkspacePrompts(Protocol):
     """Ask the user about workspace files; tests replace the dialogs with fixed answers."""
-
-    def ask_save_changes(self, workspace_name: str) -> SaveChoice:
-        """Return whether to save the modified workspace before it is replaced."""
-        ...
 
     def choose_workspace_to_open(self) -> Path | None:
         """Return the workspace file to open, or None when the user cancels."""
@@ -50,12 +38,6 @@ class DialogPrompts:
 
     def __init__(self, parent: QWidget) -> None:
         self._parent = parent
-
-    def ask_save_changes(self, workspace_name: str) -> SaveChoice:
-        """Ask Save / Don't Save about the modified workspace being replaced."""
-        choices = {"Save": SaveChoice.SAVE, "Don't Save": SaveChoice.DISCARD}
-        text = f"{workspace_name} has unsaved changes.\nSave them, or they are lost."
-        return ask(self._parent, "Save Previous Workspace", text, choices, SaveChoice.SAVE)
 
     def choose_workspace_to_open(self) -> Path | None:
         """Show an open dialog filtered to workspace files."""

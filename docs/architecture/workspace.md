@@ -90,15 +90,20 @@ commands only build items; their failures are reported in the app like any other
 The app behaves like VS Code. `WorkspaceLifecycle` (`workspace/ui/workspace_lifecycle.py`) makes these decisions over
 the store; it asks the user through `WorkspacePrompts` and builds no widgets.
 
-- Every launch starts with an empty Workspace and no prompt; the start panel offers the recent workspaces. A CLI launch
-  with content starts an Untitled Workspace with those items, and `ax-devil open <file>` opens a saved one.
-- Quitting never prompts. A Workspace with unsaved edits is saved as a copy in `unsaved-workspaces` in the storage
-  folder saved at that time and recorded as a recent workspace, so the edits are one click away; the Workspace's own
-  file is not touched. Credentials are saved as entered, as in a workspace file. Copies are not deleted.
+- Nothing prompts on launch, open, New or quit. A CLI launch with content starts an Untitled Workspace with those
+  items, and `ax-devil open <file>` opens a saved one.
+- A Workspace with unsaved edits has one recovery copy in `unsaved-workspaces` in the storage folder saved at that
+  time, rewritten in place every couple of seconds and listed first among the recent workspaces. It is a workspace
+  file that also names the file it recovers (`workspace_file`, null when Untitled), so its edits are never written to
+  the Workspace's own file. Saving or discarding deletes it; opening another Workspace or New, and quitting, keep it.
+  Credentials are saved as entered, as in a workspace file.
+- A plain launch restores the newest recent workspace if it is a copy, as a modified Workspace with a banner offering
+  Discard, which reopens the Workspace's own file or starts an empty one. Opening a copy from the recent workspaces
+  restores it the same way. An instance locks its copy (`<copy>.lock`), so another running instance starts empty or,
+  asked to open it, says it is open in another window.
 - Opened and new Workspaces list their items and open and connect nothing; only adding items opens a viewer.
-- Creating a new Workspace with unsaved edits asks Save / Don't Save, with no way to dismiss it. Saving a Workspace
-  that has no file goes through Save As, and cancelling that cancels the whole action. A file that cannot be read or
-  written is reported and changes nothing.
+- Saving a Workspace that has no file goes through Save As, and cancelling that cancels the save. A file that cannot be
+  read or written is reported and changes nothing.
 - Opened and saved files are listed as recent workspaces under the path the user chose; symlinks are not followed.
   Each recent keeps the time it was last opened or saved, so listing and dating recents never reads their files; for
   the same reason a recent is labelled with its file's name, not the name saved inside it.

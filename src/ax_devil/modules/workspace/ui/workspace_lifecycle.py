@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QLockFile, QObject, QTimer, Signal
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import (
@@ -16,29 +16,40 @@ from ax_devil.modules.workspace.core import (
     Workspace,
     WorkspaceFileError,
     WorkspaceItem,
-    save_workspace,
+    read_recovery,
     workspace_file_path,
+    write_recovery,
 )
-from ax_devil.modules.workspace.core.legacy_backup import LEGACY_BACKUP_FILE, read_legacy_backup
-from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice, WorkspacePrompts
+from ax_devil.modules.workspace.ui.workspace_prompts import WorkspacePrompts
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 logger = get_logger(__name__)
 
 _COPY_STEM_BYTES = 64  # The name in a copy's file name is a label; this leaves ample room under any NAME_MAX.
 _COPY_FALLBACK_STEM = "Unsaved workspace"
+_SYNC_INTERVAL_MS = 2000
+
+
+class _CopyInUse(OSError):
+    """A recovery copy is held by another running instance."""
+
+
+def _normalized(path: Path) -> Path:
+    return Path(os.path.normpath(path.absolute()))
 
 
 class WorkspaceLifecycle(QObject):
     """Decide when the Workspace in *store* is replaced, saved, kept, and remembered; build no widgets.
 
-    Launching starts with an empty Workspace. Quitting never asks; a Workspace with unsaved edits is saved as a copy
-    in the folder *unsaved_folder* names and joins *recent_workspaces* like any opened or saved file. Starting a new
-    Workspace asks before discarding edits; opening a saved Workspace discards them. The first launch after an upgrade
-    keeps the edits of the ``workspace-backup.json`` that earlier versions left beside *unsaved_folder* the same way.
+    Nothing here asks about unsaved edits. A Workspace with unsaved edits has one recovery copy in the folder
+    *unsaved_folder* names, rewritten in place every couple of seconds while the Workspace changes and deleted once
+    it is saved or discarded. The copy is listed in *recent_workspaces* like any opened or saved file and is kept
+    when the Workspace is replaced or the app quits. A launch with nothing to open restores the newest recent
+    workspace if it is a copy. An instance holds a lock on its copy, so no other instance restores it.
     """
 
     recent_workspaces_changed = Signal()
+    recovered = Signal()  # A recovery copy replaced the Workspace; its edits are unsaved.
 
     def __init__(
         self,
@@ -53,45 +64,64 @@ class WorkspaceLifecycle(QObject):
         self._prompts = prompts
         self._unsaved_folder = unsaved_folder
         self._recent_workspaces = recent_workspaces
+        self._recovery: Path | None = None  # This instance's copy of the Workspace's unsaved edits, once written.
+        self._lock: QLockFile | None = None
+        # A Workspace is immutable, so any edit makes a new one: polling its identity needs no signal from the store.
+        self._synced: Workspace | None = None
+        self._timer = QTimer(self)
+        self._timer.setInterval(_SYNC_INTERVAL_MS)
+        self._timer.timeout.connect(self._sync_recovery)
+        self._timer.start()
 
     def recent_workspaces(self) -> tuple[RecentWorkspace, ...]:
         """Return the recently opened or saved workspace files, newest first; their files are not checked."""
         return self._recent_workspaces.entries()
 
     def launch(self, items: Sequence[WorkspaceItem] = (), workspace_file: Path | None = None) -> None:
-        """Open *workspace_file* or start a new Workspace with *items*, if given; otherwise stay empty."""
-        self._keep_legacy_backup()
+        """Open *workspace_file* or start a new Workspace with *items*, if given; otherwise restore the unsaved edits
+        the last run left, or stay empty."""
         if workspace_file is not None:
             self.open_workspace(workspace_file)
         elif items:
             self.new_workspace(items)
+        else:
+            self._restore_newest_recent()
 
     def keep_unsaved_changes(self) -> None:
-        """Save a Workspace with unsaved edits as a copy and list it in the recent workspaces; call when quitting.
+        """Bring the recovery copy up to date and list it first among the recent workspaces.
 
-        The Workspace's own file is not touched. A failure is logged, since quitting must not be stopped by it.
+        Called when quitting and before the Workspace is replaced. A failure is logged, since neither may be stopped
+        by it.
         """
-        if not self._store.is_modified:
-            return
-        copy = self._write_copy(self._store.workspace)
-        if copy is not None:
-            self._recent_workspaces.record(copy)  # Unlisted, the copy is still on disk if this fails.
+        self._sync_recovery()
+        if self._recovery is not None:
+            self._remember(self._recovery)
 
-    def new_workspace(self, items: Sequence[WorkspaceItem] = ()) -> bool:
-        """Replace the Workspace with a new Untitled one holding *items*; return False when the user cancels."""
-        if not self._settle_unsaved_changes():
-            return False
+    def new_workspace(self, items: Sequence[WorkspaceItem] = ()) -> None:
+        """Replace the Workspace with a new Untitled one holding *items*; unsaved edits stay in their copy."""
+        self.keep_unsaved_changes()
         self._store.replace_workspace(Workspace())
+        self._detach_recovery()
         self._store.add_items(items)
-        return True
 
     def open_workspace(self, path: Path | None = None) -> bool:
-        """Open the workspace saved in *path*, or in a file the user picks, discarding current edits."""
+        """Open the workspace saved in *path*, or in a file the user picks; unsaved edits stay in their copy.
+
+        A recovery copy is restored with its edits unsaved. Return whether it was opened.
+        """
         path = path or self._prompts.choose_workspace_to_open()
         if path is None:
             return False
+        self.keep_unsaved_changes()
         try:
-            self._store.open_workspace(path)
+            if self._is_recovery_copy(path):
+                self._restore(path)
+            else:
+                self._store.open_workspace(path)
+                self._detach_recovery()
+        except _CopyInUse:
+            self._prompts.show_error(f"{path.name} is open in another window.")
+            return False
         except (WorkspaceFileError, OSError) as exc:
             logger.warning(f"Could not open workspace {path}: {exc}")
             self._recent_workspaces.forget(path)
@@ -99,6 +129,26 @@ class WorkspaceLifecycle(QObject):
             self._prompts.show_error(str(exc))
             return False
         self._remember(path)
+        return True
+
+    def revert_workspace(self) -> bool:
+        """Discard the unsaved edits: reopen the Workspace's own file, or start an empty Untitled one.
+
+        Only once that has succeeded is the recovery copy deleted and forgotten. Return whether it succeeded.
+        """
+        path = self._store.workspace.path
+        try:
+            if path is None:
+                self._store.replace_workspace(Workspace())
+            else:
+                self._store.open_workspace(path)
+        except (WorkspaceFileError, OSError) as exc:
+            logger.warning(f"Could not reopen workspace {path}: {exc}")
+            self._prompts.show_error(str(exc))
+            return False
+        self._delete_recovery()
+        if path is not None:
+            self._remember(path)
         return True
 
     def save_workspace(self) -> bool:
@@ -131,30 +181,113 @@ class WorkspaceLifecycle(QObject):
             logger.warning(f"Could not save workspace to {path}: {exc}")
             self._prompts.show_error(str(exc))
             return False
+        self._sync_recovery()
         self._remember(path)
         return True
 
-    def _settle_unsaved_changes(self) -> bool:
-        """Return whether the current Workspace may be replaced, asking to save it first when it is modified."""
-        if not self._store.is_modified:
-            return True
-        choice = self._prompts.ask_save_changes(self._store.workspace.name)
-        return choice is SaveChoice.DISCARD or (choice is SaveChoice.SAVE and self.save_workspace())
-
-    def _write_copy(self, workspace: Workspace) -> Path | None:
-        """Save *workspace* as a new file in the unsaved folder; return its path, or None when that failed."""
-        copy: Path | None = None
+    def _restore_newest_recent(self) -> None:
+        """Restore the newest recent workspace if it is a recovery copy; one that fails is forgotten, silently."""
+        recent = self._recent_workspaces.entries()
+        if not recent or not self._is_recovery_copy(recent[0].path):
+            return
+        copy = recent[0].path
         try:
-            copy = self._reserve_copy_path(workspace)
-            save_workspace(workspace, copy)
+            self._restore(copy)
+        except _CopyInUse:
+            logger.info(f"Not restoring {copy}: another instance holds it.")
+        except (WorkspaceFileError, OSError) as exc:
+            logger.warning(f"Could not restore unsaved changes from {copy}: {exc}")
+            self._recent_workspaces.forget(copy)
+            self.recent_workspaces_changed.emit()
+
+    def _is_recovery_copy(self, path: Path) -> bool:
+        return _normalized(path).is_relative_to(_normalized(self._unsaved_folder()))
+
+    def _restore(self, copy: Path) -> None:
+        """Make the recovery copy *copy* the Workspace, with its edits unsaved, and this instance's copy.
+
+        Raises ``_CopyInUse`` when another instance holds it, and ``WorkspaceFileError`` or ``OSError`` when it cannot
+        be read; the Workspace is then unchanged.
+        """
+        copy = _normalized(copy)
+        lock = None if copy == self._recovery else self._lock_copy(copy)
+        try:
+            self._store.replace_workspace(read_recovery(copy), unsaved=True)
+        except (WorkspaceFileError, OSError):
+            if lock is not None:
+                lock.unlock()
+            raise
+        if lock is not None:
+            self._detach_recovery()
+            self._recovery, self._lock = copy, lock
+        self._synced = self._store.workspace
+        self.recovered.emit()
+
+    @staticmethod
+    def _lock_copy(copy: Path) -> QLockFile:
+        """Lock *copy* for this instance, or raise ``_CopyInUse``.
+
+        A lock is stale only when its process is gone: one held by a long-running instance never expires.
+        """
+        lock = QLockFile(f"{copy}.lock")
+        lock.setStaleLockTime(0)
+        if not lock.tryLock(0):
+            raise _CopyInUse(f"{copy} is in use")
+        return lock
+
+    def _sync_recovery(self) -> None:
+        """Bring the recovery copy up to date: written while the Workspace has unsaved edits, deleted when it has not.
+
+        Nothing happens while the Workspace is the one the copy was last synced with.
+        """
+        workspace = self._store.workspace
+        if workspace is self._synced:
+            return
+        self._synced = workspace
+        if self._store.is_modified:
+            self._write_recovery(workspace)
+        else:
+            self._delete_recovery()
+
+    def _write_recovery(self, workspace: Workspace) -> None:
+        """Write *workspace* to this instance's copy, claiming and listing a new file the first time.
+
+        A failure is logged; the copy is tried again with the next change.
+        """
+        copy, lock = self._recovery, self._lock
+        try:
+            if copy is None:
+                copy = _normalized(self._reserve_copy_path(workspace))
+                lock = self._lock_copy(copy)
+            write_recovery(workspace, copy)
         except (WorkspaceFileError, OSError) as exc:
             logger.warning(
                 f"Could not keep the unsaved workspace {workspace.name!r} in {self._unsaved_folder()}: {exc}"
             )
-            if copy is not None:
+            if self._recovery is None and copy is not None:
+                if lock is not None:
+                    lock.unlock()
                 copy.unlink(missing_ok=True)
-            return None
-        return copy
+            return
+        if self._recovery is None:
+            self._recovery, self._lock = copy, lock
+            self._remember(copy)  # Unlisted, the copy is still on disk if this fails.
+
+    def _detach_recovery(self) -> None:
+        """Stop treating the copy as this instance's, leaving it on disk and among the recent workspaces."""
+        if self._lock is not None:
+            self._lock.unlock()
+        self._recovery = self._lock = None
+
+    def _delete_recovery(self) -> None:
+        """Delete the copy, if there is one, and forget it."""
+        copy = self._recovery
+        if copy is None:
+            return
+        self._detach_recovery()
+        copy.unlink(missing_ok=True)
+        self._recent_workspaces.forget(copy)
+        self.recent_workspaces_changed.emit()
 
     def _reserve_copy_path(self, workspace: Workspace) -> Path:
         """Create and return an empty file named after *workspace* and now that no other file or instance has.
@@ -187,34 +320,6 @@ class WorkspaceLifecycle(QObject):
                 number += 1
             else:
                 return path
-
-    def _keep_legacy_backup(self) -> None:
-        """Keep the unsaved edits in an earlier version's backup as a recent workspace, then delete the backup.
-
-        A backup that is damaged or is the empty Untitled Workspace is deleted without a copy; one that cannot be read
-        now, or whose copy cannot be saved and listed, stays for the next launch. The backup's saved file is not read,
-        so the copy is made whether or not the Workspace has unsaved edits.
-        """
-        backup = self._unsaved_folder().parent / LEGACY_BACKUP_FILE
-        if not backup.is_file():
-            return
-        try:
-            unsaved = read_legacy_backup(backup)
-        except OSError as exc:
-            logger.warning(f"Could not read the earlier version's workspace backup {backup}, keeping it: {exc}")
-            return
-        if unsaved is not None:
-            copy = self._write_copy(unsaved)
-            if copy is None:
-                return
-            if not self._recent_workspaces.record(copy):
-                copy.unlink(missing_ok=True)  # The backup is the one copy that stays, so there is no duplicate.
-                return
-        try:
-            backup.unlink()
-        except OSError as exc:
-            logger.warning(f"Could not delete the earlier version's workspace backup {backup}: {exc}")
-        self.recent_workspaces_changed.emit()
 
     def _remember(self, path: Path) -> None:
         """Record *path* as the most recent workspace file."""

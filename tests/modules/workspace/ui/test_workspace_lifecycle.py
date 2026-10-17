@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import errno
-import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.core import (
     RecentWorkspaces,
@@ -21,9 +21,8 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.ui import workspace_lifecycle
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
-from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.workspace import FakePrompts, inline_resolver
+from tests.helpers.workspace import FakePrompts, inline_resolver, quit_app
 
 
 @dataclass(frozen=True)
@@ -71,43 +70,52 @@ def _record_added_flags(store: WorkspaceStore) -> list[bool]:
     return flags
 
 
-def test_launch_starts_empty_and_a_quit_with_unsaved_edits_leaves_them_as_a_recent_workspace(
+def test_a_launch_restores_the_unsaved_edits_a_quit_left_and_saving_them_replaces_the_copy(
     launches: _Launches, tmp_path: Path
 ) -> None:
-    first = launches.new()
-    clip = _video(tmp_path, "lot.mp4")
-    first.store.add_items([clip])
-    first.store.rename_workspace("Parking lot")
-    first.lifecycle.keep_unsaved_changes()
-
-    second = launches.new()
-    second.lifecycle.launch()
-
-    assert second.store.workspace == Workspace()
-    assert not second.store.is_modified
-    [recent] = second.lifecycle.recent_workspaces()
-    assert recent.path.parent == tmp_path / "state" / "unsaved-workspaces"
-    assert recent.path.name.startswith("Parking lot ")
-    assert second.lifecycle.open_workspace(recent.path)
-    assert (second.store.workspace.items, second.store.workspace.name) == ((clip,), "Parking lot")
-
-
-def test_a_quit_keeps_unsaved_edits_of_a_saved_workspace_beside_its_untouched_file(
-    launches: _Launches, tmp_path: Path
-) -> None:
-    saving = launches.new(FakePrompts(save_path=tmp_path / "Lot.ax-devil.workspace"))
+    original = tmp_path / "Lot.ax-devil.workspace"
+    saving = launches.new(FakePrompts(save_path=original))
     saved_clip, edit = _video(tmp_path, "a.mp4"), _video(tmp_path, "b.mp4")
     saving.store.add_items([saved_clip])
     saving.lifecycle.save_workspace()
     saving.store.add_items([edit])
+    quit_app(saving.lifecycle)
+    assert load_workspace(original).items == (saved_clip,)
 
-    saving.lifecycle.keep_unsaved_changes()
+    second = launches.new()
+    recovered: list[None] = []
+    second.lifecycle.recovered.connect(lambda: recovered.append(None))
+    second.lifecycle.launch()
 
-    assert load_workspace(tmp_path / "Lot.ax-devil.workspace").items == (saved_clip,)
-    [copy, original] = saving.lifecycle.recent_workspaces()
-    assert original.path == tmp_path / "Lot.ax-devil.workspace"
-    assert load_workspace(copy.path).items == (saved_clip, edit)
-    assert saving.store.is_modified
+    assert recovered == [None]
+    assert (second.store.workspace.path, second.store.workspace.items) == (original, (saved_clip, edit))
+    assert second.store.is_modified
+    assert second.lifecycle.save_workspace()
+    assert load_workspace(original).items == (saved_clip, edit)
+    assert not second.store.is_modified
+    assert list((tmp_path / "state" / "unsaved-workspaces").iterdir()) == []
+    assert [entry.path for entry in second.lifecycle.recent_workspaces()] == [original]
+
+
+def test_unsaved_edits_are_copied_while_the_app_runs_and_only_the_instance_that_got_there_first_restores_them(
+    qtbot: QtBot, launches: _Launches, tmp_path: Path
+) -> None:
+    clip = _video(tmp_path, "lot.mp4")
+    first = launches.new()
+    first.store.add_items([clip])
+    qtbot.waitUntil(lambda: first.lifecycle.recent_workspaces() != (), timeout=5000)
+
+    while_running = launches.new()
+    while_running.lifecycle.launch()
+
+    assert while_running.store.workspace == Workspace()
+    quit_app(first.lifecycle)
+
+    after = launches.new()
+    after.lifecycle.launch()
+
+    assert after.store.workspace.items == (clip,)
+    assert after.store.is_modified
 
 
 def test_quitting_instances_with_the_same_workspace_name_at_the_same_moment_keep_both_copies(
@@ -196,105 +204,6 @@ def test_a_quit_keeps_unsaved_edits_when_the_file_system_refuses_the_file_name(
     assert (saved.name, saved.items) == ("Parking lot", (clip,))
 
 
-def _write_legacy_backup(state: Path, name: str, items: list[VideoItem], saved_file: Path | None = None) -> Path:
-    """Write the ``workspace-backup.json`` that earlier versions kept on quit."""
-    backup = state / "workspace-backup.json"
-    backup.parent.mkdir(parents=True, exist_ok=True)
-    document = {
-        "name": name,
-        "path": str(saved_file) if saved_file else None,
-        "items": [i.to_json(None) for i in items],
-    }
-    backup.write_text(json.dumps(document))
-    return backup
-
-
-def test_the_first_launch_after_an_upgrade_lists_the_unsaved_edits_of_the_earlier_versions_backup(
-    launches: _Launches, tmp_path: Path
-) -> None:
-    clip = _video(tmp_path, "lot.mp4")
-    backup = _write_legacy_backup(tmp_path / "state", "Parking lot", [clip])
-    launch = launches.new()
-    changed: list[None] = []
-    launch.lifecycle.recent_workspaces_changed.connect(lambda: changed.append(None))
-
-    launch.lifecycle.launch()
-
-    assert not backup.exists()
-    assert changed
-    assert launch.store.workspace == Workspace()
-    [recent] = launch.lifecycle.recent_workspaces()
-    assert launch.lifecycle.open_workspace(recent.path)
-    assert (launch.store.workspace.items, launch.store.workspace.name) == ((clip,), "Parking lot")
-    launches.new().lifecycle.launch()
-    assert len(launch.lifecycle.recent_workspaces()) == 1
-
-
-def test_an_earlier_versions_backup_that_is_empty_or_damaged_is_dropped_without_a_recent_workspace(
-    launches: _Launches, tmp_path: Path
-) -> None:
-    backup = _write_legacy_backup(tmp_path / "state", Workspace().name, [])
-    launches.new().lifecycle.launch()
-    assert not backup.exists()
-
-    backup.write_text("{ not json")
-    launch = launches.new()
-    launch.lifecycle.launch()
-
-    assert not backup.exists()
-    assert launch.lifecycle.recent_workspaces() == ()
-
-
-def test_an_earlier_versions_backup_is_listed_without_reading_the_file_it_names(
-    launches: _Launches, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    clip = _video(tmp_path, "lot.mp4")
-    saved_file = tmp_path / "Lot.ax-devil.workspace"
-    save_workspace(Workspace(name="Lot", items=(clip,)), saved_file)
-    backup = _write_legacy_backup(tmp_path / "state", "Lot", [clip], saved_file)
-    real_read_text = Path.read_text
-
-    def read_text(path: Path, *args: Any, **kwargs: Any) -> str:
-        assert path != saved_file, "the backup's saved file is on a mount that may block"
-        return real_read_text(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "read_text", read_text)
-    launch = launches.new()
-
-    launch.lifecycle.launch()
-
-    assert not backup.exists()
-    [recent] = launch.lifecycle.recent_workspaces()
-    assert recent.path != saved_file
-
-
-def test_an_earlier_versions_backup_that_cannot_be_read_now_stays_for_the_next_launch(
-    launches: _Launches, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    clip = _video(tmp_path, "lot.mp4")
-    backup = _write_legacy_backup(tmp_path / "state", "Parking lot", [clip])
-    with monkeypatch.context() as patch:
-        real_read_text = Path.read_text
-
-        def unavailable(path: Path, *args: Any, **kwargs: Any) -> str:
-            if path == backup:
-                raise OSError("storage unavailable")
-            return real_read_text(path, *args, **kwargs)
-
-        patch.setattr(Path, "read_text", unavailable)
-        launch = launches.new()
-        launch.lifecycle.launch()
-        assert backup.exists()
-        assert launch.lifecycle.recent_workspaces() == ()
-
-    next_launch = launches.new()
-    next_launch.lifecycle.launch()
-
-    assert not backup.exists()
-    [recent] = next_launch.lifecycle.recent_workspaces()
-    assert load_workspace(recent.path).name == "Parking lot"
-
-
 def test_a_quit_without_unsaved_edits_keeps_nothing(launches: _Launches, tmp_path: Path) -> None:
     empty = launches.new()
     empty.lifecycle.keep_unsaved_changes()
@@ -342,55 +251,37 @@ def _modified_launch(launches: _Launches, tmp_path: Path, prompts: FakePrompts) 
     return launch, clip
 
 
-@pytest.mark.parametrize(
-    ("choice", "save_to", "replaced"),
-    [
-        (SaveChoice.DISCARD, None, True),
-        (SaveChoice.SAVE, "Kept.ax-devil.workspace", True),
-        (SaveChoice.SAVE, None, False),  # Cancelling Save As cancels the whole action.
-    ],
-)
-def test_new_workspace_asks_about_unsaved_changes_first(
-    launches: _Launches, tmp_path: Path, choice: SaveChoice, save_to: str | None, replaced: bool
-) -> None:
-    prompts = FakePrompts(choice, save_path=tmp_path / save_to if save_to else None)
-    launch, clip = _modified_launch(launches, tmp_path, prompts)
-
-    assert launch.lifecycle.new_workspace() is replaced
-
-    assert prompts.asked_to_save == ["Untitled"]
-    assert launch.store.workspace.items == (() if replaced else (clip,))
-    if save_to:
-        assert load_workspace(tmp_path / save_to).items == (clip,)
-    assert launch.store.is_modified is not replaced
-
-
-def test_opening_a_workspace_discards_unsaved_changes_without_asking_and_does_not_resolve_items_as_added(
+def test_opening_a_workspace_keeps_the_unsaved_edits_as_a_copy_in_recents_without_asking(
     launches: _Launches, tmp_path: Path
 ) -> None:
     other = save_workspace(
         Workspace(name="Other", items=(_video(tmp_path, "other.mp4"),)), tmp_path / "Other.ax-devil.workspace"
     )
     prompts = FakePrompts(open_path=other.path)
-    launch, _ = _modified_launch(launches, tmp_path, prompts)
+    launch, clip = _modified_launch(launches, tmp_path, prompts)
     added = _record_added_flags(launch.store)
 
     assert launch.lifecycle.open_workspace()
 
-    assert prompts.asked_to_save == []
     assert launch.store.workspace.items == other.items
     assert (launch.store.workspace.name, launch.store.is_modified) == ("Other", False)
     assert added == [False]
-    assert [entry.path for entry in launch.lifecycle.recent_workspaces()] == [other.path]
+    [opened, copy] = launch.lifecycle.recent_workspaces()
+    assert opened.path == other.path
+    assert load_workspace(copy.path).items == (clip,)
+
+    assert launch.lifecycle.open_workspace(copy.path)
+    assert (launch.store.workspace.path, launch.store.workspace.items) == (None, (clip,))
+    assert launch.store.is_modified
+    assert prompts.errors == []
 
 
 def test_cancelling_the_open_dialog_asks_nothing(launches: _Launches, tmp_path: Path) -> None:
-    prompts = FakePrompts(SaveChoice.DISCARD, open_path=None)
+    prompts = FakePrompts(open_path=None)
     launch, clip = _modified_launch(launches, tmp_path, prompts)
 
     assert not launch.lifecycle.open_workspace()
 
-    assert prompts.asked_to_save == []
     assert launch.store.workspace.items == (clip,)
 
 
@@ -406,7 +297,6 @@ def test_a_workspace_file_that_cannot_be_read_is_reported_and_changes_nothing(
 
     [error] = prompts.errors
     assert error.startswith(f"{damaged.name} is not valid JSON")
-    assert prompts.asked_to_save == []
     assert launch.store.workspace.items == (clip,) and launch.store.is_modified
 
 
@@ -420,7 +310,6 @@ def test_a_launch_with_content_starts_an_untitled_workspace_with_it_without_aski
 
     launched.lifecycle.launch([from_cli])
 
-    assert prompts.asked_to_save == []
     assert launched.store.workspace.items == (from_cli,)
     assert added == [True]
 
@@ -487,7 +376,7 @@ def test_reopening_the_saved_workspace_replaces_it_and_resolves_its_items_again(
     launches: _Launches, tmp_path: Path
 ) -> None:
     """Reopening the file the current Workspace came from replaces it, so no item keeps Content from before."""
-    launch = launches.new(FakePrompts(SaveChoice.DISCARD, save_path=tmp_path / "Lot.ax-devil.workspace"))
+    launch = launches.new(FakePrompts(save_path=tmp_path / "Lot.ax-devil.workspace"))
     clip = _video(tmp_path, "lot.mp4")
     launch.store.add_items([clip])
     launch.lifecycle.save_workspace()
@@ -520,26 +409,5 @@ def test_a_quit_whose_copy_cannot_be_listed_leaves_the_copy_on_disk(launches: _L
     launch.lifecycle.keep_unsaved_changes()
 
     assert launch.lifecycle.recent_workspaces() == ()
-    [copy] = (tmp_path / "state" / "unsaved-workspaces").iterdir()
+    [copy] = (tmp_path / "state" / "unsaved-workspaces").glob("*.ax-devil.workspace")
     assert load_workspace(copy).items == (clip,)
-
-
-def test_an_earlier_versions_backup_whose_copy_cannot_be_listed_stays_for_the_next_launch(
-    launches: _Launches, tmp_path: Path
-) -> None:
-    clip = _video(tmp_path, "lot.mp4")
-    backup = _write_legacy_backup(tmp_path / "state", "Parking lot", [clip])
-    lock = _break_recent_workspaces(tmp_path)
-
-    launches.new().lifecycle.launch()
-
-    assert backup.exists()
-    assert list((tmp_path / "state" / "unsaved-workspaces").iterdir()) == []
-
-    lock.rmdir()
-    next_launch = launches.new()
-    next_launch.lifecycle.launch()
-
-    assert not backup.exists()
-    [recent] = next_launch.lifecycle.recent_workspaces()
-    assert load_workspace(recent.path).items == (clip,)

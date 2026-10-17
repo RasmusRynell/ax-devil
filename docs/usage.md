@@ -10,11 +10,10 @@ A workspace is the set of videos, live cameras and playlists you added. **File ‚
 its name, with `‚óè` while it has unsaved changes. The name is saved in the file and is separate from the file's name,
 which is what the recent lists show. A workspace is called Untitled until you name it.
 
-Closing never asks, and a plain `ax-devil` launch always opens on the empty start panel. A workspace closed with
-unsaved changes is saved as a copy in the storage folder's `unsaved-workspaces` folder and listed among the recent
-workspaces; its own file is not touched. Opening a saved workspace discards unsaved changes without asking; creating a
-new workspace asks whether to save them first. `ax-devil local`, `live` and `playlist` start a new Untitled workspace
-with what they open. The design is in [Workspace](architecture/workspace.md#lifecycle).
+ax-devil never asks about unsaved changes. They are kept as a copy in the storage folder's `unsaved-workspaces` folder
+and listed among the recent workspaces; the workspace's own file is not touched. A plain `ax-devil` launch restores
+them, with a banner offering to discard them, unless another window already has them open. `ax-devil local`, `live` and
+`playlist` start a new Untitled workspace with what they open. The design is in [Workspace](architecture/workspace.md#lifecycle).
 
 A workspace saves what you added, not how you looked at it: file paths (relative to the workspace file when they are
 in its folder), live stream settings, playlist resolver settings and bookmarks (never on live streams). Open viewers, layouts, playback

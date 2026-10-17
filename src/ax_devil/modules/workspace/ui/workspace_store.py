@@ -53,7 +53,7 @@ class WorkspaceStore(QObject):
         super().__init__(parent)
         self._resolver = resolver
         self._workspace = Workspace()
-        self._saved_workspace = self._workspace
+        self._saved_workspace: Workspace | None = self._workspace
         self._resolutions: dict[str, ItemResolution] = {}
         self._not_considered: set[ConsiderationItemRef] = set()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
@@ -90,12 +90,15 @@ class WorkspaceStore(QObject):
         """
         self.replace_workspace(load_workspace(path))
 
-    def replace_workspace(self, current: Workspace) -> None:
-        """Make *current* the Workspace and its saved state, and resolve every item again in the background.
+    def replace_workspace(self, current: Workspace, *, unsaved: bool = False) -> None:
+        """Make *current* the Workspace and, unless *unsaved*, its saved state, and resolve every item again in the
+        background.
 
-        Exclusions start from their defaults.
+        An *unsaved* Workspace, such as a restored recovery copy, counts as modified until it is saved. Exclusions
+        start from their defaults.
         """
-        self._workspace = self._saved_workspace = current
+        self._workspace = current
+        self._saved_workspace = None if unsaved else current
         self._resolutions = {item.id: ItemResolution.pending(item) for item in current.items}
         self._not_considered = set()
         self._generation += 1

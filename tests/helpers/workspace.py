@@ -32,7 +32,7 @@ from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.start_panel import StartPanel
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
-from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice
+from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.section_tree import row_texts
 
@@ -110,23 +110,16 @@ class FakePrompts:
 
     def __init__(
         self,
-        save_choice: SaveChoice = SaveChoice.SAVE,
         open_path: Path | None = None,
         save_path: Path | None = None,
         replace: bool = False,
     ) -> None:
-        self.save_choice = save_choice
         self.replace = replace
         self.asked_to_replace: list[Path] = []
         self.open_path = open_path
         self.save_path = save_path
-        self.asked_to_save: list[str] = []
         self.suggested_save_paths: list[Path] = []
         self.errors: list[str] = []
-
-    def ask_save_changes(self, workspace_name: str) -> SaveChoice:
-        self.asked_to_save.append(workspace_name)
-        return self.save_choice
 
     def choose_workspace_to_open(self) -> Path | None:
         return self.open_path
@@ -141,6 +134,13 @@ class FakePrompts:
 
     def show_error(self, message: str) -> None:
         self.errors.append(message)
+
+
+def quit_app(lifecycle: WorkspaceLifecycle) -> None:
+    """End a run as quitting does: keep its unsaved edits, then release the copy's lock, as the process ending does."""
+    lifecycle.keep_unsaved_changes()
+    if lifecycle._lock is not None:
+        lifecycle._lock.unlock()
 
 
 def inline_resolver(context: ResolutionContext | None = None) -> ItemResolver:
