@@ -158,10 +158,10 @@ def _flatten_items(items: Iterable[tuple[str, Any]]) -> Iterator[InspectionField
 
 
 def _debug_leaves(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
-    """Yield every debug leaf; reported empty values stay as ``""``, ``[]`` or ``{}`` and bytes as searchable hex."""
+    """Yield every debug leaf; reported empty values stay as ``null``, ``""``, ``[]`` or ``{}``, bytes as hex."""
     if value is None:
-        return
-    if isinstance(value, str):
+        yield InspectionField(path, "null")
+    elif isinstance(value, str):
         yield InspectionField(path, value)
     elif isinstance(value, bytes):
         shown = value[:_MAX_DEBUG_BYTES].hex()
