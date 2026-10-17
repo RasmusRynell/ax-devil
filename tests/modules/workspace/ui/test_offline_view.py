@@ -42,7 +42,6 @@ from tests.helpers.contents import make_video
 from tests.helpers.section_tree import (
     captions,
     double_click,
-    expand,
     press,
     row,
     row_action,
@@ -111,7 +110,7 @@ def _resolver_names() -> list[str]:
     return [record.definition.display_name for record in _resolvers()]
 
 
-def test_playlists_list_their_entries_once_expanded(
+def test_playlists_list_their_entries_from_the_start(
     qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=_Folder(3), mot_challenge=_Folder(1))
@@ -130,12 +129,7 @@ def test_playlists_list_their_entries_once_expanded(
     assert _texts(view, "Night shift") == ["Night shift"]
     assert _texts(view, "MOT") == ["MOT"]
     shown = titles(view.tree)
-    assert "run_02.mp4" in shown, "the playlist that opened on adding shows its entries"
-    assert shown[shown.index("MOT") + 1] == _resolver_names()[0], "the other one keeps them in until expanded"
-
-    expand(view.tree, "MOT")
-
-    shown = titles(view.tree)
+    assert "run_02.mp4" in shown, "a playlist shows its entries without being expanded"
     assert shown[shown.index("MOT") + 1] == "run_00.mp4"
 
 
@@ -161,7 +155,6 @@ def test_double_clicking_an_entry_opens_its_playlist_at_that_entry(
     view = _view(session)
     with patch(_OFFLINE_VIEWER, DummyViewer):
         session.add_items([PlaylistItem(label="Night shift", resolver="folder_pair")])
-        expand(view.tree, "Night shift")
         double_click(view.tree, "run_02.mp4")
 
     viewer = session.focused_widget()

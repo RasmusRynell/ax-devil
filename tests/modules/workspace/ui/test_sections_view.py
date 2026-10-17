@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLineEdit, QMenu, QToolButton, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QApplication, QLineEdit, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.icons import Icon
@@ -90,10 +90,6 @@ def _choose_in_filter(view: SectionsView, entry: str) -> None:
     action.trigger()
 
 
-def _show_left_out(view: SectionsView) -> None:
-    _choose_in_filter(view, "Left out")
-
-
 def _row(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
     return cast(WorkspaceBrowserRow, item.data(0, ROW_ROLE))
 
@@ -102,12 +98,6 @@ def _row_widget(view: SectionsView, item: QTreeWidgetItem) -> SourceRow:
     widget = _tree(view).itemWidget(item, 0)
     assert isinstance(widget, SourceRow)
     return widget
-
-
-def _row_toggle(view: SectionsView, item: QTreeWidgetItem) -> QToolButton:
-    toggle = _row_widget(view, item).findChild(QToolButton)
-    assert toggle is not None
-    return toggle
 
 
 def _required_item_row(view: SectionsView, index: int = 0) -> QTreeWidgetItem:
@@ -269,58 +259,20 @@ def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
     assert _required_item_row(view).isExpanded()
 
 
-def test_consideration_toggle_requests_the_change_for_its_row(qtbot: QtBot) -> None:
-    item_ref = ConsiderationItemRef.playlist_entry("playlist-id", 0)
-    view = _view_with(
-        qtbot,
-        WorkspaceBrowserRow(
-            row_id="row-3", label="Entry 1", icon_kind="video", consideration_ref=item_ref, is_considered=False
-        ),
-    )
-    toggle = _row_toggle(view, _required_item_row(view))
-    assert not toggle.isChecked()
-
-    with qtbot.waitSignal(view.tree.row_consideration_changed, timeout=1000) as blocker:
-        toggle.click()
-
-    assert blocker.args == [item_ref, True]
-
-
-def test_filter_waits_for_workspace_state_after_toggle_request(qtbot: QtBot) -> None:
-    row = WorkspaceBrowserRow(
-        row_id="entry",
-        label="Entry",
-        icon_kind="video",
-        consideration_ref=ConsiderationItemRef.playlist_entry("playlist", 0),
-    )
-    view = _view_with(qtbot, row)
-    _row_toggle(view, _required_item_row(view)).click()
-    _search(view).setText("Entry")
-    assert not _required_item_row(view).isHidden()
-
-    _set_rows(view, (replace(row, is_considered=False),))
-
-    assert _required_item_row(view).isHidden()
-
-
-def test_excluded_rows_stay_hidden_through_search_until_shown(qtbot: QtBot) -> None:
-    view = _view_with(
-        qtbot,
-        WorkspaceBrowserRow(
-            row_id="row-10",
-            label="Warehouse door",
-            icon_kind="video",
-            consideration_ref=ConsiderationItemRef.playlist_entry("playlist-id", 0),
-            is_considered=False,
-        ),
-    )
-    assert _required_item_row(view).isHidden()
+def test_a_hidden_row_stays_listed_and_dimmed_also_in_a_search(qtbot: QtBot) -> None:
+    hidden = _hidden("Warehouse door")
+    view = _view_with(qtbot, hidden)
+    assert titles(view.tree) == ["Warehouse door"]
+    assert _row(_required_item_row(view)).is_dimmed
+    assert _filter_entries(view) == {}, "hiding a row is not a Filter choice"
 
     _search(view).setText("warehouse")
-    assert _required_item_row(view).isHidden()
 
-    _show_left_out(view)
-    assert not _required_item_row(view).isHidden()
+    assert titles(view.tree) == ["Warehouse door"]
+
+    _set_rows(view, (replace(hidden, is_considered=True),))
+
+    assert not _row(_required_item_row(view)).is_dimmed
 
 
 def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> None:
@@ -407,28 +359,6 @@ def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
 
     assert blocker.args == [_row(top_item), False]
     assert top_item.isExpanded()
-
-
-def test_double_clicking_the_eye_toggle_does_not_open_the_row(qtbot: QtBot) -> None:
-    video = _make_video()
-    view = _view_with(
-        qtbot,
-        WorkspaceBrowserRow(
-            row_id="row-15",
-            label="Video",
-            icon_kind="video",
-            activation_target=(video, 0),
-            consideration_ref=ConsiderationItemRef.video_lane(video.content_id, 0),
-        ),
-    )
-    activated = Mock()
-    view.tree.row_activated.connect(activated)
-    view.show()
-    toggle = _row_toggle(view, _required_item_row(view))
-
-    _double_click(toggle, position=toggle.rect().center())
-
-    activated.assert_not_called()
 
 
 def test_context_menu_shows_information_on_request_and_removes_only_top_level_items(qtbot: QtBot) -> None:
@@ -637,83 +567,66 @@ def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
     assert _context_menu(view, _required_item_row(view)) == {"Rename": False, "Remove": True}
 
 
-def _excluded(label: str, children: tuple[WorkspaceBrowserRow, ...] = ()) -> WorkspaceBrowserRow:
-    """Return a playlist entry row left out of playback."""
+def _hidden(label: str) -> WorkspaceBrowserRow:
+    """Return a playlist entry row the user hid from playback."""
     ref = ConsiderationItemRef.playlist_entry("playlist-id", 0)
-    return WorkspaceBrowserRow(
-        row_id=label, label=label, icon_kind="video", consideration_ref=ref, is_considered=False, children=children
-    )
-
-
-def test_a_search_matching_only_an_excluded_item_keeps_its_section_listed(qtbot: QtBot) -> None:
-    view = _view_with(qtbot, _excluded("Entry"))
-
-    _search(view).setText("entry")
-
-    assert captions(view.tree) == ["Videos, 1, 1 hidden"]
-    assert titles(view.tree) == []
-
-
-def test_a_section_counts_the_excluded_items_the_list_hides(qtbot: QtBot) -> None:
-    clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
-    view = _view_with(qtbot, clip, _excluded("Entry"))
-
-    assert caption(view.tree, "Videos").text() == "Videos  2  · 1 hidden"
-    assert captions(view.tree) == ["Videos, 2, 1 hidden"]
-
-    _show_left_out(view)
-
-    assert caption(view.tree, "Videos").text() == "Videos  2"
-    assert captions(view.tree) == ["Videos, 2"]
-
-
-def test_a_section_counts_only_excluded_items_the_search_would_otherwise_show(qtbot: QtBot) -> None:
-    clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
-    view = _view_with(qtbot, clip, _excluded("Entry"))
-
-    _search(view).setText("clip")
-
-    assert captions(view.tree) == ["Videos, 2"]
-
-    _search(view).setText("entry")
-
-    assert captions(view.tree) == ["Videos, 2, 1 hidden"]
-
-
-def test_a_section_counts_an_excluded_entry_revealed_with_its_excluded_lane_matching_a_search(qtbot: QtBot) -> None:
-    lane = WorkspaceBrowserRow(
-        row_id="lane",
-        label="Overlay lane",
-        icon_kind="overlay",
-        consideration_ref=ConsiderationItemRef.playlist_lane("playlist-id", 0, 0),
-        is_considered=False,
-    )
-    view = _view_with(qtbot, _excluded("Entry", (lane,)))
-
-    _search(view).setText("lane")
-
-    assert captions(view.tree) == ["Videos, 1, 2 hidden"]
-
-
-def test_the_filter_offers_left_out_while_rows_are_left_out_and_keeps_the_users_choice(qtbot: QtBot) -> None:
-    clip = WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video")
-    view = _view_with(qtbot, clip)
-    assert _filter_entries(view) == {}
-
-    _set_rows(view, (clip, _excluded("Entry")))
-    assert _filter_entries(view) == {"Left out": False}
-
-    _show_left_out(view)
-    _set_rows(view, (clip, _excluded("Entry"), _excluded("Other")))
-
-    assert _filter_entries(view) == {"Left out": True}
-    assert titles(view.tree) == ["clip.mp4", "Entry", "Other"]
+    return WorkspaceBrowserRow(row_id=label, label=label, icon_kind="video", consideration_ref=ref, is_considered=False)
 
 
 def _camera(name: str, product_type: str) -> WorkspaceBrowserRow:
     return WorkspaceBrowserRow(
         row_id=name, label=name, icon_kind="live_video", facets=frozenset({Facet("Type", product_type)})
     )
+
+
+def _filtered_view(qtbot: QtBot, *rows: WorkspaceBrowserRow) -> SectionsView:
+    """Return a view of *rows* whose Filter hides Network Speaker."""
+    view = _view_with(qtbot, *rows)
+    _choose_in_filter(view, "Network Speaker")
+    return view
+
+
+def test_a_search_matching_only_filtered_out_rows_keeps_the_section_listed(qtbot: QtBot) -> None:
+    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker"))
+
+    _search(view).setText("c1310")
+
+    assert captions(view.tree) == ["Videos, 2, 1 filtered out"]
+    assert titles(view.tree) == []
+
+
+def test_a_section_counts_the_rows_the_filter_hides(qtbot: QtBot) -> None:
+    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker"))
+
+    assert caption(view.tree, "Videos").text() == "Videos  2  · 1 filtered out"
+    assert captions(view.tree) == ["Videos, 2, 1 filtered out"]
+
+    _choose_in_filter(view, "Network Speaker")
+
+    assert caption(view.tree, "Videos").text() == "Videos  2"
+    assert captions(view.tree) == ["Videos, 2"]
+
+
+def test_a_section_counts_only_filtered_out_rows_the_search_would_otherwise_show(qtbot: QtBot) -> None:
+    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker"))
+
+    _search(view).setText("q1656")
+
+    assert captions(view.tree) == ["Videos, 2"]
+
+    _search(view).setText("c1310")
+
+    assert captions(view.tree) == ["Videos, 2, 1 filtered out"]
+
+
+def test_a_section_counts_a_filtered_out_entry_with_the_lane_under_it_matching_a_search(qtbot: QtBot) -> None:
+    lane = WorkspaceBrowserRow(row_id="lane", label="Overlay lane", icon_kind="overlay")
+    speaker = replace(_camera("C1310", "Network Speaker"), children=(lane,))
+    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), speaker)
+
+    _search(view).setText("lane")
+
+    assert captions(view.tree) == ["Videos, 2, 2 filtered out"]
 
 
 def test_the_filter_offers_a_group_once_it_has_a_choice_and_hides_rows_by_it(qtbot: QtBot) -> None:

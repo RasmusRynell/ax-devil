@@ -29,8 +29,9 @@ camera host. An item that cannot open, such as a missing file or a missing plugi
 icon; hover it for the reason. The details are in [Workspace](architecture/workspace.md#lifecycle).
 
 The Workspace, Live and Offline views have a search at the top, which matches what a row shows, and a **Filter**,
-which shows or hides rows by what they are, such as a found camera's type. Rows left out of playback start hidden;
-check **Left out** in the **Filter** to list them.
+which shows or hides rows by what they are, such as a found camera's type. Right-click a playlist entry or an overlay
+and choose **Hide** to skip it in playback; it stays listed, dimmed, until you choose **Unhide**. A playlist lists its
+entries when it loads, unless it has more than 200; expand a longer one with its arrow.
 
 ## Sidebar views
 
@@ -39,8 +40,8 @@ first shows everything in it, and the others show one part of it, with their own
 application, and stay the same whichever workspace is open: **Plugins**, the render catalogs and **Settings**.
 
 - **Live** lists the workspace's cameras with **Start stream** and **Stop stream**; a camera streams while its viewer
-  is open. A camera starts only with **Start stream**, never by double-clicking it or from its right-click menu, and
-  it can start before ax-devil has checked its login. With sign-in on, ax-devil checks each camera's saved login when
+  is open. A camera starts only with **Start stream**, on its row or in its right-click menu, never by
+  double-clicking it, and it can start before ax-devil has checked its login. With sign-in on, ax-devil checks each camera's saved login when
   its workspace opens; a camera that refuses it gets a warning triangle, with the reason on hover, and loses **Start
   stream**. Right-click a camera for the same menu as in the Workspace view, such as **Rename** and **Remove**. The search
   matches found cameras also by serial number and firmware, and the cameras in the workspace too once a scan found

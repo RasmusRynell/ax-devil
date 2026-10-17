@@ -429,7 +429,7 @@ def test_a_live_rows_detail_is_its_host_unless_the_name_is_the_host() -> None:
     assert (unnamed.label, unnamed.detail) == ("camera.local", "")
 
 
-def test_a_playlists_tooltip_counts_entries_and_those_left_out() -> None:
+def test_a_playlists_tooltip_counts_entries_and_those_hidden() -> None:
     playlist = PlaylistContent(
         display_name="Suite",
         entries=tuple(
@@ -444,7 +444,21 @@ def test_a_playlists_tooltip_counts_entries_and_those_left_out() -> None:
 
     row = item_rows(store)[0]
     assert row.detail == ""
-    assert row.tooltip.splitlines()[0] == "Playlist · 3 entries, 1 left out"
+    assert row.tooltip.splitlines()[0] == "Playlist · 3 entries, 1 hidden"
+
+
+def test_a_playlist_starts_expanded_unless_it_has_too_many_entries_to_list_at_once() -> None:
+    def playlist(entries: int) -> PlaylistContent:
+        lanes = make_video("clip.mp4").standalone_lanes()
+        entry = PlaylistEntry(lanes=lanes, default_considered=True)
+        return PlaylistContent(display_name="Suite", entries=(entry,) * entries)
+
+    short, _ = store_with(playlist(3))
+    long, _ = store_with(playlist(5000))
+
+    assert item_rows(short)[0].expanded_at_first
+    assert not item_rows(long)[0].expanded_at_first
+    assert not item_rows(short)[0].children[0].expanded_at_first
 
 
 def test_search_text_includes_the_detail() -> None:

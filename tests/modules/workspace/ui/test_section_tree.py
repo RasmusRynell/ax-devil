@@ -8,14 +8,15 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QAction
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QToolButton, QTreeWidgetItem
+from PySide6.QtWidgets import QLabel, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import apply_text_size
-from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent
+from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent, VideoItem
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
     RowAction,
@@ -63,13 +64,14 @@ def _widget(tree: SectionTree, item: QTreeWidgetItem) -> SourceRow:
     return widget
 
 
-def _playlist(entries: int, row_id: str = "playlist") -> WorkspaceBrowserRow:
+def _playlist(entries: int, row_id: str = "playlist", *, expanded_at_first: bool = False) -> WorkspaceBrowserRow:
     lane = WorkspaceBrowserRow(row_id=f"{row_id}/lane", label="tracks", icon_kind="overlay")
     return WorkspaceBrowserRow(
         row_id=row_id,
         label="Night shift",
         icon_kind="playlist",
         action=RowAction.RESCAN,
+        expanded_at_first=expanded_at_first,
         children=tuple(
             WorkspaceBrowserRow(
                 row_id=f"{row_id}/entry/{index}",
@@ -91,7 +93,7 @@ def _with_open_entry(playlist: WorkspaceBrowserRow, index: int) -> WorkspaceBrow
     )
 
 
-def test_entries_get_row_widgets_only_once_their_playlist_is_expanded(qtbot: QtBot) -> None:
+def test_a_collapsed_playlist_gets_entry_widgets_only_once_it_is_expanded(qtbot: QtBot) -> None:
     tree = _tree(qtbot, _playlist(300))
     playlist = _item(tree, 0)
     entries = [_item(tree, 0, index) for index in range(playlist.childCount())]
@@ -104,6 +106,38 @@ def test_entries_get_row_widgets_only_once_their_playlist_is_expanded(qtbot: QtB
     assert [_widget(tree, entry).row.label for entry in entries[:2]] == ["run_000", "run_001"]
     assert all(tree.itemWidget(entry, 0) is not None for entry in entries)
     assert tree.itemWidget(_item(tree, 0, 0, 0), 0) is None, "lanes wait for their own entry"
+
+
+def test_a_playlist_shows_its_entries_once_it_resolves_and_its_lanes_stay_hidden_until_an_entry_opens(
+    qtbot: QtBot,
+) -> None:
+    pending = WorkspaceBrowserRow(row_id="item", label="Night shift", icon_kind="playlist", idle=True)
+    tree = _tree(qtbot, pending)
+    assert not _item(tree, 0).isExpanded()
+
+    tree.set_sections(_sections(_playlist(3, expanded_at_first=True)))
+
+    assert _item(tree, 0).isExpanded()
+    assert [_widget(tree, _item(tree, 0, index)).row.label for index in range(3)] == ["run_000", "run_001", "run_002"]
+    assert not any(_item(tree, 0, index).isExpanded() for index in range(3))
+    assert tree.itemWidget(_item(tree, 0, 0, 0), 0) is None, "lanes wait for their own entry"
+
+    tree.set_sections(_sections(_with_open_entry(_playlist(3, expanded_at_first=True), 1)))
+
+    assert _item(tree, 0, 1).isExpanded()
+    assert _widget(tree, _item(tree, 0, 1, 0)).row.label == "tracks"
+
+
+def test_a_playlist_the_user_collapsed_stays_collapsed_across_updates(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _playlist(3, expanded_at_first=True))
+    _item(tree, 0).setExpanded(False)
+
+    tree.set_sections(_sections(_playlist(4, expanded_at_first=True)))
+    assert not _item(tree, 0).isExpanded()
+
+    tree.set_sections(_sections(_playlist(4, "other", expanded_at_first=True), _playlist(4, expanded_at_first=True)))
+    assert not _item(tree, 1).isExpanded()
+    assert _item(tree, 0).isExpanded(), "a playlist added later still starts expanded"
 
 
 def test_search_finds_rows_whose_widgets_are_not_built_yet(qtbot: QtBot) -> None:
@@ -245,27 +279,96 @@ def test_a_double_click_on_a_row_reports_it_to_the_side_with_ctrl(qtbot: QtBot) 
     assert activations == [(row, False), (row, True)]
 
 
-def test_a_rows_action_and_eye_report_the_row_and_its_consideration_item(qtbot: QtBot) -> None:
-    ref = ConsiderationItemRef.playlist_entry("playlist", 0)
-    playlist = replace(
-        _playlist(1),
-        children=(WorkspaceBrowserRow(row_id="entry", label="run", icon_kind="video", consideration_ref=ref),),
-    )
+def test_a_rows_action_reports_the_row(qtbot: QtBot) -> None:
+    playlist = _playlist(1)
     tree = _tree(qtbot, playlist)
-    _item(tree, 0).setExpanded(True)
     actions: list[WorkspaceBrowserRow] = []
-    changes: list[tuple[ConsiderationItemRef, bool]] = []
     tree.row_action_requested.connect(actions.append)
-    tree.row_consideration_changed.connect(lambda changed, considered: changes.append((changed, considered)))
 
     [rescan] = _widget(tree, _item(tree, 0)).findChildren(SmallButton)
     rescan.click()
-    toggle = _widget(tree, _item(tree, 0, 0)).findChild(QToolButton)
-    assert toggle is not None
-    toggle.click()
 
     assert actions == [playlist]
-    assert changes == [(ref, False)]
+
+
+def _menu_entries(tree: SectionTree, row: WorkspaceBrowserRow) -> list[str]:
+    """Return the texts of *row*'s context menu in order, with a separator as ``"-"``."""
+    return ["-" if action.isSeparator() else action.text() for action in tree._build_context_menu(row).actions()]
+
+
+def _menu_action(tree: SectionTree, row: WorkspaceBrowserRow, text: str) -> QAction:
+    [action] = [action for action in tree._build_context_menu(row).actions() if action.text() == text]
+    return action
+
+
+def test_hide_in_the_menu_reports_the_rows_consideration_item_and_unhide_reverses_it(qtbot: QtBot) -> None:
+    ref = ConsiderationItemRef.playlist_entry("playlist", 0)
+    entry = WorkspaceBrowserRow(row_id="entry", label="run", icon_kind="video", consideration_ref=ref)
+    tree = _tree(qtbot, replace(_playlist(1), children=(entry,)))
+    changes: list[tuple[ConsiderationItemRef, bool]] = []
+    tree.row_consideration_changed.connect(lambda changed, considered: changes.append((changed, considered)))
+
+    _menu_action(tree, entry, "Hide").trigger()
+    _menu_action(tree, replace(entry, is_considered=False), "Unhide").trigger()
+
+    assert changes == [(ref, False), (ref, True)]
+
+
+def test_a_row_without_a_consideration_item_cannot_be_hidden(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _playlist(1))
+
+    assert {"Hide", "Unhide"}.isdisjoint(_menu_entries(tree, _playlist(1)))
+
+
+def test_the_menu_groups_open_inspect_visibility_and_edit_actions_between_separators(qtbot: QtBot) -> None:
+    video = SeekableVideoContent(display_name="gate.mp4", source_spec=FileVideoSourceSpec(path=Path("/tmp/gate.mp4")))
+    entry = WorkspaceBrowserRow(
+        row_id="gate",
+        label="gate.mp4",
+        icon_kind="video",
+        activation_target=(video, 0),
+        consideration_ref=ConsiderationItemRef.playlist_entry("playlist", 0),
+        information_factory=lambda: pytest.fail("not opened"),
+        export_target=video.on_screen_item(),
+        action=RowAction.RESCAN,
+        item=VideoItem(video=Path("/tmp/gate.mp4")),
+    )
+    tree = _tree(qtbot, entry, kind=BrowserSection.VIDEOS)
+
+    assert _menu_entries(tree, entry) == [
+        "Open",
+        "Open to the Side",
+        "Rescan",
+        "-",
+        "Information",
+        "Export video (open it first)",
+        "-",
+        "Hide",
+        "-",
+        "Rename",
+        "Remove",
+    ]
+    bare = replace(entry, activation_target=None, information_factory=None, export_target=None)
+    assert _menu_entries(tree, bare) == [
+        "Rescan",
+        "-",
+        "Hide",
+        "-",
+        "Rename",
+        "Remove",
+    ]
+
+
+def test_a_live_rows_menu_starts_with_its_stream_action(qtbot: QtBot) -> None:
+    camera = WorkspaceBrowserRow(row_id="camera", label="Gate", icon_kind="live_video", action=RowAction.START_STREAM)
+    tree = _tree(qtbot, camera, kind=BrowserSection.LIVE)
+    requested: list[WorkspaceBrowserRow] = []
+    tree.row_action_requested.connect(requested.append)
+
+    assert _menu_entries(tree, camera) == ["Start stream"]
+    _menu_action(tree, camera, "Start stream").trigger()
+
+    assert requested == [camera]
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
