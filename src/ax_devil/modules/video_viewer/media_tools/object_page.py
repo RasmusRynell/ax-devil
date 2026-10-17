@@ -122,6 +122,7 @@ class ObjectPage(QWidget):
         self._fold_state = fold_state
         self._history: SceneHistory | None = None
         self._events_section: Section | None = None
+        self._events_loaded = False
         self._event_frames: tuple[int, ...] = ()
         self._scene: Scene | None = None
         self._frame: int | None = None
@@ -143,9 +144,7 @@ class ObjectPage(QWidget):
     def set_history(self, history: SceneHistory | None) -> None:
         """Show where the object appears and its events from *history*; ``None`` (a live stream) shows neither."""
         self._history = history
-        events = history.events_involving(self._entity_id) if history is not None else ()
-        self._events_section = event_section(events) if history is not None else None
-        self._event_frames = tuple(event.frame_id.sequence_id for event in events)
+        self._events_loaded = False
         self._request_refresh()
 
     def update_scene(self, scene: Scene | None, frame_index: int) -> None:
@@ -218,8 +217,17 @@ class ObjectPage(QWidget):
         if frame is not None:
             self.frameRequested.emit(frame)
 
+    def _load_events(self) -> None:
+        """Collect the events involving the object from the current history, once per history and only when shown."""
+        self._events_loaded = True
+        events = self._history.events_involving(self._entity_id) if self._history is not None else ()
+        self._events_section = event_section(events) if self._history is not None else None
+        self._event_frames = tuple(event.frame_id.sequence_id for event in events)
+
     def _refresh(self) -> None:
         self._dirty = False
+        if not self._events_loaded:
+            self._load_events()
         frame = self._frame
         if frame is None:
             return

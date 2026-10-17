@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel, QLineEdit, QToolButton
@@ -27,6 +28,7 @@ from ax_devil.modules.scene.model import (
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
+from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
 from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, RowTableModel, RowTableView
@@ -339,3 +341,22 @@ def test_file_scope_is_unavailable_when_the_decoder_cannot_filter_history(
 
     assert panel.objects_page.scope is ObjectScope.FRAME
     assert not file_button.isVisible()
+
+
+def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    lookups: list[str] = []
+
+    def events_involving(self: SceneHistory, entity_id: str) -> tuple[()]:
+        lookups.append(entity_id)
+        return ()
+
+    monkeypatch.setattr(SceneHistory, "events_involving", events_involving)
+    page = ObjectPage("a", {})
+    qtbot.addWidget(page)
+
+    page.set_history(_history(("a", "human", ((0, 3),))))
+    page.set_history(_history(("a", "human", ((0, 4),))))
+    assert lookups == []
+
+    page.show()
+    assert lookups == ["a"]
