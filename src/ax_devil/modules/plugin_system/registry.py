@@ -14,6 +14,9 @@ from .base import PluginBase, PluginDefinitionBase
 logger = get_logger(__name__)
 
 
+_BUILT_IN_SOURCE = "built-in"
+
+
 class PluginStatus(Enum):
     """Lifecycle stages for a plugin bundle."""
 
@@ -27,15 +30,15 @@ class PluginRecord:
 
     definition: PluginDefinitionBase
     entrypoint: Path
-    origin: str
+    package: str | None
     status: PluginStatus
     plugin_class: type[PluginBase] | None = None
     error: str | None = None
 
     @property
-    def package(self) -> str | None:
-        """Return the installed distribution the plugin came from, or None for a built-in plugin."""
-        return self.origin.removeprefix("package:") if self.origin.startswith("package:") else None
+    def source(self) -> str:
+        """Return what to call the plugin's source in messages: its package, or "built-in"."""
+        return self.package or _BUILT_IN_SOURCE
 
 
 class RuntimePluginRegistry:
@@ -53,7 +56,7 @@ class RuntimePluginRegistry:
         cls,
         definition: PluginDefinitionBase,
         entrypoint: Path,
-        origin: str,
+        package: str | None,
         plugin_class: type[PluginBase] | None = None,
     ) -> PluginRecord:
         """Register a concrete plugin definition."""
@@ -67,7 +70,7 @@ class RuntimePluginRegistry:
         record = PluginRecord(
             definition=definition,
             entrypoint=entrypoint,
-            origin=origin,
+            package=package,
             status=PluginStatus.LOADED,
             plugin_class=plugin_class,
         )
@@ -79,10 +82,10 @@ class RuntimePluginRegistry:
         cls,
         plugin_cls: type[PluginBase],
         entrypoint: Path,
-        origin: str,
+        package: str | None,
     ) -> PluginRecord:
         """Register a plugin class by resolving its definition."""
-        return cls.register_definition(plugin_cls.definition(), entrypoint, origin, plugin_class=plugin_cls)
+        return cls.register_definition(plugin_cls.definition(), entrypoint, package, plugin_class=plugin_cls)
 
     @classmethod
     def mark_failed(
@@ -90,18 +93,18 @@ class RuntimePluginRegistry:
         plugin_type: str,
         plugin_id: str,
         entrypoint: Path,
-        origin: str,
+        package: str | None,
         error_message: str,
     ) -> None:
         """Record a failed plugin import.
 
-        A failure whose id is already taken by a failure from another origin is kept under ``id (origin)``, so every
-        broken package stays listed.
+        A failure whose id is already taken by a failure from another source is kept under ``id (source)``, so every
+        broken package stays listed. *package* is the normalized distribution name, or None for a built-in plugin.
         """
         plugins = cls._plugins_by_type.setdefault(plugin_type, {})
         existing = plugins.get(plugin_id)
-        if existing is not None and existing.status is PluginStatus.FAILED and existing.origin != origin:
-            plugin_id = f"{plugin_id} ({origin})"
+        if existing is not None and existing.status is PluginStatus.FAILED and existing.package != package:
+            plugin_id = f"{plugin_id} ({package or _BUILT_IN_SOURCE})"
             existing = plugins.get(plugin_id)
         if existing is not None:
             logger.warning(f"Refusing to overwrite existing plugin record for failed plugin {plugin_type}:{plugin_id}")
@@ -116,7 +119,7 @@ class RuntimePluginRegistry:
         plugins[plugin_id] = PluginRecord(
             definition=definition,
             entrypoint=entrypoint,
-            origin=origin,
+            package=package,
             status=PluginStatus.FAILED,
             error=error_message,
         )

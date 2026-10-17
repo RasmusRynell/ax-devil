@@ -11,7 +11,7 @@ from pathlib import Path
 import click
 
 from ax_devil.core.cancellation import CancelToken
-from ax_devil.modules.plugin_system import PlaylistResolverPlugin, PlaylistResolverWidget
+from ax_devil.modules.plugin_system import PLUGIN_API_VERSION, PlaylistResolverPlugin, PlaylistResolverWidget
 from ax_devil.modules.workspace.core import PlaylistContent, PlaylistItem, PlaylistSettings
 from ax_devil.plugins.playlist_resolvers.mot_challenge.resolver import resolve_settings
 
@@ -22,6 +22,10 @@ class MOTChallengeResolverPlugin(PlaylistResolverPlugin):
     @classmethod
     def plugin_id(cls) -> str:
         return "mot_challenge"
+
+    @classmethod
+    def required_api_version(cls) -> int:
+        return PLUGIN_API_VERSION
 
     @classmethod
     def display_name(cls) -> str:

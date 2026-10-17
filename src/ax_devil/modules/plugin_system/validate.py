@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.metadata
 
+from packaging.utils import canonicalize_name
+
 from .loader import ApplicationPluginLoader
 from .registry import PluginStatus, RuntimePluginRegistry
 
@@ -23,6 +25,6 @@ def validate_plugins(names: list[str]) -> None:
             if (
                 record.status is not PluginStatus.LOADED
                 or record.plugin_class is not plugin
-                or record.origin != f"package:{distribution.name}"
+                or record.package != canonicalize_name(distribution.name)
             ):
                 raise ValueError(f"{name}:{entry.name} was rejected: {record.error or 'duplicate plugin ID'}")
