@@ -16,7 +16,8 @@ from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
 from ax_devil.modules.data_sources.base import FrameSource, OverlaySource
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder
 from ax_devil.modules.filtering import FilterConfig, build_default_filter_config
-from ax_devil.modules.scene.model import Scene, TimeSlice
+from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.scene.model import Delete, EntityId, Scene, TimeSlice
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, SceneRenderCatalogSelection
 from ax_devil.modules.synchronization import SyncResult, TimestampedData
 from ax_devil.modules.synchronization import engine as sync_engine
@@ -24,6 +25,7 @@ from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverla
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import stream_media_controller
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
+from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
 from ax_devil.modules.workspace.core import (
     LiveMQTTOverlaySourceSpec,
@@ -33,7 +35,6 @@ from ax_devil.modules.workspace.core import (
     LiveWebSocketOverlaySourceSpec,
     OverlayContent,
 )
-from tests.helpers.scene_inspector import RecordingSceneInspector
 
 OverlaySpec: TypeAlias = LiveRTSPOverlaySourceSpec | LiveMQTTOverlaySourceSpec | LiveWebSocketOverlaySourceSpec
 RTSP_OVERLAY = LiveRTSPOverlaySourceSpec(handler_type="LIVE")
@@ -320,30 +321,6 @@ def test_cleanup_releases_every_transport_exactly_once(
     )
 
 
-def test_live_controller_displays_frame_before_scheduling_scene_inspection(
-    qtbot: QtBot, make_controller: MakeController, live_transports: LiveTransports
-) -> None:
-    inspector = RecordingSceneInspector()
-    displayed: list[VideoFrameWithOverlays] = []
-
-    def record_displayed(frame: VideoFrameWithOverlays) -> None:
-        assert inspector.updates == []
-        displayed.append(frame)
-
-    controller = make_controller(_live_content(RTSP_OVERLAY), frame_displayed=record_displayed)
-    controller.attach_scene_inspector(inspector)
-    assert controller.synchronizer is not None
-
-    controller.synchronizer.syncReady.emit(_sync_result(7))
-
-    assert inspector.cleared is True
-    assert _displayed_ids(displayed) == [7]
-    assert displayed[0].overlays is not None and displayed[0].overlays.overlay_id == 7
-    assert inspector.updates == []
-    qtbot.waitUntil(lambda: len(inspector.updates) == 1)
-    assert [frame_id for _scene, frame_id, _metadata in inspector.updates] == [_frame_id(7)]
-
-
 def test_same_named_streams_keep_independent_source_diagnostics(
     make_controller: MakeController, live_transports: LiveTransports
 ) -> None:
@@ -449,13 +426,24 @@ def test_live_controller_marks_silent_video_stalled_except_while_paused(
 
 
 def test_live_controller_retry_reopens_every_transport(
-    make_controller: MakeController, live_transports: LiveTransports
+    make_controller: MakeController,
+    live_transports: LiveTransports,
+    qtbot: QtBot,
+    render_catalog_selection: SceneRenderCatalogSelection,
 ) -> None:
-    """Retry replaces failed transports, ignores the old ones and resumes playback."""
+    """Retry replaces failed transports and resumes playback without discarding recorded events."""
     published: list[LiveConnectionStatus] = []
     controller = make_controller(_live_content(MQTT_OVERLAY), connection_changed=published.append)
+    panel = MediaToolsPanel(render_catalog_selection, filter_model=SessionFilter(build_default_filter_config()))
+    qtbot.addWidget(panel, before_close_func=lambda panel: panel.cleanup())
+    controller.attach_scene_inspector(panel)
     videos, overlays = live_transports
     controller.start_playback()
+    result = _sync_result()
+    assert result.overlay is not None and controller.synchronizer is not None
+    result.overlay.data.content.add_event(Delete(timestamp=TimeSlice(start=0, end=1), entity_id=EntityId("kept")))
+    controller.synchronizer.syncReady.emit(result)
+    assert panel.events_page.count == 1
     videos[0].sourceError.emit("RTSP Error: Unauthorized")
     controller.pause_playback()
 
@@ -465,6 +453,7 @@ def test_live_controller_retry_reopens_every_transport(
 
     controller.retry()
 
+    assert panel.events_page.count == 1
     assert [transport.stops for transport in videos + overlays] == [1, 0, 1, 0]
     assert (videos[1].plays, overlays[1].plays) == (1, 1)
     assert controller.video_source is videos[1]

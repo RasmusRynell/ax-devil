@@ -11,7 +11,7 @@ import pytest
 from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QColor, QImage, QPalette
 from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
@@ -31,8 +31,9 @@ from ax_devil.modules.video_player.engine.drawing import (
 from ax_devil.modules.video_player.engine.quick import labels as label_layer
 from ax_devil.modules.video_player.engine.quick.items import TextItem
 from ax_devil.modules.video_player.engine.quick.labels import _LabelNode
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, LabelData
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, LabelData, PreparedDrawing
 from ax_devil.modules.video_player.engine.quick.surface import QuickSurface
+from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from tests.drawing_helpers import (
     BoxCall,
@@ -206,18 +207,39 @@ def test_letterbox_stays_video_canvas_when_theme_changes(surface: QuickSurface) 
     assert surface.grabFramebuffer().pixelColor(100, 50) == QColor("green")
 
 
-def test_latest_frame_and_overlay_are_submitted_together(qtbot: QtBot) -> None:
+def test_hidden_viewport_prepares_only_the_latest_frame_and_overlay_when_shown(qtbot: QtBot) -> None:
+    stack = QStackedWidget()
+    stack.resize(200, 100)
     widget = FrameViewport()
-    qtbot.addWidget(widget)
-    widget.resize(200, 100)
-    widget.show()
-    widget.display_frame(_frame(_image("blue"), [BoxCall(0, 0, 1, 1, _FILL)]))
-    widget.display_frame(_frame(_image("green"), []))
+    qtbot.addWidget(stack, before_close_func=lambda _stack: widget.cleanup())
+    stack.addWidget(widget)
+    stack.addWidget(QWidget())
+    stack.show()
+    prepared: list[str] = []
+
+    def frame(color: str) -> VideoFrameWithOverlays:
+        def draw(_context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
+            prepared.append(color)
+            return prepare_calls([BoxCall(0, 0, 0.25 if color == "green" else 1, 1, _FILL)], buffer)
+
+        return VideoFrameWithOverlays(VideoFrame(_image(color), 0), VideoOverlayData(draw, 0))
+
+    widget.display_frame(frame("blue"))
+    stack.setCurrentIndex(1)  # Cancel preparation already queued before changing tabs.
+    QApplication.processEvents()
+    widget.display_frame(frame("white"))
+    widget.display_frame(frame("green"))
+    QApplication.processEvents()
+    assert prepared == []
+
+    stack.setCurrentIndex(0)
     QApplication.processEvents()
     surface = widget.findChild(QuickSurface)
     assert surface is not None
-    assert surface.grabFramebuffer().pixelColor(100, 50) == QColor("green")
-    widget.cleanup()
+    image = surface.grabFramebuffer()
+    assert prepared == ["green"]
+    assert image.pixelColor(100, 50) == QColor("green")
+    assert image.pixelColor(20, 50) == QColor("red")
 
 
 def test_replacing_values_in_producer_list_updates_geometry(surface: QuickSurface) -> None:

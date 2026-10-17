@@ -46,7 +46,7 @@ from ax_devil.modules.video_viewer.overlay_persistence import (
     OverlayPersistenceSettings,
 )
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
-from ax_devil.modules.video_viewer.scene_inspection import schedule_scene_inspection_update
+from ax_devil.modules.video_viewer.scene_inspection import deliver_scene_inspection_update
 from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     OverlayAlignmentIndicator,
     TimingDiagnosticsWidget,
@@ -207,7 +207,7 @@ class OfflineLane:
         presenter = self.presenter or SceneFramePresenter()
         presentation = presenter.prepare_frame(frame_data, overlay_data, overlay_metadata=overlay_metadata)
         self.display_frame(presentation.display_frame)
-        schedule_scene_inspection_update(self.tools_panel, presentation.inspection)
+        deliver_scene_inspection_update(self.tools_panel, presentation.inspection)
 
     def show_video_on_controls(self, source: FileFrameSource) -> None:
         """Let the lane controls follow *source*'s frames, time and cache."""
@@ -216,6 +216,8 @@ class OfflineLane:
 
     def sync_playback_state(self, playing: bool) -> None:
         """Synchronize caller-owned controls with the runtime playback state."""
+        if self.tools_panel is not None:
+            self.tools_panel.set_playing(playing)
         if self.controls is not None:
             self.controls.sync_playback_state(playing)
 
@@ -879,6 +881,9 @@ class OfflineSession(QObject):
 
         target = self._bounded_frame(frame_num)
         self._current_frame = target
+        for lane in self.lanes:
+            if lane.tools_panel is not None:
+                lane.tools_panel.refresh_scene()
         primary_source.jump_to(target)
         self._update_min_valid_primary_generation()
 
@@ -893,6 +898,9 @@ class OfflineSession(QObject):
 
         target = self._bounded_frame(self.current_frame + delta)
         self._current_frame = target
+        for lane in self.lanes:
+            if lane.tools_panel is not None:
+                lane.tools_panel.refresh_scene()
         primary_source.jump_to(target)
         self._update_min_valid_primary_generation()
 

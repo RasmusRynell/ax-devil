@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
@@ -73,8 +76,9 @@ def _overlay_data(*, metrics_provider: _StaticMetricsProvider | None) -> VideoOv
 
 def _viewport(qtbot: QtBot, label: str) -> FrameViewport:
     widget = FrameViewport()
-    qtbot.addWidget(widget)
+    qtbot.addWidget(widget, before_close_func=lambda widget: widget.cleanup())
     widget.set_diagnostics_label(label)
+    widget.show()
     return widget
 
 
@@ -99,11 +103,23 @@ def test_each_viewport_reports_its_own_paints(qtbot: QtBot) -> None:
     assert _snapshot_metrics("Camera A").viewer_id != _snapshot_metrics("Camera B").viewer_id
 
 
-def test_frame_viewport_info_overlay_stats_use_exact_source_timestamps(qtbot: QtBot) -> None:
-    widget = FrameViewport()
-    qtbot.addWidget(widget)
+def test_info_overlay_formats_exact_current_timestamps_only_when_visible(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _viewport(qtbot, "Camera A")
+    formatted: list[VideoFrameWithOverlays] = []
+    build = widget._build_info_overlay_stats
+
+    def counted(frame: VideoFrameWithOverlays) -> dict[str, Any]:
+        formatted.append(frame)
+        return build(frame)
+
+    monkeypatch.setattr(widget, "_build_info_overlay_stats", counted)
 
     widget.display_frame(_frame(overlays=_overlay_data(metrics_provider=None)))
+    assert not formatted
+    widget.toggle_info_overlay()
+    assert len(formatted) == 1
 
     # The info overlay paints these private stats; reading them avoids parsing painted text.
     expected = {
@@ -117,11 +133,7 @@ def test_frame_viewport_info_overlay_stats_use_exact_source_timestamps(qtbot: Qt
     }
     assert {key: widget._stats.get(key) for key in expected} == expected
 
-
-def test_frame_viewport_info_overlay_flags_future_overlay_violation(qtbot: QtBot) -> None:
-    widget = FrameViewport()
-    qtbot.addWidget(widget)
-
+    widget.hide()
     future_overlay = VideoOverlayData(
         drawing_generator=lambda _context, _settings: PreparedDrawing(),
         timestamp=1.005,
@@ -129,9 +141,15 @@ def test_frame_viewport_info_overlay_flags_future_overlay_violation(qtbot: QtBot
         overlay_id=10,
     )
     widget.display_frame(_frame(overlays=future_overlay))
+    assert len(formatted) == 1
+    widget.show()
+    assert len(formatted) == 2
 
     assert widget._stats["Status"] == "VIOLATION overlay is 5000 after frame"
     assert widget._stats["Frame - overlay"] == "-5000"
+    widget.toggle_info_overlay()
+    widget.display_frame(_frame(overlays=None))
+    assert len(formatted) == 2
 
 
 def test_paint_samples_keep_frame_identity_and_clear_missing_preparation(qtbot: QtBot) -> None:
