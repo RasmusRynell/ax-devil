@@ -127,6 +127,7 @@ class EventsPage(QWidget):
 
     eventActivated = Signal(object)  # noqa: N815  # FrameEvent
     countChanged = Signal(int)  # noqa: N815  # events held, before the query narrows them
+    rowsChanged = Signal()  # noqa: N815  # events were added, dropped or replaced; at the live limit the count stays
 
     def __init__(self, history: SceneHistory | None = None, parent: QWidget | None = None) -> None:
         """Create the page for *history* (None for a live stream)."""
@@ -297,6 +298,7 @@ class EventsPage(QWidget):
         if len(self._rows) != self._count:  # After the refresh, so a listener asking for neighbors sees the new rows.
             self._count = len(self._rows)
             self.countChanged.emit(self._count)
+        self.rowsChanged.emit()
 
     def _refresh(self) -> None:
         if self.isVisible():

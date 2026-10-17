@@ -187,7 +187,6 @@ class MediaToolsPanel(QWidget):
 
         self._objects = ObjectsPage(self)
         self._objects.objectActivated.connect(self._open_object)
-        self._objects.orderChanged.connect(self._refresh_steps)
         self._objects.setObjectName("mediaToolsObjects")
         self._events = EventsPage(scene_history, self)
         self._events.setObjectName("mediaToolsEvents")
@@ -211,7 +210,7 @@ class MediaToolsPanel(QWidget):
         self._tabs.currentChanged.connect(lambda index: self._stack.show_root(self._tab_roots[index]))
         self._objects.countChanged.connect(lambda count: self._set_tab_count(0, MediaToolsSection.OBJECTS, count))
         self._events.countChanged.connect(lambda count: self._set_tab_count(1, MediaToolsSection.EVENTS, count))
-        self._events.countChanged.connect(self._stack.refresh_steps)  # Live events arrive under an open event page.
+        self._events.rowsChanged.connect(self._refresh_event_steps)
         self._set_tab_count(0, MediaToolsSection.OBJECTS, self._objects.count)
         self._set_tab_count(1, MediaToolsSection.EVENTS, self._events.count)
 
@@ -394,15 +393,18 @@ class MediaToolsPanel(QWidget):
         self._show_pending_object()
         self._stack.refresh_steps()
 
+    def _refresh_event_steps(self) -> None:
+        """Enable ▲▼ of an open event page again when live events rotate under it, even at a constant count.
+
+        Only for pages opened from the events list; asking another list would rebuild it while hidden.
+        """
+        if self._stack.root() is self._events:
+            self._stack.refresh_steps()
+
     def _show_pending_object(self) -> None:
         key, self._pending_object = self._pending_object, None
         if key is not None:
             self._stack.jump(key, self._objects if self._stack.root() is self._objects else None)
-
-    def _refresh_steps(self) -> None:
-        """Enable ▲▼ of an open object page from the list's latest order, which a hidden list follows only on demand."""
-        if self.isVisible():
-            self._stack.refresh_steps()
 
     def _open_object(self, entity_id: str) -> None:
         self._stack.push(ObjectPageKey(entity_id), self._objects)
