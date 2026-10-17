@@ -39,7 +39,9 @@ def sample_scene() -> Scene:
     sample_path = Path(__file__).parent / "data" / "sample_frame.xml"
     xml_content = sample_path.read_text()
     xml_content = xml_content.replace('=" ', '="').replace(' " ', '" ')
-    return decode_onvif_xml(xml_content.replace("SampleFrame", "Frame"))
+    scene = decode_onvif_xml(xml_content.replace("SampleFrame", "Frame"))
+    assert scene is not None
+    return scene
 
 
 def test_sample_frame_decodes_scene_entities_and_timestamps(sample_scene: Scene) -> None:
@@ -107,8 +109,7 @@ def test_malformed_xml_errors() -> None:
     with pytest.raises(ET.ParseError):
         decode_onvif_xml("<invalid>xml")
 
-    with pytest.raises(ValueError, match="No.*Frame.*elements found"):
-        decode_onvif_xml("<root><no_frames/></root>")
+    assert decode_onvif_xml("<root><no_frames/></root>") is None
 
 
 def test_object_without_appearance_keeps_the_frame_time() -> None:
@@ -119,4 +120,5 @@ def test_object_without_appearance_keeps_the_frame_time() -> None:
     )
     scene = decode_onvif_xml(xml)
 
+    assert scene is not None
     assert scene.time_slice.start == datetime(2025, 1, 1, tzinfo=timezone.utc)
