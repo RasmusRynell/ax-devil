@@ -160,10 +160,11 @@ def _write_tracks(path: Path) -> Path:
 
 def _add_and_open(qtbot: QtBot, session: WorkspaceSession, item: VideoItem) -> OfflineVideoViewerWidget | None:
     """Add *item* and return the viewer it opens once it has resolved in the background."""
-    previous = session.focused_offline_viewer()
+    previous = session.focused_widget()
     session.add_items([item])
-    qtbot.waitUntil(lambda: session.focused_offline_viewer() not in (None, previous), timeout=10000)
-    return session.focused_offline_viewer()
+    qtbot.waitUntil(lambda: session.focused_widget() not in (None, previous), timeout=10000)
+    viewer = session.focused_widget()
+    return viewer if isinstance(viewer, OfflineVideoViewerWidget) else None
 
 
 def _show_tracked_frame(qtbot: QtBot, viewer: OfflineVideoViewerWidget | None) -> OfflineVideoViewerWidget:

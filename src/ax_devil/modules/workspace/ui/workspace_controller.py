@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from functools import partial
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QPoint, Signal
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
@@ -16,6 +18,9 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserSection,
     build_browser_sections,
 )
+from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
+from ax_devil.modules.workspace.ui.rename_dialog import ask_new_name
+from ax_devil.modules.workspace.ui.section_tree import show_row_menu
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
@@ -31,7 +36,8 @@ class WorkspaceController(QObject):
 
     The sidebar views read ``sections`` and follow ``sections_changed``, which reports every change to the rows,
     including which Content is open in a viewer, and hand their ``SectionTree`` to ``connect_tree``, so a row does the
-    same in every view.
+    same in every view: whatever the user asks of a row, by its button, menu, double-click or a key, is a ``RowAction``
+    carried out by ``perform_row_action``.
     """
 
     sections_changed = Signal(object)  # tuple[WorkspaceBrowserSection, ...]
@@ -52,8 +58,23 @@ class WorkspaceController(QObject):
         self._logger = get_logger(__name__)
         # The id of the item whose Content each open viewer shows.
         self._widget_item_ids: dict[ViewerWidget, str] = {}
+        self._shared_actions: Mapping[str, QAction] = {}
 
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
+        self._row_handlers: dict[RowAction, Callable[[WorkspaceBrowserRow], None]] = {
+            RowAction.OPEN: self._open_row,
+            RowAction.OPEN_TO_SIDE: partial(self._open_row, to_side=True),
+            RowAction.START_STREAM: self._start_stream,
+            RowAction.STOP_STREAM: self._stop_stream,
+            RowAction.RESCAN: self._rescan,
+            RowAction.ADD: self._add,
+            RowAction.INFORMATION: self._show_information,
+            RowAction.EXPORT_VIDEO: self._export_video,
+            RowAction.HIDE: partial(self._set_considered, considered=False),
+            RowAction.UNHIDE: partial(self._set_considered, considered=True),
+            RowAction.RENAME: self._rename,
+            RowAction.REMOVE: self._remove,
+        }
 
         self._connect_signals()
         self._publish_sections()
@@ -75,40 +96,33 @@ class WorkspaceController(QObject):
         self._open_content(content, start_index=start_index, place=place, start_frame=start_frame)
 
     def connect_tree(self, tree: SectionTree) -> None:
-        """Carry out what the user does with the rows of *tree*: double-clicks open, actions run, and its menu opens,
-        exports, hides or unhides, renames and removes."""
-        tree.row_activated.connect(self.open_row)
+        """Carry out what the user asks of the rows of *tree*, however they asked: see ``perform_row_action``."""
         tree.row_action_requested.connect(self.perform_row_action)
-        tree.row_consideration_changed.connect(self._workspace_store.set_item_considered)
-        tree.content_activated.connect(self._on_content_activated)
-        tree.content_open_to_side_requested.connect(self._on_content_open_to_side_requested)
-        tree.item_remove_requested.connect(self._workspace_store.remove_item)
-        tree.item_rename_requested.connect(self._workspace_store.rename_item)
-        tree.export_requested.connect(self._on_export_requested)
 
-    def open_row(self, row: WorkspaceBrowserRow, to_side: bool = False) -> None:
-        """Open what *row* opens, in a new split with *to_side*; a row that cannot open says why instead."""
-        if row.unavailable_reason is not None:
-            QMessageBox.warning(self._window_parent(), "Open Content", f"{row.label}: {row.unavailable_reason}")
-        elif row.activation_target is not None:
-            self.open_content(*row.activation_target, to_side=to_side)
+    def perform_row_action(
+        self, row: WorkspaceBrowserRow, action: RowAction, viewer: ViewerWidget | None = None
+    ) -> None:
+        """Carry out *action* on *row*, whichever view and gesture asked; one the row does not offer, or offers
+        disabled, does nothing.
 
-    def perform_row_action(self, row: WorkspaceBrowserRow) -> None:
-        """Carry out the action *row* offers, whichever view showed it.
+        An Export the *viewer* asked for is that viewer's, not the first viewer showing the same thing.
 
-        Start stream opens the camera beside the open viewers, never in place of one, so starting one stream never
-        stops another; Stop stream closes every viewer of the camera; Rescan resolves the row's item again; Add does
-        what the row's ``add`` does.
+        The row may be older than the Workspace, such as when a menu was open as its item was removed; an action on an
+        item that is gone does nothing.
         """
-        if row.action is RowAction.START_STREAM and row.item is not None:
-            for content in self._workspace_store.resolution(row.item.id).contents:
-                self.open_content(content, to_side=True)
-        elif row.action is RowAction.STOP_STREAM and row.item is not None:
-            self.close_item_viewers(row.item.id)
-        elif row.action is RowAction.RESCAN and row.item is not None:
-            self._workspace_store.rescan_item(row.item.id)
-        elif row.action is RowAction.ADD and row.add is not None:
-            row.add()
+        offered = row.offered(action)
+        if offered is None or offered.disabled_reason:
+            return
+        if viewer is not None and action is RowAction.EXPORT_VIDEO:
+            viewer.export_video()
+        else:
+            self._row_handlers[action](row)
+
+    def set_shared_actions(self, actions: Mapping[str, QAction]) -> None:
+        """Give every viewer, open now or opened later, the window's *actions* for its menus."""
+        self._shared_actions = actions
+        for widget in self._widget_item_ids:
+            widget.set_shared_actions(actions)
 
     def close_item_viewers(self, item_id: str) -> None:
         """Close every viewer showing Content of the item *item_id*."""
@@ -136,20 +150,102 @@ class WorkspaceController(QObject):
         )
         self.sections_changed.emit(self._sections)
 
-    def _on_content_activated(self, content: Content, start_index: int = 0) -> None:
-        """Open a double-clicked browser item in the preview pane."""
-        self.open_content(content, start_index)
+    def _show_viewer_menu(self, widget: ViewerWidget, global_pos: QPoint) -> None:
+        """Show the menu of the Content *widget* shows at *global_pos*: what its sidebar row offers, as that row does.
 
-    def _on_content_open_to_side_requested(self, content: Content, start_index: int = 0) -> None:
-        """Open a browser item in a new split without replacing any pane."""
-        self.open_content(content, start_index, to_side=True)
+        An item can resolve to several Contents, so the row is the one of the Content on screen. A viewer whose
+        Content has no row, such as one just removed, shows no menu.
+        """
+        shown = widget.current_on_screen_item()
+        row = next(
+            (
+                row
+                for section in self._sections
+                for row in section.rows
+                if shown is not None and row.item is not None and row.row_id == shown.content_id
+            ),
+            None,
+        )
+        if row is not None:
+            show_row_menu(
+                row,
+                self._window_parent(),
+                global_pos,
+                lambda action: self.perform_row_action(row, action, viewer=widget),
+            )
 
-    def _on_export_requested(self, item: object) -> None:
-        """Export from the viewer currently showing the item."""
+    def _held_item(self, row: WorkspaceBrowserRow) -> WorkspaceItem | None:
+        """Return the item *row* stands for as the Workspace holds it now; None for a row of no item or a gone one."""
+        if row.item is None or not self._workspace_store.workspace.has_item(row.item.id):
+            return None
+        return self._workspace_store.workspace.item(row.item.id)
+
+    def _open_row(self, row: WorkspaceBrowserRow, *, to_side: bool = False) -> None:
+        """Open what *row* opens, in a new split with *to_side*; a row that cannot open says why instead."""
+        if row.unavailable_reason is not None:
+            QMessageBox.warning(self._window_parent(), "Open Content", f"{row.label}: {row.unavailable_reason}")
+        elif row.activation_target is not None and self._workspace_store.workspace.has_item(
+            row.activation_target[0].item_id
+        ):
+            self.open_content(*row.activation_target, to_side=to_side)
+
+    def _start_stream(self, row: WorkspaceBrowserRow) -> None:
+        """Open the camera beside the open viewers, never in place of one, so one stream never stops another."""
+        if (item := self._held_item(row)) is not None:
+            for content in self._workspace_store.resolution(item.id).contents:
+                self.open_content(content, to_side=True)
+
+    def _stop_stream(self, row: WorkspaceBrowserRow) -> None:
+        """Close every viewer of the camera."""
+        if row.item is not None:
+            self.close_item_viewers(row.item.id)
+
+    def _rescan(self, row: WorkspaceBrowserRow) -> None:
+        """Resolve the row's item again."""
+        if row.item is not None:
+            self._workspace_store.rescan_item(row.item.id)
+
+    def _add(self, row: WorkspaceBrowserRow) -> None:
+        """Do what the row's ``add`` does: add what it stands for, or ask how."""
+        if row.add is not None:
+            row.add()
+
+    def _set_considered(self, row: WorkspaceBrowserRow, *, considered: bool) -> None:
+        """Hide the row from playback, or let playback use it again."""
+        if row.consideration_ref is not None:
+            self._workspace_store.set_item_considered(row.consideration_ref, considered)
+
+    def _show_information(self, row: WorkspaceBrowserRow) -> None:
+        """Show a simple modal summary of the row."""
+        if row.information_factory is not None:
+            with WorkspaceItemInfoDialog(row.information_factory(), self._window_parent()) as dialog:
+                dialog.exec()
+
+    def _export_video(self, row: WorkspaceBrowserRow) -> None:
+        """Export from the viewer currently showing the row."""
         for widget in self._widget_item_ids:
-            if widget.current_on_screen_item() == item:
+            if row.export_target is not None and widget.current_on_screen_item() == row.export_target:
                 widget.export_video()
                 return
+
+    def _rename(self, row: WorkspaceBrowserRow) -> None:
+        """Ask for a new name for the row's item and rename it when the user confirms.
+
+        An unlabeled item shows its default name on the row, which can differ from ``item.display_name`` when several
+        playlists share the row; keeping the name the row shows leaves the item without a label.
+        """
+        if (item := self._held_item(row)) is None:
+            return
+        name = ask_new_name(
+            self._window_parent(), item.label or row.label, item.default_name if item.label else row.label
+        )
+        if name is not None:
+            self._workspace_store.rename_item(item.id, name)
+
+    def _remove(self, row: WorkspaceBrowserRow) -> None:
+        """Remove the row's item."""
+        if row.item is not None:
+            self._workspace_store.remove_item(row.item.id)
 
     def _on_item_renamed(self, item: WorkspaceItem) -> None:
         """Show the item's new name in the rows and in the header of every viewer showing its Content."""
@@ -250,7 +346,10 @@ class WorkspaceController(QObject):
         """Display *widget* and track it against the item its content came from."""
         place(widget)
         self._widget_item_ids[widget] = content.item_id
+        widget.set_shared_actions(self._shared_actions)
         widget.on_screen_item_changed.connect(lambda _=None, w=widget: self._on_widget_on_screen_item_changed(w))
+        widget.context_menu_requested.connect(partial(self._show_viewer_menu, widget))
+        widget.consideration_change_requested.connect(self._workspace_store.set_item_considered)
         self._publish_sections()
         self._logger.debug(status_message)
 

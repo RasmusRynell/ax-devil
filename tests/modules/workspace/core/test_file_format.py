@@ -44,7 +44,11 @@ def _written(path: Path) -> dict[str, Any]:
 
 def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path) -> None:
     items = (
-        VideoItem(label="Lot", video=tmp_path / "a.mp4", overlays=(OverlayFile(tmp_path / "a.json", "adf-v1"),)),
+        VideoItem(
+            label="Lot",
+            video=tmp_path / "a.mp4",
+            overlays=(OverlayFile(tmp_path / "a.json", "adf-v1"), OverlayFile(tmp_path / "b.xml", "cvat")),
+        ),
         LiveStreamItem(
             label="Entrance",
             host="$AX_DEVIL_TARGET_ADDR",

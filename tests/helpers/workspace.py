@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar, cast
 
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.modules.chrome.list_row import ListRow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
@@ -28,9 +30,11 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
+from ax_devil.modules.workspace.ui.start_panel import StartPanel
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.workspace_prompts import SaveChoice
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
+from tests.helpers.section_tree import row_texts
 
 ContentT = TypeVar("ContentT", SeekableVideoContent, LiveVideoContent, PlaylistContent)
 
@@ -214,3 +218,9 @@ class PlainViewerWidget(ViewerWidget):
     def get_display_name(self) -> str:
         """Return a fixed name."""
         return "Plain"
+
+
+def recent_workspace_names(panel: StartPanel) -> list[str]:
+    """Return the names of the recent workspaces *panel* lists, newest first."""
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)  # Rows listed before are gone.
+    return [row_texts(row)[0] for row in panel.findChildren(ListRow)]

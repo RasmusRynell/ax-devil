@@ -28,7 +28,7 @@ from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.chrome.view_panel import ViewPanel
 from ax_devil.modules.workspace.core import Bookmark, BookmarkKind
 from ax_devil.modules.workspace.ui.bookmark_rows import BookmarkGroup
-from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
+from ax_devil.modules.workspace.ui.rename_dialog import ask_new_name
 
 BOOKMARKS_VIEW_ID = "bookmarks"
 KIND_FILTERS: tuple[BookmarkKind | None, ...] = (
@@ -49,7 +49,7 @@ class BookmarksView(ViewPanel):
     kind_filter_changed = Signal(object)  # BookmarkKind | None
     bookmark_activated = Signal(str)  # bookmark id
     reviewed_change_requested = Signal(object, bool)  # BookmarkTarget, whether it is now reviewed
-    rename_requested = Signal(str, str)  # bookmark id, the entered name
+    rename_requested = Signal(str, str)  # bookmark id, the entered name; empty for the default label
     kind_change_requested = Signal(str, object)  # bookmark id, BookmarkKind
     remove_requested = Signal(str)  # bookmark id
     export_requested = Signal()
@@ -190,6 +190,6 @@ class BookmarksView(ViewPanel):
             menu.deleteLater()
 
     def _ask_name(self, bookmark: Bookmark) -> None:
-        with RenameDialog(bookmark.label, self) as dialog:
-            if dialog.exec() == RenameDialog.DialogCode.Accepted:
-                self.rename_requested.emit(bookmark.id, dialog.name())
+        name = ask_new_name(self, bookmark.label, bookmark.default_label)
+        if name is not None:
+            self.rename_requested.emit(bookmark.id, name)

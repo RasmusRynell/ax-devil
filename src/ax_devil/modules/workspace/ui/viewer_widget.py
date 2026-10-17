@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QSize, Qt, Signal
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QContextMenuEvent, QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -16,6 +17,9 @@ from ax_devil.modules.settings.logging_config import get_logger
 logger = get_logger(__name__)
 
 HEADER_ICON_SIZE_PX = 16
+
+SHARED_ACTION_IDS = ("view.toggle_media_tools", "view.toggle_lane_fullscreen", "view.add_bookmark", "view.reset_zoom")
+"""The window's shortcut actions a viewer's context menu lists, in menu order, as ``set_shared_actions`` takes them."""
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
@@ -33,12 +37,15 @@ class ViewerWidget(QFrame):
     # Signal emitted when the widget requests to be closed
     close_requested = Signal()
     on_screen_item_changed = Signal(object)
+    context_menu_requested = Signal(QPoint)  # Global position of a right click on the pane outside its video lanes
+    consideration_change_requested = Signal(object, bool)  # ConsiderationItemRef, considered: asked for from the pane
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self._logger = logger
         self._pinned: bool = False
+        self._shared_actions: Mapping[str, QAction] = {}
 
         # Set up the base widget structure
         self._setup_base_ui()
@@ -193,6 +200,18 @@ class ViewerWidget(QFrame):
         if text and self._header_layout.sizeHint().width() + self._details_label.sizeHint().width() > self.width():
             self._details_label.setVisible(False)
 
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """Ask for the pane's menu at a right click on the header or other chrome; a video lane asks for its own."""
+        self.context_menu_requested.emit(event.globalPos())
+        event.accept()
+
+    def set_shared_actions(self, actions: Mapping[str, QAction]) -> None:
+        """Use the window's *actions*, by shortcut id (``SHARED_ACTION_IDS``), in this pane's menus.
+
+        They are the window's own, so their names, keys and enabled state are the ones the menu bar shows.
+        """
+        self._shared_actions = actions
+
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         """Refit the header details to the new width."""
         super().resizeEvent(event)
@@ -281,6 +300,24 @@ class ViewerWidget(QFrame):
 
     def export_video(self) -> None:
         """Export the on-screen item when supported by the hosted tool."""
+
+    def step_frames(self, delta: int) -> None:
+        """Step playback by *delta* frames when supported by the hosted tool."""
+
+    def step_next_entry(self) -> None:
+        """Navigate to the next playlist entry when supported by the hosted tool."""
+
+    def step_prev_entry(self) -> None:
+        """Navigate to the previous playlist entry when supported by the hosted tool."""
+
+    def increase_playback_speed(self) -> None:
+        """Raise the playback speed by one step when supported by the hosted tool."""
+
+    def decrease_playback_speed(self) -> None:
+        """Lower the playback speed by one step when supported by the hosted tool."""
+
+    def toggle_info_overlay(self) -> None:
+        """Show or hide the info overlay when supported by the hosted tool."""
 
     def toggle_media_tools(self) -> None:
         """Show or hide the media tools panel when supported by the hosted tool."""

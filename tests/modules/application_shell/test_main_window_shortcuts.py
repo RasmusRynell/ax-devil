@@ -8,7 +8,6 @@ import pytest
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QPushButton
 from pytestqt.qtbot import QtBot
 
-from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
@@ -19,18 +18,14 @@ from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.workspace.core import (
-    ItemResolution,
-    LiveStreamItem,
     RecentWorkspaces,
     VideoItem,
     load_workspace,
 )
-from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.live_view import LiveView
-from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.shortcuts import make_shortcut_manager
-from tests.helpers.workspace import DummyViewer, FakePrompts
+from tests.helpers.workspace import DummyViewer, FakePrompts, recent_workspace_names
 
 
 class _FocusedWidget:
@@ -39,6 +34,9 @@ class _FocusedWidget:
     def __init__(self) -> None:
         self.toggle_count = 0
         self.media_tools_toggle_count = 0
+        self.export_count = 0
+        self.step_deltas: list[int] = []
+        self.speed_up_count = 0
         self.zoom_steps: list[ZoomStep] = []
 
     def zoom(self, step: ZoomStep) -> None:
@@ -53,14 +51,6 @@ class _FocusedWidget:
         """Record a playback toggle."""
         self.toggle_count += 1
 
-
-class _OfflineViewer:
-    """Offline viewer test double."""
-
-    def __init__(self) -> None:
-        self.step_deltas: list[int] = []
-        self.speed_up_count = 0
-
     def step_frames(self, delta: int) -> None:
         """Record frame-step routing."""
         self.step_deltas.append(delta)
@@ -69,22 +59,21 @@ class _OfflineViewer:
         """Record speed-up routing."""
         self.speed_up_count += 1
 
+    def export_video(self) -> None:
+        """Record an export request."""
+        self.export_count += 1
+
 
 class _RoutingSession:
     """Workspace session test double for shortcut routing."""
 
-    def __init__(self, focused_widget: _FocusedWidget | None, offline_viewer: _OfflineViewer | None) -> None:
+    def __init__(self, focused_widget: object | None) -> None:
         self._focused_widget = focused_widget
-        self._offline_viewer = offline_viewer
         self.bookmark_requests = 0
 
-    def focused_widget(self) -> _FocusedWidget | None:
+    def focused_widget(self) -> object | None:
         """Return the focused viewer widget."""
         return self._focused_widget
-
-    def focused_offline_viewer(self) -> _OfflineViewer | None:
-        """Return the focused offline viewer."""
-        return self._offline_viewer
 
     def bookmark_focused_viewer(self) -> None:
         """Record a request to bookmark the focused viewer's frame."""
@@ -102,14 +91,14 @@ def test_play_pause_shortcut_routes_to_focused_workspace_widget(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget, None))
+    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
 
     manager.get_action("playback.play_pause").trigger()
 
     assert focused_widget.toggle_count == 1
 
 
-def test_offline_shortcuts_route_to_focused_offline_viewer(
+def test_playback_shortcuts_route_to_the_focused_viewer(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
 ) -> None:
@@ -117,15 +106,34 @@ def test_offline_shortcuts_route_to_focused_offline_viewer(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    offline_viewer = _OfflineViewer()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget, offline_viewer))
+    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
 
     manager.get_action("playback.step_forward").trigger()
+    manager.get_action("playback.step_backward_10").trigger()
     manager.get_action("playback.speed_up").trigger()
 
     assert focused_widget.toggle_count == 0
-    assert offline_viewer.step_deltas == [1]
-    assert offline_viewer.speed_up_count == 1
+    assert focused_widget.step_deltas == [1, -10]
+    assert focused_widget.speed_up_count == 1
+
+
+def test_export_video_is_in_view_menu_on_ctrl_e_and_exports_the_focused_viewer(
+    qtbot: QtBot,
+    render_catalog_manager: SceneRenderCatalogManager,
+) -> None:
+    manager = make_shortcut_manager()
+    window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    focused_widget = _FocusedWidget()
+    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
+    action = manager.get_action("view.export_video")
+
+    assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["View"]
+    assert action.shortcut().toString() == "Ctrl+E"
+
+    action.trigger()
+
+    assert focused_widget.export_count == 1
 
 
 def test_media_tools_action_is_in_view_menu_and_routes_to_focused_widget(
@@ -136,7 +144,7 @@ def test_media_tools_action_is_in_view_menu_and_routes_to_focused_widget(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget, None))
+    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
     action = manager.get_action("view.toggle_media_tools")
     menus = [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)]
 
@@ -155,7 +163,7 @@ def test_add_bookmark_is_in_view_menu_on_m_and_bookmarks_the_focused_viewer(
     manager = make_shortcut_manager()
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
-    session = _RoutingSession(_FocusedWidget(), None)
+    session = _RoutingSession(_FocusedWidget())
     window._workspace_session = cast(WorkspaceSession, session)
     action = manager.get_action("view.add_bookmark")
 
@@ -194,7 +202,7 @@ def test_zoom_actions_are_in_view_menu_and_route_to_focused_widget(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget, None))
+    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
     expected = {
         "view.zoom_in": ("Ctrl++", ZoomStep.IN),
         "view.zoom_out": ("Ctrl+-", ZoomStep.OUT),
@@ -307,37 +315,6 @@ def test_add_manually_in_the_live_view_opens_the_add_live_stream_dialog(
     assert opened == ["Add Live Stream"]
 
 
-@pytest.mark.parametrize("from_file_menu", [True, False])
-def test_add_live_stream_starts_the_stream_only_from_the_file_menu_not_from_add_manually(
-    qtbot: QtBot,
-    render_catalog_manager: SceneRenderCatalogManager,
-    monkeypatch: pytest.MonkeyPatch,
-    from_file_menu: bool,
-) -> None:
-    manager = make_shortcut_manager()
-    window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
-    qtbot.addWidget(window)
-    camera = ItemResolution.of(
-        LiveStreamItem(host="192.0.2.10", label="Entrance"), default_resolution_context(), CancelToken()
-    )
-    monkeypatch.setattr(BaseDialog, "exec", lambda dialog: BaseDialog.DialogCode.Accepted)
-    monkeypatch.setattr(AddLiveStreamDialog, "get_result", lambda dialog: camera)
-    session = window._workspace_session
-    session.show_sidebar_view("live")
-
-    with patch("ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget", DummyViewer):
-        if from_file_menu:
-            manager.get_action("app.add_live_stream").trigger()
-        else:
-            view = window.findChild(LiveView)
-            assert view is not None
-            [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add manually"]
-            button.click()
-
-    assert [item.display_name for item in session._workspace_store.workspace.items] == ["Entrance"]
-    assert (session.focused_widget() is not None) == from_file_menu
-
-
 def test_quitting_keeps_unsaved_edits_even_without_closing_the_window(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
 ) -> None:
@@ -379,7 +356,7 @@ def test_changing_storage_in_settings_refreshes_the_start_panels_recent_workspac
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     session = window._workspace_session
-    assert [row.path for row in session._start_panel.recent_rows()] == [old_file]
+    assert recent_workspace_names(session._start_panel) == ["Old"]
 
     def save_settings(dialog: SettingsDialog) -> int:
         for field, editor in dialog._configuration_editors.items():
@@ -397,4 +374,4 @@ def test_changing_storage_in_settings_refreshes_the_start_panels_recent_workspac
         manager.get_action("app.settings").trigger()
 
     assert [entry.path for entry in session.lifecycle.recent_workspaces()] == [new_file]
-    assert [row.path for row in session._start_panel.recent_rows()] == [new_file]
+    assert recent_workspace_names(session._start_panel) == ["New"]

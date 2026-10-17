@@ -24,13 +24,15 @@ from ax_devil.modules.settings.logging_config import setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
 from ax_devil.modules.workspace.core import (
     LiveOverlayMode,
-    OverlayFile,
-    VideoItem,
+    OverlayChoice,
+    VideoFileSelection,
     WorkspaceFileError,
     WorkspaceItem,
     live_stream_item_from_defaults,
     load_workspace,
+    overlay_choice,
 )
+from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
 from .app import create_app
 from .cli_options import CONFIG_OPTION, apply_run_options
@@ -312,36 +314,73 @@ def list_handlers() -> None:
 )
 @click.option(
     "--overlay",
+    "overlays",
     type=click.Path(exists=True, path_type=Path, dir_okay=False),
-    default=None,
-    help="Path to an overlay file",
+    multiple=True,
+    help="Path to an overlay file; repeat it to compare several overlays on the video",
 )
-@click.option("--handler-type", default=None, help="Decoder handler type for the overlay (required with --overlay)")
+@click.option(
+    "--handler-type",
+    "handler_types",
+    multiple=True,
+    help=(
+        "Decoder handler type for an overlay. Give it once per --overlay, in the same order, "
+        "or leave it out to use the only handler that reads each file"
+    ),
+)
 @click.pass_context
 def local(
     ctx: click.Context,
     video: Path,
-    overlay: Path | None,
-    handler_type: str | None,
+    overlays: tuple[Path, ...],
+    handler_types: tuple[str, ...],
 ) -> None:
-    """Open an offline video file with optional overlay.
+    """Open an offline video file with any number of overlays.
+
+    Each overlay becomes a lane to compare against the others.
 
     Examples:
 
     \b
       ax-devil local --video recording.mp4
       ax-devil local --video recording.mp4 --overlay data.jsonl --handler-type ADF_BETA_FRAME
+      ax-devil local --video recording.mp4 --overlay gt.txt --overlay tracks.txt
     """
     runtime = ctx.obj
 
-    if overlay and not handler_type:
-        raise click.ClickException("--handler-type is required when --overlay is set.")
+    if handler_types and len(handler_types) != len(overlays):
+        raise click.ClickException(
+            f"Give --handler-type once for each --overlay, in the same order, or not at all: "
+            f"got {len(overlays)} overlay(s) and {len(handler_types)} handler type(s)."
+        )
+    if handler_types:
+        choices = [OverlayChoice(path.resolve(), handler) for path, handler in zip(overlays, handler_types)]
+    else:
+        choices = _overlay_choices_by_extension([path.resolve() for path in overlays], runtime["config"])
 
-    item = VideoItem(
-        video=video.resolve(),
-        overlays=(OverlayFile(overlay.resolve(), handler_type),) if overlay and handler_type else (),
-    )
+    item = VideoFileSelection(video.resolve(), tuple(choices)).to_item()
     _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
+
+
+def _overlay_choices_by_extension(paths: Sequence[Path], config: Path | None) -> list[OverlayChoice]:
+    """Return *paths* with the only data handler that reads each, or fail naming the candidates when it is unclear."""
+    if not paths:
+        return []
+    _apply_cli_config_and_load_plugins(config)
+    intake = default_workspace_intake()
+    choices: list[OverlayChoice] = []
+    for path in paths:
+        choice = overlay_choice(path, intake)
+        if choice is None:
+            raise click.ClickException(f"No data handler reads {path.name}. List them with: ax-devil list-handlers")
+        if choice.decoder is None:
+            candidates = ", ".join(option.handler_type for option in intake.file_decoder_options_for(path))
+            raise click.ClickException(
+                f"Several data handlers may read {path.name}: {candidates}. "
+                "Choose with --handler-type, once per --overlay, in the same order."
+            )
+        choices.append(choice)
+    return choices
 
 
 @cli.command("open")

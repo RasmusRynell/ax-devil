@@ -9,11 +9,13 @@ from functools import partial
 from typing import NamedTuple
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.background_jobs import BackgroundJobs, JobScope, LatestRequest, background_jobs
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
@@ -142,13 +144,17 @@ class _SecondaryFrameRelay(QObject):
 class OfflineLane:
     """Per-lane runtime state for one offline display lane.
 
-    Uses a `FrameDisplay` instance for rendering and related lane-owned helpers.
+    Uses a `FrameDisplay` instance for rendering and related lane-owned helpers. *export_action* exports this lane; the
+    media tools button and the lane's context menu both trigger it, and ``set_export_allowed`` and the loaded render
+    catalog decide whether it is enabled. *lane_index* is the lane's position in its entry.
     """
 
     content: SeekableVideoContent
     name: str
     display: FrameDisplay
     overlay_source: FileOverlaySource | None
+    export_action: QAction
+    lane_index: int = 0
     controls: SeekableVideoControlPanel | None = None
     overlay_policy: OverlayPersistencePolicy | None = None
     presenter: SceneFramePresenter | None = None
@@ -161,10 +167,24 @@ class OfflineLane:
     analysis_jobs: JobScope | None = None  # The session's; the lane refreshes nothing without it.
     _history_request: LatestRequest = field(init=False, repr=False)
     _alignment_request: LatestRequest = field(init=False, repr=False)
+    _export_allowed: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._history_request = LatestRequest(self.display)
         self._alignment_request = LatestRequest(self.display)
+
+    def set_export_allowed(self, allowed: bool) -> None:
+        """Allow or forbid export, such as while an export dialog is open; it also needs a loaded render catalog."""
+        self._export_allowed = allowed
+        self.update_export_action()
+
+    def update_export_action(self) -> None:
+        """Enable export once the lane has a render catalog and nothing forbids it, and say why when it cannot."""
+        ready = self.presenter is not None and self.presenter.scene_render_catalog is not None
+        self.export_action.setEnabled(self._export_allowed and ready)
+        self.export_action.setToolTip(
+            "Export video with overlays" if ready else "Export is available once the render catalog has loaded"
+        )
 
     def display_frame(self, frame: VideoFrameWithOverlays) -> None:
         """Display a synced frame and update lane-owned controls."""
@@ -539,7 +559,7 @@ class OfflineSession(QObject):
                 pooled_source.source.frameReady.connect(pooled_source.relay.deliver)
                 rollback.callback(pooled_source.source.frameReady.disconnect, pooled_source.relay.deliver)
             runtime._connect_viewport_sync()
-            runtime._connect_export_signals()
+            runtime._connect_export_actions()
             runtime._connect_frame_requests()
             runtime._connect_timestamp_fallback_controls()
             rollback.pop_all()
@@ -647,11 +667,12 @@ class OfflineSession(QObject):
 
         render_catalog_selection.selectionChanged.connect(remember_visibility)
         filter_model = SessionFilter(overlay_source.get_filter_config() if overlay_source is not None else None)
+        export_action = QAction(Icon.EXPORT.icon(), "Export video", display)
         tools_panel = MediaToolsPanel(
             render_catalog_selection,
             filter_model=filter_model,
             overlay_settings=OverlayPersistenceSettings.default_enabled(),
-            show_export=True,
+            export_action=export_action,
             scene_history=opened.scene_history,
             timing_controls=timing_controls,
         )
@@ -679,6 +700,8 @@ class OfflineSession(QObject):
             name=lane_content.display_name,
             display=display,
             overlay_source=overlay_source,
+            export_action=export_action,
+            lane_index=opened.lane_index,
             controls=controls,
             overlay_policy=overlay_policy,
             presenter=presenter,
@@ -689,6 +712,9 @@ class OfflineSession(QObject):
             video_source=pooled_source.source,
             source_index=pooled_source.source_index,
         )
+        # Connected after the presenter's own, so the lane sees the catalog the presenter has just taken.
+        render_catalog_selection.activeCatalogChanged.connect(lambda _catalog, lane=lane: lane.update_export_action())
+        lane.update_export_action()
         lane.initialize_timing_diagnostics(opened.alignment_report)
         return lane
 
@@ -701,11 +727,10 @@ class OfflineSession(QObject):
                 lambda viewport, _peers=peers: self._apply_viewport_to_peers(viewport, _peers)
             )
 
-    def _connect_export_signals(self) -> None:
-        """Wire export button signals from each lane's tools panel."""
+    def _connect_export_actions(self) -> None:
+        """Export a lane when its export action is triggered, from its media tools button or its context menu."""
         for lane in self.lanes:
-            if lane.tools_panel is not None:
-                lane.tools_panel.exportRequested.connect(partial(self.export_lanes, [lane]))
+            lane.export_action.triggered.connect(lambda _checked=False, lane=lane: self.export_lanes([lane]))
 
     def _connect_frame_requests(self) -> None:
         """Jump to frames requested from any lane's events or object history."""
@@ -735,7 +760,11 @@ class OfflineSession(QObject):
         """
         from ax_devil.modules.video_viewer.export import ExportDialog, ExportLane
 
-        lanes = [lane for lane in (self.lanes if lanes is None else lanes) if lane.video_source is not None]
+        lanes = [
+            lane
+            for lane in (self.lanes if lanes is None else lanes)
+            if lane in self.lanes and lane.video_source is not None
+        ]
         if not lanes:
             return
         catalogs = [lane.presenter.scene_render_catalog if lane.presenter is not None else None for lane in lanes]
@@ -748,8 +777,8 @@ class OfflineSession(QObject):
         # Pause playback so the export has exclusive access to the decoder
         self.pause_playback()
 
-        # Disable export buttons to prevent re-entrant launches
-        self._set_export_buttons_enabled(False)
+        # Disable export to prevent re-entrant launches
+        self._set_export_allowed(False)
 
         export_lanes: list[ExportLane] = []
         for lane, active_catalog in zip(lanes, catalogs, strict=True):
@@ -776,14 +805,13 @@ class OfflineSession(QObject):
             with ExportDialog(export_lanes, parent=self.container) as dialog:
                 dialog.exec()
         finally:
-            self._set_export_buttons_enabled(True)
+            self._set_export_allowed(True)
         # Playback intentionally stays paused — user resumes manually
 
-    def _set_export_buttons_enabled(self, enabled: bool) -> None:
-        """Enable or disable all lane export buttons."""
+    def _set_export_allowed(self, allowed: bool) -> None:
+        """Allow or forbid export from every lane."""
         for lane in self.lanes:
-            if lane.tools_panel is not None:
-                lane.tools_panel.set_export_enabled(enabled)
+            lane.set_export_allowed(allowed)
 
     def _apply_viewport_to_peers(
         self,

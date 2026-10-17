@@ -121,6 +121,17 @@ class TestRebinding:
             manager.set_binding("unknown.action", QKeySequence("Ctrl+Z"))
 
 
+def test_default_key_the_user_bound_to_another_action_is_left_unset(window: QWidget) -> None:
+    """Export Video's Ctrl+E default must not take the key from an action the user already bound to it."""
+    manager = ShortcutManager(config_overrides={"app.add_video": "Ctrl+E"})
+    manager.register_defaults()
+    manager.install(window)
+
+    assert manager.get_action("app.add_video").shortcut().toString() == "Ctrl+E"
+    assert manager.get_action("view.export_video").shortcut().isEmpty()
+    assert manager.has_conflict(QKeySequence("Ctrl+E")) == "app.add_video"
+
+
 def test_has_conflict_reports_the_bound_action(manager: ShortcutManager, window: QWidget) -> None:
     manager.register(_make_definition("action.a", "Ctrl+A"))
     manager.register(_make_definition("action.b", "Ctrl+B"))

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QEnterEvent, QMouseEvent, QResizeEvent, QShowEvent
+from PySide6.QtCore import QEvent, QPoint, Qt, Signal
+from PySide6.QtGui import QContextMenuEvent, QEnterEvent, QMouseEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
@@ -29,6 +29,7 @@ class FrameDisplay(QWidget):
     controlsRequested = Signal()
     controlsHideRequested = Signal()
     sidePanelToggled = Signal(bool)  # True when the side panel opens, False when it closes
+    contextMenuRequested = Signal(QPoint)  # Global position of a right click anywhere in the display
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -147,6 +148,12 @@ class FrameDisplay(QWidget):
         """Keep an open side panel at its share of the pane."""
         super().resizeEvent(event)
         self._side_panel_controller.fit_to_pane(event.size().width())
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """Focus the viewport, so focus-routed actions target this display, then ask for a menu at the pointer."""
+        self._viewport.setFocus(Qt.FocusReason.MouseFocusReason)
+        self.contextMenuRequested.emit(event.globalPos())
+        event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Handle mouse movement for optional fading mount-point chrome."""

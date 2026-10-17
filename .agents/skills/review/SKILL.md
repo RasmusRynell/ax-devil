@@ -59,17 +59,22 @@ For every added or changed test, ask: **What real regression does this catch, an
 passing?** Prefer simple, reliable tests that protect meaningful behavior and tolerate implementation changes.
 Judge their coverage and maintenance cost; avoid complexity added solely to satisfy a testing convention.
 
-Tests tied to incidental implementation details can help during development but should be removed or rewritten
-before merging. Keep expectations independent of the implementation and verify that the test exercises the behavior
-it claims to protect. Strengthen an existing meaningful case before adding redundant coverage.
+Tests tied to incidental implementation details (private names, call sequences, wiring, routes reaching the same
+method) are deleted, not rewritten to follow a rename; if a user-visible behavior is lost, it is covered at its
+owner. A rule is tested once, at the layer that owns it. Keep expectations independent of the implementation and
+verify that the test exercises the behavior it claims to protect. Strengthen an existing meaningful case before
+adding redundant coverage. Flag tests of removed or merged code left behind, production code exposed only for
+tests, and net test growth in a change that removes or merges code without a stated reason.
 
 ### 5. Keep documentation at its layer
 
 Apply the placement rule in [AGENTS.md](../../../AGENTS.md#where-a-fact-belongs). For every added or changed line
 in `docs/architecture/` or `docs/domain/`, name the second module that must know it; if there is none, it belongs
-in the module README, a docstring, or nowhere. User-facing docs (`README.md`, usage, settings, plugins, datasets) follow the
-user instead: a fact belongs there when someone using the app needs it. Doc additions are rejected by default and
-deletions accepted by default.
+in the module README, a docstring, or nowhere. For every added or changed line in user-facing docs (`README.md`,
+usage, settings, plugins, datasets), name what the reader cannot get from the UI, `--help` or the code: a rule or a
+consequence. Lists of routes, menus, shortcuts, buttons or flags, and restated docstrings, fail that test. Doc
+additions are rejected by default and deletions accepted by default; flag net doc growth without a stated reason,
+and docs of removed code left behind.
 
 Treat `README.md` as the human entry point and review additions there especially carefully. For misplaced or
 duplicated content, name the appropriate home or recommend deletion.
@@ -78,7 +83,7 @@ duplicated content, name the appropriate home or recommend deletion.
 
 Report actionable findings in priority order. Each needs a file/line, concrete trigger or violated repository rule,
 consequence, and proposed fix at the right owner. For a weak test, name the behavior it should protect or recommend
-removing it. Avoid filler findings and generic design advice; a clean review is a valid result.
+deleting it. Avoid filler findings and generic design advice; a clean review is a valid result.
 
 Validate the result against the current review target, and state which revisions and checks support your conclusion,
 including their limits and remaining uncertainty. Use the testing runbook's isolated verification workflow. After

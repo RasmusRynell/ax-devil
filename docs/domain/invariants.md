@@ -110,9 +110,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Only adding items opens a viewer. Opening or creating a Workspace lists its items and opens and connects
   nothing.
 - Launching never opens a Workspace on its own, and closing never prompts: a modified Workspace is saved as a copy
-  that joins the recent workspaces, never over its own file. Creating a new Workspace asks whether to
-  save modified changes first (a forced choice with no Cancel button), and nothing is replaced unless the answer,
-  including any Save As, completes. Opening a saved Workspace discards current edits without asking.
+  that joins the recent workspaces, never over its own file. Opening a saved Workspace discards current edits without
+  asking; creating a new one replaces nothing until the save question, including any Save As, completes. The rest is in
+  [Workspace](../architecture/workspace.md#lifecycle).
 
 ## Sidebar
 

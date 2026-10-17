@@ -17,6 +17,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     BY_NAME,
     WORKSPACE_ORDER,
     BrowserSection,
+    OfferedAction,
     RowAction,
     RowOrder,
     WorkspaceBrowserRow,
@@ -50,7 +51,7 @@ def _resolver_row(record: PluginRecord, add: Callable[[], None]) -> WorkspaceBro
         label=definition.display_name,
         icon_kind="playlist",
         facts=tuple(line for line in ("Playlist resolver", description, source) if line),
-        action=RowAction.ADD,
+        actions=(OfferedAction(RowAction.ADD),),
         add=add,
     )
 

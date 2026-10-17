@@ -189,21 +189,6 @@ def test_media_tools_panel_id_search_and_filter_button_track_filter_state(
     assert button.text() == f"Filter {total - 1}/{total}"
 
 
-def test_media_tools_panel_export_button_emits_request(
-    qtbot: QtBot,
-    render_catalog_selection: SceneRenderCatalogSelection,
-) -> None:
-    panel = MediaToolsPanel(
-        show_export=True, render_catalog_selection=render_catalog_selection, filter_model=SessionFilter()
-    )
-    qtbot.addWidget(panel)
-    button = panel.findChild(QToolButton, "exportVideoButton")
-    assert button is not None
-
-    with qtbot.waitSignal(panel.exportRequested):
-        button.click()
-
-
 @pytest.mark.parametrize("dismiss_key", [Qt.Key.Key_Escape, None])
 def test_section_help_stays_open_on_mouse_move(
     qtbot: QtBot,

@@ -1,5 +1,7 @@
 """Temporary application dialogs must not accumulate under the main window."""
 
+from collections.abc import Callable
+
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer
 from pytestqt.qtbot import QtBot
@@ -21,24 +23,31 @@ def window(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> M
 
 
 @pytest.mark.parametrize(
-    "action_name",
-    ["_on_keyboard_shortcuts", "_on_settings", "_on_add_video", "_on_add_live_stream", "_on_add_playlist"],
+    "open_dialog",
+    [
+        lambda window: window._on_keyboard_shortcuts(),
+        lambda window: window._on_settings(),
+        lambda window: window._workspace_session.add_video(),
+        lambda window: window._workspace_session.add_live_stream(),
+        lambda window: window._workspace_session.add_playlist(),
+    ],
+    ids=["shortcuts", "settings", "add_video", "add_live_stream", "add_playlist"],
 )
 def test_repeated_modal_dialogs_are_destroyed(
-    window: MainWindow, monkeypatch: pytest.MonkeyPatch, action_name: str
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch, open_dialog: Callable[[MainWindow], None]
 ) -> None:
     """Repeatedly cancelling a real modal dialog releases every instance and its children."""
     original_exec = BaseDialog.exec
-    destroyed: list[str] = []
+    destroyed: list[bool] = []
 
     def cancel(dialog: BaseDialog) -> int:
-        dialog.destroyed.connect(lambda: destroyed.append(action_name))
+        dialog.destroyed.connect(lambda: destroyed.append(True))
         QTimer.singleShot(0, dialog.reject)
         return original_exec(dialog)
 
     monkeypatch.setattr(BaseDialog, "exec", cancel)
     for _ in range(3):
-        getattr(window, action_name)(**({"start": True} if action_name == "_on_add_live_stream" else {}))
+        open_dialog(window)
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert len(destroyed) == 3
     assert window.findChildren(BaseDialog) == []

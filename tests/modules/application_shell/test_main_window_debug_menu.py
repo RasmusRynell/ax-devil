@@ -41,6 +41,6 @@ def test_the_plugins_entry_shows_the_plugins_view(
     view = window.findChild(PluginsView)
     assert view is not None and not view.isVisible()
 
-    next(action for action in window.findChildren(QAction) if action.text() == "Plug-ins").trigger()
+    next(action for action in window.findChildren(QAction) if action.text() == "Plugins").trigger()
 
     assert view.isVisible()

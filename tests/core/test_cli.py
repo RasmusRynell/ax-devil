@@ -409,16 +409,77 @@ def test_local_opens_video_with_optional_overlay(tmp_path: Path, startups: _Laun
     assert item.overlays == ((OverlayFile(overlay_file, "ADF_BETA_FRAME"),) if with_overlay else ())
 
 
-def test_local_overlay_requires_handler_type(tmp_path: Path, startups: _Launches) -> None:
-    video_file = tmp_path / "test.mp4"
-    video_file.write_bytes(b"\x00")
-    overlay_file = tmp_path / "data.jsonl"
-    overlay_file.write_text("{}\n", encoding="utf-8")
+def _local_files(tmp_path: Path, *names: str) -> list[Path]:
+    """Create a video named ``test.mp4`` and the overlay files *names*, and return them in that order."""
+    files = [tmp_path / name for name in ("test.mp4", *names)]
+    for file in files:
+        file.write_text("{}\n", encoding="utf-8")
+    return files
 
-    result = _invoke("local", "--video", str(video_file), "--overlay", str(overlay_file))
+
+def test_local_opens_one_item_with_a_lane_per_repeated_overlay(tmp_path: Path, startups: _Launches) -> None:
+    video, first, second = _local_files(tmp_path, "a.jsonl", "b.jsonl")
+
+    result = _invoke(
+        "local",
+        *("--video", str(video)),
+        *("--overlay", str(first), "--handler-type", "ADF_BETA_FRAME"),
+        *("--overlay", str(second), "--handler-type", "ADF_V1_FRAME"),
+    )
+
+    assert result.exit_code == 0, result.output
+    [item] = startups
+    assert item.overlays == (OverlayFile(first, "ADF_BETA_FRAME"), OverlayFile(second, "ADF_V1_FRAME"))
+
+
+def test_local_picks_the_only_handler_that_reads_each_overlay_when_none_is_given(
+    tmp_path: Path, startups: _Launches
+) -> None:
+    video, first, second = _local_files(tmp_path, "gt.txt", "pred.txt")
+
+    result = _invoke("local", "--video", str(video), "--overlay", str(first), "--overlay", str(second))
+
+    assert result.exit_code == 0, result.output
+    [item] = startups
+    assert item.overlays == (OverlayFile(first, "MOT_FILE"), OverlayFile(second, "MOT_FILE"))
+
+
+def test_local_overlay_read_by_several_handlers_fails_naming_the_candidates(
+    tmp_path: Path, startups: _Launches
+) -> None:
+    video, ambiguous = _local_files(tmp_path, "scene.jsonl")
+
+    result = _invoke("local", "--video", str(video), "--overlay", str(ambiguous))
 
     assert result.exit_code != 0
-    assert "--handler-type is required" in result.output
+    assert "Several data handlers may read scene.jsonl" in result.output
+    assert "ADF_BETA_FRAME" in result.output
+    assert "ADF_V1_FRAME" in result.output
+    assert startups == []
+
+
+def test_local_overlay_no_handler_reads_fails(tmp_path: Path, startups: _Launches) -> None:
+    video, unreadable = _local_files(tmp_path, "notes.pdf")
+
+    result = _invoke("local", "--video", str(video), "--overlay", str(unreadable))
+
+    assert result.exit_code != 0
+    assert "No data handler reads notes.pdf" in result.output
+    assert startups == []
+
+
+def test_local_handler_types_must_match_the_overlays_one_to_one(tmp_path: Path, startups: _Launches) -> None:
+    video, first, second = _local_files(tmp_path, "a.jsonl", "b.jsonl")
+
+    result = _invoke(
+        "local",
+        *("--video", str(video)),
+        *("--overlay", str(first), "--overlay", str(second)),
+        *("--handler-type", "ADF_BETA_FRAME"),
+    )
+
+    assert result.exit_code != 0
+    assert "once for each --overlay" in result.output
     assert startups == []
 
 

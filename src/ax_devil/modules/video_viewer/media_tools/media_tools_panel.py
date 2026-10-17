@@ -8,7 +8,7 @@ from html import escape
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPalette
+from PySide6.QtGui import QAction, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
@@ -141,7 +140,6 @@ class MediaToolsPanel(QWidget):
 
     overlayPersistenceChanged = Signal(object)  # Emits OverlayPersistenceSettings
     catalogViewerRequested = Signal()
-    exportRequested = Signal()  # Emitted when user clicks "Export Video"
     frameRequested = Signal(int)  # Video frame index requested from an event or object history
 
     def __init__(
@@ -151,15 +149,13 @@ class MediaToolsPanel(QWidget):
         *,
         filter_model: SessionFilter,
         overlay_settings: OverlayPersistenceSettings | None = None,
-        show_export: bool = False,
+        export_action: QAction | None = None,
         scene_history: SceneHistory | None = None,
         timing_controls: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
 
         self._render_catalog_selection = render_catalog_selection
-        self._export_button: QToolButton | None = None
-        self._export_allowed = True
         self._last_scene: Scene | None = None
         self._last_frame_id: FrameIdentifier | None = None
         self._refilter: SceneRefilter | None = None
@@ -216,18 +212,15 @@ class MediaToolsPanel(QWidget):
         details_button = self._popup_button("Details", MediaToolsSection.OVERLAY_DETAILS, self._visibility_widget)
         details_button.setObjectName("overlayDetailsButton")
         corner_layout.addWidget(details_button)
-        if show_export:
-            # Export is a one-shot action, so it lives beside the tabs instead of taking a tab.
-            self._export_button = QToolButton(self)
-            self._export_button.setObjectName("exportVideoButton")
-            self._export_button.setIcon(Icon.EXPORT.icon())
-            self._export_button.setToolTip("Export video with overlays")
-            self._export_button.setAccessibleName("Export video with overlays")
-            self._export_button.setAutoRaise(True)
-            self._export_button.clicked.connect(self.exportRequested.emit)
-            corner_layout.addWidget(self._export_button)
-            render_catalog_selection.activeCatalogChanged.connect(self._update_export_button)
-            self._update_export_button()
+        if export_action is not None:
+            # Export is a one-shot action, so it lives beside the tabs instead of taking a tab. The lane owns the
+            # action, so this button and the lane's context menu are one command.
+            export_button = QToolButton(self)
+            export_button.setObjectName("exportVideoButton")
+            export_button.setDefaultAction(export_action)
+            export_button.setAccessibleName("Export video with overlays")
+            export_button.setAutoRaise(True)
+            corner_layout.addWidget(export_button)
         self._tabs.setCornerWidget(corner, Qt.Corner.TopRightCorner)
 
         self._id_search = QLineEdit(self)
@@ -407,20 +400,6 @@ class MediaToolsPanel(QWidget):
         if opening:
             half = self._splitter.height() // 2
             self._splitter.setSizes([self._splitter.height() - half, half])
-
-    def set_export_enabled(self, enabled: bool) -> None:
-        """Allow or forbid export, such as while an export dialog is open; it also needs a loaded render catalog."""
-        self._export_allowed = enabled
-        self._update_export_button()
-
-    def _update_export_button(self, _catalog: object = None) -> None:
-        if self._export_button is None:
-            return
-        ready = self._render_catalog_selection.active_catalog() is not None
-        self._export_button.setEnabled(self._export_allowed and ready)
-        self._export_button.setToolTip(
-            "Export video with overlays" if ready else "Export is available once the render catalog has loaded"
-        )
 
     def _on_filter_changed(self) -> None:
         if self._id_search.text().strip() != self.filter_model.id_query:

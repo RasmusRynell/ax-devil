@@ -19,9 +19,13 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import (
     ItemResolution,
     RecentWorkspaces,
+    VideoFileSelection,
+    VideoItem,
     WorkspaceItem,
     video_file_selections,
 )
+from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
+from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.application_window import ApplicationWindow
 from ax_devil.modules.workspace.ui.bookmarks_view import BOOKMARKS_VIEW_ID, BookmarksView
@@ -37,6 +41,7 @@ from ax_devil.modules.workspace.ui.sections_view_controller import SectionsViewC
 from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.start_panel import StartPanel
+from ax_devil.modules.workspace.ui.viewer_widget import SHARED_ACTION_IDS
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
 from ax_devil.modules.workspace.ui.workspace_prompts import DialogPrompts, WorkspacePrompts
@@ -47,7 +52,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
-    from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
     from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 
@@ -65,9 +69,6 @@ class WorkspaceSession(QObject):
     """
 
     state_changed = Signal()  # The Workspace's name or modified flag changed.
-    add_live_stream_requested = Signal()  # The Live view asked to add a camera by entering its details.
-    add_video_requested = Signal()  # The Offline view asked to add a video.
-    add_playlist_requested = Signal(str)  # The id of the playlist resolver to add a playlist with.
 
     def __init__(
         self,
@@ -109,12 +110,12 @@ class WorkspaceSession(QObject):
             self._live_view, self._workspace_controller, self._workspace_store, jobs or background_jobs(), parent=self
         )
         self._window.add_view(self._live_view.sidebar_view())
-        self._live_view.add_manually_requested.connect(self.add_live_stream_requested)
+        self._live_view.add_manually_requested.connect(self.add_live_stream)
         self._offline_view = OfflineView()
         self._window.add_view(self._offline_view.sidebar_view())
         self._offline_controller = OfflineViewController(self._offline_view, self._workspace_controller, parent=self)
-        self._offline_controller.add_requested.connect(self.add_playlist_requested)
-        self._offline_view.add_video_requested.connect(self.add_video_requested)
+        self._offline_controller.add_requested.connect(self.add_playlist)
+        self._offline_view.add_video_requested.connect(self.add_video)
         self._bookmarks_view = BookmarksView()
         self._bookmarks = BookmarksViewController(
             self._bookmarks_view, self._workspace_store, self._workspace_controller, parent=self
@@ -205,6 +206,30 @@ class WorkspaceSession(QObject):
         """Show the recent workspace files on the start panel."""
         self._start_panel.set_recent_workspaces(self._lifecycle.recent_workspaces())
 
+    def add_video(self, initial: VideoFileSelection | None = None) -> None:
+        """Ask for a video, prefilled from *initial*, and add it."""
+        item = self._ask_video(initial)
+        if item is not None:
+            self.add_items([item])
+
+    def add_live_stream(self) -> None:
+        """Ask for a camera's details and add it without starting its stream; Start stream does that."""
+        with AddLiveStreamDialog(self._window) as dialog:
+            if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
+                result = dialog.get_result()
+                if result is not None:
+                    self.add_resolved([result], open_first=False)
+                    self._logger.info(f"Added live stream: {result.item.display_name}")
+
+    def add_playlist(self, resolver_id: str | None = None) -> None:
+        """Ask for a playlist's settings, with the resolver *resolver_id* chosen when given, and add it."""
+        with AddPlaylistDialog(self._resolver, self._window, resolver_id=resolver_id) as dialog:
+            if dialog.exec() == AddPlaylistDialog.DialogCode.Accepted:
+                result = dialog.get_result()
+                if result is not None:
+                    self.add_resolved([result])
+                    self._logger.info(f"Added playlist: {result.item.display_name}")
+
     def open_files(self, paths: Sequence[Path]) -> None:
         """Add dropped files as one batch, asking for an overlay's data handler when several decoders may read it."""
         selections = video_file_selections(paths, self._resolver.context.intake)
@@ -212,24 +237,15 @@ class WorkspaceSession(QObject):
             self._logger.warning("No video files to open among the dropped files")
         items: list[WorkspaceItem] = []
         for selection in selections:
-            if selection.needs_decoder:
-                with AddVideoDialog(self._window, initial=selection) as dialog:
-                    dialog.exec()
-                    item = dialog.get_result()
-                if item is not None:
-                    items.append(item)
-            else:
-                items.append(selection.to_item())
+            item = self._ask_video(selection) if selection.needs_decoder else selection.to_item()
+            if item is not None:
+                items.append(item)
         self.add_items(items)
 
-    def focused_offline_viewer(self) -> OfflineVideoViewerWidget | None:
-        """Return the currently focused offline viewer, if any."""
-        from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
-
-        widget = self._center_area.get_focused_widget()
-        if isinstance(widget, OfflineVideoViewerWidget):
-            return widget
-        return None
+    def _ask_video(self, initial: VideoFileSelection | None) -> VideoItem | None:
+        with AddVideoDialog(self._window, initial=initial) as dialog:
+            dialog.exec()
+            return dialog.get_result()
 
     def focused_widget(self) -> ViewerWidget | None:
         """Return the currently focused viewer widget, regardless of type."""
@@ -242,12 +258,16 @@ class WorkspaceSession(QObject):
         self._logger.debug("Workspace session cleanup completed")
 
     def set_shortcut_manager(self, manager: ShortcutManager) -> None:
-        """Trigger *manager*'s actions from the welcome screen, the start panel, and the activity bar.
+        """Trigger *manager*'s actions from the welcome screen, the start panel, and the activity bar, and list some of
+        them in the viewers' menus.
 
         Call once: each call adds the activity bar's action buttons.
         """
         self._center_area.set_welcome_shortcut_manager(manager)
         self._start_panel.set_shortcut_manager(manager)
+        self._workspace_controller.set_shared_actions(
+            {action_id: manager.get_action(action_id) for action_id in SHARED_ACTION_IDS}
+        )
         activity_bar = self._window.activity_bar()
         for action_id, icon in (("view.render_catalogs", Icon.CATALOGS), ("app.settings", Icon.SETTINGS)):
             button = activity_bar.add_action(icon, "", manager.get_action(action_id).trigger)

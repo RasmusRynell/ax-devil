@@ -43,6 +43,7 @@ from ax_devil.modules.workspace.core.items import (
     ITEM_KINDS,
     ItemResolution,
     LiveStreamItem,
+    OverlayChoice,
     PlaylistItem,
     UnreadableItem,
     VideoFileSelection,
@@ -51,6 +52,7 @@ from ax_devil.modules.workspace.core.items import (
     item_from_json,
     live_stream_item_from_defaults,
     new_item_id,
+    overlay_choice,
     video_file_selections,
 )
 from ax_devil.modules.workspace.core.recent_workspaces import RecentWorkspace, RecentWorkspaces
@@ -93,6 +95,7 @@ __all__ = [
     "LiveVideoContent",
     "LiveWebSocketOverlaySourceSpec",
     "OnScreenWorkspaceItem",
+    "OverlayChoice",
     "OverlayContent",
     "OverlayFile",
     "OverlaySourceKind",
@@ -121,6 +124,7 @@ __all__ = [
     "live_stream_item_from_defaults",
     "load_workspace",
     "new_item_id",
+    "overlay_choice",
     "save_workspace",
     "video_file_selections",
     "workspace_file_path",

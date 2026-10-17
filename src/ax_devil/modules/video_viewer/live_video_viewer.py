@@ -175,6 +175,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         status_panel.retryRequested.connect(self.retry_connection)
         display.mount_overlay(status_panel, position=OverlayPosition.BOTTOM_FULL_WIDTH)
         display.enable_side_panel()
+        display.contextMenuRequested.connect(self.context_menu_requested)
         layout.addWidget(display)
         self._frame_display = display
         self._status_panel = status_panel

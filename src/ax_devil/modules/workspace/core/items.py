@@ -568,43 +568,67 @@ def item_from_json(data: Any, base_dir: Path | None) -> WorkspaceItem:
 
 
 @dataclass(frozen=True, slots=True)
+class OverlayChoice:
+    """An overlay file picked for a video, with the decoder that reads it once one is chosen."""
+
+    path: Path
+    decoder: str | None = None
+
+
+def overlay_choice(path: Path, intake: WorkspaceIntake) -> OverlayChoice | None:
+    """Return *path* as an overlay choice, with its decoder set when exactly one may read it.
+
+    Returns None when no decoder reads the file. A choice without a decoder is ambiguous: several may read it.
+    """
+    decoders = intake.file_decoder_options_for(path)
+    if not decoders:
+        return None
+    return OverlayChoice(path, decoders[0].handler_type if len(decoders) == 1 else None)
+
+
+@dataclass(frozen=True, slots=True)
 class VideoFileSelection:
-    """A video file with an optional overlay file whose decoder may still need choosing."""
+    """A video file with the overlay files picked for it, some of which may still need a decoder choice."""
 
     video: Path
-    overlay: Path | None = None
-    decoder: str | None = None
+    overlays: tuple[OverlayChoice, ...] = ()
 
     @property
     def needs_decoder(self) -> bool:
-        """Return whether the overlay file still waits for a decoder choice."""
-        return self.overlay is not None and self.decoder is None
+        """Return whether any overlay file still waits for a decoder choice."""
+        return any(overlay.decoder is None for overlay in self.overlays)
 
     def to_item(self, label: str = "") -> VideoItem:
         """Return the Video Item for this selection, named *label* or, when empty, after the video file.
 
         An overlay still waiting for its decoder is left out.
         """
-        overlays = (OverlayFile(self.overlay, self.decoder),) if self.overlay is not None and self.decoder else ()
-        return VideoItem(label=label, video=self.video, overlays=overlays)
+        return VideoItem(
+            label=label,
+            video=self.video,
+            overlays=tuple(
+                OverlayFile(overlay.path, overlay.decoder) for overlay in self.overlays if overlay.decoder is not None
+            ),
+        )
 
 
 def video_file_selections(paths: Sequence[Path], intake: WorkspaceIntake) -> tuple[VideoFileSelection, ...]:
     """Pair dropped or picked files into video selections.
 
-    Every video file opens on its own. One video with one other file takes that file as its overlay, with the decoder
-    chosen when exactly one may read it; otherwise the selection still needs a decoder choice.
+    Every video file opens on its own. One video with other files takes each that a decoder can read as an overlay,
+    with the decoder chosen when exactly one may read it; otherwise the selection still needs a decoder choice.
     """
     videos = [path for path in paths if is_video_file(path)]
     others = [path for path in paths if not is_video_file(path)]
-    if len(videos) != 1 or len(others) != 1:
+    if len(videos) != 1:
         if others:
             logger.info(f"Ignoring {len(others)} non-video file(s) that do not pair with exactly one video")
         return tuple(VideoFileSelection(video) for video in videos)
-    overlay = others[0]
-    decoders = intake.file_decoder_options_for(overlay)
-    if not decoders:
-        logger.info(f"No data handler reads {overlay.name}; opening {videos[0].name} without an overlay")
-        return (VideoFileSelection(videos[0]),)
-    decoder = decoders[0].handler_type if len(decoders) == 1 else None
-    return (VideoFileSelection(videos[0], overlay, decoder),)
+    overlays: list[OverlayChoice] = []
+    for path in others:
+        choice = overlay_choice(path, intake)
+        if choice is None:
+            logger.info(f"No data handler reads {path.name}; opening {videos[0].name} without it")
+        else:
+            overlays.append(choice)
+    return (VideoFileSelection(videos[0], tuple(overlays)),)

@@ -33,122 +33,69 @@ For code placement, see [Module Map](module-map.md). For UI framework boundaries
 
 ## Workspace Content
 
-Workspace content lives in `ax_devil.modules.workspace.core.content`. Content objects are immutable descriptions of what the user added, not running sources.
+Content (`ax_devil.modules.workspace.core.content`) is an immutable description of what the user added, never a running
+source: seekable video, live video, and playlists of entries and lanes. Typed source specifications are the source of
+truth for standard source details such as paths, handler types, stream settings and MQTT settings; content and lane
+metadata is reserved for plugin-defined or workflow-specific information that no typed field holds.
+`OverlaySourceKind` owns the display names of the lane source kinds.
 
-| Type | Role |
-|------|------|
-| `SeekableVideoContent` | Offline video description with `FileVideoSourceSpec` and optional file overlays. |
-| `LiveVideoContent` | Live video description with `LiveRTSPStreamSpec` and at most one RTSP, MQTT, or DataHub WebSocket overlay. |
-| `OverlayContent` | Companion data with a label and a file, embedded RTSP, MQTT, or DataHub WebSocket source specification. |
-| `EntryLane` | One visible lane with display name, video, optional overlay, source kind, metadata, and default consideration state. |
-| `PlaylistEntry` | One playlist step containing one or more seekable lanes. |
-| `PlaylistContent` | Ordered inspection sequence of playlist entries. |
-
-`OverlaySourceKind` owns the display names and descriptions for file, RTSP, MQTT, DataHub WebSocket, and no-overlay lanes. `SeekableVideoContent.standalone_lanes()` and `LiveVideoContent.standalone_lanes()` expand standalone content into the lanes the sidebar and viewers should render.
-
-Typed source specifications are the source of truth for standard source details such as paths, handler types, stream settings, and MQTT settings. Content and lane metadata is reserved for plugin-defined or workflow-specific information that is not already represented by a typed field.
-
-Content also declares its supported consideration items. Playlist entries, visible playlist lanes, and standalone seekable overlay lanes participate in consideration. Live overlays do not expose consideration controls because live viewers do not support changing their lane layout.
-
-`PlaylistEntry.__post_init__()` rejects live video lanes. Playlists are offline comparison/navigation workflows.
+Content declares what takes part in consideration (exclusions): playlist entries, visible playlist lanes and standalone
+seekable overlay lanes. Live overlays do not, because live viewers cannot change their lane layout. Playlists are
+offline workflows, so `PlaylistEntry` rejects live video lanes.
 
 ## Workspace Items And Intake
 
-Bare `ax-devil` launch opens the empty start panel; `ax-devil open` opens a saved workspace. Everything
-that adds content — `ax-devil local`, `ax-devil live`, resolver commands, the Add dialogs, and desktop file drops —
-creates Workspace Items
-(`VideoItem`, `LiveStreamItem`, `PlaylistItem` in `workspace/core/items.py`); the store resolves them into Content. The
-item model, Content identity, and the playlist resolver contract are described in [Workspace](workspace.md).
+Everything that adds content, from the CLI to the Add dialogs and file drops, creates Workspace Items; the store
+resolves them into Content. The item model, Content identity, lifecycle and the playlist resolver contract are in
+[Workspace](workspace.md).
 
-`WorkspaceIntake` validates decoder selections and constructs video Content for items. `workspace/ui/plugin_intake.py`
-supplies the production intake, which adapts plugin decoder definitions into `WorkspaceDecoderOption` records, and the
-production resolution context, which also looks up playlist resolver plugins. File decoders may declare
-`file_extensions`; `WorkspaceIntake.file_decoder_options_for(path)` returns the decoders that may read an overlay file,
-and the Add Video dialog and file drops pick the handler when exactly one matches. Live entry points convert persisted
-overlay strings into `LiveOverlayMode` at their boundaries. Intake also validates the device host, camera head, and MQTT
-and WebSocket connection settings so dialog, CLI, and saved items share the same content requirements.
+`WorkspaceIntake` validates decoder selections and constructs video Content for items; it also validates the device
+host, camera head, and MQTT and WebSocket settings, so dialog, CLI and saved items share the same requirements.
+`workspace/ui/plugin_intake.py` supplies the production intake and resolution context by adapting plugin definitions.
+File decoders may declare `file_extensions`, and the Add Video dialog and file drops pick the handler when exactly one
+matches. Live entry points convert persisted overlay strings into `LiveOverlayMode` at their boundaries.
 
 ## Opening Content
 
-`WorkspaceViewerFactory` routes by concrete content type:
-
-- `SeekableVideoContent` -> `OfflineVideoViewerWidget`
-- `PlaylistContent` -> `OfflineVideoViewerWidget`
-- `LiveVideoContent` -> `LiveVideoViewerWidget`
-
-The factory returns the constructed widget and a status message. Offline viewers receive the read-only `ConsiderationQuery` contract, while `WorkspaceStore` remains the mutable state owner. `WorkspaceController` inserts the widget into `SplitView`, tracks which item its Content came from, wires lifecycle signals, and closes the widget when that item is removed.
+`WorkspaceViewerFactory` routes by concrete content type to the offline or live viewer widget. Offline viewers receive
+the read-only `ConsiderationQuery` contract, while `WorkspaceStore` remains the mutable state owner.
+`WorkspaceController` places the widget in `SplitView`, tracks which item its Content came from, and closes it when that
+item is removed.
 
 ## Workspace State
 
-`WorkspaceStore` (`workspace/ui/workspace_store.py`) owns the mutable workspace facts and their Qt mutation signals:
+`WorkspaceStore` (`workspace/ui/workspace_store.py`) owns the mutable workspace facts and their Qt signals: the current
+and last saved Workspace (file format in [Workspace](workspace.md#file-format)), what each item resolved to
+([resolution](workspace.md#resolution)), and consideration refs. `workspace_replaced` fires when another Workspace is
+opened or created, and `state_changed` when the modified flag, name or path changes.
 
-- the current Workspace and the last saved one, with `open_workspace` and `save_workspace` reading and writing files
-  (see [Workspace](workspace.md#file-format))
-- what each item resolved to: its Content, the reason it could not resolve, or that it is still resolving in the
-  background (see [Workspace](workspace.md#resolution))
-- consideration refs (exclusions)
-
-It signals item changes, `workspace_replaced` when another Workspace is opened or created, and
-`state_changed` when the modified flag, name, or path changes.
-
-`build_browser_sections` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query, and the open
-items into `WorkspaceBrowserSection` values containing `WorkspaceBrowserRow` items. Open-row identity is supplied from the current items reported by hosted viewer widgets. The package split is described in [Workspace](workspace.md). Every sidebar view of the Workspace renders these rows in a `SectionTree`, which emits activation, row action, removal, and consideration intents; see [UI Framework](ui-framework.md#sidebar-views). The views do not decide playlist expansion, lane expansion, open-row identity, or information payloads.
+`build_browser_sections` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query and the open
+items into the rows every sidebar view renders (see [UI Framework](ui-framework.md#sidebar-views)). The views do not
+decide playlist expansion, lane expansion, open-row identity or information payloads.
 
 ## Data Sources
 
-The data pipeline has three delivery capabilities:
+The pipeline has three delivery capabilities: `FrameSource` emits `FrameData`, `OverlaySource` emits `OverlayData`, and
+`OverlayLookup` returns `OverlayData` by `FrameIdentifier` with no playback lifecycle. Implementations and transport
+rules are in the [data_sources README](../../src/ax_devil/modules/data_sources/README.md). File overlays do not produce
+data or maintain playback position: `FileOverlaySource` owns its decoder-backed provider, serves synchronous lookups,
+and closes the provider explicitly and idempotently. Push-based live overlay sources keep the `OverlaySource`
+lifecycle.
 
-| Interface | Emits | Lifecycle |
-|-----------|-------|-----------|
-| `FrameSource` | `FrameData` | `play()`, `pause()`, `stop()`, `wait()` |
-| `OverlaySource` | `OverlayData` | `play()`, `pause()`, `stop()`, `wait()` |
-| `OverlayLookup` | Returns `OverlayData` by `FrameIdentifier` | No playback lifecycle; the owning `FileOverlaySource` is closed explicitly |
+Offline sources join the process-wide `FrameCachePool`; its rules are in the
+[data_sources README](../../src/ax_devil/modules/data_sources/README.md#offline-frame-cache) and the user-facing setting
+in [Settings](../settings.md#video-cache-memory).
 
-Current source implementations:
-
-| Source | Base | Transport/storage | Mode |
-|--------|------|-------------------|------|
-| `FileFrameSource` | `SeekableFrameSource` | PyAV / FFmpeg | Seekable offline video |
-| `FileOverlaySource` | `QObject`, implements `OverlayLookup` | Decoder-backed Scene providers | Pull-based offline overlay |
-| `RTSPSource` | `FrameSource`, `OverlaySource` | `ax-devil-rtsp` | Live video with optional embedded overlay decoding |
-| `MQTTOverlaySource` | `OverlaySource` | `ax-devil-mqtt` | Live overlay |
-| `WebSocketOverlaySource` | `OverlaySource` | `aiohttp` / Axis DataHub | Live overlay |
-
-`Worker(QThread)` standardizes transport-source execution with `play -> pause -> stop` and `QMutex`/`QWaitCondition`
-pause handling. `FileFrameSource` instead owns one `FileFrameDelivery` worker for paced playback, explicit frame
-requests, PyAV serialization, lazy prefetch, callback delivery, and shutdown. `Seekable` adds `jump_to()`,
-`get_total_frames()`, `get_current_frame()`, and `step_delta()`.
-
-Offline sources join the process-wide `FrameCachePool` through `data_sources/video_cache_memory.py`, which binds
-`GlobalSettings.video_cache_budget_changed` to the pool; its rules are in the
-[data_sources README](../../src/ax_devil/modules/data_sources/README.md#offline-frame-cache) and the user-facing
-setting in [Settings](../settings.md#video-cache-memory).
-
-File overlays do not produce data or maintain playback position. `FileOverlaySource` owns its decoder-backed provider,
-serves synchronous `OverlayLookup` requests, and closes that provider explicitly and idempotently. Push-based live
-overlay sources retain the `OverlaySource` production lifecycle.
-
-Data-source timing and alignment report models live with the data sources that produce them. `core.data_types` is reserved for shared frame identity and timestamped frame/overlay packets.
+Data-source timing and alignment report models live with the data sources that produce them. `core.data_types` is
+reserved for shared frame identity and timestamped frame/overlay packets.
 
 ### Live source composition
 
-`StreamMediaController` builds sources from `LiveVideoContent`:
-
-| Overlay selection | Frame input | Overlay input | Owned sources |
-|-------------------|-------------|---------------|---------------|
-| None | RTSP | None | One RTSP source |
-| Embedded RTSP | RTSP | Same RTSP source | One RTSP source |
-| MQTT | RTSP | MQTT | RTSP and MQTT sources |
-| DataHub WebSocket | RTSP | DataHub WebSocket | RTSP and WebSocket sources |
-
-`RTSPSource` shares connection management, buffering, and frame conversion across both RTSP modes.
-Its optional `RTSPOverlayDecoder` groups the payload decoder, handler identity, and filter factory.
-Without that definition, it requests no scene metadata stream. Source selection follows the content specification;
-implementing `OverlaySource` does not mean embedded overlays are enabled.
-
-The controller keeps frame/overlay inputs separate from its collection of owned sources, so it manages each transport
-once per lifecycle operation even when one object supplies both inputs. Transport rules are in the
-[data_sources README](../../src/ax_devil/modules/data_sources/README.md).
+`StreamMediaController` builds sources from `LiveVideoContent`: RTSP always supplies frames, an embedded RTSP overlay
+shares that source, and MQTT or DataHub overlays add a second source. Source selection follows the content
+specification; implementing `OverlaySource` does not mean embedded overlays are enabled. The controller keeps
+frame/overlay inputs separate from its collection of owned sources, so it manages each transport once per lifecycle
+operation even when one object supplies both inputs.
 
 Each owned transport is one feed of a `LiveConnectionStatus` (`video_viewer/live_connection.py`): the RTSP source is
 the video feed and a separate MQTT or DataHub source is the overlay feed. Sources report `sourceConnected`,
@@ -157,54 +104,36 @@ user's Retry, which reopens every transport from the same content. A video feed 
 stalled and also needs Retry.
 
 `data_sources/live/datahub_client.py` and `data_sources/live/mqtt_discovery.py` own the DataHub and MQTT protocol
-clients shared by Workspace discovery (`workspace/ui/add_content/analytics_discovery.py`) and the runtime sources.
+clients shared by Workspace discovery and the runtime sources.
 
 ## Synchronization
 
 Live viewing uses `StreamSync`, a pure Python engine wrapped by `QtStreamSync`. It buffers frames by arrival delay and
 pairs each with the newest overlay at or before it within a fixed tolerance; it is event-driven, with no wall-clock
-timer. The exact matching and persistence rules are in [Frame Identity](../domain/invariants.md#frame-identity).
-
-`StreamMediaController` wires the selected frame and overlay signals into the sync adapter and forwards synchronized
-results to `SceneFramePresenter`. Sharing an RTSP connection does not imply that frame and overlay arrivals are paired;
-both inputs retain their capture timestamps for synchronization.
-
-Timestamp matching policy also lives in synchronization; file overlay providers consume it but own their own lookup
-behavior, such as sequence fallback and lookup metadata.
+timer. The matching and persistence rules are in [Frame Identity](../domain/invariants.md#frame-identity).
+`StreamMediaController` wires the frame and overlay signals into the sync adapter and forwards synchronized results to
+`SceneFramePresenter`. Sharing an RTSP connection does not imply that frame and overlay arrivals are paired; both
+inputs retain their capture timestamps. Timestamp matching policy also lives in synchronization; file overlay
+providers consume it but own their own lookup behavior, such as sequence fallback and lookup metadata.
 
 Opening an offline entry happens in two phases. `open_entry_media` opens the entry's video and overlay sources on a
-worker thread (frame index, overlay parsing, and the scene history and alignment the lanes show first) while the
-viewer shows a loading indicator, then delivers `EntryMedia` on the GUI thread. `OfflineSession.build` creates the
-displays over that media without touching files. Navigating while an entry opens abandons it and opens the newer one;
+worker thread (frame index, overlay parsing, the scene history and alignment the lanes show first) while the viewer
+shows a loading indicator, then delivers `EntryMedia` on the GUI thread, and `OfflineSession.build` creates the
+displays over it without touching files. Navigating while an entry opens abandons it and opens the newer one;
 openings run one at a time, so rapid navigation never indexes many files at once.
 
-Offline viewing receives frame events through `OfflineSession`; secondary video sources are pooled and fan each
-completed frame out to the lanes that reference them. Each `OfflineLane` pulls overlay data through
-`OverlayLookup.get_overlay_at_frame()`, applies sticky selection through `OverlayPersistencePolicy`, and
-`SceneFramePresenter` assembles the display frame. Offline selection (`select_from_source`) is independent of
-what was shown before; only the live path (`select_overlay`) keeps a last-sample cache.
-
-While indexing, file overlay providers record each Scene event and each entity's runs of samples as
-`SceneHistoryRecords`; `OverlaySamples.scene_history()` places them on the bound video under the lane's matching
-rules, and `MediaToolsPanel` shows them in the entity list, event log and object history. Live viewers have no
-history. Changing the timestamp fallback policy or sticky overlays places the history and alignment report again on
-the `overlay-analysis` background pool from an immutable `OverlaySamples` and a copy of the video's timeline; the
-lane keeps showing the previous ones until the newest request finishes.
+Offline lanes pull overlay data through `OverlayLookup` and apply sticky selection through `OverlayPersistencePolicy`;
+offline selection is independent of what was shown before, and only the live path keeps a last-sample cache. Live
+viewers have no Scene history. Changing the timestamp fallback policy or sticky overlays places the history and
+alignment report again on the `overlay-analysis` background pool from an immutable `OverlaySamples` and a copy of the
+video's timeline; the lane keeps showing the previous ones until the newest request finishes.
 
 ## Scene Model And Rendering
 
-`Scene` is the universal decoded world-model format:
-
-- `Scene`: `time_slice`, `entities`, `events`, directed `EntityRelation` values, and free-form `debug`
-- `Entity`: tracked object with time-sorted observations, images, end reason, and optional movement state
-- `Observation`: geometry, classifications, timestamp/frame number, confidence, velocity, optional coordinates, and
-  free-form `debug`
-- `Classification`: dynamic string type, score, and attributes
-- Geometry: `BoundingBox`, `Polygon`, and `NormalizedPoint` in normalized `[0,1]` image space
-- Operations: `Delete`, `Rename`, `Merge`, and `Split`
-- Relations: dynamic relation type, source entity, and target entity
-
-Payload-to-Scene decoder contracts and helper utilities live under `ax_devil.modules.scene.decoding`. Plugin discovery and handler registration live under `ax_devil.modules.plugin_system`.
+`Scene` is the universal decoded world-model format: entities with time-sorted observations, events, and directed
+relations, in normalized `[0,1]` image space (`ax_devil.modules.scene.model`). Payload-to-Scene decoder contracts live
+under `ax_devil.modules.scene.decoding`; plugin discovery and handler registration under
+`ax_devil.modules.plugin_system`.
 
 Rendering turns a filtered `Scene` into prepared drawings through the active Scene Render Catalog, and the video
 player binds the result to a Qt Quick surface used for both display and export. The boundary between the two is
@@ -212,12 +141,9 @@ player binds the result to a Qt Quick surface used for both display and export. 
 
 ## Plugin System
 
-Plugins are discovered by `ApplicationPluginLoader` and stored in `RuntimePluginRegistry`.
-
-| Plugin type | Base class | Purpose |
-|-------------|------------|---------|
-| Decoder | `DecoderPlugin` | Contributes file-to-Scene decoders and/or payload-to-Scene decoders. |
-| Playlist resolver | `PlaylistResolverPlugin` | Resolves user-selected datasets into `PlaylistContent`; requires a settings widget and may provide a CLI command. |
+Plugins are discovered by `ApplicationPluginLoader` and stored in `RuntimePluginRegistry`. A decoder plugin
+contributes file-to-Scene and/or payload-to-Scene decoders; a playlist resolver plugin resolves user-selected datasets
+into `PlaylistContent`, and requires a settings widget. `ax-devil list-handlers` lists what is loaded.
 
 Built-in plugins are imported from ax-devil's package. External plugin distributions are discovered only through the
 `ax_devil.decoder_plugins` and `ax_devil.playlist_resolver_plugins` entry-point groups visible to the current Python
@@ -228,79 +154,20 @@ registration. One invalid external entry point does not prevent other plugins or
 interpreter. `modules/plugin_installation/` owns the separate locked uv project that holds installed plugins; its rules
 are in [Plugin System invariants](../domain/invariants.md#plugin-system).
 See [Installing and managing plugins](../plugins.md) for commands, upgrades, storage, and recovery, and the
-[write-plugin skill](../../.agents/skills/write-plugin/SKILL.md) for writing plugins.
-
-Built-in decoder plugin bundles:
-
-| Plugin ID | File handlers | Payload handlers |
-|-----------|---------------|------------------|
-| `adf-v1` | `ADF_V1_FRAME`, `ADF_V1_CONSOLIDATED` | `ADF_V1_FRAME` |
-| `adf-v1-beta` | `ADF_BETA_FRAME`, `ADF_BETA_CONSOLIDATED` | `ADF_BETA_FRAME` |
-| `axis-cvat` | `CVAT` | none |
-| `mot` | `MOT_FILE` | none |
-| `uvg-vcm` | `UVG_VCM` | none |
-| `axis-onvif-xml` | `ONVIF_XML` | `ONVIF_XML` |
-
-The UVG-VCM and MOT decoders' behavior is described with their datasets:
-[UVG-VCM](../datasets/uvg-vcm.md#decoder-behavior), [MOT Challenge](../datasets/mot-challenge.md#decoder-behavior).
-
-Built-in playlist resolver bundles:
-
-| Plugin ID | Purpose |
-|-----------|---------|
-| `folder_pair` | Matches videos and overlays from separate folders by file name. |
-| `mot_challenge` | Resolves MOT Challenge datasets into playlist content. |
+[write-plugin skill](../../.agents/skills/write-plugin/SKILL.md) for writing plugins. The UVG-VCM and MOT decoders are
+described with their datasets: [UVG-VCM](../datasets/uvg-vcm.md#decoder-behavior),
+[MOT Challenge](../datasets/mot-challenge.md#decoder-behavior).
 
 ## UI Structure
 
-The main UI is a workspace shell: an activity bar and a sidebar (one of the [sidebar views](ui-framework.md#sidebar-views)) on the left, drag-to-split viewer area in the center, and application actions in `MainWindow`.
+The main UI is a workspace shell: an activity bar and sidebar on the left, a drag-to-split viewer area in the center,
+and application actions in `MainWindow`. Its owners are in [UI Framework Structure](ui-framework.md).
 
-[UI Framework Structure](ui-framework.md) describes its owners: `MainWindow`, `WorkspaceSession`, `SplitView`,
-`ViewerWidget` and the display stack.
-
-Application appearance is owned by `modules/chrome/theme.py`: shared light and dark color overrides feed QDarkTheme,
-theme setup completes Qt's application palette so custom painters receive matching surfaces, borders and selection
-colors, and the body text size becomes the application font. Both change live; sizes derive from
-`modules/chrome/tokens.py`, and widgets that style themselves rerun that code through
-`modules/chrome/appearance.py`.
-
-## Data Flow Summary
-
-Live pipeline:
-
-```
-RTSPSource.frameReady -> QtStreamSync.push_frame()
-RTSPSource / MQTTOverlaySource / WebSocketOverlaySource .overlayReady -> QtStreamSync.push_overlay()
-QtStreamSync.syncReady -> StreamMediaController._on_sync_result()
-  -> SceneFramePresenter.prepare_frame()
-  -> FrameDisplay.display_frame()
-  -> LiveStatusPanel.display_frame_status()
-  -> queue Scene inspection update
-DataSource.sourceConnected / sourceReconnecting / sourceError, video frames, stall timer
-  -> StreamMediaController connection status -> LiveStatusPanel.show_connection_status()
-```
-
-Offline pipeline:
-
-```
-FileFrameSource -> FileFrameDelivery -> PyAV frame decoder/cache
-  -> FileFrameSource.frameReady -> _FrameDeliveryRelay.deliver() (newest queued frame wins)
-  -> OfflineSession._on_frame_ready()
-  -> OfflineLane.present_frame()
-  -> OverlayLookup.get_overlay_at_frame(frame_id)
-  -> SceneFramePresenter.prepare_frame()
-  -> FrameDisplay.display_frame()
-  -> queue Scene inspection update
-```
+Application appearance is owned by `modules/chrome/theme.py` and `tokens.py`; see the
+[chrome README](../../src/ax_devil/modules/chrome/README.md).
 
 ## Infrastructure
 
-- `ConfigManager`: config file I/O, version validation, default merging, unsupported-key diagnostics (debug level) with raw config preservation, runtime path/env expansion, and storage directory creation.
-- `GlobalSettings`: reactive runtime settings singleton backed by config on load/save.
-- `ShortcutManager`: default shortcut registration, `QAction` installation, override-only persistence, conflict detection, and rebinding.
-- `CacheManager`: hash-based cache path generation and cache clearing.
-- Scene stores: `SourceIndexedSceneStore` keeps a cache index of record offsets into the source file;
-  `IndexedFrameSceneStore` persists decoded frame artifacts. Their invalidation rule is in [Data Pipeline](../domain/invariants.md#data-pipeline).
-- Diagnostics: metrics stores, the debug window and stack recording; see the
-  [diagnostics README](../../src/ax_devil/modules/diagnostics/README.md).
-- `ExceptionHandler`: global exception hook with optional dialog.
+Config, settings, shortcuts, cache, diagnostics and exception handling are mapped in [Module Map](module-map.md). The
+scene stores (`SourceIndexedSceneStore`, `IndexedFrameSceneStore`) invalidate by the rule in
+[Data Pipeline](../domain/invariants.md#data-pipeline).

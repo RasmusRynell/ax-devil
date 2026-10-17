@@ -4,26 +4,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QAction
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QTreeWidgetItem
+from PySide6.QtWidgets import QLabel, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import apply_text_size
-from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent, VideoItem
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
+    OfferedAction,
     RowAction,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
-from ax_devil.modules.workspace.ui.section_tree import SectionTree
+from ax_devil.modules.workspace.ui.section_tree import SectionTree, build_row_menu
 from ax_devil.modules.workspace.ui.source_row import SourceRow
 from tests.helpers.section_tree import (
     caption,
@@ -70,7 +68,7 @@ def _playlist(entries: int, row_id: str = "playlist", *, expanded_at_first: bool
         row_id=row_id,
         label="Night shift",
         icon_kind="playlist",
-        action=RowAction.RESCAN,
+        actions=(OfferedAction(RowAction.RESCAN),),
         expanded_at_first=expanded_at_first,
         children=tuple(
             WorkspaceBrowserRow(
@@ -263,112 +261,147 @@ def test_a_section_without_rows_says_so_and_does_not_fold(qtbot: QtBot) -> None:
     assert caption(tree, "On the network").text() == "On the network"
 
 
-def test_a_double_click_on_a_row_reports_it_to_the_side_with_ctrl(qtbot: QtBot) -> None:
-    video = SeekableVideoContent(display_name="gate.mp4", source_spec=FileVideoSourceSpec(path=Path("/tmp/gate.mp4")))
-    row = WorkspaceBrowserRow(row_id="gate", label="gate.mp4", icon_kind="video", activation_target=(video, 0))
+def test_a_double_click_on_a_row_asks_to_open_it_and_to_the_side_with_ctrl(qtbot: QtBot) -> None:
+    row = WorkspaceBrowserRow(row_id="gate", label="gate.mp4", icon_kind="video")
     tree = _tree(qtbot, row, kind=BrowserSection.VIDEOS)
     widget = _widget(tree, _item(tree, 0))
-    activations: list[tuple[WorkspaceBrowserRow, bool]] = []
-    tree.row_activated.connect(lambda activated, to_side: activations.append((activated, to_side)))
+    requests: list[tuple[WorkspaceBrowserRow, RowAction]] = []
+    tree.row_action_requested.connect(lambda requested, action: requests.append((requested, action)))
 
     for modifier in (Qt.KeyboardModifier.NoModifier, Qt.KeyboardModifier.ControlModifier):
         position = QPoint(widget.width() // 3, widget.height() // 2)
         QTest.mouseClick(widget, Qt.MouseButton.LeftButton, modifier, pos=position)
         QTest.mouseDClick(widget, Qt.MouseButton.LeftButton, modifier, pos=position)
 
-    assert activations == [(row, False), (row, True)]
+    assert requests == [(row, RowAction.OPEN), (row, RowAction.OPEN_TO_SIDE)]
+
+
+def test_keys_on_the_selected_row_ask_for_its_action_and_on_a_section_caption_for_none(qtbot: QtBot) -> None:
+    tree = _tree(qtbot, _playlist(0))
+    requested: list[RowAction] = []
+    tree.row_action_requested.connect(lambda _row, action: requested.append(action))
+    caption_item = tree.topLevelItem(0)
+    assert caption_item is not None
+
+    tree.setCurrentItem(caption_item)
+    QTest.keyClick(tree, Qt.Key.Key_Delete)
+    assert requested == []
+
+    tree.setCurrentItem(_item(tree, 0))
+    for key, modifier in (
+        (Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier),
+        (Qt.Key.Key_Return, Qt.KeyboardModifier.ControlModifier),
+        (Qt.Key.Key_F2, Qt.KeyboardModifier.NoModifier),
+        (Qt.Key.Key_Delete, Qt.KeyboardModifier.NoModifier),
+    ):
+        QTest.keyClick(tree, key, modifier)
+
+    assert requested == [RowAction.OPEN, RowAction.OPEN_TO_SIDE, RowAction.RENAME, RowAction.REMOVE]
+
+    requested.clear()
+    _item(tree, 0).setSelected(False)  # As Ctrl-clicking a selected row does: still current, no longer selected.
+    QTest.keyClick(tree, Qt.Key.Key_Delete)
+    assert requested == []
+
+
+def test_the_row_menu_lists_every_offered_action_greys_out_the_disabled_ones_with_their_reason_and_picks(
+    qtbot: QtBot,
+) -> None:
+    row = WorkspaceBrowserRow(
+        row_id="clip",
+        label="clip.mp4",
+        icon_kind="video",
+        actions=(
+            OfferedAction(RowAction.OPEN),
+            OfferedAction(RowAction.EXPORT_VIDEO, "Open it first"),
+            OfferedAction(RowAction.REMOVE),
+        ),
+    )
+    picked: list[RowAction] = []
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    menu = build_row_menu(row, parent, picked.append)
+
+    entries = {action.text(): action for action in menu.actions() if not action.isSeparator()}
+    entries["Remove"].trigger()
+
+    assert list(entries) == ["Open", "Export video", "Remove"]
+    assert [action.isEnabled() for action in entries.values()] == [True, False, True]
+    assert entries["Export video"].toolTip() == "Open it first"
+    assert picked == [RowAction.REMOVE]
 
 
 def test_a_rows_action_reports_the_row(qtbot: QtBot) -> None:
     playlist = _playlist(1)
     tree = _tree(qtbot, playlist)
-    actions: list[WorkspaceBrowserRow] = []
-    tree.row_action_requested.connect(actions.append)
+    actions: list[tuple[WorkspaceBrowserRow, RowAction]] = []
+    tree.row_action_requested.connect(lambda row, action: actions.append((row, action)))
 
     [rescan] = _widget(tree, _item(tree, 0)).findChildren(SmallButton)
     rescan.click()
 
-    assert actions == [playlist]
+    assert actions == [(playlist, RowAction.RESCAN)]
 
 
-def _menu_entries(tree: SectionTree, row: WorkspaceBrowserRow) -> list[str]:
-    """Return the texts of *row*'s context menu in order, with a separator as ``"-"``."""
-    return ["-" if action.isSeparator() else action.text() for action in tree._build_context_menu(row).actions()]
+def _menu_entries(qtbot: QtBot, row: WorkspaceBrowserRow) -> list[str]:
+    """Return the texts of *row*'s menu in order, with a separator as ``"-"``."""
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    return [
+        "-" if action.isSeparator() else action.text()
+        for action in build_row_menu(row, parent, lambda _action: None).actions()
+    ]
 
 
-def _menu_action(tree: SectionTree, row: WorkspaceBrowserRow, text: str) -> QAction:
-    [action] = [action for action in tree._build_context_menu(row).actions() if action.text() == text]
-    return action
-
-
-def test_hide_in_the_menu_reports_the_rows_consideration_item_and_unhide_reverses_it(qtbot: QtBot) -> None:
-    ref = ConsiderationItemRef.playlist_entry("playlist", 0)
-    entry = WorkspaceBrowserRow(row_id="entry", label="run", icon_kind="video", consideration_ref=ref)
-    tree = _tree(qtbot, replace(_playlist(1), children=(entry,)))
-    changes: list[tuple[ConsiderationItemRef, bool]] = []
-    tree.row_consideration_changed.connect(lambda changed, considered: changes.append((changed, considered)))
-
-    _menu_action(tree, entry, "Hide").trigger()
-    _menu_action(tree, replace(entry, is_considered=False), "Unhide").trigger()
-
-    assert changes == [(ref, False), (ref, True)]
-
-
-def test_a_row_without_a_consideration_item_cannot_be_hidden(qtbot: QtBot) -> None:
-    tree = _tree(qtbot, _playlist(1))
-
-    assert {"Hide", "Unhide"}.isdisjoint(_menu_entries(tree, _playlist(1)))
-
-
-def test_the_menu_groups_open_inspect_visibility_and_edit_actions_between_separators(qtbot: QtBot) -> None:
-    video = SeekableVideoContent(display_name="gate.mp4", source_spec=FileVideoSourceSpec(path=Path("/tmp/gate.mp4")))
+def test_the_menu_splits_open_inspect_visibility_and_edit_actions_with_separators(qtbot: QtBot) -> None:
     entry = WorkspaceBrowserRow(
         row_id="gate",
         label="gate.mp4",
         icon_kind="video",
-        activation_target=(video, 0),
-        consideration_ref=ConsiderationItemRef.playlist_entry("playlist", 0),
-        information_factory=lambda: pytest.fail("not opened"),
-        export_target=video.on_screen_item(),
-        action=RowAction.RESCAN,
-        item=VideoItem(video=Path("/tmp/gate.mp4")),
+        actions=tuple(
+            OfferedAction(action)
+            for action in (
+                RowAction.OPEN,
+                RowAction.OPEN_TO_SIDE,
+                RowAction.RESCAN,
+                RowAction.INFORMATION,
+                RowAction.EXPORT_VIDEO,
+                RowAction.HIDE,
+                RowAction.RENAME,
+                RowAction.REMOVE,
+            )
+        ),
     )
-    tree = _tree(qtbot, entry, kind=BrowserSection.VIDEOS)
 
-    assert _menu_entries(tree, entry) == [
+    assert _menu_entries(qtbot, entry) == [
         "Open",
         "Open to the Side",
         "Rescan",
         "-",
         "Information",
-        "Export video (open it first)",
+        "Export video",
         "-",
         "Hide",
         "-",
         "Rename",
         "Remove",
     ]
-    bare = replace(entry, activation_target=None, information_factory=None, export_target=None)
-    assert _menu_entries(tree, bare) == [
-        "Rescan",
-        "-",
-        "Hide",
-        "-",
-        "Rename",
-        "Remove",
-    ]
+    bare = replace(entry, actions=(OfferedAction(RowAction.RESCAN), OfferedAction(RowAction.UNHIDE)))
+    assert _menu_entries(qtbot, bare) == ["Rescan", "-", "Unhide"]
 
 
-def test_a_live_rows_menu_starts_with_its_stream_action(qtbot: QtBot) -> None:
-    camera = WorkspaceBrowserRow(row_id="camera", label="Gate", icon_kind="live_video", action=RowAction.START_STREAM)
-    tree = _tree(qtbot, camera, kind=BrowserSection.LIVE)
-    requested: list[WorkspaceBrowserRow] = []
-    tree.row_action_requested.connect(requested.append)
+def test_choosing_hide_in_the_menu_asks_for_that_action(qtbot: QtBot) -> None:
+    entry = WorkspaceBrowserRow(
+        row_id="entry", label="run", icon_kind="video", actions=(OfferedAction(RowAction.HIDE),)
+    )
+    picked: list[RowAction] = []
+    parent = QWidget()
+    qtbot.addWidget(parent)
 
-    assert _menu_entries(tree, camera) == ["Start stream"]
-    _menu_action(tree, camera, "Start stream").trigger()
+    [hide] = build_row_menu(entry, parent, picked.append).actions()
+    hide.trigger()
 
-    assert requested == [camera]
+    assert picked == [RowAction.HIDE]
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
@@ -380,11 +413,14 @@ def test_two_line_rows_keep_both_lines_and_their_action_inside_a_narrow_tree(qtb
         label="Loading dock entrance, north side",
         icon_kind="live_video",
         detail="192.0.2.10 · head 2 (1)",
-        action=RowAction.STOP_STREAM,
+        actions=(OfferedAction(RowAction.STOP_STREAM),),
         is_open=True,
     )
     tree = _tree(
-        qtbot, camera, replace(camera, row_id="other", action=RowAction.START_STREAM), kind=BrowserSection.LIVE
+        qtbot,
+        camera,
+        replace(camera, row_id="other", actions=(OfferedAction(RowAction.START_STREAM),)),
+        kind=BrowserSection.LIVE,
     )
     tree.resize(220, 400)
     qtbot.wait(10)
@@ -425,7 +461,7 @@ def _camera(
         label=label or host,
         icon_kind="live_video",
         detail=detail,
-        action=RowAction.ADD,
+        actions=(OfferedAction(RowAction.ADD),),
         add=add,
     )
 
@@ -470,7 +506,7 @@ def test_pressing_add_after_an_update_runs_the_add_the_row_has_now(qtbot: QtBot)
     calls: list[str] = []
     tree = _tree(qtbot, _camera("10.0.0.2", add=lambda: calls.append("stale")), kind=BrowserSection.NETWORK)
     pressed: list[WorkspaceBrowserRow] = []
-    tree.row_action_requested.connect(pressed.append)
+    tree.row_action_requested.connect(lambda row, _action: pressed.append(row))
 
     tree.set_sections(_network(_camera("10.0.0.2", add=lambda: calls.append("current"))))
     press(tree, "10.0.0.2")

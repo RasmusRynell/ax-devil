@@ -16,8 +16,15 @@ from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
+from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.workspace.core import VideoItem
+from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.shortcuts import make_shortcut_manager
+
+
+def _offline_viewer(session: WorkspaceSession) -> OfflineVideoViewerWidget | None:
+    widget = session.focused_widget()
+    return widget if isinstance(widget, OfflineVideoViewerWidget) else None
 
 
 @pytest.mark.parametrize("use_custom_frame", [False, True])
@@ -48,8 +55,8 @@ def test_workspace_opens_seeks_and_closes_real_video(
     native_id = window.internalWinId()
     try:
         session.add_items([VideoItem(video=path)])
-        qtbot.waitUntil(lambda: session.focused_offline_viewer() is not None)  # Items resolve in the background.
-        viewer = session.focused_offline_viewer()
+        qtbot.waitUntil(lambda: _offline_viewer(session) is not None)  # Items resolve in the background.
+        viewer = _offline_viewer(session)
         assert viewer is not None
         qtbot.waitUntil(lambda: viewer._runtime is not None)
         viewer.pause_playback()
@@ -109,8 +116,8 @@ def test_workspace_opens_seeks_and_closes_real_video(
         assert window.internalWinId() == native_id
 
         session.add_items([VideoItem(video=path)])
-        qtbot.waitUntil(lambda: session.focused_offline_viewer() is not None)
-        reopened_viewer = session.focused_offline_viewer()
+        qtbot.waitUntil(lambda: _offline_viewer(session) is not None)
+        reopened_viewer = _offline_viewer(session)
         assert reopened_viewer is not None
         qtbot.waitUntil(lambda: reopened_viewer._runtime is not None)
         reopened_viewport = reopened_viewer.findChild(FrameViewport)

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
 from unittest.mock import Mock
 
-import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QLabel, QLineEdit, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.icons import Icon
@@ -20,22 +18,21 @@ from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     FileVideoSourceSpec,
     SeekableVideoContent,
-    UnreadableItem,
     VideoItem,
 )
-from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import (
     BY_NAME,
     WORKSPACE_ORDER,
     BrowserSection,
     Facet,
+    OfferedAction,
+    RowAction,
     RowOrder,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
-from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.source_row import SourceRow
@@ -119,35 +116,6 @@ def _required_item_row(view: SectionsView, index: int = 0) -> QTreeWidgetItem:
     return required_child(section, index)
 
 
-def _context_menu(
-    view: SectionsView,
-    item: QTreeWidgetItem,
-    choose: str | None = None,
-    after_choosing: Callable[[], None] | None = None,
-) -> dict[str, bool]:
-    """Right-click *item*, return its menu entries with their enabled state, and optionally pick one.
-
-    *after_choosing* runs once the chosen action is underway, for closing a dialog it opens.
-    """
-    view.show()
-    tree = _tree(view)
-    entries: dict[str, bool] = {}
-
-    def inspect_menu() -> None:
-        menu = view.tree.findChildren(QMenu)[-1]
-        entries.update({action.text(): action.isEnabled() for action in menu.actions() if not action.isSeparator()})
-        menu.close()
-        if after_choosing is not None:
-            QTimer.singleShot(0, after_choosing)
-        if choose is not None:
-            next(action for action in menu.actions() if action.text() == choose).trigger()
-
-    QTimer.singleShot(0, inspect_menu)
-    tree.customContextMenuRequested.emit(tree.visualItemRect(item).center())
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    return entries
-
-
 def test_renders_explicit_rows(qtbot: QtBot) -> None:
     view = _view_with(
         qtbot,
@@ -213,7 +181,7 @@ def test_a_section_row_is_not_selectable_or_openable_and_is_not_searchable(qtbot
     assert not section.flags() & Qt.ItemFlag.ItemIsSelectable
     assert section.toolTip(0) == ""
     activated = Mock()
-    view.tree.row_activated.connect(activated)
+    view.tree.row_action_requested.connect(activated)
     _tree(view).itemDoubleClicked.emit(section, 0)
     activated.assert_not_called()
     assert _row(required_child(section, 0)).label == "clip.mp4"
@@ -367,79 +335,22 @@ def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
     top_item = _required_item_row(view)
     top_item.setExpanded(False)
 
-    with qtbot.waitSignal(view.tree.row_activated, timeout=1000) as blocker:
+    with qtbot.waitSignal(view.tree.row_action_requested, timeout=1000) as blocker:
         _double_click(_row_widget(view, top_item))
 
-    assert blocker.args == [_row(top_item), False]
+    assert blocker.args == [_row(top_item), RowAction.OPEN]
     assert top_item.isExpanded()
-
-
-def test_context_menu_shows_information_on_request_and_removes_only_top_level_items(qtbot: QtBot) -> None:
-    item = VideoItem(video=Path("/tmp/video.mp4"))
-    info = WorkspaceItemInfo(title="Video", fields=(("type", "video"),))
-    information_factory = Mock(return_value=info)
-    view = _view_with(
-        qtbot,
-        WorkspaceBrowserRow(
-            row_id="row-16",
-            label="Video",
-            icon_kind="video",
-            item=item,
-            information_factory=information_factory,
-            children=(
-                WorkspaceBrowserRow(
-                    row_id="row-17", label="Overlay", icon_kind="overlay", information_factory=information_factory
-                ),
-            ),
-        ),
-    )
-    top_item = _required_item_row(view)
-    top_item.setExpanded(True)
-
-    assert list(_context_menu(view, top_item)) == ["Information", "Rename", "Remove"]
-    assert list(_context_menu(view, required_child(top_item, 0))) == ["Information"]
-    information_factory.assert_not_called()
-
-    shown: list[str] = []
-
-    def close_information() -> None:
-        dialog = next(
-            widget for widget in QApplication.topLevelWidgets() if isinstance(widget, WorkspaceItemInfoDialog)
-        )
-        shown.append(dialog.windowTitle())
-        dialog.reject()
-
-    _context_menu(view, top_item, choose="Information", after_choosing=close_information)
-    information_factory.assert_called_once_with()
-    assert len(shown) == 1
-
-    with qtbot.waitSignal(view.tree.item_remove_requested) as removed:
-        _context_menu(view, top_item, choose="Remove")
-    assert removed.args == [item.id]
-
-
-@pytest.mark.parametrize("is_open", [True, False])
-def test_export_action_requests_the_open_item(qtbot: QtBot, is_open: bool) -> None:
-    target = OnScreenWorkspaceItem(kind="video", content_id="video")
-    view = _view_with(
-        qtbot,
-        WorkspaceBrowserRow(row_id="video", label="Video", icon_kind="video", export_target=target, is_open=is_open),
-    )
-    exported = Mock()
-    view.tree.export_requested.connect(exported)
-
-    [(label, enabled)] = _context_menu(view, _required_item_row(view)).items()
-    assert enabled is is_open
-    if is_open:
-        _context_menu(view, _required_item_row(view), choose=label)
-        exported.assert_called_once_with(target)
 
 
 def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> None:
     view = _view_with(
         qtbot,
         WorkspaceBrowserRow(
-            row_id="video", label="Video", icon_kind="video", item=VideoItem(video=Path("/tmp/video.mp4"))
+            row_id="video",
+            label="Video",
+            icon_kind="video",
+            item=VideoItem(video=Path("/tmp/video.mp4")),
+            actions=(OfferedAction(RowAction.RENAME), OfferedAction(RowAction.REMOVE)),
         ),
     )
     view.show()
@@ -462,22 +373,6 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
 
     assert destroyed.call_count == 9  # Each time: the menu, Rename, and Remove.
     assert view.tree.findChildren(QMenu) == []
-
-
-def test_open_actions_open_in_preview_or_to_the_side(qtbot: QtBot) -> None:
-    video = _make_video()
-    view = _view_with(
-        qtbot, WorkspaceBrowserRow(row_id="video", label="Video", icon_kind="video", activation_target=(video, 0))
-    )
-    item = _required_item_row(view)
-
-    with qtbot.waitSignal(view.tree.content_open_to_side_requested) as side:
-        _context_menu(view, item, choose="Open to the Side")
-    with qtbot.waitSignal(view.tree.content_activated) as preview:
-        _context_menu(view, item, choose="Open")
-
-    assert side.args == [video, 0]
-    assert preview.args == [video, 0]
 
 
 def test_workspace_item_info_dialog_fits_screen_and_is_resizable(qtbot: QtBot) -> None:
@@ -505,7 +400,7 @@ def test_workspace_item_info_dialog_fits_screen_and_is_resizable(qtbot: QtBot) -
     assert required_child(top, 2).text(0) == "Overlay 1"
 
 
-def test_an_unavailable_row_shows_its_reason_and_can_only_be_renamed_or_removed(qtbot: QtBot) -> None:
+def test_an_unavailable_row_shows_its_reason(qtbot: QtBot) -> None:
     item = VideoItem(video=Path("/missing/lot.mp4"))
     view = _view_with(
         qtbot,
@@ -517,67 +412,8 @@ def test_an_unavailable_row_shows_its_reason_and_can_only_be_renamed_or_removed(
             unavailable_reason="File not found: /missing/lot.mp4",
         ),
     )
-    tree_item = _required_item_row(view)
 
-    assert "File not found: /missing/lot.mp4" in _row_widget(view, tree_item).toolTip()
-    assert list(_context_menu(view, tree_item)) == ["Rename", "Remove"]
-    with qtbot.waitSignal(view.tree.item_remove_requested) as removed:
-        _context_menu(view, tree_item, choose="Remove")
-    assert removed.args == [item.id]
-
-
-def test_rename_asks_for_a_name_and_requests_it(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
-    item = VideoItem(label="Gate", video=Path("/tmp/gate.mp4"))
-    view = _view_with(qtbot, WorkspaceBrowserRow(row_id="gate", label="Gate", icon_kind="video", item=item))
-    shown: list[str] = []
-
-    def enter_name(dialog: RenameDialog) -> int:
-        shown.append(dialog._name_edit.text())
-        dialog._name_edit.setText("  North gate ")
-        return RenameDialog.DialogCode.Accepted
-
-    monkeypatch.setattr(RenameDialog, "exec", enter_name)
-    with qtbot.waitSignal(view.tree.item_rename_requested) as renamed:
-        _context_menu(view, _required_item_row(view), choose="Rename")
-
-    assert shown == ["Gate"]
-    assert renamed.args == [item.id, "North gate"]
-
-
-def test_renaming_an_unlabeled_row_seeds_the_shown_name_and_keeping_it_clears_the_label(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    item = VideoItem(video=Path("/tmp/gate.mp4"))
-    shown_label = "Lot / gate.mp4"
-    view = _view_with(qtbot, WorkspaceBrowserRow(row_id="gate", label=shown_label, icon_kind="video", item=item))
-    entered: list[str] = []
-    shown: list[str] = []
-
-    def enter_name(dialog: RenameDialog) -> int:
-        shown.append(dialog._name_edit.text())
-        dialog._name_edit.setText(entered.pop(0))
-        return RenameDialog.DialogCode.Accepted
-
-    monkeypatch.setattr(RenameDialog, "exec", enter_name)
-    for name, expected in ((shown_label, ""), ("North gate", "North gate")):
-        entered.append(name)
-        with qtbot.waitSignal(view.tree.item_rename_requested) as renamed:
-            _context_menu(view, _required_item_row(view), choose="Rename")
-        assert renamed.args == [item.id, expected]
-
-    assert shown == [shown_label, shown_label]
-
-
-def test_an_unreadable_item_cannot_be_renamed(qtbot: QtBot) -> None:
-    item = UnreadableItem.from_raw({"kind": "radar", "id": "r1"}, "Unknown item kind: 'radar'.")
-    view = _view_with(
-        qtbot,
-        WorkspaceBrowserRow(
-            row_id=item.id, label="radar", icon_kind="unavailable", item=item, unavailable_reason=item.reason
-        ),
-    )
-
-    assert _context_menu(view, _required_item_row(view)) == {"Rename": False, "Remove": True}
+    assert "File not found: /missing/lot.mp4" in _row_widget(view, _required_item_row(view)).toolTip()
 
 
 def _hidden(label: str) -> WorkspaceBrowserRow:
