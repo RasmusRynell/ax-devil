@@ -25,7 +25,8 @@ from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 logger = get_logger(__name__)
 
-_COPY_STEM_BYTES = 150  # Leaves room for the date, a number, and the extension within a file name's 255 bytes.
+_COPY_STEM_BYTES = 64  # The name in a copy's file name is a label; this leaves ample room under any NAME_MAX.
+_COPY_FALLBACK_STEM = "Unsaved workspace"
 
 
 class WorkspaceLifecycle(QObject):
@@ -158,13 +159,25 @@ class WorkspaceLifecycle(QObject):
     def _reserve_copy_path(self, workspace: Workspace) -> Path:
         """Create and return an empty file named after *workspace* and now that no other file or instance has.
 
-        The name is encoded with unencodable characters replaced, then cut to a length every file system accepts.
-        Creating the file is what claims the name, so instances saving at the same moment get different files.
+        The name is only a label: it is encoded with unencodable characters replaced and cut short, and when the file
+        system still refuses the file, a name without it is used, so the copy is made whenever the folder is writable.
         """
         folder = self._unsaved_folder()
         folder.mkdir(parents=True, exist_ok=True)
-        stem = workspace.suggested_file_stem.encode(errors="replace")[:_COPY_STEM_BYTES].decode(errors="ignore")
-        stem = f"{stem} {datetime.now():%Y-%m-%d %H-%M-%S}"
+        label = workspace.suggested_file_stem.encode(errors="replace")[:_COPY_STEM_BYTES].decode(errors="ignore")
+        now = f"{datetime.now():%Y-%m-%d %H-%M-%S}"
+        try:
+            return self._create_unique_file(folder, f"{label} {now}")
+        except OSError as exc:
+            logger.warning(f"Could not create a recovery file named after {label!r}, using a plain name: {exc}")
+            return self._create_unique_file(folder, f"{_COPY_FALLBACK_STEM} {now}")
+
+    @staticmethod
+    def _create_unique_file(folder: Path, stem: str) -> Path:
+        """Create an empty workspace file named *stem*, with a number added when taken, and return its path.
+
+        Creating the file is what claims the name, so instances saving at the same moment get different files.
+        """
         number = 1
         while True:
             path = workspace_file_path(folder / (stem if number == 1 else f"{stem} {number}"))

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import errno
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -168,6 +170,30 @@ def test_a_quit_keeps_unsaved_edits_of_a_workspace_whose_name_has_a_lone_surroga
 
     [copy] = launch.lifecycle.recent_workspaces()
     assert load_workspace(copy.path).name == name
+
+
+def test_a_quit_keeps_unsaved_edits_when_the_file_system_refuses_the_file_name(
+    launches: _Launches, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_open = os.open
+
+    def refuse_names_with_the_workspace_name(path: Any, *args: Any, **kwargs: Any) -> int:
+        if "Parking lot" in str(path):
+            raise OSError(errno.ENAMETOOLONG, "File name too long")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", refuse_names_with_the_workspace_name)
+    clip = _video(tmp_path, "a.mp4")
+    launch = launches.new()
+    launch.store.add_items([clip])
+    launch.store.rename_workspace("Parking lot")
+
+    launch.lifecycle.keep_unsaved_changes()
+
+    [copy] = launch.lifecycle.recent_workspaces()
+    assert copy.path.name.startswith("Unsaved workspace ")
+    saved = load_workspace(copy.path)
+    assert (saved.name, saved.items) == ("Parking lot", (clip,))
 
 
 def _write_legacy_backup(state: Path, name: str, items: list[VideoItem], saved_file: Path | None = None) -> Path:
