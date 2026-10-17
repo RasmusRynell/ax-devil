@@ -2,8 +2,8 @@
 
 Syntax: bare words search free text; ``path:value`` and ``path=value`` compare equal; ``path>n``, ``<``, ``>=`` and
 ``<=`` compare numbers; a leading ``-`` negates a term; ``a OR b`` joins adjacent terms; everything else is ANDed.
-Values may be quoted (``class:"traffic light"``). Compiling never fails: incomplete terms are ignored and
-malformed comparisons search as plain text.
+Values may be quoted (``class:"traffic light"``); ``\\"`` is a literal quote. Compiling never fails: incomplete
+terms are ignored and malformed comparisons search as plain text.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from enum import Enum, auto
 FieldValue = str | int | float | bool
 
 _TERM = re.compile(r"([A-Za-z_][\w./-]*)(>=|<=|:|=|>|<)")
+_INTEGER = re.compile(r"[+-]?[0-9]+")
+_QUOTE = re.compile(r'\\"|"')
 _COMPARATORS: Mapping[str, Callable[[float, float], bool]] = {
     ">": operator.gt,
     "<": operator.lt,
@@ -55,15 +57,25 @@ class QueryToken:
     kind: TokenKind
 
 
-def _number(value: FieldValue) -> float | None:
-    """Return ``value`` as a finite number, or None for strings, booleans and non-finite numbers."""
+def _number(value: FieldValue) -> int | float | None:
+    """Return ``value`` as a finite number, or None for non-numeric text, booleans and non-finite numbers.
+
+    Integers stay exact, so values above 2**53 are not rounded; Python compares an int with a float exactly.
+    """
     if isinstance(value, bool):
         return None
+    if isinstance(value, int):
+        return value
     try:
-        number = float(value)
-    except (ValueError, OverflowError):
+        number = int(value) if isinstance(value, str) and _INTEGER.fullmatch(value) else float(value)
+    except ValueError:
         return None
-    return number if math.isfinite(number) else None
+    return number if isinstance(number, int) or math.isfinite(number) else None
+
+
+def _unquote(text: str) -> str:
+    """Drop the delimiting double quotes of a query value; ``\\"`` becomes a literal quote."""
+    return _QUOTE.sub(lambda found: '"' if len(found.group()) == 2 else "", text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +108,7 @@ def _path_matches(path: str, key: str) -> bool:
     return key == path or key.endswith(f".{path}")
 
 
-def _compare(op: str, value: FieldValue, needle: str, number: float | None) -> bool:
+def _compare(op: str, value: FieldValue, needle: str, number: int | float | None) -> bool:
     """Compare a record value with the query value; ``:``/``=`` fall back to case-insensitive text."""
     value_number = None if isinstance(value, str) else _number(value)
     if op in _COMPARATORS:
@@ -135,7 +147,9 @@ def _words(text: str) -> Iterable[tuple[int, int]]:
     """Yield the (start, end) of each whitespace-separated word; whitespace inside double quotes is kept."""
     start: int | None = None
     quoted = False
+    escaped = False
     for index, char in enumerate(text):
+        was_escaped, escaped = escaped, char == "\\"
         if char.isspace() and not quoted:
             if start is not None:
                 yield start, index
@@ -143,7 +157,7 @@ def _words(text: str) -> Iterable[tuple[int, int]]:
             continue
         if start is None:
             start = index
-        if char == '"':
+        if char == '"' and not was_escaped:
             quoted = not quoted
     if start is not None:
         yield start, len(text)
@@ -159,16 +173,16 @@ def _parse_word(text: str, start: int, end: int) -> tuple[list[QueryToken], _Ter
     rest = text[start:end]
     found = _TERM.match(rest)
     if found is None:
-        value = rest.replace('"', "")
+        value = _unquote(rest)
         if not value or value == "-":
             return [*tokens, QueryToken(start, end, TokenKind.INVALID)], None
         return [*tokens, QueryToken(start, end, TokenKind.TEXT)], _Term(None, ":", value, negated)
     path, op = found.group(1), found.group(2)
-    value = rest[found.end() :].replace('"', "")
+    value = _unquote(rest[found.end() :])
     if not value:
         return [*tokens, QueryToken(start, end, TokenKind.INVALID)], None
     if op in _COMPARATORS and _number(value) is None:
-        return [*tokens, QueryToken(start, end, TokenKind.INVALID)], _Term(None, ":", rest.replace('"', ""), negated)
+        return [*tokens, QueryToken(start, end, TokenKind.INVALID)], _Term(None, ":", _unquote(rest), negated)
     field_end, op_end = start + len(path), start + found.end()
     tokens += [
         QueryToken(start, field_end, TokenKind.FIELD),
