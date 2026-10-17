@@ -102,10 +102,7 @@ class DecoderPlugin(PluginBase):
                 f"{host_major}.{host_minor}; update the plugin"
             )
         candidate = cls.definition()
-        for record in registry.get_plugins(DECODER_PLUGIN_TYPE):
-            if record.status.value != "loaded":
-                continue
-            existing = cast(DecoderPluginDefinition, record.definition)
+        for existing in _loaded_decoder_definitions():
             error = cls._find_duplicate_handler_error(candidate, existing)
             if error is not None:
                 return error
@@ -140,18 +137,21 @@ class DecoderPlugin(PluginBase):
 # ---------------------------------------------------------------------------
 
 
-def get_file_decoder_definitions() -> list[FileToSceneDecoderDefinition]:
-    """Return all file-to-scene decoder definitions from loaded plugins."""
+def _loaded_decoder_definitions() -> list[DecoderPluginDefinition]:
+    """Return the definitions of every loaded decoder plugin."""
     from .registry import PluginStatus, RuntimePluginRegistry
 
-    results: list[FileToSceneDecoderDefinition] = []
-    for record in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE):
-        if record.status != PluginStatus.LOADED:
-            continue
-        defn = record.definition
-        if isinstance(defn, DecoderPluginDefinition):
-            results.extend(defn.file_to_scene_decoders)
-    return results
+    # Only DecoderPlugin.definition() registers under DECODER_PLUGIN_TYPE; failed records hold a bare base definition.
+    return [
+        cast(DecoderPluginDefinition, record.definition)
+        for record in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE)
+        if record.status is PluginStatus.LOADED
+    ]
+
+
+def get_file_decoder_definitions() -> list[FileToSceneDecoderDefinition]:
+    """Return all file-to-scene decoder definitions from loaded plugins."""
+    return [decoder for definition in _loaded_decoder_definitions() for decoder in definition.file_to_scene_decoders]
 
 
 def get_file_decoder_factory(handler_type: str) -> FileDataProviderFactory:
@@ -165,35 +165,30 @@ def get_file_decoder_factory(handler_type: str) -> FileDataProviderFactory:
     raise ValueError(f"Unsupported file-to-scene decoder type: {handler_type}")
 
 
+def _payload_decoder_definition(handler_type: str) -> PayloadToSceneDecoderDefinition | None:
+    """Return the loaded payload decoder definition for *handler_type*, if any."""
+    for definition in _loaded_decoder_definitions():
+        for payload_decoder in definition.payload_to_scene_decoders:
+            if payload_decoder.handler_type == handler_type:
+                return payload_decoder
+    return None
+
+
 def get_payload_decoder(handler_type: str) -> Any:
     """Look up and instantiate a payload-to-scene decoder for *handler_type*.
 
     Raises ``ValueError`` when no loaded plugin provides that handler type.
     """
-    from .registry import PluginStatus, RuntimePluginRegistry
-
-    for record in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE):
-        if record.status != PluginStatus.LOADED:
-            continue
-        definition = cast(DecoderPluginDefinition, record.definition)
-        for payload_decoder in definition.payload_to_scene_decoders:
-            if payload_decoder.handler_type == handler_type:
-                return payload_decoder.decoder_factory()
-    raise ValueError(f"Unsupported payload decoder handler type: {handler_type}")
+    payload_decoder = _payload_decoder_definition(handler_type)
+    if payload_decoder is None:
+        raise ValueError(f"Unsupported payload decoder handler type: {handler_type}")
+    return payload_decoder.decoder_factory()
 
 
 def get_payload_filter_factory(handler_type: str) -> FilterFactory | None:
     """Return the plugin-provided filter factory for *handler_type*, if any."""
-    from .registry import PluginStatus, RuntimePluginRegistry
-
-    for record in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE):
-        if record.status != PluginStatus.LOADED:
-            continue
-        definition = cast(DecoderPluginDefinition, record.definition)
-        for payload_decoder in definition.payload_to_scene_decoders:
-            if payload_decoder.handler_type == handler_type:
-                return payload_decoder.filter_factory
-    return None
+    payload_decoder = _payload_decoder_definition(handler_type)
+    return payload_decoder.filter_factory if payload_decoder is not None else None
 
 
 __all__ = [

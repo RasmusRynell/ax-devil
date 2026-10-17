@@ -491,7 +491,7 @@ def test_plugin_changes_without_unix_locking_report_error(plugin: Path, monkeypa
 
 def _decode_documented_plugin(interpreter: str) -> subprocess.CompletedProcess[str]:
     probe = (
-        "from ax_devil.modules.plugin_system.validate import validate_plugins; "
+        "from ax_devil.modules.plugin_installation.validate import validate_plugins; "
         "from ax_devil.modules.plugin_system import get_payload_decoder; "
         "validate_plugins(['example-plugin']); "
         "assert get_payload_decoder('EXAMPLE_FRAME').decode({'frame': 42}).time_slice.start == 42"
@@ -570,7 +570,7 @@ def test_real_documented_plugin_installation(plugin: Path) -> None:
             str(interpreter),
             "-I",
             "-c",
-            "from ax_devil.modules.plugin_system.validate import validate_plugins; "
+            "from ax_devil.modules.plugin_installation.validate import validate_plugins; "
             "from ax_devil.modules.plugin_system import get_payload_decoder; "
             "validate_plugins(['example-plugin']); "
             "assert get_payload_decoder('EXAMPLE_FRAME').decode({'frame': 42}).time_slice.start == 43",

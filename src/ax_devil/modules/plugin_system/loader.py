@@ -11,6 +11,10 @@ from typing import Any, cast
 
 from packaging.utils import canonicalize_name
 
+from ax_devil.modules.plugin_installation.entry_points import (
+    DECODER_ENTRY_POINT_GROUP,
+    PLAYLIST_RESOLVER_ENTRY_POINT_GROUP,
+)
 from ax_devil.modules.settings.logging_config import get_logger
 
 from .base import PLUGIN_API_VERSION, PluginBase
@@ -39,13 +43,13 @@ class ApplicationPluginLoader:
             plugin_type=DECODER_PLUGIN_TYPE,
             plugin_base_class=DecoderPlugin,
             builtin_package="ax_devil.plugins.decoders",
-            entrypoint_group="ax_devil.decoder_plugins",
+            entrypoint_group=DECODER_ENTRY_POINT_GROUP,
         ),
         PluginFamily(
             plugin_type=PLAYLIST_RESOLVER_PLUGIN_TYPE,
             plugin_base_class=PlaylistResolverPlugin,
             builtin_package="ax_devil.plugins.playlist_resolvers",
-            entrypoint_group="ax_devil.playlist_resolver_plugins",
+            entrypoint_group=PLAYLIST_RESOLVER_ENTRY_POINT_GROUP,
         ),
     )
     _loaded: bool = False

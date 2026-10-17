@@ -17,14 +17,13 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from uv import find_uv_bin
 
+from .entry_points import ENTRY_POINT_GROUPS
 from .host import Host
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
-
-ENTRY_POINT_GROUPS = ("ax_devil.decoder_plugins", "ax_devil.playlist_resolver_plugins")
 
 
 def read_project(directory: Path) -> dict[str, Any]:

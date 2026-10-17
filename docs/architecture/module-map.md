@@ -27,9 +27,9 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Network scanning that finds Axis devices on IP ranges by what they give without login, with optional HTTP Digest sign-in | `src/ax_devil/modules/device_discovery/` |
 | Pure sync engines, timestamp matching policy, and Qt sync adapters | `src/ax_devil/modules/synchronization/` |
 | Session filtering, shared filter configs, state, predicates, and whole-file history filtering | `src/ax_devil/modules/filtering/` |
-| Plugin discovery, registry, contracts, handler lookup APIs, installation validation | `src/ax_devil/modules/plugin_system/` |
+| Plugin discovery, registry, contracts, handler lookup APIs | `src/ax_devil/modules/plugin_system/` |
 | The Plugins sidebar view: the plugin catalog, in-app install, update and remove | `src/ax_devil/modules/plugin_manager/` |
-| Locked plugin installation projects and install/update/remove commands | `src/ax_devil/modules/plugin_installation/` |
+| Locked plugin installation projects, install/update/remove commands, entry-point group names, and the subprocess that validates a prepared plugin environment | `src/ax_devil/modules/plugin_installation/` |
 | Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
 | Config, settings state and preference values, logging, paths | `src/ax_devil/modules/settings/` |
 | Shortcut definitions, the manager that installs them, override persistence, and the shortcuts dialog | `src/ax_devil/modules/shortcuts/` |
