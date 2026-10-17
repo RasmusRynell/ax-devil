@@ -222,9 +222,9 @@ route to the focused viewer through `ViewerWidget` methods; shortcuts marked `ac
 `ShortcutDefinition` also work from lane fullscreen. Which lane an offline session targets is a
 [viewer rule](../../src/ax_devil/modules/video_viewer/README.md#rules).
 
-An overlay mounted on `FrameDisplay` with `preference` or `hide_while_inspecting` hands its visibility to
-`FrameViewport`, which hides it while that `OverlayPreference` is off, or while the frame is zoomed in or showing
-info, respectively.
+An overlay mounted on `FrameDisplay` with `preference` or `hide_while_info_shown` hands its visibility to
+`FrameViewport`, which hides it while that `OverlayPreference` is off, or while the frame info overlay is shown,
+respectively.
 
 ## Ownership Boundaries
 

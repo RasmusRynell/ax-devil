@@ -34,7 +34,7 @@ from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
 from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays
-from ax_devil.modules.video_player.engine.viewport_state import NormalizedViewport, ZoomStep
+from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.fullscreen import LaneFullscreenController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_player.ui.draggable import DraggablePanel
@@ -1246,8 +1246,8 @@ class TestOfflineVideoViewerWidget:
             fullscreen.exit()
             widget.cleanup()
 
-    def test_lane_names_hide_while_zoomed_inspected_or_turned_off(self, qtbot: QtBot) -> None:
-        """Zooming any lane or opening the info overlay hides every lane name; the preference hides them all."""
+    def test_lane_names_stay_in_place_while_zoomed_and_hide_for_info_or_when_turned_off(self, qtbot: QtBot) -> None:
+        """Zooming keeps every lane name visible where it was; the info overlay or the preference hides them."""
         playlist = PlaylistContent(
             display_name="multi", entries=(_lane_entry(_make_local_content("A"), _make_local_content("B")),)
         )
@@ -1268,12 +1268,13 @@ class TestOfflineVideoViewerWidget:
         image = QImage(640, 480, QImage.Format.Format_RGB32)
         image.fill(0)
         first_viewport.display_frame(VideoFrameWithOverlays(VideoFrame(image=image, timestamp=0.0), overlays=None))
+        first_name = names[0]
+        assert first_name is not None
+        unzoomed_position = first_name.pos()
         first_viewport.wheelEvent(make_wheel_event(QPointF(100, 80), 120))
-        assert shown() == [False, False]
-
-        for display in displays:
-            display.set_viewport(NormalizedViewport(zoom=1.0, pan_x=0.0, pan_y=0.0))
+        assert first_viewport.viewport_state.zoom_level > 1.0
         assert shown() == [True, True]
+        assert first_name.pos() == unzoomed_position
 
         settings = GlobalSettings()
         settings.set_overlay_enabled(OverlayPreference.LANE_NAMES, False)

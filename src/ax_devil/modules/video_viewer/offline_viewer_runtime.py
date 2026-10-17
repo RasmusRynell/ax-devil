@@ -589,7 +589,7 @@ class OfflineSession(QObject):
             display.mount_overlay(
                 name_label,
                 position=OverlayPosition.FRAME_TOP_LEFT,
-                hide_while_inspecting=True,
+                hide_while_info_shown=True,
                 preference=OverlayPreference.LANE_NAMES,
             )
         alignment_indicator = OverlayAlignmentIndicator(display.viewport)

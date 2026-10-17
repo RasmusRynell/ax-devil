@@ -89,19 +89,19 @@ class FrameDisplay(QWidget):
         widget: QWidget,
         *,
         position: OverlayPosition,
-        hide_while_inspecting: bool = False,
+        hide_while_info_shown: bool = False,
         preference: OverlayPreference | None = None,
     ) -> None:
         """Mount a caller-owned widget as a viewport overlay.
 
-        With *hide_while_inspecting* the widget hides while the video is zoomed in or showing frame info; with
+        With *hide_while_info_shown* the widget hides while the frame info overlay is shown; with
         *preference* it shows only while that overlay preference is on. Either hands its visibility to the viewport.
         """
         self._controls.append(widget)
         self._viewport.add_overlay(
             widget,
             position=position,
-            hide_while_inspecting=hide_while_inspecting,
+            hide_while_info_shown=hide_while_info_shown,
             preference=preference,
         )
 
