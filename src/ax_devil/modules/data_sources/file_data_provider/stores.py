@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from ax_devil.core.load_warning import LoadWarning
+from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.modules.cache import CacheManager, IndexedFrameCache
 from ax_devil.modules.data_sources.scene_history import SceneHistoryCollector, SceneHistoryRecords
 from ax_devil.modules.scene.decoding import (
@@ -417,7 +417,7 @@ class SourceIndexedSceneStore:
         collector = SceneHistoryCollector()
         total_lines = 0
         candidate_lines = 0  # Lines that held a record, whether or not it could be decoded.
-        skipped_reasons: list[str] = []
+        skipped = SkippedRecords("lines", "Objects on skipped lines are not shown.")
 
         with self._file_path.open("rb") as file_obj:
             raw_line_number = 0
@@ -434,7 +434,7 @@ class SourceIndexedSceneStore:
                         f"{self._file_path.name} [{self._context.decoder_name}] line {raw_line_number - 1}: {exc}"
                     )
                     candidate_lines += 1
-                    skipped_reasons.append(f"line {raw_line_number}: not valid UTF-8")
+                    skipped.add(f"line {raw_line_number}: not valid UTF-8")
                     continue
 
                 normalized_line = self._context.normalize_payload(decoded_line)
@@ -451,7 +451,7 @@ class SourceIndexedSceneStore:
                         continue
                 except Exception as exc:
                     logger.warning(f"{self._file_path.name} [{self._context.decoder_name}] line {payload_index}: {exc}")
-                    skipped_reasons.append(f"line {raw_line_number}: {exc}")
+                    skipped.add(f"line {raw_line_number}: {exc}")
                     continue
 
                 timestamp_key = self._context.extract_timestamp_key(scene)
@@ -479,10 +479,8 @@ class SourceIndexedSceneStore:
             fingerprint=SourceFingerprint.from_path(self._file_path),
         )
         history = collector.records()
-        skipped = LoadWarning.skipped(
-            "lines", candidate_lines, skipped_reasons, "Objects on skipped lines are not shown."
-        )
-        warnings = (skipped,) if skipped is not None else ()
+        warning = skipped.warning(candidate_lines)
+        warnings = (warning,) if warning is not None else ()
         metadata = build_default_metadata_payload(
             total_lines=total_lines,
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,

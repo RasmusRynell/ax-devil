@@ -6,7 +6,7 @@ import json
 from collections.abc import Iterable
 from typing import TypedDict
 
-from ax_devil.core.load_warning import LoadWarning
+from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.predicate_utils import make_classification_predicate
 from ax_devil.modules.scene.model import (
@@ -209,7 +209,7 @@ def prepare_mot_frame_payloads(
     """
     frames: dict[int, list[MOTDetectionPayload]] = {}
     total_rows = 0
-    skipped_reasons: list[str] = []
+    skipped = SkippedRecords("rows", "Objects on skipped rows are not shown.")
 
     for line_number, raw_line in enumerate(rows, start=1):
         line = raw_line.strip()
@@ -221,7 +221,7 @@ def prepare_mot_frame_payloads(
         num_parts = len(parts)
 
         if num_parts not in (7, 9, 10):
-            skipped_reasons.append(f"line {line_number}: expected 7, 9 or 10 columns, got {num_parts}")
+            skipped.add(f"line {line_number}: expected 7, 9 or 10 columns, got {num_parts}")
             continue
 
         try:
@@ -248,15 +248,15 @@ def prepare_mot_frame_payloads(
                 source = "gt"
                 confidence = None
         except (ValueError, TypeError) as exc:
-            skipped_reasons.append(f"line {line_number}: {exc}")
+            skipped.add(f"line {line_number}: {exc}")
             continue
 
         if frame_number < 0:
-            skipped_reasons.append(f"line {line_number}: frame number {frame_number + 1} is below 1")
+            skipped.add(f"line {line_number}: frame number {frame_number + 1} is below 1")
             continue
 
         if bb_width < 0 or bb_height < 0:
-            skipped_reasons.append(f"line {line_number}: negative box width or height")
+            skipped.add(f"line {line_number}: negative box width or height")
             continue
 
         bbox_payload: MOTBoundingBoxPayload = {
@@ -288,8 +288,7 @@ def prepare_mot_frame_payloads(
         }
         payloads.append(json.dumps(payload, separators=(",", ":")))
 
-    skipped = LoadWarning.skipped("rows", total_rows, skipped_reasons, "Objects on skipped rows are not shown.")
-    return payloads, skipped
+    return payloads, skipped.warning(total_rows)
 
 
 def _normalise_label(label: str) -> str:

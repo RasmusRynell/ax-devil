@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,17 +17,6 @@ class LoadWarning:
     reasons: tuple[str, ...]  # At most three examples, each naming where: "line 2: expected 7, 9 or 10 columns, got 5"
     consequence: str  # "Objects on skipped rows are not shown."
     more_reasons: bool = False  # Whether further examples were left out.
-
-    @classmethod
-    def skipped(cls, noun: str, total: int, reasons: Sequence[str], consequence: str) -> LoadWarning | None:
-        """Return the warning for *reasons*, one per skipped item of *total* items called *noun*, or None if none."""
-        if not reasons:
-            return None
-        examples = tuple(
-            reason if len(reason) <= _MAX_REASON_CHARS else f"{reason[: _MAX_REASON_CHARS - 1]}…"
-            for reason in reasons[:_MAX_REASONS]
-        )
-        return cls(f"Skipped {len(reasons)} of {total} {noun}", examples, consequence, len(reasons) > _MAX_REASONS)
 
     @property
     def text(self) -> str:
@@ -64,3 +52,31 @@ class LoadWarning:
         ):
             return None
         return cls(problem, tuple(reasons), consequence, more_reasons)
+
+
+class SkippedRecords:
+    """Counts the records a loop skipped and keeps only the first few reasons, however many it skips."""
+
+    def __init__(self, noun: str, consequence: str) -> None:
+        """Collect skips of items called *noun* (for example "rows"); *consequence* tells what the user loses."""
+        self._noun = noun
+        self._consequence = consequence
+        self._count = 0
+        self._reasons: list[str] = []
+
+    def add(self, reason: str) -> None:
+        """Count a skipped record; *reason* names where and why."""
+        self._count += 1
+        if len(self._reasons) < _MAX_REASONS:
+            self._reasons.append(reason if len(reason) <= _MAX_REASON_CHARS else f"{reason[: _MAX_REASON_CHARS - 1]}…")
+
+    def warning(self, total: int) -> LoadWarning | None:
+        """Return the warning for the skips so far among *total* records, or None if nothing was skipped."""
+        if self._count == 0:
+            return None
+        return LoadWarning(
+            f"Skipped {self._count} of {total} {self._noun}",
+            tuple(self._reasons),
+            self._consequence,
+            self._count > _MAX_REASONS,
+        )
