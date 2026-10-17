@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QWidget
 from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.sidebar_view import ViewGroup
+from ax_devil.modules.chrome.small_button import ButtonKind
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.start_panel import StartPanel
 
@@ -36,7 +37,9 @@ class WorkspaceView(SectionsView):
             empty_page=start_panel,
             parent=parent,
         )
-        self._restored = Banner("Restored unsaved changes", "Discard changes", dismiss_text="Keep")
+        self._restored = Banner(
+            "Restored unsaved changes", "Discard", dismiss_text="Keep", action_kind=ButtonKind.OUTLINE
+        )
         self._restored.action.clicked.connect(self.discard_requested)
         self._restored.hide()
         self.set_footer_panel(self._restored)

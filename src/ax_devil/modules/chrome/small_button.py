@@ -15,6 +15,7 @@ from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 
 _HOVER_ALPHA = 0.08
+_OUTLINE_ALPHA = 0.3
 
 
 class ButtonKind(Enum):
@@ -58,7 +59,7 @@ class SmallButton(QPushButton):
             text = StatusColor.ERROR.color(palette)
             hover_fill = qcolor_to_css(text, alpha=_HOVER_ALPHA)
         outlined = self._kind is ButtonKind.OUTLINE
-        border = palette_color_css(palette, QPalette.ColorRole.Mid) if outlined else fill
+        border = palette_color_css(palette, QPalette.ColorRole.Text, alpha=_OUTLINE_ALPHA) if outlined else fill
         hover_border = border if outlined else hover_fill
         padding = Space.S if not self.text() else Space.M
         self.setStyleSheet(
