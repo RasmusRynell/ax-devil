@@ -24,6 +24,9 @@ The application style fills every container with the window color. ``.QWidget`` 
 fields, buttons and the kit's own widgets keep their fills.
 """
 
+FLUSH_VIEW = "QTreeView { border: none; padding: 0; margin: 0; }"
+"""Stylesheet that makes a tree view's rows reach its edges: the application style otherwise insets them by a frame."""
+
 # Keep overrides in the theme engine so widgets, icons, and QPalette agree.
 DARK_COLORS: dict[str, str] = {
     "background": "#121314",

@@ -144,7 +144,6 @@ def _frame_columns() -> tuple[Column, ...]:
             CellKind.ID_DOT,
             lambda row: Labeled(row.entity_id, row.summary.class_name),
             lambda row: id_order(row.entity_id),
-            width_chars=8,
         ),
         Column(
             "Class",
@@ -158,16 +157,14 @@ def _frame_columns() -> tuple[Column, ...]:
             CellKind.NUMBER,
             lambda row: _confidence_text(row.summary.conf),
             lambda row: (row.summary.conf is not None, row.summary.conf or 0.0),
-            width_chars=4,
         ),
         Column(
             "Motion",
             CellKind.TEXT,
             lambda row: row.summary.state or "",
             lambda row: row.summary.state or "",
-            width_chars=10,
+            priority=1,
         ),
-        Column("", CellKind.CHEVRON, lambda row: None),
     )
 
 
@@ -254,8 +251,8 @@ class ObjectsPage(QWidget):
         frame_columns = _frame_columns()
         file_columns = self._file_columns()
         self._tables = {
-            ObjectScope.FRAME: self._table(frame_columns, 2, Qt.SortOrder.DescendingOrder),
-            ObjectScope.FILE: self._table(file_columns, 0, Qt.SortOrder.AscendingOrder),
+            ObjectScope.FRAME: self._table(frame_columns, "objects-frame", 2, Qt.SortOrder.DescendingOrder),
+            ObjectScope.FILE: self._table(file_columns, "objects-file", 0, Qt.SortOrder.AscendingOrder),
         }
         self._tables[ObjectScope.FILE].model.set_dimmed(self._is_absent)
         self._empty = QLabel(self)
@@ -382,23 +379,20 @@ class ObjectsPage(QWidget):
                 CellKind.ID_DOT,
                 lambda row: Labeled(row.entity_id, row.category),
                 lambda row: id_order(row.entity_id),
-                width_chars=8,
             ),
             Column(
                 "Class",
                 CellKind.TEXT,
                 lambda row: ", ".join(row.history.types),
                 lambda row: ", ".join(row.history.types).casefold(),
-                stretch=True,
             ),
-            Column("Presence", CellKind.PRESENCE, presence, width_chars=7),
-            Column("Seen", CellKind.MONO, lambda row: row.seen, lambda row: row.history.spans[0][0], width_chars=11),
-            Column("", CellKind.CHEVRON, lambda row: None),
+            Column("Presence", CellKind.PRESENCE, presence, stretch=True),
+            Column("Seen", CellKind.MONO, lambda row: row.seen, lambda row: row.history.spans[0][0], priority=1),
         )
 
-    def _table(self, columns: Sequence[Column], sort_column: int, order: Qt.SortOrder) -> _ScopeTable:
-        model = RowTableModel(columns, self)
-        view = RowTableView(model, self)
+    def _table(self, columns: Sequence[Column], key: str, sort_column: int, order: Qt.SortOrder) -> _ScopeTable:
+        model = RowTableModel(columns, self, copy_text=lambda row: row.entity_id)
+        view = RowTableView(model, self, table_key=key)
         view.sort_by(sort_column, order)
         view.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
         return _ScopeTable(model, view)

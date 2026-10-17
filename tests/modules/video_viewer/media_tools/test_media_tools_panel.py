@@ -8,11 +8,12 @@ from typing import Any, cast
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QLineEdit, QTabBar, QToolButton
+from PySide6.QtWidgets import QLabel, QLineEdit, QMenu, QTabBar, QToolButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption, build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
@@ -565,7 +566,7 @@ def test_event_page_lists_the_equal_event_reported_twice_among_its_same_moment(q
     qtbot.addWidget(page)
     page.set_history(_history(events=(twice, other, twice)))
     page.show()
-    moment = next(view for view in page.findChildren(RowTableView) if view.isHeaderHidden())
+    moment = next(view for view in page.findChildren(RowTableView) if view.rows_model.columns[0].title == "Kind")
 
     assert moment.rows_model.rowCount() == 2
     assert {moment.rows_model.row_of(EventPageKey(twice, 1)), moment.rows_model.row_of(EventPageKey(other))} == {0, 1}
@@ -601,3 +602,21 @@ def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, mo
 
     page.show()
     assert lookups == ["a"]
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+def test_overflow_submenu_fits_its_content_after_the_text_size_grows(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    apply_text_size(13)
+    panel = _panel(qtbot, render_catalog_selection)
+    [filters] = [menu for menu in panel._more_menu.findChildren(QMenu) if menu.title() == "Overlay filter"]
+    filters.popup(panel.mapToGlobal(QPoint(0, 0)))
+    filters.hide()
+
+    apply_text_size(21)
+    filters.popup(panel.mapToGlobal(QPoint(0, 0)))
+
+    content = panel.filter_widget.parentWidget()
+    assert content is not None
+    assert filters.width() >= content.sizeHint().width()

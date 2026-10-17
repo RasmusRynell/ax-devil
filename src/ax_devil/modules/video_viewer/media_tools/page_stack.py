@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QHideEvent, QKeyEvent, QMouseEvent, QPalette, QShowEvent
+from PySide6.QtGui import QFontMetrics, QHideEvent, QKeyEvent, QMouseEvent, QPalette, QShowEvent
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QStackedLayout, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -17,6 +17,8 @@ from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent
+
+_TITLE_CHARS = 14  # The characters of the title that stay visible.
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +111,7 @@ class PageStack(QWidget):
         self._back_button = SmallButton("", kind=ButtonKind.OUTLINE, parent=self._header)
         self._back_button.setToolTip("Back (Esc)")
         self._back_button.clicked.connect(self.back)
-        self._title = ElidedLabel("", Qt.TextElideMode.ElideRight, self._header)
+        self._title = ElidedLabel("", Qt.TextElideMode.ElideMiddle, self._header)  # Titles end in ids
         TextRole.STRONG.apply(self._title)
         self._previous_button = SmallButton("", Icon.CHEVRON_UP, parent=self._header)
         self._previous_button.setToolTip("Previous in list")
@@ -365,6 +367,8 @@ class PageStack(QWidget):
 
     def _apply_appearance(self) -> None:
         self._header.setFixedHeight(Height.PANE_HEADER.px)
+        # The title keeps enough of an id to tell it, however narrow the panel is.
+        self._title.setMinimumWidth(_TITLE_CHARS * QFontMetrics(TextRole.STRONG.font()).averageCharWidth())
         border = palette_color_css(self.palette(), QPalette.ColorRole.Mid, alpha=0.5)
         self._header.setStyleSheet(
             f"#AxDevilPageHeader {{ border-bottom: 1px solid {border}; background: transparent; }}"

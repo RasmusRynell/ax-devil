@@ -13,7 +13,7 @@ from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameSpan, ObjectHistory, SceneHistory
-from ax_devil.modules.object_inspection.fields_view import FieldsView, Section, event_section, field_sections
+from ax_devil.modules.object_inspection.fields_view import FieldsView, Section, event_section, field_sections, id_row
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
 from ax_devil.modules.object_inspection.title_row import TitleRow
 from ax_devil.modules.scene.inspection import entity_summary
@@ -104,7 +104,7 @@ class ObjectPage(QWidget):
         self._built = True
         layout = self.layout()
         assert isinstance(layout, QVBoxLayout)
-        self._title = TitleRow(self._entity_id, self)
+        self._title = TitleRow(self)
         layout.addWidget(self._title)
 
         self._strip = PresenceStrip(self)
@@ -137,8 +137,6 @@ class ObjectPage(QWidget):
         self._fields.eventActivated.connect(self.eventActivated)
         self.setFocusProxy(self._fields)  # The page gets focus as its fields view, so Ctrl+C copies without a click.
         layout.addWidget(self._fields, 1)
-        layout.addStretch(0)
-        self._fill_layout = layout.count() - 1
 
     def _boxed(self, widget: QWidget, layout: QVBoxLayout) -> QWidget:
         box = QWidget(self)
@@ -182,13 +180,7 @@ class ObjectPage(QWidget):
             self._title.set_content(self._last_class, absence.pill, None, dimmed=True)
         if self._events_section is not None:
             sections.append(self._events_section)
-        self._fields.set_sections(sections)
-        has_sections = bool(sections)
-        self._fields.setVisible(has_sections)
-        layout = self.layout()
-        assert isinstance(layout, QVBoxLayout)
-        layout.setStretch(layout.indexOf(self._fields), 1 if has_sections else 0)
-        layout.setStretch(self._fill_layout, 0 if has_sections else 1)
+        self._fields.set_sections(sections, (id_row(self._entity_id),))
 
         self._strip_box.setVisible(history is not None)
         if history is not None and self._history is not None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from enum import Enum
+from functools import partial
 from html import escape
 from typing import Any
 
@@ -12,6 +13,7 @@ from PySide6.QtGui import QAction, QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLayout,
     QMenu,
     QTabBar,
     QToolButton,
@@ -286,7 +288,15 @@ class MediaToolsPanel(QWidget):
         action = QWidgetAction(submenu)
         action.setDefaultWidget(container)
         submenu.addAction(action)
+        # A widget that is hidden does not pass a size change up to its layout, so the content of a menu closed during
+        # a text-size change would be measured at the old size and clip.
+        submenu.aboutToShow.connect(partial(self._remeasure, container))
         return submenu
+
+    @staticmethod
+    def _remeasure(container: QWidget) -> None:
+        for layout in container.findChildren(QLayout):
+            layout.invalidate()
 
     def cleanup(self) -> None:
         """Disconnect persistent selection observers when the owning view closes."""

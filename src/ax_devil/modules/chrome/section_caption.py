@@ -49,7 +49,8 @@ class SectionCaption(QWidget):
     """A caption widget: *title*, with *count* after it when given and then *note*, marked in the color *mark* gives
     for the palette.
 
-    A caption over rows that fold is given *folded*, and leads with the arrow a tree draws beside rows with children.
+    A caption over rows that fold is given *folded*, and leads with the arrow a tree draws beside rows with children,
+    in a column *arrow_px* wide.
     """
 
     def __init__(
@@ -60,12 +61,14 @@ class SectionCaption(QWidget):
         *,
         note: str = "",
         folded: bool | None = None,
+        arrow_px: int = _ARROW_PX,
     ) -> None:
         super().__init__()
         counted = title if count is None else f"{title}  {count}"
         self._text = f"{counted}  · {note}" if note else counted
         self._mark = mark
         self._folded = folded
+        self._arrow_px = arrow_px
         if folded is not None:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         follow_appearance(self, lambda: self.setFixedHeight(Height.ROW.px))
@@ -82,11 +85,11 @@ class SectionCaption(QWidget):
             # The style draws the arrow only for a view item's option.
             arrow = QStyleOptionViewItem()
             arrow.initFrom(self)
-            arrow.rect = QRect(rect.left(), rect.top(), _ARROW_PX, rect.height())
+            arrow.rect = QRect(rect.left(), rect.top(), self._arrow_px, rect.height())
             arrow.state = QStyle.StateFlag.State_Children | QStyle.StateFlag.State_Enabled
             if not self._folded:
                 arrow.state |= QStyle.StateFlag.State_Open
             self.style().drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorBranch, arrow, painter, self)
             # The caption keeps its own inset before the mark; the arrow stands in most of it.
-            rect = rect.adjusted(_ARROW_PX - Space.S, 0, 0, 0)
+            rect = rect.adjusted(self._arrow_px - Space.S, 0, 0, 0)
         paint_section_caption(painter, rect, self.palette(), self._text, self._mark(self.palette()))

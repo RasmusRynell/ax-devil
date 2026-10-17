@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space, TextRole
-from ax_devil.modules.object_inspection.fields_view import FieldsView, field_sections
+from ax_devil.modules.object_inspection.fields_view import FieldsView, field_sections, id_row
 from ax_devil.modules.object_inspection.title_row import TitleRow
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import Entity
@@ -27,7 +27,7 @@ class ObjectInspector(QFrame):
         super().__init__(parent)
         self.setObjectName("catalogViewerInspector")
         self.setStyleSheet("#catalogViewerInspector { border-left: 1px solid palette(mid); }")
-        self._title = TitleRow("", self)
+        self._title = TitleRow(self)
         self._fields = FieldsView({}, self)
         self._hint = QLabel(_HINT, self)
         self._hint.setWordWrap(True)
@@ -54,6 +54,5 @@ class ObjectInspector(QFrame):
             self._fields.set_sections(())
             return
         summary = entity_summary(entity)
-        self._title.set_entity_id(summary.entity_id)
         self._title.set_content(summary.class_name, summary.state or "", summary.state, dimmed=False)
-        self._fields.set_sections(field_sections(entity))
+        self._fields.set_sections(field_sections(entity), (id_row(summary.entity_id),))
