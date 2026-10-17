@@ -245,9 +245,18 @@ def test_a_reviewed_target_stays_listed_after_its_last_bookmark_is_removed_until
     assert _rows(session) == []
 
 
-def test_a_bookmark_opens_its_entry_at_its_frame(session: WorkspaceSession) -> None:
+def test_a_saved_workspace_reopens_on_its_bookmarks_and_a_bookmark_opens_its_entry_at_its_frame(
+    session: WorkspaceSession, tmp_path: Path
+) -> None:
     _bookmark_both(session)
+    path = tmp_path / "spots.axdevil"
+    _store(session).save_workspace(path)
+    session.widget().show_view("workspace")
 
+    session.lifecycle.open_workspace(path)
+
+    assert session.widget()._sidebar.current_view_id() == BOOKMARKS_VIEW_ID
+    assert _rows(session)
     _click(_row(session, "Clean tracks"))
 
     viewer = session.focused_widget()
