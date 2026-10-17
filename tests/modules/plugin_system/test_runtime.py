@@ -20,7 +20,6 @@ from ax_devil.modules.plugin_system import (
     PlaylistResolverPlugin,
     PluginStatus,
     RuntimePluginRegistry,
-    loader,
 )
 from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
 

@@ -8,7 +8,7 @@ from dataclasses import replace
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel

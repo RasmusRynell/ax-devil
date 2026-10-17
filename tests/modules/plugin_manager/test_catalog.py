@@ -86,7 +86,7 @@ def test_a_plugin_with_one_decoder_is_a_single_row_that_names_the_decoder_only_w
 def test_a_decoder_that_reads_files_and_live_messages_under_one_handler_type_is_one_part_reading_both() -> None:
     groups = plugin_catalog(
         [
-            pluginplugin_record(
+            plugin_record(
                 "adf",
                 None,
                 files=(file_handler("ADF_FRAME", "ADF Frame"), file_handler("ADF_TRACKS", "ADF Tracks")),

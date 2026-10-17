@@ -24,7 +24,6 @@ from ax_devil.modules.plugin_system import (
 )
 from tests.helpers.plugin_records import file_handler, plugin_record
 
-
 SELECTION = {"yolo-detections": "yolo-detections>=0.2", "old-model-decoder": "old-model-decoder"}
 
 
