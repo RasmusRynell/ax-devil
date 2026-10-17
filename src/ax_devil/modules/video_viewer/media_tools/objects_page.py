@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -29,7 +28,7 @@ from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.inspection import entity_record, entity_summary
 from ax_devil.modules.scene.model import Entity, Scene
 from ax_devil.modules.scene.query import Query, QueryRecord, compile_query
-from ax_devil.modules.video_viewer.media_tools.frame_labels import format_short_frame_time
+from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
 from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey, PageKey
 from ax_devil.modules.video_viewer.media_tools.presence import Presence
 from ax_devil.modules.video_viewer.media_tools.query_bar import QueryBar
@@ -37,7 +36,6 @@ from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column
 
 _FILE_NOTE = "File scope filters id, class and events. Attribute filters apply in Frame scope."
 _MUTED = "color: palette(placeholder-text);"
-_DIGITS = re.compile(r"(\d+)")
 # Paths every record has, whatever the scope, so a query that names only these never needs the entity's full fields.
 _ID = "id"
 _CLASS = "class"
@@ -74,11 +72,6 @@ class ObjectScope(Enum):
             ObjectScope.FRAME: "Objects in the displayed frame, searchable by any attribute",
             ObjectScope.FILE: "Every object in the file; objects not in the displayed frame are dimmed",
         }[self]
-
-
-def _id_order(text: str) -> tuple[tuple[int, str], ...]:
-    """Return *text* as a sort key that orders embedded numbers by value, so ``"id9"`` comes before ``"id10"``."""
-    return tuple((int(part), "") if part.isdigit() else (-1, part) for part in _DIGITS.split(text))
 
 
 def _key(row: Any) -> ObjectPageKey:
@@ -135,9 +128,7 @@ class _FileRow:
     @cached_property
     def seen(self) -> str:
         """Return when the object is first and last shown."""
-        first, last = self.history.first_seen, self.history.last_seen
-        start = format_short_frame_time(first.timestamp_monotime_us)
-        return f"{start}–{format_short_frame_time(last.timestamp_monotime_us)}"
+        return seen_range(self.history)
 
 
 def _confidence_text(conf: float | None) -> str:
@@ -152,7 +143,7 @@ def _frame_columns() -> tuple[Column, ...]:
             "ID",
             CellKind.ID_DOT,
             lambda row: Labeled(row.entity_id, row.summary.class_name),
-            lambda row: _id_order(row.entity_id),
+            lambda row: id_order(row.entity_id),
             width_chars=8,
         ),
         Column(
@@ -381,7 +372,7 @@ class ObjectsPage(QWidget):
                 "ID",
                 CellKind.ID_DOT,
                 lambda row: Labeled(row.entity_id, row.category),
-                lambda row: _id_order(row.entity_id),
+                lambda row: id_order(row.entity_id),
                 width_chars=8,
             ),
             Column(

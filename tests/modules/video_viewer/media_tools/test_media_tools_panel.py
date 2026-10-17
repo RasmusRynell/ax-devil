@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from typing import Any, cast
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QLineEdit, QToolButton
+from PySide6.QtWidgets import QLabel, QLineEdit, QTabBar, QToolButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.chrome.small_button import SmallButton
-from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
+from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption, build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
@@ -28,7 +29,7 @@ from ax_devil.modules.scene.model import (
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
-from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
+from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 
@@ -53,10 +54,12 @@ def _scene(*entities: Entity) -> Scene:
     return scene
 
 
-def _history(*objects: tuple[str, str, tuple[tuple[int, int], ...]], frames: int = 10) -> SceneHistory:
+def _history(
+    *objects: tuple[str, str, tuple[tuple[int, int], ...]], frames: int = 10, events: tuple[FrameEvent, ...] = ()
+) -> SceneHistory:
     times = tuple(index * 1_000_000 for index in range(frames))
     return SceneHistory(
-        events=(),
+        events=events,
         objects=tuple(ObjectHistory(entity_id, (kind,), spans, times) for entity_id, kind, spans in objects),
         frame_count=frames,
     )
@@ -102,7 +105,10 @@ def _open(panel: MediaToolsPanel, entity_id: str) -> None:
     """Click the row of *entity_id* in the Objects list."""
     view = _view(panel)
     assert view is not None
-    key = ObjectPageKey(entity_id)
+    _click_row(view, ObjectPageKey(entity_id))
+
+
+def _click_row(view: RowTableView, key: Hashable) -> None:
     view.scroll_to_key(key)
     rect = view.visualRect(view.rows_model.index(view.rows_model.row_of(key), 0))
     QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
@@ -303,3 +309,29 @@ def test_file_scope_is_unavailable_when_the_decoder_cannot_filter_history(
 
     assert panel.objects_page.scope is ObjectScope.FRAME
     assert not file_button.isVisible()
+
+
+def test_event_page_opens_from_the_events_list_and_leads_to_an_involved_object_and_back(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    event = FrameEvent(_frame(3), "Merge", "Merge a → b", ("a", "b"))
+    panel = _panel(qtbot, render_catalog_selection, _history(("a", "human", ((0, 5),)), events=(event,)))
+    requested, selected = _record(panel.frameRequested), _record(panel.objectSelected)
+    panel.update_scene(_scene(_entity("a")), _frame(1), {})
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+
+    _click_row(events_view, EventPageKey(event))
+    _click(panel, "Go to frame")
+    assert requested == [3]
+
+    (page,) = [v for v in panel.findChildren(RowTableView) if v.isVisible() and v is not events_view]
+    _click_row(page, "a")  # Its object page is a step further from the events list.
+    assert selected[-1] == "a"
+    _click(panel, "Back (Esc)")
+    assert _button(panel, "Go to frame") is not None  # The event page again, and the list is still beneath it.
+    _click(panel, "Back (Esc)")
+    assert events_view.isVisible() and events_view.rows_model.highlight() == EventPageKey(event)

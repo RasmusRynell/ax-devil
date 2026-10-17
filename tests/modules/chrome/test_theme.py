@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage, QPalette
-from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QListView, QTabWidget, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QTabWidget, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
@@ -27,7 +27,7 @@ from ax_devil.modules.scene.model import (
 )
 from ax_devil.modules.video_player.ui.controls import video_control_icon
 from ax_devil.modules.video_player.ui.entity_hover_card import EntityHoverCard
-from ax_devil.modules.video_viewer.media_tools.event_log_widget import EventLogWidget
+from ax_devil.modules.video_viewer.media_tools.events_page import EventsPage
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectsPage
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
@@ -49,12 +49,6 @@ def _luminance(color: QColor) -> float:
     channels = [value / 255 for value in (color.red(), color.green(), color.blue())]
     linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in channels]
     return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-
-
-def _list_view(widget: QWidget) -> QListView:
-    view = widget.findChild(QListView)
-    assert view is not None
-    return view
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
@@ -81,7 +75,7 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     )
     entities = ObjectsPage()
     entities.resize(400, 300)
-    events = EventLogWidget(history)
+    events = EventsPage(history)
     events.resize(500, 150)
     card = ObjectPage("person-1", {})
     card.resize(400, 300)
@@ -99,6 +93,7 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     first_row = entity_view.model().index(0, 0)
     row_rect = entity_view.visualRect(first_row).adjusted(0, 0, entity_view.viewport().width(), 0)
     events.update_scene(None, frame, {})
+    (events_view,) = [view for view in events.findChildren(RowTableView) if view.isVisible()]
     card.set_history(history)
     card.update_scene(scene, 5)
     hover.show_for("person-1", build_entity_hover_html(entity), 20, 20)
@@ -117,8 +112,8 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
         image = entity_view.viewport().grab().toImage()
         # Row text is the theme's muted text color, around 100 of 255 on light.
         assert _foreground_pixels(image, row_rect, dark=dark, light_limit=140) > 40, mode
-        events_image = _list_view(events).viewport().grab().toImage()
-        assert _foreground_pixels(events_image, QRect(170, 3, 200, 18), dark=dark) > 20, mode
+        events_image = events_view.viewport().grab().toImage()
+        assert _foreground_pixels(events_image, events_image.rect(), dark=dark) > 20, mode
         hover_image = hover.grab().toImage()
         assert _foreground_pixels(hover_image, QRect(10, 8, 150, 70), dark=dark) > 100, mode
         card_image = card.grab().toImage()

@@ -46,12 +46,14 @@ from PySide6.QtWidgets import (
 )
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
+from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
 from ax_devil.modules.plugin_system import DECODER_PLUGIN_TYPE, RuntimePluginRegistry
 from ax_devil.modules.scene.inspection import build_entity_hover_html
@@ -523,6 +525,29 @@ def _shoot(window: QWidget, theme: str, name: str, menu: QMenu | None = None, an
     shot.save(str(OUT / f"{theme}-{name}.png"))
 
 
+def _with_merge_and_split(panel: MediaToolsPanel) -> FrameEvent:
+    """Add to *panel*'s history the events no decoder yields: a Merge on the Rename's frame and a later Split.
+
+    Return the Rename event.
+    """
+    history = panel._history
+    assert history is not None
+    times = history.objects[0].frame_times_us
+
+    def at(frame: int, kind: str, label: str, *entity_ids: str) -> FrameEvent:
+        return FrameEvent(
+            FrameIdentifier(sequence_id=frame, timestamp_monotime_us=times[frame]), kind, label, entity_ids
+        )
+
+    rename = next(event for event in history.events if event.kind == "Rename")
+    merge = at(rename.frame_id.sequence_id, "Merge", "Merge 1, 7 → 1", "1", "7")
+    split = at(45, "Split", "Split 2 → 2, 4", "2", "4")
+    panel.set_scene_history(
+        SceneHistory(events=(*history.events, merge, split), objects=history.objects, frame_count=history.frame_count)
+    )
+    return rename
+
+
 def _grid_panels(qtbot: QtBot, viewer: OfflineVideoViewerWidget) -> list[MediaToolsPanel]:
     """Open the side panel of every lane of *viewer* and return the panels."""
     runtime = viewer._runtime
@@ -600,6 +625,17 @@ def test_media_tools_screenshots(
     shoot("panel-menu", panel._more_menu, panel._more_button)
     panel._more_menu.close()
 
+    # The Events tab: past rows above the now line at SHOWN_FRAME, upcoming ones below it.
+    rename = _with_merge_and_split(panel)
+    panel._tabs.setCurrentIndex(1)
+    shoot("panel-events")
+    events = panel.events_page
+    events._query_bar.set_text("kind:merge")
+    shoot("panel-events-query")
+    events._query_bar.set_text("")
+    events.eventActivated.emit(rename)
+    shoot("panel-event")
+
     # Four lanes of the same clip, the panel open on Objects in each, then an object page in each.
     window.resize(*GRID_SIZE)
     lanes = []
@@ -626,6 +662,12 @@ def test_media_tools_screenshots(
     qtbot.wait(1500)
     panels = _grid_panels(qtbot, grid)
     shoot("grid")
+    for lane_panel in panels:
+        _with_merge_and_split(lane_panel)
+        lane_panel._tabs.setCurrentIndex(1)
+    shoot("grid-events")
+    for lane_panel in panels:
+        lane_panel._tabs.setCurrentIndex(0)
     for lane_panel in panels:
         lane_panel.show_object("7")
     qtbot.wait(500)

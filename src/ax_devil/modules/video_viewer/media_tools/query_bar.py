@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QInputMethodEvent, QPalette, QTextCharFormat
 from PySide6.QtWidgets import (
@@ -47,20 +49,27 @@ _MUTED = "color: palette(placeholder-text);"
 class QueryBar(QWidget):
     """Search field that turns its text into a compiled ``Query`` shortly after typing stops.
 
-    Terms are tinted as they are typed; the "?" button opens a short syntax sheet. A muted note beneath the field
-    can say why a query finds nothing.
+    Terms are tinted as they are typed; the "?" button opens a short syntax sheet of (example, meaning) rows, the
+    objects' by default. A muted note beneath the field can say why a query finds nothing.
     """
 
     queryChanged = Signal(Query)  # noqa: N815
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        """Create an empty bar."""
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        placeholder: str = _PLACEHOLDER,
+        syntax: Sequence[tuple[str, str]] = _SYNTAX,
+    ) -> None:
+        """Create an empty bar with the *placeholder* text and the *syntax* rows of its sheet."""
         super().__init__(parent)
         self._emitted = ""
+        self._syntax_rows = syntax
         self._syntax: _SyntaxPopup | None = None
 
         self._edit = QLineEdit(self)
-        self._edit.setPlaceholderText(_PLACEHOLDER)
+        self._edit.setPlaceholderText(placeholder)
         TextRole.MONO.apply(self._edit)
         self._clear = QAction(self._edit)
         self._clear.setToolTip("Clear")
@@ -156,7 +165,7 @@ class QueryBar(QWidget):
 
     def _show_syntax(self) -> None:
         if self._syntax is None:
-            self._syntax = _SyntaxPopup(self)
+            self._syntax = _SyntaxPopup(self, self._syntax_rows)
         popup = self._syntax
         popup.adjustSize()
         below = self._help.mapToGlobal(QPoint(self._help.width(), self._help.height() + Space.XS))
@@ -184,7 +193,7 @@ def _token_format(token: QueryToken, palette: QPalette) -> QTextCharFormat:
 class _SyntaxPopup(QFrame):
     """The static syntax sheet: what to type and what it does."""
 
-    def __init__(self, owner: QWidget) -> None:
+    def __init__(self, owner: QWidget, rows: Sequence[tuple[str, str]]) -> None:
         super().__init__(owner, Qt.WindowType.Popup)
         self.setObjectName("QuerySyntax")
         self.setStyleSheet(_POPUP_STYLE)
@@ -192,7 +201,7 @@ class _SyntaxPopup(QFrame):
         grid.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
         grid.setHorizontalSpacing(Space.L)
         grid.setVerticalSpacing(Space.S)
-        for index, (example, meaning) in enumerate(_SYNTAX):
+        for index, (example, meaning) in enumerate(rows):
             code = QLabel(example, self)
             TextRole.MONO.apply(code)
             text = QLabel(meaning, self)
