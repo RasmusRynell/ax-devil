@@ -31,6 +31,7 @@ from ax_devil.modules.scene.model import (
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.event_page import EventPage
+from ax_devil.modules.video_viewer.media_tools.events_page import LIVE_EVENT_LIMIT
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey
@@ -433,31 +434,39 @@ def test_event_page_follows_its_event_through_a_history_replacement_and_closes_w
     assert events_view.isVisible() and _button(panel, "Go to frame") is None
 
 
-def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
-    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
-) -> None:
-    def deleted(frame: int) -> Scene:
-        scene = Scene(time_slice=TimeSlice(start=frame, end=frame))
-        scene.add_event(Delete(scene.time_slice, EntityId(f"o{frame}")))
-        return scene
+def _deleting_scene(frame: int, *entity_ids: str) -> Scene:
+    scene = Scene(time_slice=TimeSlice(start=frame, end=frame))
+    for entity_id in entity_ids:
+        scene.add_event(Delete(scene.time_slice, EntityId(entity_id)))
+    return scene
 
-    panel = _panel(qtbot, render_catalog_selection)
-    panel.update_scene(deleted(1), _frame(1), {})
+
+def _open_last_live_event(panel: MediaToolsPanel) -> SmallButton | None:
+    """Open the newest event of the Events list and return its Next button."""
     tabs = panel.findChild(QTabBar, "mediaToolsTabs")
     assert tabs is not None
     tabs.setCurrentIndex(1)
     events_view = panel.events_page.findChild(RowTableView)
     assert events_view is not None
-    _click_row(events_view, EventPageKey(FrameEvent.of(_frame(1), deleted(1).events[0])))
-    next_button = _button(panel, "Next in list")
+    _click_row(events_view, events_view.rows_model.key_at(events_view.rows_model.rowCount() - 1))
+    return _button(panel, "Next in list")
+
+
+@pytest.mark.parametrize("held", [1, LIVE_EVENT_LIMIT])
+def test_live_event_page_steps_to_events_that_arrive_while_it_is_open(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, held: int
+) -> None:
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.update_scene(_deleting_scene(1, *(f"o{n}" for n in range(held))), _frame(1), {})
+    next_button = _open_last_live_event(panel)  # At the limit, the next event drops the oldest and keeps the count.
     assert next_button is not None and not next_button.isEnabled()
 
-    panel.update_scene(deleted(2), _frame(2), {})
+    panel.update_scene(_deleting_scene(2, "new"), _frame(2), {})
     assert next_button.isEnabled()
     next_button.click()
 
     (page,) = [p for p in panel.findChildren(EventPage) if p.isVisible()]
-    assert page.frame_event.entity_ids == ("o2",)
+    assert page.frame_event.entity_ids == ("new",)
 
 
 def test_live_event_page_dims_an_object_when_the_frame_has_no_overlay(qtbot: QtBot) -> None:
