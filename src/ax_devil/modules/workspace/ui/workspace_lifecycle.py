@@ -72,7 +72,9 @@ class WorkspaceLifecycle(QObject):
         """
         if not self._store.is_modified:
             return
-        self._save_copy(self._store.workspace)
+        copy = self._write_copy(self._store.workspace)
+        if copy is not None:
+            self._recent_workspaces.record(copy)  # Unlisted, the copy is still on disk if this fails.
 
     def new_workspace(self, items: Sequence[WorkspaceItem] = ()) -> bool:
         """Replace the Workspace with a new Untitled one holding *items*; return False when the user cancels."""
@@ -138,8 +140,8 @@ class WorkspaceLifecycle(QObject):
         choice = self._prompts.ask_save_changes(self._store.workspace.name)
         return choice is SaveChoice.DISCARD or (choice is SaveChoice.SAVE and self.save_workspace())
 
-    def _save_copy(self, workspace: Workspace) -> bool:
-        """Save *workspace* as a new file in the unsaved folder and record it; return whether that worked."""
+    def _write_copy(self, workspace: Workspace) -> Path | None:
+        """Save *workspace* as a new file in the unsaved folder; return its path, or None when that failed."""
         copy: Path | None = None
         try:
             copy = self._reserve_copy_path(workspace)
@@ -150,9 +152,8 @@ class WorkspaceLifecycle(QObject):
             )
             if copy is not None:
                 copy.unlink(missing_ok=True)
-            return False
-        self._recent_workspaces.record(copy)
-        return True
+            return None
+        return copy
 
     def _reserve_copy_path(self, workspace: Workspace) -> Path:
         """Create and return an empty file named after *workspace* and now that no other file or instance has.
@@ -177,8 +178,9 @@ class WorkspaceLifecycle(QObject):
     def _keep_legacy_backup(self) -> None:
         """Keep the unsaved edits in an earlier version's backup as a recent workspace, then delete the backup.
 
-        A backup that is damaged or holds no edits is deleted without a copy; one that cannot be read now or whose copy
-        cannot be saved stays for the next launch.
+        A backup that is damaged or is the empty Untitled Workspace is deleted without a copy; one that cannot be read
+        now, or whose copy cannot be saved and listed, stays for the next launch. The backup's saved file is not read,
+        so the copy is made whether or not the Workspace has unsaved edits.
         """
         backup = self._unsaved_folder().parent / LEGACY_BACKUP_FILE
         if not backup.is_file():
@@ -188,8 +190,13 @@ class WorkspaceLifecycle(QObject):
         except OSError as exc:
             logger.warning(f"Could not read the earlier version's workspace backup {backup}, keeping it: {exc}")
             return
-        if unsaved is not None and not self._save_copy(unsaved):
-            return
+        if unsaved is not None:
+            copy = self._write_copy(unsaved)
+            if copy is None:
+                return
+            if not self._recent_workspaces.record(copy):
+                copy.unlink(missing_ok=True)  # The backup is the one copy that stays, so there is no duplicate.
+                return
         try:
             backup.unlink()
         except OSError as exc:

@@ -23,19 +23,19 @@ LEGACY_BACKUP_FILE = "workspace-backup.json"
 
 
 def read_legacy_backup(backup: Path) -> Workspace | None:
-    """Return the Workspace kept in *backup* when it holds unsaved edits, else None.
+    """Return the Workspace kept in *backup* unless it is the empty Untitled Workspace, else None.
 
     The file is a workspace file without a version and with the path of the workspace's own file or null, and with
-    absolute item paths. There are no edits when it equals that file's content, or the empty Untitled Workspace
-    without a file. A file whose content is damaged is logged and also gives None. Raises ``OSError`` when the file
-    cannot be read now, which says nothing about its content.
+    absolute item paths. That workspace file is never read, since it may be on a slow or disconnected mount, so a
+    backup of an unchanged saved Workspace is returned like any other. A file whose content is damaged is logged and
+    gives None. Raises ``OSError`` when the file cannot be read now, which says nothing about its content.
     """
     text = backup.read_text(encoding="utf-8")
     try:
         document = json.loads(text)
         if not isinstance(document, dict):
             raise ValueError("it is not a JSON object")
-        saved_file = document.pop("path", None)
+        document.pop("path", None)
         document["version"] = FORMAT_VERSION
         with tempfile.TemporaryDirectory() as folder:
             converted = Path(folder) / "workspace"
@@ -44,9 +44,5 @@ def read_legacy_backup(backup: Path) -> Workspace | None:
     except (ValueError, WorkspaceFileError) as exc:
         logger.warning(f"Ignoring damaged workspace backup {backup}: {exc}")
         return None
-    try:
-        saved = load_workspace(Path(saved_file)) if isinstance(saved_file, str) else Workspace()
-    except WorkspaceFileError:
-        saved = Workspace()  # Its file is gone or damaged, so the backup is the only copy.
     kept = replace(kept, path=None)
-    return None if kept == replace(saved, path=None) else kept
+    return None if kept == Workspace() else kept

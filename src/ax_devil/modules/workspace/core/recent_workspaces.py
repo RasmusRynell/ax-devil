@@ -43,22 +43,25 @@ class RecentWorkspaces:
         """Return the remembered workspaces, newest first; their files are not checked, so none is touched."""
         return tuple(self._load())
 
-    def record(self, workspace_path: Path) -> None:
-        """Put *workspace_path* first, and keep at most the limit.
+    def record(self, workspace_path: Path) -> bool:
+        """Put *workspace_path* first, and keep at most the limit; return whether the list could be saved.
 
         The path is kept as the user chose it, made absolute and normalized lexically; symlinks are not followed.
         """
         workspace_path = Path(os.path.normpath(workspace_path.absolute()))
         used = RecentWorkspace(workspace_path, datetime.now())
-        self._update(lambda entries: [used, *(entry for entry in entries if entry.path != workspace_path)])
+        return self._update(lambda entries: [used, *(entry for entry in entries if entry.path != workspace_path)])
 
-    def forget(self, workspace_path: Path) -> None:
+    def forget(self, workspace_path: Path) -> bool:
         """Remove *workspace_path*, as recorded, from the list; a file that cannot be opened is forgotten this way."""
         workspace_path = Path(os.path.normpath(workspace_path.absolute()))
-        self._update(lambda entries: [entry for entry in entries if entry.path != workspace_path])
+        return self._update(lambda entries: [entry for entry in entries if entry.path != workspace_path])
 
-    def _update(self, change: Callable[[list[RecentWorkspace]], list[RecentWorkspace]]) -> None:
-        """Replace the list with *change* of the list as it is now, trimmed to the limit; a failure is logged."""
+    def _update(self, change: Callable[[list[RecentWorkspace]], list[RecentWorkspace]]) -> bool:
+        """Replace the list with *change* of the list as it is now, trimmed to the limit.
+
+        Return whether it was saved; a failure is logged.
+        """
         path = self._path_provider()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +74,8 @@ class RecentWorkspaces:
                 write_json_file(path, document)
         except OSError as exc:
             logger.warning(f"Could not save recent workspaces to {path}: {exc}")
+            return False
+        return True
 
     def _load(self) -> list[RecentWorkspace]:
         if not self._path_provider().is_file():

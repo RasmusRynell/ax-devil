@@ -190,22 +190,42 @@ def test_the_first_launch_after_an_upgrade_lists_the_unsaved_edits_of_the_earlie
     assert len(launch.lifecycle.recent_workspaces()) == 1
 
 
-def test_an_earlier_versions_backup_without_unsaved_edits_or_unreadable_is_dropped_without_a_recent_workspace(
+def test_an_earlier_versions_backup_that_is_empty_or_damaged_is_dropped_without_a_recent_workspace(
     launches: _Launches, tmp_path: Path
 ) -> None:
-    saved_file = tmp_path / "Lot.ax-devil.workspace"
-    clip = _video(tmp_path, "a.mp4")
-    save_workspace(Workspace(name="Lot", items=(clip,)), saved_file)
-    unchanged = _write_legacy_backup(tmp_path / "state", "Lot", [clip], saved_file)
+    backup = _write_legacy_backup(tmp_path / "state", Workspace().name, [])
     launches.new().lifecycle.launch()
-    assert not unchanged.exists()
+    assert not backup.exists()
 
-    unchanged.write_text("{ not json")
+    backup.write_text("{ not json")
     launch = launches.new()
     launch.lifecycle.launch()
 
-    assert not unchanged.exists()
+    assert not backup.exists()
     assert launch.lifecycle.recent_workspaces() == ()
+
+
+def test_an_earlier_versions_backup_is_listed_without_reading_the_file_it_names(
+    launches: _Launches, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip = _video(tmp_path, "lot.mp4")
+    saved_file = tmp_path / "Lot.ax-devil.workspace"
+    save_workspace(Workspace(name="Lot", items=(clip,)), saved_file)
+    backup = _write_legacy_backup(tmp_path / "state", "Lot", [clip], saved_file)
+    real_read_text = Path.read_text
+
+    def read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+        assert path != saved_file, "the backup's saved file is on a mount that may block"
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    launch = launches.new()
+
+    launch.lifecycle.launch()
+
+    assert not backup.exists()
+    [recent] = launch.lifecycle.recent_workspaces()
+    assert recent.path != saved_file
 
 
 def test_an_earlier_versions_backup_that_cannot_be_read_now_stays_for_the_next_launch(
@@ -442,3 +462,44 @@ def test_reopening_the_saved_workspace_replaces_it_and_resolves_its_items_again(
     assert launch.store.workspace.items == (clip,)
     assert [resolution.item for resolution in launch.store.resolutions()] == [clip]
     assert not any(resolution.is_pending for resolution in launch.store.resolutions())
+
+
+def _break_recent_workspaces(tmp_path: Path) -> Path:
+    """Make the recent workspaces list unwritable, as an inaccessible lock file does; return the lock path."""
+    lock = tmp_path / "state" / "recent-workspaces.json.lock"
+    lock.mkdir(parents=True)
+    return lock
+
+
+def test_a_quit_whose_copy_cannot_be_listed_leaves_the_copy_on_disk(launches: _Launches, tmp_path: Path) -> None:
+    _break_recent_workspaces(tmp_path)
+    clip = _video(tmp_path, "a.mp4")
+    launch = launches.new()
+    launch.store.add_items([clip])
+
+    launch.lifecycle.keep_unsaved_changes()
+
+    assert launch.lifecycle.recent_workspaces() == ()
+    [copy] = (tmp_path / "state" / "unsaved-workspaces").iterdir()
+    assert load_workspace(copy).items == (clip,)
+
+
+def test_an_earlier_versions_backup_whose_copy_cannot_be_listed_stays_for_the_next_launch(
+    launches: _Launches, tmp_path: Path
+) -> None:
+    clip = _video(tmp_path, "lot.mp4")
+    backup = _write_legacy_backup(tmp_path / "state", "Parking lot", [clip])
+    lock = _break_recent_workspaces(tmp_path)
+
+    launches.new().lifecycle.launch()
+
+    assert backup.exists()
+    assert list((tmp_path / "state" / "unsaved-workspaces").iterdir()) == []
+
+    lock.rmdir()
+    next_launch = launches.new()
+    next_launch.lifecycle.launch()
+
+    assert not backup.exists()
+    [recent] = next_launch.lifecycle.recent_workspaces()
+    assert load_workspace(recent.path).items == (clip,)
