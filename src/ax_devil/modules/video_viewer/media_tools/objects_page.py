@@ -225,6 +225,7 @@ class ObjectsPage(QWidget):
 
     objectActivated = Signal(str)  # noqa: N815  # entity id
     countChanged = Signal(int)  # noqa: N815
+    orderChanged = Signal()  # noqa: N815  # While hidden: the listed objects or their order may have changed
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Create an empty page in Frame scope."""
@@ -243,7 +244,6 @@ class ObjectsPage(QWidget):
         self._file_dirty = True
         self._stale = True
         self._count = 0
-        self._highlight: ObjectPageKey | None = None
 
         self._query_bar = QueryBar(self)
         self._switch = _ScopeSwitch(self)
@@ -346,12 +346,13 @@ class ObjectsPage(QWidget):
         self._update_count()
         self._refresh()
 
-    def set_current_object(self, entity_id: str | None) -> None:
-        """Mark the row of the object whose page is open; None clears the mark."""
-        self.highlight(None if entity_id is None else ObjectPageKey(entity_id))
-
     def neighbor(self, key: PageKey, delta: int) -> PageKey | None:
-        """Return the page *delta* rows from *key* in the listed order, or None past either end or off the list."""
+        """Return the page *delta* rows from *key* in the listed order, or None past either end or off the list.
+
+        The order is the latest one even while the page is hidden behind an open object page.
+        """
+        if self._stale:
+            self._apply()
         model = self._tables[self._scope].model
         other = model.neighbor(key, delta)
         row = None if other is None else model.row_for(other)
@@ -458,6 +459,7 @@ class ObjectsPage(QWidget):
             self._apply()
         else:
             self._stale = True
+            self.orderChanged.emit()
 
     def _apply(self) -> None:
         self._stale = False

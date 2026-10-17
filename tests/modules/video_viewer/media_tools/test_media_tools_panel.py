@@ -30,7 +30,7 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey
-from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
+from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, RowTableModel, RowTableView
 
 
 def _frame(index: int) -> FrameIdentifier:
@@ -231,6 +231,42 @@ def test_object_page_steps_follow_the_listed_order(
     assert selected == ["c", "b", "c", "a"]
     next_button = _button(panel, "Next in list")
     assert next_button is not None and not next_button.isEnabled()
+
+
+def test_object_page_steps_use_the_list_as_it_is_now(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.update_scene(_scene(_entity("a", conf=0.9), _entity("b", conf=0.5)), _frame(0), {})
+    selected = _record(panel.objectSelected)
+    _open(panel, "a")
+
+    panel.update_scene(_scene(_entity("a", conf=0.9), _entity("c", conf=0.5)), _frame(1), {})
+    _click(panel, "Next in list")
+    assert selected == ["a", "c"]  # "b" has left the frame.
+
+    panel.update_scene(_scene(_entity("c", conf=0.5)), _frame(2), {})
+    previous_button = _button(panel, "Previous in list")
+    assert previous_button is not None and not previous_button.isEnabled()  # The list no longer has "a" before it.
+
+
+def test_unchanged_rows_are_not_sorted_again(qtbot: QtBot) -> None:
+    sorts: list[str] = []
+
+    def sort_key(row: object) -> str:
+        sorts.append(str(row))
+        return str(row)
+
+    model = RowTableModel([Column("Name", CellKind.TEXT, str, sort_key)])
+    model.sort(0)
+    rows = ["b", "a", "c"]
+    model.set_rows(rows, str)
+    sorts.clear()
+
+    model.set_rows(list(rows), str)
+    assert not sorts
+    model.set_rows(["a", "c"], str)
+    assert sorts and [model.key_at(n) for n in range(model.rowCount())] == ["a", "c"]
 
 
 def test_object_page_outside_the_frame_goes_to_where_the_object_was_and_will_be(
