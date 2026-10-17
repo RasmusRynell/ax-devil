@@ -137,10 +137,14 @@ class RowTableModel(QAbstractTableModel):
     def set_rows(self, rows: Sequence[object], key: Callable[[Any], Hashable]) -> None:
         """Show *rows*, each identified by ``key(row)``.
 
-        When the same keys come back in the same order only the cells repaint, so scroll position and keyboard cursor
-        stay; the same keys in another order move the rows; otherwise the table resets.
+        The very same row objects again only repaint, without sorting; when the same keys come back in the same order
+        the cells repaint too, so scroll position and keyboard cursor stay; the same keys in another order move the
+        rows; otherwise the table resets.
         """
         self._key_of = key
+        if len(rows) == len(self._source) and all(new is old for new, old in zip(rows, self._source)):
+            self._repaint_all()
+            return
         self._source = list(rows)
         self._apply_order()
 
@@ -442,12 +446,11 @@ class RowTableView(QTreeView):
     """A ``RowTableModel`` as a table of uniform rows with caption headers that sort their column.
 
     The highlighted row and the row under the pointer get the sidebar's row background. A click or Enter on a row emits
-    ``rowActivated`` with the row object and a double click ``rowDoubleClicked``; the arrow keys move a keyboard
-    cursor, and keys the table does not use (Esc, Backspace) go to the parent.
+    ``rowActivated`` with the row object; the arrow keys move a keyboard cursor, and keys the table does not use (Esc,
+    Backspace) go to the parent.
     """
 
     rowActivated = Signal(object)  # the row object
-    rowDoubleClicked = Signal(object)  # the row object
 
     def __init__(self, model: RowTableModel, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -477,7 +480,6 @@ class RowTableView(QTreeView):
         model.modelAboutToBeReset.connect(self._save_scroll)
         model.modelReset.connect(self._restore_scroll)
         self.clicked.connect(self._activate_index)
-        self.doubleClicked.connect(self._double_click_index)
         follow_appearance(self, self._apply_metrics)
 
     @property
@@ -542,10 +544,6 @@ class RowTableView(QTreeView):
     def _activate_index(self, index: QModelIndex | QPersistentModelIndex) -> None:
         if 0 <= index.row() < self._rows_model.rowCount():
             self.rowActivated.emit(self._rows_model.row_at(index.row()))
-
-    def _double_click_index(self, index: QModelIndex | QPersistentModelIndex) -> None:
-        if 0 <= index.row() < self._rows_model.rowCount():
-            self.rowDoubleClicked.emit(self._rows_model.row_at(index.row()))
 
     def _sort_by_section(self, section: int) -> None:
         if self._rows_model.columns[section].sort_key is None:

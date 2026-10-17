@@ -1027,7 +1027,7 @@ class TestOfflineVideoViewerWidget:
         assert all(page.isVisible() for page in event_pages)
         assert [_event_texts(panel) for panel in panels] == [["Delete first"], ["Delete second"]]
 
-        event_pages[1].frameRequested.emit(20)
+        panels[1].frameRequested.emit(20)
         assert frame_sources[0].get_current_frame() == 20
         frame_sources[0].frameReady.emit(_frame_data(20))
         QCoreApplication.processEvents()

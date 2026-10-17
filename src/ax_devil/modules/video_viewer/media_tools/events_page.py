@@ -120,13 +120,12 @@ class EventsPage(QWidget):
     scrolled away from it. Queries search the fields ``kind`` and ``object`` (any involved id) and the label as free
     text.
 
-    A click or Enter on a row emits ``eventActivated`` with its ``FrameEvent``; a double click emits ``frameRequested``
-    with its frame, offline. The page is a ``RowSource``: it orders the events the event page steps through and marks
-    the one that page came from. While hidden it keeps only the latest frame and applies it when shown.
+    A click or Enter on a row emits ``eventActivated`` with its ``FrameEvent``. The page is a ``RowSource``: it orders
+    the events the event page steps through and marks the one that page came from. While hidden it keeps only the
+    latest frame and applies it when shown, and keeps the scroll position the user left it at.
     """
 
     eventActivated = Signal(object)  # noqa: N815  # FrameEvent
-    frameRequested = Signal(int)  # noqa: N815  # video frame index
     countChanged = Signal(int)  # noqa: N815  # events held, before the query narrows them
 
     def __init__(self, history: SceneHistory | None = None, parent: QWidget | None = None) -> None:
@@ -176,7 +175,6 @@ class EventsPage(QWidget):
 
         self._query_bar.queryChanged.connect(self._on_query_changed)
         self._view.rowActivated.connect(lambda row: self.eventActivated.emit(row.event))
-        self._view.rowDoubleClicked.connect(self._on_double_clicked)
         self._view.verticalScrollBar().valueChanged.connect(self._on_scrolled)
         self.set_history(history)
 
@@ -217,7 +215,12 @@ class EventsPage(QWidget):
             self._follow_frame()
 
     def neighbor(self, key: PageKey, delta: int) -> PageKey | None:
-        """Return the page *delta* rows from *key* in the listed order, or None past either end or off the list."""
+        """Return the page *delta* rows from *key* in the listed order, or None past either end or off the list.
+
+        The order is the latest one even while the page is hidden behind an open event page.
+        """
+        if self._stale:
+            self._apply()
         other = self._model.neighbor(key, delta)
         row = None if other is None else self._model.row_for(other)
         return None if row is None else _key(row)
@@ -227,13 +230,16 @@ class EventsPage(QWidget):
         self._model.set_highlight(key)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
-        """Catch up with the recorded events and the displayed frame, and bring the line into view."""
+        """Catch up with the recorded events and the displayed frame; bring the line into view if it was followed.
+
+        A user who scrolled away from the line finds the list where they left it, such as after going back from an
+        event page.
+        """
         super().showEvent(event)
         if self._stale:
             self._apply()
-        self._following = True
-        self._follow_frame(force=True)
-        if self._history is None:
+        self._follow_frame(force=self._following)
+        if self._history is None and self._following:
             self._view.scrollToBottom()
 
     # Internal
@@ -279,10 +285,6 @@ class EventsPage(QWidget):
     def _on_query_changed(self, query: Query) -> None:
         self._query = query
         self._refresh()
-
-    def _on_double_clicked(self, row: _EventRow) -> None:
-        if self._history is not None:
-            self.frameRequested.emit(row.frame)
 
     def _on_scrolled(self) -> None:
         """Stop following the line when the user scrolls it out of view, and follow again when they bring it back."""

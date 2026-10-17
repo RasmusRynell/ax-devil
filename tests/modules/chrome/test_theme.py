@@ -28,6 +28,7 @@ from ax_devil.modules.video_player.ui.controls import video_control_icon
 from ax_devil.modules.video_viewer.media_tools.events_page import EventsPage
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectsPage
+from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 
@@ -112,11 +113,11 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
         assert _foreground_pixels(card_image, card_image.rect(), dark=dark) > 100, mode
 
         # The row of the current object stays readable.
-        entities.set_current_object("person-1")
+        entities.highlight(ObjectPageKey("person-1"))
         QApplication.processEvents()
         selected = entity_view.viewport().grab().toImage()
         assert _foreground_pixels(selected, row_rect, dark=dark, light_limit=140) > 40, mode
-        entities.set_current_object(None)
+        entities.highlight(None)
 
         # Playback controls sit on the near-black video in both themes, so they stay light.
         icon = video_control_icon(Icon.PLAY).pixmap(32, 32).toImage()

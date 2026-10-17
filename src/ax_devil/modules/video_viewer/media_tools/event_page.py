@@ -170,7 +170,7 @@ class EventPage(QWidget):
             ()
             if history is None
             else tuple(
-                other for other in history.events if other.frame_id.sequence_id == sequence and other is not self._event
+                other for other in history.events if other.frame_id.sequence_id == sequence and other != self._event
             )
         )
         self._request_refresh()

@@ -31,7 +31,7 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, ObjectPageKey
-from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
+from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, RowTableModel, RowTableView
 
 
 def _frame(index: int) -> FrameIdentifier:
@@ -258,6 +258,42 @@ def test_the_selection_on_the_video_and_the_open_object_page_follow_each_other(
     assert display.viewport._selected_id is None
 
 
+def test_object_page_steps_use_the_list_as_it_is_now(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    panel = _panel(qtbot, render_catalog_selection)
+    panel.update_scene(_scene(_entity("a", conf=0.9), _entity("b", conf=0.5)), _frame(0), {})
+    selected = _record(panel.objectSelected)
+    _open(panel, "a")
+
+    panel.update_scene(_scene(_entity("a", conf=0.9), _entity("c", conf=0.5)), _frame(1), {})
+    _click(panel, "Next in list")
+    assert selected == ["a", "c"]  # "b" has left the frame.
+
+    panel.update_scene(_scene(_entity("c", conf=0.5)), _frame(2), {})
+    previous_button = _button(panel, "Previous in list")
+    assert previous_button is not None and not previous_button.isEnabled()  # The list no longer has "a" before it.
+
+
+def test_unchanged_rows_are_not_sorted_again(qtbot: QtBot) -> None:
+    sorts: list[str] = []
+
+    def sort_key(row: object) -> str:
+        sorts.append(str(row))
+        return str(row)
+
+    model = RowTableModel([Column("Name", CellKind.TEXT, str, sort_key)])
+    model.sort(0)
+    rows = ["b", "a", "c"]
+    model.set_rows(rows, str)
+    sorts.clear()
+
+    model.set_rows(list(rows), str)
+    assert not sorts
+    model.set_rows(["a", "c"], str)
+    assert sorts and [model.key_at(n) for n in range(model.rowCount())] == ["a", "c"]
+
+
 def test_object_page_outside_the_frame_goes_to_where_the_object_was_and_will_be(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
 ) -> None:
@@ -360,3 +396,29 @@ def test_event_page_opens_from_the_events_list_and_leads_to_an_involved_object_a
     assert _button(panel, "Go to frame") is not None  # The event page again, and the list is still beneath it.
     _click(panel, "Back (Esc)")
     assert events_view.isVisible() and events_view.rows_model.highlight() == EventPageKey(event)
+
+
+def test_event_page_follows_its_event_through_a_history_replacement_and_closes_when_it_is_gone(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    def merge(frame: int) -> FrameEvent:
+        return FrameEvent(_frame(frame), "Merge", "Merge a → b", ("a", "b"))
+
+    delete = FrameEvent(_frame(6), "Delete", "Delete a", ("a",))
+    panel = _panel(qtbot, render_catalog_selection, _history(events=(merge(3), delete)))
+    requested = _record(panel.frameRequested)
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    tabs.setCurrentIndex(1)
+    events_view = panel.events_page.findChild(RowTableView)
+    assert events_view is not None
+    _click_row(events_view, EventPageKey(merge(3)))
+
+    panel.set_scene_history(_history(events=(merge(5), delete)))
+    _click(panel, "Go to frame")
+    _click(panel, "Next in list")  # The list it came from has the new order too.
+    _click(panel, "Go to frame")
+    assert requested == [5, 6]
+
+    panel.set_scene_history(_history(events=(merge(5),)))
+    assert events_view.isVisible() and _button(panel, "Go to frame") is None

@@ -84,19 +84,16 @@ def test_history_lists_events_in_frame_order_and_follows_the_displayed_frame_onc
     assert _position(page) == (0, 0)
 
 
-def test_double_click_seeks_to_the_frame_of_a_file_event_but_not_a_live_one(qtbot: QtBot) -> None:
-    requested: list[int] = []
-    for history in (_history(_event(2, "Delete a"), _event(6, "Delete b")), None):
-        page = _page(qtbot, history)
-        page.frameRequested.connect(requested.append)
-        if history is None:
-            page.update_scene(_deleting_scene("a"), _frame_id(6), {})
-        view = _view(page)
-        center = view.visualRect(view.rows_model.index(history is not None, 0)).center()
-        QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=center)  # A double click starts as a click.
-        QTest.mouseDClick(view.viewport(), Qt.MouseButton.LeftButton, pos=center)
+def test_list_keeps_the_scroll_position_the_user_left_it_at_when_shown_again(qtbot: QtBot) -> None:
+    page = _page(qtbot, _history(*(_event(frame, f"Delete {frame}") for frame in range(100))))
+    page.update_scene(None, _frame_id(80), {})
+    bar = _view(page).verticalScrollBar()
+    assert bar.value() > 0  # Following playback.
 
-    assert requested == [6]
+    bar.setValue(0)  # The user scrolls back to the start, then opens an event page and returns.
+    page.hide()
+    page.show()
+    assert bar.value() == 0
 
 
 def test_live_page_records_events_of_newly_shown_overlays_only_even_while_hidden(qtbot: QtBot) -> None:
