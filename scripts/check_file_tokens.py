@@ -54,6 +54,8 @@ IGNORED_PATTERNS = (
     "*.bin",
     "*.sqlite",
     "*.db",
+    # Data files loaded whole as render catalogs, not split into modules.
+    "src/ax_devil/modules/scene/rendering/catalog_definitions/*.json",
 )
 
 SPLIT_INSTRUCTIONS = f"""\

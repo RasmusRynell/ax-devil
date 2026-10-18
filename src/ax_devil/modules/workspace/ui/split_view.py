@@ -13,28 +13,14 @@ It hosts `ViewerWidget` instances directly and preserves their header actions
 
 from __future__ import annotations
 
-import weakref
-from enum import Enum
 from itertools import count
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QChildEvent, QEvent, QMimeData, QObject, QPoint, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
-    QDrag,
-    QDragEnterEvent,
-    QDragLeaveEvent,
-    QDragMoveEvent,
-    QDropEvent,
-    QMouseEvent,
-    QPainter,
-    QPaintEvent,
-    QPalette,
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
-    QAbstractButton,
-    QApplication,
-    QBoxLayout,
     QFrame,
     QScrollArea,
     QSplitter,
@@ -43,6 +29,15 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.workspace.ui.split_filters import HeaderDragFilter, WidgetActivationFilter
+from ax_devil.modules.workspace.ui.split_panes import (
+    LeafContainer,
+    SplitDirection,
+    collapse_empty_ancestors,
+    largest_leaf_for_add,
+    list_leaves,
+    replace_child,
+)
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeWidget
 
@@ -51,141 +46,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-PANEL_MIME_TYPE = "application/x-ax-devil-widget-id"
 _id_counter = count(1)
-
-
-class SplitDirection(str, Enum):
-    LEFT = "left"
-    RIGHT = "right"
-    TOP = "top"
-    BOTTOM = "bottom"
 
 
 def _next_id() -> str:
     return f"w-{next(_id_counter)}"
-
-
-class LeafContainer(QFrame):
-    """Leaf that hosts one viewer widget and accepts drops to split."""
-
-    def __init__(self, manager: "SplitView", widget: ViewerWidget | None = None) -> None:
-        super().__init__(manager)
-        self._manager = manager
-        self._widget: ViewerWidget | None = None
-        self.setObjectName("LeafContainer")
-        self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setLineWidth(0)
-        self.setContentsMargins(0, 0, 0, 0)
-        self.setAcceptDrops(True)
-
-        # Overlay for drag feedback
-        self._drop_overlay = _DropOverlay(self)
-        self._drop_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._drop_overlay.hide()
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        if widget:
-            self.set_widget(widget)
-
-        container_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, container_id=container_id: logger.debug(f"LeafContainer.destroyed id={container_id}")
-        )
-
-    def get_widget(self) -> ViewerWidget | None:
-        """Return the viewer widget hosted by this leaf, if any."""
-        return self._widget
-
-    def set_widget(self, widget: ViewerWidget | None) -> None:
-        """Replace the viewer widget hosted by this leaf."""
-        layout = self.layout()
-        assert isinstance(layout, QBoxLayout)
-        while layout.count():
-            item = layout.takeAt(0)
-            if item is None:
-                continue
-            existing_widget = item.widget()
-            if existing_widget is not None:
-                existing_widget.setParent(None)
-        self._widget = widget
-        if widget is not None:
-            layout.addWidget(widget)
-
-    # Drag-and-drop events
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        if event.mimeData().hasFormat(PANEL_MIME_TYPE):
-            event.acceptProposedAction()
-            pos = event.position().toPoint()
-            direction = self._infer_drop_direction_from_position(pos)
-            src_ba = event.mimeData().data(PANEL_MIME_TYPE)
-            src_id = bytes(src_ba.data()).decode("utf-8")
-            current = self.get_widget()
-            current_id = self._manager._id_for_widget(current) if current is not None else None
-            if current is not None and current_id is not None and current_id == src_id:
-                self._manager._clear_active_overlay(self)
-            else:
-                self._manager._set_active_overlay(self, direction)
-        else:
-            event.ignore()
-
-    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        if event.mimeData().hasFormat(PANEL_MIME_TYPE):
-            event.acceptProposedAction()
-            pos = event.position().toPoint()
-            direction = self._infer_drop_direction_from_position(pos)
-            src_ba = event.mimeData().data(PANEL_MIME_TYPE)
-            src_id = bytes(src_ba.data()).decode("utf-8")
-            current = self.get_widget()
-            current_id = self._manager._id_for_widget(current) if current is not None else None
-            if current is not None and current_id is not None and current_id == src_id:
-                self._manager._clear_active_overlay(self)
-            else:
-                self._manager._set_active_overlay(self, direction)
-        else:
-            event.ignore()
-
-    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
-        self._manager._clear_active_overlay(self)
-        super().dragLeaveEvent(event)
-
-    def dropEvent(self, event: QDropEvent) -> None:
-        if not event.mimeData().hasFormat(PANEL_MIME_TYPE):
-            event.ignore()
-            self._manager._clear_active_overlay(self)
-            return
-        ba = event.mimeData().data(PANEL_MIME_TYPE)
-        widget_id = bytes(ba.data()).decode("utf-8")
-        pos = event.position().toPoint()
-        direction = self._infer_drop_direction_from_position(pos)
-        self._manager._handle_drop(self, widget_id, direction)
-        event.acceptProposedAction()
-        self._manager._clear_active_overlay(self)
-
-    def leaveEvent(self, _event: QEvent) -> None:
-        self._drop_overlay.clear_hint()
-        self._drop_overlay.hide()
-        self.update()
-
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
-        self._drop_overlay.setGeometry(self.rect())
-
-    def _infer_drop_direction_from_position(self, pos: QPoint) -> SplitDirection:
-        rect = self.rect()
-        w, h = rect.width(), rect.height()
-        x, y = pos.x(), pos.y()
-
-        top_bottom_margin = max(24, int(h * 0.25))
-        if y < top_bottom_margin:
-            return SplitDirection.TOP
-        if y > h - top_bottom_margin:
-            return SplitDirection.BOTTOM
-
-        return SplitDirection.LEFT if x < (w // 2) else SplitDirection.RIGHT
 
 
 class SplitView(QWidget):
@@ -233,7 +98,7 @@ class SplitView(QWidget):
     def add_viewer_widget(self, widget: ViewerWidget) -> None:
         """Add and start a viewer widget in the best available pane."""
         if self.get_widget_count() == 0:
-            leaves = self._list_leaves()
+            leaves = list_leaves(self._root_layout)
             if not leaves:
                 leaf = LeafContainer(self)
                 self._root_layout.addWidget(leaf)
@@ -241,14 +106,14 @@ class SplitView(QWidget):
                 self._attach_and_start_widget(leaf, widget)
             else:
                 self._root_leaf = leaves[0]
-                target_leaf = self._choose_target_leaf_for_add() or leaves[0]
+                target_leaf = largest_leaf_for_add(list_leaves(self._root_layout)) or leaves[0]
                 if target_leaf.get_widget() is None:
                     self._attach_and_start_widget(target_leaf, widget)
                 else:
                     self._split_target_leaf_and_insert_widget(target_leaf, widget, None, SplitDirection.RIGHT)
             return
 
-        target_leaf = self._choose_target_leaf_for_add() or self._root_leaf
+        target_leaf = largest_leaf_for_add(list_leaves(self._root_layout)) or self._root_leaf
         self._split_target_leaf_and_insert_widget(target_leaf, widget, None, SplitDirection.RIGHT)
 
     def remove_viewer_widget(self, widget: ViewerWidget) -> bool:
@@ -268,7 +133,7 @@ class SplitView(QWidget):
         for widget in list(self._widget_ids.keys()):
             self.remove_viewer_widget(widget)
         # After clearing, ensure we have a single root leaf and refresh pointer
-        leaves = self._list_leaves()
+        leaves = list_leaves(self._root_layout)
         if not leaves:
             leaf = LeafContainer(self)
             self._root_layout.addWidget(leaf)
@@ -315,7 +180,7 @@ class SplitView(QWidget):
     # Internal helpers
     def _find_unpinned_leaf(self) -> LeafContainer | None:
         """Return the first leaf containing an unpinned widget, or None."""
-        for leaf in self._list_leaves():
+        for leaf in list_leaves(self._root_layout):
             w = leaf.get_widget()
             if w is not None and not w.is_pinned():
                 return leaf
@@ -374,7 +239,7 @@ class SplitView(QWidget):
         wid = self._widget_ids.pop(widget, None)
         if wid:
             self._id_to_leaf.pop(wid, None)
-        self._collapse_empty_ancestors(leaf)
+        collapse_empty_ancestors(leaf)
         if self._focused_widget is widget:
             self._set_focused_widget(self._first_available_widget())
         self.widget_removed.emit(widget)
@@ -421,16 +286,17 @@ class SplitView(QWidget):
             return None
         return self._id_to_leaf.get(wid)
 
-    def _id_for_widget(self, widget: ViewerWidget) -> str | None:
+    def id_for_widget(self, widget: ViewerWidget) -> str | None:
         """Return id for a widget if known, otherwise None (defensive)."""
         return self._widget_ids.get(widget)
 
     def _install_drag_on_widget_header(self, widget: ViewerWidget) -> None:
         header = widget.get_header_widget()
         # Parent the filter to the header so it dies with the widget; store only a weak reference to the widget
-        header.installEventFilter(_HeaderDragFilter(self, widget, parent=header))
+        header.installEventFilter(HeaderDragFilter(self, widget, parent=header))
 
-    def _handle_drop(self, target_leaf: LeafContainer, widget_id: str, direction: SplitDirection) -> None:
+    def handle_drop(self, target_leaf: LeafContainer, widget_id: str, direction: SplitDirection) -> None:
+        """Move or split the dragged widget *widget_id* onto *target_leaf* from *direction*."""
         source_leaf = self._id_to_leaf.get(widget_id)
         if source_leaf is None:
             return
@@ -455,7 +321,7 @@ class SplitView(QWidget):
             wid = self._widget_ids.get(widget)
             if wid:
                 self._id_to_leaf[wid] = target_leaf
-            self._collapse_empty_ancestors(source_leaf)
+            collapse_empty_ancestors(source_leaf)
         target_leaf.set_widget(widget)
         self._set_focused_widget(widget)
 
@@ -474,7 +340,7 @@ class SplitView(QWidget):
 
     def _install_activation_tracking(self, widget: ViewerWidget) -> None:
         """Track user interaction on a widget subtree to determine the focused pane."""
-        _WidgetActivationFilter(self, widget, parent=widget)
+        WidgetActivationFilter(self, widget, parent=widget)
 
     def _set_focused_widget(self, widget: ViewerWidget | None) -> None:
         """Set the currently focused widget."""
@@ -492,34 +358,36 @@ class SplitView(QWidget):
 
     def _first_available_widget(self) -> ViewerWidget | None:
         """Return the first visible widget if any."""
-        for leaf in self._list_leaves():
+        for leaf in list_leaves(self._root_layout):
             widget = leaf.get_widget()
             if widget is not None:
                 return widget
         return None
 
     # Overlay coordination
-    def _set_active_overlay(self, leaf: LeafContainer, direction: SplitDirection) -> None:
+    def set_active_overlay(self, leaf: LeafContainer, direction: SplitDirection) -> None:
+        """Show the drop hint for *direction* on *leaf* and clear it from the previous leaf."""
         if self._active_overlay_leaf is leaf and self._active_overlay_direction == direction:
             return
         if self._active_overlay_leaf is not None and self._active_overlay_leaf is not leaf:
-            self._active_overlay_leaf._drop_overlay.clear_hint()
-            self._active_overlay_leaf._drop_overlay.hide()
+            self._active_overlay_leaf.drop_overlay.clear_hint()
+            self._active_overlay_leaf.drop_overlay.hide()
             self._active_overlay_leaf.update()
-        leaf._drop_overlay.set_hint(direction)
-        leaf._drop_overlay.show()
-        leaf._drop_overlay.raise_()
+        leaf.drop_overlay.set_hint(direction)
+        leaf.drop_overlay.show()
+        leaf.drop_overlay.raise_()
         leaf.update()
         self._active_overlay_leaf = leaf
         self._active_overlay_direction = direction
 
-    def _clear_active_overlay(self, leaf: LeafContainer | None = None) -> None:
+    def clear_active_overlay(self, leaf: LeafContainer | None = None) -> None:
+        """Clear the drop hint, when it is on *leaf* or *leaf* is None."""
         if self._active_overlay_leaf is None:
             return
         if leaf is not None and leaf is not self._active_overlay_leaf:
             return
-        self._active_overlay_leaf._drop_overlay.clear_hint()
-        self._active_overlay_leaf._drop_overlay.hide()
+        self._active_overlay_leaf.drop_overlay.clear_hint()
+        self._active_overlay_leaf.drop_overlay.hide()
         self._active_overlay_leaf.update()
         self._active_overlay_leaf = None
         self._active_overlay_direction = None
@@ -559,7 +427,7 @@ class SplitView(QWidget):
         else:
             first, second = target_leaf, new_leaf
 
-        self._replace_child_widget_in_parent(parent, target_leaf, splitter)
+        replace_child(parent, target_leaf, splitter)
         splitter.addWidget(first)
         splitter.addWidget(second)
 
@@ -571,234 +439,3 @@ class SplitView(QWidget):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([1, 1])
-
-    def _replace_child_widget_in_parent(self, parent: QWidget, old_child: QWidget, new_child: QWidget) -> None:
-        if isinstance(parent, QSplitter):
-            index = parent.indexOf(old_child)
-            prev_sizes = parent.sizes()
-            # Not QSplitter.replaceWidget: PySide does not record the new parent, so freeing the old splitter
-            # below invalidates the Qt-created wrappers (such as QML items) inside the moved subtree.
-            parent.insertWidget(index, new_child)
-            old_child.setParent(None)
-            if prev_sizes and len(prev_sizes) == parent.count():
-                parent.setSizes(prev_sizes)
-        else:
-            layout = parent.layout()
-            assert isinstance(layout, QBoxLayout)
-            for i in range(layout.count()):
-                item = layout.itemAt(i)
-                if item is None:
-                    continue
-                if item.widget() is old_child:
-                    layout.takeAt(i)
-                    old_child.setParent(None)
-                    layout.insertWidget(i, new_child)
-                    break
-
-    def _collapse_empty_ancestors(self, leaf: LeafContainer) -> None:
-        widget = leaf.get_widget()
-        if widget is not None:
-            return
-        parent = leaf.parentWidget()
-        if not isinstance(parent, QSplitter):
-            return
-        if parent.count() != 2:
-            return
-        idx = parent.indexOf(leaf)
-        sibling_index = 1 - idx
-        sibling = parent.widget(sibling_index)
-        if sibling is None:
-            return
-        grandparent = parent.parentWidget()
-        if grandparent is None:
-            return
-        prev_gp_sizes = grandparent.sizes() if isinstance(grandparent, QSplitter) else None
-        self._replace_child_widget_in_parent(grandparent, parent, sibling)
-        if isinstance(grandparent, QSplitter) and prev_gp_sizes and len(prev_gp_sizes) == grandparent.count():
-            grandparent.setSizes(prev_gp_sizes)
-        parent.setParent(None)
-        leaf.setParent(None)
-
-    def _choose_target_leaf_for_add(self) -> LeafContainer | None:
-        leaves = self._list_leaves()
-        if not leaves:
-            return None
-
-        def area(leaf: LeafContainer) -> int:
-            s = leaf.size()
-            return int(max(1, s.width() * s.height()))
-
-        occupied = [leaf for leaf in leaves if leaf.get_widget() is not None]
-        candidates = occupied or leaves
-        return max(candidates, key=area)
-
-    def _list_leaves(self) -> list[LeafContainer]:
-        def walk(widget: QWidget) -> list[LeafContainer]:
-            if isinstance(widget, LeafContainer):
-                return [widget]
-            if isinstance(widget, QSplitter):
-                acc_list: list[LeafContainer] = []
-                for i in range(widget.count()):
-                    child = widget.widget(i)
-                    if child is not None:
-                        acc_list.extend(walk(child))
-                return acc_list
-            layout = widget.layout()
-            if layout is not None:
-                acc_list2: list[LeafContainer] = []
-                for i in range(layout.count()):
-                    item_i = layout.itemAt(i)
-                    if item_i is None:
-                        continue
-                    child = item_i.widget()
-                    if child is not None:
-                        acc_list2.extend(walk(child))
-                return acc_list2
-            return []
-
-        if self._root_layout.count() == 0:
-            return []
-        root_item = self._root_layout.itemAt(0)
-        if root_item is None:
-            return []
-        root_child = root_item.widget()
-        if root_child is None:
-            return []
-        return walk(root_child)
-
-
-class _HeaderDragFilter(QObject):
-    """Event filter installed on a widget header to initiate drag operations."""
-
-    def __init__(self, manager: SplitView, widget: ViewerWidget, parent: QObject | None = None) -> None:
-        # Parent to the header (or widget) so the filter is destroyed with it
-        super().__init__(parent if parent is not None else manager)
-        self._manager = manager
-        # Store only a weak reference to avoid strong reference cycles retaining the widget
-        self._widget_ref: weakref.ReferenceType[ViewerWidget] = weakref.ref(widget)
-        self._drag_start_pos: QPoint | None = None
-        filter_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, filter_id=filter_id: logger.debug(f"_HeaderDragFilter.destroyed id={filter_id}")
-        )
-
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
-        if event.type() == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
-            if event.button() == Qt.MouseButton.LeftButton:
-                # Do not start drag when clicking header buttons
-                child = obj.childAt(event.position().toPoint()) if hasattr(obj, "childAt") else None
-                if isinstance(child, QAbstractButton):
-                    return False
-                self._drag_start_pos = event.position().toPoint()
-                return False
-        elif event.type() == QEvent.Type.MouseMove and isinstance(event, QMouseEvent):
-            if self._drag_start_pos is not None and (
-                (event.position().toPoint() - self._drag_start_pos).manhattanLength()
-                >= QApplication.startDragDistance()
-            ):
-                self._start_drag()
-                self._drag_start_pos = None
-                return True
-        elif event.type() == QEvent.Type.MouseButtonRelease and isinstance(event, QMouseEvent):
-            self._drag_start_pos = None
-            return False
-        return False
-
-    def _start_drag(self) -> None:
-        widget = self._widget_ref()
-        if widget is None:
-            return
-        drag = QDrag(widget)
-        mime = QMimeData()
-        widget_id = self._manager._id_for_widget(widget)
-        if widget_id is None:
-            return
-        mime.setData(PANEL_MIME_TYPE, widget_id.encode("utf-8"))
-        drag.setMimeData(mime)
-        # Use header snapshot as pixmap if possible
-        header = widget.get_header_widget()
-        pixmap = header.grab()
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(pixmap.rect().center())
-        drag.exec(Qt.DropAction.MoveAction)
-
-
-class _WidgetActivationFilter(QObject):
-    """Event filter that reports user interaction for focused-pane tracking."""
-
-    def __init__(self, manager: SplitView, widget: ViewerWidget, parent: QObject | None = None) -> None:
-        super().__init__(parent if parent is not None else manager)
-        self._manager = manager
-        self._widget_ref: weakref.ReferenceType[ViewerWidget] = weakref.ref(widget)
-        self._install_on(widget)
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        widget = self._widget_ref()
-        if widget is None:
-            return False
-        if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.FocusIn):
-            self._manager._set_focused_widget(widget)
-        elif event.type() == QEvent.Type.ChildAdded:
-            child = event.child() if isinstance(event, QChildEvent) else None
-            if child is not None:
-                self._install_on(child)
-        return False
-
-    def _install_on(self, obj: QObject) -> None:
-        if obj.property("_ax_split_activation_tracking"):
-            return
-        obj.setProperty("_ax_split_activation_tracking", True)
-        obj.installEventFilter(self)
-        for child in obj.children():
-            self._install_on(child)
-
-
-class _DropOverlay(QWidget):
-    """Transparent overlay to draw directional split feedback above content."""
-
-    def __init__(self, parent: QWidget) -> None:
-        super().__init__(parent)
-        self._direction: SplitDirection | None = None
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        overlay_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, overlay_id=overlay_id: logger.debug(f"_DropOverlay.destroyed id={overlay_id}")
-        )
-
-    def set_hint(self, direction: SplitDirection | None) -> None:
-        self._direction = direction
-        self.update()
-
-    def clear_hint(self) -> None:
-        self._direction = None
-        self.update()
-
-    def paintEvent(self, event: QPaintEvent) -> None:
-        super().paintEvent(event)
-        if not self.isVisible() or self._direction is None:
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        full = self.rect().adjusted(1, 1, -1, -1)
-        if not full.isValid():
-            return
-        if self._direction == SplitDirection.LEFT:
-            target = full.adjusted(0, 0, -full.width() // 2, 0)
-        elif self._direction == SplitDirection.RIGHT:
-            target = full.adjusted(full.width() // 2, 0, 0, 0)
-        elif self._direction == SplitDirection.TOP:
-            target = full.adjusted(0, 0, 0, -full.height() // 2)
-        else:  # BOTTOM
-            target = full.adjusted(0, full.height() // 2, 0, 0)
-
-        palette = self.palette()
-        highlight = palette.color(QPalette.ColorRole.Highlight)
-        fill = highlight
-        fill.setAlpha(72)
-        border = highlight.darker(130)
-        border.setAlpha(160)
-        painter.setBrush(fill)
-        painter.setPen(border)
-        painter.drawRect(target)

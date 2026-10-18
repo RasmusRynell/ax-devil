@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -15,26 +15,27 @@ from ax_devil.core.load_warning import SkippedRecords
 from ax_devil.core.source_paths import Fingerprint
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import (
-    OverlayLookupMatchType,
     OverlayLookupResult,
 )
-from ax_devil.modules.data_sources.file_data_provider.stores import (
-    IndexedFrameSceneStore,
-    RuntimeSceneCache,
+from ax_devil.modules.data_sources.file_data_provider.retrieval_stats import RetrievalStats
+from ax_devil.modules.data_sources.file_data_provider.scene_catalog import (
     SceneBuildResult,
     SceneCatalog,
     SceneStore,
     SceneStoreContext,
+)
+from ax_devil.modules.data_sources.file_data_provider.scene_lookup import lookup_scene
+from ax_devil.modules.data_sources.file_data_provider.stores import (
+    IndexedFrameSceneStore,
+    RuntimeSceneCache,
     SourceIndexedSceneStore,
 )
-from ax_devil.modules.data_sources.overlay_samples import OverlaySamples, sequence_sample
+from ax_devil.modules.data_sources.overlay_samples import OverlaySamples
 from ax_devil.modules.data_sources.scene_history import SceneHistory
-from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentBasis
+from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.diagnostics.metrics_store import (
     get_metrics_store,
-    metrics_enabled,
     remove_instance,
-    set_metric,
     source_identity,
 )
 from ax_devil.modules.filtering.filter_config import FilterConfig, build_default_filter_config
@@ -46,7 +47,6 @@ from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.synchronization.timestamp_matching import (
     TimestampFallbackPolicy,
-    find_matching_overlay_timestamp,
 )
 
 logger = get_logger(__name__)
@@ -79,27 +79,6 @@ class SceneDecoderFileMetadata:
     sequence_lookup_enabled: bool
     timestamp_to_sequence: dict[int, int]
     all_metadata: dict[str, Any]
-
-
-@dataclass(slots=True)
-class _RetrievalStats:
-    """Unique request outcomes for a single provider instance.
-
-    Buckets contain timestamps observed with each outcome. A timestamp may
-    occur in multiple buckets when lookup policy changes; their union is the
-    set of unique requests.
-    """
-
-    requested: int = 0
-    exact: set[int] = field(default_factory=set)
-    resolved: set[int] = field(default_factory=set)
-    misses: set[int] = field(default_factory=set)
-
-    def record(self, timestamp: int, outcomes: set[int]) -> None:
-        """Count a unique timestamp once, even when its outcome changes on a later lookup."""
-        if timestamp not in self.exact and timestamp not in self.resolved and timestamp not in self.misses:
-            self.requested += 1
-        outcomes.add(timestamp)
 
 
 class SceneDecoderFileProvider(FrameIdentifierDataProvider):
@@ -159,7 +138,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._sorted_frame_ids: tuple[int, ...] = ()
         self._sequence_to_timestamp: dict[int, int] = {}
         self._timestamp_to_sequence: dict[int, int] = {}
-        self._stats = _RetrievalStats()
+        self._stats = RetrievalStats()
         self._store = self._build_store()
         self._apply_catalog(self._store.catalog)
         get_metrics_store().register(self._metrics_id, f"Overlay lookup · {self.file_path}")
@@ -337,132 +316,18 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
     ) -> OverlayLookupResult:
         """Load scene data using FrameIdentifier with timestamp and optional sequence lookup.
 
-        Frame-keyed providers use frame_timeline to resolve annotation sequence IDs
-        into video time. Otherwise lookup uses exact timestamps, optional sequence
-        fallback, then timestamp matching. With allow_previous, select the latest
-        earlier sample beyond matching tolerance; the caller applies its age limit.
+        See :func:`lookup_scene` for the matching order.
         """
-        if self._sequence_lookup_enabled:
-            if frame_timeline is not None:
-                return self._lookup_video_sequence(frame_identifier, frame_timeline, allow_previous=allow_previous)
-            if allow_previous:
-                raise ValueError("Sticky sequence overlays require the video's frame timeline")
-
-        timestamp_key = int(frame_identifier.timestamp_monotime_us)
-
-        scene = self._load_scene(timestamp_key)
-        if scene is not None:
-            result = self._lookup_result(
-                scene=scene,
-                requested_timestamp_us=timestamp_key,
-                matched_timestamp_us=timestamp_key,
-                requested_sequence_id=frame_identifier.sequence_id,
-                matched_sequence_id=self._timestamp_to_sequence.get(timestamp_key),
-                match_type="exact",
-            )
-            self._stats.record(timestamp_key, self._stats.exact)
-            self._push_metrics()
-            return result
-
-        if self._sequence_lookup_enabled:
-            ts_from_seq = self._sequence_to_timestamp.get(frame_identifier.sequence_id)
-            if ts_from_seq is not None and ts_from_seq <= timestamp_key:
-                scene = self._load_scene(ts_from_seq)
-                if scene is not None:
-                    result = self._lookup_result(
-                        scene=scene,
-                        requested_timestamp_us=timestamp_key,
-                        matched_timestamp_us=ts_from_seq,
-                        requested_sequence_id=frame_identifier.sequence_id,
-                        matched_sequence_id=frame_identifier.sequence_id,
-                        alignment_basis="sequence",
-                        match_type="sequence",
-                    )
-                    self._stats.record(timestamp_key, self._stats.resolved)
-                    self._push_metrics()
-                    return result
-
-        match = find_matching_overlay_timestamp(
-            sorted_overlay_timestamps_us=self._sorted_frame_ids,
-            video_timestamp_us=timestamp_key,
-            policy=self._timestamp_fallback_policy,
+        result = lookup_scene(
+            self._samples,
+            self._load_scene,
+            self._stats,
+            frame_identifier,
             allow_previous=allow_previous,
+            frame_timeline=frame_timeline,
         )
-        if match.overlay_timestamp_us is not None:
-            scene = self._load_scene(match.overlay_timestamp_us)
-            if scene is not None:
-                result = self._lookup_result(
-                    scene=scene,
-                    requested_timestamp_us=timestamp_key,
-                    matched_timestamp_us=match.overlay_timestamp_us,
-                    requested_sequence_id=frame_identifier.sequence_id,
-                    matched_sequence_id=self._timestamp_to_sequence.get(match.overlay_timestamp_us),
-                    match_type=match.match_type,
-                )
-                self._stats.record(timestamp_key, self._stats.resolved)
-                self._push_metrics()
-                return result
-
-        result = self._lookup_result(
-            scene=None,
-            requested_timestamp_us=timestamp_key,
-            matched_timestamp_us=None,
-            requested_sequence_id=frame_identifier.sequence_id,
-            matched_sequence_id=None,
-            match_type="missing",
-        )
-        self._stats.record(timestamp_key, self._stats.misses)
         self._push_metrics()
         return result
-
-    def _lookup_video_sequence(
-        self, frame_id: FrameIdentifier, timeline: FrameTimeline, *, allow_previous: bool
-    ) -> OverlayLookupResult:
-        """Resolve frame-keyed annotations using actual video timestamps for their age."""
-        requested_time = int(frame_id.timestamp_monotime_us)
-        sample = sequence_sample(
-            self._sorted_sequences, frame_id.sequence_id, requested_time, timeline, allow_previous=allow_previous
-        )
-        sequence, sample_time = sample if sample is not None else (None, None)
-        scene = self._load_scene(self._sequence_to_timestamp[sequence]) if sequence is not None else None
-        match_type: OverlayLookupMatchType = "missing"
-        if scene is not None:
-            match_type = "sequence" if sequence == frame_id.sequence_id else "retained"
-        result = self._lookup_result(
-            scene=scene,
-            requested_timestamp_us=requested_time,
-            matched_timestamp_us=sample_time if scene is not None else None,
-            requested_sequence_id=frame_id.sequence_id,
-            matched_sequence_id=sequence if scene is not None else None,
-            match_type=match_type,
-            alignment_basis="sequence",
-        )
-        self._stats.record(requested_time, self._stats.resolved if scene is not None else self._stats.misses)
-        self._push_metrics()
-        return result
-
-    def _lookup_result(
-        self,
-        *,
-        scene: Scene | None,
-        requested_timestamp_us: int,
-        matched_timestamp_us: int | None,
-        requested_sequence_id: int | None,
-        matched_sequence_id: int | None,
-        match_type: OverlayLookupMatchType,
-        alignment_basis: OverlayAlignmentBasis = "timestamp",
-    ) -> OverlayLookupResult:
-        """Return a lookup result using the current timestamp policy."""
-        return OverlayLookupResult(
-            scene=scene,
-            requested_timestamp_us=requested_timestamp_us,
-            matched_timestamp_us=matched_timestamp_us,
-            match_type=match_type,
-            timestamp_fallback_policy=self._timestamp_fallback_policy,
-            requested_sequence_id=requested_sequence_id,
-            matched_sequence_id=matched_sequence_id,
-            alignment_basis=alignment_basis,
-        )
 
     def get_timestamp_fallback_policy(self) -> TimestampFallbackPolicy:
         """Return the timestamp fallback policy used after exact and sequence lookup fail."""
@@ -478,16 +343,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._samples = replace(self._samples, policy=policy)
 
     def _push_metrics(self) -> None:
-        """Push current retrieval stats to the metrics store for live debugging."""
-        if not metrics_enabled():
-            return
-        instance_id = self._metrics_id
-        s = self._stats
-        set_metric(instance_id, "Available", len(self._available_frame_ids))
-        set_metric(instance_id, "Unique requested timestamps", s.requested)
-        set_metric(instance_id, "Unique exact matches", len(s.exact))
-        set_metric(instance_id, "Unique fallback matches", len(s.resolved))
-        set_metric(instance_id, "Unique missing timestamps", len(s.misses))
+        self._stats.push_metrics(self._metrics_id, len(self._available_frame_ids))
 
     def get_available_frames(self) -> set[int]:
         """Get the set of available frame timestamps (as monotime microseconds)."""
@@ -545,26 +401,12 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
 
     def _log_retrieval_summary(self) -> None:
         """Log parse and retrieval completeness."""
-        total_lines = self._metadata.total_lines if self._metadata else 0
-        total_available = len(self._available_frame_ids)
-        s = self._stats
-        skipped_at_parse = total_lines - total_available
-        name = self.file_path.name
-        dec = self.decoder_name
-
-        total_requests = s.requested
-        total_hits = len(s.exact | s.resolved)
-        logger.debug(
-            f"{name} [{dec}] summary: "
-            f"{total_available} available, {total_requests} unique requested timestamps "
-            f"({total_hits} hits [{len(s.exact)} exact, {len(s.resolved)} resolved], "
-            f"{len(s.misses)} misses)"
+        self._stats.log_summary(
+            name=self.file_path.name,
+            decoder_name=self.decoder_name,
+            available=len(self._available_frame_ids),
+            total_lines=self._metadata.total_lines if self._metadata else 0,
         )
-
-        if skipped_at_parse > 0:
-            logger.debug(
-                f"{name} [{dec}] PARSE GAP: {skipped_at_parse}/{total_lines} payload lines did not produce a scene"
-            )
 
     def _extract_timestamp_key(self, scene: Scene) -> int | None:
         """Derive a monotonic timestamp key for a scene."""

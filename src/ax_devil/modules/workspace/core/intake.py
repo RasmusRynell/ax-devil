@@ -7,18 +7,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ax_devil.modules.workspace.core.content import (
+from ax_devil.modules.workspace.core.content import LiveVideoContent, OverlayContent, SeekableVideoContent
+from ax_devil.modules.workspace.core.source_specs import (
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
     LiveOverlayMode,
     LiveRTSPOverlaySourceSpec,
     LiveRTSPStreamSpec,
-    LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
-    OverlayContent,
     OverlaySourceKind,
-    SeekableVideoContent,
 )
 
 VIDEO_FILE_SUFFIXES = (".mp4", ".avi", ".mkv", ".mov")

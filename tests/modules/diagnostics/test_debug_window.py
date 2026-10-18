@@ -16,14 +16,14 @@ from tests.helpers.widgets import button
 
 
 def _cell(window: DebugWindow, row: int) -> str:
-    item = window.timings_table.item(row, 1)
+    item = window.rendering.timings_table.item(row, 1)
     assert item is not None
     return item.text()
 
 
 def _source_roots(window: DebugWindow) -> dict[str, QTreeWidgetItem]:
     """Return the top-level source rows keyed by source id."""
-    tree = window.source_tree
+    tree = window.sources_tab.tree
     roots = (tree.topLevelItem(index) for index in range(tree.topLevelItemCount()))
     return {root.toolTip(0): root for root in roots if root is not None}
 
@@ -39,26 +39,26 @@ def test_debug_window_selection_filter_refresh_and_reset(qtbot: QtBot) -> None:
         window = DebugWindow()
         qtbot.addWidget(window)
         window.show()
-        window.filter_input.setText("Camera A")
-        assert window.title_label.text() == "Camera A"
-        assert "#1" in window.progress_labels["Painted"].text()
+        window.rendering.filter_input.setText("Camera A")
+        assert window.rendering.title_label.text() == "Camera A"
+        assert "#1" in window.rendering.progress_labels["Painted"].text()
         assert _cell(window, 0) == "4.000"
-        build_cell = window.build_table.item(0, 1)
+        build_cell = window.rendering.build_table.item(0, 1)
         assert build_cell is not None and build_cell.text() == "—"
-        window.filter_input.setText("Camera B")
-        assert window.title_label.text() == "Camera B"
+        window.rendering.filter_input.setText("Camera B")
+        assert window.rendering.title_label.text() == "Camera B"
         assert _cell(window, 0) == "—"
         window.timer.timeout.emit()
-        assert window.title_label.text() == "Camera B"
-        window.filter_input.setText("missing")
-        assert window.title_label.text() == "No matching viewers"
-        window.filter_input.clear()
+        assert window.rendering.title_label.text() == "Camera B"
+        window.rendering.filter_input.setText("missing")
+        assert window.rendering.title_label.text() == "No matching viewers"
+        window.rendering.filter_input.clear()
         button(window, "Reset history").click()
         assert _cell(window, 0) == "—"
         store.remove("ui-a")
         store.remove("ui-b")
         window.timer.timeout.emit()
-        assert window.viewer_list.count() == len(store.snapshot())
+        assert window.rendering.viewer_list.count() == len(store.snapshot())
         window.close()
         assert not window.timer.isActive()
     finally:
@@ -99,22 +99,24 @@ def test_viewer_refresh_preserves_selection_and_relabels_sorted_items(qtbot: QtB
     try:
         window = DebugWindow()
         qtbot.addWidget(window)
-        window.viewer_list.setCurrentItem(window.viewer_list.findItems("B viewer", Qt.MatchFlag.MatchExactly)[0])
-        selected = window.viewer_list.currentItem()
+        window.rendering.viewer_list.setCurrentItem(
+            window.rendering.viewer_list.findItems("B viewer", Qt.MatchFlag.MatchExactly)[0]
+        )
+        selected = window.rendering.viewer_list.currentItem()
         store.register("polish-b", "0 renamed viewer")
         window.timer.timeout.emit()
-        assert window.viewer_list.currentItem() is selected
-        assert window.title_label.text() == "0 renamed viewer"
+        assert window.rendering.viewer_list.currentItem() is selected
+        assert window.rendering.title_label.text() == "0 renamed viewer"
         assert selected is not None and "0 renamed viewer" in selected.toolTip()
-        assert window.viewer_list.row(selected) == 0
+        assert window.rendering.viewer_list.row(selected) == 0
         store.remove("polish-b")
         window.timer.timeout.emit()
-        assert window.title_label.text() == "A viewer"
-        assert window.measurements.isHidden()
-        assert "first paint" in window.empty_label.text()
+        assert window.rendering.title_label.text() == "A viewer"
+        assert window.rendering.measurements.isHidden()
+        assert "first paint" in window.rendering.empty_label.text()
         set_metrics_enabled(False)
         window.timer.timeout.emit()
-        assert "Collect Debug Metrics" in window.empty_label.text()
+        assert "Collect Debug Metrics" in window.rendering.empty_label.text()
         window.close()
     finally:
         store.remove("polish-a")
@@ -131,8 +133,8 @@ def test_narrow_timing_table_keeps_last_row_above_horizontal_scrollbar(qtbot: Qt
         qtbot.addWidget(window)
         window.show()
         window.resize(640, 500)
-        qtbot.waitUntil(lambda: window.timings_table.horizontalScrollBar().maximum() > 0)
-        table = window.timings_table
+        qtbot.waitUntil(lambda: window.rendering.timings_table.horizontalScrollBar().maximum() > 0)
+        table = window.rendering.timings_table
         bottom = table.rowViewportPosition(table.rowCount() - 1) + table.rowHeight(table.rowCount() - 1)
         assert bottom <= table.viewport().height()
         assert table.verticalScrollBar().maximum() == 0
@@ -163,24 +165,24 @@ def test_freeze_workload_selection_disclosures_and_source_ownership(qtbot: QtBot
         window = DebugWindow()
         qtbot.addWidget(window)
         window.show()
-        window.filter_input.setText("Inspection viewer")
+        window.rendering.filter_input.setText("Inspection viewer")
         assert _cell(window, 0) == "4.000"
-        window.paint_selection.setCurrentText(PaintSelection.REPAINTS.value)
+        window.rendering.paint_selection.setCurrentText(PaintSelection.REPAINTS.value)
         assert _cell(window, 0) == "1.000"
-        window.source_scope.setChecked(True)
+        window.sources_tab.scope.setChecked(True)
         assert set(_source_roots(window)) == {"owned"}
         disclosure = next(button for button in window.findChildren(QToolButton) if button.text() == "Build costs")
         disclosure.click()
-        assert window.build_table.isVisible()
+        assert window.rendering.build_table.isVisible()
         window.freeze_button.click()
         render.record("inspect", replace(sample(now), paint_ms=9), paint_started_at=now - 0.009)
         window.timer.timeout.emit()
         assert _cell(window, 0) == "1.000"
-        window.chart_mode.setCurrentIndex(1)
+        window.rendering.chart_mode.setCurrentIndex(1)
         assert _cell(window, 0) == "1.000"
         window.freeze_button.click()
         assert _cell(window, 0) == "9.000"
-        assert window.build_table.isVisible()
+        assert window.rendering.build_table.isVisible()
         window.close()
     finally:
         render.remove("inspect")
@@ -213,24 +215,26 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(
         qtbot.addWidget(window)
         window.show()
         window.resize(1100, 900)
-        window.filter_input.setText("Spike camera")
-        window.chart_mode.setCurrentIndex(window.chart_mode.findData("paint"))
-        qtbot.waitUntil(lambda: window.chart.width() > 100)
-        point = window.chart._position(1, 40)
-        QTest.mouseClick(window.chart, Qt.MouseButton.LeftButton, pos=point.toPoint())
+        window.rendering.filter_input.setText("Spike camera")
+        window.rendering.chart_mode.setCurrentIndex(window.rendering.chart_mode.findData("paint"))
+        qtbot.waitUntil(lambda: window.rendering.chart.width() > 100)
+        point = window.rendering.chart._position(1, 40)
+        QTest.mouseClick(window.rendering.chart, Qt.MouseButton.LeftButton, pos=point.toPoint())
         assert window.freeze_button.isChecked()
-        assert "Paint 2 / 3" in window.inspector.identity.text()
-        assert "Prepare overlays" in window.inspector.findings.text()
-        qtbot.waitUntil(lambda: window.inspector.workload.y() > window.inspector.timings.geometry().bottom())
+        assert "Paint 2 / 3" in window.rendering.inspector.identity.text()
+        assert "Prepare overlays" in window.rendering.inspector.findings.text()
+        qtbot.waitUntil(
+            lambda: window.rendering.inspector.workload.y() > window.rendering.inspector.timings.geometry().bottom()
+        )
         sources.set_metric("spike-source", "Frame queue", 0)
         render.record("spike", sample(now + 100, 30), paint_started_at=now + 99.996)
         window.timer.timeout.emit()
-        assert "Paint 2 / 3" in window.inspector.identity.text()
-        source_root = window.inspector.sources.topLevelItem(0)
+        assert "Paint 2 / 3" in window.rendering.inspector.identity.text()
+        source_root = window.rendering.inspector.sources.topLevelItem(0)
         assert source_root is not None
         source_row = source_root.child(0)
         assert source_row is not None and source_row.text(1) == "12"
-        window.inspector.copy.click()
+        window.rendering.inspector.copy.click()
         assert "Prepare overlays" in QApplication.clipboard().text()
         export = tmp_path / "diagnostics.json"
         monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_args: (str(export), ""))
@@ -239,15 +243,15 @@ def test_graph_selection_freezes_exact_paint_and_exports_inspection(
         assert serialized["inspection"] == {"viewer_id": "spike", "sample_index": 1, "metric_key": "paint"}
         viewer = next(item for item in serialized["viewers"] if item["viewer_id"] == "spike")
         assert viewer["history"][1]["sources"]["spike-source"]["observations"]["Frame queue"]["value"] == 12
-        window.inspector.previous.click()
-        assert "Paint 1 / 3" in window.inspector.identity.text()
-        assert not window.inspector.previous.isEnabled()
-        window.inspect_largest.click()
-        assert "Paint 2 / 3" in window.inspector.identity.text()
-        QTest.keyClick(window.chart, Qt.Key.Key_Right)
-        assert "Paint 3 / 3" in window.inspector.identity.text()
+        window.rendering.inspector.previous.click()
+        assert "Paint 1 / 3" in window.rendering.inspector.identity.text()
+        assert not window.rendering.inspector.previous.isEnabled()
+        window.rendering.inspect_largest.click()
+        assert "Paint 2 / 3" in window.rendering.inspector.identity.text()
+        QTest.keyClick(window.rendering.chart, Qt.Key.Key_Right)
+        assert "Paint 3 / 3" in window.rendering.inspector.identity.text()
         window.freeze_button.click()
-        assert window.detail_tabs.currentIndex() == 0
+        assert window.rendering.detail_tabs.currentIndex() == 0
         window.close()
     finally:
         render.remove("spike")

@@ -15,7 +15,7 @@ from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, SceneRenderCatalogStore
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
-from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.prepared import PreparedDrawing
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.live_video_viewer import LiveStatusPanel, LiveVideoViewerWidget

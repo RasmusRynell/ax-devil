@@ -16,7 +16,8 @@ from ax_devil.modules.chrome.theme import VIDEO_CANVAS
 from ..drawing import DrawingStyle, Paint
 from .items import VideoTextureItem
 from .overlay import QuickOverlay, ShapeComponents
-from .preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
+from .preparation import DrawingBuffer
+from .prepared import DrawingSettings, PreparedDrawing
 
 _HOVER_HIGHLIGHT_STYLE = DrawingStyle(
     pen_r=255,

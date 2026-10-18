@@ -13,15 +13,11 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem, entry_target
-from ax_devil.modules.workspace.ui.browser_rows import (
-    RowAction,
-    WorkspaceBrowserRow,
-    WorkspaceBrowserSection,
-    build_browser_sections,
-)
+from ax_devil.modules.workspace.ui.browser_projection import build_browser_sections
+from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import ask_new_name
-from ax_devil.modules.workspace.ui.section_tree import show_row_menu
+from ax_devil.modules.workspace.ui.row_menu import show_row_menu
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 

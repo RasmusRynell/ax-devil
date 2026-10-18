@@ -8,12 +8,8 @@ from typing import Any
 import pytest
 
 from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderProgramCompiler
-from ax_devil.modules.scene.rendering.template_runtime.definitions import (
-    TYPES,
-    authoring_definitions,
-    compile_validator,
-    validate_value,
-)
+from ax_devil.modules.scene.rendering.template_runtime.definitions import TYPES, authoring_definitions
+from ax_devil.modules.scene.rendering.template_runtime.validation import compile_validator, validate_value
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from tests.drawing_helpers import CONTEXT, BoxCall, record_template
 

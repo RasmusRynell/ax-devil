@@ -14,12 +14,15 @@ from numpy.typing import NDArray
 
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
-from ax_devil.modules.scene.rendering.template_runtime.definitions import ValueType, validate_value
-from ax_devil.modules.scene.rendering.template_runtime.kernels import RowState, emit, objects_from
+from ax_devil.modules.scene.rendering.template_runtime.definitions import ValueType
+from ax_devil.modules.scene.rendering.template_runtime.emission import emit
+from ax_devil.modules.scene.rendering.template_runtime.kernels import RowState, objects_from
 from ax_devil.modules.scene.rendering.template_runtime.program import RenderCatalog
+from ax_devil.modules.scene.rendering.template_runtime.validation import validate_value
 from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic, TemplateRuntimeError
 from ax_devil.modules.video_player.engine.drawing import DrawingStyle, LabelContent, Paint, Points
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
+from ax_devil.modules.video_player.engine.quick.prepared import PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 

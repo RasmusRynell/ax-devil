@@ -22,8 +22,8 @@ from ax_devil.modules.workspace.core import (
     PlaylistEntry,
     SeekableVideoContent,
 )
-from ax_devil.modules.workspace.core.content import LiveOverlaySourceSpec
 from ax_devil.modules.workspace.core.item_info import build_video_information
+from ax_devil.modules.workspace.core.source_specs import LiveOverlaySourceSpec
 
 
 def _live_source_spec() -> LiveRTSPStreamSpec:

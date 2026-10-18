@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -24,7 +24,9 @@ from ax_devil.modules.workspace.core import (
     load_workspace,
     save_workspace,
 )
+from ax_devil.modules.workspace.ui.exclusions import Exclusions
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
+from ax_devil.modules.workspace.ui.resolution_batch import ResolutionBatch
 
 logger = get_logger(__name__)
 
@@ -32,21 +34,14 @@ logger = get_logger(__name__)
 class WorkspaceStore(QObject):
     """Own the current and last saved Workspace, each item's resolution, and exclusions.
 
-    Items are the truth. Every change to them applies at once; their Content follows when *resolver* finishes, and
-    until then an item's resolution is pending. A result arriving after its item was removed, or after another
-    Workspace replaced this one, is dropped; one arriving after a rename is named after the new label. Exclusions are
-    session state and are never part of the Workspace. Every successful mutation emits exactly one signal about the
-    items, then ``items_resolved`` when their results arrive, plus ``state_changed`` when it changes whether the
-    Workspace is modified or what it is called. A change to bookmarks or reviewed targets emits ``bookmarks_changed``
-    once, also when removing an item removed some of them and whenever another Workspace replaces this one.
+    How items resolve is described under Resolution in ``docs/architecture/workspace.md``. Every successful mutation
+    emits exactly one signal about the items, then ``items_resolved`` when their results arrive, plus ``state_changed``
+    when it changes whether the Workspace is modified or what it is called. A change to bookmarks or reviewed targets
+    emits ``bookmarks_changed`` once, also when removing an item removed some of them and whenever another Workspace
+    replaces this one.
 
-    What an item was read from (``ItemResolution.sources``) is watched once its first result arrives. When it changes,
-    ``sources_changed`` reports the changed paths and the item resolves again; the new result, an error included,
-    replaces the old one while the item and Workspace are still current and arrives as ``items_resolved`` without
-    opening anything. An error keeps the files the last success was read from watched. Exclusions stay for Content
-    that still exists and are dropped for Content that is gone. Resolving again never opens a viewer, never changes
-    what open viewers show, since they keep the immutable Content they opened, and never makes the Workspace modified,
-    as results are never saved.
+    When what an item was read from changes, ``sources_changed`` reports the changed paths and the item resolves again;
+    the new result arrives as ``items_resolved`` with nothing opened and the Workspace not modified.
     """
 
     items_added = Signal(list)  # list[WorkspaceItem]; they may still be resolving
@@ -69,11 +64,11 @@ class WorkspaceStore(QObject):
         self._workspace = Workspace()
         self._saved_workspace: Workspace | None = self._workspace
         self._resolutions: dict[str, ItemResolution] = {}
-        self._not_considered: set[ConsiderationItemRef] = set()
+        self._exclusions = Exclusions()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
         self._reresolving: dict[str, Cancel] = {}  # cancel each re-resolving item's newest request
         # Ordered GUI-side batches; each item has its own cancellable worker.
-        self._resolving: dict[int, _ResolutionBatch] = {}
+        self._resolving: dict[int, ResolutionBatch] = {}
         self._batch_count = 0
         self._announced_state = self._state()
 
@@ -114,7 +109,7 @@ class WorkspaceStore(QObject):
         self._workspace = current
         self._saved_workspace = None if unsaved else current
         self._resolutions = {item.id: ItemResolution.pending(item) for item in current.items}
-        self._not_considered = set()
+        self._exclusions = Exclusions()
         self._generation += 1
         cancels = [*(batch.cancel for batch in self._resolving.values()), *self._reresolving.values()]
         self._resolving, self._reresolving = {}, {}
@@ -169,7 +164,7 @@ class WorkspaceStore(QObject):
         self._watcher.unwatch(item_id)
         self._cancel_reresolving(item_id)
         self._cancel_resolving(item_id)
-        self._not_considered = {ref for ref in self._not_considered if ref.item_id != item_id}
+        self._exclusions.remove_item(item_id)
         logger.debug(f"Item removed: {item.display_name} ({item_id})")
         self.item_removed.emit(item)
         if _bookmark_state(before) != _bookmark_state(self._workspace):
@@ -274,7 +269,7 @@ class WorkspaceStore(QObject):
 
     def is_item_considered(self, item_ref: ConsiderationItemRef) -> bool:
         """Return whether the referenced item participates in navigation/layout."""
-        return item_ref not in self._not_considered
+        return self._exclusions.is_considered(item_ref)
 
     def set_item_considered(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Update consideration state and emit a change signal when it changes."""
@@ -283,10 +278,7 @@ class WorkspaceStore(QObject):
             return
         if self.is_item_considered(item_ref) == considered:
             return
-        if considered:
-            self._not_considered.discard(item_ref)
-        else:
-            self._not_considered.add(item_ref)
+        self._exclusions.set_considered(item_ref, considered)
         logger.debug(f"Item consideration changed: {item_ref} considered={considered}")
         self.item_consideration_changed.emit(item_ref, considered)
 
@@ -331,7 +323,7 @@ class WorkspaceStore(QObject):
                 self._batch_count += 1
                 number = self._batch_count
                 done = partial(self._batch_resolved, number, generation, open_first=open_first)
-                pending = _ResolutionBatch(batch, done)
+                pending = ResolutionBatch(batch, done)
                 self._resolving[number] = pending
                 pending.start(self._resolver)
 
@@ -368,74 +360,18 @@ class WorkspaceStore(QObject):
     def _take(self, current: ItemResolution, previous: ItemResolution) -> ItemResolution:
         """Store *current* as the item's result in place of *previous*, watch what it was read from, and return it.
 
-        Exclusions name entries, so they stay with the same ones: an entry that is gone loses its exclusion and one that
-        is new starts at its default. An item keeps watching everything it was ever read from while it lives: viewers
+        An item keeps watching everything it was ever read from while it lives: viewers
         may still show what an earlier result named, and restoring those files is what makes it resolve again.
         """
         if current.error is not None:
             logger.warning(f"Could not open {current.item.display_name}: {current.error}")
         current = replace(current, sources=current.sources | previous.sources)
         self._resolutions[current.item.id] = current
-        before, after = _defaults(previous), _defaults(current)
-        self._not_considered = {ref for ref in self._not_considered if ref not in before or ref in after} | {
-            ref for ref, considered in after.items() if ref not in before and not considered
-        }
+        self._exclusions.follow(previous, current)
         self._watcher.watch(current.item.id, current.sources)
         return current
-
-
-class _ResolutionBatch:
-    """Publish independent item jobs together in input order; all state belongs to the GUI thread."""
-
-    def __init__(self, items: Sequence[WorkspaceItem], done: Callable[[tuple[ItemResolution, ...]], None]) -> None:
-        self._items = tuple(items)
-        self._results: dict[str, ItemResolution | None] = dict.fromkeys(item.id for item in items)
-        self._cancels: dict[str, Cancel] = {}
-        self._done = done
-
-    def start(self, resolver: ItemResolver) -> None:
-        """Start one cancellable job per item, including resolvers that finish inline."""
-        for item in self._items:
-            cancel = resolver.resolve(item, self._resolved)
-            if item.id in self._results and self._results[item.id] is None:
-                self._cancels[item.id] = cancel
-
-    def remove(self, item_id: str) -> None:
-        """Drop a removed item, interrupting its worker even if the rest of the batch is still wanted."""
-        if item_id not in self._results:
-            return
-        cancel = self._cancels.pop(item_id, None)
-        if cancel is not None:
-            cancel()
-        del self._results[item_id]
-        self._publish_if_ready()
-
-    def cancel(self) -> None:
-        """Cancel the entire batch without publishing it."""
-        for cancel in self._cancels.values():
-            cancel()
-        self._cancels.clear()
-
-    def _resolved(self, result: ItemResolution) -> None:
-        self._cancels.pop(result.item.id, None)
-        self._results[result.item.id] = result
-        self._publish_if_ready()
-
-    def _publish_if_ready(self) -> None:
-        completed = tuple(result for result in self._results.values() if result is not None)
-        if len(completed) == len(self._results):
-            self._done(completed)
 
 
 def _bookmark_state(workspace: Workspace) -> tuple[tuple[Bookmark, ...], frozenset[BookmarkTarget]]:
     """Return what ``bookmarks_changed`` reports on: the Workspace's bookmarks and reviewed targets."""
     return workspace.bookmarks, workspace.reviewed
-
-
-def _defaults(resolution: ItemResolution) -> dict[ConsiderationItemRef, bool]:
-    """Return whether each consideration item of *resolution*'s Content is considered by default, by its ref."""
-    return {
-        consideration.ref: consideration.default_considered
-        for content in resolution.contents
-        for consideration in content.consideration_items()
-    }

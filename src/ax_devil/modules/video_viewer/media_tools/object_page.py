@@ -13,8 +13,10 @@ from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameSpan, ObjectHistory, SceneHistory
-from ax_devil.modules.object_inspection.fields_view import FieldsView, Section, event_section, field_sections, id_row
+from ax_devil.modules.object_inspection.fields_model import Section, event_section, field_sections
+from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
+from ax_devil.modules.object_inspection.rows import id_row
 from ax_devil.modules.object_inspection.title_row import TitleRow
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import EntityId, Scene

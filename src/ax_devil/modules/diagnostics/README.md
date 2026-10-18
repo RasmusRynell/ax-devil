@@ -7,8 +7,8 @@ This package owns rendering diagnostics, source metrics, performance recording, 
 - `metrics_store.py` retains typed source observations with individual timestamps and stable instance identities.
 - `metrics_gate.py` controls capture through Debug > Collect Debug Metrics.
 - `dashboard_snapshot.py` combines rendering, source, and video-cache state for the UI and JSON export.
-- `debug_window.py` provides viewer selection, a timing graph/table, workload details, and separate
-  source/cache and recording tabs. It updates existing widgets every 500 ms.
+- `debug_window.py` hosts the Rendering (`rendering_tab.py`: viewer selection, a timing graph/table, workload
+  details), Sources and caches (`sources_tab.py`) and Recording tabs. It updates existing widgets every 500 ms.
 - `history_chart.py` plots timing operations with spatial selection and keyboard navigation.
 - `paint_inspection.py` builds evidence and preceding-paint comparisons; `paint_inspector.py` presents that evidence.
 - `trace_recorder.py` / `trace_controls.py` own independent Python stack sampling and export.

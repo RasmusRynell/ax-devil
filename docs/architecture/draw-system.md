@@ -59,7 +59,7 @@ built-ins, the default catalog, per-view visibility, failed loads) are in
 ## Extension Points
 
 - Change a shipped look: edit the built-in catalog JSON; touch the schema only if the shape changes.
-- Expose more Scene data to recipes: add typed inputs in `scene/rendering/catalog.py`, then schema and compiler tests.
+- Expose more Scene data to recipes: add typed inputs in `scene/rendering/catalog_tables.py`, then schema and compiler tests.
 - Add a Drawing Instruction: extend `DrawingTarget` and `DrawingBuffer` in `video_player/engine`, declare its
   `primitive` fields in `PRIMITIVES` (`template_runtime/definitions.py`), emit it in `template_runtime/executable.py`,
   regenerate the schema.

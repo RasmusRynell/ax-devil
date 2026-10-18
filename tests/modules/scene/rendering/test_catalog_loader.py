@@ -7,11 +7,8 @@ from typing import Any, cast
 
 import pytest
 
-from ax_devil.modules.scene.rendering.catalog import (
-    BUILT_IN_CATALOG_PATHS,
-    SceneRenderCatalogLoader,
-    get_built_in_scene_render_catalog,
-)
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
+from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader, get_built_in_scene_render_catalog
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from tests.catalog_helpers import catalog_document
 

@@ -4,20 +4,16 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from functools import lru_cache
-from typing import NamedTuple, cast
+from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
 from PySide6.QtCore import QPointF, QRectF
-from PySide6.QtGui import QColor
 
 from ..drawing import (
     _ANCHORS,
     DrawingStyle,
     LabelContent,
-    LabelSprite,
     Paint,
     Points,
     _circle_path,
@@ -25,118 +21,13 @@ from ..drawing import (
     _poly_path,
     _rectangle_path,
     _rounded_rectangle_path,
-    _text_block,
-    _TextBlock,
     label_sprite,
-    text_ink_bounds,
 )
-from ..render_context import RenderContext
 from .batching import GeometryPacker, RectangleBatch, VertexBatch
-from .geometry import convex_rows, polygon_batch, premultiplied, rectangle_template
-
-
-@lru_cache(maxsize=1024)
-def color(red: int, green: int, blue: int, alpha: int = 255) -> QColor:
-    """Share immutable colors across prepared frames."""
-    return QColor(red, green, blue, alpha)
-
-
-@dataclass(frozen=True, slots=True)
-class DrawingSettings:
-    """Exact display/export geometry and backend inputs, separate from catalog units."""
-
-    width: float
-    height: float
-    scale: float
-    dpi: int = 96
-    dpr: float = 1.0
-    hardware: bool = False
-    viewport: tuple[float, float, float, float] | None = None
-
-    @classmethod
-    def for_context(cls, context: RenderContext) -> DrawingSettings:
-        """Construct uncropped software preparation settings for a logical target."""
-        return cls(context.width, context.height, context.scale_factor)
-
-
-class MeshData(NamedTuple):
-    """Final screen-space vertex bytes for one geometry node."""
-
-    payload: bytes
-    operation_count: int = 1
-
-
-class PathData(NamedTuple):
-    """Resolved Qt Shape properties for geometry delegated to Qt's path renderer."""
-
-    geometry: str
-    position: QPointF
-    stroke: QColor
-    fill: QColor
-    width: float
-    dashed: bool
-
-
-class LabelData(NamedTuple):
-    """A painted label and its native top-left position, snapped to device pixels."""
-
-    sprite: LabelSprite
-    position: QPointF
-
-
-class TextData(NamedTuple):
-    """Shaped glyph layouts, color and native position; no text interpretation remains."""
-
-    block: _TextBlock
-    position: QPointF
-    color: QColor
-
-
-@dataclass(frozen=True, slots=True)
-class PreparedDrawing:
-    """Immutable submission data; no normalized drawing objects or replay program.
-
-    Kinds are layers drawn bottom to top as meshes, paths, texts, then labels, so text stays readable.
-    Order across entities is not preserved; within the mesh layer emission order is kept.
-    """
-
-    meshes: tuple[MeshData, ...] = ()
-    paths: tuple[PathData, ...] = ()
-    texts: tuple[TextData, ...] = ()
-    labels: tuple[LabelData, ...] = ()
-    counts: tuple[tuple[str, int], ...] = ()
-
-    def __len__(self) -> int:
-        operations = sum(mesh.operation_count for mesh in self.meshes)
-        return operations + len(self.paths) + len(self.texts) + len(self.labels)
-
-
-EMPTY_DRAWING = PreparedDrawing()
-
-
-def _floats(value: object, count: int) -> NDArray[np.float64]:
-    """Broadcast one shared value or per-row values to one float per row."""
-    return np.broadcast_to(np.asarray(value, dtype=np.float64), (count,))
-
-
-def _colors(red: object, green: object, blue: object, alpha: object, rows: NDArray[np.intp]) -> NDArray[np.float64]:
-    """Premultiplied colors for the selected rows, or one color shared by every row."""
-    channels = [np.asarray(channel, dtype=np.float64) for channel in (red, green, blue, alpha)]
-    if all(channel.ndim == 0 for channel in channels):
-        return np.asarray(premultiplied(*(int(channel) for channel in channels)), dtype=np.float64)
-    r, g, b, a = (channel[rows] if channel.ndim else np.full(len(rows), channel) for channel in channels)
-    return np.stack((np.rint(r * a / 255), np.rint(g * a / 255), np.rint(b * a / 255), a), axis=1)
-
-
-def _join(values: list[object]) -> object:
-    """Concatenate per-row arguments of several batches."""
-    if all(type(value) is np.ndarray for value in values):
-        return np.concatenate(cast(list[NDArray[np.generic]], values))
-    return [item for value in values for item in cast(Sequence[object], value)]
-
-
-def _select(colors: NDArray[np.float64], rows: NDArray[np.intp]) -> NDArray[np.float64]:
-    return colors[rows] if colors.ndim == 2 else colors
+from .columns import _colors, _floats, _join, _select
+from .geometry import convex_rows, polygon_batch, rectangle_template
+from .prepared import EMPTY_DRAWING, DrawingSettings, LabelData, MeshData, PathData, PreparedDrawing, TextData, color
+from .texts import prepare_texts
 
 
 class DrawingBuffer:
@@ -547,33 +438,6 @@ class DrawingBuffer:
         anchor: Sequence[str],
         paint: Paint,
     ) -> None:
-        """Shape once and prepare final glyph layouts and positions, preserving overhangs."""
-        s = self.settings
-        count = len(x)
-        self._counts["text"] += count
-        labels = [str(item) for item in text]
-        anchors = [str(item) for item in anchor]
-        sizes = (_floats(paint.font_size, count) * s.scale).tolist()
-        family = paint.font_family
-        families = [str(item) for item in family] if type(family) is np.ndarray else [str(family)] * count
-        blocks = [_text_block(*key, s.dpi) for key in zip(labels, families, sizes)]
-        widths = np.array([block.width for block in blocks])
-        heights = np.array([block.height for block in blocks])
-        baseline = np.array([item == "baseline" for item in anchors])
-        factors = np.array([_ANCHORS.get(item, (0.0, 0.0)) for item in anchors]).reshape(-1, 2)
-        left = x * s.width - factors[:, 0] * widths
-        top = y * s.height - np.where(baseline, [block.ascent for block in blocks], factors[:, 1] * heights)
-        visible = self._visible_rows(left, top, widths, heights, np.zeros(count)).tolist()
-        channels = (paint.pen_r, paint.pen_g, paint.pen_b)
-        if any(type(channel) is np.ndarray for channel in channels):
-            rgb = np.stack([_floats(channel, count) for channel in channels], axis=1).astype(int).tolist()
-            colors = [color(*channel) for channel in rgb]
-        else:
-            colors = [color(*(int(cast(float, channel)) for channel in channels))] * count
-        for row in range(count):
-            position = QPointF(left[row], top[row])
-            if not visible[row]:
-                ink = text_ink_bounds(labels[row], families[row], sizes[row], s.dpi)
-                if not self._visible(ink.x() + position.x(), ink.y() + position.y(), ink.width(), ink.height()):
-                    continue
-            self._texts.append(TextData(blocks[row], position, colors[row]))
+        """Prepare final glyph layouts and positions of the visible rows."""
+        self._counts["text"] += len(x)
+        self._texts.extend(prepare_texts(self.settings, self._visible, self._visible_rows, x, y, text, anchor, paint))

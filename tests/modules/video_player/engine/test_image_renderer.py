@@ -27,7 +27,8 @@ from ax_devil.modules.video_player.engine.data_types import (
 )
 from ax_devil.modules.video_player.engine.drawing import DrawingStyle
 from ax_devil.modules.video_player.engine.quick.image_renderer import FrameImageRenderer
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
+from ax_devil.modules.video_player.engine.quick.prepared import PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from tests.drawing_helpers import BoxCall, prepare_calls
 

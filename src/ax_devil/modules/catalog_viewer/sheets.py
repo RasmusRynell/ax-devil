@@ -15,16 +15,12 @@ The footage comes from ``footage.py`` and the street's people and traffic from `
 from __future__ import annotations
 
 import random
-import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from itertools import chain, count
 from typing import Any
 
-import numpy as np
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QFontMetricsF, QImage
-
+from ax_devil.modules.catalog_viewer.example_values import ID_FORMATS, ID_WEIGHTS, VALUES
 from ax_devil.modules.catalog_viewer.footage import (
     GRID_SIZE,
     day_street_background,
@@ -32,6 +28,7 @@ from ax_devil.modules.catalog_viewer.footage import (
     grid_background,
     night_street_background,
 )
+from ax_devil.modules.catalog_viewer.sheet_drawing import Caption, Sheet
 from ax_devil.modules.catalog_viewer.street import (
     FRAME_HEIGHT,
     FRAME_WIDTH,
@@ -40,12 +37,10 @@ from ax_devil.modules.catalog_viewer.street import (
     metre,
     street_actors,
 )
-from ax_devil.modules.scene.decoding.decoder_utils import rgb_from_map
 from ax_devil.modules.scene.model import (
     Attribute,
     BoundingBox,
     Classification,
-    ColorClassification,
     Entity,
     EntityId,
     EntityRelation,
@@ -59,12 +54,6 @@ from ax_devil.modules.scene.model import (
     Score,
     TimeSlice,
 )
-from ax_devil.modules.scene.rendering import CachedSceneOverlay, SceneRenderCatalog
-from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic
-from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
-from ax_devil.modules.video_player.engine.drawing import Paint
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
-from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 OBJECT_GROUPS = ("classifications", "fallbacks")
 
@@ -72,32 +61,6 @@ _FALLBACK_NAMES = ("license_plate", "animal", "unknown", "example")
 """Class names a classified fallback example tries first; when types claim them all, ``example_2`` and on follow."""
 _PART_OF = "has_part"
 """The relation from a person to their head in **Street**, drawn when the catalog has a recipe for it."""
-
-
-@dataclass(frozen=True, slots=True)
-class Caption:
-    """Text naming the example below it, with an optional smaller second line.
-
-    Position and width are normalized; text longer than the width is shortened with an ellipsis.
-    """
-
-    x: float
-    y: float
-    text: str
-    detail: str = ""
-    width: float = 0.25
-
-
-@dataclass(frozen=True, slots=True)
-class Sheet:
-    """One example frame: its tab title, what it shows, the Scene, the captions and the footage it is drawn over."""
-
-    key: str
-    title: str
-    description: str
-    scene: Scene
-    captions: tuple[Caption, ...]
-    background: Callable[[], QImage]
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,118 +145,6 @@ def sheets(document: Mapping[str, Any]) -> tuple[Sheet, ...]:
     result.extend(_relation_sheet(document, recipe, objects) for recipe in relations)
     result.append(_crowd(document, objects))
     return tuple(result)
-
-
-def sheet_frame(sheet: Sheet, catalog: SceneRenderCatalog) -> VideoFrameWithOverlays:
-    """Return *sheet* drawn with *catalog* as a frame for the video renderers, with hover details on its objects."""
-    frame = VideoFrame(image=sheet.background(), timestamp=0.0, frame_id=0)
-    overlays = VideoOverlayData(
-        drawing_generator=SheetDrawing(sheet, catalog).prepare,
-        timestamp=0.0,
-        interaction_provider=CachedSceneOverlay(scene=sheet.scene, catalog=catalog),
-    )
-    return VideoFrameWithOverlays(frame=frame, overlays=overlays)
-
-
-def drawing_errors(sheet: Sheet, catalog: SceneRenderCatalog) -> tuple[CatalogDiagnostic, ...]:
-    """Draw *sheet* with *catalog* off screen and return the errors drawing reported, such as a failed value check."""
-    drawing = SheetDrawing(sheet, catalog)
-    context = RenderContext.create(FRAME_WIDTH, FRAME_HEIGHT)
-    drawing.prepare(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    return drawing.diagnostics
-
-
-class SheetDrawing:
-    """Draw a sheet: its captions as fixed-size text on dark plates, then the catalog's drawing of its Scene.
-
-    Captions are drawn like overlay text rather than into the background image, so they stay sharp at every window
-    size and zoom. Their plates keep them readable over bright footage.
-    """
-
-    def __init__(self, sheet: Sheet, catalog: SceneRenderCatalog) -> None:
-        self._sheet = sheet
-        self._catalog = catalog
-        self.diagnostics: tuple[CatalogDiagnostic, ...] = ()
-
-    def prepare(self, context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
-        """Return the finished drawing for *context*; drawing errors are kept in ``diagnostics``."""
-        lines = [self._texts(context, line) for line in _CAPTION_LINES]
-        self._plates(context, buffer, lines)
-        for line, texts in zip(_CAPTION_LINES, lines):
-            self._captions(context, buffer, line, texts)
-        diagnostics: list[CatalogDiagnostic] = []
-        self._catalog.render_scene(self._sheet.scene, context, buffer, diagnostics=diagnostics)
-        self.diagnostics = tuple(diagnostics)
-        return buffer.finish()
-
-    def _texts(self, context: RenderContext, line: _CaptionLine) -> list[tuple[str, float]]:
-        """Return each caption's text on *line*, shortened to fit, and its width in pixels; empty when it has none."""
-        metrics = QFontMetricsF(line.font())
-        texts = []
-        for caption in self._sheet.captions:
-            text = metrics.elidedText(
-                line.text(caption), Qt.TextElideMode.ElideRight, caption.width * context.width - 20
-            )
-            texts.append((text, metrics.horizontalAdvance(text) if text else 0.0))
-        return texts
-
-    def _plates(self, context: RenderContext, buffer: DrawingBuffer, lines: list[list[tuple[str, float]]]) -> None:
-        shown = [index for index in range(len(self._sheet.captions)) if any(line[index][0] for line in lines)]
-        if not shown:
-            return
-        captions = [self._sheet.captions[index] for index in shown]
-        widths = np.array([max(line[index][1] for line in lines) + 12 for index in shown])
-        heights = np.array(
-            [
-                max(line.top + line.size + 6 for line, texts in zip(_CAPTION_LINES, lines) if texts[index][0]) - 2
-                for index in shown
-            ],
-            dtype=np.float64,
-        )
-        buffer.boxes(
-            np.array([caption.x + 4 / context.width for caption in captions]),
-            np.array([caption.y + 4 / context.height for caption in captions]),
-            widths / context.width,
-            heights / context.height,
-            Paint(*_PLATE, 0.0, False, *_PLATE, 168, radius=4 / context.scale_factor),
-        )
-
-    def _captions(
-        self, context: RenderContext, buffer: DrawingBuffer, line: _CaptionLine, texts: list[tuple[str, float]]
-    ) -> None:
-        shown = [(caption, text) for caption, (text, _width) in zip(self._sheet.captions, texts) if text]
-        if not shown:
-            return
-        buffer.texts(
-            np.array([caption.x + 10 / context.width for caption, _text in shown]),
-            np.array([caption.y + line.top / context.height for caption, _text in shown]),
-            [text for _caption, text in shown],
-            ["top-left"] * len(shown),
-            Paint(*line.color, font_family=_CAPTION_FONT, font_size=line.size / context.scale_factor),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class _CaptionLine:
-    """One line of every caption: which text it shows, and its size, color and distance from the caption's top."""
-
-    detail: bool
-    size: int
-    top: int
-    color: tuple[int, int, int]
-
-    def text(self, caption: Caption) -> str:
-        return caption.detail if self.detail else caption.text
-
-    def font(self) -> QFont:
-        font = QFont(_CAPTION_FONT)
-        font.setPixelSize(self.size)
-        return font
-
-
-_CAPTION_FONT = "Arial"
-_CAPTION_LINES = (_CaptionLine(False, 14, 8, (226, 230, 236)), _CaptionLine(True, 11, 27, (160, 167, 178)))
-_PLATE = (16, 18, 22)
 
 
 # Sheets ---------------------------------------------------------------------------------------------------------
@@ -483,7 +334,7 @@ class _Builder:
         """Return *wanted*, or a new id in one of the usual formats; never one the scene already has."""
         candidate = wanted
         while not candidate or candidate in self.scene.entities:
-            candidate = self._ids.choices(_ID_FORMATS, _ID_WEIGHTS)[0](self._ids)
+            candidate = self._ids.choices(ID_FORMATS, ID_WEIGHTS)[0](self._ids)
         return EntityId(candidate)
 
     def _route(self, name: str | None) -> _Recipe | None:
@@ -513,7 +364,7 @@ class _Builder:
         values: dict[str, Any] = {}
         for binding in (recipe.data.get("bindings", {}) if recipe is not None else {}).values():
             name = str(binding.get("attribute", ""))
-            values[name] = _VALUES[str(binding.get("value_shape"))](name, self._values)
+            values[name] = VALUES[str(binding.get("value_shape"))](name, self._values)
         values.update(example.attributes)
         return [Attribute(name, value) for name, value in values.items()]
 
@@ -530,95 +381,3 @@ def _geometry(box: tuple[float, float, float, float], outline: bool) -> Geometry
         return BoundingBox.from_xywh(x, y, w, h)
     points = ((0.2, 0.0), (0.85, 0.08), (1.0, 0.7), (0.55, 1.0), (0.0, 0.8))
     return Polygon(points=[NormalizedPoint(x + w * px, y + h * py) for px, py in points])
-
-
-# Realistic detection data -----------------------------------------------------------------------------------------
-
-
-_ID_FORMATS: tuple[Callable[[random.Random], str], ...] = (
-    lambda rng: str(uuid.UUID(int=rng.getrandbits(128), version=4)),
-    lambda rng: str(rng.randint(1, 99)),
-    lambda rng: str(rng.randint(100, 99999)),
-    lambda rng: f"track-{rng.randint(0, 999999):06d}",
-    lambda rng: f"obj_{rng.randint(1, 400)}_cam{rng.randint(1, 4)}",
-    lambda rng: f"{rng.getrandbits(16 * rng.choice((1, 2))):x}",
-)
-"""Track id formats seen from decoders: UUIDs, small and large counters, prefixed track names and short hex."""
-_ID_WEIGHTS = (5, 2, 2, 1, 1, 1)
-
-_PALETTES: Mapping[str, tuple[tuple[str, int], ...]] = {
-    "upper_clothing_colors": (
-        ("black", 26),
-        ("white", 14),
-        ("gray", 14),
-        ("blue", 14),
-        ("red", 8),
-        ("green", 6),
-        ("beige", 5),
-        ("brown", 4),
-        ("yellow", 3),
-        ("pink", 3),
-        ("orange", 2),
-        ("purple", 1),
-    ),
-    "lower_clothing_colors": (
-        ("black", 30),
-        ("blue", 28),
-        ("gray", 16),
-        ("beige", 9),
-        ("brown", 7),
-        ("white", 5),
-        ("green", 3),
-        ("red", 2),
-    ),
-    "vehicle_colors": (
-        ("white", 25),
-        ("black", 18),
-        ("gray", 17),
-        ("silver", 15),
-        ("blue", 9),
-        ("red", 8),
-        ("brown", 3),
-        ("green", 2),
-        ("yellow", 2),
-        ("orange", 1),
-    ),
-}
-"""How often each color is reported for clothing and vehicles; other color attributes use any color equally."""
-_ANY_COLOR = tuple((name, 1) for name in ("black", "white", "gray", "blue", "red", "green", "yellow", "brown"))
-_TRUE_SHARE: Mapping[str, float] = {"carries_bag": 0.3, "occluded": 0.15, "keyframe": 0.1}
-"""How often a flag is set; other flags are set three times in ten."""
-_NUMBERS: Mapping[str, Callable[[random.Random], float]] = {
-    # Faces are mostly either clearly visible or turned away.
-    "face_visible": lambda rng: round(rng.betavariate(0.7, 0.7), 2),
-    "z_order": lambda rng: float(rng.randint(0, 4)),
-}
-"""Plausible ranges of number attributes decoders report; others are a share between 0.05 and 0.95."""
-
-
-def _share(rng: random.Random) -> float:
-    return round(rng.uniform(0.05, 0.95), 2)
-
-
-def _color_value(name: str, rng: random.Random) -> list[ColorClassification]:
-    palette = _PALETTES.get(name, _ANY_COLOR)
-    wanted = rng.choices((1, 2, 3), (55, 35, 10))[0]
-    names: list[str] = []
-    while len(names) < wanted:
-        color = rng.choices([color for color, _weight in palette], [weight for _color, weight in palette])[0]
-        if color not in names:
-            names.append(color)
-    score = rng.uniform(0.45, 0.95)
-    colors = []
-    for color in names:
-        colors.append(ColorClassification(color, rgb_from_map(color), Score(round(score, 2))))
-        score *= rng.uniform(0.3, 0.7)
-    return colors
-
-
-_VALUES: Mapping[str, Callable[[str, random.Random], Any]] = {
-    "bool": lambda name, rng: rng.random() < _TRUE_SHARE.get(name, 0.3),
-    "number": lambda name, rng: _NUMBERS.get(name, _share)(rng),
-    "color_classification_list": _color_value,
-}
-"""A plausible value for an attribute, by the shape a binding reads it as."""

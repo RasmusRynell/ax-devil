@@ -7,11 +7,11 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from ax_devil.modules.data_sources.file_data_provider.scene_catalog import SceneBuildResult
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
     StorageMode,
 )
-from ax_devil.modules.data_sources.file_data_provider.stores import SceneBuildResult
 from ax_devil.modules.filtering.filter_config import FilterConfig
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.scene.model import Scene

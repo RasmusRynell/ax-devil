@@ -9,7 +9,8 @@ from typing import Any, Protocol
 
 from PySide6.QtGui import QImage
 
-from .quick.preparation import DrawingBuffer, PreparedDrawing
+from .quick.preparation import DrawingBuffer
+from .quick.prepared import PreparedDrawing
 from .render_context import RenderContext
 
 DrawingGenerator = Callable[[RenderContext, DrawingBuffer], PreparedDrawing]

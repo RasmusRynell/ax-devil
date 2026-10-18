@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import cast
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QGuiApplication, QKeyEvent
-from PySide6.QtWidgets import QFrame, QMenu, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
+from PySide6.QtGui import QGuiApplication, QKeyEvent
+from PySide6.QtWidgets import QFrame, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
     RowAction,
-    RowActionGroup,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
+from ax_devil.modules.workspace.ui.row_menu import show_row_menu
+from ax_devil.modules.workspace.ui.row_queries import RowPredicate, count_shown, holds_open_row, sections_updatable
 from ax_devil.modules.workspace.ui.source_row import SourceRow, row_look, section_accessible_text, section_caption
 
 ROW_ROLE = Qt.ItemDataRole.UserRole
@@ -26,8 +27,6 @@ ROW_ROLE = Qt.ItemDataRole.UserRole
 
 _HIDDEN_ROLE = Qt.ItemDataRole.UserRole + 1
 """The data role holding, on a section's item, how many of its rows the filter leaves out."""
-
-RowPredicate = Callable[[WorkspaceBrowserRow], bool]
 
 _KEY_ACTIONS = {
     Qt.Key.Key_Return: RowAction.OPEN,
@@ -102,10 +101,10 @@ class SectionTree(QTreeWidget):
 
     def set_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
         """Show *sections*, keeping which rows are expanded and which sections are folded."""
-        opened = {section.kind for section in sections if _holds_open_row(section.rows)}
+        opened = {section.kind for section in sections if holds_open_row(section.rows)}
         self._revealed = (self._revealed & opened) | (opened - self._opened)
         self._opened = opened
-        updatable = _updatable(self._sections, sections)
+        updatable = sections_updatable(self._sections, sections)
         self._sections = sections
         if updatable:
             self._update()
@@ -287,7 +286,7 @@ class SectionTree(QTreeWidget):
                     child = heading.child(child_index)
                     if child is not None:
                         shown = self._filter_item(child, ancestor_matches=False) or shown
-                hidden = _count_shown(section.rows, lambda _row: True, self._matches) - _count_shown(
+                hidden = count_shown(section.rows, lambda _row: True, self._matches) - count_shown(
                     section.rows, self._allowed, self._matches
                 )
                 says_empty = not section.rows and bool(section.kind.empty_text)
@@ -346,41 +345,6 @@ class SectionTree(QTreeWidget):
         )
 
 
-def show_row_menu(
-    row: WorkspaceBrowserRow, parent: QWidget | None, global_pos: QPoint, pick: Callable[[RowAction], None]
-) -> None:
-    """Show the menu of *row* at *global_pos* and call *pick* with the action chosen; a row offering none shows
-    nothing."""
-    menu = build_row_menu(row, parent, pick)
-    try:
-        if menu.actions():
-            menu.exec(global_pos)
-    finally:
-        menu.deleteLater()
-
-
-def build_row_menu(row: WorkspaceBrowserRow, parent: QWidget | None, pick: Callable[[RowAction], None]) -> QMenu:
-    """Build the menu of *row*: every action it offers, in order, calling *pick* with the one chosen.
-
-    The actions are in groups, split by separators. An action the row offers disabled is listed greyed, with its
-    reason as the hover text.
-    """
-    menu = QMenu(parent)
-    menu.setToolTipsVisible(True)
-    previous: RowActionGroup | None = None
-    for offered in row.actions:
-        action = offered.action
-        if previous is not None and action.group is not previous:
-            menu.addSeparator()
-        previous = action.group
-        entry = QAction(action.menu_text, menu)
-        entry.setEnabled(not offered.disabled_reason)
-        entry.setToolTip(offered.disabled_reason or action.tooltip)
-        entry.triggered.connect(lambda _checked=False, action=action: pick(action))
-        menu.addAction(entry)
-    return menu
-
-
 def _row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
     """Return the row a row item shows."""
     return cast(WorkspaceBrowserRow, item.data(0, ROW_ROLE))
@@ -389,45 +353,3 @@ def _row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
 def _accessible_text(row: WorkspaceBrowserRow) -> str:
     """Return what a screen reader says for *row*: its label, then its detail line."""
     return f"{row.label}, {row.detail}" if row.detail else row.label
-
-
-def _updatable(old: Sequence[WorkspaceBrowserSection], new: Sequence[WorkspaceBrowserSection]) -> bool:
-    """Return whether a tree showing *old* can become *new* by adding and removing rows alone: the same section kinds in
-    the same order, and under every section and every kept row, unique ids with the ids of both in the same order."""
-    return [section.kind for section in old] == [section.kind for section in new] and all(
-        _rows_updatable(before.rows, after.rows) for before, after in zip(old, new, strict=True)
-    )
-
-
-def _rows_updatable(old: Sequence[WorkspaceBrowserRow], new: Sequence[WorkspaceBrowserRow]) -> bool:
-    """Return whether *new* follows *old* as ``_updatable`` asks, here and under each row they share."""
-    ids = [row.row_id for row in new]
-    shown = set(ids)
-    before = {row.row_id: row for row in old}
-    if len(shown) != len(ids) or [row.row_id for row in old if row.row_id in shown] != [i for i in ids if i in before]:
-        return False
-    return all(_rows_updatable(before[row.row_id].children, row.children) for row in new if row.row_id in before)
-
-
-def _holds_open_row(rows: Sequence[WorkspaceBrowserRow]) -> bool:
-    """Return whether any of *rows*, or a row under them, is open in a viewer."""
-    return any(row.is_open or _holds_open_row(row.children) for row in rows)
-
-
-def _count_shown(
-    rows: Sequence[WorkspaceBrowserRow],
-    allowed: RowPredicate,
-    matches: RowPredicate | None,
-    *,
-    ancestor_matches: bool = False,
-) -> int:
-    """Return how many of *rows* and the rows under them a filter of *allowed* and *matches* shows, as ``set_filter``
-    does: a row is shown when *allowed* passes it and its parent is shown, and, with *matches*, when it matches, sits
-    under a match, or holds one."""
-    count = 0
-    for row in rows:
-        row_matches = matches is None or matches(row)
-        below = _count_shown(row.children, allowed, matches, ancestor_matches=ancestor_matches or row_matches)
-        if allowed(row) and (matches is None or ancestor_matches or row_matches or below > 0):
-            count += 1 + below
-    return count

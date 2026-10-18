@@ -18,7 +18,7 @@ import ax_devil
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
+from ax_devil.modules.catalog_viewer.new_catalog_dialog import NewCatalogDialog
 from ax_devil.modules.chrome import BaseDialog, ChromeWindow
 from ax_devil.modules.chrome.choice_dialog import ChoiceDialog
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme

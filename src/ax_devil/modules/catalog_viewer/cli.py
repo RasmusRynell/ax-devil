@@ -55,7 +55,8 @@ def check(path: Path | None, config: Path | None) -> None:
 
     Errors name their place in the file, such as $.templates.object_label.parameters.id_font_size.
     """
-    from ax_devil.modules.catalog_viewer.sheets import drawing_errors, sheets
+    from ax_devil.modules.catalog_viewer.sheet_drawing import drawing_errors
+    from ax_devil.modules.catalog_viewer.sheets import sheets
 
     catalog_path, loaded, document = _load(path, config)
     _application()
@@ -95,7 +96,8 @@ def render(path: Path | None, out_dir: Path, sheet_key: str | None, config: Path
     """Draw the example sheets of PATH (default: the default catalog) as PNG images, as the viewer shows them."""
     from shiboken6 import delete
 
-    from ax_devil.modules.catalog_viewer.sheets import drawing_errors, sheet_frame, sheets
+    from ax_devil.modules.catalog_viewer.sheet_drawing import drawing_errors, sheet_frame
+    from ax_devil.modules.catalog_viewer.sheets import sheets
     from ax_devil.modules.video_player.engine.quick.image_renderer import FrameImageRenderer
 
     _catalog_path, loaded, document = _load(path, config)

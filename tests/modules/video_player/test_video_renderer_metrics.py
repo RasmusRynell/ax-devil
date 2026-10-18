@@ -13,7 +13,7 @@ from ax_devil.modules.diagnostics.metrics_store import set_metrics_enabled
 from ax_devil.modules.diagnostics.render_metrics import ViewerSnapshot, get_render_metrics_store
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
 from ax_devil.modules.video_player.engine.data_types import DrawingPreparationMetrics
-from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.prepared import PreparedDrawing
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 
 

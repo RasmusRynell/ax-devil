@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from itertools import count
 from time import perf_counter
 
 from PySide6 import QtCore
@@ -11,11 +10,9 @@ from PySide6.QtGui import QCursor, QHideEvent, QMouseEvent, QResizeEvent, QShowE
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
-from ax_devil.modules.diagnostics.render_metrics import FrameIdentity, PaintSample, get_render_metrics_store
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
-from ax_devil.modules.video_player.engine.video_transforms import calculate_aspect_preserving_fit
 
 from ..ui.hover_chip import HoverChip
 from .data_types import (
@@ -25,11 +22,10 @@ from .data_types import (
 )
 from .quick.surface import Bounds, QuickSurface
 from .render_context import RenderContext
-from .viewport_state import NormalizedViewport, ViewportState, ZoomStep
+from .render_diagnostics import RendererDiagnostics
+from .viewport_state import NormalizedViewport, ViewportState, ZoomStep, fit_frame_rect
 
 logger = get_logger(__name__)
-
-_VIEWER_IDS = count(1)
 
 _ZOOM_MIN = 1.0
 _ZOOM_MAX = 10.0
@@ -49,10 +45,7 @@ class VideoFrameRenderer(QWidget):
         super().__init__(parent)
 
         self._logger = logger
-        self._metrics_instance_id = f"viewer-{next(_VIEWER_IDS)}"
-        get_render_metrics_store().register(
-            self._metrics_instance_id, self._metrics_instance_id.replace("-", " ").title()
-        )
+        self._diagnostics = RendererDiagnostics(self)
 
         self.setMouseTracking(True)
         self._video_frame: VideoFrameWithOverlays | None = None
@@ -77,13 +70,10 @@ class VideoFrameRenderer(QWidget):
         self._chip = HoverChip(self)
 
         GlobalSettings().overlay_preference_changed.connect(self._on_overlay_preference_changed)
-        self.destroyed.connect(
-            lambda _=None, instance_id=self._metrics_instance_id: get_render_metrics_store().remove(instance_id)
-        )
 
     @Slot(VideoFrameWithOverlays)
     def display_frame(self, video_frame: VideoFrameWithOverlays) -> None:
-        get_render_metrics_store().submit(self._metrics_instance_id, self._frame_identity(video_frame))
+        self._diagnostics.submit(video_frame)
         self._video_frame = video_frame
         self.refresh_last_frame()
 
@@ -91,7 +81,7 @@ class VideoFrameRenderer(QWidget):
         self._set_selected(None)
         self._clear_hover()
         self._video_frame = None
-        get_render_metrics_store().reset(self._metrics_instance_id)
+        self._diagnostics.reset()
         self._stable_viewport = None
         self._prepare_timer.stop()
         self._quick.clear()
@@ -142,7 +132,8 @@ class VideoFrameRenderer(QWidget):
             surface.show()
             surface.lower()
         if capture:
-            self._record_render(
+            self._diagnostics.record(
+                frame,
                 start_time,
                 image_start,
                 compose_start,
@@ -155,75 +146,26 @@ class VideoFrameRenderer(QWidget):
                 backend=surface.backend_label,
             )
 
-    def _record_render(
-        self,
-        start_time: float,
-        image_start: float,
-        compose_start: float,
-        draw_start: float,
-        draw_end: float,
-        context: RenderContext,
-        *,
-        primitive_count: int,
-        submitted_count: int,
-        opacity: float,
-        backend: str,
-    ) -> None:
-        assert self._video_frame is not None
-        completed_at = perf_counter()
-        overlay = self._video_frame.overlays
-        provider = overlay.metrics_provider if overlay is not None else None
-        get_render_metrics_store().record(
-            self._metrics_instance_id,
-            PaintSample(
-                completed_at=completed_at,
-                frame=self._frame_identity(self._video_frame),
-                overlay=FrameIdentity(
-                    overlay.overlay_id,
-                    overlay.timestamp_monotime_us
-                    if overlay.timestamp_monotime_us is not None
-                    else overlay.timestamp * 1_000_000,
-                )
-                if overlay
-                else None,
-                overlay_reused=bool(overlay and overlay.metadata and overlay.metadata.get("overlay_reused", False)),
-                paint_ms=(completed_at - start_time) * 1000,
-                image_ms=(compose_start - image_start) * 1000,
-                compose_ms=(draw_start - compose_start) * 1000,
-                draw_ms=(draw_end - draw_start) * 1000,
-                primitive_count=primitive_count,
-                drawn_primitive_count=submitted_count if opacity > 0.0 else 0,
-                generation=provider.latest_drawing_preparation_metrics() if provider else None,
-                backend=backend,
-                width=context.width,
-                height=context.height,
-            ),
-            paint_started_at=start_time,
-        )
-
     def set_diagnostics_label(self, label: str) -> None:
         """Associate rendering samples with the content/lane displayed by this viewer."""
-        get_render_metrics_store().register(self._metrics_instance_id, label)
+        self._diagnostics.set_label(label)
 
     def set_diagnostics_sources(self, source_ids: tuple[str, ...]) -> None:
         """Associate this viewer with the source observations used to produce its frames."""
-        get_render_metrics_store().set_sources(self._metrics_instance_id, source_ids)
-
-    @staticmethod
-    def _frame_identity(frame: VideoFrameWithOverlays) -> FrameIdentity:
-        video = frame.frame
-        timestamp = video.timestamp_monotime_us
-        return FrameIdentity(video.frame_id, timestamp if timestamp is not None else video.timestamp * 1_000_000)
+        self._diagnostics.set_sources(source_ids)
 
     def cleanup(self) -> None:
         """Release the submitted frame, native resources, and rendering diagnostics."""
         self.clear()
         self._prepare_timer.stop()
         self._quick.cleanup()
-        get_render_metrics_store().remove(self._metrics_instance_id)
+        self._diagnostics.remove()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        self._preserve_viewport_on_resize(event)
+        if self._video_frame is not None:
+            self._stable_viewport = self._viewport.follow_resize(
+                self._stable_viewport, self._video_frame.frame.image.size(), event.oldSize(), event.size()
+            )
         super().resizeEvent(event)
         self._quick.setGeometry(self.rect())
         self._clear_hover()
@@ -260,41 +202,7 @@ class VideoFrameRenderer(QWidget):
         return None if visible.isEmpty() else visible
 
     def _base_rect(self, img_size: QtCore.QSize) -> QtCore.QRectF:
-        return self._base_rect_for_container(img_size, self.rect())
-
-    def _base_rect_for_container(
-        self, img_size: QtCore.QSize, widget_rect: QtCore.QRect | QtCore.QRectF
-    ) -> QtCore.QRectF:
-        content_size = (img_size.width(), img_size.height())
-        container_size = (round(widget_rect.width()), round(widget_rect.height()))
-        transform = calculate_aspect_preserving_fit(content_size, container_size)
-        fitted_w, fitted_h = transform.fitted_size
-        offset_x, offset_y = transform.center_offset
-        return QtCore.QRectF(widget_rect.left() + offset_x, widget_rect.top() + offset_y, fitted_w, fitted_h)
-
-    def _preserve_viewport_on_resize(self, event: QResizeEvent) -> None:
-        if self._video_frame is None or self._viewport.zoom_level <= self._viewport.zoom_min:
-            return
-
-        old_size = event.oldSize()
-        new_size = event.size()
-        if new_size.isEmpty():
-            return
-
-        image_size = self._video_frame.frame.image.size()
-        new_rect = QtCore.QRectF(0.0, 0.0, float(new_size.width()), float(new_size.height()))
-        new_base = self._base_rect_for_container(image_size, new_rect)
-        if new_base.isEmpty():
-            return
-        if self._stable_viewport is None:
-            if not old_size.isValid() or old_size.isEmpty():
-                return
-            old_rect = QtCore.QRectF(0.0, 0.0, float(old_size.width()), float(old_size.height()))
-            old_base = self._base_rect_for_container(image_size, old_rect)
-            if old_base.isEmpty():
-                return
-            self._stable_viewport = self._viewport.to_normalized(old_base)
-        self._viewport.apply_normalized(self._stable_viewport, new_base, new_rect)
+        return fit_frame_rect(img_size, self.rect())
 
     def _store_stable_viewport(self, base: QtCore.QRectF) -> None:
         if self._video_frame is not None:
@@ -467,37 +375,12 @@ class VideoFrameRenderer(QWidget):
         hit = self._hit_test(nx, ny)
         if self._update_hover_hit(hit):
             self._request_repaint()  # Repaint to show/hide highlight
-        self._show_hover_chip_for_hit(hit, target)
+        self._chip.show_over(hit, target)
 
     def _hover_target_rect(self) -> QtCore.QRectF | None:
         if self._video_frame is None or self._video_frame.overlays is None:
             return None
         return self._aspect_respected_rect(self._video_frame.frame.image.size())
-
-    def _show_hover_chip_for_hit(self, hit: HoverHit | None, target: QtCore.QRectF) -> None:
-        if hit is None:
-            self._chip.hide_chip()
-            return
-
-        anchor = self._hover_chip_anchor_point(hit, target)
-        avoid_rect = self._hover_chip_avoid_rect(hit, target)
-        self._chip.show_for(hit, int(anchor.x()), int(anchor.y()), avoid_rect=avoid_rect)
-
-    def _hover_chip_anchor_point(self, hit: HoverHit, target: QtCore.QRectF) -> QtCore.QPointF:
-        """Return widget-space anchor point near the target bounds."""
-        x, y, w, _h = hit.bounds
-        anchor_x = target.x() + (x + w) * target.width()
-        anchor_y = target.y() + y * target.height()
-        return QtCore.QPointF(anchor_x, anchor_y)
-
-    def _hover_chip_avoid_rect(self, hit: HoverHit, target: QtCore.QRectF) -> tuple[int, int, int, int]:
-        """Return widget-space bounds that the hover chip should avoid covering when possible."""
-        x, y, w, h = hit.bounds
-        rect_x = round(target.x() + x * target.width())
-        rect_y = round(target.y() + y * target.height())
-        rect_w = max(1, round(w * target.width()))
-        rect_h = max(1, round(h * target.height()))
-        return (rect_x, rect_y, rect_w, rect_h)
 
     def _update_hover_hit(self, hit: HoverHit | None) -> bool:
         """Retain the hit and rebuild the highlight only when its geometry changes."""

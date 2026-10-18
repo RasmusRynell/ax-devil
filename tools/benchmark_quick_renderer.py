@@ -25,7 +25,8 @@ from ax_devil.modules.video_player.engine.data_types import (
     VideoOverlayData,
 )
 from ax_devil.modules.video_player.engine.drawing import DrawingStyle, Paint, Points
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
+from ax_devil.modules.video_player.engine.quick.prepared import DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
 

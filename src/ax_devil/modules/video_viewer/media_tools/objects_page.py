@@ -4,210 +4,43 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
-from enum import Enum
-from functools import cached_property
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
-    QButtonGroup,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QStackedLayout,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
-from ax_devil.modules.scene.inspection import EntitySummary, entity_confidence, entity_record, entity_summary
-from ax_devil.modules.scene.model import Entity, Scene
-from ax_devil.modules.scene.query import Query, QueryRecord, compile_query
-from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
-from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey, PageKey
+from ax_devil.modules.scene.model import Scene
+from ax_devil.modules.scene.query import Query, compile_query
+from ax_devil.modules.video_viewer.media_tools.object_list_rows import (
+    FILE_PATHS,
+    LIGHT_PATHS,
+    FileRow,
+    FrameRow,
+    frame_columns,
+    query_paths,
+    row_key,
+)
+from ax_devil.modules.video_viewer.media_tools.object_rows import id_order
+from ax_devil.modules.video_viewer.media_tools.object_scope import ObjectScope, ScopeSwitch
+from ax_devil.modules.video_viewer.media_tools.page_stack import PageKey
 from ax_devil.modules.video_viewer.media_tools.presence import Presence
 from ax_devil.modules.video_viewer.media_tools.query_bar import QueryBar
-from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
+from ax_devil.modules.video_viewer.media_tools.row_columns import CellKind, Column, Labeled
+from ax_devil.modules.video_viewer.media_tools.row_model import RowTableModel
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 _MUTED = "color: palette(placeholder-text);"
-# Paths every record has, whatever the scope, so a query that names only these never needs the entity's full fields.
-_ID = "id"
-_CLASS = "class"
-_EVENT = "event"
-_LIGHT_PATHS = frozenset({_ID, _CLASS})
-_FILE_PATHS = _LIGHT_PATHS | {_EVENT}
 _FILE_NOTE = "File scope filters id, class and event only"
-_SWITCH_STYLE = f"""
-    #objectScope {{ border: 1px solid palette(mid); border-radius: {Radius.CONTROL}px; }}
-    #objectScope QToolButton {{
-        border: 0px;
-        border-radius: {Radius.CONTROL - 1}px;
-        padding: 0px {Space.M}px;
-        background: transparent;
-    }}
-    #objectScope QToolButton:hover {{ background: palette(midlight); }}
-    #objectScope QToolButton:checked {{ color: palette(highlight); background: palette(midlight); }}
-"""
-
-
-class ObjectScope(Enum):
-    """Which objects the page lists: those in the displayed frame, or every object in the file."""
-
-    FRAME = "Frame"
-    FILE = "File"
-
-    @property
-    def title(self) -> str:
-        """Return the scope switch label."""
-        return self.value
-
-    @property
-    def tooltip(self) -> str:
-        """Return the scope switch help."""
-        return {
-            ObjectScope.FRAME: "Objects in the displayed frame, searchable by any attribute",
-            ObjectScope.FILE: "Every object in the file; objects not in the displayed frame are dimmed",
-        }[self]
-
-
-def _key(row: Any) -> ObjectPageKey:
-    """Identify a row by the page it opens."""
-    return ObjectPageKey(row.entity_id)
-
-
-def _query_paths(query: Query) -> frozenset[str]:
-    """Return the lower-cased field paths the query names."""
-    return frozenset(term.path.lower() for group in query.groups for term in group if term.path is not None)
-
-
-class _FrameRow:
-    """An object of the displayed frame; its searchable record is built when a query first asks for it."""
-
-    def __init__(self, entity: Entity) -> None:
-        self.entity = entity
-        self.entity_id = str(entity.id)
-
-    @cached_property
-    def summary(self) -> EntitySummary:
-        """Build visible-row display details only when requested."""
-        return entity_summary(self.entity)
-
-    @cached_property
-    def confidence(self) -> float | None:
-        """Read the field needed for confidence ordering without formatting a row."""
-        return entity_confidence(self.entity)
-
-    def record(self, *, full: bool) -> QueryRecord:
-        """Return what a query searches: id, class and state, plus every field of the entity when *full*."""
-        return self._full_record if full else self._light_record
-
-    @cached_property
-    def _light_record(self) -> QueryRecord:
-        summary = self.summary
-        fields = {_ID: (summary.entity_id,), _CLASS: (summary.class_name,)}
-        state = () if summary.state is None else (summary.state,)
-        return QueryRecord(fields=fields, text=(summary.entity_id, summary.class_name, *state))
-
-    @cached_property
-    def _full_record(self) -> QueryRecord:
-        record = entity_record(self.entity)
-        return QueryRecord(fields={**record.fields, **self._light_record.fields}, text=record.text)
-
-
-class _FileRow:
-    """An object of the whole file, searchable by id, class and the kinds of events it is in."""
-
-    def __init__(self, history: ObjectHistory, event_kinds: tuple[str, ...]) -> None:
-        self.history = history
-        self.entity_id = history.entity_id
-        self.record = QueryRecord(
-            fields={_ID: (history.entity_id,), _CLASS: history.types, _EVENT: event_kinds},
-            text=(history.entity_id, *history.types),
-        )
-
-    @property
-    def category(self) -> str:
-        """Return the class that colors the object."""
-        return self.history.types[0] if self.history.types else ""
-
-    @cached_property
-    def seen(self) -> str:
-        """Return when the object is first and last shown."""
-        return seen_range(self.history)
-
-
-def _confidence_text(conf: float | None) -> str:
-    if conf is None:
-        return ""
-    return f"{conf:.0%}" if 0.0 <= conf <= 1.0 else f"{conf:g}"
-
-
-def _frame_columns() -> tuple[Column, ...]:
-    return (
-        Column(
-            "ID",
-            CellKind.ID_DOT,
-            lambda row: Labeled(row.entity_id, row.summary.class_name),
-            lambda row: id_order(row.entity_id),
-        ),
-        Column(
-            "Class",
-            CellKind.TEXT,
-            lambda row: row.summary.class_name,
-            lambda row: row.summary.class_name.casefold(),
-            stretch=True,
-        ),
-        Column(
-            "Conf",
-            CellKind.NUMBER,
-            lambda row: _confidence_text(row.summary.conf),
-            lambda row: (row.confidence is not None, row.confidence or 0.0),
-        ),
-        Column(
-            "Motion",
-            CellKind.TEXT,
-            lambda row: row.summary.state or "",
-            lambda row: row.summary.state or "",
-            priority=1,
-        ),
-    )
-
-
-class _ScopeSwitch(QFrame):
-    """The Frame | File switch: one framed control whose chosen half is marked like the current tab."""
-
-    scopeSelected = Signal(object)  # noqa: N815  # ObjectScope
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setObjectName("objectScope")
-        self.setStyleSheet(_SWITCH_STYLE)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(1, 1, 1, 1)
-        layout.setSpacing(0)
-        group = QButtonGroup(self)
-        self._buttons: dict[ObjectScope, QToolButton] = {}
-        for scope in ObjectScope:
-            button = QToolButton(self)
-            button.setText(scope.title)
-            button.setToolTip(scope.tooltip)
-            button.setCheckable(True)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            TextRole.SMALL.apply(button)
-            button.clicked.connect(lambda _checked=False, chosen=scope: self.scopeSelected.emit(chosen))
-            group.addButton(button)
-            layout.addWidget(button)
-            self._buttons[scope] = button
-        follow_appearance(self, lambda: self.setFixedHeight(Height.CONTROL.px))
-
-    def set_scope(self, scope: ObjectScope) -> None:
-        """Mark *scope* as the chosen one."""
-        self._buttons[scope].setChecked(True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,26 +75,25 @@ class ObjectsPage(QWidget):
         self._scope = ObjectScope.FRAME
         self._history: SceneHistory | None = None
         self._scene_filter: SessionFilter | None = None
-        self._frame_rows: dict[str, _FrameRow] = {}
+        self._frame_rows: dict[str, FrameRow] = {}
         self._file_key: tuple[SceneHistory, SessionFilter, Hashable] | None = None
         self._file_histories: list[ObjectHistory] = []
-        self._file_rows: dict[str, _FileRow] = {}
-        self._file_shown: list[_FileRow] = []
+        self._file_rows: dict[str, FileRow] = {}
+        self._file_shown: list[FileRow] = []
         self._file_dirty = True
         self._stale = True
         self._count = 0
 
         self._query_bar = QueryBar(self)
-        self._switch = _ScopeSwitch(self)
+        self._switch = ScopeSwitch(self)
         self._switch.set_scope(self._scope)
         self._count_label = QLabel(self)
         self._count_label.setStyleSheet(_MUTED)
         TextRole.SMALL.apply(self._count_label)
 
-        frame_columns = _frame_columns()
         file_columns = self._file_columns()
         self._tables = {
-            ObjectScope.FRAME: self._table(frame_columns, "objects-frame", 2, Qt.SortOrder.DescendingOrder),
+            ObjectScope.FRAME: self._table(frame_columns(), "objects-frame", 2, Qt.SortOrder.DescendingOrder),
             ObjectScope.FILE: self._table(file_columns, "objects-file", 0, Qt.SortOrder.AscendingOrder),
         }
         self._tables[ObjectScope.FILE].model.set_dimmed(self._is_absent)
@@ -371,7 +203,7 @@ class ObjectsPage(QWidget):
         model = self._tables[self._scope].model
         other = model.neighbor(key, delta)
         row = None if other is None else model.row_for(other)
-        return None if row is None else _key(row)
+        return None if row is None else row_key(row)
 
     def highlight(self, key: PageKey | None) -> None:
         """Mark the row of *key* as the one the open page came from; a key that is not an object clears the mark."""
@@ -386,7 +218,7 @@ class ObjectsPage(QWidget):
     # Internal
 
     def _file_columns(self) -> tuple[Column, ...]:
-        def presence(row: _FileRow) -> Presence:
+        def presence(row: FileRow) -> Presence:
             frame_count = self._history.frame_count if self._history is not None else 1
             return Presence(row.history.spans, frame_count, (), self._frame, row.category)
 
@@ -415,7 +247,7 @@ class ObjectsPage(QWidget):
         view.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
         return _ScopeTable(model, view)
 
-    def _is_absent(self, row: _FileRow) -> bool:
+    def _is_absent(self, row: FileRow) -> bool:
         return self._frame is not None and not row.history.is_visible_at(self._frame)
 
     def _file_available(self) -> bool:
@@ -444,12 +276,12 @@ class ObjectsPage(QWidget):
             self._file_histories = [] if key is None else key[1].filter_history(key[0].objects)
         return self._file_histories
 
-    def _file_row(self, history: SceneHistory, objects: ObjectHistory) -> _FileRow:
+    def _file_row(self, history: SceneHistory, objects: ObjectHistory) -> FileRow:
         """Return the row of *objects*, with the event kinds it is in; built once, when File scope first lists it."""
         row = self._file_rows.get(objects.entity_id)
         if row is None:
             kinds = tuple(dict.fromkeys(event.kind for event in history.events_involving(objects.entity_id)))
-            row = self._file_rows[objects.entity_id] = _FileRow(objects, kinds)
+            row = self._file_rows[objects.entity_id] = FileRow(objects, kinds)
         return row
 
     def _on_query_changed(self, query: Query) -> None:
@@ -479,22 +311,22 @@ class ObjectsPage(QWidget):
 
     def _apply_frame(self) -> None:
         previous = self._frame_rows
-        rows: dict[str, _FrameRow] = {}
+        rows: dict[str, FrameRow] = {}
         for entity in self._scene.entities.values() if self._scene is not None else ():
             known = previous.get(str(entity.id))
-            rows[str(entity.id)] = known if known is not None and known.entity is entity else _FrameRow(entity)
+            rows[str(entity.id)] = known if known is not None and known.entity is entity else FrameRow(entity)
         self._frame_rows = rows
         query = self._query
         note = ""
-        shown: Sequence[_FrameRow] = list(rows.values())
+        shown: Sequence[FrameRow] = list(rows.values())
         if not query.is_empty:
-            full = not _query_paths(query) <= _LIGHT_PATHS
+            full = not query_paths(query) <= LIGHT_PATHS
             records = [row.record(full=full) for row in shown]
             shown = [row for row, record in zip(shown, records) if query.matches(record)]
             missing = query.missing_paths(records)
             if missing:
                 note = f"No object has {', '.join(missing)} in this frame"
-        self._tables[ObjectScope.FRAME].model.set_rows(shown, _key)
+        self._tables[ObjectScope.FRAME].model.set_rows(shown, row_key)
         self._show(shown, len(rows), note, "No objects in this frame")
 
     def _apply_file(self) -> None:
@@ -505,10 +337,10 @@ class ObjectsPage(QWidget):
             query = self._query
             rows = [] if history is None else [self._file_row(history, objects) for objects in histories]
             self._file_shown = [row for row in rows if query.matches(row.record)]
-            self._tables[ObjectScope.FILE].model.set_rows(self._file_shown, _key)
+            self._tables[ObjectScope.FILE].model.set_rows(self._file_shown, row_key)
         else:
             self._tables[ObjectScope.FILE].view.viewport().update()
-        note = "" if _query_paths(self._query) <= _FILE_PATHS else _FILE_NOTE
+        note = "" if query_paths(self._query) <= FILE_PATHS else _FILE_NOTE
         self._show(self._file_shown, len(histories), note, "No objects in the file")
 
     def _show(self, shown: Sequence[Any], total: int, note: str, none_text: str) -> None:

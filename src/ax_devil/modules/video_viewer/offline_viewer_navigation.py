@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     ConsiderationQuery,
@@ -83,3 +84,21 @@ class OfflineViewerNavigation:
         if next_index is not None:
             return next_index
         return self.find_prev_considered_index(current_index)
+
+    def overlay_paths(self, entry_index: int) -> SourcePaths:
+        """Return the overlay files of the considered lanes of entry *entry_index*; video files are not included."""
+        entries = self.get_entries()
+        if not entries:
+            return SourcePaths()
+        return SourcePaths.merged(
+            lane.overlay.source_spec.source_paths
+            for lane_index, lane in enumerate(entries[entry_index].lanes)
+            if lane.overlay is not None and self.is_lane_considered(entry_index, lane_index)
+        )
+
+    def videos(self, entry_index: int) -> list[SeekableVideoContent]:
+        """Return the distinct videos of entry *entry_index*, in lane order."""
+        entries = self.get_entries()
+        if not entries or entry_index >= len(entries):
+            return []
+        return list(dict.fromkeys(lane.video for lane in entries[entry_index].lanes))

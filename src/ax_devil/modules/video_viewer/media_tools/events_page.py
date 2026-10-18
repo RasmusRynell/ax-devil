@@ -20,7 +20,9 @@ from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.query import Query, QueryRecord, compile_query
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey, PageKey
 from ax_devil.modules.video_viewer.media_tools.query_bar import QueryBar
-from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
+from ax_devil.modules.video_viewer.media_tools.row_columns import CellKind, Column, Labeled
+from ax_devil.modules.video_viewer.media_tools.row_model import RowTableModel
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 LIVE_EVENT_LIMIT = 1000
 """Live pages keep only this many of the newest events."""

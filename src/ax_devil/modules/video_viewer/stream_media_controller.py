@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
-    from ax_devil.modules.scene.rendering.catalog_manager import SceneRenderCatalogSelection
+    from ax_devil.modules.scene.rendering.catalog_selection import SceneRenderCatalogSelection
     from ax_devil.modules.video_viewer.scene_inspection import SceneInspectorSink
 
 
@@ -18,7 +18,7 @@ from PySide6.QtCore import QTimer, SignalInstance
 
 from ax_devil.core.data_types import FrameData, OverlayData
 from ax_devil.modules.data_sources.base import DataSource, FrameSource, OverlaySource
-from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder, RTSPSource, rtsp_stream_config
+from ax_devil.modules.data_sources.live.rtsp_source import RTSPSource
 from ax_devil.modules.diagnostics.metrics_store import (
     get_metrics_store,
     metrics_enabled,
@@ -28,21 +28,15 @@ from ax_devil.modules.diagnostics.metrics_store import (
 )
 from ax_devil.modules.filtering import FilterConfig
 from ax_devil.modules.filtering.session_filter import SessionFilter
-from ax_devil.modules.plugin_system import get_payload_decoder, get_payload_filter_factory
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.synchronization import SyncResult
 from ax_devil.modules.synchronization.qt_adapter import QtStreamSync
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
-from ax_devil.modules.workspace.core import (
-    LiveMQTTOverlaySourceSpec,
-    LiveRTSPOverlaySourceSpec,
-    LiveRTSPStreamSpec,
-    LiveVideoContent,
-    LiveWebSocketOverlaySourceSpec,
-)
+from ax_devil.modules.workspace.core import LiveVideoContent
 
 from .live_connection import LiveConnectionStatus, LiveFeed, LiveFeedStatus
+from .live_transports import build_rtsp_url, open_overlay_transport
 from .overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from .scene_frame_presenter import SceneFramePresenter, describe_frame_id, describe_overlay_data
 from .scene_inspection import deliver_scene_inspection_update
@@ -102,9 +96,9 @@ class StreamMediaController:
     def _open_sources(self) -> None:
         """Create the video transport and any separate overlay transport for the content."""
         content = self._content
-        embedded_overlay, separate_overlay = self._open_overlay_transport(content)
+        embedded_overlay, separate_overlay = open_overlay_transport(content)
         rtsp_source = RTSPSource(
-            self._build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None),
+            build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None),
             overlay=embedded_overlay,
         )
         self.video_source = rtsp_source
@@ -322,68 +316,6 @@ class StreamMediaController:
         )
         synchronizer.syncReady.connect(self._on_sync_result)
         return synchronizer
-
-    def _open_overlay_transport(
-        self, content: LiveVideoContent
-    ) -> tuple[RTSPOverlayDecoder | None, OverlaySource | None]:
-        """Return the decoder for overlays embedded in RTSP, or the separate overlay transport, for *content*."""
-        from ax_devil.modules.data_sources.live.mqtt_overlay_source import MQTTOverlaySource
-        from ax_devil.modules.data_sources.live.websocket_overlay_source import WebSocketOverlaySource
-
-        source_spec = content.overlay_spec
-        if source_spec is None:
-            return None, None
-        decoder = get_payload_decoder(source_spec.handler_type)
-        filter_factory = get_payload_filter_factory(source_spec.handler_type)
-        match source_spec:
-            case LiveRTSPOverlaySourceSpec():
-                embedded = RTSPOverlayDecoder(
-                    decoder=decoder, handler_type=source_spec.handler_type, filter_factory=filter_factory
-                )
-                return embedded, None
-            case LiveMQTTOverlaySourceSpec():
-                return None, MQTTOverlaySource(
-                    broker_host=source_spec.broker_host,
-                    broker_port=source_spec.broker_port,
-                    broker_username=source_spec.broker_username,
-                    broker_password=source_spec.broker_password,
-                    device_host=content.source_spec.host,
-                    device_username=content.source_spec.username,
-                    device_password=content.source_spec.password,
-                    device_api_protocol=source_spec.device_api_protocol,
-                    analytics_data_source_key=source_spec.analytics_data_source_key,
-                    decoder=decoder,
-                    handler_type=source_spec.handler_type,
-                    filter_factory=filter_factory,
-                )
-            case LiveWebSocketOverlaySourceSpec():
-                return None, WebSocketOverlaySource(
-                    topic=source_spec.topic,
-                    channel_id=source_spec.channel_id,
-                    device_host=content.source_spec.host,
-                    device_username=content.source_spec.username,
-                    device_password=content.source_spec.password,
-                    device_api_protocol=source_spec.device_api_protocol,
-                    decoder=decoder,
-                    handler_type=source_spec.handler_type,
-                    filter_factory=filter_factory,
-                )
-
-    def _build_rtsp_url(self, source_spec: LiveRTSPStreamSpec, *, metadata: bool) -> str:
-        from ax_devil_rtsp import build_axis_rtsp_url
-
-        if source_spec.stream_url:
-            return source_spec.stream_url
-        return str(
-            build_axis_rtsp_url(
-                source_spec.host,
-                rtsp_stream_config(metadata=metadata),
-                username=source_spec.username,
-                password=source_spec.password,
-                camera=source_spec.camera_head,
-                resolution=source_spec.resolution,
-            )
-        )
 
     def _connect_sources(self) -> None:
         assert self.video_source is not None

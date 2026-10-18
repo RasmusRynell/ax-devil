@@ -83,8 +83,7 @@ env -u WAYLAND_DISPLAY -u QT_QPA_PLATFORMTHEME -u QT_QUICK_BACKEND -u QSG_RHI_BA
   xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" uv run pytest \
   tests/modules/catalog_viewer/test_catalog_commands.py \
   tests/modules/catalog_viewer/test_catalog_viewer_window.py \
-  tests/modules/video_player/engine/test_image_renderer.py \
-  tests/modules/video_player/test_quick_renderer.py \
+  tests/modules/video_player/engine \
   tests/modules/video_player/test_lane_fullscreen.py \
   tests/modules/workspace/ui/test_offline_playback.py
 ```
@@ -164,7 +163,7 @@ it cannot affect later ones. A test that needs files uses `tmp_path`.
 
 ## Quick renderer verification
 
-`tests/modules/video_player/test_quick_renderer.py` exercises rendered output, text/path
+`tests/modules/video_player/engine/test_quick_*.py` exercise rendered output, text/path
 ordering, opacity, texture replacement, software rendering, and reparenting.
 `tests/modules/video_player/engine/test_image_renderer.py` verifies native dimensions,
 edge pixels, overlay removal, and source-context dimensions. Run it with
@@ -172,7 +171,7 @@ edge pixels, overlay removal, and source-context dimensions. Run it with
 Normal tests use the software scene graph. For native-window verification after rendering or startup
 changes, use the isolated command in [GUI verification](#gui-verification).
 For fractional/high-DPI geometry, add `QT_SCALE_FACTOR=1.5` and select only
-`tests/modules/video_player/test_quick_renderer.py -k numeric_geometry`; repeat at scale 2.
+`tests/modules/video_player/engine/test_quick_geometry.py -k numeric_geometry`; repeat at scale 2.
 Other pixel-coordinate tests assume scale 1. Linux/OpenGL results do not certify other graphics APIs.
 
 ## Rendering benchmarks
@@ -228,7 +227,7 @@ QT_QPA_PLATFORM=offscreen uv run python tools/benchmark_template_runtime.py --it
 Use `--catalog FILE` to compare appearances and `--changing-scores` to exercise label texture replacement rather
 than only moving stable labels. Compare changes with the same catalog, backend, viewport and workload, sequentially
 without other verification running. Confidence values cycle through sixty two-decimal values; this is a repeatable
-cache workload, not a claim about every camera's score distribution. Label tests in `test_quick_renderer.py` cover
+cache workload, not a claim about every camera's score distribution. Label tests in `test_quick_text_and_labels.py` cover
 shared textures, bounded eviction, disappearing instances, clearing and scene-graph recreation. Run them on both
 the offscreen software backend and the private OpenGL display to check native resource destruction.
 
