@@ -184,6 +184,10 @@ def test_file_scope_lists_the_whole_file(qtbot: QtBot, render_catalog_selection:
     assert _ids(panel) == ["a", "b"]  # Includes the object that is not in the displayed frame.
     _search(panel, "class:car")
     assert _ids(panel) == ["b"]
+    note = panel.objects_page.findChild(ElidedLabel)
+    assert note is not None and not note.isVisibleTo(panel)
+    _search(panel, "speed:1")  # File scope cannot filter an attribute, so it says what it can filter.
+    assert _ids(panel) == [] and note.isVisibleTo(panel) and "File scope" in note.full_text()
     _search(panel, "")
     panel.filter_model.set_enabled("show_cars", False)  # The type filter hides objects in the list as on the video.
     assert _ids(panel) == ["a"]

@@ -40,6 +40,8 @@ _ID = "id"
 _CLASS = "class"
 _EVENT = "event"
 _LIGHT_PATHS = frozenset({_ID, _CLASS})
+_FILE_PATHS = _LIGHT_PATHS | {_EVENT}
+_FILE_NOTE = "File scope filters id, class and event only"
 _SWITCH_STYLE = f"""
     #objectScope {{ border: 1px solid palette(mid); border-radius: {Radius.CONTROL}px; }}
     #objectScope QToolButton {{
@@ -506,7 +508,8 @@ class ObjectsPage(QWidget):
             self._tables[ObjectScope.FILE].model.set_rows(self._file_shown, _key)
         else:
             self._tables[ObjectScope.FILE].view.viewport().update()
-        self._show(self._file_shown, len(histories), "", "No objects in the file")
+        note = "" if _query_paths(self._query) <= _FILE_PATHS else _FILE_NOTE
+        self._show(self._file_shown, len(histories), note, "No objects in the file")
 
     def _show(self, shown: Sequence[Any], total: int, note: str, none_text: str) -> None:
         """Put *shown* of *total* objects in the table of the current scope, along with the note under the query."""

@@ -82,12 +82,13 @@ class RowFonts:
     mono: QFont
     body_metrics: QFontMetrics
     mono_metrics: QFontMetrics
+    small_metrics: QFontMetrics
 
     @classmethod
     def current(cls) -> RowFonts:
         """Return the fonts for the current text size."""
         body, mono = TextRole.BODY.font(), TextRole.MONO.font()
-        return cls(body, mono, QFontMetrics(body), QFontMetrics(mono))
+        return cls(body, mono, QFontMetrics(body), QFontMetrics(mono), QFontMetrics(TextRole.SMALL.font()))
 
 
 def _draw_text(
@@ -195,13 +196,13 @@ class FieldRow(Row):
 
     def value_px(self, fonts: RowFonts) -> int:
         """Return the width of the tag and the text."""
-        return self._tag_width() + fonts.mono_metrics.horizontalAdvance(self._text) + 1
+        return self._tag_width(fonts) + fonts.mono_metrics.horizontalAdvance(self._text) + 1
 
-    def _tag_width(self) -> int:
+    def _tag_width(self, fonts: RowFonts) -> int:
         """Return the width of the tag and the gap after it, or 0 without a tag."""
         if self._tag is None:
             return 0
-        return QFontMetrics(TextRole.SMALL.font()).horizontalAdvance(self._tag) + 2 * Space.M + Space.M
+        return fonts.small_metrics.horizontalAdvance(self._tag) + 2 * Space.M + Space.M
 
     def paint(self, painter: QPainter, rect: QRect, palette: QPalette, fonts: RowFonts, label_width: int) -> None:
         """Draw the label, then the value with its bar at the right edge when it has one."""
@@ -227,7 +228,7 @@ class FieldRow(Row):
         label, value, _ = self._areas(rect, fonts, label_width)
         if (
             fonts.body_metrics.horizontalAdvance(self.label) > label.width()
-            or fonts.mono_metrics.horizontalAdvance(self._text) + self._tag_width() > value.width()
+            or fonts.mono_metrics.horizontalAdvance(self._text) + self._tag_width(fonts) > value.width()
         ):
             return f"{self.label}: {self._copy}"
         return None
@@ -269,17 +270,17 @@ class EventRow(Row):
         """Return the width of the time."""
         return fonts.mono_metrics.horizontalAdvance(self.label) + 1
 
-    def _tag_px(self) -> int:
+    def _tag_px(self, fonts: RowFonts) -> int:
         """Return the width of the kind tag and the gap after it."""
         event = self.event
         assert event is not None
-        return QFontMetrics(TextRole.SMALL.font()).horizontalAdvance(event.kind) + 3 * Space.M
+        return fonts.small_metrics.horizontalAdvance(event.kind) + 3 * Space.M
 
     def value_px(self, fonts: RowFonts) -> int:
         """Return the width of the tag and the label."""
         event = self.event
         assert event is not None
-        return self._tag_px() + fonts.body_metrics.horizontalAdvance(event.label)
+        return self._tag_px(fonts) + fonts.body_metrics.horizontalAdvance(event.label)
 
     def _value_left(self, rect: QRect, label_width: int) -> int:
         return rect.left() + label_width + Space.M
@@ -316,7 +317,7 @@ class EventRow(Row):
         """Return the whole event if its time, kind or label is cut off."""
         event = self.event
         assert event is not None
-        shown = rect.right() + 1 - self._value_left(rect, label_width) - self._tag_px()
+        shown = rect.right() + 1 - self._value_left(rect, label_width) - self._tag_px(fonts)
         if (
             fonts.mono_metrics.horizontalAdvance(self.label) > label_width
             or fonts.body_metrics.horizontalAdvance(event.label) > shown
@@ -631,6 +632,7 @@ class FieldsView(QTreeView):
         self._delegate = _Delegate(self, self._fields_model)
         self._longest_label = 0
         self._widest_value = 0
+        self._widest_event = 0
         self._measured_for = -1  # The model structure the label width was measured for.
         self._values_measured = False
         self._copied = CopiedMark(self, lambda: self.viewport().update())
@@ -767,15 +769,19 @@ class FieldsView(QTreeView):
             self._syncing = False
 
     def _measure(self) -> tuple[int, int]:
-        """Return the width of the longest label and of the widest value. Labels are measured again only when the rows
-        or the fonts change; values whenever rows are set, since an object with the same fields has other values.
+        """Return the width of the longest label and of the widest value. Labels and event rows are measured again only
+        when the rows or the fonts change, since an event never changes; field values whenever rows are set, since an
+        object with the same fields has other values.
         """
         fonts = self._delegate.fonts
         if self._measured_for != self._fields_model.structure:
-            self._longest_label = max((row.label_px(fonts) for row in self._fields_model.rows()), default=0)
+            rows = self._fields_model.rows()
+            self._longest_label = max((row.label_px(fonts) for row in rows), default=0)
+            self._widest_event = max((row.value_px(fonts) for row in rows if row.event is not None), default=0)
             self._measured_for = self._fields_model.structure
         if not self._values_measured:
-            self._widest_value = max((row.value_px(fonts) for row in self._fields_model.rows()), default=0)
+            fields = max((row.value_px(fonts) for row in self._fields_model.rows() if row.event is None), default=0)
+            self._widest_value = max(fields, self._widest_event)
             self._values_measured = True
         return self._longest_label, self._widest_value
 
