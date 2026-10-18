@@ -49,7 +49,7 @@ def test_string_cache_is_bounded_and_a_full_page_must_be_reset(
     kept = atlas.shape(["abc"], font)
     with pytest.raises(AtlasFull):
         for start in range(0, 200, 4):
-            atlas.shape([chr(0x4E00 + start + offset) for offset in range(4)], font)
+            atlas.shape([chr(0x0100 + start + offset) for offset in range(4)], font)
             assert atlas._string_count <= 8
     atlas.reset()
     assert atlas.shape(["abc"], font).count[0] == kept.count[0]
