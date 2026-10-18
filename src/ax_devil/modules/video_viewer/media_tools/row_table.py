@@ -1,9 +1,9 @@
 """A virtualized, sortable table of plain rows for the media tools pages.
 
 ``RowTableModel`` holds any objects as rows and a ``Column`` per cell says how to read, show and sort it.
-``RowTableView`` paints every cell kind itself, one delegate and no widgets per row, so a list of thousands stays cheap
-and updating it for every video frame does not rebuild it. Columns take the width of their content; when the view is
-too narrow they shrink (eliding text) and then the columns with the highest ``priority`` number are hidden.
+``RowTableView`` paints visible rows in one pass, with fixed geometry and no widgets per row. Columns take the width of
+their longest visible value; when the view is too narrow they shrink (eliding text) and then the columns with the
+highest ``priority`` number are hidden.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import re
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any
+from typing import Any, cast
 
 from PySide6.QtCore import (
     QAbstractTableModel,
@@ -34,17 +34,16 @@ from PySide6.QtGui import (
     QKeySequence,
     QMouseEvent,
     QPainter,
+    QPaintEvent,
     QPalette,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QHeaderView,
-    QStyle,
-    QStyledItemDelegate,
     QStyleOptionViewItem,
+    QTableView,
     QToolTip,
-    QTreeView,
     QWidget,
 )
 
@@ -57,7 +56,6 @@ from ax_devil.modules.chrome.theme import FLUSH_VIEW, category_color
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.video_viewer.media_tools.presence import Presence, paint_presence
 
-_DIMMED_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 _DIMMED_OPACITY = 0.5
 # The fewest characters of an id left when ids are shortened, before one is left out for "+n": the ellipsis and four
 # visible characters on each side.
@@ -111,12 +109,12 @@ class Column:
     *value* returns what *cell* paints. *sort_key* makes the column sortable by the header, and returns values that
     compare with each other across rows; ``None`` leaves it unsortable.
 
-    A column is as wide as its longest value. A *stretch* column (the last one if none is) takes the room the others
-    leave. When there is not enough room, text is elided at the end, or in the middle for ids and when *elide* says so,
-    but only down to a comfortable width (20 characters for an id) while columns with a *priority* number above 0 are
-    still shown: those are hidden first, the highest number first, and a column that is empty in every row before
-    that. Only when nothing is left to hide do columns shrink further, down to *width_chars* monospace characters (a
-    default for their cell kind if ``None``).
+    A column is as wide as its longest visible value. A *stretch* column (the last one if none is) takes the room the
+    others leave. When there is not enough room, text is elided at the end, or in the middle for ids and when *elide*
+    says so, but only down to a comfortable width (20 characters for an id) while columns with a *priority* number above
+    0 are still shown: those are hidden first, the highest number first, and a column that is empty in every visible row
+    before that. Only when nothing is left to hide do columns shrink further, down to *width_chars* monospace characters
+    (a default for their cell kind if ``None``).
     """
 
     title: str
@@ -202,6 +200,7 @@ class RowTableModel(QAbstractTableModel):
         self._source: list[object] = []
         self._rows: list[object] = []
         self._keys: list[Hashable] = []
+        self._order_keys: dict[Hashable, tuple[tuple[int, str], ...]] = {}
         self._key_of: Callable[[Any], Hashable] = id
         self._sort_column = -1
         self._sort_order = Qt.SortOrder.AscendingOrder
@@ -224,17 +223,23 @@ class RowTableModel(QAbstractTableModel):
             return None
         return str(self._columns[self._copy_section].value(self._rows[position]))
 
-    def is_blank(self, section: int) -> bool:
-        """Return whether *section* shows no text in any row; a column of a kind without a single text never is."""
+    def is_blank(self, section: int, rows: range) -> bool:
+        """Return whether *section* shows no text in the rows at the positions *rows*; a column of a kind without a
+        single text never is.
+        """
         column = self._columns[section]
-        if column.cell not in _TEXT_ROLES or not self._rows:
+        if column.cell not in _TEXT_ROLES or not rows:
             return False
-        return not any(column.cell.text_of(column.value(row)) for row in self._rows)
+        return not any(column.cell.text_of(column.value(row)) for row in self._rows[rows.start : rows.stop])
 
-    def column_texts(self, section: int) -> list[str]:
-        """Return the text of every row's cell in *section*; empty for kinds that show no single text."""
+    def column_texts(self, section: int, rows: range) -> list[str]:
+        """Return the text of the cell in *section* of each row at the positions *rows*; empty for kinds that show no
+        single text.
+        """
         column = self._columns[section]
-        texts = (column.cell.text_of(column.value(row)) for row in self._rows) if column.cell in _TEXT_ROLES else ()
+        if column.cell not in _TEXT_ROLES:
+            return []
+        texts = (column.cell.text_of(column.value(row)) for row in self._rows[rows.start : rows.stop])
         return [text for text in texts if text is not None]
 
     def set_rows(self, rows: Sequence[object], key: Callable[[Any], Hashable]) -> None:
@@ -297,6 +302,10 @@ class RowTableModel(QAbstractTableModel):
         self._dimmed = predicate
         self._repaint_all()
 
+    def is_dimmed(self, position: int) -> bool:
+        """Return whether the row at *position* is dimmed."""
+        return self._dimmed is not None and self._dimmed(self._rows[position])
+
     def sort_state(self) -> tuple[int, Qt.SortOrder]:
         """Return the sorted column (-1 for none) and its order."""
         return self._sort_column, self._sort_order
@@ -315,9 +324,7 @@ class RowTableModel(QAbstractTableModel):
         return 0 if parent is not None and parent.isValid() else len(self._columns)
 
     def data(self, index: QModelIndex | QPersistentModelIndex, role: int = int(Qt.ItemDataRole.DisplayRole)) -> Any:
-        """Return the cell's value for the display role, the full text of a text cell for the tooltip role, and
-        whether its row is dimmed for the dimmed role.
-        """
+        """Return the cell's value for the display role, and the full text of a text cell for the tooltip role."""
         if not index.isValid() or not 0 <= index.row() < len(self._rows):
             return None
         row = self._rows[index.row()]
@@ -326,8 +333,6 @@ class RowTableModel(QAbstractTableModel):
             return column.value(row)
         if role == int(Qt.ItemDataRole.ToolTipRole):
             return COPY_TOOLTIP if column.cell is CellKind.COPY else column.cell.text_of(column.value(row))
-        if role == _DIMMED_ROLE:
-            return self._dimmed is not None and self._dimmed(row)
         return None
 
     def headerData(  # noqa: N802
@@ -342,9 +347,13 @@ class RowTableModel(QAbstractTableModel):
         keyed = [(self._key_of(row), row) for row in self._source]
         sort_key = self._columns[self._sort_column].sort_key if self._sort_column >= 0 else None
         if sort_key is not None:
+            previous = self._order_keys
+            self._order_keys = {key: previous[key] if key in previous else _natural(str(key)) for key, _ in keyed}
             # Python's sort is stable: order by key first, so equal sort values keep a fixed order from frame to frame.
-            keyed.sort(key=lambda pair: _natural(str(pair[0])))
+            keyed.sort(key=lambda pair: self._order_keys[pair[0]])
             keyed.sort(key=lambda pair: sort_key(pair[1]), reverse=self._sort_order == Qt.SortOrder.DescendingOrder)
+        else:
+            self._order_keys.clear()
         keys = [key for key, _ in keyed]
         rows = [row for _, row in keyed]
         if keys == self._keys:
@@ -359,7 +368,10 @@ class RowTableModel(QAbstractTableModel):
             self.endResetModel()
 
     def _move_rows(self, keys: list[Hashable], rows: list[object]) -> None:
-        self.layoutAboutToBeChanged.emit()
+        # PySide exposes Qt signal overloads at runtime but omits __getitem__ from its stubs.
+        self.layoutAboutToBeChanged["QList<QPersistentModelIndex>", "QAbstractItemModel::LayoutChangeHint"].emit(  # type: ignore[index]
+            [], self.LayoutChangeHint.VerticalSortHint
+        )
         old_keys = self._keys
         self._keys, self._rows = keys, rows
         new_position = {key: position for position, key in enumerate(keys)}
@@ -367,7 +379,9 @@ class RowTableModel(QAbstractTableModel):
         self.changePersistentIndexList(
             old, [self.index(new_position[old_keys[index.row()]], index.column()) for index in old]
         )
-        self.layoutChanged.emit()
+        self.layoutChanged["QList<QPersistentModelIndex>", "QAbstractItemModel::LayoutChangeHint"].emit(  # type: ignore[index]
+            [], self.LayoutChangeHint.VerticalSortHint
+        )
 
     def _repaint_all(self) -> None:
         if self._rows:
@@ -480,11 +494,10 @@ class _Header(QHeaderView):
         painter.restore()
 
 
-class _CellDelegate(QStyledItemDelegate):
-    """Paints every cell kind; the row's background is the view's."""
+class _RowPainter:
+    """Paint the cells of a visible row with shared appearance resources."""
 
-    def __init__(self, model: RowTableModel, parent: QWidget) -> None:
-        super().__init__(parent)
+    def __init__(self, model: RowTableModel) -> None:
         self._table = model
         # What the view tells about the pointer and the last copy, for the copy column's icon.
         self.hover_row = -1
@@ -509,8 +522,9 @@ class _CellDelegate(QStyledItemDelegate):
 
     def load_metrics(self) -> None:
         """Read the fonts and sizes for the current text size."""
-        self._body = TextRole.BODY.font()
-        self._mono = TextRole.MONO.font()
+        roles = set(_TEXT_ROLES.values())
+        self._fonts = {role: role.font() for role in roles}
+        self._metrics = {role: QFontMetrics(font) for role, font in self._fonts.items()}
         self._row_height = Height.ROW.px
         self._dot = max(6, TextRole.BODY.px * 2 // 3)
         self.tail_px = Space.S + TextRole.BODY.px // 3
@@ -521,15 +535,16 @@ class _CellDelegate(QStyledItemDelegate):
             return self._dot + Space.S
         return 2 * Space.M if kind is CellKind.TAG else 0
 
-    def shown_text(self, index: QModelIndex | QPersistentModelIndex, width: int) -> str | None:
-        """Return the text of the cell at *index* as painted in a column *width* wide, or ``None`` if it has no text."""
-        column = self._table.columns[index.column()]
-        full = column.cell.text_of(index.data())
+    def shown_text(self, row: int, section: int, width: int) -> str | None:
+        """Return the text of a cell as painted in a column *width* wide, or ``None`` if it has no text."""
+        column = self._table.columns[section]
+        full = column.cell.text_of(column.value(self._table.row_at(row)))
         if full is None:
             return None
-        room = self._inner(QRect(0, 0, width, self._row_height), index.column(), column.cell).width()
-        metrics = QFontMetrics(_TEXT_ROLES[column.cell].font())
-        return metrics.elidedText(full, _elide_mode(column), max(0, room - self.chrome_px(column.cell)))
+        room = self._inner(QRect(0, 0, width, self._row_height), section, column.cell).width()
+        return self._metrics[_TEXT_ROLES[column.cell]].elidedText(
+            full, _elide_mode(column), max(0, room - self.chrome_px(column.cell))
+        )
 
     def _inner(self, rect: QRect, section: int, kind: CellKind) -> QRect:
         """Return *rect* inside the cell padding; the copy cell has none."""
@@ -538,60 +553,47 @@ class _CellDelegate(QStyledItemDelegate):
         right = Space.S + (self.tail_px if section == self.last_section else 0)
         return rect.adjusted(Space.M if section == 0 else Space.S, 0, -right, 0)
 
-    def sizeHint(  # noqa: N802
-        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
-    ) -> QSize:
-        """Return the uniform row height."""
-        return QSize(option.rect.width(), self._row_height)
-
-    def helpEvent(  # noqa: N802
-        self,
-        event: QHelpEvent,
-        view: QAbstractItemView,
-        option: QStyleOptionViewItem,
-        index: QModelIndex | QPersistentModelIndex,
-    ) -> bool:
-        """Show the tooltip of a cell only if its text is cut off."""
-        if event.type() == QEvent.Type.ToolTip and index.isValid():
-            full = self._table.columns[index.column()].cell.text_of(index.data())
-            if full is not None and self.shown_text(index, option.rect.width()) == full:
-                QToolTip.hideText()
-                return True
-        return super().helpEvent(event, view, option, index)
-
-    def paint(
-        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
-    ) -> None:
-        """Paint one cell in the way its column's kind says."""
-        column = self._table.columns[index.column()]
+    def paint(self, painter: QPainter, rect: QRect, row: int, header: QHeaderView) -> None:
+        """Read the row once and paint only columns that intersect the viewport."""
+        model = self._table
+        record = model.row_at(row)
         # The application's palette: a view's own has the theme stylesheet's selection colors as its highlight.
         palette = QGuiApplication.palette()
-        dimmed = bool(index.data(_DIMMED_ROLE))
+        dimmed = model.is_dimmed(row)
         text = palette.color(QPalette.ColorRole.PlaceholderText if dimmed else QPalette.ColorRole.Text)
-        rect = self._inner(option.rect, index.column(), column.cell)
-        self._row = index.row()
-        self._elide = _elide_mode(column)
-        painter.save()
-        painter.setClipRect(option.rect)
-        if dimmed:
-            painter.setOpacity(_DIMMED_OPACITY)
-        self._painters[column.cell](painter, rect, palette, index.data(), text)
-        painter.restore()
+        self._row = row
+        for position, column in enumerate(model.columns):
+            if header.isSectionHidden(position):
+                continue
+            cell = QRect(
+                header.sectionViewportPosition(position), rect.top(), header.sectionSize(position), rect.height()
+            )
+            if not cell.intersects(rect):
+                continue
+            self._elide = _elide_mode(column)
+            painter.save()
+            painter.setClipRect(cell, Qt.ClipOperation.IntersectClip)
+            if dimmed:
+                painter.setOpacity(_DIMMED_OPACITY)
+            self._painters[column.cell](
+                painter, self._inner(cell, position, column.cell), palette, column.value(record), text
+            )
+            painter.restore()
 
-    def _text(self, painter: QPainter, rect: QRect, font: Any, text: QColor, value: str, flags: int = 0) -> None:
-        painter.setFont(font)
+    def _text(self, painter: QPainter, rect: QRect, role: TextRole, text: QColor, value: str, flags: int = 0) -> None:
+        painter.setFont(self._fonts[role])
         painter.setPen(text)
-        shown = QFontMetrics(font).elidedText(value, self._elide, rect.width())
+        shown = self._metrics[role].elidedText(value, self._elide, rect.width())
         painter.drawText(rect, flags | int(Qt.AlignmentFlag.AlignVCenter), shown)
 
     def _paint_text(self, painter: QPainter, rect: QRect, palette: QPalette, value: str, text: QColor) -> None:
-        self._text(painter, rect, self._body, text, value, int(Qt.AlignmentFlag.AlignLeft))
+        self._text(painter, rect, TextRole.BODY, text, value, int(Qt.AlignmentFlag.AlignLeft))
 
     def _paint_mono(self, painter: QPainter, rect: QRect, palette: QPalette, value: str, text: QColor) -> None:
-        self._text(painter, rect, self._mono, text, value, int(Qt.AlignmentFlag.AlignLeft))
+        self._text(painter, rect, TextRole.MONO, text, value, int(Qt.AlignmentFlag.AlignLeft))
 
     def _paint_number(self, painter: QPainter, rect: QRect, palette: QPalette, value: str, text: QColor) -> None:
-        self._text(painter, rect, self._mono, text, value, int(Qt.AlignmentFlag.AlignRight))
+        self._text(painter, rect, TextRole.MONO, text, value, int(Qt.AlignmentFlag.AlignRight))
 
     def _paint_id_dot(self, painter: QPainter, rect: QRect, palette: QPalette, value: Labeled, text: QColor) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -599,7 +601,7 @@ class _CellDelegate(QStyledItemDelegate):
         painter.setBrush(category_color(value.category, palette))
         painter.drawEllipse(QRect(rect.left(), rect.top() + (rect.height() - self._dot) // 2, self._dot, self._dot))
         after_dot = rect.adjusted(self.chrome_px(CellKind.ID_DOT), 0, 0, 0)
-        self._text(painter, after_dot, self._mono, text, value.text, int(Qt.AlignmentFlag.AlignLeft))
+        self._text(painter, after_dot, TextRole.MONO, text, value.text, int(Qt.AlignmentFlag.AlignLeft))
 
     def _paint_presence(self, painter: QPainter, rect: QRect, palette: QPalette, value: Presence, text: QColor) -> None:
         paint_presence(
@@ -622,7 +624,7 @@ class _CellDelegate(QStyledItemDelegate):
         """Draw the ids as muted text joined by commas: in full if they fit, else each shortened in the middle, else
         the first few and ``+n`` for the rest.
         """
-        metrics = QFontMetrics(self._mono)
+        metrics = self._metrics[TextRole.MONO]
         ids = [label.text for label in value]
         separator = metrics.horizontalAdvance(", ")
         smallest = _MIN_ID_CHARS * metrics.horizontalAdvance("0")
@@ -639,7 +641,7 @@ class _CellDelegate(QStyledItemDelegate):
                 continue
             shown[-1] += more
             break
-        painter.setFont(self._mono)
+        painter.setFont(self._fonts[TextRole.MONO])
         painter.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
         painter.drawText(rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), ", ".join(shown))
 
@@ -648,7 +650,18 @@ class _CellDelegate(QStyledItemDelegate):
         paint_copy_icon(painter, rect, palette, bright=self._row == self.hover_row, copied=copied)
 
 
-class RowTableView(QTreeView):
+@dataclass(frozen=True, slots=True)
+class _ColumnFit:
+    """What a column's width depends on besides its values, measured for the current fonts."""
+
+    metrics: QFontMetrics | None  # The face of its text; ``None`` for a kind without a single text.
+    chrome: int  # The width of a cell spent on anything but its text.
+    title: int  # The width of the whole header title.
+    comfortable: int  # The width of its text before other columns are hidden, if the values are long enough.
+    minimum: int  # The width of its fewest characters.
+
+
+class RowTableView(QTableView):
     """A ``RowTableModel`` as a table of uniform rows with caption headers that sort their column.
 
     The highlighted row and the row under the pointer get the sidebar's row background. A click or Enter on a row emits
@@ -661,34 +674,35 @@ class RowTableView(QTreeView):
     """
 
     rowActivated = Signal(object)  # the row object
+    sortRequested = Signal()  # Let the page catch up to its pending snapshot before sorting.
 
     def __init__(self, model: RowTableModel, parent: QWidget | None = None, *, table_key: str | None = None) -> None:
         super().__init__(parent)
         self._rows_model = model
         self._hover_row = -1
         self._laying_out = False
-        self._natural: list[int] = []  # Per column: its width for its longest value.
-        self._floor: list[int] = []  # Per column: the narrowest it is before other columns are hidden.
+        self._fits: list[_ColumnFit] = []  # Per column: what its width depends on besides its values.
         self._minimum: list[int] = []  # Per column: the narrowest it is for the minimum size; independent of the rows.
+        self._natural: list[int] = []  # Per column: its width for its longest visible value.
+        self._floor: list[int] = []  # Per column: the narrowest it is before other columns are hidden.
         self._least: list[int] = []  # Per column: the narrowest it is shrunk to for its rows.
-        self._empty: list[bool] = []  # Per column: whether it shows nothing in any row.
+        self._empty: list[bool] = []  # Per column: whether it shows nothing in any visible row.
         self._tail = (
             -1
         )  # The last shown column; it is wider by the delegate's tail_px, to keep its text off the right edge.
         self._user_widths = _REMEMBERED_WIDTHS.setdefault(table_key, {}) if table_key is not None else {}
-        self._delegate = _CellDelegate(model, self)
+        self._row_painter = _RowPainter(model)
         self._copied = CopiedMark(self, self._copied_changed)
         self.setModel(model)
         self._header = _Header(model, self)
-        self.setHeader(self._header)
-        self.setItemDelegate(self._delegate)
+        self.setHorizontalHeader(self._header)
+        self.verticalHeader().hide()
+        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.verticalHeader().setDefaultSectionSize(Height.ROW.px)
+        self.setShowGrid(False)
         self.setStyleSheet(FLUSH_VIEW)
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setRootIsDecorated(False)
-        self.setItemsExpandable(False)
-        self.setIndentation(0)
-        self.setUniformRowHeights(True)
-        self.setAllColumnsShowFocus(False)
+        self.setTabKeyNavigation(False)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -703,11 +717,17 @@ class RowTableView(QTreeView):
         header.sectionHandleDoubleClicked.connect(self._fit_section)
         self._saved_scroll = 0
         model.modelAboutToBeReset.connect(self._save_scroll)
-        model.modelReset.connect(self._rows_changed)
-        model.valuesChanged.connect(self._values_changed)
         model.modelReset.connect(self._restore_scroll)
+        model.modelReset.connect(self._remeasure)
+        model.layoutChanged.connect(self._remeasure)
+        model.valuesChanged.connect(self._values_changed)
+        self.verticalScrollBar().valueChanged.connect(lambda _: self._remeasure())
         self.clicked.connect(self._activate_index)
         follow_appearance(self, self._apply_metrics)
+
+    def header(self) -> QHeaderView:
+        """Return the flat table's horizontal header."""
+        return self.horizontalHeader()
 
     @property
     def rows_model(self) -> RowTableModel:
@@ -729,7 +749,7 @@ class RowTableView(QTreeView):
         """Return the text of a cell as it is painted now, elided to its column, or ``None`` if it shows no text."""
         if self.isColumnHidden(section):
             return None
-        return self._delegate.shown_text(self._rows_model.index(row, section), self.columnWidth(section))
+        return self._row_painter.shown_text(row, section, self.columnWidth(section))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         """Return the width of the columns that are never hidden, at their narrowest, and of the scroll bar.
@@ -746,14 +766,38 @@ class RowTableView(QTreeView):
         scroll = (
             bar.sizeHint().width() if self.verticalScrollBarPolicy() != Qt.ScrollBarPolicy.ScrollBarAlwaysOff else 0
         )
-        tail = self._delegate.tail_px
+        tail = self._row_painter.tail_px
         return QSize(sum(never_hidden) + tail + scroll, super().minimumSizeHint().height())
 
     def viewportEvent(self, event: QEvent) -> bool:  # noqa: N802
-        """Fit the columns to the new width when the viewport is resized."""
+        """Fit the columns to the new size when the viewport is resized, and show a tooltip only for cut text."""
         if event.type() == QEvent.Type.Resize:
+            self._measure_rows()
             self._layout_columns()
+        elif event.type() == QEvent.Type.ToolTip:
+            index = self.indexAt(cast(QHelpEvent, event).pos())
+            if index.isValid():
+                full = self._rows_model.columns[index.column()].cell.text_of(index.data())
+                if full is not None and self.shown_text(index.row(), index.column()) == full:
+                    QToolTip.hideText()
+                    return True
         return super().viewportEvent(event)
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Paint visible fixed-height rows once using native table navigation and geometry."""
+        first = self.rowAt(event.rect().top())
+        if first < 0:
+            return
+        painter = QPainter(self.viewport())
+        painter.setClipRegion(event.region())
+        for position in range(first, self._rows_model.rowCount()):
+            top = self.rowViewportPosition(position)
+            if top > event.rect().bottom():
+                break
+            options = QStyleOptionViewItem()
+            options.rect = QRect(0, top, self.viewport().width(), self.rowHeight(position))
+            self.drawRow(painter, options, self._rows_model.index(position, 0))
+        painter.end()
 
     def drawRow(  # noqa: N802
         self, painter: QPainter, options: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -769,11 +813,7 @@ class RowTableView(QTreeView):
             active=self._rows_model.is_active(row),
             hovered=row == self._hover_row or cursor,
         )
-        plain = QStyleOptionViewItem(options)
-        plain.state &= ~(
-            QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_MouseOver | QStyle.StateFlag.State_HasFocus
-        )
-        super().drawRow(painter, plain, index)
+        self._row_painter.paint(painter, rect, row, self.header())
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         """Activate the cursor row on Enter, and copy it on Ctrl+C."""
@@ -798,7 +838,7 @@ class RowTableView(QTreeView):
 
     def _set_hover_row(self, row: int) -> None:
         if row != self._hover_row:
-            self._hover_row = self._delegate.hover_row = row
+            self._hover_row = self._row_painter.hover_row = row
             self.viewport().update()
 
     def _activate_index(self, index: QModelIndex | QPersistentModelIndex) -> None:
@@ -820,12 +860,13 @@ class RowTableView(QTreeView):
         return True
 
     def _copied_changed(self) -> None:
-        self._delegate.copied_key = self._copied.key
+        self._row_painter.copied_key = self._copied.key
         self.viewport().update()
 
     def _sort_by_section(self, section: int) -> None:
         if self._rows_model.columns[section].sort_key is None:
             return
+        self.sortRequested.emit()
         column, order = self._rows_model.sort_state()
         flipped = Qt.SortOrder.DescendingOrder if order == Qt.SortOrder.AscendingOrder else Qt.SortOrder.AscendingOrder
         self.sort_by(section, flipped if column == section else Qt.SortOrder.AscendingOrder)
@@ -839,26 +880,37 @@ class RowTableView(QTreeView):
 
     def _apply_metrics(self) -> None:
         """Size rows, header and columns for the current text size."""
-        self._delegate.load_metrics()
+        self._row_painter.load_metrics()
+        self.verticalHeader().setDefaultSectionSize(Height.ROW.px)
         header = self.header()
         header.setFixedHeight(Height.ROW.px)
         header.setMinimumSectionSize(Space.S)
-        self._measure()
+        self._measure_columns()
+        self._measure_rows()
         self._layout_columns()
         self.updateGeometry()
         self.doItemsLayout()
         self.viewport().update()
 
-    def _rows_changed(self) -> None:
-        """Fit the columns to the new rows; the rows' set only changes with a model reset."""
-        self._measure()
-        self._layout_columns()
+    def _remeasure(self) -> None:
+        """Measure the visible rows again, and fit the columns only if that changed what they need, so they do not
+        move while the rows scroll past at the same widths.
+        """
+        before = (self._natural, self._floor, self._least, self._empty)
+        self._measure_rows()
+        if (self._natural, self._floor, self._least, self._empty) != before:
+            self._layout_columns()
 
     def _values_changed(self) -> None:
         """Fit the columns again if one has started or stopped showing anything; value-only updates measure nothing."""
-        columns = self._rows_model
-        if any(columns.is_blank(section) != blank for section, blank in enumerate(self._empty)):
-            self._rows_changed()
+        rows = self._visible_rows()
+        if any(self._rows_model.is_blank(section, rows) != blank for section, blank in enumerate(self._empty)):
+            self._remeasure()
+
+    def _visible_rows(self) -> range:
+        """Return the positions of the rows in view, and one more above and below."""
+        first = self.verticalScrollBar().value() // Height.ROW.px
+        return range(first, min(first + self.viewport().height() // Height.ROW.px + 2, self._rows_model.rowCount()))
 
     def _real(self, shown: Sequence[int]) -> list[int]:
         """Return the sections among *shown* that are not the copy column."""
@@ -875,62 +927,81 @@ class RowTableView(QTreeView):
         )
         return next(free, real[-1])
 
-    def _measure(self) -> None:
-        """Measure every column: its width for its longest value, the width below which other columns are hidden, the
-        narrowest it is shrunk to for its rows, and whether it shows nothing at all.
-
-        The minimum size comes from the column definitions and fonts alone: *width_chars* characters or the title,
-        whichever is wider. Values never enter it, so it does not change as rows come and go.
+    def _measure_columns(self) -> None:
+        """Measure what a column's width depends on besides its values: the width of its title, and its narrowest
+        width for the minimum size, which comes from the column definitions and fonts alone: *width_chars* characters
+        or the title, whichever is wider. Values never enter it, so it does not change as rows come and go.
         """
-        mono = QFontMetrics(TextRole.MONO.font())
         caption = QFontMetrics(TextRole.CAPTION.font())
-        self._natural, self._floor, self._minimum, self._least, self._empty = [], [], [], [], []
+        self._fits, self._minimum = [], []
         for section, column in enumerate(self._rows_model.columns):
             if column.cell is CellKind.COPY:
-                for sizes in (self._natural, self._floor, self._minimum, self._least):
-                    sizes.append(copy_column_px())
-                self._empty.append(False)
+                self._fits.append(_ColumnFit(None, 0, 0, 0, copy_column_px()))
+                self._minimum.append(copy_column_px())
                 continue
-            chrome = self._delegate.chrome_px(column.cell)
+            chrome = self._row_painter.chrome_px(column.cell)
             # The whole title, and the arrow of a sortable column, with a pixel of slack against eliding.
             title = caption.horizontalAdvance(column.title.upper()) + 1
             if column.sort_key is not None:
                 title += TextRole.CAPTION.px + Space.XS
             least_chars = column.width_chars if column.width_chars is not None else _LEAST_CHARS[column.cell]
             role = _TEXT_ROLES.get(column.cell, TextRole.MONO)
-            metrics = mono if role is TextRole.MONO else QFontMetrics(role.font())
+            metrics = QFontMetrics(role.font())
             char = metrics.horizontalAdvance("0") if role is TextRole.MONO else metrics.averageCharWidth()
             # One pixel of slack: Qt elides text whose advance is exactly the width it is given.
             least = math.ceil(least_chars * char) + chrome + 1
             comfortable = math.ceil(max(_COMFORTABLE_CHARS[column.cell], least_chars) * char) + chrome + 1
-            if column.cell in _TEXT_ROLES:
-                texts = self._rows_model.column_texts(section)
-                longest = max((metrics.horizontalAdvance(text) + 1 for text in texts), default=0) + chrome
+            self._fits.append(
+                _ColumnFit(metrics if column.cell in _TEXT_ROLES else None, chrome, title, comfortable, least)
+            )
+            self._minimum.append(max(least, title) + _pad(section))
+
+    def _measure_rows(self) -> None:
+        """Measure the columns for the rows in view: their width for the longest value, the width below which other
+        columns are hidden, the narrowest each is shrunk to, and whether it shows nothing at all.
+        """
+        if not self._fits:
+            return
+        rows = self._visible_rows()
+        self._natural, self._floor, self._least, self._empty = [], [], [], []
+        for section, (column, fit) in enumerate(zip(self._rows_model.columns, self._fits)):
+            if column.cell is CellKind.COPY:
+                for sizes in (self._natural, self._floor, self._least):
+                    sizes.append(fit.minimum)
+                self._empty.append(False)
+                continue
+            comfortable = fit.comfortable
+            if fit.metrics is None:
+                longest = comfortable
+            else:
+                texts = self._rows_model.column_texts(section, rows)
+                longest = max((fit.metrics.horizontalAdvance(text) + 1 for text in texts), default=0) + fit.chrome
                 if column.priority > 0 and not column.stretch:  # Shown whole, or hidden.
                     comfortable = longest
-            else:
-                longest = comfortable
             pad = _pad(section)
-            self._natural.append(max(longest, title) + pad)
-            self._floor.append(max(min(comfortable, longest), title) + pad)
-            self._minimum.append(max(least, title) + pad)
-            self._least.append(min(self._minimum[-1], self._floor[-1]))
-            self._empty.append(self._rows_model.is_blank(section))
+            self._natural.append(max(longest, fit.title) + pad)
+            self._floor.append(max(min(comfortable, longest), fit.title) + pad)
+            self._least.append(min(self._minimum[section], self._floor[-1]))
+            self._empty.append(self._rows_model.is_blank(section, rows))
 
     def _pref(self, section: int) -> int:
         """Return the width *section* would like: the one the user gave it, else the width of its content."""
-        tail = self._delegate.tail_px if section == self._tail else 0
+        tail = self._row_painter.tail_px if section == self._tail else 0
         saved = self._user_widths.get(self._rows_model.columns[section].title)
         # A width saved at another text size may be below what the column now needs at the very least.
         return self._natural[section] + tail if saved is None else max(saved, self._least[section] + tail)
 
     def _floor_of(self, section: int) -> int:
         """Return the width below which *section* is not shrunk while other columns can be hidden."""
-        return min(self._floor[section] + (self._delegate.tail_px if section == self._tail else 0), self._pref(section))
+        return min(
+            self._floor[section] + (self._row_painter.tail_px if section == self._tail else 0), self._pref(section)
+        )
 
     def _least_of(self, section: int) -> int:
         """Return the narrowest *section* is ever shrunk to."""
-        return min(self._least[section] + (self._delegate.tail_px if section == self._tail else 0), self._pref(section))
+        return min(
+            self._least[section] + (self._row_painter.tail_px if section == self._tail else 0), self._pref(section)
+        )
 
     def _fit(self, preferred: dict[int, int], room: int, floors: dict[int, int]) -> dict[int, int]:
         """Return *preferred* widths, or all shrunk toward their *floors* in proportion to what they can give up if
@@ -1006,7 +1077,7 @@ class RowTableView(QTreeView):
             return
         widths = self._column_widths(self.viewport().width())
         last = self._real(sorted(widths))[-1]
-        self._delegate.last_section = last
+        self._row_painter.last_section = last
         header = self.header()
         self._laying_out = True
         try:

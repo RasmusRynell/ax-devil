@@ -25,7 +25,7 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
-from ax_devil.modules.scene.inspection import entity_record, entity_summary
+from ax_devil.modules.scene.inspection import EntitySummary, entity_confidence, entity_record, entity_summary
 from ax_devil.modules.scene.model import Entity, Scene
 from ax_devil.modules.scene.query import Query, QueryRecord, compile_query
 from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
@@ -88,8 +88,17 @@ class _FrameRow:
 
     def __init__(self, entity: Entity) -> None:
         self.entity = entity
-        self.summary = entity_summary(entity)
-        self.entity_id = self.summary.entity_id
+        self.entity_id = str(entity.id)
+
+    @cached_property
+    def summary(self) -> EntitySummary:
+        """Build visible-row display details only when requested."""
+        return entity_summary(self.entity)
+
+    @cached_property
+    def confidence(self) -> float | None:
+        """Read the field needed for confidence ordering without formatting a row."""
+        return entity_confidence(self.entity)
 
     def record(self, *, full: bool) -> QueryRecord:
         """Return what a query searches: id, class and state, plus every field of the entity when *full*."""
@@ -155,7 +164,7 @@ def _frame_columns() -> tuple[Column, ...]:
             "Conf",
             CellKind.NUMBER,
             lambda row: _confidence_text(row.summary.conf),
-            lambda row: (row.summary.conf is not None, row.summary.conf or 0.0),
+            lambda row: (row.confidence is not None, row.confidence or 0.0),
         ),
         Column(
             "Motion",
@@ -297,13 +306,21 @@ class ObjectsPage(QWidget):
         """Return the scope in use."""
         return self._scope
 
-    def update_scene(self, scene: Scene | None, frame_index: int | None) -> None:
+    def update_scene(self, scene: Scene | None, frame_index: int | None, *, defer: bool = False) -> None:
         """Show the objects of *scene*, displayed at video frame *frame_index* (None when there is none)."""
         if scene is self._scene and frame_index == self._frame:
             return
         self._scene, self._frame = scene, frame_index
-        self._update_count()
-        self._refresh()
+        self._stale = True
+        if not defer:
+            self.refresh()
+
+    def refresh(self) -> None:
+        """Keep the tab count current; project the latest snapshot only while this page is visible."""
+        if self.isVisible() and self._stale:
+            self._apply()
+        elif self._scope is ObjectScope.FRAME:
+            self._update_count()
 
     def clear(self) -> None:
         """Forget the displayed scene; the file's history and the query stay."""
@@ -362,8 +379,7 @@ class ObjectsPage(QWidget):
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """Catch up with the latest scene when the page appears."""
         super().showEvent(event)
-        if self._stale:
-            self._apply()
+        self.refresh()
 
     # Internal
 
@@ -393,6 +409,7 @@ class ObjectsPage(QWidget):
         model = RowTableModel(columns, self)
         view = RowTableView(model, self, table_key=key)
         view.sort_by(sort_column, order)
+        view.sortRequested.connect(self.refresh)
         view.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
         return _ScopeTable(model, view)
 
@@ -455,6 +472,7 @@ class ObjectsPage(QWidget):
 
     def _apply(self) -> None:
         self._stale = False
+        self._update_count()
         {ObjectScope.FRAME: self._apply_frame, ObjectScope.FILE: self._apply_file}[self._scope]()
 
     def _apply_frame(self) -> None:
@@ -474,6 +492,7 @@ class ObjectsPage(QWidget):
             missing = query.missing_paths(records)
             if missing:
                 note = f"No object has {', '.join(missing)} in this frame"
+        self._tables[ObjectScope.FRAME].model.set_rows(shown, _key)
         self._show(shown, len(rows), note, "No objects in this frame")
 
     def _apply_file(self) -> None:
@@ -484,12 +503,14 @@ class ObjectsPage(QWidget):
             query = self._query
             rows = [] if history is None else [self._file_row(history, objects) for objects in histories]
             self._file_shown = [row for row in rows if query.matches(row.record)]
+            self._tables[ObjectScope.FILE].model.set_rows(self._file_shown, _key)
+        else:
+            self._tables[ObjectScope.FILE].view.viewport().update()
         self._show(self._file_shown, len(histories), "", "No objects in the file")
 
     def _show(self, shown: Sequence[Any], total: int, note: str, none_text: str) -> None:
         """Put *shown* of *total* objects in the table of the current scope, along with the note under the query."""
         table = self._tables[self._scope]
-        table.model.set_rows(shown, _key)
         self._query_bar.set_note(note)
         self._count_label.setText(f"{len(shown)} of {total}")
         if shown:

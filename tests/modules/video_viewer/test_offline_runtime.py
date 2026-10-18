@@ -22,12 +22,17 @@ from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.overlay_samples import OverlaySamples
 from ax_devil.modules.data_sources.scene_history import SampleTrack, SceneHistory, SceneHistoryRecords
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
-from ax_devil.modules.scene.model import Scene, TimeSlice
+from ax_devil.modules.filtering.filter_config import build_default_filter_config
+from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.scene.model import Entity, EntityId, Scene, TimeSlice
+from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import offline_entry_media, offline_viewer_runtime
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
+from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineLane, OfflineSession
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
@@ -38,7 +43,6 @@ from ax_devil.modules.workspace.core import (
     OverlayContent,
     SeekableVideoContent,
 )
-from tests.helpers.scene_inspector import RecordingSceneInspector
 
 
 class _Display(QObject):
@@ -58,19 +62,6 @@ class _Display(QObject):
     def frame_ids(self) -> list[int | None]:
         """Return the ids of the displayed frames in order."""
         return [frame.frame.frame_id for frame in self.frames]
-
-
-class _DisplayWithInspectorAssertion(_Display):
-    """Display test double ensuring inspection is not delivered before display."""
-
-    def __init__(self, inspector: RecordingSceneInspector) -> None:
-        super().__init__()
-        self._inspector = inspector
-
-    def display_frame(self, frame: VideoFrameWithOverlays) -> None:
-        """Record the displayed frame and assert inspection has not run yet."""
-        assert self._inspector.updates == []
-        super().display_frame(frame)
 
 
 class _StepBackDuringDisplay(_Display):
@@ -337,25 +328,6 @@ def test_lane_shows_each_frame_with_the_overlay_for_that_frame() -> None:
     assert display.frame_ids() == [7]
     assert display.frames[0].overlays is not None
     assert display.frames[0].overlays.overlay_id == 7
-
-
-def test_lane_displays_frame_before_scheduling_scene_inspection(qtbot: QtBot) -> None:
-    """Inspection runs after the frame is on screen, so a slow inspector never delays playback."""
-    inspector = RecordingSceneInspector()
-    overlay_source = _OverlaySource(_overlay(7))
-    display = _DisplayWithInspectorAssertion(inspector)
-    lane = _lane(display, overlay_source=overlay_source, tools_panel=cast(MediaToolsPanel, inspector))
-
-    lane.present_frame(_frame(7))
-
-    assert len(display.frames) == 1
-    assert inspector.updates == []
-    qtbot.waitUntil(lambda: len(inspector.updates) == 1)
-    inspected_scene, inspected_frame_id, inspected_metadata = inspector.updates[0]
-    assert overlay_source.overlay is not None
-    assert inspected_scene is overlay_source.overlay.content
-    assert inspected_frame_id == FrameIdentifier(sequence_id=7, timestamp_monotime_us=7000.0)
-    assert inspected_metadata == {"source": "direct"}
 
 
 def test_secondary_video_shows_only_the_current_primary_frame(qtbot: QtBot) -> None:
@@ -637,6 +609,9 @@ class _Panel:
     def __init__(self) -> None:
         self.histories: list[SceneHistory] = []
         self.notices: list[str] = []
+
+    def refresh_scene(self) -> None:
+        """Match MediaToolsPanel's immediate inspection refresh."""
 
     def set_scene_history(self, history: SceneHistory) -> None:
         """Record a shown history."""
@@ -964,3 +939,45 @@ def test_stale_notices_name_only_the_settings_that_retry_what_failed(qtbot: QtBo
 
     assert [report.tolerance_us for report in rig.timing.reports if report is not None] == [10_000]
     assert len(rig.panel.histories) == 2
+
+
+def test_session_pause_and_seek_flush_the_actual_displayed_inspection(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Playback controls must release a pending table snapshot, including a seek while still playing."""
+    monkeypatch.setattr("ax_devil.modules.video_viewer.media_tools.media_tools_panel.monotonic", lambda: 0.0)
+    panel = MediaToolsPanel(render_catalog_selection, filter_model=SessionFilter(build_default_filter_config()))
+    qtbot.addWidget(panel)
+    panel.show()
+    source, display = _PlaybackSource(), _Display()
+    overlay = _OverlaySource(_overlay(0))
+    lane = _lane(display, overlay_source=overlay, video_source=source, tools_panel=panel)
+    session = _make_session(qtbot, [lane], [source])
+
+    def present(frame: int) -> None:
+        overlay.overlay = _overlay(frame)
+        overlay.overlay.content.add_entity(Entity(EntityId(str(frame))))
+        source.frameReady.emit(_frame(frame, position_generation=source.position_generation))
+        qtbot.waitUntil(lambda: display.frame_ids()[-1:] == [frame])
+
+    def shown() -> list[str]:
+        view = next(view for view in panel.objects_page.findChildren(RowTableView) if view.isVisible())
+        model = view.rows_model
+        return [cast(ObjectPageKey, model.key_at(row)).entity_id for row in range(model.rowCount())]
+
+    session.start_playback()
+    present(0)
+    present(1)
+    assert shown() == ["0"]
+    session.pause_playback()
+    assert shown() == ["1"]
+    session.step_frames(-1)
+    present(0)
+    assert shown() == ["0"]
+    session.start_playback()
+    present(1)
+    present(2)
+    assert shown() != ["2"]
+    session.jump_to_frame(9)
+    present(9)
+    assert shown() == ["9"]

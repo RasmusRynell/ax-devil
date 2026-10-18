@@ -209,7 +209,12 @@ class EventsPage(QWidget):
         self._changed()
 
     def update_scene(
-        self, scene: Scene | None, frame_id: FrameIdentifier | None, metadata: Mapping[str, Any] | None = None
+        self,
+        scene: Scene | None,
+        frame_id: FrameIdentifier | None,
+        metadata: Mapping[str, Any] | None = None,
+        *,
+        defer: bool = False,
     ) -> None:
         """Follow the displayed frame; live, also record the events of *scene* when its overlay is newly shown.
 
@@ -218,11 +223,21 @@ class EventsPage(QWidget):
         if frame_id is None:
             return
         if self._history is None and scene is not None and not (metadata or {}).get("overlay_reused", False):
-            self._record([FrameEvent.of(frame_id, event) for event in scene.events])
+            self._record([FrameEvent.of(frame_id, event) for event in scene.events], defer=defer)
         frame = frame_id.sequence_id
         if frame != self._frame:
             self._frame = frame
+        if not defer:
+            self.refresh()
+
+    def refresh(self) -> None:
+        """Catch up the visible list and frame marker; hidden lists keep their events without building rows."""
+        if self.isVisible():
+            if self._stale:
+                self._apply()
             self._follow_frame()
+            if self._history is None and self._following:
+                self._view.scrollToBottom()
 
     def neighbor(self, key: PageKey, delta: int) -> PageKey | None:
         """Return the page *delta* rows from *key* in the listed order, or None past either end or off the list.
@@ -280,7 +295,7 @@ class EventsPage(QWidget):
     def _is_upcoming(self, row: _EventRow) -> bool:
         return self._frame is not None and row.frame > self._frame
 
-    def _record(self, events: Sequence[FrameEvent]) -> None:
+    def _record(self, events: Sequence[FrameEvent], *, defer: bool = False) -> None:
         """Append live *events*, dropping the oldest beyond the limit."""
         if not events:
             return
@@ -291,8 +306,8 @@ class EventsPage(QWidget):
             last[event] = occurrence = last.get(event, -1) + 1
             self._rows.append(_EventRow(event, occurrence))
         del self._rows[: max(0, len(self._rows) - LIVE_EVENT_LIMIT)]
-        self._changed()
-        if following and self.isVisible():
+        self._changed(defer=defer)
+        if following and self.isVisible() and not defer:
             self._view.scrollToBottom()
 
     def _on_query_changed(self, query: Query) -> None:
@@ -305,14 +320,17 @@ class EventsPage(QWidget):
         if not self._scrolling:
             self._following = self._line_in_view()
 
-    def _changed(self) -> None:
+    def _changed(self, *, defer: bool = False) -> None:
         """Count the events held and show them, now or when the page is shown."""
         self._filter_stale = True
-        self._refresh()
+        self._stale = True
+        if not defer:
+            self._refresh()
         if len(self._rows) != self._count:  # After the refresh, so a listener asking for neighbors sees the new rows.
             self._count = len(self._rows)
             self.countChanged.emit(self._count)
-        self.rowsChanged.emit()
+        if not defer:
+            self.rowsChanged.emit()
 
     def _refresh(self) -> None:
         if self.isVisible():

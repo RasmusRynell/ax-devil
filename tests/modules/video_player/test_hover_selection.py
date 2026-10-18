@@ -32,6 +32,7 @@ class _Provider:
     def __init__(self) -> None:
         self.bounds: tuple[float, float, float, float] | None = (0.10, 0.10, 0.20, 0.20)
         self.detail = "conf 0.97"
+        self.lookups = 0
 
     def _hit(self) -> HoverHit | None:
         if self.bounds is None:
@@ -46,6 +47,7 @@ class _Provider:
         return hit if x <= nx <= x + w and y <= ny <= y + h else None
 
     def get_hit_by_id(self, target_id: str) -> HoverHit | None:
+        self.lookups += 1
         return self._hit() if target_id == "entity-1" else None
 
 
@@ -122,6 +124,15 @@ def test_selected_object_that_leaves_the_frame_keeps_its_id_and_loses_its_box(qt
 
     provider.bounds = (0.60, 0.50, 0.20, 0.20)
     renderer.display_frame(_frame(provider))
+    assert renderer._selected_bounds == provider.bounds
+    assert changes == ["entity-1"]
+
+    renderer.hide()
+    lookups = provider.lookups
+    provider.bounds = (0.30, 0.20, 0.20, 0.20)
+    renderer.display_frame(_frame(provider))
+    assert provider.lookups == lookups
+    renderer.show()
     assert renderer._selected_bounds == provider.bounds
     assert changes == ["entity-1"]
 

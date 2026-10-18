@@ -103,7 +103,6 @@ class FrameViewport(VideoFrameRenderer):
     @Slot(VideoFrameWithOverlays)
     def display_frame(self, video_frame: VideoFrameWithOverlays) -> None:
         super().display_frame(video_frame)
-        self._stats = self._build_info_overlay_stats(video_frame)
         self._update_info_hud()
         if self._overlays and self._can_position_overlays():
             self.position_overlays()
@@ -137,6 +136,7 @@ class FrameViewport(VideoFrameRenderer):
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         super().showEvent(event)
+        self._update_info_hud()
         if self._overlays and self._can_position_overlays():
             self.position_overlays()
             self._logger.debug("Overlay positioning completed on show")
@@ -151,7 +151,11 @@ class FrameViewport(VideoFrameRenderer):
         HudPainter.draw_background_content(painter, self, self._background_text)
 
     def _update_info_hud(self) -> None:
-        self._info_hud.setVisible(self._overlay_visible and bool(self._stats))
+        if not self.isVisible() or not self._overlay_visible or self._video_frame is None:
+            self._info_hud.hide()
+            return
+        self._stats = self._build_info_overlay_stats(self._video_frame)
+        self._info_hud.show()
         self._info_hud.update()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
