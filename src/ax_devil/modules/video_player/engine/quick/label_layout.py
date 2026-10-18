@@ -403,7 +403,7 @@ def label_quads(
             )
             add(glyphs.vertices, rows[glyphs.owner], _GLYPHS, index)
 
-    shown = int(np.count_nonzero(any_shown))
+    shown = int(np.count_nonzero(drawn))
     if not parts:
         return LabelQuads(np.zeros((0, 4), OVERLAY_VERTEX), shown)
     # Scatter every part into its labels' blocks: a label's quads are ordered by part, and a part's quads by label.

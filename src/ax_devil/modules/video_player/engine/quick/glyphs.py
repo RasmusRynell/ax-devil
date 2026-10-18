@@ -20,6 +20,8 @@ from numpy.typing import NDArray
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QFont, QFontMetricsF, QImage, QPainter, QRawFont, QTextLayout, QTextOption, QTransform
 
+from ax_devil.modules.settings.logging_config import get_logger
+
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.drawing import LabelWeight
 
@@ -88,6 +90,18 @@ class _FontSetup:
     ascent: float
     descent: float
     line_height: float
+
+
+def _warn_oversized_font(pixel_size: float) -> None:
+    """Log, once per process, that text was skipped because its font is larger than the atlas page."""
+    global _warned_oversized
+    if not _warned_oversized:
+        _warned_oversized = True
+        logger.warning(f"Text in a {pixel_size:.0f} px font is larger than the glyph atlas page and is not drawn")
+
+
+_warned_oversized = False
+logger = get_logger(__name__)
 
 
 class GlyphAtlas:
@@ -249,6 +263,10 @@ class GlyphAtlas:
         key = (raw.familyName(), raw.styleName(), raw.weight(), round(raw.pixelSize(), 3), glyph)
         if key in self._slots:
             return self._slots[key]
+        if raw.pixelSize() > PAGE_SIZE:  # No glyph of this font can fit the page; do not rasterize it.
+            _warn_oversized_font(raw.pixelSize())
+            self._slots[key] = None
+            return None
         image = raw.alphaMapForGlyph(glyph, QRawFont.AntialiasingType.PixelAntialiasing, QTransform())
         slot: _Slot | None = None
         if not image.isNull() and 0 < image.width() <= PAGE_SIZE and 0 < image.height() <= PAGE_SIZE:

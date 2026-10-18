@@ -5,6 +5,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 from numpy.typing import NDArray
+from PySide6.QtGui import QRawFont
 
 from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderProgramCompiler
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
@@ -295,3 +296,31 @@ def test_text_that_cannot_fit_one_atlas_page_draws_the_glyphs_that_fit_and_the_n
     drawn = len(_quads(drawing, OverlayKind.GLYPH))
     assert 0 < drawn < 30
     assert len(_quads(_text_frame(settings, ("ab", 0.1)), OverlayKind.GLYPH)) == 2
+
+
+def test_a_label_outside_the_culling_area_is_not_counted() -> None:
+    def frame(x: float) -> PreparedDrawing:
+        buffer = DrawingBuffer(replace(_SETTINGS, viewport=(0, 0, 200, 100)))
+        LabelCall(x, 0.5, "top-left", _label("Person")).submit(buffer)
+        return buffer.finish()
+
+    assert (len(frame(0.1)), dict(frame(0.1).counts)["label"]) == (1, 1)
+    outside = frame(5.0)
+    assert len(outside) == 0 and not len(outside.vertices) and dict(outside.counts).get("label", 0) == 0
+
+
+def test_a_label_font_larger_than_the_atlas_page_is_not_rasterized(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(glyphs, "PAGE_SIZE", 64)
+    monkeypatch.setitem(glyphs._ATLASES, (93, 1.0), glyphs.GlyphAtlas(93, 1.0))
+    rasterized: list[int] = []
+    original = QRawFont.alphaMapForGlyph
+
+    def spy(self: QRawFont, *args: object) -> object:
+        rasterized.append(1)
+        return original(self, *args)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(QRawFont, "alphaMapForGlyph", spy)
+    buffer = DrawingBuffer(replace(_SETTINGS, dpi=93))
+    LabelCall(0.1, 0.5, "top-left", replace(_label("Person"), size=5.0)).submit(buffer)
+    drawing = buffer.finish()
+    assert not rasterized and not len(_quads(drawing, OverlayKind.GLYPH))
