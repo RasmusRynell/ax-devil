@@ -5,34 +5,16 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import tempfile
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.source_paths import Fingerprint
 from ax_devil.modules.cache import CacheManager
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-@dataclass(frozen=True)
-class Fingerprint:
-    """File fingerprint for caching."""
-
-    inode: int
-    size: int
-    mtime_ns: int
-
-    @classmethod
-    def from_path(cls, p: Path) -> "Fingerprint":
-        """Read the current source fingerprint, including same-process replacements."""
-        st = p.stat()
-        return cls(st.st_ino, st.st_size, st.st_mtime_ns)
-
-    def as_tuple(self) -> tuple[int, int, int]:
-        return (self.inode, self.size, self.mtime_ns)
 
 
 class VideoAnalyzer:
@@ -280,11 +262,11 @@ class VideoAnalyzer:
             return None
         try:
             cached = json.loads(cache_file.read_text())
-            if tuple(cached["fingerprint"]) == Fingerprint.from_path(p).as_tuple():
+            if Fingerprint(*cached["fingerprint"]) == Fingerprint.of_stat(p.stat()):
                 meta: dict[str, Any] = cached["metadata"]
                 meta["source"] += " (cache)"
                 return meta
-        except (OSError, KeyError, json.JSONDecodeError, ValueError):
+        except (OSError, KeyError, TypeError, json.JSONDecodeError, ValueError):
             pass
         return None
 
@@ -293,20 +275,11 @@ class VideoAnalyzer:
         cache_file = self._get_cache_path(p)
 
         payload = {
-            "fingerprint": Fingerprint.from_path(p).as_tuple(),
+            "fingerprint": list(Fingerprint.of_stat(p.stat())),
             "metadata": meta,
         }
-        tmp_fd, tmp_name = tempfile.mkstemp(dir=cache_file.parent, prefix=".meta_tmp_", text=True)
-        try:
-            with open(tmp_fd, "w") as fh:
-                json.dump(payload, fh, indent=2)
-            Path(tmp_name).rename(cache_file)
-        except (OSError, json.JSONDecodeError):
-            try:
-                Path(tmp_name).unlink()
-            except OSError:
-                pass
-            raise
+        with write_atomically(cache_file) as fh:
+            json.dump(payload, fh, indent=2)
 
     def analyze(self, path: Path, *, refresh: bool = False) -> dict[str, Any]:
         """Analyze video file and return metadata."""

@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QWidget,
@@ -22,6 +21,7 @@ from ax_devil.core.playback_speed import (
     clamp_playback_speed,
     step_playback_speed,
 )
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
@@ -185,38 +185,41 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
         return navigation
 
-    def _open_entry(self, index: int, start_frame: int | None = None) -> None:
-        """Show entry *index*: drop any entry still opening, release the shown one, and open *index* in the background.
+    def _open_entry(self, index: int, start_frame: int | None = None, *, keep_shown: bool = False) -> None:
+        """Show entry *index*: drop any entry still opening and open *index* in the background.
 
         The only way an entry is shown. The viewer stays responsive while sources open, and a newer request simply
-        replaces an older one. The entry plays from its first frame, or shows *start_frame* paused.
+        replaces an older one. The entry plays from its first frame, or shows *start_frame* paused. Unless *keep_shown*,
+        the shown entry is released first and a loading indicator stands in; with it, the shown entry keeps playing
+        until the new media is ready, and stays if that cannot be shown.
         """
         if self._is_cleaned_up:
             return
         self._initial_entry_loaded = True
         self._opening.cancel()
-        self._teardown_runtime()
-        self._current_index = index
-        self._update_nav_state()
-        self.current_entry_changed.emit(index)
-        self.on_screen_item_changed.emit(self.current_on_screen_item())
+        if not keep_shown:
+            self._teardown_runtime()
+            self._current_index = index
+            self._update_nav_state()
+            self.current_entry_changed.emit(index)
+            self.on_screen_item_changed.emit(self.current_on_screen_item())
 
         entry = self._get_entries()[index]
         lane_indices = tuple(
             lane_index for lane_index in range(len(entry.lanes)) if self._is_lane_considered(index, lane_index)
         )
-        indicator = self._show_loading_indicator()
+        indicator = self._show_loading_indicator() if self._runtime is None else None
         self._opening.submit(
             self._opening_jobs,
             "open offline entry",
             partial(open_entry_media, entry, lane_indices, QThread.currentThread()),
-            on_result=partial(self._on_entry_opened, index, start_frame),
-            on_error=lambda error: self._on_entry_opened(index, start_frame, EntryMedia(error=str(error))),
-            on_progress=indicator.set_message,
+            on_result=partial(self._on_entry_opened, index, start_frame, keep_shown),
+            on_error=lambda error: self._on_entry_opened(index, start_frame, keep_shown, EntryMedia(error=str(error))),
+            on_progress=indicator.set_message if indicator is not None else None,
             on_discard=release_media,
         )
 
-    def _on_entry_opened(self, index: int, start_frame: int | None, media: EntryMedia) -> None:
+    def _on_entry_opened(self, index: int, start_frame: int | None, keep_shown: bool, media: EntryMedia) -> None:
         self._hide_loading_indicator()
         error = media.error
         runtime: OfflineSession | None = None
@@ -235,9 +238,43 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 error = str(exc)
         if runtime is None:
             release_media(media)
-            QMessageBox.warning(self, "Offline Viewer", f"Failed to load entry {index + 1}: {error}")
+            message = f"Could not {'reload' if keep_shown else 'load'} entry {index + 1}: {error}"
+            if keep_shown and self._reload_offered():
+                logger.warning(message)  # The source changed again meanwhile: keep the offer to reload that data.
+            else:
+                self.show_warning(message)
             return
+        playing = False
+        previous = self._runtime
+        if previous is not None:
+            # Only a reload finds an entry still shown: the new one takes over where it is.
+            start_frame, playing = previous.current_frame, previous.is_playing
+            self._teardown_runtime()
         self._install_entry(runtime, start_frame)
+        if playing:
+            self._start_playback()
+
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay files of the considered lanes of the entry on screen; video files are not included."""
+        entries = self._get_entries()
+        if not entries:
+            return SourcePaths()
+        index = self._current_index
+        return SourcePaths.merged(
+            lane.overlay.source_spec.source_paths
+            for lane_index, lane in enumerate(entries[index].lanes)
+            if lane.overlay is not None and self._is_lane_considered(index, lane_index)
+        )
+
+    def reload(self) -> None:
+        """Read the entry on screen again from its files, keeping the frame, play state and everything the viewer holds.
+
+        The new media opens in the background while the current entry stays on screen and playing. When it is ready it
+        replaces the current one at the frame the current one is on then, clamped to the new length, and playing if it
+        was. When it cannot be shown, the current entry stays and a warning says why. Zoom and the media tools reset,
+        as for any entry change.
+        """
+        self._open_entry(self._current_index, keep_shown=True)
 
     def _show_loading_indicator(self) -> LoadingIndicator:
         if self._loading_indicator is None:
@@ -583,14 +620,12 @@ class OfflineVideoViewerWidget(ViewerWidget):
         """Refresh viewer state after an item consideration change."""
         if self._is_cleaned_up:
             return
-        if self._content.content_id != item_ref.content_id:
+        content = self._content
+        if item_ref.item_id != content.item_id or item_ref.entry not in content.bookmark_entries:
             return
 
-        if item_ref.kind == "video_lane":
-            self._open_entry(self._current_index)
-            return
-
-        if item_ref.kind == "playlist_entry" and item_ref.entry_index == self._current_index:
+        is_current = item_ref.entry == content.bookmark_entries[self._current_index]
+        if is_current and item_ref.lane_index is None:
             if self._is_entry_considered(self._current_index):
                 self._update_nav_state()
                 return
@@ -602,5 +637,5 @@ class OfflineVideoViewerWidget(ViewerWidget):
             return
 
         self._update_nav_state()
-        if item_ref.kind == "playlist_lane" and item_ref.entry_index == self._current_index:
+        if is_current:
             self._open_entry(self._current_index)

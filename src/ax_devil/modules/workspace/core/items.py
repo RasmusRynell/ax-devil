@@ -12,6 +12,7 @@ from typing import Any, ClassVar, TypeVar
 from uuid import uuid4
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import MAX_FOLDERS, SourcePaths, SourceSnapshot
 from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference, integer_default
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.content import Content, LiveOverlayMode, numbered_when_shared
@@ -106,6 +107,14 @@ class WorkspaceItem(ABC):
         """Return the network hosts the item connects to, as entered and expanded; none for items that do not."""
         return ()
 
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
+        """Return the files and folders this item's Content is read from, so a change to them makes it stale; none by
+        default.
+
+        Runs on the worker thread that resolves the item, before it reads anything.
+        """
+        return SourcePaths()
+
     def with_label(self: _ItemT, label: str) -> _ItemT:
         """Return this item renamed to *label*, keeping its id.
 
@@ -121,7 +130,8 @@ class WorkspaceItem(ABC):
     def _resolve_by_default_name(self, context: ResolutionContext, token: CancelToken) -> tuple[Content, ...]:
         """Rebuild this item's Content as named without a label, or raise ``ItemResolutionError``.
 
-        Content ids derive from the item id and the Content's position, so they are the same on every resolution.
+        Content ids derive from the item id and, unless the item built one, the Content's position, so they are the
+        same on every resolution.
         """
         try:
             token.raise_if_cancelled()
@@ -132,7 +142,8 @@ class WorkspaceItem(ABC):
         if not contents:
             raise ItemResolutionError(f"{self.display_name} has nothing to open.")
         return tuple(
-            replace(content, content_id=f"{self.id}/{index}", item_id=self.id) for index, content in enumerate(contents)
+            replace(content, content_id=content.content_id or f"{self.id}/{index}", item_id=self.id)
+            for index, content in enumerate(contents)
         )
 
     def name_contents(self, contents: Sequence[Content]) -> tuple[Content, ...]:
@@ -209,6 +220,10 @@ class VideoItem(WorkspaceItem):
             OverlayFile(_path_from_json(entry, "path", base_dir), _read(entry, "decoder", str)) for entry in entries
         )
         return {"video": _path_from_json(data, "video", base_dir), "overlays": overlays}
+
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
+        """Return the overlay files; changes to the video file do not matter."""
+        return SourcePaths(files=frozenset(overlay.path for overlay in self.overlays))
 
     def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Return the seekable video, after checking that its files exist."""
@@ -428,15 +443,30 @@ class PlaylistItem(WorkspaceItem):
         """Return the resolver id; resolved playlists keep the names their resolver gives them."""
         return self.resolver
 
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
+        """Return the paths the resolver reads from, or none when it is missing or names none."""
+        try:
+            return context.playlist_resolver(self.resolver).source_paths(deepcopy(self.settings), token)
+        except ItemResolutionError:
+            return SourcePaths()  # Resolving reports the missing resolver.
+        except Exception as exc:  # A plugin may fail in any way; resolving reports its failure.
+            logger.warning(f"Playlist resolver '{self.resolver}' could not name its source paths: {exc}")
+            return SourcePaths()
+
     def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings.
 
-        Playlists that share a name get it numbered " (2)", " (3)", so their entries' Bookmark Target keys differ.
+        Playlists that share a name get it numbered " (2)", " (3)", so their entries' Bookmark Target keys differ. A
+        playlist's ``content_id`` derives from that name, so it names the same playlist when the resolver returns a
+        different set.
         """
         try:
             playlists = context.playlist_resolver(self.resolver).resolve(deepcopy(self.settings), token)
             names = numbered_when_shared(playlist.source_name for playlist in playlists)
-            return [replace(playlist, source_name=name) for playlist, name in zip(playlists, names, strict=True)]
+            return [
+                replace(playlist, source_name=name, content_id=f"{self.id}/{name}")
+                for playlist, name in zip(playlists, names, strict=True)
+            ]
         except ItemResolutionError:
             raise
         except Exception as exc:  # A plugin may fail in any way; the item stays, with the reason.
@@ -515,11 +545,14 @@ class ItemResolution:
 
     The result keeps the Content as named without a label and derives ``contents`` from the item's label, so a renamed
     item is named again by ``renamed`` and never resolved twice. Build results with ``of`` or ``pending``.
+
+    *sources* is what the item and its Content were read from, as it was on disk before it was read.
     """
 
     item: WorkspaceItem
     error: ItemResolutionError | None = None
     by_default_name: tuple[Content, ...] = field(default=(), repr=False)
+    sources: SourceSnapshot = field(default_factory=lambda: SourceSnapshot(SourcePaths()), repr=False)
     contents: tuple[Content, ...] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -528,11 +561,22 @@ class ItemResolution:
 
     @classmethod
     def of(cls, item: WorkspaceItem, context: ResolutionContext, token: CancelToken) -> ItemResolution:
-        """Resolve *item*; a failure is recorded as the result's error instead of raised."""
+        """Resolve *item*; a failure is recorded as the result's error instead of raised.
+
+        The item's source paths are fingerprinted before anything is read, so a change made while resolving is
+        reported once the result is watched. A path the Content names too keeps that fingerprint.
+        """
+        sources = item.source_paths(context, token).snapshot(token)
+        contents: tuple[Content, ...] = ()
+        error: ItemResolutionError | None = None
         try:
-            return cls(item, by_default_name=item._resolve_by_default_name(context, token))
+            contents = item._resolve_by_default_name(context, token)
         except ItemResolutionError as exc:
-            return cls(item, error=exc)
+            error = exc
+        sources |= SourcePaths.merged(content.source_paths for content in contents).snapshot(token)
+        if sources.truncated:
+            logger.warning(f"{item.display_name} spans over {MAX_FOLDERS} folders; changes in the rest go unnoticed")
+        return cls(item, error=error, by_default_name=contents, sources=sources)
 
     @classmethod
     def pending(cls, item: WorkspaceItem) -> ItemResolution:

@@ -8,6 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, cast
 
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
 
@@ -72,32 +73,15 @@ class LiveOverlayMode(str, Enum):
 # ---------------------------------------------------------------------------
 
 
-ConsiderationKind = Literal["playlist_entry", "playlist_lane", "video_lane"]
-
-
 @dataclass(frozen=True, slots=True)
 class ConsiderationItemRef:
-    """Typed identifier for one Workspace item that can be considered or ignored."""
+    """Names one Workspace item that can be considered or ignored, by the key bookmarks use, so it survives a re-run."""
 
-    kind: ConsiderationKind
-    content_id: str
-    entry_index: int
+    item_id: str
+    entry: str
+    """The ``bookmark_entries`` key of the entry: "" for a Video Item, "<playlist name>/<entry title>" otherwise."""
     lane_index: int | None = None
-
-    @classmethod
-    def playlist_entry(cls, content_id: str, entry_index: int) -> "ConsiderationItemRef":
-        """Reference one playlist entry."""
-        return cls(kind="playlist_entry", content_id=content_id, entry_index=entry_index)
-
-    @classmethod
-    def playlist_lane(cls, content_id: str, entry_index: int, lane_index: int) -> "ConsiderationItemRef":
-        """Reference one lane inside a playlist entry."""
-        return cls(kind="playlist_lane", content_id=content_id, entry_index=entry_index, lane_index=lane_index)
-
-    @classmethod
-    def video_lane(cls, content_id: str, lane_index: int) -> "ConsiderationItemRef":
-        """Reference one overlay lane of standalone seekable video content."""
-        return cls(kind="video_lane", content_id=content_id, entry_index=0, lane_index=lane_index)
+    """The lane within the entry, or None for the entry itself."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +98,7 @@ class OnScreenWorkspaceItem:
 
     kind: Literal["video", "playlist_entry"]
     content_id: str
-    entry_index: int | None = None
+    entry: str = ""
 
 
 InfoFields = tuple[tuple[str, object], ...]
@@ -165,6 +149,11 @@ class FileOverlaySourceSpec:
         """Return the overlay file path for source labels and tooltips."""
         return str(self.path)
 
+    @property
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay file, which changing makes the overlay out of date."""
+        return SourcePaths(files=frozenset({self.path}))
+
     def info_fields(self) -> InfoFields:
         """Return the overlay file path and decoder."""
         return (("path", self.path), ("handler type", self.handler_type))
@@ -199,6 +188,7 @@ class LiveRTSPOverlaySourceSpec:
     handler_type: str
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.RTSP_SOURCE
     source_location: ClassVar[None] = None
+    source_paths: ClassVar[SourcePaths] = SourcePaths()
 
     def info_fields(self) -> InfoFields:
         """Return the decoder."""
@@ -218,6 +208,7 @@ class LiveMQTTOverlaySourceSpec:
     device_api_protocol: str = "https"
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.MQTT_SOURCE
     source_location: ClassVar[None] = None
+    source_paths: ClassVar[SourcePaths] = SourcePaths()
 
     def info_fields(self) -> InfoFields:
         """Return the decoder and broker settings; never the broker password."""
@@ -241,6 +232,7 @@ class LiveWebSocketOverlaySourceSpec:
     device_api_protocol: str = "https"
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.WEBSOCKET_SOURCE
     source_location: ClassVar[None] = None
+    source_paths: ClassVar[SourcePaths] = SourcePaths()
 
     def info_fields(self) -> InfoFields:
         """Return the decoder and DataHub subscription."""
@@ -291,6 +283,7 @@ class LiveVideoContent:
     content_id: str = ""
     item_id: str = ""
     is_live: ClassVar[bool] = True
+    source_paths: ClassVar[SourcePaths] = SourcePaths()
 
     def __post_init__(self) -> None:
         """Reject overlay shapes unsupported by live playback."""
@@ -325,6 +318,10 @@ class LiveVideoContent:
     def consideration_items(self) -> tuple[ConsiderationItem, ...]:
         """Return no items because live overlay consideration is unsupported."""
         return ()
+
+    def lane_consideration_ref(self, entry_index: int, lane_index: int) -> ConsiderationItemRef:
+        """Return the reference of one lane, which no consideration item lists."""
+        return ConsiderationItemRef(self.item_id, "", lane_index)
 
     @property
     def bookmark_entries(self) -> tuple[str, ...]:
@@ -363,6 +360,11 @@ class SeekableVideoContent:
         """Return the video file path, shown to tell same-named items apart."""
         return str(self.source_spec.path)
 
+    @property
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay files; the video file is not included, as changes to it do not matter."""
+        return SourcePaths.merged(overlay.source_spec.source_paths for overlay in self.overlays)
+
     def info_fields(self) -> InfoFields:
         """Return the content type, overlay count, and video file settings."""
         return (("type", "seekable video"), ("overlays", len(self.overlays)), *self.source_spec.info_fields())
@@ -379,7 +381,7 @@ class SeekableVideoContent:
         """Return the standalone overlay lanes whose layout can be toggled."""
         return tuple(
             ConsiderationItem(
-                ref=ConsiderationItemRef.video_lane(self.content_id, lane_index),
+                ref=self.lane_consideration_ref(0, lane_index),
                 default_considered=lane.default_considered,
             )
             for lane_index, lane in enumerate(self.standalone_lanes())
@@ -407,7 +409,7 @@ class SeekableVideoContent:
 
     def lane_consideration_ref(self, entry_index: int, lane_index: int) -> ConsiderationItemRef:
         """Return the reference that toggles one standalone overlay lane."""
-        return ConsiderationItemRef.video_lane(self.content_id, lane_index)
+        return ConsiderationItemRef(self.item_id, "", lane_index)
 
     def on_screen_item(self, entry_index: int = 0) -> OnScreenWorkspaceItem:
         """Return the workspace item a viewer shows for this video."""
@@ -486,6 +488,13 @@ class PlaylistEntry:
             return self.lanes[0].video.source_location
         return None
 
+    @property
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay files of all lanes."""
+        return SourcePaths.merged(
+            lane.overlay.source_spec.source_paths for lane in self.lanes if lane.overlay is not None
+        )
+
     def should_show_lane_children(self) -> bool:
         """Return whether UI consumers should render child lanes for this entry."""
         return len(self.lanes) > 1 or any(lane.source_kind != OverlaySourceKind.NO_SOURCE for lane in self.lanes)
@@ -505,6 +514,12 @@ class PlaylistContent:
 
     ``display_name`` is renamed after the item's label, this never is.
     """
+    bookmark_entries: tuple[str, ...] = field(init=False, compare=False, repr=False)
+    """Each entry's Bookmark Target entry, "<playlist name>/<entry title>", in entry order.
+
+    The playlist is named as its resolver named it, so renaming the item changes no key, and one Playlist Item may
+    resolve to several playlists, whose entries the playlist name tells apart.
+    """
 
     def __post_init__(self) -> None:
         """Reject empty playlists before they enter the Workspace, and remember the resolver's name for the playlist."""
@@ -512,11 +527,18 @@ class PlaylistContent:
             raise ValueError("Playlists require at least one entry.")
         if not self.source_name:
             object.__setattr__(self, "source_name", self.display_name)
+        titles = self.bookmark_entry_titles
+        object.__setattr__(self, "bookmark_entries", tuple(f"{self.source_name}/{title}" for title in titles))
 
     @property
     def source_location(self) -> None:
         """Return None because playlists are resolved from several sources."""
         return None
+
+    @property
+    def source_paths(self) -> SourcePaths:
+        """Return the overlay files of all entries."""
+        return SourcePaths.merged(entry.source_paths for entry in self.entries)
 
     def info_fields(self) -> InfoFields:
         """Return the content type and entry and lane counts."""
@@ -529,14 +551,14 @@ class PlaylistContent:
         for entry_index, entry in enumerate(self.entries):
             items.append(
                 ConsiderationItem(
-                    ref=ConsiderationItemRef.playlist_entry(self.content_id, entry_index),
+                    ref=self.entry_consideration_ref(entry_index),
                     default_considered=entry.default_considered,
                 )
             )
             if entry.should_show_lane_children():
                 items.extend(
                     ConsiderationItem(
-                        ref=ConsiderationItemRef.playlist_lane(self.content_id, entry_index, lane_index),
+                        ref=self.lane_consideration_ref(entry_index, lane_index),
                         default_considered=lane.default_considered,
                     )
                     for lane_index, lane in enumerate(entry.lanes)
@@ -551,26 +573,19 @@ class PlaylistContent:
         """
         return numbered_when_shared(entry.display_label(index) for index, entry in enumerate(self.entries))
 
-    @property
-    def bookmark_entries(self) -> tuple[str, ...]:
-        """Return each entry's Bookmark Target entry, "<playlist name>/<entry title>", in entry order.
-
-        The playlist is named as its resolver named it, so renaming the item changes no key, and one Playlist Item may
-        resolve to several playlists, whose entries the playlist name tells apart.
-        """
-        return tuple(f"{self.source_name}/{title}" for title in self.bookmark_entry_titles)
-
     def entry_consideration_ref(self, entry_index: int) -> ConsiderationItemRef:
         """Return the reference that toggles one playlist entry."""
-        return ConsiderationItemRef.playlist_entry(self.content_id, entry_index)
+        return ConsiderationItemRef(self.item_id, self.bookmark_entries[entry_index])
 
     def lane_consideration_ref(self, entry_index: int, lane_index: int) -> ConsiderationItemRef:
         """Return the reference that toggles one lane of a playlist entry."""
-        return ConsiderationItemRef.playlist_lane(self.content_id, entry_index, lane_index)
+        return ConsiderationItemRef(self.item_id, self.bookmark_entries[entry_index], lane_index)
 
     def on_screen_item(self, entry_index: int = 0) -> OnScreenWorkspaceItem:
         """Return the workspace item a viewer shows for one playlist entry."""
-        return OnScreenWorkspaceItem(kind="playlist_entry", content_id=self.content_id, entry_index=entry_index)
+        return OnScreenWorkspaceItem(
+            kind="playlist_entry", content_id=self.content_id, entry=self.bookmark_entries[entry_index]
+        )
 
 
 Content = SeekableVideoContent | LiveVideoContent | PlaylistContent

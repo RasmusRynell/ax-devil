@@ -8,9 +8,11 @@ from typing import Any, cast
 import pytest
 
 from ax_devil.core.cancellation import NEVER, CancelToken
+from ax_devil.core.source_paths import Fingerprint, SourcePaths
 from ax_devil.modules.workspace.core import (
     ITEM_KINDS,
     FileOverlaySourceSpec,
+    ItemResolution,
     ItemResolutionError,
     LiveOverlayMode,
     LiveRTSPOverlaySourceSpec,
@@ -29,7 +31,7 @@ from ax_devil.modules.workspace.core import (
     find_entry,
 )
 from tests.helpers.contents import make_video
-from tests.helpers.workspace import FakeResolutionContext, StaticDecoderOptions
+from tests.helpers.workspace import FakeResolutionContext, FakeResolver, StaticDecoderOptions
 
 _CONTEXT = FakeResolutionContext(
     WorkspaceIntake(
@@ -48,7 +50,7 @@ def _playlist(name: str) -> PlaylistContent:
     )
 
 
-class _Resolver:
+class _Resolver(FakeResolver):
     """A playlist resolver that records the settings it was given and returns fixed playlists."""
 
     def __init__(self, playlists: list[PlaylistContent], error: Exception | None = None) -> None:
@@ -254,7 +256,7 @@ def test_playlist_item_that_cannot_resolve_fails_with_a_reason(resolvers: dict[s
 
 
 def test_playlist_item_keeps_its_own_copy_of_the_settings_from_the_caller_and_the_resolver() -> None:
-    class _MutatingResolver:
+    class _MutatingResolver(FakeResolver):
         def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
             cast(dict[str, Any], settings)["root"] = "/changed/by/plugin"
             return [_playlist("MOT")]
@@ -266,6 +268,27 @@ def test_playlist_item_keeps_its_own_copy_of_the_settings_from_the_caller_and_th
     item.resolve(FakeResolutionContext(resolvers={"mot": _MutatingResolver()}), NEVER)
 
     assert item.settings == {"root": "/runs/exp3"}
+
+
+def test_a_resolution_carries_what_the_item_reads_as_it_was_before_resolving(tmp_path: Path) -> None:
+    """A file rewritten while resolving differs from the result's fingerprint, so watching it reports the change."""
+    manifest = tmp_path / "manifest.txt"
+    manifest.write_text("one", encoding="utf-8")
+
+    class _Rewriting(FakeResolver):
+        def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
+            return SourcePaths(files=frozenset({manifest}))
+
+        def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
+            manifest.write_text("rewritten while resolving", encoding="utf-8")
+            return [_playlist("MOT")]
+
+    context = FakeResolutionContext(resolvers={"runs": _Rewriting()})
+
+    resolution = ItemResolution.of(PlaylistItem(resolver="runs"), context, NEVER)
+
+    assert resolution.error is None
+    assert resolution.sources.fingerprints[manifest] != Fingerprint.of(manifest)
 
 
 def test_only_live_streams_have_hosts_and_a_reference_lists_the_expanded_one_too(

@@ -12,6 +12,7 @@ from typing import Any
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.core.load_warning import SkippedRecords
+from ax_devil.core.source_paths import Fingerprint
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import (
     OverlayLookupMatchType,
@@ -24,7 +25,6 @@ from ax_devil.modules.data_sources.file_data_provider.stores import (
     SceneCatalog,
     SceneStore,
     SceneStoreContext,
-    SourceFingerprint,
     SourceIndexedSceneStore,
 )
 from ax_devil.modules.data_sources.overlay_samples import OverlaySamples, sequence_sample
@@ -75,7 +75,7 @@ class SceneDecoderFileMetadata:
     file_path: str
     total_lines: int
     decoder_name: str
-    source_fingerprint: SourceFingerprint
+    source_fingerprint: Fingerprint
     sequence_lookup_enabled: bool
     timestamp_to_sequence: dict[int, int]
     all_metadata: dict[str, Any]

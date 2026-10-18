@@ -42,7 +42,9 @@ entries when it loads, unless it has more than 200; expand a longer one with its
     as an HTTP Digest answer, never as a plain password.
   - **Add** puts a signed-in camera in the workspace with the **Settings → Stream defaults** and the login that worked,
     and **Add manually** does the same for a camera you enter. Neither starts the stream.
-- **Offline**: **Rescan** reads a playlist's folders again; open viewers keep what they show.
+- **Offline**: videos and playlists follow their overlay files and a playlist's folders: when a tool regenerates or
+  adds files, the rows update by themselves and open viewers keep what they show. Known issue: changes on network
+  shares (NFS, SMB) are not noticed.
 - **Plugins**: installs, updates and removals apply after a restart, which a banner offers.
 
 ## Video and overlays

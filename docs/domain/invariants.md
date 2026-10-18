@@ -15,8 +15,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   Runtime sources are created when a viewer opens content: offline by `open_entry_media`, live by `StreamMediaController`.
 - Workspace Items are the truth and Content is derived: everything that adds content creates items, and Content comes
   only from `WorkspaceItem.resolve`. The Workspace, the store, and the file format never branch on item kind.
-- Content ids derive from the owning item's id and the Content's position, and Content records its item's id, so ids
-  are the same on every resolution. Content built outside resolution has empty ids and is never top-level Content.
+- Content ids derive from the owning item's id and never change between resolutions (see
+  [Workspace](../architecture/workspace.md)), and Content records its item's id. Content built outside resolution has
+  empty ids and is never top-level Content.
 - Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
 - An item's label is what the user named it, or empty. An empty label shows `default_name`, derived from the recipe
   when displayed; derived names such as an expanded host are never stored or saved.
@@ -188,7 +189,11 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file provider artifacts invalidate unless their complete identity matches: source fingerprint, decoder name,
   explicit artifact version, Scene model version, and provider-owned decode options. Cache files (by default under
-  `~/.ax_devil/caches/`) can always be rebuilt.
+  `~/.ax_devil/caches/`) can always be rebuilt. The source fingerprint is taken from the held handle before the
+  source is read, so a file written during indexing reads as changed on the next open; cache files are replaced
+  atomically and read through the handle that wrote them. An open source-indexed store holds its source file open,
+  and stops serving once that file is rewritten in place, since its byte offsets no longer match; a replaced file
+  leaves it valid.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
   history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
   sequence frame, and omits events outside the video; an object is present on exactly the frames whose looked-up sample contains it, under the same

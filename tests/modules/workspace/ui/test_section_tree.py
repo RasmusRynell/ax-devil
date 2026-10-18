@@ -68,7 +68,7 @@ def _playlist(entries: int, row_id: str = "playlist", *, expanded_at_first: bool
         row_id=row_id,
         label="Night shift",
         icon_kind="playlist",
-        actions=(OfferedAction(RowAction.RESCAN),),
+        actions=(OfferedAction(RowAction.ADD),),
         expanded_at_first=expanded_at_first,
         children=tuple(
             WorkspaceBrowserRow(
@@ -337,10 +337,10 @@ def test_a_rows_action_reports_the_row(qtbot: QtBot) -> None:
     actions: list[tuple[WorkspaceBrowserRow, RowAction]] = []
     tree.row_action_requested.connect(lambda row, action: actions.append((row, action)))
 
-    [rescan] = _widget(tree, _item(tree, 0)).findChildren(SmallButton)
-    rescan.click()
+    [add] = _widget(tree, _item(tree, 0)).findChildren(SmallButton)
+    add.click()
 
-    assert actions == [(playlist, RowAction.RESCAN)]
+    assert actions == [(playlist, RowAction.ADD)]
 
 
 def _menu_entries(qtbot: QtBot, row: WorkspaceBrowserRow) -> list[str]:
@@ -363,7 +363,7 @@ def test_the_menu_splits_open_inspect_visibility_and_edit_actions_with_separator
             for action in (
                 RowAction.OPEN,
                 RowAction.OPEN_TO_SIDE,
-                RowAction.RESCAN,
+                RowAction.ADD,
                 RowAction.INFORMATION,
                 RowAction.EXPORT_VIDEO,
                 RowAction.HIDE,
@@ -376,7 +376,7 @@ def test_the_menu_splits_open_inspect_visibility_and_edit_actions_with_separator
     assert _menu_entries(qtbot, entry) == [
         "Open",
         "Open to the Side",
-        "Rescan",
+        "Add",
         "-",
         "Information",
         "Export video",
@@ -386,8 +386,8 @@ def test_the_menu_splits_open_inspect_visibility_and_edit_actions_with_separator
         "Rename",
         "Remove",
     ]
-    bare = replace(entry, actions=(OfferedAction(RowAction.RESCAN), OfferedAction(RowAction.UNHIDE)))
-    assert _menu_entries(qtbot, bare) == ["Rescan", "-", "Unhide"]
+    bare = replace(entry, actions=(OfferedAction(RowAction.ADD), OfferedAction(RowAction.UNHIDE)))
+    assert _menu_entries(qtbot, bare) == ["Add", "-", "Unhide"]
 
 
 def test_choosing_hide_in_the_menu_asks_for_that_action(qtbot: QtBot) -> None:
