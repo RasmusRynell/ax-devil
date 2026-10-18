@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from collections.abc import Sequence
 from fnmatch import fnmatch
@@ -95,14 +96,26 @@ def is_ignored(path: str) -> bool:
     return any(fnmatch(posix_path, pattern) or fnmatch(name, pattern) for pattern in IGNORED_PATTERNS)
 
 
+def staged_size(path: str) -> int:
+    """Return the size of the staged blob, or of the working-tree file when the path has no index entry.
+
+    The index is the source of truth so that line-ending conversion on checkout (`core.autocrlf`) cannot make
+    the same commit pass on one machine and fail on another. Run from the repository root, as pre-commit does.
+    """
+    result = subprocess.run(["git", "cat-file", "-s", f":0:{path}"], capture_output=True, text=True, check=False)
+    if result.returncode == 0:
+        return int(result.stdout)
+    return Path(path).stat().st_size
+
+
 def find_oversized(paths: Sequence[str]) -> list[OversizedFile]:
-    """Return existing, non-ignored regular files whose estimated tokens exceed MAX_TOKENS."""
+    """Return existing, non-ignored regular files whose estimated staged tokens exceed MAX_TOKENS."""
     oversized: list[OversizedFile] = []
     for path in paths:
         file_path = Path(path)
         if not file_path.is_file() or is_ignored(path):
             continue
-        size = file_path.stat().st_size
+        size = staged_size(path)
         if size / BYTES_PER_TOKEN > MAX_TOKENS:
             oversized.append(OversizedFile(path, size))
     return oversized
@@ -116,7 +129,7 @@ def main(argv: Sequence[str]) -> int:
 
     sys.stderr.write(f"Files over the {MAX_TOKENS}-token limit (tokens = bytes / {BYTES_PER_TOKEN}):\n")
     for item in oversized:
-        sys.stderr.write(f"  {item.path}: {item.size} bytes, ~{item.tokens} tokens, limit {MAX_TOKENS}\n")
+        sys.stderr.write(f"  {item.path}: {item.size} staged bytes, ~{item.tokens} tokens, limit {MAX_TOKENS}\n")
     sys.stderr.write(f"\n{SPLIT_INSTRUCTIONS}")
     return 1
 
