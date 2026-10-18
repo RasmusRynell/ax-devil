@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QMenu,
     QPushButton,
     QToolButton,
@@ -17,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.scene.rendering import SceneRenderCatalog, SceneRenderCatalogSelection
 
@@ -75,9 +75,9 @@ class SceneRenderCatalogSelector(QGroupBox):
         self._catalog_actions_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._catalog_actions_button.setStyleSheet("QToolButton::menu-indicator { image: none; }")
 
-        self._status_label = QLabel(self)
+        # One line that never widens the menu: a long catalog name or error is cut in the middle, whole in the tooltip.
+        self._status_label = ElidedLabel("", Qt.TextElideMode.ElideMiddle, self)
         self._status_label.setObjectName("renderCatalogStatus")
-        self._status_label.setWordWrap(True)
 
         self._setup_layout()
         self._render_catalog_selection.selectionChanged.connect(self._render)
@@ -126,7 +126,7 @@ class SceneRenderCatalogSelector(QGroupBox):
         shown = self._render_catalog_selection.active_catalog_loaded()
         self._apply_to_all_action.setEnabled(shown and self._render_catalog_manager.can_apply_to_all(active_path))
         self._use_as_default_action.setEnabled(shown and self._render_catalog_manager.can_use_as_default(active_path))
-        self._status_label.setText(self._render_catalog_selection.status())
+        self._status_label.set_full_text(self._render_catalog_selection.status())
 
     def _select_current_catalog(self, *_args: object) -> None:
         catalog_path = self._selected_catalog_path()

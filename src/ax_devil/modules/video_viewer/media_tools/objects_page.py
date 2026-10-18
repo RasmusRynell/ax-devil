@@ -34,13 +34,14 @@ from ax_devil.modules.video_viewer.media_tools.presence import Presence
 from ax_devil.modules.video_viewer.media_tools.query_bar import QueryBar
 from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
 
-_FILE_NOTE = "File scope filters id, class and events. Attribute filters apply in Frame scope."
 _MUTED = "color: palette(placeholder-text);"
 # Paths every record has, whatever the scope, so a query that names only these never needs the entity's full fields.
 _ID = "id"
 _CLASS = "class"
 _EVENT = "event"
 _LIGHT_PATHS = frozenset({_ID, _CLASS})
+_FILE_PATHS = _LIGHT_PATHS | {_EVENT}
+_FILE_NOTE = "File scope filters id, class and event only"
 _SWITCH_STYLE = f"""
     #objectScope {{ border: 1px solid palette(mid); border-radius: {Radius.CONTROL}px; }}
     #objectScope QToolButton {{
@@ -153,7 +154,6 @@ def _frame_columns() -> tuple[Column, ...]:
             CellKind.ID_DOT,
             lambda row: Labeled(row.entity_id, row.summary.class_name),
             lambda row: id_order(row.entity_id),
-            width_chars=8,
         ),
         Column(
             "Class",
@@ -167,16 +167,14 @@ def _frame_columns() -> tuple[Column, ...]:
             CellKind.NUMBER,
             lambda row: _confidence_text(row.summary.conf),
             lambda row: (row.confidence is not None, row.confidence or 0.0),
-            width_chars=4,
         ),
         Column(
             "Motion",
             CellKind.TEXT,
             lambda row: row.summary.state or "",
             lambda row: row.summary.state or "",
-            width_chars=10,
+            priority=1,
         ),
-        Column("", CellKind.CHEVRON, lambda row: None),
     )
 
 
@@ -263,8 +261,8 @@ class ObjectsPage(QWidget):
         frame_columns = _frame_columns()
         file_columns = self._file_columns()
         self._tables = {
-            ObjectScope.FRAME: self._table(frame_columns, 2, Qt.SortOrder.DescendingOrder),
-            ObjectScope.FILE: self._table(file_columns, 0, Qt.SortOrder.AscendingOrder),
+            ObjectScope.FRAME: self._table(frame_columns, "objects-frame", 2, Qt.SortOrder.DescendingOrder),
+            ObjectScope.FILE: self._table(file_columns, "objects-file", 0, Qt.SortOrder.AscendingOrder),
         }
         self._tables[ObjectScope.FILE].model.set_dimmed(self._is_absent)
         self._empty = QLabel(self)
@@ -398,23 +396,20 @@ class ObjectsPage(QWidget):
                 CellKind.ID_DOT,
                 lambda row: Labeled(row.entity_id, row.category),
                 lambda row: id_order(row.entity_id),
-                width_chars=8,
             ),
             Column(
                 "Class",
                 CellKind.TEXT,
                 lambda row: ", ".join(row.history.types),
                 lambda row: ", ".join(row.history.types).casefold(),
-                stretch=True,
             ),
-            Column("Presence", CellKind.PRESENCE, presence, width_chars=7),
-            Column("Seen", CellKind.MONO, lambda row: row.seen, lambda row: row.history.spans[0][0], width_chars=11),
-            Column("", CellKind.CHEVRON, lambda row: None),
+            Column("Presence", CellKind.PRESENCE, presence, stretch=True),
+            Column("Seen", CellKind.MONO, lambda row: row.seen, lambda row: row.history.spans[0][0], priority=1),
         )
 
-    def _table(self, columns: Sequence[Column], sort_column: int, order: Qt.SortOrder) -> _ScopeTable:
+    def _table(self, columns: Sequence[Column], key: str, sort_column: int, order: Qt.SortOrder) -> _ScopeTable:
         model = RowTableModel(columns, self)
-        view = RowTableView(model, self)
+        view = RowTableView(model, self, table_key=key)
         view.sort_by(sort_column, order)
         view.sortRequested.connect(self.refresh)
         view.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
@@ -513,7 +508,8 @@ class ObjectsPage(QWidget):
             self._tables[ObjectScope.FILE].model.set_rows(self._file_shown, _key)
         else:
             self._tables[ObjectScope.FILE].view.viewport().update()
-        self._show(self._file_shown, len(histories), _FILE_NOTE, "No objects in the file")
+        note = "" if _query_paths(self._query) <= _FILE_PATHS else _FILE_NOTE
+        self._show(self._file_shown, len(histories), note, "No objects in the file")
 
     def _show(self, shown: Sequence[Any], total: int, note: str, none_text: str) -> None:
         """Put *shown* of *total* objects in the table of the current scope, along with the note under the query."""

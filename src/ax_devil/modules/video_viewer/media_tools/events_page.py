@@ -68,7 +68,7 @@ class _EventsTable(RowTableView):
     """
 
     def __init__(self, model: RowTableModel, parent: QWidget | None = None) -> None:
-        super().__init__(model, parent)
+        super().__init__(model, parent, table_key="events")
         self._position: tuple[int, int] | None = None
 
     @property
@@ -281,11 +281,10 @@ class EventsPage(QWidget):
                 "Time",
                 CellKind.MONO,
                 lambda row: format_frame_time(row.event.frame_id.timestamp_monotime_us),
-                width_chars=14,
+                width_chars=12,  # A timestamp is never cut: "00:00:00.666".
             ),
-            Column("Kind", CellKind.TAG, lambda row: Labeled(row.event.kind.lower(), row.event.kind), width_chars=8),
+            Column("Kind", CellKind.TAG, lambda row: Labeled(row.event.kind.lower(), row.event.kind)),
             Column("Objects", CellKind.ID_CHIPS, chips, stretch=True),
-            Column("", CellKind.CHEVRON, lambda row: None),
         )
 
     def _class_of(self, entity_id: str) -> str:

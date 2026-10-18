@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
 from PySide6.QtCore import QCoreApplication, QPoint, QRect, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.video_player.ui.draggable import DraggableHandle, DraggablePanel
+from ax_devil.modules.chrome.appearance import notify_text_size_applied
+from ax_devil.modules.video_player.constants import VIDEO_MIN_WIDTH
+from ax_devil.modules.video_player.ui.draggable import DraggableHandle, DraggablePanel, panel_width
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
 
@@ -125,7 +128,7 @@ def test_side_panel_hides_its_content_while_collapsed(qtbot: QtBot) -> None:
     assert panel.width() == panel.expanded_width
 
 
-def test_dragging_side_panel_fully_open_and_closed_updates_content_visibility(qtbot: QtBot) -> None:
+def test_dragging_side_panel_open_to_a_width_and_closed_updates_content_visibility(qtbot: QtBot) -> None:
     host = QWidget()
     qtbot.addWidget(host)
     host.resize(800, 400)
@@ -142,16 +145,16 @@ def test_dragging_side_panel_fully_open_and_closed_updates_content_visibility(qt
     QCoreApplication.processEvents()
 
     try:
-        for _ in range(2):
+        for width in (300, 420):  # The release keeps the dragged width instead of snapping to a fixed one.
             start = handle.rect().center()
-            opened = QPoint(start.x() - panel.expanded_width, start.y())
+            opened = QPoint(start.x() - width, start.y())
             QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
             QTest.mouseMove(handle, opened)
             QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=opened)
             qtbot.waitUntil(content.isVisible)
-            assert panel.width() == panel.expanded_width
+            assert panel.width() == width
 
-            closed = QPoint(start.x() + panel.expanded_width, start.y())
+            closed = QPoint(start.x() + width, start.y())
             QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
             QTest.mouseMove(handle, closed)
             QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=closed)
@@ -178,22 +181,46 @@ def _display_in_window(qtbot: QtBot, width: int) -> tuple[QWidget, FrameDisplay,
     return window, display, panel, content
 
 
-def test_side_panel_takes_at_most_half_the_pane_and_stays_open_when_it_narrows(qtbot: QtBot) -> None:
-    """An open panel never closes on its own; it takes at most half its pane unless its content needs more."""
+@pytest.mark.parametrize(
+    ("pane", "wanted", "content_min", "expected"),
+    [
+        (1000, 400, 200, 400),  # Fits: the wanted width.
+        (1000, 100, 200, 200),  # Never below the content minimum.
+        (1000, 900, 200, 1000 - VIDEO_MIN_WIDTH),  # The video keeps its minimum before the panel grows.
+        (300, 400, 200, 200),  # The video gives way before the panel drops below its content.
+        (150, 400, 200, 150),  # Never wider than the pane.
+    ],
+)
+def test_panel_width_keeps_content_whole_and_the_video_next(
+    pane: int, wanted: int, content_min: int, expected: int
+) -> None:
+    assert panel_width(pane=pane, wanted=wanted, content_min=content_min, video_min=VIDEO_MIN_WIDTH) == expected
+
+
+def test_dragged_side_panel_width_survives_close_open_and_pane_resize(qtbot: QtBot) -> None:
+    """The width the user dragged to is kept for the session; a narrow pane only limits it for a while."""
     window, display, panel, content = _display_in_window(qtbot, 1200)
     display.set_side_panel_open(True)
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
-    open_width = panel.width()
-    assert 0 < open_width <= display.width() // 2
+    wanted = panel.width() + 80
+    panel.drag_to(10)
+    assert panel.width() == panel._content_minimum_width() > 10  # A drag never takes the panel below its content.
+    panel.drag_to(wanted)
+    panel.end_drag()
+    assert panel.width() == wanted
 
-    window.resize(open_width, 400)
-    qtbot.waitUntil(lambda: 0 < panel.width() <= display.width() // 2)
+    display.set_side_panel_open(False)
+    qtbot.waitUntil(content.isHidden)
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == wanted)
+
+    window.resize(wanted + 20, 400)
+    qtbot.waitUntil(lambda: panel.width() == wanted + 20 - VIDEO_MIN_WIDTH)
     assert display.is_side_panel_open()
     assert content.isVisible()
 
     window.resize(1200, 400)
-    qtbot.waitUntil(lambda: panel.width() == open_width)
-    assert display.is_side_panel_open()
+    qtbot.waitUntil(lambda: panel.width() == wanted)
 
 
 def test_side_panel_opening_during_resize_keeps_content_and_video_visible(qtbot: QtBot) -> None:
@@ -220,13 +247,18 @@ def test_side_panel_opening_during_resize_keeps_content_and_video_visible(qtbot:
     assert not display.viewport.size().isEmpty()
 
 
-def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
-    """Content that grows, as after a larger text size, widens the open panel instead of being clipped."""
+def test_side_panel_width_ignores_content_changes_until_the_text_size_is_applied(qtbot: QtBot) -> None:
+    """Content that changes size does not move the panel; a text-size change refits it to the content."""
     _window, display, panel, content = _display_in_window(qtbot, 1200)
     display.set_side_panel_open(True)
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    width = panel.width()
 
     content.setMinimumWidth(620)
+    QCoreApplication.processEvents()
+    assert panel.width() == width
+
+    notify_text_size_applied()
     qtbot.waitUntil(lambda: panel.width() >= 620)
     assert display.is_side_panel_open()
 

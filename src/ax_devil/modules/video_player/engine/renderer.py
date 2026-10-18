@@ -6,7 +6,7 @@ from itertools import count
 from time import perf_counter
 
 from PySide6 import QtCore
-from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QHideEvent, QMouseEvent, QResizeEvent, QShowEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
@@ -54,7 +54,6 @@ class VideoFrameRenderer(QWidget):
             self._metrics_instance_id, self._metrics_instance_id.replace("-", " ").title()
         )
 
-        self.setMinimumSize(QSize(100, 100))
         self.setMouseTracking(True)
         self._video_frame: VideoFrameWithOverlays | None = None
         self._viewport = ViewportState(

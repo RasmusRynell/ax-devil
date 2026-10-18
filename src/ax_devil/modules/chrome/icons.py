@@ -25,6 +25,7 @@ class Icon(Enum):
     MINIMIZE = ("minus", False)
     MAXIMIZE = ("square", False)
     RESTORE = ("copy", False)
+    COPY = ("copy", False)  # The same glyph under its other name.
     CLOSE = ("x", False)
     EXPORT = ("download", False)
     MENU = ("chevron-down", False)

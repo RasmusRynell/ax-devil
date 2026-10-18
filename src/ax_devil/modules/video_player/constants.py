@@ -25,8 +25,10 @@ DRAG_THRESHOLD_PIXELS = 2  # Minimum movement before drag starts
 # ===== PANEL ANIMATION SETTINGS =====
 PANEL_ANIMATION_DURATION = 400  # milliseconds
 PANEL_COLLAPSED_WIDTH = 0
-PANEL_EXPANDED_WIDTH = 400
-PANEL_MAX_PANE_SHARE = 0.5  # Open panels take at most this share of their pane, unless their content needs more
+PANEL_DEFAULT_CHARS = 48  # Width of a panel the user has not dragged, in average characters of body text
+PANEL_MAX_PANE_SHARE = 0.5  # An undragged panel takes at most this share of its pane, unless its content needs more
+PANEL_COLLAPSE_SHARE = 0.5  # Releasing a drag below this share of the content minimum closes the panel
+VIDEO_MIN_WIDTH = 160  # Width the video keeps while the panel is dragged or sized; only the content minimum beats it
 
 # ===== UI STYLING =====
 CONTROL_PANEL_PADDING = Space.M  # Internal padding from video edges

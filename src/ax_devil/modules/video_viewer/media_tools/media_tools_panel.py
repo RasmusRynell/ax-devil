@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from enum import Enum
+from functools import partial
 from html import escape
 from time import monotonic
 from typing import Any
 
-from PySide6.QtCore import QTimer, Signal
-from PySide6.QtGui import QAction, QHideEvent, QShowEvent
+from PySide6.QtCore import QSize, QTimer, Signal
+from PySide6.QtGui import QAction, QFontMetrics, QHideEvent, QShowEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QMenu,
     QTabBar,
     QToolButton,
@@ -49,6 +53,8 @@ _INSPECTION_INTERVAL_S = 0.1
 
 _HISTORY_NOTICE_MARGINS = (0, Space.M, Space.M, 0)
 _MENU_CONTENT_MARGINS = (Space.M, Space.M, Space.M, Space.M)
+_MIN_CHARS = 37
+"""Average characters of body text the panel always has room for: the tabs with their counts, and at least the pages."""
 
 
 class MediaToolsSection(Enum):
@@ -265,6 +271,17 @@ class MediaToolsPanel(QWidget):
         self.filter_model.changed.connect(self._on_filter_changed)
         self._on_filter_changed()
 
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Return the same narrowest width whichever page shows, so the panel never changes width with its contents.
+
+        It is the room for the tabs with counts of several digits, or the page header and root pages if wider: those
+        depend on the text size and the columns alone, and a drilled page is built from the same lists. The tab row
+        itself grows with its counts, so it cannot set this.
+        """
+        tabs = _MIN_CHARS * QFontMetrics(QApplication.font()).averageCharWidth()
+        width = max(tabs, self._stack.narrowest_width())
+        return QSize(width, super().minimumSizeHint().height())
+
     def _build_menu(self, export_action: QAction | None, timing_controls: QWidget | None) -> None:
         """Fill the overflow menu: one submenu per control group, then the viewer's export command."""
         catalog_menu = self._section_menu(MediaToolsSection.RENDER_CATALOG, self._catalog_selector)
@@ -295,7 +312,15 @@ class MediaToolsPanel(QWidget):
         action = QWidgetAction(submenu)
         action.setDefaultWidget(container)
         submenu.addAction(action)
+        # A widget that is hidden does not pass a size change up to its layout, so the content of a menu closed during
+        # a text-size change would be measured at the old size and clip.
+        submenu.aboutToShow.connect(partial(self._remeasure, container))
         return submenu
+
+    @staticmethod
+    def _remeasure(container: QWidget) -> None:
+        for layout in container.findChildren(QLayout):
+            layout.invalidate()
 
     def cleanup(self) -> None:
         """Disconnect persistent selection observers when the owning view closes."""
@@ -400,7 +425,8 @@ class MediaToolsPanel(QWidget):
 
     def mark_history_out_of_date(self, reason: str) -> None:
         """Say why the history shown is out of date; the next `set_scene_history` replaces the notice."""
-        self._history_notice.setText(reason)
+        # An error names paths and lanes, which are one word to a label; it may break after their separators.
+        self._history_notice.setText(re.sub(r"([/\\._:-])", "\\1\u200b", reason))
         self._history_notice.setVisible(True)
 
     def show_object(self, entity_id: str) -> None:

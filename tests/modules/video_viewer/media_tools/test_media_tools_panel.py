@@ -8,14 +8,17 @@ from typing import Any, cast
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QLineEdit, QTabBar, QToolButton
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QMenu, QTabBar, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption, build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.scene.inspection import EntitySummary, entity_summary
 from ax_devil.modules.scene.model import (
     BoundingBox,
@@ -30,6 +33,7 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
+from ax_devil.modules.video_player.ui.draggable import DraggablePanel
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.event_page import EventPage
@@ -123,7 +127,9 @@ def _click_row(view: RowTableView, key: Hashable) -> None:
 
 def _button(panel: MediaToolsPanel, label: str) -> SmallButton | None:
     """Return the visible button of the panel with this text or tooltip."""
-    buttons = [b for b in panel.findChildren(SmallButton) if label in (b.text(), b.toolTip()) and b.isVisible()]
+    buttons = [
+        b for b in panel.findChildren(SmallButton) if (label in b.text() or label in b.toolTip()) and b.isVisible()
+    ]
     return buttons[0] if buttons else None
 
 
@@ -169,9 +175,7 @@ def test_filter_changes_reach_the_listed_frame_while_paused(
     assert _ids(panel) == ["b"]
 
 
-def test_file_scope_lists_the_whole_file_and_explains_what_a_query_covers(
-    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
-) -> None:
+def test_file_scope_lists_the_whole_file(qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection) -> None:
     panel = _panel(qtbot, render_catalog_selection, _history(("a", "human", ((0, 3),)), ("b", "car", ((5, 6),))))
     panel.update_scene(_scene(_entity("a")), _frame(2), {})
     assert _ids(panel) == ["a"]
@@ -180,8 +184,10 @@ def test_file_scope_lists_the_whole_file_and_explains_what_a_query_covers(
     assert _ids(panel) == ["a", "b"]  # Includes the object that is not in the displayed frame.
     _search(panel, "class:car")
     assert _ids(panel) == ["b"]
-    notes = [label.text() for label in panel.objects_page.findChildren(QLabel) if label.isVisibleTo(panel)]
-    assert any("Attribute filters apply in Frame scope" in note for note in notes)
+    note = panel.objects_page.findChild(ElidedLabel)
+    assert note is not None and not note.isVisibleTo(panel)
+    _search(panel, "speed:1")  # File scope cannot filter an attribute, so it says what it can filter.
+    assert _ids(panel) == [] and note.isVisibleTo(panel) and "File scope" in note.full_text()
     _search(panel, "")
     panel.filter_model.set_enabled("show_cars", False)  # The type filter hides objects in the list as on the video.
     assert _ids(panel) == ["a"]
@@ -558,7 +564,7 @@ def test_event_page_lists_the_equal_event_reported_twice_among_its_same_moment(q
     qtbot.addWidget(page)
     page.set_history(_history(events=(twice, other, twice)))
     page.show()
-    moment = next(view for view in page.findChildren(RowTableView) if view.isHeaderHidden())
+    moment = next(view for view in page.findChildren(RowTableView) if view.rows_model.columns[0].title == "Kind")
 
     assert moment.rows_model.rowCount() == 2
     assert {moment.rows_model.row_of(EventPageKey(twice, 1)), moment.rows_model.row_of(EventPageKey(other))} == {0, 1}
@@ -598,6 +604,102 @@ def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, mo
 
     page.show()
     assert lookups == ["a"]
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+def test_overflow_submenu_fits_its_content_after_the_text_size_grows(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    apply_text_size(13)
+    panel = _panel(qtbot, render_catalog_selection)
+    [filters] = [menu for menu in panel._more_menu.findChildren(QMenu) if menu.title() == "Overlay filter"]
+    filters.popup(panel.mapToGlobal(QPoint(0, 0)))
+    filters.hide()
+
+    apply_text_size(21)
+    filters.popup(panel.mapToGlobal(QPoint(0, 0)))
+
+    content = panel.filter_widget.parentWidget()
+    assert content is not None
+    assert filters.width() >= content.sizeHint().width()
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+@pytest.mark.parametrize("text_size", [13, 15, 21], ids=["small", "medium", "larger"])
+def test_panel_keeps_its_width_whatever_it_shows(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, text_size: int
+) -> None:
+    """Pages, data, folds and scroll bars never move the panel's minimum or its width in the video view."""
+    apply_text_size(text_size)
+    uuid = "3f2b8c1e-9a4d-4e7b-8c55-1d2e3f4a5b6c"
+    long_class = "a-very-long-class-name-for-one-object"
+    event = FrameEvent(_frame(3), "Merge", f"Merge {uuid} → b", (uuid, "b"))
+    many = tuple((f"object-{n}", "car", ((0, 5),)) for n in range(9999))
+    history = _history((uuid, long_class, ((0, 5),)), *many, events=(event,))
+    filters = SessionFilter(build_default_filter_config())
+    panel = MediaToolsPanel(render_catalog_selection, filter_model=filters, scene_history=history)
+    window = QWidget()
+    qtbot.addWidget(window)
+    QHBoxLayout(window).addWidget(display := FrameDisplay())
+    display.enable_side_panel()
+    display.set_side_panel_widget(panel)
+    window.resize(1400, 700)
+    window.show()
+    display.set_side_panel_open(True)
+    side_panel = display.findChild(DraggablePanel)
+    assert side_panel is not None
+    qtbot.waitUntil(lambda: side_panel.width() == side_panel.expanded_width)
+    minimum, width = panel.minimumSizeHint().width(), side_panel.width()
+
+    def unchanged() -> None:
+        qtbot.wait(20)
+        assert panel.minimumSizeHint().width() == minimum
+        assert panel._tab_row.minimumSizeHint().width() <= minimum
+        assert panel._stack.minimumSizeHint().width() <= minimum  # The header, and the widest page held.
+        assert side_panel.width() == width
+
+    tabs = panel.findChild(QTabBar, "mediaToolsTabs")
+    assert tabs is not None
+    unchanged()
+    for kind, entity_id in (("car", "a"), (long_class, "b"), ("human", uuid)):
+        panel.update_scene(_scene(_entity(entity_id, kind)), _frame(1), {})
+        unchanged()
+    for scope in (ObjectScope.FILE, ObjectScope.FRAME):
+        panel.objects_page.set_scope(scope)
+        unchanged()
+    path = "candidates.human.attributes.confidence.detection.source.original_tracker_identifier"
+    _search(panel, f"{path}:1")  # No object has the field: a note says so, as wide as the path.
+    unchanged()
+    note = panel.objects_page.findChild(ElidedLabel)
+    assert note is not None and note.isVisible() and path in note.full_text()
+    assert note.toolTip() == note.full_text()
+    assert note.fontMetrics().horizontalAdvance(note.text()) <= note.width()  # Cut in the middle, not clipped.
+    _search(panel, "")
+    long_path = "/home/someone/projects/a-long-folder-name/another-long-folder-name/scene_history_cache_file.json"
+    panel.mark_history_out_of_date(f"History is out of date: {long_path}")
+    unchanged()
+    notice = panel.findChild(QLabel, "historyOutOfDateNotice")
+    assert notice is not None
+    words = notice.text().replace("\u200b", " ").split()  # A label breaks lines at spaces and these invisible marks.
+    assert max(notice.fontMetrics().horizontalAdvance(word) for word in words) <= notice.width()
+    tabs.setCurrentIndex(1)
+    unchanged()
+    tabs.setCurrentIndex(0)
+    panel.show_object(uuid)
+    unchanged()
+    fields = panel.findChild(FieldsView)
+    assert fields is not None
+    fields.collapseAll()
+    unchanged()
+    fields.expandAll()
+    unchanged()
+    panel._open_event(event)  # An event page whose back button is named after the object's id.
+    unchanged()
+    window.resize(1400, 160)  # Short enough for every list and page to need its scroll bar.
+    unchanged()
+    window.resize(1400, 700)
+    panel._stack.show_root(panel._tab_roots[0])
+    unchanged()
 
 
 def test_playback_coalesces_inspection_but_pause_navigation_and_showing_catch_up(

@@ -5,17 +5,17 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QPainter, QPaintEvent, QPalette, QShowEvent
-from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QShowEvent
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.chip import paint_tag
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, category_color
-from ax_devil.modules.chrome.tokens import Height, Space, TextRole
+from ax_devil.modules.chrome.tokens import Height, Space
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
+from ax_devil.modules.object_inspection.fields_view import FieldRow, FieldsView
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import EntityId, Scene
@@ -24,8 +24,6 @@ from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
 from ax_devil.modules.video_viewer.media_tools.presence import Presence
 from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
 
-_MUTED = "color: palette(placeholder-text); border: none; background: transparent;"
-_PLAIN = "border: none; background: transparent;"
 _OBJECTS = "Objects involved"
 _SAME_MOMENT = "Same moment"
 
@@ -47,37 +45,6 @@ class _Involved:
     def category(self) -> str:
         """Return the class that colors the object."""
         return self.classes[0] if self.classes else ""
-
-
-class _TitleRow(QWidget):
-    """The event's kind as a colored tag, followed by its summary."""
-
-    def __init__(self, event: FrameEvent, parent: QWidget) -> None:
-        super().__init__(parent)
-        self._kind = event.kind
-        self._summary = event_summary(event)
-        self.setStyleSheet(_PLAIN)
-        self.setToolTip(event.label)
-        follow_appearance(self, lambda: self.setFixedHeight(Height.PANE_HEADER.px))
-
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        """Draw the kind tag, then the summary elided to the room left."""
-        painter = QPainter(self)
-        palette = self.palette()
-        rect = self.rect().adjusted(Space.M, 0, -Space.M, 0)
-        tag_width = paint_tag(painter, rect, self._kind, category_color(self._kind, palette))
-        left = rect.left() + tag_width + Space.M
-        if left >= rect.right():
-            return
-        font = TextRole.STRONG.font()
-        shown = QFontMetrics(font).elidedText(self._summary, Qt.TextElideMode.ElideRight, rect.right() - left + 1)
-        painter.setFont(font)
-        painter.setPen(palette.color(QPalette.ColorRole.Text))
-        painter.drawText(
-            QRect(left, rect.top(), rect.right() - left + 1, rect.height()),
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            shown,
-        )
 
 
 class EventPage(QWidget):
@@ -109,41 +76,35 @@ class EventPage(QWidget):
 
         self._go_button = SmallButton("Go to frame", parent=self)
         self._go_button.clicked.connect(lambda: self.frameRequested.emit(self._event.frame_id.sequence_id))
-        details = QWidget(self)
-        grid = QGridLayout(details)
-        grid.setContentsMargins(Space.M, Space.S, Space.M, Space.S)
-        grid.setHorizontalSpacing(Space.M)
-        grid.setVerticalSpacing(Space.XS)
-        frame_id = event.frame_id
-        for row, (name, value) in enumerate(
-            (("Time", format_frame_time(frame_id.timestamp_monotime_us)), ("Frame", f"#{frame_id.sequence_id}"))
-        ):
-            key = QLabel(name, details)
-            key.setStyleSheet(_MUTED)
-            TextRole.SMALL.apply(key)
-            text = QLabel(value, details)
-            text.setStyleSheet(_PLAIN)
-            TextRole.MONO.apply(text)
-            grid.addWidget(key, row, 0)
-            grid.addWidget(text, row, 1)
-        grid.setColumnStretch(2, 1)
-        grid.addWidget(self._go_button, 0, 3, 2, 1, Qt.AlignmentFlag.AlignVCenter)
+        self._go_row = QWidget(self)
+        go_layout = QHBoxLayout(self._go_row)
+        go_layout.setContentsMargins(Space.M, Space.S, Space.M, Space.S)
+        go_layout.addWidget(self._go_button)
+        go_layout.addStretch(1)
 
-        self._objects_model = RowTableModel(self._object_columns(), self)
-        self._objects_model.set_dimmed(self._is_absent)
-        self._objects = RowTableView(self._objects_model, self)
-        self._objects.sortRequested.connect(self.refresh)
-        self._objects.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
+        frame_id = event.frame_id
+        self._details = FieldsView({}, self)
+        self._details.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._details.set_sections(
+            (),
+            (
+                FieldRow("kind", event_summary(event), copy=event.label, tag=event.kind),
+                FieldRow("time", format_frame_time(frame_id.timestamp_monotime_us)),
+                FieldRow("frame", f"#{frame_id.sequence_id}"),
+            ),
+        )
+        follow_appearance(self, lambda: self._details.setFixedHeight(self._details.model().rowCount() * Height.ROW.px))
+
+        self._objects_with_history = False
+        self._objects_model, self._objects = self._objects_table(with_history=False)
         self._moment_model = RowTableModel(
             (
                 Column("Kind", CellKind.TAG, lambda other: Labeled(other.event.kind, other.event.kind), width_chars=9),
                 Column("Event", CellKind.TEXT, lambda other: event_summary(other.event), stretch=True),
-                Column("", CellKind.CHEVRON, lambda other: None),
             ),
             self,
         )
-        self._moment = RowTableView(self._moment_model, self)
-        self._moment.setHeaderHidden(True)
+        self._moment = RowTableView(self._moment_model, self, table_key="event-moment")
         self._moment.rowActivated.connect(self.eventActivated)
 
         self._objects_caption = self._caption(_OBJECTS, len(self._unique_ids()))
@@ -152,8 +113,8 @@ class EventPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(_TitleRow(event, self))
-        layout.addWidget(details)
+        layout.addWidget(self._details)
+        layout.addWidget(self._go_row)
         layout.addWidget(self._objects_caption)
         layout.addWidget(self._objects, 1)
         layout.addWidget(self._moment_caption)
@@ -203,12 +164,18 @@ class EventPage(QWidget):
     # Internal
 
     def _caption(self, title: str, count: int) -> SectionCaption:
-        return SectionCaption(title, count, lambda palette: category_color(title, palette))
+        caption = SectionCaption(
+            title, count, lambda palette: category_color(title, palette), folded=False, arrow_px=Space.M
+        )
+        caption.unsetCursor()  # It looks like an object page's section header but does not fold.
+        return caption
 
     def _unique_ids(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(self._event.entity_ids))
 
-    def _object_columns(self) -> tuple[Column, ...]:
+    def _objects_table(self, *, with_history: bool) -> tuple[RowTableModel, RowTableView]:
+        """Create the table of the involved objects; it shows where they appear only with a history."""
+
         def presence(row: _Involved) -> Presence:
             history = self._history
             return Presence(
@@ -219,7 +186,7 @@ class EventPage(QWidget):
                 row.category,
             )
 
-        return (
+        columns = [
             Column(
                 "ID",
                 CellKind.ID_DOT,
@@ -232,18 +199,28 @@ class EventPage(QWidget):
                 CellKind.TEXT,
                 lambda row: ", ".join(row.classes),
                 lambda row: ", ".join(row.classes).casefold(),
-                stretch=True,
+                stretch=not with_history,
+                width_chars=6,
             ),
-            Column("Presence", CellKind.PRESENCE, presence, width_chars=7),
-            Column(
-                "Seen",
-                CellKind.MONO,
-                lambda row: seen_range(row.history) if row.history is not None else "",
-                lambda row: row.history.spans[0][0] if row.history is not None else -1,
-                width_chars=11,
-            ),
-            Column("", CellKind.CHEVRON, lambda row: None),
-        )
+        ]
+        if with_history:
+            columns += [
+                Column("Presence", CellKind.PRESENCE, presence, stretch=True, width_chars=4),
+                Column(
+                    "Seen",
+                    CellKind.MONO,
+                    lambda row: seen_range(row.history) if row.history is not None else "",
+                    lambda row: row.history.spans[0][0] if row.history is not None else -1,
+                    width_chars=11,
+                    priority=1,
+                ),
+            ]
+        model = RowTableModel(columns, self, copy_text=lambda row: row.entity_id)
+        model.set_dimmed(self._is_absent)
+        view = RowTableView(model, self, table_key="event-objects")
+        view.sortRequested.connect(self.refresh)
+        view.rowActivated.connect(lambda row: self.objectActivated.emit(row.entity_id))
+        return model, view
 
     def _is_absent(self, row: _Involved) -> bool:
         """Return whether the displayed frame lacks the object: by its history, else by the displayed scene, where
@@ -269,9 +246,9 @@ class EventPage(QWidget):
     def _refresh(self) -> None:
         self._dirty = False
         has_history = self._history is not None
-        self._go_button.setVisible(has_history)
-        self._objects.setColumnHidden(2, not has_history)
-        self._objects.setColumnHidden(3, not has_history)
+        self._go_row.setVisible(has_history)
+        if has_history != self._objects_with_history:
+            self._swap_objects_table(has_history)
         ids = self._unique_ids()
         self._objects_model.set_rows([self._involved(entity_id) for entity_id in ids], lambda row: row.entity_id)
         self._objects_caption.setVisible(bool(ids))
@@ -290,8 +267,19 @@ class EventPage(QWidget):
         self._moment.setVisible(bool(self._simultaneous))
         self._fit_tables()
 
+    def _swap_objects_table(self, with_history: bool) -> None:
+        """Replace the objects table by one with the columns that fit whether the page has a history."""
+        self._objects_with_history = with_history
+        old = self._objects
+        self._objects_model, self._objects = self._objects_table(with_history=with_history)
+        layout = self.layout()
+        assert isinstance(layout, QVBoxLayout)
+        layout.replaceWidget(old, self._objects)
+        old.hide()
+        old.deleteLater()
+
     def _fit_tables(self) -> None:
         """Let each table take only the height of its rows, so a short list leaves no empty rows below it."""
         for table, model in ((self._objects, self._objects_model), (self._moment, self._moment_model)):
-            lines = model.rowCount() + (0 if table.isHeaderHidden() else 1)
+            lines = model.rowCount() + 1
             table.setMaximumHeight(lines * Height.ROW.px + 2 * table.frameWidth())
