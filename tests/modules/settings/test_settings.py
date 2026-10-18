@@ -18,7 +18,6 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.configuration_preferences import ConfigField
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -78,7 +77,6 @@ class TestGlobalSettingsConfigRoundTrip:
 
         settings = GlobalSettings()
         settings.theme = ThemeMode.DARK
-        settings.graphics_acceleration = GraphicsAcceleration.OFF
         settings.text_size = TextSize.LARGER
         settings.custom_frame = False
         settings.quick_setup_done = True
@@ -402,7 +400,7 @@ def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> No
     ]
     marker = "(requires restart)"
     marked = {text.removesuffix(f" {marker}") for text in texts if text.endswith(marker)}
-    assert marked == {"Use the app title bar", "Graphics acceleration", "Storage locations"}
+    assert marked == {"Use the app title bar", "Storage locations"}
     assert not [text for text in texts if "restart" in text.lower() and not text.endswith(marker)]
 
 

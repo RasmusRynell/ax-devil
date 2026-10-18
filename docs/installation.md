@@ -43,18 +43,13 @@ installed plugins follow on the next launch. See [plugin upgrades and recovery](
 
 ## Graphics startup problems
 
-If graphics initialization fails, launch with software rendering:
-
-```bash
-QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software ax-devil         # standalone installation
-QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software uv run ax-devil  # source checkout
-```
-
-Then set **Settings → General → Appearance → Graphics acceleration** to **Off** to keep software rendering
-on later launches. See [graphics acceleration](settings.md#graphics-acceleration).
+Video and overlays are drawn on the GPU. Without a working GPU driver, Qt falls back to a mode that cannot draw
+overlays and the log says so. On Linux, launch with `LIBGL_ALWAYS_SOFTWARE=1` to render with Mesa on the CPU; on
+Windows, set `QSG_RHI_PREFER_SOFTWARE_RENDERER=1`.
 
 ## Developing
 
 `uv sync --locked` includes the development tools. Install optional Git hooks with `uv run pre-commit install`
 and fix formatting and lint issues with `make format`. See the [testing runbook](runbooks/testing.md) for checks,
 isolated GUI verification, and installation tests.
+GUI tests need `xvfb`, `xauth` and Mesa (`libgl1-mesa-dri`, or `xorg-server-xvfb` on Arch).

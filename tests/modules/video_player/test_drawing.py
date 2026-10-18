@@ -7,9 +7,9 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
-from ax_devil.modules.video_player.engine.drawing import DrawingStyle, _text_block
+from ax_devil.modules.video_player.engine.quick.glyphs import FontKey, glyph_atlas
 from ax_devil.modules.video_player.engine.quick.surface import QuickSurface
-from tests.drawing_helpers import BoxCall, DrawCall, TextCall, prepare_calls
+from tests.drawing_helpers import BoxCall, DrawCall, DrawingStyle, TextCall, prepare_calls
 
 pytestmark = pytest.mark.usefixtures("qapp")
 
@@ -46,16 +46,9 @@ def test_text_line_breaks_have_identical_layout(qapp: QApplication, separator: s
     assert actual == expected
 
 
-def test_empty_text_lines_contribute_to_block_height(qapp: QApplication) -> None:
-    single = _text_block("Text", "Arial", 16, 96)
-    multiple = _text_block("Text\n\n", "Arial", 16, 96)
-    assert multiple.width == single.width
-    assert multiple.height > single.height * 2
-
-
 def test_baseline_and_top_anchor_use_the_same_shaped_text(qapp: QApplication) -> None:
-    block = _text_block("Text", "Arial", 16, 96)
+    ascent = glyph_atlas(96, 1.0).shape(["Text"], FontKey("Arial", 16, "regular")).ascent
     style = DrawingStyle(font_size=0.16)
     top = _paint(TextCall(0.2, 0.2, "Text", style, anchor="top-left"))
-    baseline = _paint(TextCall(0.2, (20 + block.ascent) / 100, "Text", style, anchor="baseline"))
+    baseline = _paint(TextCall(0.2, (20 + ascent) / 100, "Text", style, anchor="baseline"))
     assert top == baseline

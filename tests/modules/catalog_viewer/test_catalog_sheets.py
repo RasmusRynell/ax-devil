@@ -86,7 +86,7 @@ def test_caption_plates_skip_empty_lines_at_small_sizes(qtbot: QtBot, width: int
     context = RenderContext.create(width, max(1, width // 2))
     drawing = SheetDrawing(sheet, get_built_in_scene_render_catalog())
     result = drawing.prepare(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert len(result.paths) == len(result.texts) == visible
+    assert len(result) == 2 * visible
     assert drawing.diagnostics == ()
 
 

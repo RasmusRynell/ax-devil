@@ -216,8 +216,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 
 - Scene rendering lives under `ax_devil.modules.scene.rendering`; drawing preparation and submission live under
   `ax_devil.modules.video_player`, which never imports or interprets `Scene`.
-- Overlay draw order is geometry, then paths, then text, then labels. Order across entities and within a layer is not
-  preserved, so a catalog never relies on one shape covering another.
+- Overlay draw order is shapes, then text, then labels. Order across entities and within shapes, text or
+  labels is not preserved, so a catalog never relies on one shape covering another.
 - Each recipe evaluates once per frame for all its routed entities or relations. A row that fails a demanded check
   emits none of its recipe's output, and a recipe whose evaluation raises emits nothing for that frame; other rows
   and recipes are unaffected.

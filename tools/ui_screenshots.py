@@ -1,4 +1,4 @@
-"""Save offscreen screenshots of the main UI surfaces, for checking a UI change before and after.
+"""Save screenshots, drawn on a private display, of the main UI surfaces, for checking a UI change before and after.
 
 The video surfaces show a generated clip with a small ONVIF metadata file, so the canvas has boxes and labels and the
 media tools list entities and events. Runs inside the test suite's isolated home folder, so it never reads or changes
@@ -25,7 +25,6 @@ import json
 import math
 import os
 import shutil
-import tempfile
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -98,6 +97,7 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
 from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
+from tools import private_display
 from tools.ui_samples import CLIP_FPS, CLIP_FRAMES, SHOWN_FRAME, sample_workspace, write_tracks
 
 OUT = Path(os.environ.get("AX_DEVIL_UI_SHOTS", "/tmp/ax-devil-ui-shots"))
@@ -117,18 +117,16 @@ def _shot_scale() -> float:
 
 SCALE = _shot_scale()
 # Qt reads these when the application starts, which pytest-qt does after collecting this module. Dialogs fit
-# themselves to the screen, so the offscreen screen keeps its default 800x800 logical size at every scale.
+# themselves to the screen, so the private display keeps an 800x800 logical size at every scale.
 os.environ["QT_SCALE_FACTOR"] = str(SCALE)
 # Qt multiplies these into the scale, or turns it off, when the calling shell sets them.
 for _inherited in ("QT_SCREEN_SCALE_FACTORS", "QT_AUTO_SCREEN_SCALE_FACTOR", "QT_ENABLE_HIGHDPI_SCALING"):
     os.environ.pop(_inherited, None)
-if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
-    # One file per run, so overlapping runs with different scales never read each other's screen.
-    with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="ax-devil-ui-shots-", delete=False) as config:
-        json.dump({"screens": [{"name": "shots", "width": round(800 * SCALE), "height": round(800 * SCALE)}]}, config)
-    _SCREEN_CONFIG = Path(config.name)
-    atexit.register(_SCREEN_CONFIG.unlink, missing_ok=True)
-    os.environ["QT_QPA_PLATFORM"] = f"offscreen:configfile={_SCREEN_CONFIG}"
+# One display per run, so overlapping runs with different scales never share a screen. It replaces the one the test
+# package started, which is 1920x1080.
+_DISPLAY = private_display.start(round(800 * SCALE), round(800 * SCALE))
+atexit.register(private_display.stop, _DISPLAY)
+os.environ["DISPLAY"] = _DISPLAY.name
 WINDOW_SIZES = {"wide": (1440, 900), "narrow": (1000, 640)}
 GRID_SIZE = (1920, 1080)
 TEXT_SIZES = (TextSize.MEDIUM, TextSize.LARGER)
@@ -482,7 +480,7 @@ def _shoot(window: QWidget, theme: str, name: str, menu: QMenu | None = None, an
     """Save *window* as ``<theme>-<name>.png``.
 
     An open *menu* is painted in below *anchor*, right-aligned, because popups are windows of their own and the
-    offscreen screen keeps them inside its 800x800 area.
+    private display keeps them inside its 800x800 area.
     """
     shot = window.grab()
     if menu is not None and anchor is not None:

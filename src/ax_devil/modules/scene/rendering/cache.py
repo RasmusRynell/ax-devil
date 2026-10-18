@@ -32,11 +32,7 @@ from ax_devil.modules.video_player.engine.render_context import RenderContext
 logger = get_logger(__name__)
 
 FilteredSceneKey = Hashable | None
-RenderCacheKey = tuple[
-    FilteredSceneKey,
-    tuple[int, int, DrawingSettings],
-    tuple[str, str],
-]
+RenderCacheKey = tuple[FilteredSceneKey, tuple[str, str]]
 SceneRenderCatalogProvider = Callable[[], SceneRenderCatalog | None]
 CatalogErrorIdentity = tuple[str, str, str]
 
@@ -106,6 +102,7 @@ class CachedSceneOverlay:
         self._hover_hits: list[_IndexedHit] | None = None
         self._hover_hits_by_id: dict[str, _IndexedHit] = {}
         self._render_key: RenderCacheKey | None = None
+        self._settings: DrawingSettings | None = None
         self._drawing: PreparedDrawing | None = None
         self.latest_metrics = DrawingPreparationMetrics()
         self._pending_filter_time_ms: float | None = None
@@ -114,13 +111,14 @@ class CachedSceneOverlay:
         self._hover_hits_by_target: dict[str, HoverHit] = {}
 
     def prepare_drawing(self, context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
-        """Return final backend data for this overlay and exact drawing settings."""
+        """Return the prepared quads for this overlay and exact drawing settings."""
         catalog = self._current_catalog()
         if catalog is None:
             return EMPTY_DRAWING
         filtered_scene = self.filtered_scene()
-        render_key = self._render_cache_key(context, buffer.settings, catalog)
-        cache_hit = self._render_key == render_key and self._drawing is not None
+        render_key = (self._filtered_scene_key(), catalog.rendering_identity)
+        covered = self._settings is not None and self._settings.covers(buffer.settings)
+        cache_hit = self._render_key == render_key and self._drawing is not None and covered
         capture = is_metrics_enabled()
         generation_time_ms = None
         reasons: tuple[DrawingBuildReason, ...] = ()
@@ -131,18 +129,17 @@ class CachedSceneOverlay:
             if capture and self._render_key is None:
                 reasons = (DrawingBuildReason.INITIAL,)
             elif capture and self._render_key is not None:
+                differs = (
+                    self._render_key[0] != render_key[0],
+                    not covered,
+                    self._render_key[1] != render_key[1],
+                )
                 reasons = tuple(
                     reason
-                    for old, new, reason in zip(
-                        self._render_key,
-                        render_key,
-                        (
-                            DrawingBuildReason.FILTER,
-                            DrawingBuildReason.TARGET,
-                            DrawingBuildReason.CATALOG,
-                        ),
+                    for reason, changed in zip(
+                        (DrawingBuildReason.FILTER, DrawingBuildReason.TARGET, DrawingBuildReason.CATALOG), differs
                     )
-                    if old != new
+                    if changed
                 )
             start = perf_counter() if capture else 0.0
             diagnostics: list[CatalogDiagnostic] = []
@@ -156,6 +153,7 @@ class CachedSceneOverlay:
             if capture:
                 generation_time_ms = (perf_counter() - start) * 1000
             self._render_key = render_key
+            self._settings = buffer.settings
             self._drawing = drawing
         if capture:
             self.latest_metrics = DrawingPreparationMetrics(
@@ -262,15 +260,6 @@ class CachedSceneOverlay:
         if self._catalog is None:
             self._catalog = get_built_in_scene_render_catalog()
         return self._catalog
-
-    def _render_cache_key(
-        self, context: RenderContext, settings: DrawingSettings, catalog: SceneRenderCatalog
-    ) -> RenderCacheKey:
-        return (
-            self._filtered_scene_key(),
-            (context.width, context.height, settings),
-            catalog.rendering_identity,
-        )
 
     def _hover_hit_from_indexed(self, indexed: _IndexedHit) -> HoverHit:
         hit = self._hover_hits_by_target.get(indexed.target_id)

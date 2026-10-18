@@ -24,7 +24,7 @@ from ax_devil.modules.scene.model import (
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors
 from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog, get_built_in_scene_render_catalog
 from ax_devil.modules.video_player.engine.data_types import DrawingBuildReason
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 
@@ -128,7 +128,6 @@ def test_cached_scene_overlay_reports_drawing_preparation_metrics() -> None:
     metrics = overlay.latest_drawing_preparation_metrics()
 
     assert sum(count for _, count in metrics.primitive_counts) == len(primitives)
-    assert dict(metrics.primitive_counts).get("text", 0) == len(primitives.texts)
     assert dict(metrics.primitive_counts).get("polygon", 0) == 1
     assert metrics.filtered_entity_count == 1
     assert metrics.filter_time_ms is not None
@@ -252,8 +251,6 @@ def test_hover_hit_summarizes_the_entity_once_and_omits_what_the_decoder_did_not
         DrawingSettings(640, 480, 479.5),
         DrawingSettings(640, 480, 480, dpi=120),
         DrawingSettings(640, 480, 480, dpr=1.5),
-        DrawingSettings(640, 480, 480, hardware=True),
-        DrawingSettings(640, 480, 480, viewport=(-200.0, 0.0, 640.0, 480.0)),
     ],
 )
 def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettings) -> None:
@@ -265,6 +262,23 @@ def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettin
     second = overlay.prepare_drawing(context, DrawingBuffer(changed))
     assert second is not first
     assert overlay.prepare_drawing(context, DrawingBuffer(changed)) is second
+
+
+def test_panning_within_the_culling_margin_reuses_the_drawing() -> None:
+    """Pan keeps the prepared drawing until the viewport leaves the margin prepared around it."""
+    context = RenderContext.create(1000, 400)
+    overlay = CachedSceneOverlay(scene=_motion_scene())
+
+    def prepare(left: float) -> PreparedDrawing:
+        return overlay.prepare_drawing(
+            context, DrawingBuffer(DrawingSettings(1000, 400, 400, viewport=(left, 0.0, 200.0, 400.0)))
+        )
+
+    first = prepare(400.0)
+    assert prepare(320.0) is first and prepare(500.0) is first
+    moved = prepare(150.0)
+    assert moved is not first
+    assert _build_reasons(overlay) == (DrawingBuildReason.TARGET,)
 
 
 def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:

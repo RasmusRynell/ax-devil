@@ -7,11 +7,11 @@ orchestration.
 
 - `engine/`
 	- `renderer.py`: frame handoff, Quick preparation, viewport interaction, and viewer diagnostics.
-	- `quick/`: native video textures, retained shapes, and glyph rendering for display and native-size image export.
+	- `quick/`: native video textures, overlay quads for shapes and glyphs, for display and native-size image export.
 	- `viewport_state.py`: zoom/pan state machine and clamping math (no widget dependencies).
 	- `render_context.py`: render-time context and pixel-to-normalized helpers.
-	- `drawing.py`: generic drawing target, styles and shared text preparation.
-	- `quick/preparation.py`: transactional conversion directly into final backend data.
+	- `drawing.py`: generic drawing target, styles and column types.
+	- `quick/preparation.py`: transactional conversion directly into the final quad stream.
 	- `data_types.py`: display payload data types (`VideoFrame`, `VideoOverlayData`, `VideoFrameWithOverlays`).
 	- `video_transforms.py`: aspect-preserving frame/display sizing math.
 - `ui/`
@@ -36,28 +36,26 @@ orchestration.
 1. Controller/domain layer sends `VideoFrameWithOverlays` to `FrameDisplay.display_frame(...)`.
 2. `FrameDisplay` forwards to `FrameViewport.display_frame(...)`.
 3. `VideoFrameRenderer` coalesces delivery and prepares a complete frame for the Quick surface on the GUI thread.
-   Graphics Off uses Qt Quick software rendering; file export uses the same surface through `FrameImageRenderer`.
-4. `RenderContext` is built (cached by target size) and passed with the surface-owned `DrawingBuffer` (carrying exact `DrawingSettings`) to drawing generators.
+   File export uses the same surface through `FrameImageRenderer`.
+4. `RenderContext` is built (cached by target size) and passed with a new `DrawingBuffer` per frame (carrying exact `DrawingSettings`) to drawing generators.
 5. Widget overlays (controls, drag handle) are laid out by `overlay_layout.py` policy.
 
 ## Quick surface
 
-`VideoFrameRenderer` is a QWidget shell around one `QQuickWidget` that draws the video texture and every overlay;
-Graphics Off selects Quick's software backend at startup. QQuickWidget keeps widget stacking at the cost of an extra
+`VideoFrameRenderer` is a QWidget shell around one `QQuickWidget` that draws the video texture and every overlay.
+QQuickWidget keeps widget stacking at the cost of an extra
 composition pass and no threaded render loop, so all preparation stays on the GUI thread and the scene graph only
 consumes prepared data. Rules worth knowing before changing `engine/quick/`:
 
-- Geometry, paths, text and labels are separate pools and layers. The
-  [draw-order invariant](../../../../docs/domain/invariants.md#rendering) is what lets geometry batch into a few
-  nodes (split at 60,000 vertices).
-- Geometry items are matched by ordinal; path and text items by content, independent of position, so moving an
-  overlay updates transforms instead of rebuilding glyphs and tessellation.
-- Labels are painted into a sprite once per distinct content, scale, DPI and DPR, and submitted through one
-  `LabelLayer` whose node tree shares textures by sprite, so returning content such as a repeated score is not
-  rasterized or uploaded again while its sprite and texture are still cached. Cache limits are in the code; visible
-  groups are never evicted, and scene-graph recreation releases everything.
+- Shapes, text and labels are one stream of quads in that order. The
+  [draw-order invariant](../../../../docs/domain/invariants.md#rendering) is what lets it be a single node.
+- Every shape is a quad (`shape_quads.py`): polylines and polygon outlines are one round-capped line quad per segment,
+  polygon fills are triangles with a one device pixel fringe. Text and labels are glyph quads from the shared atlas
+  (`label_layout.py`), one Alpha8 page. All share one vertex format that an `OverlayItem` draws with a custom
+  material. A page that fills mid-layout is reset by `DrawingBuffer.finish`, which lays everything out again.
 - Culling uses the surface viewport in overlay-local coordinates, not the image bounds, so overlays stay visible in
-  letterboxing; pan and viewport-size changes therefore invalidate preparation.
+  letterboxing. Panning within the culled margin reuses the prepared drawing (`DrawingSettings.covers`), and the
+  item uploads nothing for a drawing it already shows; leaving the margin or resizing the viewport prepares again.
 - Cleanup submits an empty frame and synchronizes the scene graph before hiding, so Qt deletes native image nodes
   while their Python texture adapters are still alive. The export renderer is destroyed explicitly after cleanup, on failure too.
 

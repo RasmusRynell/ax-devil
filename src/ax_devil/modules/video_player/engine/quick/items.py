@@ -3,37 +3,26 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from threading import local
 from typing import cast
 
-from PySide6.QtCore import QPointF, QRectF, QSize
-from PySide6.QtGui import QColor, QImage, QRhi, QRhiResourceUpdateBatch, QRhiTexture
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QImage, QRhi, QRhiResourceUpdateBatch, QRhiTexture
 from PySide6.QtQuick import (
     QQuickItem,
     QQuickWindow,
     QSGImageNode,
     QSGNode,
-    QSGRendererInterface,
-    QSGTextNode,
     QSGTexture,
 )
 from shiboken6 import delete
 
-from ..drawing import _TextBlock
-
-
-class _UploadImages(local):
-    def __init__(self) -> None:
-        self.images: OrderedDict[int, QImage] = OrderedDict()
-
-
-_uploads = _UploadImages()
+_UPLOADS: OrderedDict[int, QImage] = OrderedDict()
 
 
 def _upload_image(image: QImage) -> QImage:
-    # Comparison lanes share source QImages. Convert once per render thread,
+    # Comparison lanes share source QImages. Convert once on the GUI thread (every surface renders there),
     # keeping only two recent pixel buffers, never a video history.
-    images, key = _uploads.images, image.cacheKey()
+    images, key = _UPLOADS, image.cacheKey()
     converted = images.get(key)
     if converted is None:
         image_format = (
@@ -137,12 +126,8 @@ class VideoTextureItem(QQuickItem):
         if node is None:
             return None
         if old_node is None:
-            if window.rendererInterface().graphicsApi() == QSGRendererInterface.GraphicsApi.Software:
-                self._texture = None
-                node.setTexture(window.createTextureFromImage(self._image))
-            else:
-                self._texture = _VideoTexture(window, self._image)
-                node.setTexture(self._texture)
+            self._texture = _VideoTexture(window, self._image)
+            node.setTexture(self._texture)
             node.setOwnsTexture(True)
             self._uploaded_key = key
         elif self._uploaded_key != key and self._texture is not None:
@@ -151,41 +136,4 @@ class VideoTextureItem(QQuickItem):
             self._uploaded_key = key
         node.setFiltering(QSGTexture.Filtering.Nearest)
         node.setRect(self.boundingRect())
-        return node
-
-
-class TextItem(QQuickItem):
-    """Retain one glyph block; Qt handles movement without a Python render callback."""
-
-    def __init__(self, parent: QQuickItem) -> None:
-        super().__init__(parent)
-        self.setFlag(QQuickItem.Flag.ItemHasContents)
-        self._block: _TextBlock | None = None
-        self._color = QColor()
-
-    def set_text(self, block: _TextBlock, position: QPointF, color: QColor) -> None:
-        """Update the native transform independently of glyph content and appearance."""
-        self.setPosition(position)
-        if block is not self._block or color != self._color:
-            self._block, self._color = block, color
-            self.update()
-
-    def updatePaintNode(  # type: ignore[override]  # Qt permits null nodes; PySide stubs do not.  # noqa: N802
-        self,
-        old_node: QSGNode | None,
-        data: QQuickItem.UpdatePaintNodeData,
-    ) -> QSGNode | None:
-        """Build glyphs only when content changes or Qt recreates the scene graph."""
-        window, block = self.window(), self._block
-        if window is None or block is None:
-            return old_node
-        node = cast(QSGTextNode, old_node) if old_node is not None else window.createTextNode()
-        if node is None:
-            return None
-        node.clear()
-        node.setRenderType(QSGTextNode.RenderType.QtRendering)
-        node.setColor(self._color)
-        node.setViewport(QRectF())
-        for layout in block.layouts:
-            node.addTextLayout(QPointF(), layout)
         return node

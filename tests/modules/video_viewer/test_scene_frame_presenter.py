@@ -32,7 +32,7 @@ from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalogLoader,
     get_built_in_scene_render_catalog,
 )
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
@@ -173,7 +173,7 @@ def test_presenter_draws_with_its_catalog_and_updates_existing_overlay_on_catalo
     overlay = presentation.display_frame.overlays
     assert overlay is not None
     context = RenderContext.create(640, 480)
-    assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == PreparedDrawing()
+    assert not len(overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))))
     presenter.attach_scene_render_catalog(get_built_in_scene_render_catalog())
     assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
 
@@ -196,7 +196,7 @@ def test_presenter_awaiting_its_catalog_draws_nothing_instead_of_compiling_the_b
     assert overlay is not None
     context = RenderContext.create(640, 480)
 
-    assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == PreparedDrawing()
+    assert not len(overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))))
 
     presenter.attach_scene_render_catalog(get_built_in_scene_render_catalog())
 
@@ -265,7 +265,7 @@ def test_presenter_filters_and_prepares_each_source_sample_once() -> None:
     )
     assert resized is not primitives
     presenter.attach_scene_render_catalog(_catalog_with_disabled_human_recipe())
-    assert second.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == PreparedDrawing()
+    assert not len(second.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))))
 
     presenter.attach_scene_filter(_CountingSceneFilter())
     third = presenter.prepare_frame(_build_frame(3), _build_overlay(1, scene)).display_frame.overlays
@@ -317,7 +317,9 @@ def test_visibility_change_reuses_filtered_scene_and_hover_cards(
     assert len(hidden) < len(initial)
     assert scene_filter.calls == 1
     selection.reset_visibility()
-    assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == initial
+    assert (
+        overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))).drawn == initial.drawn
+    )
 
 
 def test_hover_interaction_uses_latest_observation_for_multi_observation_entities() -> None:

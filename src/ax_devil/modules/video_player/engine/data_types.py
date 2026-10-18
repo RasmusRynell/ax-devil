@@ -61,7 +61,7 @@ class DrawingBuildReason(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class DrawingPreparationMetrics:
-    """Catalog and final-backend preparation metrics for one overlay."""
+    """Catalog and quad preparation metrics for one overlay."""
 
     filter_time_ms: float | None = None
     generation_time_ms: float | None = None

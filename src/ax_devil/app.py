@@ -81,8 +81,6 @@ class Application:
         global_settings = GlobalSettings()
         global_settings.load_from_config(config_manager)
         self.use_custom_frame = global_settings.custom_frame
-        # Qt caches this choice when the first widget window is created.
-        global_settings.graphics_acceleration.configure()
         setup_theme(self.app, global_settings.theme.value, global_settings.text_size.body_px)
         global_settings.theme_changed.connect(apply_theme)
         global_settings.text_size_changed.connect(lambda size: apply_text_size(size.body_px))

@@ -33,7 +33,7 @@ target size, catalog identity). Counts belong to the prepared drawing; metrics r
 frame and overlay identities, overlay reuse, target dimensions, total CPU paint duration, the four disjoint stages
 (video-image handoff, drawing preparation, Qt item binding, remaining CPU time), available versus submitted primitives
 (zero when opacity suppresses drawing), and the overlay's generation metrics. Total covers GUI-side image handoff,
-path and text preparation, retained-item updates and explicit Shape polishing. It excludes texture uploads, the rest
+quad and text preparation and the item update. It excludes texture uploads, the rest
 of native scene graph synchronization and render submission, GPU execution, metrics publication, the info HUD, child
 widgets, decoding and screen presentation. Generation is nested inside preparation, and filtering may precede the
 paint, so neither is added to the four paint stages.

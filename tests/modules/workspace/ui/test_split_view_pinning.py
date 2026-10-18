@@ -338,7 +338,7 @@ def test_collapsing_a_split_keeps_the_moved_pane_overlays_usable(qtbot: QtBot) -
         sv.add_viewer_widget(widget)
     QCoreApplication.processEvents()  # Let the layout give the surface a size.
     _present_polyline(hosting.surface)
-    assert hosting.surface._overlays._paths.items
+    assert hosting.surface._overlay._drawing.vertices.size
     left_leaf = sv._leaf_for_widget(left)
     dragged_id = sv._id_for_widget(dragged)
     assert left_leaf is not None and dragged_id is not None
@@ -346,4 +346,5 @@ def test_collapsing_a_split_keeps_the_moved_pane_overlays_usable(qtbot: QtBot) -
     sv._handle_drop(left_leaf, dragged_id, SplitDirection.TOP)
 
     _present_polyline(hosting.surface)
-    assert all(isValid(path.item) for path in hosting.surface._overlays._paths.items)
+    assert isValid(hosting.surface._overlay)
+    assert hosting.surface._overlay._drawing.vertices.size

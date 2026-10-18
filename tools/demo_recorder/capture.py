@@ -137,7 +137,6 @@ def capture(args: argparse.Namespace) -> None:
     app = QApplication([])
     settings = GlobalSettings()
     settings.video_cache_budget = VideoCacheBudget.from_config(256)
-    settings.graphics_acceleration.configure()
     setup_theme(app, "dark", settings.text_size.body_px)
     shortcuts = ShortcutManager()
     shortcuts.register_defaults()

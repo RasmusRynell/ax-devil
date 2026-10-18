@@ -1,23 +1,38 @@
-"""Transactional prepared output, retained reuse and complete target invalidation."""
+"""Prepared output: failed templates, label and text layout, culling and atlas resets."""
 
-from collections.abc import Callable
 from dataclasses import replace
 
 import numpy as np
 import pytest
-from PySide6.QtGui import QImage
+from numpy.typing import NDArray
 
 from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderProgramCompiler
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
-from ax_devil.modules.video_player.engine.drawing import DrawingStyle, LabelContent, LabelRun, Paint, label_sprite
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
+from ax_devil.modules.video_player.engine.quick import glyphs
+from ax_devil.modules.video_player.engine.quick.overlay_vertex import OVERLAY_VERTEX, OverlayKind
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-from tests.drawing_helpers import BoxCall, CircleCall, DrawCall, LabelCall, TextCall
+from tests.drawing_helpers import (
+    BoxCall,
+    CircleCall,
+    DrawingStyle,
+    LabelCall,
+    LabelContent,
+    LabelRun,
+    LineCall,
+    PointCall,
+    PolygonCall,
+    PolylineCall,
+    TextCall,
+)
+
+from .conftest import RenderQuads
 
 pytestmark = pytest.mark.usefixtures("qapp")
 
 _STYLE = DrawingStyle(pen_width=0.02, brush_r=255, brush_a=255)
-_SETTINGS = DrawingSettings(200, 100, 100, hardware=True)
+_SETTINGS = DrawingSettings(200, 100, 100)
+_TRIANGLE = ((0.1, 0.1), (0.3, 0.1), (0.3, 0.3))
 
 
 def test_failed_template_discards_all_output_kinds_and_preserves_prior_drawing() -> None:
@@ -71,85 +86,21 @@ def test_failed_template_discards_all_output_kinds_and_preserves_prior_drawing()
             }
         }
     )
-    buffer = DrawingBuffer(_SETTINGS)
     context = RenderContext.create(200, 100)
     for divisor in (1, 0, 1, 0):
-        buffer.reset(_SETTINGS)
+        buffer = DrawingBuffer(_SETTINGS)
         CircleCall(0.1, 0.1, 0.05, _STYLE).submit(buffer)
         if divisor == 0:
             with pytest.raises(TemplateRuntimeError, match="zero"):
                 catalog.render("main", {"divisor": divisor}, buffer, context=context)
             drawing = buffer.finish()
             assert drawing.counts == (("circle", 1),)
-            assert not drawing.meshes and not drawing.texts
-            assert len(drawing.paths) == 1
+            assert len(drawing) == 1
         else:
             catalog.render("main", {"divisor": divisor}, buffer, context=context)
             drawing = buffer.finish()
             assert len(drawing) == 5
-            assert len(drawing.texts) == 1
             assert sum(count for _, count in drawing.counts) == 5
-
-
-def test_retained_preparation_reuses_unchanged_output_and_invalidates_culling() -> None:
-    """One-frame reuse must survive a neighbor update without hiding newly visible data."""
-    settings = replace(_SETTINGS, viewport=(0, 0, 200, 100))
-    buffer = DrawingBuffer(settings)
-    BoxCall(0.1, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
-    TextCall(0.5, 0.5, "Stable", _STYLE).submit(buffer)
-    BoxCall(2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
-    first = buffer.finish()
-    assert len(first) == 2
-    buffer.reset(settings)
-    BoxCall(0.2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
-    TextCall(0.5, 0.5, "Stable", _STYLE).submit(buffer)
-    BoxCall(2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
-    second = buffer.finish()
-    assert second.texts[0].block is first.texts[0].block
-    assert second.meshes[0].payload != first.meshes[0].payload
-    buffer.reset(replace(settings, viewport=(0, 0, 600, 100)))
-    BoxCall(0.2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
-    TextCall(0.5, 0.5, "Stable", _STYLE).submit(buffer)
-    BoxCall(2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
-    third = buffer.finish()
-    assert len(third) == 3
-    assert len(first) == len(second) == 2
-    assert [mesh.operation_count for mesh in third.meshes] == [2]
-
-
-def test_labels_between_geometry_do_not_split_its_batch() -> None:
-    """Geometry is one layer below text, so emitting text between boxes keeps them in one batch."""
-    buffer = DrawingBuffer(_SETTINGS)
-    BoxCall(0.1, 0.1, 0.1, 0.1, _STYLE).submit(buffer)
-    TextCall(0.5, 0.5, "keep", _STYLE).submit(buffer)
-    BoxCall(0.2, 0.2, 0.1, 0.1, _STYLE).submit(buffer)
-    drawing = buffer.finish()
-    assert [mesh.operation_count for mesh in drawing.meshes] == [2]
-    assert [layout.text() for text in drawing.texts for layout in text.block.layouts] == ["keep"]
-
-
-def test_bulk_geometry_beyond_one_batch_keeps_every_row() -> None:
-    buffer = DrawingBuffer(_SETTINGS)
-    count = 10_000
-    x = np.arange(count) / count
-    buffer.boxes(x, np.full(count, 0.1), np.full(count, 0.1), np.full(count, 0.1), Paint.of(_STYLE))
-    drawing = buffer.finish()
-    assert len(drawing.meshes) > 1
-    assert sum(mesh.operation_count for mesh in drawing.meshes) == count
-
-
-def test_reused_vertex_storage_cannot_mutate_a_published_drawing() -> None:
-    """Qt may consume an earlier drawing after the scratch buffer has been refilled."""
-    buffer = DrawingBuffer(_SETTINGS)
-    BoxCall(0.1, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
-    first = buffer.finish()
-    original = first.meshes[0].payload
-    buffer.reset(_SETTINGS)
-    for index in range(1000):
-        BoxCall(index / 10000, 0.2, 0.2, 0.2, _STYLE).submit(buffer)
-    second = buffer.finish()
-    assert first.meshes[0].payload == original
-    assert second.meshes[0].payload != original
 
 
 def _label(*texts: str) -> LabelContent:
@@ -158,146 +109,176 @@ def _label(*texts: str) -> LabelContent:
     return LabelContent(runs, 0.12, background=(14, 16, 20, 205), padding_x=0.08, padding_y=0.03, radius=0.1, gap=0.05)
 
 
+def _quads(drawing: PreparedDrawing, kind: OverlayKind) -> NDArray[np.void]:
+    """The drawing's overlay quads of one kind, in drawing order."""
+    quads = drawing.vertices.reshape(-1, 4)
+    selected: NDArray[np.void] = quads[quads["kind"][:, 0] == kind]
+    return selected
+
+
+def _shapes(quads: NDArray[np.void]) -> list[tuple[float, float, float, float]]:
+    """Left, top, width and height of shape quads, which start at u, v = -1 and are one pixel larger all round."""
+    return [(float(q["x"][0] + 1), float(q["y"][0] + 1), float(q["w"][0]), float(q["h"][0])) for q in quads]
+
+
+def _ink(quads: NDArray[np.void]) -> tuple[float, float, float, float]:
+    return float(quads["x"].min()), float(quads["y"].min()), float(quads["x"].max()), float(quads["y"].max())
+
+
 def test_labels_are_sized_to_their_runs_and_placed_by_their_background_on_whole_pixels() -> None:
     buffer = DrawingBuffer(_SETTINGS)
     LabelCall(0.2034, 0.5017, "bottom-left", _label("Person", "12")).submit(buffer)
     LabelCall(0.5, 0.5, "top-left", _label("Person", "3f2a9c1e")).submit(buffer)
-    LabelCall(0.7, 0.5, "top-left", _label("Person", "12")).submit(buffer)
-    short, long, again = buffer.finish().labels
-    assert long.sprite.width > short.sprite.width > 0
-    assert short.sprite.height == long.sprite.height
-    assert again.sprite is short.sprite
-    assert short.position.x() == round(0.2034 * 200)
-    assert short.position.y() == round(0.5017 * 100 - short.sprite.height)
-    assert (long.position.x(), long.position.y()) == (100, 50)
+    (short, long) = _shapes(_quads(buffer.finish(), OverlayKind.ROUNDED_RECT))
+    assert long[2] > short[2] > 0
+    assert short[3] == long[3]
+    assert short[0] == round(0.2034 * 200)
+    assert short[1] == round(0.5017 * 100 - short[3])
+    assert long[:2] == (100, 50)
 
 
 def test_label_bars_follow_the_text_and_fill_from_the_left() -> None:
     buffer = DrawingBuffer(_SETTINGS)
     red = (255, 0, 0)
-    for runs in ((LabelRun("12", red),), (LabelRun("12", red), LabelRun("", red, bar=0.5))):
-        LabelCall(0.1, 0.1, "top-left", LabelContent(runs, 0.12, gap=0.05)).submit(buffer)
-    text, both = buffer.finish().labels
-    start = text.sprite.width + 0.05 * 100
-    length = both.sprite.width - start
-    assert length > 0
-    image, ratio = both.sprite.image, both.sprite.image.devicePixelRatio()
-    row = round(both.sprite.height / 2 * ratio)
-
-    def alpha(at: float) -> int:
-        return image.pixelColor(round((start + at * length) * ratio), row).alpha()
-
-    assert alpha(0.25) == 255
-    assert 0 < alpha(0.75) < 255
+    runs = (LabelRun("12", red), LabelRun("", red, bar=0.5))
+    LabelCall(0.1, 0.1, "top-left", LabelContent(runs, 0.12, gap=0.05)).submit(buffer)
+    drawing = buffer.finish()
+    track, filled = _shapes(_quads(drawing, OverlayKind.ROUNDED_RECT))
+    assert track[0] >= _ink(_quads(drawing, OverlayKind.GLYPH))[2] + 0.05 * 100 - 1
+    assert filled[0] == track[0]
+    assert filled[2] == pytest.approx(track[2] / 2)
 
 
 def test_labels_without_runs_draw_nothing() -> None:
     buffer = DrawingBuffer(_SETTINGS)
     LabelCall(0.5, 0.5, "top-left", replace(_label("x"), runs=())).submit(buffer)
-    assert buffer.finish().labels == ()
+    assert not len(buffer.finish().vertices)
 
 
 @pytest.mark.parametrize("dpi", [72, 144, 192])
 def test_label_text_keeps_its_pixel_size_at_different_logical_dpi(dpi: int) -> None:
-    """Measurement and painting must agree on the size and position of the glyphs."""
+    """Fonts are sized in pixels, so the dpi that resolves them must not change the glyphs."""
     content = LabelContent((LabelRun("MMMM", (255, 255, 255)),), 0.2, family="Arial", padding_x=0.1, padding_y=0.1)
-    reference = label_sprite(content, 100, 96, 1)
-    actual = label_sprite(content, 100, dpi, 1)
-    assert reference is not None and actual is not None
 
-    def ink_bounds(image: QImage) -> tuple[int, int, int, int]:
-        pixels = [(x, y) for y in range(image.height()) for x in range(image.width()) if image.pixelColor(x, y).alpha()]
-        return (
-            min(x for x, _ in pixels),
-            min(y for _, y in pixels),
-            max(x for x, _ in pixels),
-            max(y for _, y in pixels),
-        )
+    def ink(settings: DrawingSettings) -> tuple[float, float, float, float]:
+        buffer = DrawingBuffer(settings)
+        LabelCall(0.1, 0.1, "top-left", content).submit(buffer)
+        return _ink(_quads(buffer.finish(), OverlayKind.GLYPH))
 
-    assert ink_bounds(actual.image) == ink_bounds(reference.image)
-
-
-def _text_at(x: float, index: int) -> DrawCall:
-    return TextCall(x, x, f"Label {index}", _STYLE)
-
-
-def _label_at(x: float, index: int) -> DrawCall:
-    return LabelCall(x, x, "top-left", _label(f"Object {index}"))
-
-
-@pytest.mark.parametrize(
-    ("make_call", "count", "items", "shaped"),
-    [
-        pytest.param(_text_at, 1500, "texts", "block", id="text-layouts"),
-        pytest.param(_label_at, 1025, "labels", "sprite", id="label-sprites"),
-    ],
-)
-def test_moving_labels_keep_live_shaping_beyond_the_inactive_cache_capacity(
-    make_call: Callable[[float, int], DrawCall], count: int, items: str, shaped: str
-) -> None:
-    """An active working set must keep its shaped text or pixels and texture when only positions change."""
-    buffer = DrawingBuffer(_SETTINGS)
-    for index in range(count):
-        make_call(0.1, index).submit(buffer)
-    first = getattr(buffer.finish(), items)
-    buffer.reset(_SETTINGS)
-    for index in range(count):
-        make_call(0.2, index).submit(buffer)
-    second = getattr(buffer.finish(), items)
-    assert len(first) == len(second) == count
-    assert all(getattr(a, shaped) is getattr(b, shaped) for a, b in zip(first, second))
-    assert all(a.position != b.position for a, b in zip(first, second))
+    assert ink(replace(_SETTINGS, dpi=dpi)) == pytest.approx(ink(_SETTINGS), abs=1)
 
 
 @pytest.mark.parametrize("dpr", [1.0, 1.5, 2.0])
-def test_label_rasters_are_placed_without_fractional_pixel_rescaling(dpr: float) -> None:
-    """Both edges must land on device pixels to keep a rasterized glyph from being filtered again."""
-    buffer = DrawingBuffer(replace(_SETTINGS, dpr=dpr))
-    content = LabelContent((LabelRun("track00412", (255, 255, 255)),), 0.11, padding_x=0.04, padding_y=0.02)
-    LabelCall(0.2034, 0.5017, "center", content).submit(buffer)
-    (label,) = buffer.finish().labels
-    sprite = label.sprite
-    assert sprite.width * dpr == sprite.image.width()
-    assert sprite.height * dpr == sprite.image.height()
-    for edge in (
-        label.position.x(),
-        label.position.y(),
-        label.position.x() + sprite.width,
-        label.position.y() + sprite.height,
-    ):
+def test_labels_land_on_whole_device_pixels_and_keep_their_size_at_any_dpr(dpr: float) -> None:
+    """Both edges must land on device pixels to keep a bitmap glyph from being filtered, whatever the dpr."""
+    content = replace(_label("track00412"), size=0.11, padding_x=0.04, padding_y=0.02)
+
+    def label(ratio: float) -> tuple[float, float, float, float]:
+        buffer = DrawingBuffer(replace(_SETTINGS, dpr=ratio))
+        LabelCall(0.2034, 0.5017, "center", content).submit(buffer)
+        (shape,) = _shapes(_quads(buffer.finish(), OverlayKind.ROUNDED_RECT))
+        return shape
+
+    left, top, width, height = label(dpr)
+    for edge in (left, top, left + width, top + height):
         assert edge * dpr == pytest.approx(round(edge * dpr))
+    assert (width, height) == pytest.approx(label(1.0)[2:], abs=2)
 
 
 @pytest.mark.parametrize("text", ["j", "jazz"])
 def test_unpadded_labels_preserve_all_glyph_ink(text: str) -> None:
     """Negative bearings and overhang must fit even when the catalog requests no padding."""
-    content = LabelContent((LabelRun(text, (255, 255, 255), "bold"),), 0.32, family="DejaVu Sans")
-    plain = label_sprite(content, 100, 96, 1)
-    padded = label_sprite(replace(content, padding_x=0.1, padding_y=0.1), 100, 96, 1)
-    assert plain is not None and padded is not None
-
-    def ink(image: QImage) -> int:
-        return sum(image.pixelColor(x, y).alpha() for y in range(image.height()) for x in range(image.width()))
-
-    assert ink(plain.image) == ink(padded.image)
-
-
-@pytest.mark.parametrize("padding", [1e308, 1e10, (2**31 - 0.5 - 30) / 200])
-def test_unrepresentable_label_rasters_do_not_discard_adjacent_labels(padding: float) -> None:
-    """Finite style lengths can overflow layout or exceed QImage's integer dimensions."""
+    content = LabelContent((LabelRun(text, (255, 255, 255), "bold"),), 0.32, "DejaVu Sans", (0, 0, 0, 255))
     buffer = DrawingBuffer(_SETTINGS)
-    LabelCall(0.1, 0.1, "top-left", _label("Visible")).submit(buffer)
-    oversized = LabelContent((LabelRun("", (255, 255, 255), bar=0.5),), 0.12, padding_x=padding)
-    LabelCall(0.2, 0.2, "top-left", oversized).submit(buffer)
+    LabelCall(0.3, 0.3, "top-left", content).submit(buffer)
     drawing = buffer.finish()
-    assert len(drawing.labels) == 1
-    assert drawing.labels[0].position.x() == 20
+    ((left, top, width, height),) = _shapes(_quads(drawing, OverlayKind.ROUNDED_RECT))
+    ink_left, ink_top, ink_right, ink_bottom = _ink(_quads(drawing, OverlayKind.GLYPH))
+    assert left <= ink_left and top <= ink_top
+    assert ink_right <= left + width and ink_bottom <= top + height
 
 
-def test_rounded_boxes_are_paths_with_arcs_even_on_hardware() -> None:
+def test_every_shape_is_an_overlay_quad_below_the_text() -> None:
+    """Polygons and polylines share the quad stream with boxes, circles, lines and points, text last."""
     buffer = DrawingBuffer(_SETTINGS)
-    BoxCall(0.1, 0.1, 0.4, 0.4, replace(_STYLE, radius=0.06)).submit(buffer)
-    BoxCall(0.6, 0.1, 0.3, 0.3, _STYLE).submit(buffer)
+    BoxCall(0.1, 0.1, 0.4, 0.4, replace(_STYLE, radius=0.06, pen_style="dash")).submit(buffer)
+    CircleCall(0.5, 0.5, 0.1, _STYLE).submit(buffer)
+    LineCall(0.1, 0.1, 0.9, 0.9, _STYLE).submit(buffer)
+    PointCall(0.5, 0.5, _STYLE).submit(buffer)
+    PolygonCall(_TRIANGLE, _STYLE).submit(buffer)
+    PolygonCall(((0.2, 0.2), (0.8, 0.8), (0.2, 0.8), (0.8, 0.2)), _STYLE).submit(buffer)
+    PolylineCall(_TRIANGLE, _STYLE).submit(buffer)
+    TextCall(0.5, 0.5, "Text", _STYLE).submit(buffer)
     drawing = buffer.finish()
-    assert [" a " in path.geometry for path in drawing.paths] == [True]
-    assert sum(mesh.operation_count for mesh in drawing.meshes) == 1
+    is_glyph = (drawing.vertices["kind"][::4] == OverlayKind.GLYPH).tolist()
+    assert any(is_glyph) and is_glyph == sorted(is_glyph)
+    assert len(drawing) == 8
+
+
+def test_empty_text_lines_contribute_to_block_height() -> None:
+    def top(text: str) -> float:
+        buffer = DrawingBuffer(_SETTINGS)
+        TextCall(0.1, 0.9, text, replace(_STYLE, font_size=0.16), anchor="bottom-left").submit(buffer)
+        return _ink(_quads(buffer.finish(), OverlayKind.GLYPH))[1]
+
+    assert top("Text") - top("Text\n\n") > 2 * 16
+
+
+def _text_frame(settings: DrawingSettings, *calls: tuple[str, float]) -> PreparedDrawing:
+    buffer = DrawingBuffer(settings)
+    for text, size in calls:
+        TextCall(0.1, 0.5, text, replace(_STYLE, font_size=size)).submit(buffer)
+    return buffer.finish()
+
+
+def test_text_in_fonts_split_by_string_evictions_matches_text_without_evictions_and_tiny_text_draws_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The string cache is cleared while the second font group is shaped; the first group must keep its glyphs."""
+    calls = (("AB", 0.1), ("IJ", 0.1), ("CD", 0.2), ("KL", 0.2), ("EF", 0.15))
+    # Every text alone shares no cache or font group with the others; group order differs, so compare sorted corners.
+    alone = np.concatenate([_text_frame(replace(_SETTINGS, dpi=77), call).vertices for call in calls])
+    monkeypatch.setattr(glyphs, "MAX_STRINGS", 3)  # Group one holds two strings, group two's two evict them.
+    monkeypatch.setitem(glyphs._ATLASES, (78, 1.0), glyphs.GlyphAtlas(78, 1.0))
+    evicting = _text_frame(replace(_SETTINGS, dpi=78), *calls)
+    assert len(_quads(evicting, OverlayKind.GLYPH)) == 10
+
+    def corners(vertices: NDArray[np.void]) -> NDArray[np.float32]:
+        return np.sort(np.stack([vertices["x"], vertices["y"]], axis=1), axis=0)
+
+    assert np.array_equal(corners(evicting.vertices), corners(alone))
+    assert not len(_text_frame(_SETTINGS, ("A", 0.0001)).vertices)
+
+
+def test_text_in_the_letterbox_is_prepared_with_a_viewport_larger_than_the_target() -> None:
+    """Ink outside the image but inside the visible surface must survive culling."""
+    content = replace(_label("HEADER"), background=None)
+
+    def glyphs_drawn(viewport: tuple[float, float, float, float] | None) -> int:
+        buffer = DrawingBuffer(replace(_SETTINGS, viewport=viewport))
+        LabelCall(0.0, 0.0, "bottom-left", content).submit(buffer)
+        return len(_quads(buffer.finish(), OverlayKind.GLYPH))
+
+    assert glyphs_drawn((0, -50, 200, 200)) == glyphs_drawn(None) > 0
+
+
+def test_a_full_atlas_page_resets_mid_frame_and_both_drawings_still_render_their_text(
+    monkeypatch: pytest.MonkeyPatch,
+    render_quads: RenderQuads,
+) -> None:
+    first_text = "".join(chr(0x4E00 + offset) for offset in range(12))
+    second_text = "".join(chr(0x4F00 + offset) for offset in range(12))
+    settings = replace(_SETTINGS, dpi=91)
+    reference = [
+        render_quads(drawing.vertices, 200, drawing.page)
+        for drawing in (_text_frame(settings, (text, 0.12)) for text in (first_text, second_text))
+    ]
+    monkeypatch.setattr(glyphs, "PAGE_SIZE", 64)  # The layout reads the same constant, so UVs follow the page.
+    monkeypatch.setitem(glyphs._ATLASES, (91, 1.0), glyphs.GlyphAtlas(91, 1.0))
+    first = _text_frame(settings, (first_text, 0.12))
+    second = _text_frame(settings, (second_text, 0.12))  # Overflows 64 px, so finish resets and lays out again.
+    assert second.page != first.page
+    for drawing, expected in ((second, reference[1]), (first, reference[0])):  # The cached drawing comes last.
+        image = render_quads(drawing.vertices, 200, drawing.page)
+        assert image == expected
+        assert image != render_quads(np.zeros(0, OVERLAY_VERTEX), 200)

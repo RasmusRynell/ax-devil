@@ -127,7 +127,7 @@ Plugins run with your user permissions.
 
 ```bash
 make check
-QT_QPA_PLATFORM=offscreen make test
+make test
 ```
 
 [Architecture](https://github.com/RasmusRynell/ax-devil/blob/main/docs/architecture/overview.md) ·
