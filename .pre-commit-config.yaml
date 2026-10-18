@@ -1,3 +1,4 @@
+# tools/trace-viewer is one self-contained index.html with its own checks; this also skips file-token-limit on purpose.
 exclude: ^tools/trace-viewer/
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
