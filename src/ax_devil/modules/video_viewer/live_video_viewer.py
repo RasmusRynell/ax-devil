@@ -171,7 +171,6 @@ class LiveVideoViewerWidget(ViewerWidget):
         layout = self.get_content_layout()
 
         display = FrameDisplay()
-        display.viewport.set_diagnostics_label(self.get_display_name())
         status_panel = LiveStatusPanel(display)
         status_panel.pauseToggled.connect(self.toggle_playback)
         status_panel.retryRequested.connect(self.retry_connection)
@@ -246,14 +245,12 @@ class LiveVideoViewerWidget(ViewerWidget):
         )
 
     def get_display_name(self) -> str:
-        """Return the name shown in the header and in the render diagnostics."""
+        """Return the name shown in the header."""
         return self._display_name
 
     def set_display_name(self, name: str) -> None:
-        """Show *name* in the header and in the render diagnostics, after the item is renamed."""
+        """Show *name* in the header after the item is renamed."""
         self._display_name = name
-        if self._frame_display is not None:
-            self._frame_display.viewport.set_diagnostics_label(name)
         super().set_display_name(name)
 
     def pause_playback(self) -> None:

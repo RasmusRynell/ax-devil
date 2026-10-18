@@ -2,7 +2,6 @@
 
 This measures process CPU consumed through render submission and separately reports
 wall-clock delivery (which includes event-loop/vsync waiting), not GPU or screen latency.
-The ordinary diagnostics intentionally measure a smaller GUI-preparation scope.
 """
 
 from __future__ import annotations

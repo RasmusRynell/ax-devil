@@ -47,14 +47,6 @@ jobs:
       - name: Check application
         run: make check
 
-      - name: Set up Node for trace-viewer tests
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Check trace viewer
-        run: QT_QPA_PLATFORM=offscreen make -C tools/trace-viewer check
-
       - name: Run tests
         run: make test
 

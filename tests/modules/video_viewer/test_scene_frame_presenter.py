@@ -32,7 +32,12 @@ from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalogLoader,
     get_built_in_scene_render_catalog,
 )
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import (
+    EMPTY_DRAWING,
+    DrawingBuffer,
+    DrawingSettings,
+    PreparedDrawing,
+)
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
@@ -160,7 +165,7 @@ def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes
     for enabled in (False, True, False):
         model.set_enabled("show_humans", enabled)
         drawing = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
-        assert bool(drawing) == enabled
+        assert (drawing != EMPTY_DRAWING) == enabled
         assert (provider.hit_test(0.2, 0.2) is not None) == enabled
 
 
@@ -314,7 +319,7 @@ def test_visibility_change_reuses_filtered_scene_and_hover_cards(
     hidden = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
     current_hit = overlay.interaction_provider.get_hit_by_id("entity-1")
     assert current_hit is hit
-    assert len(hidden) < len(initial)
+    assert hidden != initial
     assert scene_filter.calls == 1
     selection.reset_visibility()
     assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == initial

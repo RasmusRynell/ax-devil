@@ -9,7 +9,7 @@ documented by `ax-devil catalog reference`, generated from the runtime definitio
 ## Quick map
 
 - `cache.py`: `CachedSceneOverlay`, the per-Scene adapter that caches the filtered Scene and prepared drawing, indexes
-  hover targets and reports preparation metrics; `ReportedCatalogErrors` limits repeated catalog error logs.
+  hover targets; `ReportedCatalogErrors` limits repeated catalog error logs.
 - `catalog.py`: `SceneRenderCatalog` recipe routing and per-recipe row-column execution, and
   `SceneRenderCatalogLoader` validation and compilation.
 - `catalog_store.py`: `SceneRenderCatalogStore`, the user-store file lifecycle, the listing with the packaged built-in
@@ -41,7 +41,7 @@ filtered Scene; hit testing picks the smallest box containing the cursor.
 
 ## Rules
 
-- Keep Scene semantics here; the video player receives only prepared drawings, hover hits and metrics.
+- Keep Scene semantics here; the video player receives only prepared drawings and hover hits.
 - Prefer adding or replacing draw recipes in catalog JSON over adding render-wrapper layers. Presentation choices
   such as motion symbols belong in JSON (`lookup_text`), not in Python.
 - Validation and compilation never run on the frame-drawing path, and widgets never read, validate or compile
@@ -102,6 +102,6 @@ tools; offline lanes each own one.
   `test_template_schema.py`.
 - Compiler and language semantics: `tests/modules/scene/rendering/test_template_runtime_compiler.py`.
 - Recipe output for the built-in catalog: `tests/modules/scene/rendering/test_scene_rendering_runtime.py`.
-- Overlay caching, hover and metrics: `tests/modules/scene/rendering/test_cache.py`.
+- Overlay caching and hover: `tests/modules/scene/rendering/test_cache.py`.
 - Visibility specialization and retained inputs: `tests/modules/scene/rendering/test_overlay_visibility.py`.
 - Catalog manager and selection: `tests/modules/scene/rendering/test_catalog_manager.py`.

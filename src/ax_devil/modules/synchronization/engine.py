@@ -8,7 +8,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from ax_devil.modules.diagnostics.metrics_store import remove_instance, set_metric
 from ax_devil.modules.settings.logging_config import get_logger
 
 # Generic types for maximum reusability
@@ -47,8 +46,7 @@ class StreamSync(Generic[FrameType, OverlayType]):
     - Memory bounded: automatic cleanup
     """
 
-    def __init__(self, object_name: str, delay_ms: int = 50, max_queue_size: int = 100):
-        self.object_name = object_name
+    def __init__(self, delay_ms: int = 50, max_queue_size: int = 100):
         self.delay_s = delay_ms / 1000.0
 
         self._frame_queue: deque[TimestampedData[FrameType]] = deque(maxlen=max_queue_size)
@@ -67,8 +65,6 @@ class StreamSync(Generic[FrameType, OverlayType]):
         self._frame_queue.clear()
         self._overlay_queue.clear()
         self._early_eviction_logged = False
-        self._record_queue_metrics()
-        set_metric(self.object_name, "Overlay offset (ms)", None)
 
     def push_frame(self, frame_data: FrameType, capture_time: float) -> None:
         """Add frame data with capture timestamp."""
@@ -88,7 +84,6 @@ class StreamSync(Generic[FrameType, OverlayType]):
             self._early_eviction_logged = True
         self._frame_queue.append(timestamped)
         self._process_ready_frames()
-        self._record_queue_metrics()
 
     def push_overlay(self, overlay_data: OverlayType, capture_time: float) -> None:
         """Add overlay data with capture timestamp."""
@@ -98,15 +93,6 @@ class StreamSync(Generic[FrameType, OverlayType]):
         # arrivals; no timer is needed because an idle live stream has no new presentation work, and the bounded queues
         # prevent idle buffered data from growing.
         self._process_ready_frames()
-        self._record_queue_metrics()
-
-    def _record_queue_metrics(self) -> None:
-        set_metric(self.object_name, "Frame queue", len(self._frame_queue))
-        set_metric(self.object_name, "Overlay queue", len(self._overlay_queue))
-
-    def cleanup(self) -> None:
-        """Remove diagnostic state when the synchronization owner closes."""
-        remove_instance(self.object_name)
 
     def _process_ready_frames(self) -> None:
         """Process frames that have waited long enough."""
@@ -134,11 +120,6 @@ class StreamSync(Generic[FrameType, OverlayType]):
     def _emit(self, frame: TimestampedData[FrameType], overlay: TimestampedData[OverlayType] | None) -> None:
         if not self._emit_callback:
             return
-
-        time_diff: float = 0.0
-        if overlay:
-            time_diff = frame.capture_time - overlay.capture_time
-        set_metric(self.object_name, "Overlay offset (ms)", time_diff * 1000 if overlay else None)
 
         result = SyncResult(frame=frame, overlay=overlay)
 

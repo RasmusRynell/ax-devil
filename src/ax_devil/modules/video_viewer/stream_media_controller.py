@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-import uuid
 from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -19,13 +18,6 @@ from PySide6.QtCore import QTimer, SignalInstance
 from ax_devil.core.data_types import FrameData, OverlayData
 from ax_devil.modules.data_sources.base import DataSource, FrameSource, OverlaySource
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder, RTSPSource, rtsp_stream_config
-from ax_devil.modules.diagnostics.metrics_store import (
-    get_metrics_store,
-    metrics_enabled,
-    remove_instance,
-    set_metric,
-    source_identity,
-)
 from ax_devil.modules.filtering import FilterConfig
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.plugin_system import get_payload_decoder, get_payload_filter_factory
@@ -44,7 +36,7 @@ from ax_devil.modules.workspace.core import (
 
 from .live_connection import LiveConnectionStatus, LiveFeed, LiveFeedStatus
 from .overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
-from .scene_frame_presenter import SceneFramePresenter, describe_frame_id, describe_overlay_data
+from .scene_frame_presenter import SceneFramePresenter
 from .scene_inspection import deliver_scene_inspection_update
 
 logger = get_logger(__name__)
@@ -78,7 +70,6 @@ class StreamMediaController:
         )
         self._overlay_persistence = OverlayPersistenceSettings.default_enabled()
         self._overlay_policy = OverlayPersistencePolicy(self._overlay_persistence.copy())
-        self._metrics_id = source_identity(self)
         self._paused: bool = False
         self._connection_changed = connection_changed
         self._source_slots: list[tuple[SignalInstance, Callable[..., None]]] = []
@@ -95,8 +86,6 @@ class StreamMediaController:
         self._connection = LiveConnectionStatus.connecting(self._feeds())
 
         self._render_catalog_selection.activeCatalogChanged.connect(self.attach_scene_render_catalog)
-        get_metrics_store().register(self._metrics_id, f"Live stream · {content.display_name}")
-        get_metrics_store().register(self._sync_metrics_id, f"Synchronization · {content.display_name}")
         self._connect_sources()
 
     def _open_sources(self) -> None:
@@ -161,7 +150,6 @@ class StreamMediaController:
         assert self.synchronizer is not None
         self._mark_live(LiveFeed.VIDEO)
         capture_time_s = frame_data.frame_id.timestamp_monotime_us / 1000000.0
-        self._record_metric("Last decoded frame", lambda: describe_frame_id(frame_data.frame_id))
         self.synchronizer.push_frame(frame_data, capture_time_s)
 
     def _add_overlay(self, overlay_data: OverlayData) -> None:
@@ -169,17 +157,13 @@ class StreamMediaController:
             return
         assert self.synchronizer is not None
         capture_time_s = overlay_data.frame_id.timestamp_monotime_us / 1000000.0
-        self._record_metric("Last decoded overlay", lambda: describe_overlay_data(overlay_data))
         self.synchronizer.push_overlay(overlay_data, capture_time_s)
 
     def _on_sync_result(self, result: SyncResult[Any, Any]) -> None:
         if self.frame_display is None:
             return
 
-        frame_id = result.frame.data.frame_id
         candidate_overlay = result.overlay.data if result.overlay else None
-        self._record_metric("Last synced frame", lambda: describe_frame_id(frame_id))
-        self._record_metric("Last synced overlay", lambda: describe_overlay_data(candidate_overlay))
         presentation = self._presenter.prepare_frame(
             result.frame.data, candidate_overlay, overlay_policy=self._overlay_policy
         )
@@ -270,7 +254,6 @@ class StreamMediaController:
         self._release_sources()
         self._cleanup_synchronizer()
         self._clear_references()
-        self._clear_metrics()
 
     def get_filter_config(self) -> FilterConfig | None:
         return self.overlay_source.get_filter_config() if self.overlay_source else None
@@ -312,11 +295,7 @@ class StreamMediaController:
     def _init_synchronizer(self, frame_display: FrameDisplay) -> QtStreamSync:
         delay_ms = 1500
 
-        sync_id = f"sync:{uuid.uuid4()}"
-        self._sync_metrics_id = sync_id
-        frame_display.viewport.set_diagnostics_sources((self._metrics_id, sync_id))
         synchronizer = QtStreamSync(
-            object_name=sync_id,
             parent=frame_display,
             delay_ms=delay_ms,
         )
@@ -460,12 +439,3 @@ class StreamMediaController:
         self._scene_filter = None
         self._scene_inspector = None
         self._presenter = SceneFramePresenter()
-
-    def _clear_metrics(self) -> None:
-        remove_instance(self._metrics_id)
-
-    def _record_metric(self, key: str, value: str | Callable[[], str]) -> None:
-        if not metrics_enabled():
-            return
-        resolved = value() if callable(value) else value
-        set_metric(self._metrics_id, key, resolved)

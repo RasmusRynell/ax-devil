@@ -78,15 +78,15 @@ class GeometryPacker:
     def __init__(self) -> None:
         self._vertices: NDArray[np.void] = np.empty(0, dtype=VERTEX)
 
-    def pack(self, batches: list[VertexBatch]) -> tuple[tuple[bytes, int], ...]:
+    def pack(self, batches: list[VertexBatch]) -> tuple[bytes, ...]:
         """Preserve emission order and split only at the vertex capacity bound."""
         total = sum(batch.rows * batch.size for batch in batches)
         if not total:
             return ()
         if len(self._vertices) < total:
             self._vertices = np.empty(max(total, len(self._vertices) * 2), dtype=VERTEX)
-        chunks: list[tuple[int, int, int]] = []
-        start = count = operations = offset = 0
+        chunks: list[tuple[int, int]] = []
+        start = count = offset = 0
         for batch in batches:
             rows, size = batch.rows, batch.size
             batch.write(self._vertices[offset : offset + rows * size].reshape(rows, size))
@@ -95,15 +95,11 @@ class GeometryPacker:
             while remaining:
                 fit = min(remaining, (_LIMIT - count) // size)
                 if not fit:
-                    chunks.append((start, start + count, operations))
-                    start, count, operations = start + count, 0, 0
+                    chunks.append((start, start + count))
+                    start, count = start + count, 0
                     continue
                 count += fit * size
-                operations += fit
                 remaining -= fit
-        chunks.append((start, start + count, operations))
+        chunks.append((start, start + count))
         payload = self._vertices[:total].tobytes()
-        return tuple(
-            (payload[first * VERTEX.itemsize : last * VERTEX.itemsize], operations)
-            for first, last, operations in chunks
-        )
+        return tuple(payload[first * VERTEX.itemsize : last * VERTEX.itemsize] for first, last in chunks)

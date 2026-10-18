@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -63,7 +63,6 @@ class MeshData(NamedTuple):
     """Final screen-space vertex bytes for one geometry node."""
 
     payload: bytes
-    operation_count: int = 1
 
 
 class PathData(NamedTuple):
@@ -104,11 +103,6 @@ class PreparedDrawing:
     paths: tuple[PathData, ...] = ()
     texts: tuple[TextData, ...] = ()
     labels: tuple[LabelData, ...] = ()
-    counts: tuple[tuple[str, int], ...] = ()
-
-    def __len__(self) -> int:
-        operations = sum(mesh.operation_count for mesh in self.meshes)
-        return operations + len(self.paths) + len(self.texts) + len(self.labels)
 
 
 EMPTY_DRAWING = PreparedDrawing()
@@ -149,7 +143,6 @@ class DrawingBuffer:
         self._paths: list[PathData] = []
         self._texts: list[TextData] = []
         self._labels: list[LabelData] = []
-        self._counts: Counter[str] = Counter()
         self._queued: defaultdict[tuple[str, int], list[tuple[tuple[object, ...], Paint]]] = defaultdict(list)
         self._previous = EMPTY_DRAWING
         self._packer = GeometryPacker()
@@ -158,18 +151,17 @@ class DrawingBuffer:
         """Start a frame; live glyphs and shared topology retain their own resources."""
         self.settings = settings
         self._viewport = settings.viewport
-        self._meshes, self._paths, self._texts, self._labels, self._counts = [], [], [], [], Counter()
+        self._meshes, self._paths, self._texts, self._labels = [], [], [], []
         self._queued = defaultdict(list)
 
     def finish(self) -> PreparedDrawing:
         """Prepare every queued batch, then publish without retaining mutable builder collections."""
         self._flush()
         drawing = PreparedDrawing(
-            tuple(MeshData(payload, count) for payload, count in self._packer.pack(self._meshes)),
+            tuple(MeshData(payload) for payload in self._packer.pack(self._meshes)),
             tuple(self._paths),
             tuple(self._texts),
             tuple(self._labels),
-            tuple(sorted(self._counts.items())),
         )
         self._previous = drawing
         return drawing
@@ -270,7 +262,6 @@ class DrawingBuffer:
         for row, item in enumerate(content):
             if not item.runs:
                 continue
-            self._counts["label"] += 1
             sprite = label_sprite(item, s.scale, s.dpi, s.dpr)
             if sprite is None:
                 continue
@@ -318,7 +309,6 @@ class DrawingBuffer:
         """Prepare visible rectangles: bulk vertices on hardware, Qt paths for dashed, narrow or rounded ones."""
         s = self.settings
         area = (w > 0) & (h > 0)
-        self._counts["box"] += int(np.count_nonzero(area))
         count = len(x)
         stroke = np.maximum(0.0, _floats(paint.pen_width, count) * s.scale)
         left, top, width, height = x * s.width, y * s.height, w * s.width, h * s.height
@@ -382,7 +372,6 @@ class DrawingBuffer:
         """Prepare visible square-capped lines as rotated rectangles on hardware."""
         s = self.settings
         count = len(x1)
-        self._counts["line"] += count
         same = (x1 == x2) & (y1 == y2)
         for row in np.flatnonzero(same):
             self._point(float(x1[row]), float(y1[row]), paint.style(int(row)))
@@ -432,7 +421,6 @@ class DrawingBuffer:
         """Prepare circular Qt paths with conservative bounds."""
         s = self.settings
         for row in np.flatnonzero(radius > 0):
-            self._counts["circle"] += 1
             r = float(radius[row]) * min(s.width, s.height)
             self.path(
                 _circle_path(r),
@@ -444,7 +432,6 @@ class DrawingBuffer:
 
     def _draw_points(self, x: NDArray[np.float64], y: NDArray[np.float64], paint: Paint) -> None:
         """Prepare square points."""
-        self._counts["point"] += len(x)
         for row in range(len(x)):
             self._point(float(x[row]), float(y[row]), paint.style(row))
 
@@ -466,7 +453,6 @@ class DrawingBuffer:
         """Prepare polygons of one corner count: convex ones as bulk vertices on hardware, others as Qt paths."""
         s = self.settings
         count = len(shapes)
-        self._counts["polygon"] += count
         stroke = np.maximum(0.0, _floats(paint.pen_width, count) * s.scale)
         dashed = np.broadcast_to(np.asarray(paint.dashed, dtype=np.bool_), (count,))
         filled = np.broadcast_to(np.asarray(paint.brush_a) > 0, (count,))
@@ -503,7 +489,6 @@ class DrawingBuffer:
         """Prepare connected segments with the standard Qt joins."""
         for row, shape in enumerate(points):
             if len(shape) >= 2:
-                self._counts["polyline"] += 1
                 self._polygon(shape, paint.style(row), False)
 
     def _polygon(self, points: Points | NDArray[np.float64], style: DrawingStyle, fill: bool) -> None:
@@ -550,7 +535,6 @@ class DrawingBuffer:
         """Shape once and prepare final glyph layouts and positions, preserving overhangs."""
         s = self.settings
         count = len(x)
-        self._counts["text"] += count
         labels = [str(item) for item in text]
         anchors = [str(item) for item in anchor]
         sizes = (_floats(paint.font_size, count) * s.scale).tolist()
