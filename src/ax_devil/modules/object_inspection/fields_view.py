@@ -458,12 +458,17 @@ class FieldsModel(QAbstractItemModel):
         return section.copy() if section is not None and section.copy is not None else None
 
     def copy_key_at(self, index: QModelIndex | QPersistentModelIndex) -> Hashable:
-        """Return what tells the row or caption at *index* from the others, such as across the objects of a page."""
+        """Return what tells the row or caption at *index* from the others, such as across the objects of a page, and
+        what copying it would put on the clipboard, so a copy mark ends when the value it copied changes. A caption's
+        content is that of its rows, which is cheaper than building what it copies.
+        """
         row, section = self.row_at(index), self.section_at(index)
         if row is not None:
             parent = self.section_at(index.parent())
-            return (parent.name if parent is not None else "", row.key)
-        return (section.name, None) if section is not None else None
+            return (parent.name if parent is not None else "", row.key, row.copy_text())
+        if section is None:
+            return None
+        return (section.name, None, tuple(row.copy_text() for row in section.rows) if section.copy else None)
 
     def index(  # noqa: D102
         self, row: int, column: int, parent: QModelIndex | QPersistentModelIndex | None = None
@@ -624,8 +629,10 @@ class FieldsView(QTreeView):
         self._hover = QPersistentModelIndex()
         self._fields_model = FieldsModel(self)
         self._delegate = _Delegate(self, self._fields_model)
-        self._measured = (0, 0)
-        self._measured_for = -1
+        self._longest_label = 0
+        self._widest_value = 0
+        self._measured_for = -1  # The model structure the label width was measured for.
+        self._values_measured = False
         self._copied = CopiedMark(self, lambda: self.viewport().update())
         self._delegate.copied = self._copied
         self.setModel(self._fields_model)
@@ -656,6 +663,7 @@ class FieldsView(QTreeView):
         """Show *sections* under the *lead* rows, keeping the scroll position and the sections' fold state."""
         scroll = self.verticalScrollBar().value()
         was_reset = self._fields_model.set_sections(sections, lead)
+        self._values_measured = False
         self._fit_labels()
         self._sync_folds()
         if was_reset:
@@ -759,18 +767,17 @@ class FieldsView(QTreeView):
             self._syncing = False
 
     def _measure(self) -> tuple[int, int]:
-        """Return the width of the longest label and of the widest value, measured again only when the rows or the
-        fonts change, not when a frame only brings new values.
+        """Return the width of the longest label and of the widest value. Labels are measured again only when the rows
+        or the fonts change; values whenever rows are set, since an object with the same fields has other values.
         """
+        fonts = self._delegate.fonts
         if self._measured_for != self._fields_model.structure:
-            fonts = self._delegate.fonts
-            rows = self._fields_model.rows()
-            self._measured = (
-                max((row.label_px(fonts) for row in rows), default=0),
-                max((row.value_px(fonts) for row in rows), default=0),
-            )
+            self._longest_label = max((row.label_px(fonts) for row in self._fields_model.rows()), default=0)
             self._measured_for = self._fields_model.structure
-        return self._measured
+        if not self._values_measured:
+            self._widest_value = max((row.value_px(fonts) for row in self._fields_model.rows()), default=0)
+            self._values_measured = True
+        return self._longest_label, self._widest_value
 
     def _fit_labels(self) -> None:
         """Make the label column as wide as the longest label, but leave a long value such as an id its room where
@@ -807,6 +814,7 @@ class FieldsView(QTreeView):
 
     def _apply_metrics(self) -> None:
         self._measured_for = -1
+        self._values_measured = False
         self._delegate.load_metrics()
         self._fit_labels()
         self.updateGeometry()

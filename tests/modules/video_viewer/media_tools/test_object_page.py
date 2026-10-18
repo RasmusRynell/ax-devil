@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QModelIndex, QPoint, QRect, Qt
@@ -11,8 +12,9 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.copy_cell import CopiedMark
 from ax_devil.modules.object_inspection import fields_view
-from ax_devil.modules.object_inspection.fields_view import FieldRow, FieldsView, RowFonts, Section, id_row
+from ax_devil.modules.object_inspection.fields_view import FieldRow, FieldsModel, FieldsView, RowFonts, Section, id_row
 from ax_devil.modules.scene.inspection import InspectionField
 from ax_devil.modules.scene.model import (
     BoundingBox,
@@ -107,3 +109,40 @@ def test_fields_view_minimum_width_does_not_depend_on_its_rows(qtbot: QtBot) -> 
         widths.add(view.minimumSizeHint().width())
     assert len(widths) == 1  # The panel does not change width from one object to the next
     assert FieldRow(long_label, "1").cut_text(QRect(0, 0, 400, 20), RowFonts.current(), 60) is not None  # and the label
+
+
+def _fields(qtbot: QtBot, width: int = 260) -> FieldsView:
+    view = FieldsView({})
+    qtbot.addWidget(view)
+    view.resize(width, 200)
+    view.show()
+    return view
+
+
+def test_label_column_follows_the_values_of_the_object_shown(qtbot: QtBot) -> None:
+    label = "candidates.human.attributes.confidence"
+    view, fresh = _fields(qtbot), _fields(qtbot)
+    view.set_sections((Section("A", (FieldRow(label, "7"),)),))
+    view.set_sections((Section("A", (FieldRow(label, _ID),)),))  # Another object with the same fields
+    fresh.set_sections((Section("A", (FieldRow(label, _ID),)),))
+    delegate: Any = fresh.itemDelegate()
+    assert delegate.label_width < FieldRow(label, "7").label_px(RowFonts.current())  # The id takes room from the label
+    assert cast(Any, view.itemDelegate()).label_width == delegate.label_width
+
+
+def test_copy_check_ends_when_the_copied_value_changes(qtbot: QtBot) -> None:
+    view = _fields(qtbot)
+    view.set_sections((Section("A", (FieldRow("speed", "1.0"),)),))
+    model = cast(FieldsModel, view.model())
+    row = model.index(0, 0, model.index(0, 0))
+    view.expand(model.index(0, 0))
+    rect = view.visualRect(row)
+    QTest.mouseClick(
+        view.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(view.viewport().width() - 5, rect.center().y())
+    )
+    mark = view.findChild(CopiedMark)
+    assert mark is not None and mark.key == model.copy_key_at(row)
+    view.set_sections((Section("A", (FieldRow("speed", "1.0"),)),))  # The same value again keeps the check
+    assert mark.key == model.copy_key_at(row)
+    view.set_sections((Section("A", (FieldRow("speed", "2.0"),)),))  # The clipboard has the previous value
+    assert mark.key != model.copy_key_at(row)

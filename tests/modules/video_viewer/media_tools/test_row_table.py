@@ -218,3 +218,29 @@ def test_dragging_a_divider_without_room_does_not_pin_the_width(qtbot: QtBot) ->
     _drag_divider(view, 1, 80)
     view.resize(700, 200)
     assert view.columnWidth(1) == natural
+
+
+def test_column_that_fills_while_the_rows_reorder_is_shown(qtbot: QtBot) -> None:
+    columns = [
+        Column("Id", CellKind.TEXT, lambda row: row[0]),
+        Column("Conf", CellKind.NUMBER, lambda row: row[1], sort_key=lambda row: row[1]),
+        Column("Motion", CellKind.NUMBER, lambda row: row[2], priority=1),
+    ]
+    before = [("a" * 40, "0.1", ""), ("b" * 40, "0.5", "")]
+    after = [("a" * 40, "0.9", "10:25-12:03"), ("b" * 40, "0.5", "0.4")]  # The same objects, now in another order
+
+    def table(rows: list[tuple[str, str, str]], width: int) -> RowTableView:
+        model = RowTableModel(columns)
+        model.sort(1, Qt.SortOrder.AscendingOrder)
+        model.set_rows(rows, lambda row: row[0])
+        view = RowTableView(model)
+        qtbot.addWidget(view)
+        view.resize(width, 200)
+        view.show()
+        return view
+
+    width = next(width for width in range(150, 600) if not table(after, width).isColumnHidden(2))
+    view = table(before, width)
+    assert view.isColumnHidden(2)  # Nothing to show yet, and no room for it
+    view.rows_model.set_rows(after, lambda row: row[0])
+    assert not view.isColumnHidden(2)
