@@ -51,7 +51,7 @@ from .scene_render_catalog_selector import SceneRenderCatalogSelector
 _HISTORY_NOTICE_MARGINS = (0, Space.M, Space.M, 0)
 _MENU_CONTENT_MARGINS = (Space.M, Space.M, Space.M, Space.M)
 _MIN_CHARS = 37
-"""The panel's narrowest width in average characters of body text: room for the widest page header and list."""
+"""Average characters of body text the panel always has room for: the tabs with their counts, and at least the pages."""
 
 
 class MediaToolsSection(Enum):
@@ -265,9 +265,12 @@ class MediaToolsPanel(QWidget):
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         """Return the same narrowest width whichever page shows, so the panel never changes width with its contents.
 
-        It comes from the text size alone. Every page's own minimum is at most this, so none of them is cut.
+        It is the room for the tabs with counts of several digits, or the page header and root pages if wider: those
+        depend on the text size and the columns alone, and a drilled page is built from the same lists. The tab row
+        itself grows with its counts, so it cannot set this.
         """
-        width = _MIN_CHARS * QFontMetrics(QApplication.font()).averageCharWidth()
+        tabs = _MIN_CHARS * QFontMetrics(QApplication.font()).averageCharWidth()
+        width = max(tabs, self._stack.narrowest_width())
         return QSize(width, super().minimumSizeHint().height())
 
     def _build_menu(self, export_action: QAction | None, timing_controls: QWidget | None) -> None:

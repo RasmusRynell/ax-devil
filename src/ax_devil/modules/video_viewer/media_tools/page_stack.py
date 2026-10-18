@@ -195,6 +195,12 @@ class PageStack(QWidget):
         layout.addLayout(self._pages, 1)
         follow_appearance(self, self._apply_appearance)
 
+    def narrowest_width(self) -> int:
+        """Return the narrowest width the breadcrumb header and every root page fit, whichever page shows."""
+        widths = [self._header.minimumSizeHint().width()]
+        widths.extend(root.minimumSizeHint().width() for root in self._root_titles)
+        return max(widths)
+
     def depth(self) -> int:
         """Return how many drilled pages are stacked on the root; 0 while a root is showing."""
         return len(self._entries)

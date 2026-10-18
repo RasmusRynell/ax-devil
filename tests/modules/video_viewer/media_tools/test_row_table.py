@@ -40,6 +40,12 @@ def _table(
     return view
 
 
+def _resized(view: RowTableView, width: int, section: int) -> bool:
+    """Resize *view* to *width* and return whether *section* is shown."""
+    view.resize(width, 200)
+    return not view.isColumnHidden(section)
+
+
 def test_narrow_table_hides_columns_by_priority_without_resetting_the_rows(qtbot: QtBot) -> None:
     view = _table(qtbot, 600)
     resets: list[None] = []
@@ -167,9 +173,12 @@ def test_ids_are_cut_only_to_a_floor_while_columns_can_be_hidden_and_the_copy_co
     model.set_rows([(*row[:3], "") for row in _ROWS], lambda row: row[0])
     empty = RowTableView(model)
     qtbot.addWidget(empty)
-    empty.resize(400, 200)
     empty.show()
     qtbot.waitExposed(empty)
+    model.set_rows(list(_ROWS), lambda row: row[0])
+    fits = next(width for width in range(empty.minimumSizeHint().width(), 2000) if _resized(empty, width, 3))
+    model.set_rows([(*row[:3], "") for row in _ROWS], lambda row: row[0])
+    empty.resize(fits, 200)  # The narrowest width that shows the column with a value, whatever the font.
     assert empty.isColumnHidden(3)
     narrowest = empty.minimumSizeHint().width()
     model.set_rows(list(_ROWS), lambda row: row[0])
