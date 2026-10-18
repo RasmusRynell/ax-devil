@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 
-from .definitions import ValueType
+from .definitions import ANY, BOOL, INTEGER, NULL, NUMBER, STRING, ValueType
 from .expressions import UNSET, CompiledExpression, instruction
 from .plan import Node
 from .validation import has_constraints, validate_value
-from .values import TemplateRuntimeError
+from .values import TemplateRuntimeError, sequence
 
 
 def record_evaluator(fields: tuple[tuple[str, CompiledExpression], ...]) -> Node:
@@ -65,6 +66,32 @@ def union(left: ValueType, right: ValueType, location: str) -> ValueType:
     raise TemplateRuntimeError(
         f"Incompatible branch types {left.name} and {right.name}.", code="type_mismatch", location=location
     )
+
+
+def literal_type(value: object) -> ValueType:
+    """Return the type of the frozen constant *value*; conflicting list items widen to ``any``."""
+    if value is None:
+        return NULL
+    if isinstance(value, bool):
+        return BOOL
+    if isinstance(value, int):
+        return INTEGER
+    if isinstance(value, float):
+        return NUMBER
+    if isinstance(value, str):
+        return STRING
+    if isinstance(value, Mapping):
+        return ValueType("record", tuple((key, literal_type(item)) for key, item in sorted(value.items())))
+    items = sequence(value)
+    kind = literal_type(items[0]) if items else ValueType("empty")
+    for item in items[1:]:
+        # Items widen to a common type, such as integers and numbers to numbers; conflicting items are any.
+        try:
+            kind = union(kind, literal_type(item), "$")
+        except TemplateRuntimeError:
+            kind = ANY
+            break
+    return ValueType("list", item=kind)
 
 
 def coerce(expression: CompiledExpression, expected: ValueType, *, member: bool = False) -> CompiledExpression:

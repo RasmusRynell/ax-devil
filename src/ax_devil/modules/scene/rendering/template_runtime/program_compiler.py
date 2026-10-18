@@ -9,14 +9,11 @@ from typing import TYPE_CHECKING, cast
 
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
-from .coercion import coerce, record_evaluator, union
+from .coercion import coerce, literal_type, record_evaluator, union
 from .definitions import (
     ANY,
-    BOOL,
-    INTEGER,
     LENGTH,
     MAX_DEPTH,
-    NULL,
     NUMBER,
     OPERATIONS,
     STRING,
@@ -26,7 +23,7 @@ from .expressions import UNSET, CompiledExpression, instruction
 from .plan import Node
 from .structure import Guards, TemplateDefinition, guard, require_keys, require_list, require_object
 from .validation import validate_value
-from .values import TemplateRuntimeError, freeze, record, sequence
+from .values import TemplateRuntimeError, freeze, record
 
 if TYPE_CHECKING:
     from .compiler import RenderProgramCompiler
@@ -43,15 +40,14 @@ class ProgramCompiler:
     """Compiles the raw JSON expressions of one template program into typed ``CompiledExpression`` trees.
 
     One instance serves one program (``RenderProgramCompiler.compile_program`` creates it) and is not reused.
-    The caller binds the program's roots and location at construction and, before compiling anything, sets
-    ``static_parameters`` (call-site constants that fold parameter references) and ``base_guards`` (references
-    the program's ``enabled`` condition proves present). It then compiles ``enabled`` and each step input with
-    ``expression`` and every calculated value with ``value``, in sorted name order (``names``).
+    Before compiling, the caller sets ``static_parameters`` (call-site constants that fold parameter references)
+    and ``base_guards`` (references the program's ``enabled`` condition proves present). It then compiles
+    ``enabled`` and each step input with ``expression`` and every calculated value with ``value``, in sorted name
+    order (``names``).
 
-    Calculated values are compiled on first use and memoized, so ``base_guards`` must be set before the first
-    ``value`` call. Scene references are collected into ``reference_values``; their slots follow the calculated
-    values (slot ``len(names) + i``), so the caller must read ``reference_values`` only after every expression
-    has been compiled and append it after the calculated values.
+    Calculated values are memoized on first use, so ``base_guards`` must be set before the first ``value`` call.
+    Scene references collect in ``reference_values`` at slots ``len(names) + i``, after the calculated values; read
+    it only once every expression has been compiled.
     Failures raise ``TemplateRuntimeError`` located at the offending raw expression.
     """
 
@@ -62,10 +58,10 @@ class ProgramCompiler:
         roots: Mapping[str, ValueType],
         location: str,
     ) -> None:
-        """Bind *owner* (the compiler that created this instance), the root scopes and the program location.
+        """Bind *owner* (the creating compiler), the program *location* and *roots*.
 
-        *roots* maps each scope an expression may reference, other than the program's own ``values``, to its record
-        type (for example ``context``, ``parameters`` or ``scene``).
+        *roots* maps each referenceable scope other than the program's own ``values`` (such as ``context``,
+        ``parameters`` or ``scene``) to its record type.
         """
         self.owner, self.roots, self.location = owner, roots, location
         self.raw_values = require_object(definition.get("values", {}), f"{location}.values")
@@ -118,10 +114,9 @@ class ProgramCompiler:
     ) -> CompiledExpression:
         """Compile the raw expression *raw* (a literal, ``ref``, ``call``, record or list) at *location*.
 
-        *guards* lists the reference paths already known to be present at this point; *expected* coerces the
-        result to that type; *depth* counts expression nesting. Pass ``guarded=True`` when the expression runs
-        only conditionally, which stops operations inside it from being folded at compile time. An error without
-        a location is re-raised at *location*.
+        *guards* lists the reference paths known to be present here; *expected* coerces the result to that type;
+        *depth* counts nesting. ``guarded=True`` marks conditional execution, which stops operations inside from
+        being folded at compile time. An error without a location is re-raised at *location*.
         """
         if depth > MAX_DEPTH:
             raise TemplateRuntimeError("Expression depth limit exceeded.", code="execution_limit", location=location)
@@ -141,7 +136,7 @@ class ProgramCompiler:
             if "literal" in raw:
                 require_keys(raw, {"literal"}, {"literal"}, location)
                 value = freeze(raw["literal"])
-                kind = self._literal_type(value)
+                kind = literal_type(value)
                 return CompiledExpression(kind, instruction("constant", value), location, constant=value)
             if "ref" in raw:
                 require_keys(raw, {"ref"}, {"ref"}, location)
@@ -184,41 +179,13 @@ class ProgramCompiler:
                     break
             return self.build(ValueType("list", item=item_type), _arguments(items), items, location)
         value = freeze(raw)
-        return CompiledExpression(self._literal_type(value), instruction("constant", value), location, constant=value)
-
-    @staticmethod
-    def _literal_type(value: object) -> ValueType:
-        if value is None:
-            return NULL
-        if isinstance(value, bool):
-            return BOOL
-        if isinstance(value, int):
-            return INTEGER
-        if isinstance(value, float):
-            return NUMBER
-        if isinstance(value, str):
-            return STRING
-        if isinstance(value, Mapping):
-            return ValueType(
-                "record", tuple((key, ProgramCompiler._literal_type(item)) for key, item in sorted(value.items()))
-            )
-        items = sequence(value)
-        kind = ProgramCompiler._literal_type(items[0]) if items else ValueType("empty")
-        for item in items[1:]:
-            # Items widen to a common type, such as integers and numbers to numbers; conflicting items are any.
-            try:
-                kind = union(kind, ProgramCompiler._literal_type(item), "$")
-            except TemplateRuntimeError:
-                kind = ANY
-                break
-        return ValueType("list", item=kind)
+        return CompiledExpression(literal_type(value), instruction("constant", value), location, constant=value)
 
     def reference(self, path: tuple[str, ...], location: str, guards: Guards) -> CompiledExpression:
         """Compile the reference ``(scope, name, *fields)`` to a calculated value, root input or scene input.
 
-        The type is narrowed to present for each prefix of *path* in *guards*. A ``parameters`` reference whose
-        parameter is in ``static_parameters`` becomes a constant. A ``scene`` reference reads a shared slot,
-        registered once per path and type in ``reference_values``.
+        The type is narrowed to present for each prefix of *path* in *guards*. A ``parameters`` reference in
+        ``static_parameters`` becomes a constant. A ``scene`` reference reads a slot shared per path and type.
         """
         scope, name, *tail = path
         if scope == "values":
@@ -280,9 +247,8 @@ class ProgramCompiler:
     ) -> CompiledExpression:
         """Compile a call of the operation *name* from ``OPERATIONS``, checking its arguments and result type.
 
-        ``if`` and ``coalesce`` compile their branches as guarded; ``if`` additionally treats its condition as a
-        guard for the ``then`` branch. Raises ``TemplateRuntimeError`` for an unknown operation, bad arguments
-        or incompatible types.
+        ``if`` and ``coalesce`` compile their branches as guarded; ``if`` also treats its condition as a guard for
+        ``then``. Raises ``TemplateRuntimeError`` for an unknown operation, bad arguments or incompatible types.
         """
         definition = OPERATIONS.get(name)
         if definition is None:
@@ -408,9 +374,9 @@ class ProgramCompiler:
     ) -> CompiledExpression:
         """Wrap *evaluator* as an expression of type *kind* that depends on whatever its *children* depend on.
 
-        *context* marks a dependence on the render context beyond the children's. An expression that depends on
-        neither context nor inputs is folded to a constant, except under a guard, where folding an *operation*
-        (or anything with a non-constant child) is skipped, and when evaluation fails.
+        *context* marks a dependence on the render context beyond the children's. An expression depending on
+        neither context nor inputs is folded to a constant, unless evaluation fails or, under a guard, it is an
+        *operation* or has a non-constant child.
         """
         uses_context = context or any(child.uses_context for child in children)
         uses_inputs = any(child.uses_inputs for child in children)
