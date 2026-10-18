@@ -55,6 +55,9 @@ IGNORED_PATTERNS = (
     "*.bin",
     "*.sqlite",
     "*.db",
+    # Render catalogs and their generated schema are loaded whole as one JSON document; splitting them needs an include
+    # format in the catalog loader, which is a product change. Exempt by design.
+    "src/ax_devil/modules/scene/rendering/catalog_definitions/*.json",
 )
 
 SPLIT_INSTRUCTIONS = f"""\
