@@ -3,7 +3,8 @@
 GUI thread only. Per frame, ``GlyphAtlas.shape`` costs one dict lookup per distinct string; only strings it has not
 seen run through QTextLayout. Glyph origins snap to whole device pixels, so equal strings always produce equal
 bitmaps and only the bitmaps are cached, never per-frame text rendering. A full page raises ``AtlasFull``; the caller
-resets the atlas between frames' layouts (``reset``) and lays out again.
+resets the atlas (``reset``) and lays out again. If even a fresh page is too small, it sets ``drop_overflow`` so the
+glyphs that do not fit are left out (counted in ``dropped``) instead of failing the frame.
 """
 
 from __future__ import annotations
@@ -139,6 +140,8 @@ class GlyphAtlas:
         self._clear_strings()
         self._snapshot = None
         self._shelf = (0, 0, 0)
+        self.drop_overflow = False
+        self.dropped = 0
 
     def _setup(self, key: FontKey) -> _FontSetup:
         setup = self._fonts.get(key)
@@ -252,7 +255,14 @@ class GlyphAtlas:
             if image.format() != QImage.Format.Format_Alpha8:
                 image = image.convertToFormat(QImage.Format.Format_Alpha8)
             box = raw.boundingRect(glyph)
-            u, v = self._allocate(image.width(), image.height())
+            try:
+                u, v = self._allocate(image.width(), image.height())
+            except AtlasFull:
+                if not self.drop_overflow:
+                    raise
+                self.dropped += 1
+                self._slots[key] = None
+                return None
             painter = QPainter(self._page)
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
             painter.drawImage(u, v, image)

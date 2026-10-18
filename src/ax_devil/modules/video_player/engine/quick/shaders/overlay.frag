@@ -20,8 +20,9 @@ layout(binding = 1) uniform sampler2D page;
 
 const float PI = 3.14159265;
 
-float coverage(float distance) {
-    return clamp(0.5 - distance, 0.0, 1.0);
+// Edge coverage from a signed distance in shape px; pixel is the shape-px size of one device pixel.
+float coverage(float distance, float pixel) {
+    return clamp(0.5 - distance / pixel, 0.0, 1.0);
 }
 
 float roundedRectDistance(vec2 p, vec2 half_size, float radius) {
@@ -78,6 +79,7 @@ void main() {
     float kind = vDashKind.y;
     float dash = vDashKind.x;
     float stroke = vRadiusStroke.y;
+    float pixel = length(dFdx(vUv));  // Shapes are in logical px, so this is 1 / devicePixelRatio.
     vec4 color;
     if (kind > 3.5) {
         color = vFill;
@@ -89,7 +91,7 @@ void main() {
         if (kind > 1.5) {
             float on = dash > 0.0 ? step(mod(vUv.x + stroke, dash), 0.5 * dash) : 1.0;
             float cap = min(vRadiusStroke.x, half_size.y);
-            color = vFill * (coverage(roundedRectDistance(p, half_size, cap)) * on);
+            color = vFill * (coverage(roundedRectDistance(p, half_size, cap), pixel) * on);
         } else {
             float radius = min(vRadiusStroke.x, min(half_size.x, half_size.y));
             float d;
@@ -98,15 +100,20 @@ void main() {
             } else {
                 d = roundedRectDistance(p, half_size, radius);
             }
-            float inner = coverage(d + stroke);
+            float inner = coverage(d + stroke, pixel);
             vec4 band = vPen;
-            if (kind < 0.5 && dash > 0.0 && stroke > 0.0) {
-                // Dashes follow the stroke's centre line.
+            if (dash > 0.0 && stroke > 0.0) {
+                // Dashes follow the stroke's centre line; ellipses are circles and run clockwise from the top.
                 float mid = 0.5 * stroke;
-                float s = perimeter(p, half_size - vec2(mid), max(radius - mid, 0.0));
+                float s;
+                if (kind > 0.5) {
+                    s = mod(atan(p.x, -p.y), 2.0 * PI) * (half_size.x - mid);
+                } else {
+                    s = perimeter(p, half_size - vec2(mid), max(radius - mid, 0.0));
+                }
                 band *= step(mod(s, dash), 0.5 * dash);
             }
-            color = (stroke > 0.0 ? mix(band, vFill, inner) : vFill) * coverage(d);
+            color = (stroke > 0.0 ? mix(band, vFill, inner) : vFill) * coverage(d, pixel);
         }
     }
     fragColor = color * qt_Opacity;

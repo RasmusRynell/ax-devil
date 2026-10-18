@@ -266,8 +266,8 @@ def test_a_full_atlas_page_resets_mid_frame_and_both_drawings_still_render_their
     monkeypatch: pytest.MonkeyPatch,
     render_quads: RenderQuads,
 ) -> None:
-    first_text = "".join(chr(0x4E00 + offset) for offset in range(12))
-    second_text = "".join(chr(0x4F00 + offset) for offset in range(12))
+    first_text = "".join(chr(0x0100 + offset) for offset in range(12))
+    second_text = "".join(chr(0x0180 + offset) for offset in range(12))
     settings = replace(_SETTINGS, dpi=91)
     reference = [
         render_quads(drawing.vertices, 200, drawing.page)
@@ -282,3 +282,16 @@ def test_a_full_atlas_page_resets_mid_frame_and_both_drawings_still_render_their
         image = render_quads(drawing.vertices, 200, drawing.page)
         assert image == expected
         assert image != render_quads(np.zeros(0, OVERLAY_VERTEX), 200)
+
+
+def test_text_that_cannot_fit_one_atlas_page_draws_the_glyphs_that_fit_and_the_next_frame_recovers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(glyphs, "PAGE_SIZE", 64)
+    monkeypatch.setitem(glyphs._ATLASES, (92, 1.0), glyphs.GlyphAtlas(92, 1.0))
+    settings = replace(_SETTINGS, dpi=92)
+    crowded = "".join(chr(0x0100 + offset) for offset in range(30))
+    drawing = _text_frame(settings, (crowded, 0.3))
+    drawn = len(_quads(drawing, OverlayKind.GLYPH))
+    assert 0 < drawn < 30
+    assert len(_quads(_text_frame(settings, ("ab", 0.1)), OverlayKind.GLYPH)) == 2

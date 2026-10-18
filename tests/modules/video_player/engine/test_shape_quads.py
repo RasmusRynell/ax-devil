@@ -8,6 +8,7 @@ from PySide6.QtGui import QImage
 from ax_devil.modules.video_player.engine.drawing import Paint
 from ax_devil.modules.video_player.engine.quick.shape_quads import (
     box_quads,
+    circle_quads,
     line_quads,
     polygon_quads,
     polyline_quads,
@@ -42,6 +43,22 @@ def test_rounded_and_dashed_boxes_keep_the_stroke_centred_on_the_outline(render_
     # Dash and gap are three stroke widths (6 px) each, from the top-left corner along the top edge.
     on = {x: ink(image, x, 10) > 0 for x in (12, 14, 18, 20, 24, 26)}
     assert on == {12: True, 14: True, 18: False, 20: False, 24: True, 26: True}
+
+
+def test_dashed_circles_alternate_dashes_and_gaps_clockwise_from_the_top(render_quads: RenderQuads) -> None:
+    dashed = Paint(pen_width=0.02, dashed=True, brush_a=0)
+    image = render_quads(circle_quads(arr(0.5), arr(0.5), arr(0.4), dashed, SIZE, SIZE, SIZE), SIZE)
+
+    # The centre line has radius 40 and 6 px dashes and gaps run along it: 3 px is mid-dash, 9 px mid-gap.
+    def at(arc: float) -> int:
+        angle = arc / 40
+        return ink(image, round(50 + 40 * np.sin(angle)), round(50 - 40 * np.cos(angle)))
+
+    assert at(3) > 0 and at(9) == 0 and at(15) > 0
+    solid = render_quads(
+        circle_quads(arr(0.5), arr(0.5), arr(0.4), Paint(pen_width=0.02, brush_a=0), SIZE, SIZE, SIZE), SIZE
+    )
+    assert ink(solid, round(50 + 40 * np.sin(0.225)), round(50 - 40 * np.cos(0.225))) > 0
 
 
 def test_line_has_square_caps_and_the_stroke_width(render_quads: RenderQuads) -> None:

@@ -77,7 +77,7 @@ def _outlined(
     stroke = np.where(keep, stroke, 0.0)
     half = stroke / 2
     dashed = per_row(paint.dashed, count, np.bool_)
-    dash = np.where(dashed & (kind == OverlayKind.ROUNDED_RECT), stroke * _DASH_PERIOD, 0.0)
+    dash = np.where(dashed, stroke * _DASH_PERIOD, 0.0)
     fill = _color(paint.brush_r, paint.brush_g, paint.brush_b, paint.brush_a, count)
     pen = _color(paint.pen_r, paint.pen_g, paint.pen_b, 255, count)
     rows = np.flatnonzero(keep)

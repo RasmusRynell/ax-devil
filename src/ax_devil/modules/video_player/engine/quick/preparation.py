@@ -11,6 +11,8 @@ import numpy as np
 from numpy.typing import NDArray
 from PySide6.QtGui import QImage
 
+from ax_devil.modules.settings.logging_config import get_logger
+
 from ..drawing import LabelColumns, Paint, Points, concatenate_columns, concatenate_labels
 from ..render_context import RenderContext
 from .glyphs import AtlasFull, GlyphAtlas, glyph_atlas
@@ -80,7 +82,17 @@ class PreparedDrawing:
 
 
 EMPTY_DRAWING = PreparedDrawing()
+logger = get_logger(__name__)
+_warned_dropped_glyphs = False
 _EMPTY_QUADS = LabelQuads(np.zeros((0, 4), OVERLAY_VERTEX), 0)
+
+
+def _warn_dropped_glyphs(count: int) -> None:
+    """Log, once per process, that a frame's text needed more glyph space than the atlas page holds."""
+    global _warned_dropped_glyphs
+    if not _warned_dropped_glyphs:
+        _warned_dropped_glyphs = True
+        logger.warning(f"Glyph atlas page is full: {count} glyphs were left out of a frame")
 
 
 def _join(values: list[object]) -> object:
@@ -120,14 +132,15 @@ class DrawingBuffer:
                 text, label = self._text_and_labels(texts, labels, atlas)
             except AtlasFull:  # The page filled up: start a fresh one and lay out everything once more.
                 atlas.reset()
-                try:
-                    text, label = self._text_and_labels(texts, labels, atlas)
-                except AtlasFull:
-                    raise RuntimeError("Texts and labels need more glyph space than the atlas page holds") from None
+                atlas.drop_overflow = True  # Even a fresh page is too small: draw the glyphs that fit.
+                text, label = self._text_and_labels(texts, labels, atlas)
             self._counts["label"] += label.labels
             parts += [text.vertices.reshape(-1), label.vertices.reshape(-1)]
             drawn += text.labels + label.labels
             page = atlas.snapshot()
+            if atlas.dropped:
+                _warn_dropped_glyphs(atlas.dropped)
+                atlas.reset()  # Later frames must not reuse strings shaped with missing glyphs.
         vertices = np.concatenate(parts) if parts else np.zeros(0, OVERLAY_VERTEX)
         vertices.flags.writeable = False
         return PreparedDrawing(vertices, page, tuple(sorted(self._counts.items())), drawn)
