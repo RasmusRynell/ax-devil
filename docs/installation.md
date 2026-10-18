@@ -9,7 +9,8 @@ Install the native dependencies for running the desktop app:
 ```bash
 sudo apt-get update
 sudo apt-get install -y git pipx python3-venv ffmpeg libegl1-mesa-dev libgl1-mesa-dev \
-  libgles2-mesa-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1
+  libgles2-mesa-dev libgl1-mesa-dri libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+  libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
 pipx install uv
 pipx ensurepath
 ```
@@ -44,12 +45,12 @@ installed plugins follow on the next launch. See [plugin upgrades and recovery](
 ## Graphics startup problems
 
 Video and overlays are drawn on the GPU. Without a working GPU driver, Qt falls back to a mode that cannot draw
-overlays and the log says so. On Linux, launch with `LIBGL_ALWAYS_SOFTWARE=1` to render with Mesa on the CPU; on
-Windows, set `QSG_RHI_PREFER_SOFTWARE_RENDERER=1`.
+overlays and the log says so. On Linux, launch with `LIBGL_ALWAYS_SOFTWARE=1` to render with Mesa on the CPU; this
+needs the Mesa DRI driver (`libgl1-mesa-dri`, installed by the prerequisites above). On Windows, set
+`QSG_RHI_PREFER_SOFTWARE_RENDERER=1`.
 
 ## Developing
 
 `uv sync --locked` includes the development tools. Install optional Git hooks with `uv run pre-commit install`
 and fix formatting and lint issues with `make format`. See the [testing runbook](runbooks/testing.md) for checks,
 isolated GUI verification, and installation tests.
-GUI tests need `xvfb`, `xauth` and Mesa (`libgl1-mesa-dri`, or `xorg-server-xvfb` on Arch).
