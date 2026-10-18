@@ -125,7 +125,7 @@ class BenchmarkViewer(VideoFrameRenderer):
         self._stages = dict.fromkeys(self._stages, 0.0)
         frame = VideoFrameWithOverlays(
             VideoFrame(image, self._number / 30, self._number),
-            VideoOverlayData(generate, self._number / 30),
+            VideoOverlayData(generate),
         )
         self._prepared = False
         self._started = perf_counter()

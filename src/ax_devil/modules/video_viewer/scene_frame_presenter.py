@@ -29,9 +29,6 @@ class SceneFramePresentation:
     """Result of assembling one displayable frame."""
 
     display_frame: VideoFrameWithOverlays
-    selected_overlay: OverlayData | None
-    overlay_reused: bool
-    metadata: dict[str, Any]
     inspection: SceneInspectionUpdate
 
 
@@ -98,12 +95,10 @@ class SceneFramePresenter:
         """Prepare a frame and its selected overlay for display."""
         selected_overlay = candidate_overlay
         metadata = self._merge_overlay_metadata(selected_overlay, overlay_metadata)
-        overlay_reused = bool(metadata.get("overlay_reused", False))
 
         if overlay_policy is not None:
             selection = overlay_policy.select_overlay(frame_data.frame_id, candidate_overlay)
             selected_overlay = selection.overlay
-            overlay_reused = selection.reused
             metadata = self._merge_overlay_metadata(selected_overlay, selection.to_metadata(), overlay_metadata)
 
         cached_overlay = self._build_cached_overlay(selected_overlay)
@@ -111,9 +106,6 @@ class SceneFramePresenter:
 
         return SceneFramePresentation(
             display_frame=self._to_display_frame(frame_data, selected_overlay, cached_overlay, metadata),
-            selected_overlay=selected_overlay,
-            overlay_reused=overlay_reused,
-            metadata=metadata,
             inspection=SceneInspectionUpdate(
                 scene=filtered_scene,
                 frame_id=frame_data.frame_id,
@@ -142,7 +134,6 @@ class SceneFramePresenter:
             assert cached_overlay is not None, "Scene overlays require a cached projection"
             video_overlay = VideoOverlayData(
                 drawing_generator=cached_overlay.prepare_drawing,
-                timestamp=overlay_data.frame_id.timestamp_monotime_us / 1_000_000.0,
                 timestamp_monotime_us=overlay_data.frame_id.timestamp_monotime_us,
                 overlay_id=overlay_data.frame_id.sequence_id,
                 metadata=metadata,

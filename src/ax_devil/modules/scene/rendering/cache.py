@@ -101,7 +101,6 @@ class CachedSceneOverlay:
         self._hover_hits_by_id: dict[str, _IndexedHit] = {}
         self._render_key: RenderCacheKey | None = None
         self._drawing: PreparedDrawing | None = None
-        self.diagnostics: tuple[CatalogDiagnostic, ...] = ()
         self._reported_errors = reported_errors if reported_errors is not None else ReportedCatalogErrors()
         self._hover_hits_by_target: dict[str, HoverHit] = {}
 
@@ -120,7 +119,6 @@ class CachedSceneOverlay:
             diagnostics: list[CatalogDiagnostic] = []
             catalog.render_scene(filtered_scene, context, buffer, diagnostics=diagnostics)
             drawing = buffer.finish()
-            self.diagnostics = tuple(diagnostics)
             for diagnostic in diagnostics:
                 identity = (catalog.content_hash, diagnostic.code, diagnostic.location)
                 if self._reported_errors.is_new(identity):

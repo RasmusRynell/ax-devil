@@ -108,7 +108,7 @@ class Application:
         try:
             self.start()
             assert self.app is not None and self.logger is not None and self._shortcut_manager is not None
-            install_exception_handler(show_dialog=True)
+            install_exception_handler()
             _collect_garbage_on_gui_thread(self.app, self.logger)
 
             exit_code = int(self.app.exec() if self.app else 1)

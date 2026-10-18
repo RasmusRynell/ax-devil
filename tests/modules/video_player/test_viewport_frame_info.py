@@ -43,7 +43,6 @@ def _frame(*, overlays: VideoOverlayData | None) -> VideoFrameWithOverlays:
 def _overlay_data() -> VideoOverlayData:
     return VideoOverlayData(
         drawing_generator=lambda _context, _settings: PreparedDrawing(),
-        timestamp=1.0,
         timestamp_monotime_us=995_000.0,
         overlay_id=9,
         metadata={
@@ -101,7 +100,6 @@ def test_info_overlay_formats_exact_current_timestamps_only_when_visible(
     widget.hide()
     future_overlay = VideoOverlayData(
         drawing_generator=lambda _context, _settings: PreparedDrawing(),
-        timestamp=1.005,
         timestamp_monotime_us=1_005_000.0,
         overlay_id=10,
     )

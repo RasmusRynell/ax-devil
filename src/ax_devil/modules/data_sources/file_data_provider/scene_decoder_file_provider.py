@@ -440,14 +440,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         """Get the set of available frame timestamps (as monotime microseconds)."""
         return set(self._available_frame_ids)
 
-    def uses_sequence_lookup(self) -> bool:
-        """Return whether sequence identifiers participate in lookup."""
-        return self._sequence_lookup_enabled
-
-    def get_available_sequences(self) -> set[int]:
-        """Get the set of available overlay sequence identifiers."""
-        return set(self._sequence_to_timestamp)
-
     def get_total_frames(self) -> int:
         """Get the total number of frames available."""
         return len(self._available_frame_ids)
@@ -469,19 +461,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         if self._metadata is None:
             raise RuntimeError("Metadata not available - file may not have been processed")
         return self._metadata
-
-    def get_metadata_value(self, path: str) -> Any:
-        """Get a specific metadata value using dot notation."""
-        metadata = self.get_metadata()
-        value: Any = metadata
-        for key in path.split("."):
-            if hasattr(value, key):
-                value = getattr(value, key)
-            elif isinstance(value, dict) and key in value:
-                value = value[key]
-            else:
-                raise KeyError(f"Metadata path '{path}' not found")
-        return value
 
     def close(self) -> None:
         """Close the provider and clean up resources."""

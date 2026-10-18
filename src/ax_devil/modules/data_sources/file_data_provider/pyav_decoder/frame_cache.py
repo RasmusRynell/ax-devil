@@ -15,9 +15,7 @@ if TYPE_CHECKING:
 class FrameCache:
     """Thread-safe LRU cache for video frames."""
 
-    def __init__(
-        self, budget_bytes: int, *, identifier: str | None = None, pool: "FrameCachePool | None" = None
-    ) -> None:
+    def __init__(self, budget_bytes: int, *, pool: "FrameCachePool | None" = None) -> None:
         if budget_bytes < 0:
             raise ValueError("Frame cache byte budget cannot be negative")
         self.budget_bytes = budget_bytes if pool is None else 0
@@ -27,12 +25,9 @@ class FrameCache:
         self._cache: OrderedDict[int, CachedFrame] = OrderedDict()
         self._lock = threading.RLock()
         self._ranges: list[list[int]] = []
-        self.identifier = identifier or f"FrameCache-{id(self)}"
 
         self.logger = get_logger(__name__)
-        self.logger.debug(
-            f"FrameCache created: id={id(self)}, budget_bytes={budget_bytes}, identifier={self.identifier}"
-        )
+        self.logger.debug(f"FrameCache created: id={id(self)}, budget_bytes={budget_bytes}")
         if pool is not None:
             pool.register(self)
 

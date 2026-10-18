@@ -208,7 +208,7 @@ class LaneBenchmark(QWidget):
             lane.display_frame(
                 VideoFrameWithOverlays(
                     VideoFrame(image, self._round / 25, self._round),
-                    VideoOverlayData(self._timed_generator(overlay), self._round / 25, self._round),
+                    VideoOverlayData(self._timed_generator(overlay), overlay_id=self._round),
                 )
             )
 

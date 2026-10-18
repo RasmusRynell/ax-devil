@@ -168,9 +168,6 @@ class StreamMediaController:
             result.frame.data, candidate_overlay, overlay_policy=self._overlay_policy
         )
 
-        if presentation.overlay_reused:
-            overlay_opacity = presentation.metadata.get("overlay_opacity", 1.0)
-            self._logger.debug(f"Reusing cached overlay (opacity={overlay_opacity:.2f})")
         display_frame = presentation.display_frame
         self.frame_display.display_frame(display_frame)
         if self._frame_displayed is not None:

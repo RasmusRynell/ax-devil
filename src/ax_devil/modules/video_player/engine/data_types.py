@@ -57,7 +57,6 @@ class VideoOverlayData:
     """
 
     drawing_generator: DrawingGenerator
-    timestamp: float  # Overlay timestamp for synchronization
     overlay_id: int | None = None
     metadata: dict[str, Any] | None = None
     interaction_provider: HoverInteractionProvider | None = None

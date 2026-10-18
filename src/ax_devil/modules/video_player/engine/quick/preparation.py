@@ -144,7 +144,6 @@ class DrawingBuffer:
         self._texts: list[TextData] = []
         self._labels: list[LabelData] = []
         self._queued: defaultdict[tuple[str, int], list[tuple[tuple[object, ...], Paint]]] = defaultdict(list)
-        self._previous = EMPTY_DRAWING
         self._packer = GeometryPacker()
 
     def reset(self, settings: DrawingSettings) -> None:
@@ -163,7 +162,6 @@ class DrawingBuffer:
             tuple(self._texts),
             tuple(self._labels),
         )
-        self._previous = drawing
         return drawing
 
     def _flush(self) -> None:

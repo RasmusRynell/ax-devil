@@ -55,7 +55,7 @@ def _frame(provider: _Provider) -> VideoFrameWithOverlays:
     image = QImage(640, 480, QImage.Format.Format_RGB32)
     image.fill(0)
     overlays = VideoOverlayData(
-        drawing_generator=lambda context, _settings: PreparedDrawing(), timestamp=0.0, interaction_provider=provider
+        drawing_generator=lambda context, _settings: PreparedDrawing(), interaction_provider=provider
     )
     return VideoFrameWithOverlays(frame=VideoFrame(image=image, timestamp=0.0), overlays=overlays)
 
