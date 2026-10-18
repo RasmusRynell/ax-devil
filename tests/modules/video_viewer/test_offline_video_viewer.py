@@ -1247,8 +1247,8 @@ class TestOfflineVideoViewerWidget:
             fullscreen.exit()
             widget.cleanup()
 
-    def test_lane_names_stay_in_place_while_zoomed_and_hide_for_info_or_when_turned_off(self, qtbot: QtBot) -> None:
-        """Zooming keeps every lane name visible where it was; the info overlay or the preference hides them."""
+    def test_lane_names_follow_visible_video_and_hide_for_info_or_when_turned_off(self, qtbot: QtBot) -> None:
+        """Lane names sit in the visible video's top-left corner; the info overlay or the preference hides them."""
         playlist = PlaylistContent(
             display_name="multi", entries=(_lane_entry(_make_local_content("A"), _make_local_content("B")),)
         )
@@ -1265,17 +1265,24 @@ class TestOfflineVideoViewerWidget:
         widget.toggle_info_overlay()
         assert shown() == [True, True]
 
+        widget.resize(700, 1000)
+        widget.show()
+        qtbot.waitExposed(widget)
         first_viewport = displays[0].viewport
-        image = QImage(640, 480, QImage.Format.Format_RGB32)
+        image = QImage(1920, 1080, QImage.Format.Format_RGB32)
         image.fill(0)
         first_viewport.display_frame(VideoFrameWithOverlays(VideoFrame(image=image, timestamp=0.0), overlays=None))
         first_name = names[0]
         assert first_name is not None
-        unzoomed_position = first_name.pos()
-        first_viewport.wheelEvent(make_wheel_event(QPointF(100, 80), 120))
+        bars = first_viewport.visible_frame_rect()
+        assert bars is not None and bars.top() > 0
+        assert first_name.pos() == QPoint(round(bars.left()) + 10, round(bars.top()) + 10)
+        fill_zoom = first_viewport.height() / bars.height()
+        while first_viewport.viewport_state.zoom_level < fill_zoom:
+            first_viewport.wheelEvent(make_wheel_event(QPointF(100, 80), 120))
         assert first_viewport.viewport_state.zoom_level > 1.0
         assert shown() == [True, True]
-        assert first_name.pos() == unzoomed_position
+        assert first_name.pos() == QPoint(10, 10)
 
         settings = GlobalSettings()
         settings.set_overlay_enabled(OverlayPreference.LANE_NAMES, False)

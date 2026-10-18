@@ -25,7 +25,7 @@ from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.clipping import clipped_text_widgets
 from tests.helpers.workspace import FakePrompts, FakeResolutionContext
 
-_FIRST_FOOTER_BUTTON = {"live": "Add manually", "offline": "Add video", "workspace": None}
+_FIRST_FOOTER_BUTTON = {"live": "Add manually", "offline": None, "workspace": None}
 
 
 def _row(name: str, kind: str) -> WorkspaceBrowserRow:

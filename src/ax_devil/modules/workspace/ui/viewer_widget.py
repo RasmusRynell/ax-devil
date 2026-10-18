@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolBut
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -23,7 +23,7 @@ SHARED_ACTION_IDS = ("view.toggle_media_tools", "view.toggle_lane_fullscreen", "
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-    from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition
+    from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition, BookmarkTarget
     from ax_devil.modules.workspace.core.content import ConsiderationItemRef, OnScreenWorkspaceItem
 
 
@@ -129,29 +129,18 @@ class ViewerWidget(QFrame):
         # Scope styles to this widget and its header using object names
         self.setObjectName("ViewerWidgetRoot")
         self.setStyleSheet(
-            f"""
-            #ViewerWidgetRoot {{
+            """
+            #ViewerWidgetRoot {
                 border: 0px solid palette(Mid);
                 border-radius: 0px;
-            }}
+            }
 
             /* Draggable header bar */
-            #ViewerWidgetHeader {{
+            #ViewerWidgetHeader {
                 border-bottom: 0px;
                 border-radius: 0px;
-            }}
+            }
 
-            #ViewerWidgetHeader QToolButton {{
-                border: none;
-                border-radius: {Radius.CONTROL}px;
-                background-color: transparent;
-            }}
-            #ViewerWidgetHeader QToolButton:hover {{
-                background-color: palette(Midlight);
-            }}
-            #ViewerWidgetHeader QToolButton:pressed {{
-                background-color: palette(Mid);
-            }}
             """
         )
 
@@ -282,6 +271,13 @@ class ViewerWidget(QFrame):
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the frame on screen as a bookmark would mark it, or None when nothing on screen can be bookmarked."""
         return None
+
+    def bookmark_target(self) -> BookmarkTarget | None:
+        """Return the target of the entry shown, or None when nothing shown can be bookmarked."""
+        return None
+
+    def show_frame(self, frame: int) -> None:
+        """Show *frame* of the entry shown, paused, when supported by the hosted tool."""
 
     def refresh_item_consideration(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Refresh viewer state after an item consideration change.

@@ -482,6 +482,10 @@ class SplitView(QWidget):
             return
         self._focused_widget = widget
 
+    def focus_widget(self, widget: ViewerWidget) -> None:
+        """Make *widget* the focused pane."""
+        self._set_focused_widget(widget)
+
     def get_focused_widget(self) -> ViewerWidget | None:
         """Return the currently focused widget."""
         return self._focused_widget
@@ -572,7 +576,9 @@ class SplitView(QWidget):
         if isinstance(parent, QSplitter):
             index = parent.indexOf(old_child)
             prev_sizes = parent.sizes()
-            parent.replaceWidget(index, new_child)
+            # Not QSplitter.replaceWidget: PySide does not record the new parent, so freeing the old splitter
+            # below invalidates the Qt-created wrappers (such as QML items) inside the moved subtree.
+            parent.insertWidget(index, new_child)
             old_child.setParent(None)
             if prev_sizes and len(prev_sizes) == parent.count():
                 parent.setSizes(prev_sizes)

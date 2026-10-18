@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.section_caption import SectionCaption
-from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, category_color
 from ax_devil.modules.chrome.tokens import Height, Space
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
@@ -74,7 +74,7 @@ class EventPage(QWidget):
         self._dirty = True
         self.setStyleSheet(SEE_THROUGH)
 
-        self._go_button = SmallButton("Go to frame", kind=ButtonKind.PRIMARY, parent=self)
+        self._go_button = SmallButton("Go to frame", parent=self)
         self._go_button.clicked.connect(lambda: self.frameRequested.emit(self._event.frame_id.sequence_id))
         self._go_row = QWidget(self)
         go_layout = QHBoxLayout(self._go_row)

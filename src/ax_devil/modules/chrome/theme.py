@@ -15,7 +15,8 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.chrome.appearance import notify_text_size_applied, notify_text_size_changed
-from ax_devil.modules.chrome.tokens import Height, Space, body_px
+from ax_devil.modules.chrome.palette_css import palette_color_css
+from ax_devil.modules.chrome.tokens import Height, Radius, Space, body_px
 
 SEE_THROUGH = ".QWidget { background: transparent; }"
 """Stylesheet that lets a surface's own background through the plain containers inside it.
@@ -62,7 +63,7 @@ DARK_COLORS: dict[str, str] = {
     "scrollbarSlider.hoverBackground": "#ffffff40",
 }
 
-# Cool neutral surfaces separate chrome from content; blue marks actions and selection.
+# Cool neutral surfaces separate chrome from content; blue marks focus and selection.
 LIGHT_COLORS: dict[str, str] = {
     "background": "#f6f8fb",
     "background>list": "#eef2f6",
@@ -131,13 +132,50 @@ def apply_text_size(size_px: int) -> None:
 _TEXT_SIZE_RULES = "\n/* ax-devil: rules sized from the body text */\n"
 
 
+def _button_stylesheet(palette: QPalette) -> str:
+    """Keep action buttons quiet; reserve the accent for focus and checked state, including default buttons."""
+    hover = palette_color_css(palette, QPalette.ColorRole.Text, alpha=0.08)
+    pressed = palette_color_css(palette, QPalette.ColorRole.Text, alpha=0.14)
+    disabled = palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
+    return f"""
+        QPushButton, QPushButton:default, QPushButton:flat, QToolButton {{
+            color: palette(text);
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: {Radius.CONTROL}px;
+        }}
+        QPushButton, QPushButton:default, QPushButton:flat {{
+            padding: {Space.XS}px {Space.M}px;
+        }}
+        QPushButton:hover:enabled, QPushButton:default:hover:enabled, QToolButton:hover:enabled {{
+            background: {hover};
+        }}
+        QPushButton:checked:enabled, QPushButton:default:checked:enabled, QToolButton:checked:enabled {{
+            background: {hover};
+            color: palette(highlight);
+        }}
+        QPushButton:pressed:enabled, QPushButton:default:pressed:enabled, QToolButton:pressed:enabled {{
+            background: {pressed};
+        }}
+        QPushButton:focus:enabled, QToolButton:focus:enabled {{
+            border-color: palette(highlight);
+        }}
+        QPushButton:disabled, QPushButton:default:disabled, QPushButton:default:checked:disabled,
+        QToolButton:disabled, QToolButton:checked:disabled {{
+            color: {disabled};
+            background: transparent;
+            border-color: transparent;
+        }}
+    """
+
+
 def _install_stylesheet(app: QApplication) -> None:
     """Apply the theme engine's stylesheet plus rules that the engine sizes in fixed pixels."""
     theme_rules = app.styleSheet().split(_TEXT_SIZE_RULES)[0]
     # Group-box titles sit in the box's top margin; give them room for the current text size.
     title_room = body_px() // 2
     # QSS minimum heights describe the content box. Allow Qt to grow it for taller fonts or icons.
-    # Equal vertical padding aligns adjacent fields/buttons; default buttons have no border in QDarkTheme.
+    # Equal vertical padding and borders align adjacent fields and buttons, including default buttons.
     control_content = Height.CONTROL.px - 2 * Space.XS - 2
     # The theme draws 18 px check marks; larger text gets larger ones so they keep pace with their labels.
     indicator = max(18, round(body_px() * 1.2))
@@ -149,12 +187,8 @@ def _install_stylesheet(app: QApplication) -> None:
             padding-top: {Space.XS}px;
             padding-bottom: {Space.XS}px;
         }}
-        QPushButton:default, QPushButton:flat {{
-            padding-top: {Space.XS + 1}px;
-            padding-bottom: {Space.XS + 1}px;
-        }}
     """
-    app.setStyleSheet(f"{theme_rules}{_TEXT_SIZE_RULES}{sized_rules}")
+    app.setStyleSheet(f"{theme_rules}{_TEXT_SIZE_RULES}{sized_rules}{_button_stylesheet(app.palette())}")
 
 
 def apply_theme(mode: str) -> None:

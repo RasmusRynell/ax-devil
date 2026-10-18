@@ -22,7 +22,7 @@ from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
-from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent
 
@@ -88,7 +88,7 @@ class _BackButton(SmallButton):
     _full_text = "‹"  # Set before the base class builds the button, which already reports a font change.
 
     def __init__(self, parent: QWidget) -> None:
-        super().__init__("‹", kind=ButtonKind.OUTLINE, parent=parent)
+        super().__init__("‹", parent=parent)
         # A button that cannot shrink is laid out no narrower than its size hint, which follows the name.
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 

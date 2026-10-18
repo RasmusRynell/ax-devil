@@ -17,7 +17,7 @@ from ax_devil.modules.chrome.list_row import ListRow, muted_label
 from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
-from ax_devil.modules.chrome.small_button import ButtonKind, SmallButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.chrome.view_panel import ViewPanel
@@ -86,7 +86,7 @@ class PluginsView(ViewPanel):
         catalog: Callable[[], tuple[PluginGroup, ...]] = current_catalog,
         parent: QWidget | None = None,
     ) -> None:
-        self._add_button = SmallButton("Add", Icon.ADD, ButtonKind.PRIMARY)
+        self._add_button = SmallButton("Add", Icon.ADD)
         self._add_button.setToolTip("Add plugin")
         header_buttons = QWidget()
         header_buttons.setStyleSheet(SEE_THROUGH)

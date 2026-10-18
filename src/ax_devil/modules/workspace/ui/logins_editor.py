@@ -45,7 +45,11 @@ class LoginsEditor(QWidget):
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setStyleSheet(SEE_THROUGH)
+        # With no rule of its own the theme gives a scroll area a frame even when it has none; that eats into the list's
+        # fixed height and shows a stray scroll bar.
+        self._scroll.setStyleSheet(
+            f"QScrollArea {{ background: transparent; border: 0px; margin: 0px; }} {SEE_THROUGH}"
+        )
         # Deferred, so the rows have taken the new text size before the list measures them.
         follow_appearance(self._scroll, lambda: QTimer.singleShot(0, self, self._fit_rows))
         layout.addWidget(self._scroll)
@@ -88,11 +92,13 @@ class LoginsEditor(QWidget):
         username = QLineEdit(login.username, row)
         username.setPlaceholderText("Username")
         username.setAccessibleName("Username")
+        username.setCursorPosition(0)  # Show a long value from its start, not its end.
         password = QLineEdit(login.password, row)
         password.setPlaceholderText("Password")
         password.setAccessibleName("Password")
         password.textChanged.connect(lambda text: _show_password(password, text))
         _show_password(password, login.password)
+        password.setCursorPosition(0)
         for field in (username, password):
             TextRole.SMALL.apply(field)
             follow_appearance(field, lambda field=field: field.setFixedHeight(Height.ROW.px))

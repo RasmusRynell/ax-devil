@@ -239,6 +239,15 @@ class VideoFrameRenderer(QWidget):
             return None
         return self._base_rect(self._video_frame.frame.image.size())
 
+    def visible_frame_rect(self) -> QtCore.QRectF | None:
+        """Return the part of the zoomed and panned frame that is on screen, or None if none is."""
+        if self._video_frame is None:
+            return None
+        visible = self._aspect_respected_rect(self._video_frame.frame.image.size()).intersected(
+            QtCore.QRectF(self.rect())
+        )
+        return None if visible.isEmpty() else visible
+
     def _base_rect(self, img_size: QtCore.QSize) -> QtCore.QRectF:
         return self._base_rect_for_container(img_size, self.rect())
 

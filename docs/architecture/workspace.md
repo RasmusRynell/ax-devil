@@ -60,8 +60,9 @@ the Workspace, beside the items, so they are saved and make the Workspace modifi
   share one. A renamed or removed entry leaves its target orphaned. Orphaned targets and their bookmarks are kept;
   only removing their item removes them.
 - A viewer reports the frame on screen as a `BookmarkPosition`, and opening a bookmark opens the Content at its entry
-  and frame through `open_content(..., start_frame=)`, paused. Building the groups the Bookmarks view shows, their
-  order, orphan detection and filtering are pure functions in `bookmark_rows.py`.
+  and frame, paused, through `WorkspaceController.show_frame`, which reuses a viewer already showing that entry. Building
+  the groups the Bookmarks view shows, their order, orphan detection and filtering are pure functions in
+  `bookmark_rows.py`.
 - Only an item whose `bookmarkable` is true takes new bookmarks or review changes (never a live stream; see
   [Sidebar](../domain/invariants.md#sidebar)). Bookmarks a file already holds load whatever their item, so ones on
   an `UnreadableItem` are saved back.
@@ -98,7 +99,7 @@ the store; it asks the user through `WorkspacePrompts` and builds no widgets.
   the Workspace's own file. Saving or discarding deletes it; opening another Workspace or New, and quitting, keep it.
   Credentials are saved as entered, as in a workspace file.
 - A plain launch restores the newest recent workspace if it is a copy, as a modified Workspace with a banner offering
-  Keep, or Discard changes, which reopens the Workspace's own file or starts an empty one. Opening a copy from the recent workspaces
+  Keep, or Discard, which reopens the Workspace's own file or starts an empty one. Opening a copy from the recent workspaces
   restores it the same way. An instance locks its copy (`<copy>.lock`), so another running instance starts empty or,
   asked to open it, says it is open in another window.
 - Opened and new Workspaces list their items and open and connect nothing; only adding items opens a viewer.
