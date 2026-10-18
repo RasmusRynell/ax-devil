@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from weakref import ref
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors, SceneFilter
 from ax_devil.modules.scene.rendering.catalog import get_built_in_scene_render_catalog
@@ -131,8 +132,7 @@ class SceneFramePresenter:
     ) -> VideoFrameWithOverlays:
         video_frame = VideoFrame(
             image=frame_data.content,
-            timestamp=frame_data.frame_id.timestamp_monotime_us / 1_000_000.0,
-            timestamp_monotime_us=frame_data.frame_id.timestamp_monotime_us,
+            timestamp_us=frame_data.frame_id.timestamp_us,
             frame_id=frame_data.frame_id.sequence_id,
             metadata=frame_data.metadata,
         )
@@ -142,8 +142,7 @@ class SceneFramePresenter:
             assert cached_overlay is not None, "Scene overlays require a cached projection"
             video_overlay = VideoOverlayData(
                 drawing_generator=cached_overlay.prepare_drawing,
-                timestamp=overlay_data.frame_id.timestamp_monotime_us / 1_000_000.0,
-                timestamp_monotime_us=overlay_data.frame_id.timestamp_monotime_us,
+                timestamp_us=overlay_data.frame_id.timestamp_us,
                 overlay_id=overlay_data.frame_id.sequence_id,
                 metadata=metadata,
                 interaction_provider=cached_overlay,
@@ -209,8 +208,7 @@ def describe_frame_id(frame_id: FrameIdentifier | None) -> str:
     """Return a compact representation of a frame identifier for debug metrics."""
     if frame_id is None:
         return "None"
-    timestamp_s = frame_id.timestamp_monotime_us / 1_000_000.0
-    return f"#{frame_id.sequence_id} @ {timestamp_s:.3f}s"
+    return f"#{frame_id.sequence_id} @ {us_to_seconds(frame_id.timestamp_us):.3f}s"
 
 
 def describe_overlay_data(overlay: OverlayData | None, *, reused: bool = False) -> str:

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import traceback
-from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
+from ax_devil.core.time_units import us_to_datetime
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.filtering.session_filter import SessionFilter
@@ -133,12 +133,8 @@ class LiveStatusPanel(QWidget):
 
     def display_frame_status(self, frame: VideoFrameWithOverlays) -> None:
         """Update status labels from the displayed live frame."""
-        timestamp = frame.frame.timestamp
-        if timestamp is not None:
-            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-            self._timestamp_label.setText(f"{dt:%H:%M:%S}.{dt.microsecond:06d}")
-        else:
-            logger.warning("Frame has no timestamp")
+        dt = us_to_datetime(frame.frame.timestamp_us)
+        self._timestamp_label.setText(f"{dt:%H:%M:%S}.{dt.microsecond:06d}")
 
         frame_id = frame.frame.frame_id
         if frame_id is not None:

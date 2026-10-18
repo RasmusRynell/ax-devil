@@ -57,13 +57,13 @@ def _build_scene_with_entity() -> Scene:
 
 def _make_display_frame(image: QImage, scene: Scene | None = None) -> VideoFrameWithOverlays:
     """Build a VideoFrameWithOverlays for testing."""
-    video_frame = VideoFrame(image=image, timestamp=0.0, frame_id=0)
+    video_frame = VideoFrame(image=image, timestamp_us=0, frame_id=0)
     overlay = None
     if scene is not None:
         cached = CachedSceneOverlay(scene=scene)
         overlay = VideoOverlayData(
             drawing_generator=cached.prepare_drawing,
-            timestamp=0.0,
+            timestamp_us=0,
         )
     return VideoFrameWithOverlays(
         frame=video_frame,
@@ -96,10 +96,10 @@ def test_export_draws_scene_overlay_without_changing_the_source_frame(renderer: 
 
 
 def test_export_raises_when_overlay_generator_fails(renderer: FrameImageRenderer) -> None:
-    frame = VideoFrame(image=_make_solid_frame(), timestamp=0.0, frame_id=0)
+    frame = VideoFrame(image=_make_solid_frame(), timestamp_us=0, frame_id=0)
     display = VideoFrameWithOverlays(
         frame=frame,
-        overlays=VideoOverlayData(drawing_generator=_raise_render_error, timestamp=0.0),
+        overlays=VideoOverlayData(drawing_generator=_raise_render_error, timestamp_us=0),
     )
 
     with pytest.raises(ValueError, match="bad overlay"):

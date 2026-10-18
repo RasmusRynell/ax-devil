@@ -38,7 +38,7 @@ def _write(path: Path, frames: dict[str, object], version: str = "1.0") -> Path:
 
 
 def _load(provider: UVGVCMSceneDataProvider, frame: int) -> Scene:
-    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=frame, timestamp_monotime_us=frame * 40_000))
+    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=frame, timestamp_us=frame * 40_000))
     assert scene is not None
     return scene
 
@@ -117,7 +117,7 @@ def test_polygons_and_category_ids_decode_through_a_folder_pair_playlist(tmp_pat
     factory = get_file_decoder_factory(overlay.source_spec.handler_type)
     provider = factory(annotation_path)
     try:
-        scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=0, timestamp_monotime_us=0))
+        scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=0, timestamp_us=0))
         assert scene is not None
         observation = scene.entities[EntityId("3")].observations[0]
         points = observation.geometry.polygon_points()

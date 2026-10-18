@@ -503,9 +503,7 @@ def _with_merge_and_split(panel: MediaToolsPanel) -> FrameEvent:
     times = history.objects[0].frame_times_us
 
     def at(frame: int, kind: str, label: str, *entity_ids: str) -> FrameEvent:
-        return FrameEvent(
-            FrameIdentifier(sequence_id=frame, timestamp_monotime_us=times[frame]), kind, label, entity_ids
-        )
+        return FrameEvent(FrameIdentifier(sequence_id=frame, timestamp_us=times[frame]), kind, label, entity_ids)
 
     rename = next(event for event in history.events if event.kind == "Rename")
     merge = at(rename.frame_id.sequence_id, "Merge", "Merge 1, 7 → 1", "1", "7")

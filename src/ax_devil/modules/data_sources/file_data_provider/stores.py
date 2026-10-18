@@ -7,7 +7,7 @@ import os
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol
 
@@ -149,7 +149,7 @@ def build_default_metadata_payload(
         "total_lines": total_lines,
         _WARNINGS_KEY: [warning.to_metadata() for warning in warnings],
         "artifact_identity": artifact_identity.to_metadata(),
-        "processed_at": datetime.now().isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
         "sequence_lookup_enabled": sequence_lookup_enabled,
         "timestamp_to_sequence": {str(ts): seq for ts, seq in timestamp_to_sequence.items()},
     }

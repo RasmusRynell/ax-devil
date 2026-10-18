@@ -11,6 +11,7 @@ from threading import RLock
 from time import perf_counter
 from typing import TYPE_CHECKING
 
+from ax_devil.core.time_units import seconds_to_ms, us_to_seconds
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled, register_metrics_listener
 from ax_devil.modules.diagnostics.metrics_store import SourceSnapshot, get_metrics_store
 
@@ -88,13 +89,13 @@ class FrameIdentity:
     """Source identity; media timestamps are never interpreted as wall-clock latency."""
 
     sequence: int | None
-    timestamp_us: float
+    timestamp_us: int
 
     @property
     def label(self) -> str:
         """Return a readable source frame identity."""
         sequence = "?" if self.sequence is None else str(self.sequence)
-        return f"#{sequence} · {self.timestamp_us / 1_000_000:.6f} s"
+        return f"#{sequence} · {us_to_seconds(self.timestamp_us):.6f} s"
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,13 +309,13 @@ class RenderMetricsStore:
                 return
             delay = None
             if viewer.submitted_at is not None and viewer.submitted == sample.frame:
-                delay = max(0.0, (paint_started_at - viewer.submitted_at) * 1000)
+                delay = max(0.0, seconds_to_ms(paint_started_at - viewer.submitted_at))
                 viewer.submitted_at = None
             new_frame = viewer.last is None or viewer.last.sample.frame != sample.frame
             interval = None
             if new_frame:
                 if viewer.last_new_frame_at is not None:
-                    interval = max(0.0, (sample.completed_at - viewer.last_new_frame_at) * 1000)
+                    interval = max(0.0, seconds_to_ms(sample.completed_at - viewer.last_new_frame_at))
                 viewer.last_new_frame_at = sample.completed_at
             sources = get_metrics_store().snapshot(viewer.source_ids) if viewer.source_ids else {}
             observation = PaintObservation(

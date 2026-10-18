@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Protocol
 
+from ax_devil.core.time_units import seconds_to_ms
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
 from ax_devil.modules.scene.inspection import EntitySummary, entity_summary
 from ax_devil.modules.scene.model import Entity, Scene
@@ -154,7 +155,7 @@ class CachedSceneOverlay:
                 if self._reported_errors.is_new(identity):
                     logger.warning(f"Render catalog {catalog.catalog_id}: {diagnostic.location}: {diagnostic.message}")
             if capture:
-                generation_time_ms = (perf_counter() - start) * 1000
+                generation_time_ms = seconds_to_ms(perf_counter() - start)
             self._render_key = render_key
             self._drawing = drawing
         if capture:
@@ -218,7 +219,7 @@ class CachedSceneOverlay:
             except RuntimeError:
                 logger.debug("Scene filtering failed during drawing preparation", exc_info=True)
 
-        self._pending_filter_time_ms = (perf_counter() - start) * 1000 if capture else None
+        self._pending_filter_time_ms = seconds_to_ms(perf_counter() - start) if capture else None
         self._filtered_key = key
         self._filtered_scene = filtered_scene
         return filtered_scene

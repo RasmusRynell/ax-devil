@@ -36,10 +36,10 @@ def _make_display_frame() -> VideoFrameWithOverlays:
     image.fill(0)
     overlays = VideoOverlayData(
         drawing_generator=lambda _context, _settings: PreparedDrawing(),
-        timestamp=10.0,
+        timestamp_us=10_000_000,
     )
     return VideoFrameWithOverlays(
-        frame=VideoFrame(image=image, timestamp=10.25, frame_id=42),
+        frame=VideoFrame(image=image, timestamp_us=10_250_000, frame_id=42),
         overlays=overlays,
     )
 

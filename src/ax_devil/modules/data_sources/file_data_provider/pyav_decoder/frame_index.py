@@ -12,6 +12,7 @@ import av
 
 from ax_devil.core.atomic_file import write_atomically
 from ax_devil.core.source_paths import Fingerprint
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import VideoOpenConfig
 from ax_devil.modules.data_sources.timing_reports import VideoTimingProfile
 from ax_devil.modules.settings.logging_config import get_logger
@@ -235,24 +236,27 @@ class FrameIndex:
         self._validate_frame_index(frame_index)
         return self.pts_list[frame_index]
 
-    def pts_to_seconds(self, pts: int) -> float:
-        """Convert raw PTS to seconds using the video stream time base."""
+    def _pts_to_exact_seconds(self, pts: int) -> Fraction:
         if self.time_base is None:
             raise ValueError(f"Frame index has no time base for {self.video_path}")
-        return float(pts * self.time_base)
+        return pts * self.time_base
 
-    def get_frame_time_us(self, frame_index: int) -> float:
+    def pts_to_seconds(self, pts: int) -> float:
+        """Convert raw PTS to seconds using the video stream time base."""
+        return float(self._pts_to_exact_seconds(pts))
+
+    def get_frame_time_us(self, frame_index: int) -> int:
         """Get frame presentation time in microseconds since the first indexed frame."""
         pts = self.get_frame_pts(frame_index)
         first_pts = self.pts_list[0]
-        return self.pts_to_seconds(pts - first_pts) * 1_000_000.0
+        return seconds_to_us(self._pts_to_exact_seconds(pts - first_pts))
 
     def get_frame_times_us(self) -> tuple[int, ...]:
         """Return all frame presentation times in microseconds since the first indexed frame."""
         if not self.pts_list:
             return ()
         first_pts = self.pts_list[0]
-        return tuple(int(self.pts_to_seconds(pts - first_pts) * 1_000_000.0) for pts in self.pts_list)
+        return tuple(seconds_to_us(self._pts_to_exact_seconds(pts - first_pts)) for pts in self.pts_list)
 
     def get_frame_period_after_s(self, frame_index: int) -> float | None:
         """Get presentation delay from this frame to the next frame, or nearest valid fallback."""
@@ -296,7 +300,7 @@ class FrameIndex:
         for frame_index in range(max(0, total_frames - 1)):
             period_s = self.get_frame_period_after_s(frame_index)
             if period_s is not None and period_s > 0:
-                periods_us.append(round(period_s * 1_000_000.0))
+                periods_us.append(seconds_to_us(period_s))
 
         return VideoTimingProfile(
             total_frames=total_frames,

@@ -1,6 +1,7 @@
 """Byte reservations preserve frame delivery and useful prefetch under small budgets."""
 
 from collections.abc import Sequence
+from fractions import Fraction
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +9,7 @@ import av
 import numpy as np
 import pytest
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.cached_frame import CachedFrame
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache import (
     FrameCache,
@@ -73,7 +75,7 @@ def test_small_budget_forward_backward_and_prefetch(tmp_path: Path, retained_fra
                 assert frame is not None
                 np.testing.assert_array_equal(frame.pixels, reference[index])
                 assert frame.frame_index == index
-                assert frame.timestamp_us == pytest.approx(index * 1_000_000 / 30)
+                assert frame.timestamp_us == seconds_to_us(Fraction(index, 30))
                 drain_prefetch(worker, limit=51)
                 if retained_frames:
                     assert worker._cache.contains(index)

@@ -111,7 +111,7 @@ def test_frames_and_optional_overlays_use_one_session(qtbot: QtBot, sessions: li
         pixels.fill(0)
         assert frames[0].content.pixelColor(0, 0).red() == 100
         assert frames[0].frame_id.sequence_id == 1
-        assert frames[0].frame_id.timestamp_monotime_us == pytest.approx(CAPTURE_NS / 1000, rel=0, abs=1)
+        assert frames[0].frame_id.timestamp_us == pytest.approx(CAPTURE_NS / 1000, rel=0, abs=1)
         assert overlays == []
         assert session.config.metadata is embedded
         if embedded:
@@ -119,7 +119,7 @@ def test_frames_and_optional_overlays_use_one_session(qtbot: QtBot, sessions: li
             session.on_metadata(SceneMetadata("bad", 0, None))
             session.on_metadata(SceneMetadata("valid", 0, None))
             qtbot.waitUntil(lambda: len(overlays) == 1)
-            assert overlays[0].frame_id.timestamp_monotime_us == 1752336601000000
+            assert overlays[0].frame_id.timestamp_us == 1752336601000000
             assert len(frames) == 1
         else:
             assert session.on_metadata is None
@@ -142,7 +142,7 @@ def test_frames_without_capture_time_are_dropped(qtbot: QtBot, sessions: list[_S
         sessions[0].on_video(_sample(np.zeros((2, 2, 4), dtype=np.uint8), capture_ns=None))
         sessions[0].on_video(_sample(np.zeros((2, 2, 4), dtype=np.uint8)))
         qtbot.waitUntil(lambda: len(frames) == 1)
-        assert frames[0].frame_id.timestamp_monotime_us == pytest.approx(CAPTURE_NS / 1000, rel=0, abs=1)
+        assert frames[0].frame_id.timestamp_us == pytest.approx(CAPTURE_NS / 1000, rel=0, abs=1)
     finally:
         source.stop()
         source.deleteLater()

@@ -139,8 +139,8 @@ class _TrackedFrameSource(SeekableFrameSource):
     def stop(self) -> None:
         self.stop_calls += 1
 
-    def wait(self, timeout: int = 2000) -> bool:
-        self.wait_timeouts.append(timeout)
+    def wait(self, timeout_ms: int = 2000) -> bool:
+        self.wait_timeouts.append(timeout_ms)
         return True
 
     def deleteLater(self) -> None:  # noqa: N802
@@ -310,7 +310,7 @@ class _SpecFileOverlaySource(_TrackedOverlaySource):
             raise RuntimeError(self.failure)
 
         def frame_id(index: int) -> FrameIdentifier:
-            return FrameIdentifier(sequence_id=index, timestamp_monotime_us=video_timeline.timestamps_us[index])
+            return FrameIdentifier(sequence_id=index, timestamp_us=video_timeline.timestamps_us[index])
 
         settings = ["no fallback"] if policy.effective_tolerance_us == 0 else []
         settings += [] if allow_previous else ["no sticky"]
@@ -391,7 +391,7 @@ def _assert_overlay_source_disposed(source: _TrackedOverlaySource) -> None:
 def _frame_data(frame_number: int) -> FrameData:
     """Build a minimal frame payload for viewer runtime tests."""
 
-    frame_id = FrameIdentifier(sequence_id=frame_number, timestamp_monotime_us=float(frame_number * 1000))
+    frame_id = FrameIdentifier(sequence_id=frame_number, timestamp_us=frame_number * 1000)
     return FrameData(content=QImage(2, 2, QImage.Format.Format_RGB32), frame_id=frame_id, source_id="video")
 
 
@@ -1248,7 +1248,7 @@ class TestOfflineVideoViewerWidget:
         first, second = _displays(widget)
         image = QImage(1920, 1080, QImage.Format.Format_RGB32)
         image.fill(0)
-        frame = VideoFrameWithOverlays(VideoFrame(image, 0.0, 0), None)
+        frame = VideoFrameWithOverlays(VideoFrame(image, 0, 0), None)
         first.display_frame(frame)
         second.display_frame(frame)
         fullscreen = LaneFullscreenController(widget, [])
@@ -1306,7 +1306,7 @@ class TestOfflineVideoViewerWidget:
         first_viewport = displays[0].viewport
         image = QImage(1920, 1080, QImage.Format.Format_RGB32)
         image.fill(0)
-        first_viewport.display_frame(VideoFrameWithOverlays(VideoFrame(image=image, timestamp=0.0), overlays=None))
+        first_viewport.display_frame(VideoFrameWithOverlays(VideoFrame(image=image, timestamp_us=0), overlays=None))
         first_name = names[0]
         assert first_name is not None
         bars = first_viewport.visible_frame_rect()

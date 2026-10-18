@@ -10,6 +10,7 @@ from typing import Literal
 
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.load_warning import LoadWarning
+from ax_devil.core.time_units import us_to_ms, us_to_seconds
 
 _GOOD_ALIGNMENT_RATIO = 0.8
 _MIN_TIMELINE_END_WARNING_US = 1_000_000
@@ -132,7 +133,7 @@ class VideoTimingProfile:
         """Return compact text for the dominant frame periods."""
         if not self.period_modes_us:
             return "unknown"
-        return ", ".join(f"{period_us / 1000.0:g} ms" for period_us, _count in self.period_modes_us[:3])
+        return ", ".join(f"{us_to_ms(period_us):g} ms" for period_us, _count in self.period_modes_us[:3])
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +207,7 @@ class OverlayAlignmentReport:
     @property
     def tolerance_text(self) -> str:
         """Return compact text for the configured timestamp tolerance."""
-        return f"{self.tolerance_us / 1000.0:g} ms"
+        return f"{us_to_ms(self.tolerance_us):g} ms"
 
     @property
     def unmatched_overlay_frames(self) -> int:
@@ -226,7 +227,7 @@ class OverlayAlignmentReport:
         last_overlay_timestamp_offset_us = self.last_overlay_timestamp_offset_us
         if self.has_suspicious_last_overlay_timestamp and last_overlay_timestamp_offset_us is not None:
             direction = "after" if last_overlay_timestamp_offset_us > 0 else "before"
-            difference_text = f"{abs(last_overlay_timestamp_offset_us) / 1_000_000.0:g} s"
+            difference_text = f"{us_to_seconds(abs(last_overlay_timestamp_offset_us)):g} s"
             issues.append(
                 f"Last overlay sample is {difference_text} {direction} the video timeline end. "
                 "This may be intentional partial coverage, or the clocks may differ "
@@ -239,7 +240,7 @@ class OverlayAlignmentReport:
         if self.total_video_frames <= 0:
             issues.append("No decoded video frame timestamps are available.")
         elif self.max_abs_nearest_offset_us is not None and self.max_abs_nearest_offset_us > self.tolerance_us:
-            worst_offset_text = f"{self.max_abs_nearest_offset_us / 1000.0:g} ms"
+            worst_offset_text = f"{us_to_ms(self.max_abs_nearest_offset_us):g} ms"
             issues.append(
                 f"{unmatched} sample(s) up to {worst_offset_text} from the nearest frame, "
                 f"beyond {self.tolerance_text} tolerance."

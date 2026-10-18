@@ -150,7 +150,7 @@ def test_mqtt_delivery_recovers_after_malformed_payload(qtbot: QtBot, broker: _B
     assert len(overlays) == 1
     overlay = overlays[0]
     assert overlay.source_id == "test-camera"
-    assert overlay.frame_id.timestamp_monotime_us == 12_500_000
+    assert overlay.frame_id.timestamp_us == 12_500_000
     assert overlay.metadata == {"mqtt_message": message}
     assert overlay.content.time_slice.start == datetime(1970, 1, 1, 0, 0, 12, 500_000, tzinfo=timezone.utc)
     assert set(overlay.content.entities) == {EntityId("42")}

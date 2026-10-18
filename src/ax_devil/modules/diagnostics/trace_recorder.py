@@ -11,6 +11,7 @@ from types import FrameType
 from typing import BinaryIO
 
 from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.time_units import seconds_to_ms
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -19,7 +20,7 @@ logger = get_logger(__name__)
 class TraceRecorder:
     """Sample all Python threads at a target 100 Hz without overwriting old samples."""
 
-    interval_seconds = 0.01
+    interval_s = 0.01
 
     def __init__(self) -> None:
         self.recording = False
@@ -76,7 +77,7 @@ class TraceRecorder:
 
     def _sample(self) -> None:
         assert self._spool is not None
-        timestamp_ms = (monotonic() - self._started_at) * 1000
+        timestamp_ms = seconds_to_ms(monotonic() - self._started_at)
         threads = {thread.ident: thread for thread in enumerate_threads()}
         frames = sys._current_frames()
         self._active_threads = {key: value for key, value in self._active_threads.items() if key in frames}
@@ -105,11 +106,11 @@ class TraceRecorder:
             deadline = monotonic()
             while not self._stop.is_set():
                 self._sample()
-                deadline += self.interval_seconds
+                deadline += self.interval_s
                 delay = deadline - monotonic()
                 if delay < 0:
-                    deadline = monotonic() + self.interval_seconds
-                    delay = self.interval_seconds
+                    deadline = monotonic() + self.interval_s
+                    delay = self.interval_s
                 self._stop.wait(delay)
         except Exception as error:
             self.failure = str(error)
@@ -135,8 +136,8 @@ class TraceRecorder:
         metadata = {
             "format": "ax-devil-stack-samples",
             "version": 1,
-            "interval_ms": self.interval_seconds * 1000,
-            "duration_ms": (self._ended_at - self._started_at) * 1000,
+            "interval_ms": seconds_to_ms(self.interval_s),
+            "duration_ms": seconds_to_ms(self._ended_at - self._started_at),
             "failure": self.failure,
             "frames": list(self._frames),
             "stacks": list(self._stacks),

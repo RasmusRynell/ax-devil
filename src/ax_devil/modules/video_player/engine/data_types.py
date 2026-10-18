@@ -23,10 +23,9 @@ class VideoFrame:
     """
 
     image: QImage
-    timestamp: float  # Frame timestamp for synchronization
+    timestamp_us: int  # Frame time on the media clock, in microseconds
     frame_id: int | None = None
     metadata: dict[str, Any] | None = None
-    timestamp_monotime_us: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,12 +87,11 @@ class VideoOverlayData:
     """
 
     drawing_generator: DrawingGenerator
-    timestamp: float  # Overlay timestamp for synchronization
+    timestamp_us: int  # Overlay time on the media clock, in microseconds
     overlay_id: int | None = None
     metadata: dict[str, Any] | None = None
     interaction_provider: HoverInteractionProvider | None = None
     metrics_provider: DrawingPreparationMetricsProvider | None = None
-    timestamp_monotime_us: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

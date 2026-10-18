@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QHideEvent, QMouseEvent, QResizeEvent, QShowEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.core.time_units import seconds_to_ms
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
 from ax_devil.modules.diagnostics.render_metrics import FrameIdentity, PaintSample, get_render_metrics_store
 from ax_devil.modules.settings.logging_config import get_logger
@@ -178,19 +179,12 @@ class VideoFrameRenderer(QWidget):
             PaintSample(
                 completed_at=completed_at,
                 frame=self._frame_identity(self._video_frame),
-                overlay=FrameIdentity(
-                    overlay.overlay_id,
-                    overlay.timestamp_monotime_us
-                    if overlay.timestamp_monotime_us is not None
-                    else overlay.timestamp * 1_000_000,
-                )
-                if overlay
-                else None,
+                overlay=FrameIdentity(overlay.overlay_id, overlay.timestamp_us) if overlay else None,
                 overlay_reused=bool(overlay and overlay.metadata and overlay.metadata.get("overlay_reused", False)),
-                paint_ms=(completed_at - start_time) * 1000,
-                image_ms=(compose_start - image_start) * 1000,
-                compose_ms=(draw_start - compose_start) * 1000,
-                draw_ms=(draw_end - draw_start) * 1000,
+                paint_ms=seconds_to_ms(completed_at - start_time),
+                image_ms=seconds_to_ms(compose_start - image_start),
+                compose_ms=seconds_to_ms(draw_start - compose_start),
+                draw_ms=seconds_to_ms(draw_end - draw_start),
                 primitive_count=primitive_count,
                 drawn_primitive_count=submitted_count if opacity > 0.0 else 0,
                 generation=provider.latest_drawing_preparation_metrics() if provider else None,
@@ -212,8 +206,7 @@ class VideoFrameRenderer(QWidget):
     @staticmethod
     def _frame_identity(frame: VideoFrameWithOverlays) -> FrameIdentity:
         video = frame.frame
-        timestamp = video.timestamp_monotime_us
-        return FrameIdentity(video.frame_id, timestamp if timestamp is not None else video.timestamp * 1_000_000)
+        return FrameIdentity(video.frame_id, video.timestamp_us)
 
     def cleanup(self) -> None:
         """Release the submitted frame, native resources, and rendering diagnostics."""

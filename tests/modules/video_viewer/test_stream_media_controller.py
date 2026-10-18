@@ -13,6 +13,7 @@ from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.data_sources.base import FrameSource, OverlaySource
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder
 from ax_devil.modules.filtering import FilterConfig, build_default_filter_config
@@ -64,7 +65,7 @@ class _Transport(FrameSource, OverlaySource):
     def stop(self) -> None:
         self.stops += 1
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         return True
 
     def deleteLater(self) -> None:
@@ -166,7 +167,7 @@ def _live_content(overlay: OverlaySpec | None = None, name: str = "cam-1") -> Li
 
 
 def _frame_id(seconds: int) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=seconds, timestamp_monotime_us=seconds * 1_000_000.0)
+    return FrameIdentifier(sequence_id=seconds, timestamp_us=seconds_to_us(seconds))
 
 
 def _frame(seconds: int) -> FrameData:
@@ -181,8 +182,8 @@ def _overlay(seconds: int) -> OverlayData:
 
 def _sync_result(seconds: int = 7) -> SyncResult[FrameData, OverlayData]:
     return SyncResult(
-        frame=TimestampedData(data=_frame(seconds), capture_time=seconds, arrival_time=seconds),
-        overlay=TimestampedData(data=_overlay(seconds), capture_time=seconds, arrival_time=seconds),
+        frame=TimestampedData(data=_frame(seconds), capture_time_us=seconds_to_us(seconds), arrival_at=seconds),
+        overlay=TimestampedData(data=_overlay(seconds), capture_time_us=seconds_to_us(seconds), arrival_at=seconds),
     )
 
 

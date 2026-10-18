@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ax_devil.core.time_units import seconds_to_ms
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Height, Space
 from ax_devil.modules.diagnostics.paint_inspection import PaintInspection
@@ -180,7 +181,7 @@ class PaintInspector(QWidget):
         if item.source_context_at is None:
             self.source_note.setText("No source observations were captured for this paint.")
         else:
-            offset = (item.source_context_at - item.sample.completed_at) * 1000
+            offset = seconds_to_ms(item.source_context_at - item.sample.completed_at)
             self.source_note.setText(
                 f"Historical source context captured {offset:+.3f} ms from paint completion. "
                 "Fields can belong to different frames; correlation is not a proven cause."
@@ -189,7 +190,7 @@ class PaintInspector(QWidget):
             root = QTreeWidgetItem(self.sources, [source.label])
             root.setExpanded(True)
             for key, observation in sorted(source.observations.items()):
-                age = (observation.observed_at - item.sample.completed_at) * 1000
+                age = seconds_to_ms(observation.observed_at - item.sample.completed_at)
                 value = "—" if observation.value is None else str(observation.value)
                 QTreeWidgetItem(root, [key, value, f"{age:+.3f} ms"])
 
@@ -209,7 +210,7 @@ class PaintInspector(QWidget):
         lines.append(self.source_note.text())
         for source in inspection.observation.sources.values():
             for key, value in sorted(source.observations.items()):
-                relative_ms = (value.observed_at - inspection.observation.sample.completed_at) * 1000
+                relative_ms = seconds_to_ms(value.observed_at - inspection.observation.sample.completed_at)
                 lines.append(f"{source.label} / {key}: {value.value} ({relative_ms:+.3f} ms from paint)")
         QApplication.clipboard().setText("\n".join(lines))
 
