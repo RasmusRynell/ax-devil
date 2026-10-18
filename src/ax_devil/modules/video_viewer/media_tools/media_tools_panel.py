@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from enum import Enum
 from html import escape
+from time import monotonic
 from typing import Any
 
-from PySide6.QtCore import Signal
-from PySide6.QtGui import QAction, QShowEvent
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtGui import QAction, QHideEvent, QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -43,6 +44,8 @@ from .overlay_persistence_controls import OverlayPersistenceControls
 from .overlay_visibility_widget import OverlayVisibilityWidget
 from .page_stack import EventPageKey, ObjectPageKey, PageKey, PageStack
 from .scene_render_catalog_selector import SceneRenderCatalogSelector
+
+_INSPECTION_INTERVAL_S = 0.1
 
 _HISTORY_NOTICE_MARGINS = (0, Space.M, Space.M, 0)
 _MENU_CONTENT_MARGINS = (Space.M, Space.M, Space.M, Space.M)
@@ -157,6 +160,12 @@ class MediaToolsPanel(QWidget):
         """
         super().__init__(parent)
 
+        self._playing = False
+        self._last_refresh = float("-inf")
+        self._idle_refresh = QTimer(self)
+        self._idle_refresh.setSingleShot(True)
+        self._idle_refresh.setInterval(round(_INSPECTION_INTERVAL_S * 1000))
+        self._idle_refresh.timeout.connect(self._refresh_visible)
         self._render_catalog_selection = render_catalog_selection
         self._last_scene: Scene | None = None
         self._last_frame_id: FrameIdentifier | None = None
@@ -290,6 +299,7 @@ class MediaToolsPanel(QWidget):
 
     def cleanup(self) -> None:
         """Disconnect persistent selection observers when the owning view closes."""
+        self._idle_refresh.stop()
         self._visibility_widget.cleanup()
 
     @property
@@ -319,6 +329,8 @@ class MediaToolsPanel(QWidget):
 
     def clear(self) -> None:
         """Clear the frame-following tools."""
+        self._idle_refresh.stop()
+        self._last_refresh = float("-inf")
         frame_id = self._last_frame_id
         self._last_scene, self._last_frame_id, self._refilter = None, None, None
         self._objects.clear()
@@ -335,15 +347,44 @@ class MediaToolsPanel(QWidget):
     ) -> None:
         """Forward the Scene shown for a displayed frame to every page that follows it.
 
-        Repeating the previous frame and Scene changes nothing, so it is dropped. Each page defers its own work while
-        hidden.
+        Pages retain only the latest snapshot; live events are recorded before visual updates are coalesced.
+        During playback the visible page refreshes at most ten times a second, on an arriving frame. A trailing
+        single-shot catches a stalled source; each arrival restarts it, so it never competes with steady playback.
         """
         if scene is self._last_scene and frame_id == self._last_frame_id:
             return
         self._last_scene, self._last_frame_id, self._refilter = scene, frame_id, refilter
-        self._objects.update_scene(scene, frame_id.sequence_id if frame_id is not None else None)
-        self._events.update_scene(scene, frame_id, metadata)
-        self._follow_frame()
+        self._objects.update_scene(scene, frame_id.sequence_id if frame_id is not None else None, defer=True)
+        self._events.update_scene(scene, frame_id, metadata, defer=True)
+        self._follow_frame(defer=True)
+        if not self.isVisible():
+            return
+        if not self._playing or monotonic() - self._last_refresh >= _INSPECTION_INTERVAL_S:
+            self._refresh_visible()
+        else:
+            self._idle_refresh.start()
+
+    def set_playing(self, playing: bool) -> None:
+        """Allow skipped inspection states during playback; pausing immediately shows the displayed frame."""
+        self._playing = playing
+        if not playing:
+            self.refresh_scene()
+
+    def refresh_scene(self) -> None:
+        """Catch up after an inspection action and let the next presented frame through immediately (e.g. a seek)."""
+        self._refresh_visible()
+        self._last_refresh = float("-inf")
+
+    def _refresh_visible(self) -> None:
+        self._idle_refresh.stop()
+        if not self.isVisible():
+            return
+        self._last_refresh = monotonic()
+        self._objects.refresh()
+        self._events.refresh()
+        if self._followed is not None:
+            self._followed.refresh()
+        self._refresh_event_steps()
 
     def set_scene_history(self, history: SceneHistory) -> None:
         """Replace the history after a change in how overlay samples are selected."""
@@ -392,6 +433,12 @@ class MediaToolsPanel(QWidget):
         super().showEvent(event)
         self._show_pending_object()
         self._stack.refresh_steps()
+        self.refresh_scene()
+
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
+        """Stop the idle refresh while hidden; pages keep the latest snapshot for their next showing."""
+        self._idle_refresh.stop()
+        super().hideEvent(event)
 
     def _refresh_event_steps(self) -> None:
         """Enable ▲▼ of an open event page again when live events rotate under it, even at a constant count.
@@ -453,9 +500,9 @@ class MediaToolsPanel(QWidget):
             self._followed = None
         self.objectSelected.emit(key.entity_id if isinstance(key, ObjectPageKey) else None)
 
-    def _follow_frame(self) -> None:
+    def _follow_frame(self, *, defer: bool = False) -> None:
         if self._followed is not None and self._last_frame_id is not None:
-            self._followed.update_scene(self._last_scene, self._last_frame_id.sequence_id)
+            self._followed.update_scene(self._last_scene, self._last_frame_id.sequence_id, defer=defer)
 
     def _set_tab_count(self, index: int, section: MediaToolsSection, count: int) -> None:
         self._tabs.setTabText(index, f"{section.title} {count}")

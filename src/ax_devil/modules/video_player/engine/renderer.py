@@ -7,7 +7,7 @@ from time import perf_counter
 
 from PySide6 import QtCore
 from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QCursor, QMouseEvent, QResizeEvent, QWheelEvent
+from PySide6.QtGui import QCursor, QHideEvent, QMouseEvent, QResizeEvent, QShowEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
@@ -86,9 +86,7 @@ class VideoFrameRenderer(QWidget):
     def display_frame(self, video_frame: VideoFrameWithOverlays) -> None:
         get_render_metrics_store().submit(self._metrics_instance_id, self._frame_identity(video_frame))
         self._video_frame = video_frame
-        self._refresh_selected_bounds()
-        self._refresh_hover_from_cursor()
-        self._request_repaint()
+        self.refresh_last_frame()
 
     def clear(self) -> None:
         self._set_selected(None)
@@ -102,12 +100,14 @@ class VideoFrameRenderer(QWidget):
         self._request_repaint()
 
     def refresh_last_frame(self) -> None:
-        if self._video_frame is not None:
+        if self.isVisible() and self._video_frame is not None:
             self._refresh_selected_bounds()
             self._refresh_hover_from_cursor()
             self._request_repaint()
 
     def _request_repaint(self) -> None:
+        if not self.isVisible():
+            return
         if self._video_frame is None:
             self.update()
             return
@@ -117,7 +117,7 @@ class VideoFrameRenderer(QWidget):
     def _prepare_quick_frame(self) -> None:
         self._prepare_timer.stop()
         surface, frame = self._quick, self._video_frame
-        if frame is None or self.width() <= 0 or self.height() <= 0:
+        if not self.isVisible() or frame is None or self.width() <= 0 or self.height() <= 0:
             return
         capture = is_metrics_enabled()
         start_time = perf_counter() if capture else 0.0
@@ -229,6 +229,17 @@ class VideoFrameRenderer(QWidget):
         self._quick.setGeometry(self.rect())
         self._clear_hover()
         self._request_repaint()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        """Catch up with the latest frame after this viewport or an ancestor was hidden."""
+        super().showEvent(event)
+        self.refresh_last_frame()
+
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
+        """Discard queued drawing work; frame delivery still retains the latest snapshot."""
+        super().hideEvent(event)
+        self._clear_hover()
+        self._prepare_timer.stop()
 
     def _aspect_respected_rect(self, img_size: QtCore.QSize) -> QtCore.QRectF:
         base = self._base_rect(img_size)
@@ -414,6 +425,9 @@ class VideoFrameRenderer(QWidget):
 
     def _refresh_selected_bounds(self) -> None:
         """Follow the selected object in the displayed frame; it has no box while it is not in the frame."""
+        if not self.isVisible():
+            self._selected_bounds = None
+            return
         hit = None
         provider = self._interaction_provider()
         if self._selected_id is not None and provider is not None:

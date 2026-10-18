@@ -82,10 +82,17 @@ class ObjectPage(QWidget):
         self._events_loaded = False
         self._request_refresh()
 
-    def update_scene(self, scene: Scene | None, frame_index: int) -> None:
+    def update_scene(self, scene: Scene | None, frame_index: int, *, defer: bool = False) -> None:
         """Follow the displayed *frame_index* and its *scene*, which has the object while it is in the frame."""
         self._scene, self._frame = scene, frame_index
-        self._request_refresh()
+        self._dirty = True
+        if not defer:
+            self.refresh()
+
+    def refresh(self) -> None:
+        """Apply the latest snapshot only while this page is visible."""
+        if self.isVisible() and self._dirty:
+            self._refresh()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """Build the content on first showing, and catch up with the latest frame."""
