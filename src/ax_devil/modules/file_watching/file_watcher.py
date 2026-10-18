@@ -20,6 +20,9 @@ logger = get_logger(__name__)
 QUIET_MS = 1000
 """How long the files must stay quiet before they are checked, so one save that writes many times is one change."""
 
+RETRY_MS = 2000
+"""How often paths the system refused to watch, for example at an inotify limit, are tried again and checked."""
+
 _POOL = "file-watching"
 _POOL_WORKERS = 2
 """Walking folders may be slow on big trees, so it never shares workers with other background work."""
@@ -74,6 +77,7 @@ class FileWatcher(QObject):
         self._registrations: dict[str, _Registration] = {}
         self._dirty: set[str] = set()  # Keys with events not checked yet.
         self._capped = False
+        self._rejected: set[str] = set()  # Watches the system refused; no event will report their changes.
         self._watcher = QFileSystemWatcher(self)
         self._watcher.fileChanged.connect(self._touched)
         self._watcher.directoryChanged.connect(self._touched)
@@ -81,6 +85,9 @@ class FileWatcher(QObject):
         self._quiet.setSingleShot(True)
         self._quiet.setInterval(quiet_ms)
         self._quiet.timeout.connect(self._check_dirty)
+        self._retry = QTimer(self)
+        self._retry.setInterval(RETRY_MS)
+        self._retry.timeout.connect(self._retry_rejected)
 
     def watch(self, key: str, sources: SourceSnapshot) -> None:
         """Report changes to the paths of *sources* under *key*, replacing what *key* watched before.
@@ -194,9 +201,21 @@ class FileWatcher(QObject):
         if current - desired:
             self._watcher.removePaths(sorted(current - desired))
         missing = desired - current
-        if not missing:
-            return set()
-        return missing - set(self._watcher.addPaths(sorted(missing)))
+        self._rejected = set(self._watcher.addPaths(sorted(missing))) if missing else set()
+        if self._rejected and not self._retry.isActive():
+            self._retry.start()
+        elif not self._rejected:
+            self._retry.stop()
+        return missing - self._rejected
+
+    def _retry_rejected(self) -> None:
+        """Try the refused watches again and check the keys that depend on them, as no event will."""
+        rejected = self._rejected
+        self._sync_watches()
+        self._dirty.update(
+            key for key, registration in self._registrations.items() if not rejected.isdisjoint(registration.watches)
+        )
+        self._quiet.start()
 
     def _warn_capped(self) -> None:
         """Say once that folders beyond the limit are not watched."""

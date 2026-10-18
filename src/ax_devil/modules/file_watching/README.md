@@ -16,4 +16,6 @@
   fingerprints it was last reported on for paths it already covered, so a fresh snapshot cannot hide a change; only
   paths new to the key start from the snapshot.
 - Events only restart a one-second quiet timer. A file still changing between two reads is held back until it stops.
+- A watch the system refuses (for example at an inotify limit) is retried, and its key checked, every two seconds
+  while it stays refused, so a rewrite of such a file is still reported late.
 - Only local disks are noticed: changes on network shares (NFS, SMB) produce no events.

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QFileSystemWatcher
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import NEVER
@@ -179,3 +180,26 @@ def test_a_named_file_beyond_the_folder_limit_is_still_reported_when_rewritten(
 
     _wait_for_reports(qtbot, reports, 1)
     assert reports == [frozenset({files[-1]})]
+
+
+def test_a_named_file_the_system_refused_to_watch_is_still_reported_when_rewritten(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    detections = tmp_path / "det.txt"
+    detections.write_text("first")
+
+    class Refusing(QFileSystemWatcher):
+        def addPaths(self, files: Sequence[str]) -> list[str]:
+            return [path for path in files if path == str(detections)] + super().addPaths(
+                [path for path in files if path != str(detections)]
+            )
+
+    monkeypatch.setattr(file_watcher, "QFileSystemWatcher", Refusing)
+    monkeypatch.setattr(file_watcher, "RETRY_MS", 100)
+    _watcher, reports = _watch(qtbot, SourcePaths(files=frozenset({detections})))
+    qtbot.wait(300)
+
+    _rewrite(detections)
+
+    _wait_for_reports(qtbot, reports, 1)
+    assert reports == [frozenset({detections})]

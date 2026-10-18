@@ -311,7 +311,7 @@ class ViewerWidget(QFrame):
         Changes arriving one after another never stack offers; ``reload`` runs only when the user clicks Reload, so it
         reads the newest data then. Dismiss removes the offer until the next change.
         """
-        if self._reload_offer is not None and self._reload_offer is self._banner:
+        if self._reload_offered():
             return
         offer = Banner("Source changed, reload current viewer?", "Reload", dismiss_text="Dismiss")
         self._reload_offer = offer
@@ -319,6 +319,10 @@ class ViewerWidget(QFrame):
         if offer.dismiss is not None:
             offer.dismiss.clicked.connect(lambda: self._set_banner(None))
         self._set_banner(offer)
+
+    def _reload_offered(self) -> bool:
+        """Return whether the reload offer is the banner on screen."""
+        return self._reload_offer is not None and self._reload_offer is self._banner
 
     def _accept_reload_offer(self) -> None:
         """Take the offer down and reload."""

@@ -238,7 +238,11 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 error = str(exc)
         if runtime is None:
             release_media(media)
-            self.show_warning(f"Could not {'reload' if keep_shown else 'load'} entry {index + 1}: {error}")
+            message = f"Could not {'reload' if keep_shown else 'load'} entry {index + 1}: {error}"
+            if keep_shown and self._reload_offered():
+                logger.warning(message)  # The source changed again meanwhile: keep the offer to reload that data.
+            else:
+                self.show_warning(message)
             return
         playing = False
         previous = self._runtime

@@ -8,7 +8,7 @@ Plugin authors implement:
 * ``resolve(settings, token)`` — headless; returns the playlists the settings describe and raises ``ValueError`` or
   ``OSError`` with a user-facing message when the settings are missing, invalid, or point at nothing. It runs on a
   worker thread, possibly beside another call, so it touches no Qt objects and no shared mutable state.
-* ``source_paths(settings)`` — optional; the files and folders the playlists are read from, so a change to them
+* ``source_paths(settings, token)`` — optional; the files and folders the playlists are read from, so a change to them
   resolves the item again. It runs on a worker thread like ``resolve``; the default is none.
 * ``create_settings_widget()`` — returns a widget that edits settings and calls ``submit_settings(settings)`` when
   the user is ready. Work that would freeze the form, such as scanning a folder, runs through the widget's ``jobs``.

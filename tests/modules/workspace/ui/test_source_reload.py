@@ -15,6 +15,7 @@ from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
+from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.workspace.core import OverlayFile, RecentWorkspaces, VideoItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
@@ -140,6 +141,11 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
         assert "Unreadable overlay file" in _banner_text(viewer)
         assert viewer._runtime is shown
         assert _shown_boxes(viewer) == 2
+
+        # A reload failing after the source changed again leaves the newer offer in place.
+        viewer.offer_reload()
+        viewer._on_entry_opened(0, None, True, EntryMedia(error="late failure"))
+        assert "Source changed" in _banner_text(viewer)
     finally:
         session.cleanup()
 
