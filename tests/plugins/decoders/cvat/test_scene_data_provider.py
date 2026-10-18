@@ -11,9 +11,10 @@ from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.cache import IndexedFrameCache
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
 from ax_devil.modules.plugin_system import get_file_decoder_factory
-from ax_devil.plugins.decoders.cvat.decoder import decode_cvat_frame, parse_cvat_document
+from ax_devil.plugins.decoders.cvat.decoder import decode_cvat_frame
 from ax_devil.plugins.decoders.cvat.plugin import CVAT
 from ax_devil.plugins.decoders.cvat.provider import CVATSceneDataProvider
+from ax_devil.plugins.decoders.cvat.xml_reader import parse_cvat_document
 
 from .sample_data import write_sample_cvat_xml
 

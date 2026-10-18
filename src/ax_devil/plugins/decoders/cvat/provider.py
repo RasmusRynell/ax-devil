@@ -17,15 +17,9 @@ from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.settings.logging_config import get_logger
 
-from .decoder import (
-    CVATFileMetadata as CVATMetadata,
-)
-from .decoder import (
-    CVATParseResult,
-    build_cvat_filter_config,
-    decode_cvat_frame,
-    parse_cvat_document,
-)
+from .decoder import build_cvat_filter_config, decode_cvat_frame
+from .xml_reader import CVATFileMetadata as CVATMetadata
+from .xml_reader import CVATParseResult, parse_cvat_document
 
 logger = get_logger(__name__)
 

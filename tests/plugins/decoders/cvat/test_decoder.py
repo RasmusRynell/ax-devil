@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from ax_devil.modules.scene.model import Attribute, BoundingBox, EntityId, Polygon
-from ax_devil.plugins.decoders.cvat.decoder import decode_cvat_frame, parse_cvat_document
+from ax_devil.plugins.decoders.cvat.decoder import decode_cvat_frame
+from ax_devil.plugins.decoders.cvat.xml_reader import parse_cvat_document
 
 from .sample_data import write_sample_cvat_xml
 
