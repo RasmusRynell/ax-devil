@@ -14,12 +14,14 @@ Guards = frozenset[tuple[str, ...]]
 
 
 def require_object(value: object, location: str) -> Mapping[str, object]:
+    """Return *value* as a mapping with string keys, or raise ``invalid_structure`` at *location*."""
     if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
         raise TemplateRuntimeError("Expected an object.", code="invalid_structure", location=location)
     return cast(Mapping[str, object], value)
 
 
 def require_keys(value: Mapping[str, object], allowed: set[str], required: set[str], location: str) -> None:
+    """Raise ``invalid_structure`` at *location* unless the keys of *value* include *required* and stay in *allowed*."""
     unknown, missing = set(value) - allowed, required - set(value)
     if unknown or missing:
         raise TemplateRuntimeError(
@@ -30,12 +32,17 @@ def require_keys(value: Mapping[str, object], allowed: set[str], required: set[s
 
 
 def require_list(value: object, location: str) -> Sequence[object]:
+    """Return *value* as a list or tuple, or raise ``invalid_structure`` at *location*."""
     if not isinstance(value, (tuple, list)):
         raise TemplateRuntimeError("Expected an array.", code="invalid_structure", location=location)
     return value
 
 
 def guard(value: object) -> Guards:
+    """Return the reference path that a condition proves present, or no paths.
+
+    Only a bare ``is_present`` or ``is_not_empty`` call on a ``ref`` proves anything.
+    """
     if not isinstance(value, Mapping) or value.get("call") not in ("is_present", "is_not_empty"):
         return frozenset()
     args = value.get("args")

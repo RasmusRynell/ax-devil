@@ -13,6 +13,7 @@ from .values import TemplateRuntimeError
 
 
 def record_evaluator(fields: tuple[tuple[str, CompiledExpression], ...]) -> Node:
+    """Return the instruction building a record from the named, already compiled *fields*."""
     return instruction("record", tuple(key for key, _ in fields), tuple(child.code for _, child in fields))
 
 
@@ -42,6 +43,7 @@ def compatible(actual: ValueType, expected: ValueType) -> bool:
 
 
 def union(left: ValueType, right: ValueType, location: str) -> ValueType:
+    """Return the type that holds values of either branch type, or raise ``type_mismatch`` at *location*."""
     if left.name == "null":
         return right.optional()
     if right.name == "null":

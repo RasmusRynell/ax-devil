@@ -15,6 +15,8 @@ from .validation import RULES, allowed_values, check_constraints, compile_valida
 
 @dataclass(slots=True)
 class Slot:
+    """Memoized calculated value: its computed flag, its lowered ``Value`` and the failure list it collected."""
+
     flag: str
     value: Value
     terms: str
@@ -22,6 +24,8 @@ class Slot:
 
 @dataclass(slots=True)
 class Scope:
+    """What a lowered program sees: its calculated-value nodes, input values by root name and memo slots by index."""
+
     values: tuple[Node, ...]
     inputs: dict[str, Value]
     slots: dict[int, Slot] = field(default_factory=dict)

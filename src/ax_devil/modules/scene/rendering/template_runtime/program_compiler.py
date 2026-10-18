@@ -40,6 +40,21 @@ def _arguments(children: tuple[CompiledExpression, ...]) -> Node:
 
 
 class ProgramCompiler:
+    """Compiles the raw JSON expressions of one template program into typed ``CompiledExpression`` trees.
+
+    One instance serves one program (``RenderProgramCompiler.compile_program`` creates it) and is not reused.
+    The caller binds the program's roots and location at construction and, before compiling anything, sets
+    ``static_parameters`` (call-site constants that fold parameter references) and ``base_guards`` (references
+    the program's ``enabled`` condition proves present). It then compiles ``enabled`` and each step input with
+    ``expression`` and every calculated value with ``value``, in sorted name order (``names``).
+
+    Calculated values are compiled on first use and memoized, so ``base_guards`` must be set before the first
+    ``value`` call. Scene references are collected into ``reference_values``; their slots follow the calculated
+    values (slot ``len(names) + i``), so the caller must read ``reference_values`` only after every expression
+    has been compiled and append it after the calculated values.
+    Failures raise ``TemplateRuntimeError`` located at the offending raw expression.
+    """
+
     def __init__(
         self,
         owner: RenderProgramCompiler,
@@ -47,6 +62,11 @@ class ProgramCompiler:
         roots: Mapping[str, ValueType],
         location: str,
     ) -> None:
+        """Bind *owner* (the compiler that created this instance), the root scopes and the program location.
+
+        *roots* maps each scope an expression may reference, other than the program's own ``values``, to its record
+        type (for example ``context``, ``parameters`` or ``scene``).
+        """
         self.owner, self.roots, self.location = owner, roots, location
         self.raw_values = require_object(definition.get("values", {}), f"{location}.values")
         self.names = tuple(sorted(self.raw_values))
@@ -60,6 +80,10 @@ class ProgramCompiler:
         self.reference_values: list[CompiledExpression] = []
 
     def value(self, name: str) -> CompiledExpression:
+        """Return the compiled calculated value *name*, compiling and memoizing it on first use.
+
+        Raises ``TemplateRuntimeError`` for an unknown name, a reference cycle or nesting beyond ``MAX_DEPTH``.
+        """
         if len(self.active) >= MAX_DEPTH:
             raise TemplateRuntimeError(
                 "Calculated-value depth limit exceeded.", code="execution_limit", location=self.location
@@ -92,6 +116,13 @@ class ProgramCompiler:
         *,
         guarded: bool = False,
     ) -> CompiledExpression:
+        """Compile the raw expression *raw* (a literal, ``ref``, ``call``, record or list) at *location*.
+
+        *guards* lists the reference paths already known to be present at this point; *expected* coerces the
+        result to that type; *depth* counts expression nesting. Pass ``guarded=True`` when the expression runs
+        only conditionally, which stops operations inside it from being folded at compile time. An error without
+        a location is re-raised at *location*.
+        """
         if depth > MAX_DEPTH:
             raise TemplateRuntimeError("Expression depth limit exceeded.", code="execution_limit", location=location)
         self.guard_depth += int(guarded)
@@ -183,6 +214,12 @@ class ProgramCompiler:
         return ValueType("list", item=kind)
 
     def reference(self, path: tuple[str, ...], location: str, guards: Guards) -> CompiledExpression:
+        """Compile the reference ``(scope, name, *fields)`` to a calculated value, root input or scene input.
+
+        The type is narrowed to present for each prefix of *path* in *guards*. A ``parameters`` reference whose
+        parameter is in ``static_parameters`` becomes a constant. A ``scene`` reference reads a shared slot,
+        registered once per path and type in ``reference_values``.
+        """
         scope, name, *tail = path
         if scope == "values":
             expression = self.value(name)
@@ -241,6 +278,12 @@ class ProgramCompiler:
     def call(
         self, name: str, args: Mapping[str, object], location: str, guards: Guards, depth: int
     ) -> CompiledExpression:
+        """Compile a call of the operation *name* from ``OPERATIONS``, checking its arguments and result type.
+
+        ``if`` and ``coalesce`` compile their branches as guarded; ``if`` additionally treats its condition as a
+        guard for the ``then`` branch. Raises ``TemplateRuntimeError`` for an unknown operation, bad arguments
+        or incompatible types.
+        """
         definition = OPERATIONS.get(name)
         if definition is None:
             raise TemplateRuntimeError(f"Unknown operation '{name}'.", code="unknown_operation", location=location)
@@ -363,6 +406,12 @@ class ProgramCompiler:
         *,
         operation: bool = False,
     ) -> CompiledExpression:
+        """Wrap *evaluator* as an expression of type *kind* that depends on whatever its *children* depend on.
+
+        *context* marks a dependence on the render context beyond the children's. An expression that depends on
+        neither context nor inputs is folded to a constant, except under a guard, where folding an *operation*
+        (or anything with a non-constant child) is skipped, and when evaluation fails.
+        """
         uses_context = context or any(child.uses_context for child in children)
         uses_inputs = any(child.uses_inputs for child in children)
         expression = CompiledExpression(kind, evaluator, location, uses_context=uses_context, uses_inputs=uses_inputs)
