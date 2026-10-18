@@ -85,33 +85,38 @@ class _BackButton(SmallButton):
     Its width never depends on the name: it asks for room for a few characters more than it needs at the narrowest.
     """
 
-    _full_text = "‹"  # Set before the base class builds the button, which already reports a font change.
+    _full_text = "Back"  # Set before the base class builds the button, which already reports a font change.
 
     def __init__(self, parent: QWidget) -> None:
-        super().__init__("‹", parent=parent)
+        super().__init__(self._full_text, Icon.STEP_BACK, parent)
         # A button that cannot shrink is laid out no narrower than its size hint, which follows the name.
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
     def set_previous(self, title: str) -> None:
         """Name *title* as the page the button goes back to; the tooltip has it whole."""
-        self._full_text = f"‹ {title}"
+        self._full_text = title
         self.setToolTip(f"Back (Esc) to {title}")
         self._elide()
 
+    def _text_width(self, text: str) -> int:
+        """Return the width of *text* as the button's size hint counts it, which can differ from its advance."""
+        return self.fontMetrics().size(int(Qt.TextFlag.TextShowMnemonic), text).width()
+
     def _padding(self) -> int:
-        return QPushButton.sizeHint(self).width() - self.fontMetrics().horizontalAdvance(self.text())
+        """Return the width the button spends on anything but its text: the icon, its gap and the padding."""
+        return QPushButton.sizeHint(self).width() - self._text_width(self.text())
 
     def _width_for(self, chars: int) -> int:
         metrics = self.fontMetrics()
-        return self._padding() + metrics.horizontalAdvance("‹ ") + chars * metrics.averageCharWidth()
+        return self._padding() + chars * metrics.averageCharWidth()
 
     def sizeHint(self) -> QSize:  # noqa: N802
         """Return the room for the name, up to a few more characters than the narrowest."""
-        natural = self._padding() + self.fontMetrics().horizontalAdvance(self._full_text)
+        natural = self._padding() + self._text_width(self._full_text)
         return QSize(min(natural, self._width_for(_BACK_MAX_CHARS)), super().sizeHint().height())
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
-        """Return the room for the arrow and the start of the name."""
+        """Return the room for the icon and the start of the name."""
         return QSize(self._width_for(_BACK_MIN_CHARS), super().sizeHint().height())
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
