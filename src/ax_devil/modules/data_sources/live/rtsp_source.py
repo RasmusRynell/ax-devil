@@ -3,7 +3,6 @@
 import time
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from threading import Lock
 
 import numpy as np
@@ -21,6 +20,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QImage
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.core.time_units import ns_to_us
 from ax_devil.modules.filtering import FilterConfig, FilterFactory, build_default_filter_config
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.settings.logging_config import get_logger
@@ -163,9 +163,9 @@ class RTSPSource(FrameSource, OverlaySource):
         self.cleanup_posted_events()
         logger.debug(f"Stopped {self.source_id}")
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for worker to finish."""
-        return bool(self._worker.wait(timeout))
+        return bool(self._worker.wait(timeout_ms))
 
     def _process_data(self) -> bool:
         """Connect on the first call, then process both video frames and scene metadata.
@@ -223,10 +223,10 @@ class RTSPSource(FrameSource, OverlaySource):
         qimage = QImage(pixels.data, width, height, pixels.strides[0], QImage.Format.Format_RGBX8888).copy()
 
         self.frame_count += 1
-        # For RTSP, use device-provided capture timestamp as monotime
+        # For RTSP, use the device-provided capture time
         frame_id = FrameIdentifier(
             sequence_id=self.frame_count,
-            timestamp_monotime_us=sample.capture_time_ns / 1000.0,
+            timestamp_us=ns_to_us(sample.capture_time_ns),
         )
         self.frameReady.emit(FrameData(content=qimage, frame_id=frame_id, source_id=self.source_id))
         return True
@@ -255,16 +255,12 @@ class RTSPSource(FrameSource, OverlaySource):
             self.overlay_count += 1
 
             # Use scene timestamp for synchronization
-            if isinstance(scene.time_slice.start, datetime):
-                capture_timestamp = (scene.time_slice.start - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds()
-            else:
+            capture_time_us = scene.time_slice.start_timestamp_us
+            if capture_time_us is None:
                 raise ValueError("Scene time_slice.start is not a datetime object")
 
             # Create FrameIdentifier using scene timestamp (device-provided)
-            frame_id = FrameIdentifier(
-                sequence_id=self.overlay_count,
-                timestamp_monotime_us=capture_timestamp * 1000000.0,  # Convert seconds to microseconds
-            )
+            frame_id = FrameIdentifier(sequence_id=self.overlay_count, timestamp_us=capture_time_us)
 
             overlay_data = OverlayData(
                 content=scene,

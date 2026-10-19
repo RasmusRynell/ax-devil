@@ -31,14 +31,14 @@ def test_video_reads_preserve_frame_identity_and_decoded_timing(frame_source: Fi
     decoded = source.read_decoded_frame(2)
     assert decoded is not None
     assert decoded.frame_index == 2
-    assert decoded.timestamp_us == pytest.approx(2_000_000 / 30)
+    assert decoded.timestamp_us == 66_667
     frames: list[FrameData | None] = []
     source.request_frame_async(2, frames.append)
     qtbot.waitUntil(lambda: len(frames) == 1)
     frame = frames[0]
     assert frame is not None
     assert frame.source_id == "identifiers"
-    assert frame.frame_id == FrameIdentifier(sequence_id=2, timestamp_monotime_us=decoded.timestamp_us)
+    assert frame.frame_id == FrameIdentifier(sequence_id=2, timestamp_us=decoded.timestamp_us)
     assert (frame.content.width(), frame.content.height()) == (decoded.pixels.shape[1], decoded.pixels.shape[0])
     assert frame.metadata is not None
     assert all(frame.metadata[key] == value for key, value in decoded.source_timing_metadata.items())
@@ -46,12 +46,12 @@ def test_video_reads_preserve_frame_identity_and_decoded_timing(frame_source: Fi
     assert frame.metadata["video_period_source"] == "pts_delta"
     assert frame.metadata["video_period_after_s"] == pytest.approx(1 / 30)
     assert source.get_frame_period_after_s(2) == pytest.approx(1 / 30)
-    assert source.get_frame_timestamps_us() == (0, 33_333, 66_666, 100_000, 133_333, 166_666)
+    assert source.get_frame_timestamps_us() == (0, 33_333, 66_667, 100_000, 133_333, 166_667)
 
 
 def test_partial_video_timeline_can_recover(frame_source: FileFrameSource, monkeypatch: pytest.MonkeyPatch) -> None:
     """A partial diagnostic result must not prevent a later complete timeline from being read."""
-    complete = (0, 33_333, 66_666, 100_000, 133_333, 166_666)
+    complete = (0, 33_333, 66_667, 100_000, 133_333, 166_667)
     timelines = iter([(0,), complete])
     monkeypatch.setattr(FileFrameDelivery, "get_frame_times_us", lambda self: next(timelines))
 
@@ -77,12 +77,12 @@ def test_overlay_lookup_preserves_matched_identity_and_closes_once(tmp_path: Pat
     source = FileOverlaySource(path, MOTChallengeSceneDataProvider, "MOT_FILE", source_id="overlays")
     with patch.object(source.data_provider, "close", wraps=source.data_provider.close) as close:
         try:
-            overlay = source.get_overlay_at_frame(FrameIdentifier(sequence_id=0, timestamp_monotime_us=123_456))
+            overlay = source.get_overlay_at_frame(FrameIdentifier(sequence_id=0, timestamp_us=123_456))
             assert overlay is not None
             assert overlay.source_id == "overlays"
-            assert overlay.frame_id == FrameIdentifier(sequence_id=0, timestamp_monotime_us=0)
+            assert overlay.frame_id == FrameIdentifier(sequence_id=0, timestamp_us=0)
             assert len(overlay.content.entities) == 1
-            assert source.get_overlay_at_frame(FrameIdentifier(sequence_id=5, timestamp_monotime_us=166_666)) is None
+            assert source.get_overlay_at_frame(FrameIdentifier(sequence_id=5, timestamp_us=166_667)) is None
         finally:
             source.close()
             source.close()

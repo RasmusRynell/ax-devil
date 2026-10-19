@@ -9,11 +9,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, ClassVar, TypeVar
 
+from ax_devil.core.time_units import datetime_to_us
+
 _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (1, 1)
+SCENE_MODEL_VERSION: tuple[int, int] = (1, 2)
 
 
 # ---------------------------------------------------------------------------#
@@ -486,6 +488,13 @@ class TimeSlice:
             return float(self.end - self.start)
         # Mixed types are not comparable
         return 0.0
+
+    @property
+    def start_timestamp_us(self) -> int | None:
+        """Start on the media clock in microseconds, or None for a frame-numbered slice."""
+        if isinstance(self.start, datetime):
+            return datetime_to_us(self.start)
+        return None
 
     @classmethod
     def from_start_end(cls, start: datetime, end: datetime) -> "TimeSlice":

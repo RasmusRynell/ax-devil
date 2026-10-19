@@ -73,7 +73,7 @@ class StreamMediaController:
         self._paused: bool = False
         self._connection_changed = connection_changed
         self._source_slots: list[tuple[SignalInstance, Callable[..., None]]] = []
-        self._last_video_data_s = time.monotonic()
+        self._last_video_data_at = time.monotonic()
         self._stall_timer = QTimer()
         self._stall_timer.setInterval(1000)
         self._stall_timer.timeout.connect(self._check_video_stall)
@@ -125,7 +125,7 @@ class StreamMediaController:
     def _mark_live(self, feed: LiveFeed) -> None:
         """Mark a feed live; video connection or frames also restart the stall clock."""
         if feed is LiveFeed.VIDEO:
-            self._last_video_data_s = time.monotonic()
+            self._last_video_data_at = time.monotonic()
         self._update_feed(feed, LiveFeedStatus.live)
 
     def _on_source_reconnecting(self, feed: LiveFeed, message: str) -> None:
@@ -139,7 +139,7 @@ class StreamMediaController:
     def _check_video_stall(self) -> None:
         if self._paused or not self._sources:
             return
-        silent_s = time.monotonic() - self._last_video_data_s
+        silent_s = time.monotonic() - self._last_video_data_at
         if silent_s < VIDEO_STALL_TIMEOUT_S:
             return
         self._update_feed(LiveFeed.VIDEO, lambda status: status.stalled(silent_s))
@@ -149,15 +149,13 @@ class StreamMediaController:
             return
         assert self.synchronizer is not None
         self._mark_live(LiveFeed.VIDEO)
-        capture_time_s = frame_data.frame_id.timestamp_monotime_us / 1000000.0
-        self.synchronizer.push_frame(frame_data, capture_time_s)
+        self.synchronizer.push_frame(frame_data, frame_data.frame_id.timestamp_us)
 
     def _add_overlay(self, overlay_data: OverlayData) -> None:
         if self._paused:
             return
         assert self.synchronizer is not None
-        capture_time_s = overlay_data.frame_id.timestamp_monotime_us / 1000000.0
-        self.synchronizer.push_overlay(overlay_data, capture_time_s)
+        self.synchronizer.push_overlay(overlay_data, overlay_data.frame_id.timestamp_us)
 
     def _on_sync_result(self, result: SyncResult[Any, Any]) -> None:
         if self.frame_display is None:
@@ -185,7 +183,7 @@ class StreamMediaController:
         self._overlay_policy.reset()
         if self._scene_inspector is not None:
             self._scene_inspector.set_playing(True)
-        self._last_video_data_s = time.monotonic()
+        self._last_video_data_at = time.monotonic()
         self._stall_timer.start()
         for source in self._sources:
             source.play()
@@ -232,7 +230,7 @@ class StreamMediaController:
         self._paused = False
         if self._scene_inspector is not None:
             self._scene_inspector.set_playing(True)
-        self._last_video_data_s = time.monotonic()
+        self._last_video_data_at = time.monotonic()
         for source in self._sources:
             source.play()
 

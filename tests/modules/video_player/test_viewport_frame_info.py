@@ -23,8 +23,7 @@ def _frame(*, overlays: VideoOverlayData | None) -> VideoFrameWithOverlays:
     return VideoFrameWithOverlays(
         frame=VideoFrame(
             image=_image(),
-            timestamp=1.0,
-            timestamp_monotime_us=1_000_000.0,
+            timestamp_us=1_000_000,
             frame_id=1,
             metadata={
                 "video_timestamp_source": "pts_time_base_minus_first_pts",
@@ -43,7 +42,7 @@ def _frame(*, overlays: VideoOverlayData | None) -> VideoFrameWithOverlays:
 def _overlay_data() -> VideoOverlayData:
     return VideoOverlayData(
         drawing_generator=lambda _context, _settings: PreparedDrawing(),
-        timestamp_monotime_us=995_000.0,
+        timestamp_us=995_000,
         overlay_id=9,
         metadata={
             "requested_timestamp_us": 1_000_000,
@@ -100,7 +99,7 @@ def test_info_overlay_formats_exact_current_timestamps_only_when_visible(
     widget.hide()
     future_overlay = VideoOverlayData(
         drawing_generator=lambda _context, _settings: PreparedDrawing(),
-        timestamp_monotime_us=1_005_000.0,
+        timestamp_us=1_005_000,
         overlay_id=10,
     )
     widget.display_frame(_frame(overlays=future_overlay))

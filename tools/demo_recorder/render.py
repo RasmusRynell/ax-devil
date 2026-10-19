@@ -9,6 +9,7 @@ import av
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter, QPainterPath
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.settings.logging_config import get_logger, setup_logging
 from ax_devil.modules.video_viewer.export.encoder import CompressionPreset, VideoEncoder
 
@@ -73,7 +74,7 @@ def render(source: Path, destination: Path, style: str) -> None:
                         fps=fps,
                         compression=CompressionPreset.high_quality(),
                     )
-                encoder.write_frame(image, timestamp_us=index * 1_000_000 / fps)
+                encoder.write_frame(image, timestamp_us=seconds_to_us(index / fps))
                 if index == 0 or index == round(fps * 2):
                     image.save(str(destination / "preview.png"))
             if encoder is None:

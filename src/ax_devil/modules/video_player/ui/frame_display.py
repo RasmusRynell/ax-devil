@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 
-from ..constants import MOUSE_IDLE_HIDE_DELAY
+from ..constants import MOUSE_IDLE_HIDE_DELAY_MS
 from ..engine.data_types import VideoFrameWithOverlays
 from ..engine.viewport_state import NormalizedViewport, ZoomStep
 from ..orchestration.control_visibility import ControlVisibilityController
@@ -50,7 +50,7 @@ class FrameDisplay(QWidget):
 
         self._visibility = ControlVisibilityController(
             timer_parent=self,
-            idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY,
+            idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY_MS,
             request_show=self.controlsRequested.emit,
             request_hide=self.controlsHideRequested.emit,
         )

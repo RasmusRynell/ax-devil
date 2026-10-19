@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.core.time_units import seconds_to_ms, us_to_ms
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.theme import StatusColor
@@ -88,7 +89,7 @@ class MediaToolsSection(Enum):
             MediaToolsSection.OVERLAY_SYNC: (
                 "Match overlay data to video frames when timestamps differ slightly.\n\n"
                 "After exact and source-provided matching, Previous allows the latest earlier sample "
-                f"within the tolerance ({DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US / 1000:g} ms by default). "
+                f"within the tolerance ({us_to_ms(DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US):g} ms by default). "
                 "Exact disables this fallback. Previous can match one sample to several frames."
             ),
             MediaToolsSection.OVERLAY_PERSISTENCE: (
@@ -167,10 +168,10 @@ class MediaToolsPanel(QWidget):
         super().__init__(parent)
 
         self._playing = False
-        self._last_refresh = float("-inf")
+        self._last_refresh_at = float("-inf")
         self._idle_refresh = QTimer(self)
         self._idle_refresh.setSingleShot(True)
-        self._idle_refresh.setInterval(round(_INSPECTION_INTERVAL_S * 1000))
+        self._idle_refresh.setInterval(round(seconds_to_ms(_INSPECTION_INTERVAL_S)))
         self._idle_refresh.timeout.connect(self._refresh_visible)
         self._render_catalog_selection = render_catalog_selection
         self._last_scene: Scene | None = None
@@ -355,7 +356,7 @@ class MediaToolsPanel(QWidget):
     def clear(self) -> None:
         """Clear the frame-following tools."""
         self._idle_refresh.stop()
-        self._last_refresh = float("-inf")
+        self._last_refresh_at = float("-inf")
         frame_id = self._last_frame_id
         self._last_scene, self._last_frame_id, self._refilter = None, None, None
         self._objects.clear()
@@ -384,7 +385,7 @@ class MediaToolsPanel(QWidget):
         self._follow_frame(defer=True)
         if not self.isVisible():
             return
-        if not self._playing or monotonic() - self._last_refresh >= _INSPECTION_INTERVAL_S:
+        if not self._playing or monotonic() - self._last_refresh_at >= _INSPECTION_INTERVAL_S:
             self._refresh_visible()
         else:
             self._idle_refresh.start()
@@ -398,13 +399,13 @@ class MediaToolsPanel(QWidget):
     def refresh_scene(self) -> None:
         """Catch up after an inspection action and let the next presented frame through immediately (e.g. a seek)."""
         self._refresh_visible()
-        self._last_refresh = float("-inf")
+        self._last_refresh_at = float("-inf")
 
     def _refresh_visible(self) -> None:
         self._idle_refresh.stop()
         if not self.isVisible():
             return
-        self._last_refresh = monotonic()
+        self._last_refresh_at = monotonic()
         self._objects.refresh()
         self._events.refresh()
         if self._followed is not None:

@@ -18,14 +18,14 @@ class FrameIdentifierDataProvider(Protocol):
     """Data provider that works with FrameIdentifier objects.
 
     This interface allows data providers to choose which part of the FrameIdentifier
-    to use for lookups (sequence_id, timestamp_monotime_us, or both).
+    to use for lookups (sequence_id, timestamp_us, or both).
     """
 
     def load_by_frame_id(self, frame_identifier: FrameIdentifier) -> Scene | None:
         """Load scene data using FrameIdentifier.
 
         Args:
-            frame_identifier: FrameIdentifier containing sequence_id and timestamp_monotime_us
+            frame_identifier: FrameIdentifier containing sequence_id and timestamp_us
 
         Returns:
             Scene data if found, None if not found

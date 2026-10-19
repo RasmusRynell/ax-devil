@@ -91,7 +91,7 @@ def _record(second: int, *entity_ids: str) -> dict[str, Any]:
 
 
 def _frame(timestamp_us: int, sequence_id: int = 0) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=sequence_id, timestamp_monotime_us=float(timestamp_us))
+    return FrameIdentifier(sequence_id=sequence_id, timestamp_us=timestamp_us)
 
 
 def test_records_are_indexed_by_timestamp_and_load_their_scenes(tmp_path: Path) -> None:
@@ -324,7 +324,7 @@ def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode,
         timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=10_000),
     )
     timestamps = sorted(provider.get_available_frames())
-    frames = [FrameIdentifier(sequence_id=index, timestamp_monotime_us=ts) for index, ts in enumerate(timestamps)]
+    frames = [FrameIdentifier(sequence_id=index, timestamp_us=ts) for index, ts in enumerate(timestamps)]
     try:
         with patch.object(provider._store, "load_scene", wraps=provider._store.load_scene) as load:
             first = provider.load_by_frame_id(frames[0])
@@ -333,9 +333,9 @@ def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode,
             assert provider.load_by_frame_id(frames[0]) is first
             assert provider.load_by_frame_id(frames[1]) is second
 
-            missing = FrameIdentifier(sequence_id=99, timestamp_monotime_us=timestamps[-1] + 1_000_000)
+            missing = FrameIdentifier(sequence_id=99, timestamp_us=timestamps[-1] + 1_000_000)
             assert provider.load_by_frame_id(missing) is None
-            fallback = FrameIdentifier(sequence_id=99, timestamp_monotime_us=timestamps[0] + 1_000)
+            fallback = FrameIdentifier(sequence_id=99, timestamp_us=timestamps[0] + 1_000)
             assert provider.load_by_frame_id(fallback) is first
             assert load.call_count == 2
 
@@ -377,7 +377,7 @@ def test_sticky_selection_is_independent_of_navigation(tmp_path: Path) -> None:
         ]:
             selection = policy.select_from_source(source, FrameIdentifier(1, timestamp))
             assert selection.overlay is not None
-            assert selection.overlay.frame_id.timestamp_monotime_us == expected
+            assert selection.overlay.frame_id.timestamp_us == expected
             assert selection.reused is (timestamp != expected)
             assert selection.effective_opacity == (0.4 if selection.reused else 1.0)
             assert bool(selection.overlay.content.entities) is (expected == first)

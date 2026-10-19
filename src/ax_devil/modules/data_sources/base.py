@@ -181,7 +181,7 @@ class DataSource(QObject, metaclass=QObjectABCMeta):
         """Stop source production."""
 
     @abstractmethod
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for source production to complete."""
 
     def cleanup_posted_events(self) -> None:

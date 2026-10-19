@@ -123,8 +123,7 @@ class SceneFramePresenter:
     ) -> VideoFrameWithOverlays:
         video_frame = VideoFrame(
             image=frame_data.content,
-            timestamp=frame_data.frame_id.timestamp_monotime_us / 1_000_000.0,
-            timestamp_monotime_us=frame_data.frame_id.timestamp_monotime_us,
+            timestamp_us=frame_data.frame_id.timestamp_us,
             frame_id=frame_data.frame_id.sequence_id,
             metadata=frame_data.metadata,
         )
@@ -134,7 +133,7 @@ class SceneFramePresenter:
             assert cached_overlay is not None, "Scene overlays require a cached projection"
             video_overlay = VideoOverlayData(
                 drawing_generator=cached_overlay.prepare_drawing,
-                timestamp_monotime_us=overlay_data.frame_id.timestamp_monotime_us,
+                timestamp_us=overlay_data.frame_id.timestamp_us,
                 overlay_id=overlay_data.frame_id.sequence_id,
                 metadata=metadata,
                 interaction_provider=cached_overlay,

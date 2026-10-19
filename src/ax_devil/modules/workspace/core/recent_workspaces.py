@@ -6,7 +6,7 @@ import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
@@ -20,7 +20,7 @@ RECENT_WORKSPACES_LIMIT = 8
 
 @dataclass(frozen=True)
 class RecentWorkspace:
-    """A remembered workspace file and the local time it was last opened or saved."""
+    """A remembered workspace file and the UTC time it was last opened or saved."""
 
     path: Path
     used: datetime
@@ -49,7 +49,7 @@ class RecentWorkspaces:
         The path is kept as the user chose it, made absolute and normalized lexically; symlinks are not followed.
         """
         workspace_path = Path(os.path.normpath(workspace_path.absolute()))
-        used = RecentWorkspace(workspace_path, datetime.now())
+        used = RecentWorkspace(workspace_path, datetime.now(timezone.utc))
         return self._update(lambda entries: [used, *(entry for entry in entries if entry.path != workspace_path)])
 
     def forget(self, workspace_path: Path) -> bool:
@@ -90,7 +90,9 @@ class RecentWorkspaces:
         entries = []
         for item in document:
             try:
-                entries.append(RecentWorkspace(Path(item["path"]), datetime.fromisoformat(item["used"])))
+                entries.append(
+                    RecentWorkspace(Path(item["path"]), datetime.fromisoformat(item["used"]).astimezone(timezone.utc))
+                )
             except (TypeError, KeyError, ValueError):
                 continue
         return entries

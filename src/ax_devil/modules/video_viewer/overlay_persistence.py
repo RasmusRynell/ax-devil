@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
+from ax_devil.core.time_units import ms_to_us
 from ax_devil.modules.data_sources.base import OverlayLookup
 
 
@@ -83,8 +84,7 @@ class OverlayPersistencePolicy:
 
     def sample_selection(self) -> tuple[bool, int | None]:
         """Return whether offline lookup may retain earlier samples, and the oldest sample age it shows in µs."""
-        timeout_ms = self._settings.timeout_ms if self._settings.enabled else None
-        return self._settings.enabled, timeout_ms * 1000 if timeout_ms is not None else None
+        return self._settings.enabled, self._timeout_us()
 
     def select_from_source(self, source: OverlayLookup, frame_id: FrameIdentifier) -> OverlaySelection:
         """Select offline data by sample time, independent of previously displayed frames."""
@@ -117,7 +117,7 @@ class OverlayPersistencePolicy:
             self.reset()
             cached = None
         if candidate is not None and (
-            cached is None or candidate.frame_id.timestamp_monotime_us >= cached.frame_id.timestamp_monotime_us
+            cached is None or candidate.frame_id.timestamp_us >= cached.frame_id.timestamp_us
         ):
             self._cached_overlay = candidate
         cached = self._cached_overlay
@@ -127,6 +127,11 @@ class OverlayPersistencePolicy:
         return OverlaySelection(cached, reused, self._settings.opacity if reused else 1.0)
 
     def _is_eligible(self, frame_id: FrameIdentifier, overlay: OverlayData) -> bool:
-        age_us = frame_id.timestamp_monotime_us - overlay.frame_id.timestamp_monotime_us
+        age_us = frame_id.timestamp_us - overlay.frame_id.timestamp_us
+        timeout_us = self._timeout_us()
+        return age_us >= 0 and (timeout_us is None or age_us <= timeout_us)
+
+    def _timeout_us(self) -> int | None:
+        """Return the oldest sample age to show in µs, or None when samples never expire."""
         timeout_ms = self._settings.timeout_ms if self._settings.enabled else None
-        return age_us >= 0 and (timeout_ms is None or age_us <= timeout_ms * 1000)
+        return ms_to_us(timeout_ms) if timeout_ms is not None else None
