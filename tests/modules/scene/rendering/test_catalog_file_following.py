@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -26,6 +28,19 @@ def _set_marker_x(path: Path, value: float) -> None:
     document = json.loads(path.read_text(encoding="utf-8"))
     document["templates"]["marker"]["parameters"]["x"]["default"] = value
     path.write_text(json.dumps(document), encoding="utf-8")
+
+
+def _replace_like_an_editor(source: Path, destination: Path) -> None:
+    """Replace *destination*, retrying briefly as editors do when Windows holds it open for a read or a virus scan."""
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
 
 
 def test_editing_a_catalog_file_updates_the_selections_showing_it(
@@ -61,7 +76,7 @@ def test_a_catalog_file_replaced_by_an_editor_is_still_followed(
         replacement.write_text(catalog_file.path.read_text(encoding="utf-8"), encoding="utf-8")
         _set_marker_x(replacement, value)
         with qtbot.waitSignal(selection.activeCatalogChanged, timeout=10_000):
-            replacement.replace(catalog_file.path)
+            _replace_like_an_editor(replacement, catalog_file.path)
         wait_for_catalogs(qtbot, manager)
         active = selection.active_catalog()
         assert active is not None and selection.active_catalog_loaded()
