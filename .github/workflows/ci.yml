@@ -81,8 +81,32 @@ jobs:
           path: dist/
 
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu
+            os: ubuntu-latest
+            env: {}
+          # Hosted Windows runners have no GPU: WARP is Direct3D 11's software adapter.
+          - name: windows
+            os: windows-latest
+            env:
+              QSG_RHI_BACKEND: d3d11
+              QSG_RHI_PREFER_SOFTWARE_RENDERER: "1"
+          # Whether hosted macOS runners expose Metal is unverified; the OpenGL leg is the fallback to compare.
+          - name: macos-metal
+            os: macos-latest
+            env:
+              QSG_RHI_BACKEND: metal
+          - name: macos-opengl
+            os: macos-latest
+            env:
+              QSG_RHI_BACKEND: opengl
+    env: ${{ matrix.env }}
     steps:
       - uses: actions/checkout@v4
 
@@ -93,7 +117,8 @@ jobs:
           python-version: "3.10"
           enable-cache: true
 
-      - name: Install system dependencies
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -112,10 +137,19 @@ jobs:
             libxkbcommon-x11-0 \
             xvfb
 
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --no-progress -y
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
       - name: Sync project environment
         run: uv sync --locked
 
       - name: Run tests
+        # Serial: native desktops have no per-worker display, so parallel windows would fight over focus.
         run: uv run pytest
 
   lowest:

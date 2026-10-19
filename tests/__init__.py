@@ -13,11 +13,13 @@ Qt Quick needs a real graphics context, which Qt's offscreen platform never has,
 display with Mesa's software OpenGL. Only the process that starts a display stops it. Nested runs share their parent's
 through ``AX_DEVIL_TESTS_DISPLAY``, but each xdist worker starts its own: windows on one display fight over the keyboard
 focus (there is no window manager), so tests that wait for an active window would time out.
-``AX_DEVIL_TESTS_QPA_PLATFORM`` runs on a native platform instead (macOS, Windows).
+Off Linux there is no Xvfb: the suite uses Qt's native platform plugin, and the graphics API comes from the
+``QSG_RHI_*`` variables CI sets. ``AX_DEVIL_TESTS_QPA_PLATFORM`` picks a platform plugin on any OS and skips Xvfb.
 """
 
 import atexit
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -43,6 +45,8 @@ TEST_HOME = Path(os.environ["AX_DEVIL_TESTS_HOME"])
 _native_platform = os.environ.get("AX_DEVIL_TESTS_QPA_PLATFORM")
 if _native_platform is not None:
     os.environ["QT_QPA_PLATFORM"] = _native_platform
+elif sys.platform != "linux":
+    os.environ.pop("QT_QPA_PLATFORM", None)  # An inherited "offscreen" has no GPU backend; use the native plugin.
 else:
     if "AX_DEVIL_TESTS_DISPLAY" not in os.environ or (
         _worker is not None and os.environ.get("AX_DEVIL_TESTS_DISPLAY_WORKER") != _worker

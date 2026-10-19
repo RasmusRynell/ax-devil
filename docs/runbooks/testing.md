@@ -46,9 +46,10 @@ outside the checkout with isolated storage, then checks launching, decoding, upg
 removal. It may download and build packages, needs the same system libraries as a normal installation, and publishes
 nothing.
 
-CI runs three jobs on pull requests, `main`, and release tags: `quality` shares one Python 3.12 environment for
+CI runs these jobs on pull requests, `main`, and release tags: `quality` shares one Python 3.12 environment for
 application checks, trace-viewer checks, the regular suite, installation smoke tests, and package builds; `test` runs
-the regular suite on the minimum supported Python 3.10; `lowest` runs it on Python 3.10 with the oldest allowed
+the regular suite on the minimum supported Python 3.10 on Ubuntu, Windows (Direct3D 11 on the WARP software adapter)
+and macOS, serially because windows on one native desktop fight over focus; `lowest` runs it on Python 3.10 with the oldest allowed
 dependencies (`uv pip install --resolution lowest-direct -e . --group dev`). A newer push to a PR cancels its
 superseded run; runs for `main` commits and releases always finish.
 Pytest excludes the `integration` marker by default; `-m integration` selects it explicitly.
@@ -108,7 +109,8 @@ Config and settings tests live under `tests/modules/settings/`.
   keyboard focus) and sets `QT_QPA_PLATFORM=xcb`, Mesa's software OpenGL and `DISPLAY` before importing Qt or
   application modules, replacing inherited desktop settings, so plain `uv run pytest`, CI and a stray
   `QT_QPA_PLATFORM=offscreen` all use the same platform; Qt Quick has no GPU backend under offscreen. Missing Xvfb
-  fails the run. Set `AX_DEVIL_TESTS_QPA_PLATFORM` to a native platform (macOS, Windows) to skip Xvfb. Create
+  fails the run. Off Linux the suite uses Qt's native platform plugin and starts no display; the graphics API comes
+  from the `QSG_RHI_*` variables (see CI). `AX_DEVIL_TESTS_QPA_PLATFORM` names a platform plugin on any OS and skips Xvfb. Create
   applications through pytest-qt's `qapp`/`qtbot`, never during collection.
 - **Plugins isolated.** A session-scoped fixture loads built-ins while installed external entry points are patched out.
 - **Qt teardown.** Register widgets with `qtbot.addWidget()`. Register only top-level widgets: Qt deletes children with their parent, and a registered child whose parent was garbage-collected first makes pytest-qt close an already-deleted widget. The shared teardown hook drains Qt's deferred deletions after pytest-qt closes widgets, keeping native destruction on the GUI thread and out of later tests. Like the app, the suite runs with automatic cyclic GC off and collects in that hook, so a collection never runs inside a Qt callback; do not re-enable `gc` in a test without restoring it.
