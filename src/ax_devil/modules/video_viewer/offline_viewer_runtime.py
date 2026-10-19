@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.background_jobs import BackgroundJobs, background_jobs
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.scene.rendering import (
@@ -31,7 +32,7 @@ from ax_devil.modules.video_viewer.offline_frame_pool import (
     PresentedFrame,
     SecondaryFrameRelay,
 )
-from ax_devil.modules.video_viewer.offline_lane import OfflineLane, diagnostics_label
+from ax_devil.modules.video_viewer.offline_lane import OfflineLane
 from ax_devil.modules.video_viewer.offline_lane_builder import (
     build_lane,
     create_lane_layout,
@@ -102,11 +103,6 @@ class OfflineSession(QObject):
     def displays(self) -> tuple[FrameDisplay, ...]:
         """Return all active lane displays in presentation order."""
         return tuple(lane.display for lane in self.lanes)
-
-    def set_display_name(self, name: str) -> None:
-        """Relabel every lane's render diagnostics with the renamed workspace item *name*."""
-        for lane in self.lanes:
-            lane.display.viewport.set_diagnostics_label(diagnostics_label(name, lane.name))
 
     def focused_display(self) -> FrameDisplay | None:
         """Return the display of the focused lane, or the first lane's when focus is outside the displays."""
@@ -404,9 +400,7 @@ class OfflineSession(QObject):
 
         if source_index == 0:
             self._current_frame = self._bounded_frame(frame_data.frame_id.sequence_id)
-            self._presented_frame = PresentedFrame(
-                self._current_frame, frame_data.frame_id.timestamp_monotime_us / 1_000_000
-            )
+            self._presented_frame = PresentedFrame(self._current_frame, us_to_seconds(frame_data.frame_id.timestamp_us))
             self.currentFrameChanged.emit(self.current_frame)
         for lane in self.lanes:
             if lane.source_index == source_index:

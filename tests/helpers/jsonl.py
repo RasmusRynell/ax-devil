@@ -91,4 +91,4 @@ def jsonl_record(second: int, *entity_ids: str) -> dict[str, Any]:
 
 
 def frame_at(timestamp_us: int, sequence_id: int = 0) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=sequence_id, timestamp_monotime_us=float(timestamp_us))
+    return FrameIdentifier(sequence_id=sequence_id, timestamp_us=timestamp_us)

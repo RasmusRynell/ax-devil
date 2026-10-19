@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
+from ax_devil.core.time_units import us_to_ms
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.synchronization.timestamp_matching import DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US
 
@@ -51,7 +52,7 @@ class MediaToolsSection(Enum):
             MediaToolsSection.OVERLAY_SYNC: (
                 "Match overlay data to video frames when timestamps differ slightly.\n\n"
                 "After exact and source-provided matching, Previous allows the latest earlier sample "
-                f"within the tolerance ({DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US / 1000:g} ms by default). "
+                f"within the tolerance ({us_to_ms(DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US):g} ms by default). "
                 "Exact disables this fallback. Previous can match one sample to several frames."
             ),
             MediaToolsSection.OVERLAY_PERSISTENCE: (

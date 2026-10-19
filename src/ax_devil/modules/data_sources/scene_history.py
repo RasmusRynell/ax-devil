@@ -178,7 +178,7 @@ class ObjectHistory:
         return index >= 0 and frame <= self.spans[index][1]
 
     def _frame(self, index: int) -> FrameIdentifier:
-        return FrameIdentifier(sequence_id=index, timestamp_monotime_us=self.frame_times_us[index])
+        return FrameIdentifier(sequence_id=index, timestamp_us=self.frame_times_us[index])
 
 
 class SceneHistory:
@@ -222,7 +222,7 @@ class SceneHistory:
         empty_frames = [frame for frame, key in enumerate(shown_keys) if key is None]
 
         def frame_id(index: int) -> FrameIdentifier:
-            return FrameIdentifier(sequence_id=index, timestamp_monotime_us=frame_times_us[index])
+            return FrameIdentifier(sequence_id=index, timestamp_us=frame_times_us[index])
 
         events: list[FrameEvent] = []
         for sample_event in token.polled(records.events):

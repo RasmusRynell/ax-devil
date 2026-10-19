@@ -13,7 +13,7 @@ Video Viewer                   -> live/offline workflows, media tools, Scene pre
 Object Inspection              -> fields tree and title row of an object, used by media tools and the catalog viewer
 Video Player                   -> reusable frame display, viewport, drawing preparation
 Runtime Modules                -> Scene, filtering, data sources, synchronization, cache, plugins
-Supporting Modules             -> diagnostics, shortcuts, chrome, background jobs
+Supporting Modules             -> shortcuts, chrome, background jobs
 Settings                       -> config, settings state, preference values, logging, paths
 Core                           -> small foundational data types and pure policies
 ```
@@ -26,8 +26,6 @@ upward imports are deliberate, and none forms an import-time cycle:
   depend on each other.
 - Plugins speak the host's types: playlist resolvers return Workspace content and decoders return data-source
   factories.
-- Diagnostics reads the modules it reports on: dashboard snapshots read the frame cache, the plugin window reads the
-  plugin system, and render metrics name the video player's metrics type as a type-only import.
 - `core.data_types` names the Scene type that `OverlayData` carries, as a type-only import.
 
 For code placement, see [Module Map](module-map.md). For UI framework boundaries, see [UI Framework Structure](ui-framework.md).
@@ -169,6 +167,6 @@ Application appearance is owned by `modules/chrome/theme.py` and `tokens.py`; se
 
 ## Infrastructure
 
-Config, settings, shortcuts, cache, diagnostics and exception handling are mapped in [Module Map](module-map.md). The
+Config, settings, shortcuts, cache and exception handling are mapped in [Module Map](module-map.md). The
 scene stores (`SourceIndexedSceneStore`, `IndexedFrameSceneStore`) invalidate by the rule in
 [Data Pipeline](../domain/invariants.md#data-pipeline).

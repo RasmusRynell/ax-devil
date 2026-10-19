@@ -92,7 +92,7 @@ class EventPage(QWidget):
             (),
             (
                 FieldRow("kind", event_summary(event), copy=event.label, tag=event.kind),
-                FieldRow("time", format_frame_time(frame_id.timestamp_monotime_us)),
+                FieldRow("time", format_frame_time(frame_id.timestamp_us)),
                 FieldRow("frame", f"#{frame_id.sequence_id}"),
             ),
         )

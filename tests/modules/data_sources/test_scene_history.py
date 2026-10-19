@@ -89,7 +89,7 @@ def _provider(
 
 
 def _frame(index: int) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=index, timestamp_monotime_us=_VIDEO.timestamps_us[index])
+    return FrameIdentifier(sequence_id=index, timestamp_us=_VIDEO.timestamps_us[index])
 
 
 def test_collector_records_runs_of_consecutive_samples_and_types_in_first_seen_order() -> None:

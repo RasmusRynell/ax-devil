@@ -9,6 +9,7 @@ from PySide6.QtGui import QImage
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier
 from ax_devil.core.playback_speed import clamp_playback_speed
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.cache import CacheManager
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
@@ -183,12 +184,12 @@ class FileFrameSource(SeekableFrameSource):
         self.cleanup_posted_events()
         logger.debug(f"Stopped {self.source_id} (done)")
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for delivery shutdown."""
         delivery = self._closing_delivery or self._frame_delivery
         if delivery is None:
             return True
-        if not delivery.wait(timeout):
+        if not delivery.wait(timeout_ms):
             return False
         self._closing_delivery = None
         return True
@@ -253,7 +254,7 @@ class FileFrameSource(SeekableFrameSource):
         except (IndexError, RuntimeError, ValueError) as exc:
             logger.debug(f"Failed to read the last frame time of {self.source_id}: {exc}")
             return None
-        return last_time_us / 1_000_000 + self.get_frame_period_after_s(last)
+        return us_to_seconds(last_time_us) + self.get_frame_period_after_s(last)
 
     def peek_frame_seconds(self, frame_number: int) -> float | None:
         """Return a frame's time in seconds from the first frame, or None when unknown or the decoder is busy.
@@ -266,7 +267,7 @@ class FileFrameSource(SeekableFrameSource):
             time_us = self._frame_delivery.try_frame_time_us(frame_number)
         except (IndexError, RuntimeError, ValueError):
             return None
-        return None if time_us is None else time_us / 1_000_000
+        return None if time_us is None else us_to_seconds(time_us)
 
     def get_frame_size(self) -> tuple[int, int] | None:
         """Return the video's width and height in pixels, or None when the file does not say."""
@@ -310,7 +311,7 @@ class FileFrameSource(SeekableFrameSource):
         qimage = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
         frame_id = FrameIdentifier(
             sequence_id=decoded_frame.frame_index,
-            timestamp_monotime_us=decoded_frame.timestamp_us,
+            timestamp_us=decoded_frame.timestamp_us,
         )
         metadata = dict(decoded_frame.source_timing_metadata)
         if decoded_frame.period_after_s is not None:

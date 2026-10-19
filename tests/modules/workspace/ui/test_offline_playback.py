@@ -10,6 +10,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMenu
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.cache.cache_manager import CacheManager
@@ -42,7 +43,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
     for index, color in enumerate(("red", "green", "blue")):
         image = QImage(32, 24, QImage.Format.Format_RGB32)
         image.fill(QColor(color))
-        encoder.write_frame(image, timestamp_us=index * 1_000_000)
+        encoder.write_frame(image, timestamp_us=seconds_to_us(index))
     encoder.finish()
 
     shortcuts = make_shortcut_manager()

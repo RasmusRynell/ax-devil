@@ -89,7 +89,7 @@ def test_refresh_after_concurrent_refresh_does_nothing(plugin: Path, uv: Mock) -
     assert uv.call_count == calls
 
 
-@pytest.mark.parametrize("options", [[], ["--debug"], ["--log-level", "DEBUG"], ["--config", "plugins"]])
+@pytest.mark.parametrize("options", [[], ["--log-level", "DEBUG"], ["--config", "plugins"]])
 def test_management_bypasses_broken_runtime(plugin: Path, monkeypatch: pytest.MonkeyPatch, options: list[str]) -> None:
     """The public plugin command stays usable without inspecting the application environment."""
     monkeypatch.chdir(plugin.parent)

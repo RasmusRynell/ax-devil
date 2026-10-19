@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
-from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
+from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY_MS
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_viewer.offline_lane import show_video_on_controls
@@ -132,7 +132,7 @@ class OfflineTransport:
             self._panel = controls
             self._visibility = ControlVisibilityController(
                 timer_parent=viewer,
-                idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY,
+                idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY_MS,
                 request_show=controls.fade_in,
                 request_hide=controls.start_auto_hide_timer,
             )

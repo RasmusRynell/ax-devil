@@ -204,7 +204,7 @@ class ExportJob:
         decoded_frame: DecodedFrame,
     ) -> VideoFrameWithOverlays:
         """Run image through the lane's presenter pipeline with overlay lookup."""
-        frame_id = FrameIdentifier(sequence_id=frame_index, timestamp_monotime_us=decoded_frame.timestamp_us)
+        frame_id = FrameIdentifier(sequence_id=frame_index, timestamp_us=decoded_frame.timestamp_us)
         frame_data = FrameData(content=image, frame_id=frame_id, metadata={})
 
         overlay_data: OverlayData | None = None

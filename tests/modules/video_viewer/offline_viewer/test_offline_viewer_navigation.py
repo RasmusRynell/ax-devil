@@ -8,7 +8,6 @@ from unittest.mock import patch
 from PySide6.QtCore import QCoreApplication, QPoint
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.workspace.core import (
@@ -305,8 +304,7 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         assert_frame_source_disposed(opened[0])
 
     def test_entry_navigation_leaves_no_stale_renderers(self, qtbot: QtBot) -> None:
-        """Offline entry rebuilds should keep renderers and their metrics scoped to the shown lanes."""
-        get_render_metrics_store().clear()
+        """Offline entry rebuilds should keep renderers scoped to the shown lanes."""
         first = make_local_content("A", with_overlay=True)
         second = make_seekable_content("B", overlays=(make_overlay_content("o1"), make_overlay_content("o2")))
         playlist = PlaylistContent(
@@ -328,7 +326,6 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         assert_no_stale_renderers(widget, baseline_frame_viewports)
 
         widget.cleanup()
-        assert get_render_metrics_store().snapshot() == ()
         assert count_frame_viewports() == baseline_frame_viewports
 
     def test_selected_playback_speed_is_reapplied_after_entry_switch(self, qtbot: QtBot) -> None:

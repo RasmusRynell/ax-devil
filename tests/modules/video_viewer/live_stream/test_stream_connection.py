@@ -235,5 +235,5 @@ def test_visibility_refreshes_paused_live_overlay_without_another_frame(
 
     refresh.assert_called_once()
     hidden = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert len(hidden) < len(initial)
+    assert len(hidden.labels) < len(initial.labels)
     assert controller.is_paused and len(displayed) == 1

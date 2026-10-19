@@ -36,7 +36,7 @@ def _assert_serves_sample(provider: FrameIdentifierDataProvider) -> None:
     filter_config = provider.get_filter_config()
     assert filter_config is not None
     assert {option.id for option in filter_config.options} == {"show_car", "show_person"}
-    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_monotime_us=1.0))
+    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_us=1))
     assert scene is not None
     assert set(scene.entities) == {"cvat_track_10", "cvat_track_11"}
 

@@ -138,4 +138,3 @@ Each fact has one home; link to it instead of repeating it. When a fact moves la
 - Architecture and data flows: `docs/architecture/overview.md`, `docs/architecture/ui-framework.md`
 - Rendering and render catalogs: `docs/architecture/draw-system.md`, `docs/architecture/catalog-viewer.md`
 - Testing workflow and patterns: `docs/runbooks/testing.md`
-- Diagnosing playback and rendering problems: `docs/runbooks/diagnostics.md`

@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space, TextRole
@@ -22,7 +23,6 @@ from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import EntityId, Scene
 from ax_devil.modules.video_viewer.media_tools.presence import Presence, PresenceStrip
 
-_US_PER_SECOND = 1_000_000
 _ATTRIBUTES_NOTE = "Attributes are only available while an object is in the frame."
 _MESSAGE_STYLE = "color: palette(placeholder-text); border: none;"
 
@@ -227,11 +227,10 @@ class ObjectPage(QWidget):
         last = spans[started - 1][1] if started else None
         upcoming = spans[started][0] if started < len(spans) else None
         if last is not None:
-            when = f"Last seen at {format_frame_time(times[last])} ({(now - times[last]) / _US_PER_SECOND:.1f} s ago)"
+            when = f"Last seen at {format_frame_time(times[last])} ({us_to_seconds(now - times[last]):.1f} s ago)"
         elif upcoming is not None:
             when = (
-                f"First seen at {format_frame_time(times[upcoming])} "
-                f"(in {(times[upcoming] - now) / _US_PER_SECOND:.1f} s)"
+                f"First seen at {format_frame_time(times[upcoming])} (in {us_to_seconds(times[upcoming] - now):.1f} s)"
             )
         else:
             when = "Not seen"

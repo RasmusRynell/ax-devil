@@ -26,7 +26,7 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
     OpenedLane,
 )
 from ax_devil.modules.video_viewer.offline_frame_pool import PooledVideoSource
-from ax_devil.modules.video_viewer.offline_lane import OfflineLane, diagnostics_label
+from ax_devil.modules.video_viewer.offline_lane import OfflineLane
 from ax_devil.modules.video_viewer.overlay_persistence import (
     OverlayPersistenceSettings,
 )
@@ -113,7 +113,6 @@ def build_lane(
     video = opened.video
     display = FrameDisplay()
     rollback.callback(display.cleanup)
-    display.viewport.set_diagnostics_label(diagnostics_label(pane_title, lane_content.display_name))
     controls = SeekableVideoControlPanel(display.viewport) if use_lane_controls else None
     if controls is not None:
         display.mount_overlay(controls, position=OverlayPosition.BOTTOM_FULL_WIDTH)
@@ -125,7 +124,6 @@ def build_lane(
     pooled_source = source_pool[opened.source_index]
     overlay_source = opened.overlay_source
     overlay_policy = opened.overlay_policy
-    display.viewport.set_diagnostics_sources((overlay_source.diagnostics_id,) if overlay_source else ())
     timing_controls = TimingDiagnosticsWidget()
     render_catalog_selection = render_catalog_manager.create_selection(
         visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container

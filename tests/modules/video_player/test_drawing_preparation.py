@@ -22,7 +22,7 @@ _SETTINGS = DrawingSettings(200, 100, 100, hardware=True)
 
 
 def test_failed_template_discards_all_output_kinds_and_preserves_prior_drawing() -> None:
-    """A late failure must leave no geometry, glyphs, counts or stale reuse entries."""
+    """A late failure must leave no geometry, glyphs or stale reuse entries."""
     catalog = RenderProgramCompiler().compile_catalog(
         {
             "main": {
@@ -81,15 +81,12 @@ def test_failed_template_discards_all_output_kinds_and_preserves_prior_drawing()
             with pytest.raises(TemplateRuntimeError, match="zero"):
                 catalog.render("main", {"divisor": divisor}, buffer, context=context)
             drawing = buffer.finish()
-            assert drawing.counts == (("circle", 1),)
             assert not drawing.meshes and not drawing.texts
             assert len(drawing.paths) == 1
         else:
             catalog.render("main", {"divisor": divisor}, buffer, context=context)
             drawing = buffer.finish()
-            assert len(drawing) == 5
             assert len(drawing.texts) == 1
-            assert sum(count for _, count in drawing.counts) == 5
 
 
 def test_retained_preparation_reuses_unchanged_output_and_invalidates_culling() -> None:
@@ -100,7 +97,6 @@ def test_retained_preparation_reuses_unchanged_output_and_invalidates_culling() 
     TextCall(0.5, 0.5, "Stable", _STYLE).submit(buffer)
     BoxCall(2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
     first = buffer.finish()
-    assert len(first) == 2
     buffer.reset(settings)
     BoxCall(0.2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
     TextCall(0.5, 0.5, "Stable", _STYLE).submit(buffer)
@@ -113,9 +109,7 @@ def test_retained_preparation_reuses_unchanged_output_and_invalidates_culling() 
     TextCall(0.5, 0.5, "Stable", _STYLE).submit(buffer)
     BoxCall(2, 0.1, 0.2, 0.2, _STYLE).submit(buffer)
     third = buffer.finish()
-    assert len(third) == 3
-    assert len(first) == len(second) == 2
-    assert [mesh.operation_count for mesh in third.meshes] == [2]
+    assert len(third.meshes[0].payload) == 2 * len(first.meshes[0].payload)
 
 
 def test_labels_between_geometry_do_not_split_its_batch() -> None:
@@ -125,7 +119,7 @@ def test_labels_between_geometry_do_not_split_its_batch() -> None:
     TextCall(0.5, 0.5, "keep", _STYLE).submit(buffer)
     BoxCall(0.2, 0.2, 0.1, 0.1, _STYLE).submit(buffer)
     drawing = buffer.finish()
-    assert [mesh.operation_count for mesh in drawing.meshes] == [2]
+    assert len(drawing.meshes) == 1
     assert [layout.text() for text in drawing.texts for layout in text.block.layouts] == ["keep"]
 
 
@@ -136,7 +130,9 @@ def test_bulk_geometry_beyond_one_batch_keeps_every_row() -> None:
     buffer.boxes(x, np.full(count, 0.1), np.full(count, 0.1), np.full(count, 0.1), Paint.of(_STYLE))
     drawing = buffer.finish()
     assert len(drawing.meshes) > 1
-    assert sum(mesh.operation_count for mesh in drawing.meshes) == count
+    single = DrawingBuffer(_SETTINGS)
+    BoxCall(0, 0.1, 0.1, 0.1, _STYLE).submit(single)
+    assert sum(len(mesh.payload) for mesh in drawing.meshes) == count * len(single.finish().meshes[0].payload)
 
 
 def test_reused_vertex_storage_cannot_mutate_a_published_drawing() -> None:
@@ -301,4 +297,4 @@ def test_rounded_boxes_are_paths_with_arcs_even_on_hardware() -> None:
     BoxCall(0.6, 0.1, 0.3, 0.3, _STYLE).submit(buffer)
     drawing = buffer.finish()
     assert [" a " in path.geometry for path in drawing.paths] == [True]
-    assert sum(mesh.operation_count for mesh in drawing.meshes) == 1
+    assert len(drawing.meshes) == 1

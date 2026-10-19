@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QLabel
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -48,7 +49,7 @@ def _shown_boxes(viewer: OfflineVideoViewerWidget) -> int:
     source = viewer._runtime.lanes[0].overlay_source
     assert source is not None
     shown = viewer._runtime.presented_frame
-    overlay = source.get_overlay_at_frame(FrameIdentifier(shown.frame, shown.seconds * 1_000_000))
+    overlay = source.get_overlay_at_frame(FrameIdentifier(shown.frame, seconds_to_us(shown.seconds)))
     assert overlay is not None
     return len(overlay.content.entities)
 
@@ -80,7 +81,7 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
     for index in range(3):
         image = QImage(32, 24, QImage.Format.Format_RGB32)
         image.fill(QColor("gray"))
-        encoder.write_frame(image, timestamp_us=index * 1_000_000)
+        encoder.write_frame(image, timestamp_us=seconds_to_us(index))
     encoder.finish()
     overlay = tmp_path / "boxes.txt"
     _write_boxes(overlay, 1)

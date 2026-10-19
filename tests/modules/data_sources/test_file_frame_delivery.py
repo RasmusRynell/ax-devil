@@ -37,7 +37,7 @@ class _Decoder:
         return DecodedFrame(
             frame_index=frame_number,
             pixels=np.zeros((2, 2, 3), dtype=np.uint8),
-            timestamp_us=float(frame_number * 1_000),
+            timestamp_us=frame_number * 1_000,
         )
 
     def prefetch_one(self) -> bool:
@@ -298,7 +298,7 @@ def test_source_wait_tracks_a_decoder_still_finishing_after_stop_times_out(
     monkeypatch.setattr(FrameReaderWorker, "read_decoded_frame", gated_read)
     assert source._frame_delivery is not None
     # Force the supported bounded-stop outcome without spending five seconds waiting for its timeout.
-    source._frame_delivery._worker._worker_timeout = 0
+    source._frame_delivery._worker._worker_timeout_s = 0
     try:
         source.request_frame_async(0, lambda _frame: None)
         qtbot.waitUntil(entered.is_set)

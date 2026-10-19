@@ -282,7 +282,7 @@ class EventsPage(QWidget):
             Column(
                 "Time",
                 CellKind.MONO,
-                lambda row: format_frame_time(row.event.frame_id.timestamp_monotime_us),
+                lambda row: format_frame_time(row.event.frame_id.timestamp_us),
                 width_chars=12,  # A timestamp is never cut: "00:00:00.666".
             ),
             Column("Kind", CellKind.TAG, lambda row: Labeled(row.event.kind.lower(), row.event.kind)),

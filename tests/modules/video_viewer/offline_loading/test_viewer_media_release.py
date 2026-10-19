@@ -13,6 +13,7 @@ import shiboken6
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QThread, QTimer
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.time_units import ms_to_seconds
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
@@ -160,11 +161,11 @@ class _RetiringSource(QObject):
         self.stop_calls += 1
         self.stopped.set()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Report actual decoder exit, honoring the caller's wait bound."""
         if self.worker is None:
             return True
-        self.worker.join(timeout / 1000)
+        self.worker.join(ms_to_seconds(timeout_ms))
         return not self.worker.is_alive()
 
     def deleteLater(self) -> None:  # noqa: N802

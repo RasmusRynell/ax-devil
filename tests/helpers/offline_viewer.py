@@ -17,7 +17,6 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.chrome.banner import Banner
-from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_player.ui.draggable import DraggablePanel
@@ -51,10 +50,9 @@ def count_frame_viewports() -> int:
 
 
 def assert_no_stale_renderers(widget: OfflineVideoViewerWidget, baseline_frame_viewports: int) -> None:
-    """Assert only the shown lanes' viewports exist and report render metrics."""
+    """Assert only the shown lanes' viewports exist."""
 
     live = len(widget.findChildren(FrameViewport))
-    assert len(get_render_metrics_store().snapshot()) == live
     assert count_frame_viewports() == baseline_frame_viewports + live
 
 

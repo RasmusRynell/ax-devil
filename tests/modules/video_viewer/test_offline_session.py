@@ -78,7 +78,7 @@ def test_lane_shows_each_frame_with_the_overlay_for_that_frame() -> None:
 
     lane.present_frame(make_frame(7))
 
-    assert overlay_source.requested_frame_ids == [FrameIdentifier(sequence_id=7, timestamp_monotime_us=7000.0)]
+    assert overlay_source.requested_frame_ids == [FrameIdentifier(sequence_id=7, timestamp_us=7000)]
     assert display.frame_ids() == [7]
     assert display.frames[0].overlays is not None
     assert display.frames[0].overlays.overlay_id == 7
@@ -328,30 +328,9 @@ def test_lane_retains_a_recent_overlay_at_its_original_sample_time() -> None:
     for index in [0, 2]:
         shown = display.frames[index].overlays
         assert shown is not None
-        assert shown.timestamp_monotime_us == 7000
+        assert shown.timestamp_us == 7000
         assert shown.metadata is not None
         assert shown.metadata["overlay_reused"] is True
         assert shown.metadata["overlay_opacity"] == 0.4
     assert display.frames[1].overlays is None
     assert display.frames[3].overlays is None
-
-
-class _LabelRecordingViewport:
-    """Viewport test double recording the render diagnostics labels it is given."""
-
-    def __init__(self) -> None:
-        self.labels: list[str] = []
-
-    def set_diagnostics_label(self, label: str) -> None:
-        """Record the label."""
-        self.labels.append(label)
-
-
-def test_renamed_item_relabels_existing_lane_diagnostics(qtbot: QtBot) -> None:
-    session, display, _source = make_primary_session(qtbot)
-    viewport = _LabelRecordingViewport()
-    display.viewport = viewport  # type: ignore[attr-defined]
-
-    session.set_display_name("Renamed item")
-
-    assert viewport.labels == ["Renamed item · lane"]

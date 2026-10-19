@@ -16,13 +16,13 @@ from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
 
 from ..constants import (
-    DEFAULT_AUTO_HIDE_DELAY,
-    DEFAULT_FADE_DURATION,
+    DEFAULT_AUTO_HIDE_DELAY_MS,
+    DEFAULT_FADE_DURATION_MS,
     DRAG_THRESHOLD_PIXELS,
     HANDLE_HEIGHT,
     HANDLE_ICON_SIZE_PX,
     HANDLE_WIDTH,
-    PANEL_ANIMATION_DURATION,
+    PANEL_ANIMATION_DURATION_MS,
     PANEL_COLLAPSE_SHARE,
     PANEL_COLLAPSED_WIDTH,
     PANEL_DEFAULT_CHARS,
@@ -68,8 +68,8 @@ class DraggableHandle(FadingWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             parent=parent,
-            fade_duration=DEFAULT_FADE_DURATION,
-            auto_hide_delay=DEFAULT_AUTO_HIDE_DELAY,
+            fade_duration_ms=DEFAULT_FADE_DURATION_MS,
+            auto_hide_delay_ms=DEFAULT_AUTO_HIDE_DELAY_MS,
             initial_opacity=0.0,
             hover_element_name="drag_handle",
         )
@@ -174,11 +174,11 @@ class DraggablePanel(FadingWidget):
     def __init__(
         self,
         parent: QWidget | None = None,
-        animation_duration: int = PANEL_ANIMATION_DURATION,
+        animation_duration_ms: int = PANEL_ANIMATION_DURATION_MS,
         collapsed_width: int = PANEL_COLLAPSED_WIDTH,
     ) -> None:
         # Set panel configuration BEFORE calling super().__init__
-        self.animation_duration: int = animation_duration
+        self.animation_duration_ms: int = animation_duration_ms
         self.collapsed_width: int = collapsed_width
         self.is_collapsed: bool = True
         self._user_width: int | None = None  # The width the user last dragged to; kept for the session.
@@ -195,8 +195,8 @@ class DraggablePanel(FadingWidget):
 
         super().__init__(
             parent=parent,
-            fade_duration=DEFAULT_FADE_DURATION,
-            auto_hide_delay=DEFAULT_AUTO_HIDE_DELAY,
+            fade_duration_ms=DEFAULT_FADE_DURATION_MS,
+            auto_hide_delay_ms=DEFAULT_AUTO_HIDE_DELAY_MS,
             initial_opacity=1.0,  # Panel is always visible when shown
             hover_element_name="side_panel",
         )
@@ -279,11 +279,11 @@ class DraggablePanel(FadingWidget):
 
         # Then setup panel-specific animations
         self.animation = QPropertyAnimation(self, b"maximumWidth")
-        self.animation.setDuration(self.animation_duration)
+        self.animation.setDuration(self.animation_duration_ms)
         self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self.min_animation = QPropertyAnimation(self, b"minimumWidth")
-        self.min_animation.setDuration(self.animation_duration)
+        self.min_animation.setDuration(self.animation_duration_ms)
         self.min_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.finished.connect(self._hide_content_when_collapsed)
 

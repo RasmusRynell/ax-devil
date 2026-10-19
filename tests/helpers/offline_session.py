@@ -190,7 +190,7 @@ class PlaybackSource:
 
 
 def make_frame(frame_number: int, *, position_generation: int | None = None) -> FrameData:
-    frame_id = FrameIdentifier(sequence_id=frame_number, timestamp_monotime_us=float(frame_number * 1000))
+    frame_id = FrameIdentifier(sequence_id=frame_number, timestamp_us=frame_number * 1000)
     metadata = {"position_generation": position_generation} if position_generation is not None else None
     return FrameData(
         content=QImage(2, 2, QImage.Format.Format_RGB32),
@@ -201,7 +201,7 @@ def make_frame(frame_number: int, *, position_generation: int | None = None) -> 
 
 
 def make_overlay(frame_number: int) -> OverlayData:
-    frame_id = FrameIdentifier(sequence_id=frame_number, timestamp_monotime_us=float(frame_number * 1000))
+    frame_id = FrameIdentifier(sequence_id=frame_number, timestamp_us=frame_number * 1000)
     return OverlayData(
         content=Scene(time_slice=TimeSlice(start=frame_number, end=frame_number)),
         frame_id=frame_id,

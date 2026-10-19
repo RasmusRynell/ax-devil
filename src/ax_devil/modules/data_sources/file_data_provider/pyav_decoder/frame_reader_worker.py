@@ -44,13 +44,11 @@ class FrameReaderWorker(BaseWorker):
         cache_budget_bytes: int,
         prefetch_count: int,
         cache_path: Path | None = None,
-        cache_identifier: str | None = None,
         open_config: VideoOpenConfig | None = None,
         cache_pool: FrameCachePool | None = None,
     ) -> None:
         self._frame_processor = PyAvAbstraction(video_path, cache_path, open_config=open_config)
-        identifier = cache_identifier or Path(video_path).name
-        self._cache = FrameCache(cache_budget_bytes, identifier=identifier, pool=cache_pool)
+        self._cache = FrameCache(cache_budget_bytes, pool=cache_pool)
         self._request_queue: Queue[tuple[int, Callable[[DecodedFrame | None], None]]] = Queue()
         self._prefetch_count = prefetch_count
 
@@ -331,12 +329,12 @@ class FrameReaderWorker(BaseWorker):
         """Return the decoded frames held in the cache as inclusive ``(first, last)`` runs."""
         return self._cache.cached_ranges()
 
-    def get_frame_time_us(self, frame_index: int) -> float:
+    def get_frame_time_us(self, frame_index: int) -> int:
         """Return frame presentation time in microseconds since the first indexed frame."""
         with self._pyav_lock:
             return self._frame_processor.get_frame_time_us(frame_index)
 
-    def try_frame_time_us(self, frame_index: int) -> float | None:
+    def try_frame_time_us(self, frame_index: int) -> int | None:
         """Return a frame's presentation time, or None at once when the decoder is busy, so callers never wait."""
         if not self._pyav_lock.acquire(blocking=False):
             return None

@@ -159,7 +159,7 @@ class QuickOverlay:
                 self._geometry.append(GeometryItem(self.item))
                 self._geometry[index].setZ(_MESH_Z)
             self._geometry[index].set_mesh(mesh.payload)
-        spare = _SPARE if len(drawing) else 0
+        spare = _SPARE if drawing.meshes or drawing.paths or drawing.texts or drawing.labels else 0
         for layer, path, unchanged in self._paths.assign(
             drawing.paths, lambda: _PathItem(self.item, self._components), spare
         ):

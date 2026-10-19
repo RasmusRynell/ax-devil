@@ -49,6 +49,6 @@ def test_a_restart_from_the_plugin_environment_goes_through_the_launcher(
     monkeypatch.setattr(QProcess, "startDetached", start_detached)
     qapp.setProperty("axDevilRestartRequested", True)
 
-    restart.relaunch_if_requested(qapp, ["--debug"])
+    restart.relaunch_if_requested(qapp, ["--log-level", "DEBUG"])
 
-    assert started == [("/venv/bin/python", ["/venv/bin/ax-devil", "--debug"])]
+    assert started == [("/venv/bin/python", ["/venv/bin/ax-devil", "--log-level", "DEBUG"])]

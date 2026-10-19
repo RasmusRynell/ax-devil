@@ -9,14 +9,11 @@ from PySide6.QtCore import QChildEvent, QEvent, QMimeData, QObject, QPoint, Qt
 from PySide6.QtGui import QDrag, QMouseEvent
 from PySide6.QtWidgets import QAbstractButton, QApplication
 
-from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.ui.split_panes import PANEL_MIME_TYPE
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 if TYPE_CHECKING:
     from ax_devil.modules.workspace.ui.split_view import SplitView
-
-logger = get_logger(__name__)
 
 
 class HeaderDragFilter(QObject):
@@ -29,10 +26,6 @@ class HeaderDragFilter(QObject):
         # Store only a weak reference to avoid strong reference cycles retaining the widget
         self._widget_ref: weakref.ReferenceType[ViewerWidget] = weakref.ref(widget)
         self._drag_start_pos: QPoint | None = None
-        filter_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, filter_id=filter_id: logger.debug(f"HeaderDragFilter.destroyed id={filter_id}")
-        )
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):

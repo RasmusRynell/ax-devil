@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,6 @@ from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifie
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import (
     OverlayLookupResult,
 )
-from ax_devil.modules.data_sources.file_data_provider.retrieval_stats import RetrievalStats
 from ax_devil.modules.data_sources.file_data_provider.scene_catalog import (
     SceneBuildResult,
     SceneCatalog,
@@ -33,11 +31,6 @@ from ax_devil.modules.data_sources.file_data_provider.stores import (
 from ax_devil.modules.data_sources.overlay_samples import OverlaySamples
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
-from ax_devil.modules.diagnostics.metrics_store import (
-    get_metrics_store,
-    remove_instance,
-    source_identity,
-)
 from ax_devil.modules.filtering.filter_config import FilterConfig, build_default_filter_config
 from ax_devil.modules.scene.decoding import (
     PayloadToSceneDecoder,
@@ -120,7 +113,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                 exact timestamp lookup and provider-owned sequence lookup fail.
         """
         self.file_path = Path(file_path)
-        self._metrics_id = source_identity(self)
         self.decoder_name = str(decoder_name)
         self._artifact_version = int(artifact_version)
         if self._artifact_version < 1:
@@ -138,10 +130,8 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._sorted_frame_ids: tuple[int, ...] = ()
         self._sequence_to_timestamp: dict[int, int] = {}
         self._timestamp_to_sequence: dict[int, int] = {}
-        self._stats = RetrievalStats()
         self._store = self._build_store()
         self._apply_catalog(self._store.catalog)
-        get_metrics_store().register(self._metrics_id, f"Overlay lookup · {self.file_path}")
 
         name = self.file_path.name
         if self._sorted_frame_ids:
@@ -318,16 +308,13 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
 
         See :func:`lookup_scene` for the matching order.
         """
-        result = lookup_scene(
+        return lookup_scene(
             self._samples,
             self._load_scene,
-            self._stats,
             frame_identifier,
             allow_previous=allow_previous,
             frame_timeline=frame_timeline,
         )
-        self._push_metrics()
-        return result
 
     def get_timestamp_fallback_policy(self) -> TimestampFallbackPolicy:
         """Return the timestamp fallback policy used after exact and sequence lookup fail."""
@@ -342,20 +329,9 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._timestamp_fallback_policy = policy
         self._samples = replace(self._samples, policy=policy)
 
-    def _push_metrics(self) -> None:
-        self._stats.push_metrics(self._metrics_id, len(self._available_frame_ids))
-
     def get_available_frames(self) -> set[int]:
-        """Get the set of available frame timestamps (as monotime microseconds)."""
+        """Get the set of available frame timestamps (as media-clock microseconds)."""
         return set(self._available_frame_ids)
-
-    def uses_sequence_lookup(self) -> bool:
-        """Return whether sequence identifiers participate in lookup."""
-        return self._sequence_lookup_enabled
-
-    def get_available_sequences(self) -> set[int]:
-        """Get the set of available overlay sequence identifiers."""
-        return set(self._sequence_to_timestamp)
 
     def get_total_frames(self) -> int:
         """Get the total number of frames available."""
@@ -379,43 +355,32 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             raise RuntimeError("Metadata not available - file may not have been processed")
         return self._metadata
 
-    def get_metadata_value(self, path: str) -> Any:
-        """Get a specific metadata value using dot notation."""
-        metadata = self.get_metadata()
-        value: Any = metadata
-        for key in path.split("."):
-            if hasattr(value, key):
-                value = getattr(value, key)
-            elif isinstance(value, dict) and key in value:
-                value = value[key]
-            else:
-                raise KeyError(f"Metadata path '{path}' not found")
-        return value
-
     def close(self) -> None:
         """Close the provider and clean up resources."""
-        remove_instance(self._metrics_id)
-        self._log_retrieval_summary()
+        self._log_parse_summary()
         self._runtime_cache.clear()
         self._store.close()
 
-    def _log_retrieval_summary(self) -> None:
-        """Log parse and retrieval completeness."""
-        self._stats.log_summary(
-            name=self.file_path.name,
-            decoder_name=self.decoder_name,
-            available=len(self._available_frame_ids),
-            total_lines=self._metadata.total_lines if self._metadata else 0,
-        )
+    def _log_parse_summary(self) -> None:
+        """Log records that did not produce a scene."""
+        total_lines = self._metadata.total_lines if self._metadata else 0
+        total_available = len(self._available_frame_ids)
+        skipped_at_parse = total_lines - total_available
+        name = self.file_path.name
+        dec = self.decoder_name
+
+        if skipped_at_parse > 0:
+            logger.debug(
+                f"{name} [{dec}] PARSE GAP: {skipped_at_parse}/{total_lines} payload lines did not produce a scene"
+            )
 
     def _extract_timestamp_key(self, scene: Scene) -> int | None:
         """Derive a monotonic timestamp key for a scene."""
+        timestamp_us = scene.time_slice.start_timestamp_us
+        if timestamp_us is not None:
+            return timestamp_us
         start = scene.time_slice.start
-        if isinstance(start, datetime):
-            return int(start.timestamp() * 1_000_000)
-        if isinstance(start, (int, float)):
-            return int(start)
-        return None
+        return start if isinstance(start, int) else None
 
     def _extract_sequence_key(self, scene: Scene, fallback_sequence: int) -> int:
         """Determine the sequence identifier for a scene."""

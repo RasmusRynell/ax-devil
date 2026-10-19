@@ -85,11 +85,6 @@ class SplitView(QWidget):
         self._welcome_scroll.setWidget(self._welcome_widget)
         self._welcome_scroll.show()
 
-        split_view_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, split_view_id=split_view_id: logger.debug(f"SplitView.destroyed id={split_view_id}")
-        )
-
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._welcome_scroll.setGeometry(self.rect())

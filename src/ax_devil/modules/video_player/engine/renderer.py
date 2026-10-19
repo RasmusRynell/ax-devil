@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from time import perf_counter
-
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QHideEvent, QMouseEvent, QResizeEvent, QShowEvent, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
-from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -22,7 +19,6 @@ from .data_types import (
 )
 from .quick.surface import Bounds, QuickSurface
 from .render_context import RenderContext
-from .render_diagnostics import RendererDiagnostics
 from .viewport_state import NormalizedViewport, ViewportState, ZoomStep, fit_frame_rect
 
 logger = get_logger(__name__)
@@ -33,7 +29,7 @@ _ZOOM_STEP = 1.15
 
 
 class VideoFrameRenderer(QWidget):
-    """Viewport interaction, coalesced Quick frame preparation, and display diagnostics."""
+    """Viewport interaction and coalesced Quick frame preparation."""
 
     viewportChanged = Signal(object)  # NormalizedViewport
     selectionChanged = Signal(object)  # Id of the object the user selected by clicking it, or None when cleared
@@ -45,8 +41,6 @@ class VideoFrameRenderer(QWidget):
         super().__init__(parent)
 
         self._logger = logger
-        self._diagnostics = RendererDiagnostics(self)
-
         self.setMouseTracking(True)
         self._video_frame: VideoFrameWithOverlays | None = None
         self._viewport = ViewportState(
@@ -73,7 +67,6 @@ class VideoFrameRenderer(QWidget):
 
     @Slot(VideoFrameWithOverlays)
     def display_frame(self, video_frame: VideoFrameWithOverlays) -> None:
-        self._diagnostics.submit(video_frame)
         self._video_frame = video_frame
         self.refresh_last_frame()
 
@@ -81,7 +74,6 @@ class VideoFrameRenderer(QWidget):
         self._set_selected(None)
         self._clear_hover()
         self._video_frame = None
-        self._diagnostics.reset()
         self._stable_viewport = None
         self._prepare_timer.stop()
         self._quick.clear()
@@ -108,17 +100,12 @@ class VideoFrameRenderer(QWidget):
         surface, frame = self._quick, self._video_frame
         if not self.isVisible() or frame is None or self.width() <= 0 or self.height() <= 0:
             return
-        capture = is_metrics_enabled()
-        start_time = perf_counter() if capture else 0.0
         target = self._aspect_respected_rect(frame.frame.image.size())
         if target.width() < 1 or target.height() < 1:
             return
         context = self._create_render_context(target)
-        image_start = perf_counter() if capture else 0.0
         surface.set_frame_image(frame.frame.image, target)
-        compose_start = perf_counter() if capture else 0.0
         drawing, opacity = frame.prepare_overlays(context, surface.drawing_buffer(target, context.scale_factor))
-        draw_start = perf_counter() if capture else 0.0
         surface.set_overlays(
             drawing,
             opacity,
@@ -127,39 +114,15 @@ class VideoFrameRenderer(QWidget):
             self._hover_hit.bounds if self._hover_hit is not None else None,
             self._selected_bounds,
         )
-        draw_end = perf_counter() if capture else 0.0
         if surface.isHidden():
             surface.show()
             surface.lower()
-        if capture:
-            self._diagnostics.record(
-                frame,
-                start_time,
-                image_start,
-                compose_start,
-                draw_start,
-                draw_end,
-                context,
-                primitive_count=sum(count for _, count in drawing.counts) if drawing is not None else 0,
-                submitted_count=len(drawing) if drawing is not None else 0,
-                opacity=opacity,
-                backend=surface.backend_label,
-            )
-
-    def set_diagnostics_label(self, label: str) -> None:
-        """Associate rendering samples with the content/lane displayed by this viewer."""
-        self._diagnostics.set_label(label)
-
-    def set_diagnostics_sources(self, source_ids: tuple[str, ...]) -> None:
-        """Associate this viewer with the source observations used to produce its frames."""
-        self._diagnostics.set_sources(source_ids)
 
     def cleanup(self) -> None:
-        """Release the submitted frame, native resources, and rendering diagnostics."""
+        """Release the submitted frame and native resources."""
         self.clear()
         self._prepare_timer.stop()
         self._quick.cleanup()
-        self._diagnostics.remove()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         if self._video_frame is not None:

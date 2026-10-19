@@ -7,7 +7,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
 
-from ..constants import CONTROL_PANEL_PADDING, DEFAULT_AUTO_HIDE_DELAY, DEFAULT_FADE_DURATION
+from ..constants import CONTROL_PANEL_PADDING, DEFAULT_AUTO_HIDE_DELAY_MS, DEFAULT_FADE_DURATION_MS
 from .fading import FadingWidget
 from .timeline_slider import TimelineSliderPainter
 
@@ -53,8 +53,8 @@ class BaseVideoControlPanel(FadingWidget):
         # Initialize FadingWidget with control panel-specific settings
         super().__init__(
             parent=parent,
-            fade_duration=DEFAULT_FADE_DURATION,
-            auto_hide_delay=DEFAULT_AUTO_HIDE_DELAY,
+            fade_duration_ms=DEFAULT_FADE_DURATION_MS,
+            auto_hide_delay_ms=DEFAULT_AUTO_HIDE_DELAY_MS,
             initial_opacity=0.0,
             hover_element_name="control_panel",
         )

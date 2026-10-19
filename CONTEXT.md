@@ -28,6 +28,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Video Viewer | The application workflow that composes media sources, sync, Scene tools, and frame display. | Player, pane |
 | Frame Display | A reusable shell that presents frames and overlays and exposes generic mount points. | Video player, playback widget, viewer |
 | Frame Viewport | The lower-level viewing area inside a Frame Display. | Video display widget, renderer |
+| Media Time | Integer microseconds on the clock frames and Scenes share. | monotime, wall time |
 | Timestamp Matching | Synchronization policy for choosing the overlay timestamp that corresponds to a video frame timestamp. | Provider lookup, sync result |
 | Overlay Lookup | File overlay provider behavior that loads a Scene for a FrameIdentifier and records whether timestamp, sequence, tolerance, or miss was used. | Timestamp matching, offline sync |
 | Scene | The world-model exchange format produced by decoders and consumed by filtering, inspection, and rendering. | Raw overlay payload |
@@ -37,7 +38,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Drawing Instruction | A catalog operation (box, circle, line, point, polygon, polyline, text or label) emitted directly to the drawing target. JSON still calls these `primitive` steps. | Intermediate drawable object |
 | Prepared Drawing | Final vertex bytes, resolved path properties and shaped text ready for retained Qt item binding. | Primitive list |
 | Draw Recipe | Catalog-owned entity or relation rendering logic that emits Drawing Instructions. | Object renderer, type switch |
-| Cached Scene Overlay | The adapter that keeps one Scene and provides prepared drawings, hover hits, and preparation metrics to the video player. | Render cache, Scene renderer |
+| Cached Scene Overlay | The adapter that keeps one Scene and provides prepared drawings and hover hits to the video player. | Render cache, Scene renderer |
 
 ## Relationships
 

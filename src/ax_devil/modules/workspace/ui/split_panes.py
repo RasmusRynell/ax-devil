@@ -18,13 +18,10 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QBoxLayout, QFrame, QSplitter, QVBoxLayout, QWidget
 
-from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 if TYPE_CHECKING:
     from ax_devil.modules.workspace.ui.split_view import SplitView
-
-logger = get_logger(__name__)
 
 PANEL_MIME_TYPE = "application/x-ax-devil-widget-id"
 
@@ -60,11 +57,6 @@ class LeafContainer(QFrame):
 
         if widget:
             self.set_widget(widget)
-
-        container_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, container_id=container_id: logger.debug(f"LeafContainer.destroyed id={container_id}")
-        )
 
     def get_widget(self) -> ViewerWidget | None:
         """Return the viewer widget hosted by this leaf, if any."""
@@ -167,10 +159,6 @@ class DropOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        overlay_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, overlay_id=overlay_id: logger.debug(f"DropOverlay.destroyed id={overlay_id}")
-        )
 
     def set_hint(self, direction: SplitDirection | None) -> None:
         self._direction = direction

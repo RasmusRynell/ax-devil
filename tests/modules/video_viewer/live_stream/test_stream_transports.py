@@ -21,7 +21,6 @@ from tests.helpers.live_stream import (
     make_frame,
     make_live_content,
     make_overlay,
-    make_sync_result,
 )
 
 
@@ -154,34 +153,3 @@ def test_cleanup_releases_every_transport_exactly_once(
     assert [(transport.stops, transport.deletes) for transport in videos + overlays] == [(1, 1)] * len(
         videos + overlays
     )
-
-
-def test_same_named_streams_keep_independent_source_diagnostics(
-    make_controller: MakeController, live_transports: LiveTransports
-) -> None:
-    """Closing one identically named stream must not remove another stream's observations."""
-    from ax_devil.modules.diagnostics.metrics_store import get_metrics_store, set_metrics_enabled
-    from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
-
-    set_metrics_enabled(True)
-    controllers = [make_controller(make_live_content(name="Same camera")) for _ in range(2)]
-
-    def synced_streams() -> set[str]:
-        return {
-            source_id
-            for source_id, source in get_metrics_store().snapshot().items()
-            if source.label.endswith("Same camera") and "Last synced frame" in source.observations
-        }
-
-    for controller in controllers:
-        assert controller.synchronizer is not None
-        controller.synchronizer.syncReady.emit(make_sync_result())
-    stream_ids = synced_streams()
-    assert len(stream_ids) == 2
-    viewer_links = [set(viewer.source_ids) & stream_ids for viewer in get_render_metrics_store().snapshot()]
-    assert sorted(len(link) for link in viewer_links if link) == [1, 1]
-
-    controllers[0].cleanup()
-
-    remaining = synced_streams()
-    assert len(remaining) == 1 and remaining < stream_ids

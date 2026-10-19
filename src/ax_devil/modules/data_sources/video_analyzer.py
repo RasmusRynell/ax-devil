@@ -11,6 +11,7 @@ from typing import Any
 
 from ax_devil.core.atomic_file import write_atomically
 from ax_devil.core.source_paths import Fingerprint
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.cache import CacheManager
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -193,7 +194,7 @@ class VideoAnalyzer:
             out_time_us = progress_info.get("out_time_us")
             if out_time_us is not None:
                 try:
-                    frames = max(1, int(round(int(out_time_us) / 1_000_000 * fps)))
+                    frames = max(1, int(round(us_to_seconds(int(out_time_us)) * fps)))
                 except ValueError:
                     frames = None
 

@@ -41,7 +41,6 @@ class MeshData(NamedTuple):
     """Final screen-space vertex bytes for one geometry node."""
 
     payload: bytes
-    operation_count: int = 1
 
 
 class PathData(NamedTuple):
@@ -82,11 +81,6 @@ class PreparedDrawing:
     paths: tuple[PathData, ...] = ()
     texts: tuple[TextData, ...] = ()
     labels: tuple[LabelData, ...] = ()
-    counts: tuple[tuple[str, int], ...] = ()
-
-    def __len__(self) -> int:
-        operations = sum(mesh.operation_count for mesh in self.meshes)
-        return operations + len(self.paths) + len(self.texts) + len(self.labels)
 
 
 EMPTY_DRAWING = PreparedDrawing()

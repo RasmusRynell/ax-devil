@@ -17,6 +17,7 @@ from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.theme import setup_theme
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
@@ -40,7 +41,7 @@ def frame_schedule(timestamps: Sequence[int], start: float, count: int, fps: int
     """Sample the actual source timeline; refuse a take that would freeze beyond its end."""
     if not timestamps:
         raise ValueError("The source has no frames")
-    times = [round((start + index / fps) * 1_000_000) + timestamps[0] for index in range(count)]
+    times = [seconds_to_us(start + index / fps) + timestamps[0] for index in range(count)]
     if times[-1] > timestamps[-1]:
         raise ValueError("Take extends beyond the source; reduce --frames or --start")
     return [max(0, bisect.bisect_right(timestamps, timestamp) - 1) for timestamp in times]
@@ -232,7 +233,7 @@ def capture(args: argparse.Namespace) -> None:
                     QRect(30, args.height - 48, 190, 30), Qt.AlignmentFlag.AlignVCenter, f"Catalog: {label}"
                 )
                 painter.end()
-            encoder.write_frame(image, timestamp_us=index * 1_000_000 / args.fps)
+            encoder.write_frame(image, timestamp_us=seconds_to_us(index / args.fps))
             if index == 0:
                 image.save(str(args.output / "raw-preview.png"))
             if index % args.fps == 0:

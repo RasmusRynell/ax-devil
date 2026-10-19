@@ -9,7 +9,6 @@ from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import (
     OverlayLookupMatchType,
     OverlayLookupResult,
 )
-from ax_devil.modules.data_sources.file_data_provider.retrieval_stats import RetrievalStats
 from ax_devil.modules.data_sources.overlay_samples import OverlaySamples, sequence_sample
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentBasis
 from ax_devil.modules.scene.model import Scene
@@ -19,7 +18,6 @@ from ax_devil.modules.synchronization.timestamp_matching import find_matching_ov
 def lookup_scene(
     samples: OverlaySamples,
     load_scene: Callable[[int], Scene | None],
-    stats: RetrievalStats,
     frame_identifier: FrameIdentifier,
     *,
     allow_previous: bool,
@@ -31,17 +29,16 @@ def lookup_scene(
     into video time. Otherwise lookup uses exact timestamps, optional sequence
     fallback, then timestamp matching. With allow_previous, select the latest
     earlier sample beyond matching tolerance; the caller applies its age limit.
-    Records the outcome in *stats*.
     """
     if samples.sequence_lookup:
         if frame_timeline is not None:
             return _lookup_video_sequence(
-                samples, load_scene, stats, frame_identifier, frame_timeline, allow_previous=allow_previous
+                samples, load_scene, frame_identifier, frame_timeline, allow_previous=allow_previous
             )
         if allow_previous:
             raise ValueError("Sticky sequence overlays require the video's frame timeline")
 
-    timestamp_key = int(frame_identifier.timestamp_monotime_us)
+    timestamp_key = frame_identifier.timestamp_us
 
     scene = load_scene(timestamp_key)
     if scene is not None:
@@ -54,7 +51,6 @@ def lookup_scene(
             matched_sequence_id=samples.timestamp_to_sequence.get(timestamp_key),
             match_type="exact",
         )
-        stats.record(timestamp_key, stats.exact)
         return result
 
     if samples.sequence_lookup:
@@ -72,7 +68,6 @@ def lookup_scene(
                     alignment_basis="sequence",
                     match_type="sequence",
                 )
-                stats.record(timestamp_key, stats.resolved)
                 return result
 
     match = find_matching_overlay_timestamp(
@@ -93,7 +88,6 @@ def lookup_scene(
                 matched_sequence_id=samples.timestamp_to_sequence.get(match.overlay_timestamp_us),
                 match_type=match.match_type,
             )
-            stats.record(timestamp_key, stats.resolved)
             return result
 
     result = _lookup_result(
@@ -105,21 +99,19 @@ def lookup_scene(
         matched_sequence_id=None,
         match_type="missing",
     )
-    stats.record(timestamp_key, stats.misses)
     return result
 
 
 def _lookup_video_sequence(
     samples: OverlaySamples,
     load_scene: Callable[[int], Scene | None],
-    stats: RetrievalStats,
     frame_id: FrameIdentifier,
     timeline: FrameTimeline,
     *,
     allow_previous: bool,
 ) -> OverlayLookupResult:
     """Resolve frame-keyed annotations using actual video timestamps for their age."""
-    requested_time = int(frame_id.timestamp_monotime_us)
+    requested_time = frame_id.timestamp_us
     sample = sequence_sample(
         samples.sequences, frame_id.sequence_id, requested_time, timeline, allow_previous=allow_previous
     )
@@ -138,7 +130,6 @@ def _lookup_video_sequence(
         match_type=match_type,
         alignment_basis="sequence",
     )
-    stats.record(requested_time, stats.resolved if scene is not None else stats.misses)
     return result
 
 

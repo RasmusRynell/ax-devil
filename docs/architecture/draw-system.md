@@ -10,12 +10,12 @@ rules are in its README.
 [rendering README](../../src/ax_devil/modules/scene/rendering/README.md).
 
 `ax_devil.modules.video_player` owns generic drawing. It knows about video frames, prepared geometry, paths and
-glyphs, Qt Quick display and image export, viewport math, hover chip placement and selection highlight, and metrics collection. It must not
+glyphs, Qt Quick display and image export, viewport math, hover chip placement and selection highlight. It must not
 become Scene-aware. See the [video player README](../../src/ax_devil/modules/video_player/README.md).
 
-The boundary object is `VideoOverlayData`. Scene code supplies a `drawing_generator`, `interaction_provider`, and
-`metrics_provider`; the video player calls those protocols without knowing what domain object produced them. The
-`DrawingTarget` (`video_player/engine/drawing.py`) accepts batches of catalog-resolved Drawing Instructions. Catalog
+The boundary object is `VideoOverlayData`. Scene code supplies a `drawing_generator` and `interaction_provider`;
+the video player calls those protocols without knowing what domain object produced them.
+The `DrawingTarget` (`video_player/engine/drawing.py`) accepts batches of catalog-resolved Drawing Instructions. Catalog
 instructions resolve normalized coordinates straight into final backend data; there is no intermediate list.
 
 ## Runtime Flow
@@ -41,10 +41,6 @@ Live and offline viewers differ only in how they obtain `FrameData` and `Overlay
 `SceneFramePresenter`. The presenter attaches the active catalog through a provider callback as well as a value, so an
 already-created overlay sees a newly selected catalog before the next frame is built. `FrameImageRenderer` runs the
 same path on a non-visible surface for export, at native source resolution.
-
-Rendering diagnostics flow the other way: `CachedSceneOverlay` reports preparation metrics through the overlay
-protocol and `VideoFrameRenderer` records one paint sample per preparation; the
-[diagnostics README](../../src/ax_devil/modules/diagnostics/README.md#measurement-definitions) defines the boundaries.
 
 ## Catalogs And Their Users
 

@@ -43,9 +43,9 @@ class _Source(DataSource):
         # Model a bounded stop returning before the worker exits.
         self.worker.stop()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for production to finish."""
-        return self.worker.wait(timeout)
+        return self.worker.wait(timeout_ms)
 
 
 @pytest.mark.parametrize("running", [False, True])

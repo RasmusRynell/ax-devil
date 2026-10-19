@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
 )
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -94,7 +93,7 @@ class TestOfflineViewerLanes(OfflineViewerTest):
         first, second = lane_displays(widget)
         image = QImage(1920, 1080, QImage.Format.Format_RGB32)
         image.fill(0)
-        frame = VideoFrameWithOverlays(VideoFrame(image, 0.0, 0), None)
+        frame = VideoFrameWithOverlays(VideoFrame(image, 0, 0), None)
         first.display_frame(frame)
         second.display_frame(frame)
         fullscreen = LaneFullscreenController(widget, [])
@@ -152,7 +151,7 @@ class TestOfflineViewerLanes(OfflineViewerTest):
         first_viewport = displays[0].viewport
         image = QImage(1920, 1080, QImage.Format.Format_RGB32)
         image.fill(0)
-        first_viewport.display_frame(VideoFrameWithOverlays(VideoFrame(image=image, timestamp=0.0), overlays=None))
+        first_viewport.display_frame(VideoFrameWithOverlays(VideoFrame(image=image, timestamp_us=0), overlays=None))
         first_name = names[0]
         assert first_name is not None
         bars = first_viewport.visible_frame_rect()
@@ -178,7 +177,6 @@ class TestOfflineViewerLanes(OfflineViewerTest):
 
     def test_lane_toggles_rebuild_compared_videos_and_release_old_sources(self, qtbot: QtBot) -> None:
         """Excluding and restoring a lane rebuilds the entry, releasing every replaced source and renderer."""
-        get_render_metrics_store().clear()
         frame_sources: list[TrackedFrameSource] = []
         overlay_sources: list[TrackedOverlaySource] = []
         videos = [
@@ -237,12 +235,10 @@ class TestOfflineViewerLanes(OfflineViewerTest):
         assert_no_stale_renderers(widget, baseline_frame_viewports)
 
         widget.cleanup()
-        assert get_render_metrics_store().snapshot() == ()
         assert count_frame_viewports() == baseline_frame_viewports
 
     def test_lane_toggles_rebuild_shared_video_lanes_and_release_old_sources(self, qtbot: QtBot) -> None:
         """Lanes comparing overlays on one video keep sharing one source across rebuilds and release the old ones."""
-        get_render_metrics_store().clear()
         frame_sources: list[TrackedFrameSource] = []
         overlay_sources: list[TrackedOverlaySource] = []
         content = make_seekable_content(
@@ -279,7 +275,6 @@ class TestOfflineViewerLanes(OfflineViewerTest):
         assert_no_stale_renderers(widget, baseline_frame_viewports)
 
         widget.cleanup()
-        assert get_render_metrics_store().snapshot() == ()
         assert count_frame_viewports() == baseline_frame_viewports
 
 

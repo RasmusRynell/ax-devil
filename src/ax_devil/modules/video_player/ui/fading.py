@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QGraphicsEffect, QGraphicsOpacityEffect, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
 
-from ..constants import DEFAULT_AUTO_HIDE_DELAY, DEFAULT_FADE_DURATION
+from ..constants import DEFAULT_AUTO_HIDE_DELAY_MS, DEFAULT_FADE_DURATION_MS
 from ..orchestration.interaction_types import HoverSink
 
 logger = get_logger(__name__)
@@ -29,8 +29,8 @@ class FadingWidget(QWidget):
     def __init__(
         self,
         parent: QWidget | None = None,
-        fade_duration: int = DEFAULT_FADE_DURATION,
-        auto_hide_delay: int = DEFAULT_AUTO_HIDE_DELAY,
+        fade_duration_ms: int = DEFAULT_FADE_DURATION_MS,
+        auto_hide_delay_ms: int = DEFAULT_AUTO_HIDE_DELAY_MS,
         initial_opacity: float = 0.0,
         hover_element_name: str | None = None,
     ) -> None:
@@ -39,8 +39,8 @@ class FadingWidget(QWidget):
         self._logger = logger
 
         # Fade configuration
-        self.fade_duration = fade_duration
-        self.auto_hide_delay = auto_hide_delay
+        self.fade_duration_ms = fade_duration_ms
+        self.auto_hide_delay_ms = auto_hide_delay_ms
 
         # Store hover element name for event notifications
         self.hover_element_name = hover_element_name or self.__class__.__name__.lower()
@@ -63,7 +63,7 @@ class FadingWidget(QWidget):
 
         # Fade animation
         self.fade_animation = QPropertyAnimation(self.opacity_effect, b"opacity")
-        self.fade_animation.setDuration(self.fade_duration)
+        self.fade_animation.setDuration(self.fade_duration_ms)
         self.fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
     def _setup_auto_hide(self, initial_opacity: float) -> None:
@@ -120,7 +120,7 @@ class FadingWidget(QWidget):
         """Start the auto-hide timer; a cleaned-up widget no longer fades."""
         if self._cleaned_up:
             return
-        self.hide_timer.start(self.auto_hide_delay)
+        self.hide_timer.start(self.auto_hide_delay_ms)
         self._logger.debug(f"Started auto-hide timer for {self.hover_element_name}")
 
     def set_hover_sink(self, hover_sink: HoverSink) -> None:

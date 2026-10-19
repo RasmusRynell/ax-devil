@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from PySide6.QtGui import QAction
 
 from ax_devil.core.data_types import FrameData
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.background_jobs import JobScope, LatestRequest
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
@@ -35,11 +36,6 @@ def _stale_message(what: str, lane_name: str, error: Exception, retry_settings: 
     """Say that the *what* shown for a lane is out of date because refreshing it failed, and what retries it."""
     reason = str(error) or type(error).__name__
     return f"{what} of lane '{lane_name}' is out of date: {reason}. Change {retry_settings} to retry."
-
-
-def diagnostics_label(item_name: str, lane_name: str) -> str:
-    """Return the render diagnostics label of a lane: its workspace item's name and the lane's content name."""
-    return f"{item_name} · {lane_name}"
 
 
 def show_video_on_controls(controls: SeekableVideoControlPanel, source: FileFrameSource) -> None:
@@ -119,7 +115,7 @@ class OfflineLane:
         """Display a synced frame and update lane-owned controls."""
         self.display.display_frame(frame)
         if self.controls is not None and frame.frame.frame_id is not None:
-            self.controls.set_current_frame(frame.frame.frame_id, frame.frame.timestamp)
+            self.controls.set_current_frame(frame.frame.frame_id, us_to_seconds(frame.frame.timestamp_us))
 
     def present_frame(self, frame_data: FrameData) -> None:
         """Present one offline frame using direct overlay lookup."""

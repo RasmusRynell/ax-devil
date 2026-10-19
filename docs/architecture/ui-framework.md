@@ -10,7 +10,6 @@ flowchart TD
     MainWindow --> MenuHost["menu_host()<br/>TitleBar menu bar or native QMenuBar"]
     MainWindow --> WorkspaceSession["WorkspaceSession"]
     MainWindow --> Dialogs["BaseDialog subclasses<br/>add video, live stream, playlist, settings, shortcuts, about"]
-    MainWindow --> DebugWindows["DebugWindow"]
     MainWindow --> PluginsView["PluginsView<br/>sidebar view"]
 
     WorkspaceSession --> WorkspaceStore["WorkspaceStore<br/>items, resolved Content, signals"]
@@ -153,7 +152,7 @@ respectively.
 
 ## Ownership Boundaries
 
-- `MainWindow` owns application-wide actions, menus, shortcuts, dialogs and diagnostics windows.
+- `MainWindow` owns application-wide actions, menus, shortcuts and dialogs.
 - `WorkspaceSession` owns Workspace composition, adding content, focused-viewer lookup and teardown.
 - `WorkspaceLifecycle` owns the workspace file lifecycle; it builds no widgets.
 - `ApplicationWindow` owns the static central layout.

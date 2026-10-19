@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QLineEdit
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.filtering.filter_config import build_default_filter_config
@@ -32,7 +33,7 @@ from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 
 def make_frame(index: int) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=index, timestamp_monotime_us=index * 1_000_000.0)
+    return FrameIdentifier(sequence_id=index, timestamp_us=seconds_to_us(index))
 
 
 def make_entity(entity_id: str, kind: str = "human", conf: float = 0.9) -> Entity:

@@ -66,11 +66,6 @@ class QuickSurface(QQuickWidget):
         self._overlays.item.setZ(1)
         self._highlight.item.setZ(2)
 
-    @property
-    def backend_label(self) -> str:
-        """Identify Qt's actual scene graph API in rendering diagnostics."""
-        return f"Qt Quick ({self.quickWindow().rendererInterface().graphicsApi().name})"
-
     def set_frame_image(self, image: QImage, target: QRectF) -> None:
         """Queue the image and its viewport transform for the next scene graph sync."""
         self._video.setPosition(target.topLeft())

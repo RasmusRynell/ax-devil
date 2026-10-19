@@ -53,10 +53,10 @@ class Sheet:
 
 def sheet_frame(sheet: Sheet, catalog: SceneRenderCatalog) -> VideoFrameWithOverlays:
     """Return *sheet* drawn with *catalog* as a frame for the video renderers, with hover details on its objects."""
-    frame = VideoFrame(image=sheet.background(), timestamp=0.0, frame_id=0)
+    frame = VideoFrame(image=sheet.background(), timestamp_us=0, frame_id=0)
     overlays = VideoOverlayData(
         drawing_generator=SheetDrawing(sheet, catalog).prepare,
-        timestamp=0.0,
+        timestamp_us=0,
         interaction_provider=CachedSceneOverlay(scene=sheet.scene, catalog=catalog),
     )
     return VideoFrameWithOverlays(frame=frame, overlays=overlays)
