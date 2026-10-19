@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol
 
-from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.atomic_file import open_replaceable, write_atomically
 from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.core.source_paths import Fingerprint
 from ax_devil.modules.cache import CacheManager, IndexedFrameCache
@@ -333,7 +333,7 @@ class SourceIndexedSceneStore:
         self._context = context
         self._decoder = context.decoder_factory()
         # Held from construction so the catalog describes exactly this inode, even if the path is replaced later.
-        self._source_handle: BinaryIO | None = self._file_path.open("rb")
+        self._source_handle: BinaryIO | None = open_replaceable(self._file_path)
         self._source_changed = False
         cache_manager = CacheManager()
         self._index_path = cache_manager.get_cache_path(

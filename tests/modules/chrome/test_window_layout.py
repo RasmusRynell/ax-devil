@@ -375,7 +375,8 @@ def test_oversized_saved_window_fits_without_overriding_placement(
     QApplication.processEvents()
     screen = window.screen()
     assert screen is not None
-    assert screen.availableGeometry().contains(window.frameGeometry())
+    # The desktop chooses where the window goes (Windows cascades it, so it may hang off the screen); the size is ours.
+    assert window.frameGeometry().size().boundedTo(screen.availableGeometry().size()) == window.frameGeometry().size()
 
 
 def test_large_dialog_opens_bounded_but_user_can_enlarge_it(qtbot: QtBot) -> None:

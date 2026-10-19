@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -41,7 +40,6 @@ def test_binary_frames_support_direct_access(tmp_path: Path, use_mmap: bool, com
             reader.close()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows cannot replace or delete a file another handle holds open")
 @pytest.mark.parametrize("use_mmap", [False, True])
 def test_open_cache_reads_survive_path_removal(tmp_path: Path, use_mmap: bool, monkeypatch: pytest.MonkeyPatch) -> None:
     """An open reader owns its handle until close, independently of the file path or a replacing save."""

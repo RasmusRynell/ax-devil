@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import tempfile
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
@@ -48,3 +49,34 @@ def write_atomically(
     except BaseException:
         Path(temporary_name).unlink(missing_ok=True)
         raise
+
+
+def open_replaceable(path: Path) -> BinaryIO:
+    """Open *path* for reading so that it can still be replaced or deleted while the handle is open.
+
+    Windows refuses to rename or delete a file Python holds open, because Python opens files without
+    ``FILE_SHARE_DELETE``; this opens with it. Elsewhere it is a plain ``open``. A memory map still blocks
+    replacement on Windows, so callers that must stay replaceable do not map the file.
+    """
+    if sys.platform != "win32":
+        return path.open("rb")
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    create_file = ctypes.WinDLL("kernel32", use_last_error=True).CreateFileW
+    create_file.restype = wintypes.HANDLE
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    generic_read, share_all, open_existing = 0x80000000, 0x1 | 0x2 | 0x4, 3
+    handle = create_file(str(path), generic_read, share_all, None, open_existing, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDONLY), "rb")

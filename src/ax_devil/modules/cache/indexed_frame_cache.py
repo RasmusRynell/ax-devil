@@ -8,7 +8,7 @@ import pickle
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.atomic_file import open_replaceable, write_atomically
 from ax_devil.modules.settings.logging_config import get_logger
 
 from .cache_manager import CacheManager
@@ -56,7 +56,8 @@ class IndexedFrameCache:
             cache_type=self._cache_type, source_path=self.source_path, suffix=cache_suffix
         )
 
-        self._use_mmap_cfg = bool(use_mmap)
+        # A mapped file cannot be replaced on Windows, and another provider may rebuild this cache while it is open.
+        self._use_mmap_cfg = bool(use_mmap) and os.name != "nt"
         self._compress_cfg = bool(compress)
 
         # populated lazily on first read
@@ -92,7 +93,7 @@ class IndexedFrameCache:
             return
         if not self.exists():
             raise FileNotFoundError(self.cache_file)
-        self._open(self.cache_file.open("rb"))
+        self._open(open_replaceable(self.cache_file))
 
     def _open(self, handle: BinaryIO) -> None:
         """Parse the header of the cache file *handle* is open on, and keep it for reading."""
@@ -183,7 +184,7 @@ class IndexedFrameCache:
                 reader = os.fdopen(os.dup(fh.fileno()), "rb")
                 reader.seek(0)
         if reader is None:
-            reader = self.cache_file.open("rb")
+            reader = open_replaceable(self.cache_file)
 
         logger.debug(f"Cached {len(items)} frames ({len(header_bytes) + 1 + offset} bytes) → {self.cache_file.name}")
 

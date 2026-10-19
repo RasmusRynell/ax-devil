@@ -34,8 +34,12 @@ def test_finished_os_theme_thread_is_not_terminated_at_exit(tmp_path: Path) -> N
             "PATH": str(no_tools),
             "QT_QPA_PLATFORM": "offscreen",
             "HOME": str(tmp_path),
-            # Windows cannot start Python without its system folder.
-            **({"SYSTEMROOT": os.environ["SYSTEMROOT"]} if sys.platform == "win32" else {}),
+            # Windows cannot start Python without its system folder, nor find a home without USERPROFILE.
+            **(
+                {"SYSTEMROOT": os.environ["SYSTEMROOT"], "USERPROFILE": str(tmp_path)}
+                if sys.platform == "win32"
+                else {}
+            ),
         },
         capture_output=True,
         text=True,
