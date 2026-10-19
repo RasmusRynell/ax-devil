@@ -100,10 +100,8 @@ def _measure(work: argparse.Namespace, ref: str | None, repeat: int, json_file: 
                 from .sheets import pixel_differences
 
                 folders = [Path(work.out) / label / Path(catalog).stem for label in merged]
-                for sheet, percent in pixel_differences(*folders).items():
-                    report.emit(
-                        f"  {sheet:24} {'size changed' if percent is None else f'{percent:6.2f}% of pixels differ'}"
-                    )
+                for sheet, difference in pixel_differences(*folders).items():
+                    report.emit(f"  {sheet:24} {difference}")
 
 
 def main(argv: list[str] | None = None) -> int:

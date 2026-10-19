@@ -16,6 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QImage
+from PySide6.QtQml import QQmlProperty
 from PySide6.QtQuick import (
     QQuickItem,
     QQuickWindow,
@@ -94,10 +95,17 @@ class OverlayItem(QQuickItem):
         self._drawing = EMPTY_DRAWING
         self._changed = False
         self._uploaded_page = -1
+        self._layer = QQmlProperty(self, "layer.enabled")
 
     def present(self, drawing: PreparedDrawing, opacity: float) -> None:
-        """Show *drawing* at *opacity*; the same drawing as before uploads nothing."""
+        """Show *drawing* at *opacity*; the same drawing as before uploads nothing.
+
+        Below full opacity the item renders into a layer first, so overlapping quads (round joins, translucent fills
+        that cross themselves) composite once and fade together instead of each quad being blended separately.
+        """
         self.setOpacity(opacity)
+        if self._layer.read() != (opacity < 1):
+            self._layer.write(opacity < 1)
         if drawing is self._drawing:
             return
         self._drawing = drawing

@@ -128,6 +128,15 @@ def test_order_opacity_and_removal(surface: QuickSurface) -> None:
     assert _render(surface, []).pixelColor(40, 20) == QColor("black")
 
 
+def test_a_faded_overlay_is_as_dark_at_a_join_as_along_a_segment(surface: QuickSurface) -> None:
+    """Overlapping quads of one stroke fade together, so joins show no darker dots."""
+    stroke = DrawingStyle(pen_r=255, pen_width=0.1)
+    line = PolylineCall(((0.2, 0.5), (0.5, 0.5), (0.8, 0.5)), stroke)
+    faded = _render(surface, [line], 0.5)
+    assert faded.pixelColor(100, 50) == faded.pixelColor(70, 50)
+    assert faded.pixelColor(70, 50) != _render(surface, [], 0.5).pixelColor(70, 50)
+
+
 def test_multiline_text_draws_above_geometry_in_any_emission_order(surface: QuickSurface) -> None:
     text = TextCall(0.1, 0.1, "Hello\nWorld", _WHITE, anchor="top-left")
     rendered = _render(surface, [text])
@@ -393,7 +402,7 @@ def test_new_and_returning_labels_keep_viewport_transform_and_opacity(
         dpr = rendered.devicePixelRatio()
         color = rendered.pixelColor(round((82 + origin[0]) * dpr), round((42 + origin[1]) * dpr))
         assert abs(color.blue() - round(255 * opacity)) <= 1
-        assert abs(color.red() - round(255 * opacity * (1 - opacity))) <= 1
+        assert color.red() <= 1  # The label hides the box under it; the overlay fades as one.
 
 
 def test_labels_survive_window_reparenting_and_graph_recreation(surface: QuickSurface, qtbot: QtBot) -> None:

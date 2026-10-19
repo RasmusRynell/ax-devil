@@ -266,20 +266,30 @@ def _outward_normals(points: NDArray[np.float64]) -> NDArray[np.float64]:
     """Unit normals of every edge of polygons (rows, corners, 2), pointing away from the odd-even filled side.
 
     A probe just beside each edge's midpoint is inside when a ray from it crosses an odd number of edges, so the
-    lobes of a self-crossing polygon each get their own outside.
+    lobes of a self-crossing polygon each get their own outside. Probes are tested in blocks of ``_CHUNK`` pairs.
     """
+    rows, corners = points.shape[:2]
     edges = np.roll(points, -1, axis=1) - points
     lengths = np.maximum(np.hypot(edges[..., 0], edges[..., 1]), 1e-12)
     normals = np.stack((edges[..., 1], -edges[..., 0]), axis=-1) / lengths[..., None]
     probe = points + edges / 2 - normals * _PROBE
     start_y, end_y = points[:, None, :, 1], np.roll(points, -1, axis=1)[:, None, :, 1]
-    py = probe[:, :, None, 1]
-    straddles = (start_y > py) != (end_y > py)
-    dy = np.where(straddles, end_y - start_y, 1.0)
-    cut = points[:, None, :, 0] + (py - start_y) * edges[:, None, :, 0] / dy
-    inside = np.sum(straddles & (cut > probe[:, :, None, 0]), axis=2) % 2 == 1
+    inside = np.empty((rows, corners), np.bool_)
+    step = _block(rows * corners)
+    for first in range(0, corners, step):
+        block = probe[:, first : first + step]
+        py = block[:, :, None, 1]
+        straddles = (start_y > py) != (end_y > py)
+        dy = np.where(straddles, end_y - start_y, 1.0)
+        cut = points[:, None, :, 0] + (py - start_y) * edges[:, None, :, 0] / dy
+        inside[:, first : first + step] = np.sum(straddles & (cut > block[:, :, None, 0]), axis=2) % 2 == 1
     outward: NDArray[np.float64] = np.where(inside[..., None], normals, -normals)
     return outward
+
+
+def _block(width: int) -> int:
+    """How many lines of *width* elements one block of corner-pair arrays may hold (at least one)."""
+    return max(1, _CHUNK // max(1, width))
 
 
 def _miter(normals: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -301,38 +311,54 @@ def _odd_even(points: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray
 
     Horizontal lines through every corner and every crossing of two edges cut a polygon into bands in which the
     edges do not cross, so the edges a band's middle line meets, paired from the left, bound its filled spans. Corners
-    run top left, top right, bottom left, bottom right, so a trapezoid is two triangles of a strip.
+    run top left, top right, bottom left, bottom right, so a trapezoid is two triangles of a strip. Edge pairs and
+    bands are handled in blocks of ``_CHUNK`` elements, so a polygon of any size stays within a few megabytes.
     """
     rows, corners = points.shape[:2]
     start, end = points, np.roll(points, -1, axis=1)
     along = end - start
-    # Edge i meets edge j at start_i + t * along_i = start_j + u * along_j.
-    gap = start[:, None] - start[:, :, None]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        denominator = _cross(along[:, :, None], along[:, None])
-        t, u = _cross(gap, along[:, None]) / denominator, _cross(gap, along[:, :, None]) / denominator
-        crossed_y = start[..., 1][:, :, None] + t * along[..., 1][:, :, None]
-    crossing = np.triu(np.ones((corners, corners), np.bool_), 1) & (0 < t) & (t < 1) & (0 < u) & (u < 1)
-    cut_y = np.concatenate((points[..., 1].reshape(-1), crossed_y[crossing]))
-    cut_row = np.concatenate((np.repeat(np.arange(rows), corners), np.nonzero(crossing)[0]))
-    order = np.lexsort((cut_y, cut_row))
-    cut_y, cut_row = cut_y[order], cut_row[order]
-    band = np.flatnonzero((cut_row[1:] == cut_row[:-1]) & (cut_y[1:] > cut_y[:-1]))
-    row, top, bottom = cut_row[band], cut_y[band], cut_y[band + 1]
-    middle = ((top + bottom) / 2)[:, None]
-    x0, y0, x1, y1 = start[row, :, 0], start[row, :, 1], end[row, :, 0], end[row, :, 1]
-    meets = (y0 > middle) != (y1 > middle)
-    slope = (x1 - x0) / np.where(meets, y1 - y0, 1.0)
-    edge = np.argsort(np.where(meets, x0 + (middle - y0) * slope, np.inf), axis=1)
-    pairs = np.where(np.take_along_axis(meets, edge[:, 1::2], axis=1))  # An odd count never happens in a closed loop.
-    owner = pairs[0]
-    out = np.empty((len(owner), 4, 2))
-    for side, taken in enumerate((edge[:, 0::2], edge[:, 1::2])):
-        chosen = taken[pairs]
-        for level, y in enumerate((top[owner], bottom[owner])):
-            out[:, level * 2 + side, 0] = x0[owner, chosen] + (y - y0[owner, chosen]) * slope[owner, chosen]
-            out[:, level * 2 + side, 1] = y
-    return out, row[owner]
+    cut_y = [points[..., 1].reshape(-1)]
+    cut_row = [np.repeat(np.arange(rows), corners)]
+    later = np.arange(corners)
+    step = _block(rows * corners)
+    for first in range(0, corners, step):
+        edges = slice(first, first + step)
+        # Edge i meets edge j at start_i + t * along_i = start_j + u * along_j.
+        gap = start[:, None] - start[:, edges, None]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            denominator = _cross(along[:, edges, None], along[:, None])
+            t = _cross(gap, along[:, None]) / denominator
+            u = _cross(gap, along[:, edges, None]) / denominator
+            crossed_y = start[:, edges, None, 1] + t * along[:, edges, None, 1]
+        crossing = (later[None, :] > later[edges, None])[None] & (0 < t) & (t < 1) & (0 < u) & (u < 1)
+        cut_y.append(crossed_y[crossing])
+        cut_row.append(np.nonzero(crossing)[0])
+    all_y, all_row = np.concatenate(cut_y), np.concatenate(cut_row)
+    order = np.lexsort((all_y, all_row))
+    all_y, all_row = all_y[order], all_row[order]
+    band = np.flatnonzero((all_row[1:] == all_row[:-1]) & (all_y[1:] > all_y[:-1]))
+    band_row, top, bottom = all_row[band], all_y[band], all_y[band + 1]
+    quads: list[NDArray[np.float64]] = []
+    owners: list[NDArray[np.intp]] = []
+    step = _block(corners)
+    for first in range(0, len(band), step):
+        row, y_top, y_bottom = band_row[first : first + step], top[first : first + step], bottom[first : first + step]
+        middle = ((y_top + y_bottom) / 2)[:, None]
+        x0, y0, x1, y1 = start[row, :, 0], start[row, :, 1], end[row, :, 0], end[row, :, 1]
+        meets = (y0 > middle) != (y1 > middle)
+        slope = (x1 - x0) / np.where(meets, y1 - y0, 1.0)
+        edge = np.argsort(np.where(meets, x0 + (middle - y0) * slope, np.inf), axis=1)
+        # An odd count of edges never happens in a closed loop.
+        owner, pair = np.where(np.take_along_axis(meets, edge[:, 1::2], axis=1))
+        out = np.empty((len(owner), 4, 2))
+        for side, taken in enumerate((edge[:, 0::2], edge[:, 1::2])):
+            chosen = taken[owner, pair]
+            for level, y in enumerate((y_top[owner], y_bottom[owner])):
+                out[:, level * 2 + side, 0] = x0[owner, chosen] + (y - y0[owner, chosen]) * slope[owner, chosen]
+                out[:, level * 2 + side, 1] = y
+        quads.append(out)
+        owners.append(row[owner])
+    return np.concatenate(quads), np.concatenate(owners)
 
 
 def _fill_quads(positions: NDArray[np.float64], colors: NDArray[np.uint8]) -> NDArray[np.void]:

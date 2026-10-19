@@ -25,6 +25,8 @@ def run(options: dict[str, Any]) -> report.Record:
     revision = workload.load_revision(args.catalog)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    for stale in out.glob("*.png"):  # Sheets of an earlier run must not pass for this one's.
+        stale.unlink()
     renderer = FrameImageRenderer()
     timings: dict[str, float] = {}
     try:
@@ -48,8 +50,8 @@ def run(options: dict[str, Any]) -> report.Record:
     }
 
 
-def pixel_differences(base: Path, head: Path) -> dict[str, float | None]:
-    """Return, per sheet, the percentage of pixels that differ clearly between two folders (None: size changed)."""
+def pixel_differences(base: Path, head: Path) -> dict[str, str]:
+    """Describe, per sheet in either folder, how much the two renderings differ, or which side lacks it."""
     import numpy as np
     from PySide6.QtGui import QImage
 
@@ -58,9 +60,15 @@ def pixel_differences(base: Path, head: Path) -> dict[str, float | None]:
         raw = np.frombuffer(image.constBits(), np.uint8).reshape(image.height(), image.bytesPerLine())
         return raw[:, : image.width() * 4].reshape(image.height(), image.width(), 4).astype(int)
 
-    result: dict[str, float | None] = {}
-    for path in sorted(base.glob("*.png")):
-        before, after = load(path), load(head / path.name)
-        same_size = before.shape == after.shape
-        result[path.stem] = float((np.abs(before - after).max(axis=2) > _DIFFERENT).mean() * 100) if same_size else None
+    result: dict[str, str] = {}
+    for name in sorted({path.name for path in (*base.glob("*.png"), *head.glob("*.png"))}):
+        if not (base / name).exists() or not (head / name).exists():
+            result[Path(name).stem] = f"only in {'head' if (head / name).exists() else 'base'}"
+            continue
+        before, after = load(base / name), load(head / name)
+        if before.shape != after.shape:
+            result[Path(name).stem] = "size changed"
+        else:
+            percent = float((np.abs(before - after).max(axis=2) > _DIFFERENT).mean() * 100)
+            result[Path(name).stem] = f"{percent:6.2f}% of pixels differ"
     return result
