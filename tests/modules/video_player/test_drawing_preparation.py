@@ -197,6 +197,18 @@ def test_unpadded_labels_preserve_all_glyph_ink(text: str) -> None:
     assert ink_right <= left + width and ink_bottom <= top + height
 
 
+def test_baseline_text_sits_on_the_requested_line_however_many_lines_follow() -> None:
+    def glyphs_of(text: str) -> NDArray[np.void]:
+        buffer = DrawingBuffer(_SETTINGS)
+        TextCall(0.3, 0.5, text, DrawingStyle(font_size=0.2)).submit(buffer)
+        return _quads(buffer.finish(), OverlayKind.GLYPH)
+
+    one, two = glyphs_of("HH"), glyphs_of("HH\nHH")
+    assert _ink(one)[3] == pytest.approx(0.5 * 100, abs=1)  # Capitals rest on the baseline.
+    assert _ink(one)[0] >= 0.3 * 200 - 1
+    assert _ink(two)[1] == _ink(one)[1]  # Later lines hang below the first, which stays put.
+
+
 def test_every_shape_is_an_overlay_quad_below_the_text() -> None:
     """Polygons and polylines share the quad stream with boxes, circles, lines and points, text last."""
     buffer = DrawingBuffer(_SETTINGS)
@@ -272,6 +284,18 @@ def test_a_full_atlas_page_resets_mid_frame_and_both_drawings_still_render_their
         image = render_quads(drawing.vertices, 200, drawing.page)
         assert image == expected
         assert image != render_quads(np.zeros(0, OVERLAY_VERTEX), 200)
+
+
+def test_dropping_glyphs_is_only_for_the_frame_that_needs_it_after_a_clean_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frame that fits a fresh page after a reset must not leave later frames dropping glyphs instead of resetting."""
+    monkeypatch.setattr(glyphs, "PAGE_SIZE", 64)
+    monkeypatch.setitem(glyphs._ATLASES, (93, 1.0), glyphs.GlyphAtlas(93, 1.0))
+    settings = replace(_SETTINGS, dpi=93)
+    frames = ["".join(chr(base + offset) for offset in range(5)) for base in (0x0100, 0x0180, 0x0200)]
+    drawn = [len(_quads(_text_frame(settings, (text, 0.3)), OverlayKind.GLYPH)) for text in frames]
+    assert drawn == [5, 5, 5]
 
 
 def test_text_that_cannot_fit_one_atlas_page_draws_the_glyphs_that_fit_and_the_next_frame_recovers(

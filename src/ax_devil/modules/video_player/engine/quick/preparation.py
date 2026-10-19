@@ -131,8 +131,11 @@ class DrawingBuffer:
                 text, label = self._text_and_labels(texts, labels, atlas)
             except AtlasFull:  # The page filled up: start a fresh one and lay out everything once more.
                 atlas.reset()
-                atlas.drop_overflow = True  # Even a fresh page is too small: draw the glyphs that fit.
-                text, label = self._text_and_labels(texts, labels, atlas)
+                atlas.drop_overflow = True  # Even a fresh page may be too small: draw the glyphs that fit.
+                try:
+                    text, label = self._text_and_labels(texts, labels, atlas)
+                finally:
+                    atlas.drop_overflow = False
             parts += [text.vertices.reshape(-1), label.vertices.reshape(-1)]
             drawn += text.labels + label.labels
             page = atlas.snapshot()
@@ -370,8 +373,7 @@ class DrawingBuffer:
         s, count = self.settings, len(x)
         # Fonts snap to half device pixels, so sizes that follow object sizes share a few fonts.
         pixels = np.rint(per_row(paint.font_size, count) * s.scale * s.dpr * 2) / 2
-        anchors = np.where(np.asarray(anchor, dtype=object) == "baseline", "bottom-left", anchor)
         shown = np.asarray(text, dtype=object)
         run = RunColumns(shown, math.nan, paint.pen_r, paint.pen_g, paint.pen_b, "regular", True)
         content = LabelColumns((run,), pixels / (s.dpr * s.scale), paint.font_family, None, 0.0, 0.0, 0.0, 0.0)
-        self._texts.append((x, y, anchors, content))
+        self._texts.append((x, y, np.asarray(anchor, dtype=object), content))

@@ -107,6 +107,12 @@ def test_polygons_fill_any_orientation_without_seams_and_outline_the_closed_loop
     straight = np.array([[(10, 10), (50, 10), (90, 10), (90, 30), (30, 30), (30, 90), (10, 90)]]) / 100
     assert ink(render_quads(polygon_quads(straight, fill, SIZE, SIZE, SIZE, 1.0), SIZE), 20, 20) == 255
 
+    # A bow-tie fills its two lobes and nothing above or below the crossing, as the odd-even rule says.
+    bowtie = np.array([[[0.2, 0.2], [0.8, 0.8], [0.8, 0.2], [0.2, 0.8]]])
+    image = render_quads(polygon_quads(bowtie, fill, SIZE, SIZE, SIZE, 1.0), SIZE)
+    assert ink(image, 30, 50) == 255 and ink(image, 70, 50) == 255
+    assert ink(image, 50, 30) == 0 and ink(image, 50, 70) == 0
+
     square = np.array([[[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]])
     image = render_quads(polygon_quads(square, Paint(pen_width=0.1), SIZE, SIZE, SIZE, 1.0), SIZE)
     assert ink(image, 20, 50) == 255 and ink(image, 50, 80) == 255 and ink(image, 50, 50) == 0

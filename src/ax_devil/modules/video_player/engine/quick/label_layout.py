@@ -146,23 +146,29 @@ def _groups(columns: tuple[object, ...], rows: NDArray[np.intp]) -> list[NDArray
     return [rows[inverse == group] for group in range(len(unique))]
 
 
+_BASELINE = "baseline"
+"""An anchor beside the box ones: left-aligned, with the first line's baseline at the point."""
+_ANCHOR_NAMES = (*ANCHORS, _BASELINE)
+
+
 class _AnchorCodes(dict[str, int]):
     """Codes of the anchor names; any other name gets the code of ``(0, 0)``."""
 
     def __missing__(self, name: str) -> int:
-        return len(ANCHORS)
+        return len(_ANCHOR_NAMES)
 
 
-_ANCHOR_CODES = _AnchorCodes({name: code for code, name in enumerate(ANCHORS)})
-_ANCHOR_FACTORS = np.array([*ANCHORS.values(), (0.0, 0.0)])
-"""Factors by anchor code; the last row serves names that are no anchor."""
+_ANCHOR_CODES = _AnchorCodes({name: code for code, name in enumerate(_ANCHOR_NAMES)})
+_ANCHOR_FACTORS = np.array([*(factors for factors in ANCHORS.values()), (0.0, 0.0), (0.0, 0.0)])
+_ANCHOR_BASELINE = np.array([*(False for _ in ANCHORS), True, False])
+"""Factors and whether the baseline anchors, by anchor code; the last row serves names that are no anchor."""
 
 
-def _anchor_factors(anchor: object, count: int) -> NDArray[np.float64]:
-    """Each row's (horizontal, vertical) fraction of its label's size to move up and left."""
+def _anchor_codes(anchor: object, count: int) -> NDArray[np.intp]:
+    """Each row's anchor code."""
     if type(anchor) is np.ndarray and anchor.ndim:
-        return _ANCHOR_FACTORS[np.fromiter(map(_ANCHOR_CODES.__getitem__, anchor.tolist()), np.intp, count)]
-    return np.broadcast_to(_ANCHOR_FACTORS[_ANCHOR_CODES[str(anchor)]], (count, 2))
+        return np.fromiter(map(_ANCHOR_CODES.__getitem__, anchor.tolist()), np.intp, count)
+    return np.full(count, _ANCHOR_CODES[str(anchor)], np.intp)
 
 
 @dataclass
@@ -230,7 +236,8 @@ def label_quads(
     """Quads for normalized label anchors *x*, *y*: background, bars, then glyphs, label after label.
 
     Lengths scale like fonts do. A label is as large as its runs' ink and its padding, rounded up to device pixels, and
-    sits with its *anchor* at the point. Rows without a shown run, or outside the culling area, produce nothing.
+    sits with its *anchor* at the point; the ``baseline`` anchor puts the first line's baseline there instead.
+    Rows without a shown run, or outside the culling area, produce nothing.
     """
     count, dpr, scale = len(x), settings.dpr, settings.scale
     size = per_row(labels.size, count, np.float64) * scale
@@ -258,9 +265,11 @@ def label_quads(
     # Device pixels the label covers, rounded up; a hair of tolerance keeps float noise from adding a pixel.
     width = np.ceil((right - left + 2 * pad_x) * dpr - 1e-3) / dpr
     height = np.ceil((bottom - top + 2 * pad_y) * dpr - 1e-3) / dpr
-    factors = _anchor_factors(anchor, count)
+    codes = _anchor_codes(anchor, count)
+    factors = _ANCHOR_FACTORS[codes]
     exact_x = x * settings.width - factors[:, 0] * width
-    exact_y = y * settings.height - factors[:, 1] * height
+    # The baseline sits below the top of the box by the padding and the height of the ink above it.
+    exact_y = y * settings.height - np.where(_ANCHOR_BASELINE[codes], pad_y - top, factors[:, 1] * height)
     drawn = (
         any_shown
         & np.isfinite(exact_x)

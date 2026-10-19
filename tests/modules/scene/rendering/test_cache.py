@@ -161,6 +161,17 @@ def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettin
     assert overlay.prepare_drawing(context, DrawingBuffer(changed)) is second
 
 
+def test_a_context_of_other_dimensions_is_not_served_the_drawing_prepared_for_another() -> None:
+    """Catalog lengths resolve against the context, so a native export cannot reuse a scaled viewer drawing."""
+    settings = DrawingSettings(500, 250, 250, dpr=2.0)
+    overlay = CachedSceneOverlay(scene=_motion_scene())
+    viewer, export = RenderContext.create(500, 250), RenderContext.create(1000, 500)
+
+    first = overlay.prepare_drawing(viewer, DrawingBuffer(settings))
+
+    assert overlay.prepare_drawing(export, DrawingBuffer(settings)) is not first
+
+
 def test_panning_within_the_culling_margin_reuses_the_drawing() -> None:
     """Pan keeps the prepared drawing until the viewport leaves the margin prepared around it."""
     context = RenderContext.create(1000, 400)

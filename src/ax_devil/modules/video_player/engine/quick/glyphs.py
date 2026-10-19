@@ -1,7 +1,8 @@
 """Glyph atlas: shape each distinct string once and keep its glyph bitmaps on one shared Alpha8 page.
 
 GUI thread only. Per frame, ``GlyphAtlas.shape`` costs one dict lookup per distinct string; only strings it has not
-seen run through QTextLayout. Glyph origins snap to whole device pixels, so equal strings always produce equal
+seen run through QTextLayout at the logical font size, so lengths do not depend on the device pixel ratio; glyph
+bitmaps are drawn at device size. Glyph origins snap to whole device pixels, so equal strings always produce equal
 bitmaps and only the bitmaps are cached, never per-frame text rendering. A full page raises ``AtlasFull``; the caller
 resets the atlas (``reset``) and lays out again. If even a fresh page is too small, it sets ``drop_overflow`` so the
 glyphs that do not fit are left out (counted in ``dropped``) instead of failing the frame.
@@ -163,16 +164,16 @@ class GlyphAtlas:
             if len(self._fonts) >= _MAX_FONTS:
                 self._fonts.clear()
             font = QFont(key.family) if key.family else QFont()
-            font.setPointSizeF(key.pixel_size * 72.0 / self._dpi)
+            # Text is laid out at its logical size with unhinted advances, so it has the same width at any device pixel
+            # ratio; only the glyph bitmaps are drawn at device size.
+            font.setPointSizeF(key.pixel_size / self._dpr * 72.0 / self._dpi)
+            font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
             font.setWeight(_WEIGHTS[key.weight])
             device = QImage(1, 1, QImage.Format.Format_ARGB32_Premultiplied)
             device.setDotsPerMeterX(round(self._dpi / 0.0254))
             device.setDotsPerMeterY(round(self._dpi / 0.0254))
             metrics = QFontMetricsF(font, device)
-            dpr = self._dpr
-            setup = _FontSetup(
-                font, device, metrics.ascent() / dpr, metrics.descent() / dpr, metrics.lineSpacing() / dpr
-            )
+            setup = _FontSetup(font, device, metrics.ascent(), metrics.descent(), metrics.lineSpacing())
             self._fonts[key] = setup
         return setup
 
@@ -223,7 +224,8 @@ class GlyphAtlas:
 
     def _build(self, text: str, setup: _FontSetup) -> tuple[NDArray[np.void], float, NDArray[np.float32]]:
         """Lay out *text* one QTextLayout per line and collect snapped glyph rectangles."""
-        spacing = setup.line_height * self._dpr
+        dpr = self._dpr
+        spacing = setup.line_height * dpr
         option = QTextOption()
         option.setWrapMode(QTextOption.WrapMode.NoWrap)
         rows: list[tuple[int, int, int, int, int, int]] = []
@@ -242,21 +244,22 @@ class GlyphAtlas:
                 continue
             baseline = round(index * spacing)
             for run in layout.glyphRuns():
-                raw = run.rawFont()
+                raw = QRawFont(run.rawFont())  # The same face at device size, for the bitmaps.
+                raw.setPixelSize(raw.pixelSize() * dpr)
                 for glyph, position in zip(run.glyphIndexes(), run.positions()):
                     slot = self._slot(raw, glyph)
                     if slot is not None:
-                        dx = round(position.x()) + slot.left
-                        dy = baseline + round(position.y() - line.ascent()) + slot.top
+                        dx = round(position.x() * dpr) + slot.left
+                        dy = baseline + round((position.y() - line.ascent()) * dpr) + slot.top
                         rows.append((dx, dy, slot.w, slot.h, slot.u, slot.v))
         glyphs = np.array(rows, GLYPH)
         if len(glyphs):
             x, y = glyphs["dx"].astype(np.int64), glyphs["dy"].astype(np.int64)
             box = np.array([np.min(x), np.min(y), np.max(x + glyphs["w"]), np.max(y + glyphs["h"])], np.float32)
-            ink = box / np.float32(self._dpr)
+            ink = box / np.float32(dpr)
         else:
             ink = _NO_INK
-        return glyphs, width / self._dpr, ink
+        return glyphs, width, ink
 
     def _slot(self, raw: QRawFont, glyph: int) -> _Slot | None:
         """Return the glyph's page rectangle, drawing it into the atlas on first use."""

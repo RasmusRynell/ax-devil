@@ -18,17 +18,19 @@ def _metrics_width(text: str, pixel_size: float) -> float:
     device.setDotsPerMeterY(round(DPI / 0.0254))
     font = QFont()
     font.setPointSizeF(pixel_size * 72.0 / DPI)
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     return QFontMetricsF(font, device).horizontalAdvance(text)
 
 
 @pytest.mark.parametrize("dpr", [1.0, 2.0])
 def test_logical_width_matches_font_metrics(qapp: QApplication, dpr: float) -> None:
-    """Text is laid out at device resolution but reported in logical pixels, so labels do not drift at dpr 2."""
+    """Text is laid out at its logical size, so a label is as wide at dpr 2 as at dpr 1."""
     atlas = GlyphAtlas(DPI, dpr)
     texts = ["Car 0.93", "Pedestrian walking", "ID 4711 ➜ 12"]
     shaped = atlas.shape(texts, FontKey("", 14.0 * dpr, "regular"))
     for text, width in zip(texts, shaped.width):
-        assert width == pytest.approx(_metrics_width(text, 14.0), abs=1.0)
+        # Advances shaped at device size would be hinted to whole pixels and differ between dprs.
+        assert width == pytest.approx(_metrics_width(text, 14.0), abs=0.01)
 
 
 def test_multiline_rows_stack_below_the_first_baseline(qapp: QApplication) -> None:

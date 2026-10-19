@@ -7,7 +7,7 @@ point with no stroke width) produce no quad. Callers cull by the culling rectang
 Strokes are centred on the outline while the shader strokes inward, so outlined shapes grow by half the
 stroke width and keep the same visible ink. Every shape quad is padded by one pixel for the shader's edge
 antialiasing. Polylines and polygon outlines are one round-capped line quad per segment, so joins are round;
-polygon fills are triangles of ``FILL`` quads with a one device pixel fringe that fades out to the edge.
+polygon fills are odd-even trapezoids of ``FILL`` quads with a one device pixel fringe that fades out to the edge.
 """
 
 from __future__ import annotations
@@ -24,6 +24,10 @@ _DASH_PERIOD = 6.0
 """Dash period in stroke widths: a dash and a gap of three widths each."""
 _MITER_LIMIT = 4.0
 """Longest a polygon fringe corner may reach, in fringe widths, before it is cut short."""
+_CHUNK = 1 << 18
+"""Most elements (polygons times corners squared) one batch of corner-pair arrays may have, about 2 MB each."""
+_PROBE = 1e-3
+"""How far beside an edge, in pixels, the test for which side of it is filled looks."""
 
 
 def _color(red: object, green: object, blue: object, alpha: object, count: int) -> NDArray[np.uint8]:
@@ -258,59 +262,77 @@ def polyline_quads(
     return _segment_quads(flat[first], flat[first + 1], row[first], len(points), paint, scale)
 
 
-def _turn(a: NDArray[np.float64], b: NDArray[np.float64], c: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Cross product of a to b and a to c: positive when c lies left of the way from a to b."""
-    return (b[..., 0] - a[..., 0]) * (c[..., 1] - a[..., 1]) - (b[..., 1] - a[..., 1]) * (c[..., 0] - a[..., 0])
+def _outward_normals(points: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Unit normals of every edge of polygons (rows, corners, 2), pointing away from the odd-even filled side.
 
-
-def _triangulate(points: NDArray[np.float64]) -> NDArray[np.intp]:
-    """Triangles (n - 2, 3) of a positively oriented polygon by ear clipping; the rest is fanned if no ear is left.
-
-    Corners that add no area are dropped, and their triangles are left as empty (0, 0, 0).
-
-    A polygon that crosses itself has no ear at some point.
+    A probe just beside each edge's midpoint is inside when a ray from it crosses an odd number of edges, so the
+    lobes of a self-crossing polygon each get their own outside.
     """
-    left = np.arange(len(points))
-    triangles: list[tuple[int, int, int]] = []
-    while len(left) > 3:
-        count = len(left)
-        here = points[left]
-        before, after = np.roll(here, 1, axis=0), np.roll(here, -1, axis=0)
-        corner = _turn(before, here, after)
-        flat = np.flatnonzero(corner == 0)
-        if flat.size:  # A straight or doubled-back corner adds no area.
-            left = np.delete(left, flat[0])
-            continue
-        # blocked[i, j]: corner j lies in or on the triangle that clipping corner i would cut off, unless it is one of
-        # that triangle's own corners (a polygon may touch itself there).
-        blocked = (
-            (_turn(before[:, None], here[:, None], here[None]) >= 0)
-            & (_turn(here[:, None], after[:, None], here[None]) >= 0)
-            & (_turn(after[:, None], before[:, None], here[None]) >= 0)
-        )
-        for own in (before, here, after):
-            blocked &= ~np.all(own[:, None] == here[None], axis=2)
-        ears = (corner > 0) & ~blocked.any(axis=1)
-        if not ears.any():
-            break
-        ear = int(np.argmax(ears))
-        triangles.append((left[ear - 1], left[ear], left[(ear + 1) % count]))
-        left = np.delete(left, ear)
-    triangles += [(left[0], left[index], left[index + 1]) for index in range(1, len(left) - 1)]
-    triangles += [(0, 0, 0)] * (len(points) - 2 - len(triangles))  # Dropped corners leave empty triangles.
-    return np.array(triangles, dtype=np.intp)
-
-
-def _miter(points: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Offset direction of every corner of positively oriented polygons (rows, corners, 2), outward, miter limited."""
     edges = np.roll(points, -1, axis=1) - points
     lengths = np.maximum(np.hypot(edges[..., 0], edges[..., 1]), 1e-12)
     normals = np.stack((edges[..., 1], -edges[..., 0]), axis=-1) / lengths[..., None]
+    probe = points + edges / 2 - normals * _PROBE
+    start_y, end_y = points[:, None, :, 1], np.roll(points, -1, axis=1)[:, None, :, 1]
+    py = probe[:, :, None, 1]
+    straddles = (start_y > py) != (end_y > py)
+    dy = np.where(straddles, end_y - start_y, 1.0)
+    cut = points[:, None, :, 0] + (py - start_y) * edges[:, None, :, 0] / dy
+    inside = np.sum(straddles & (cut > probe[:, :, None, 0]), axis=2) % 2 == 1
+    outward: NDArray[np.float64] = np.where(inside[..., None], normals, -normals)
+    return outward
+
+
+def _miter(normals: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Offset direction of every corner from the outward normals of its two edges (rows, corners, 2), miter limited."""
     direction = np.roll(normals, 1, axis=1) + normals
     direction /= np.maximum(np.hypot(direction[..., 0], direction[..., 1]), 1e-12)[..., None]
     scale = 1 / np.maximum(np.sum(direction * normals, axis=-1), 1 / _MITER_LIMIT)
     miter: NDArray[np.float64] = direction * scale[..., None]
     return miter
+
+
+def _cross(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Cross products of the last axes of *a* and *b*."""
+    return a[..., 0] * b[..., 1] - a[..., 1] * b[..., 0]
+
+
+def _odd_even(points: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.intp]]:
+    """Trapezoids (k, 4, 2) covering polygons (rows, corners, 2) by the odd-even rule, and each one's polygon row.
+
+    Horizontal lines through every corner and every crossing of two edges cut a polygon into bands in which the
+    edges do not cross, so the edges a band's middle line meets, paired from the left, bound its filled spans. Corners
+    run top left, top right, bottom left, bottom right, so a trapezoid is two triangles of a strip.
+    """
+    rows, corners = points.shape[:2]
+    start, end = points, np.roll(points, -1, axis=1)
+    along = end - start
+    # Edge i meets edge j at start_i + t * along_i = start_j + u * along_j.
+    gap = start[:, None] - start[:, :, None]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        denominator = _cross(along[:, :, None], along[:, None])
+        t, u = _cross(gap, along[:, None]) / denominator, _cross(gap, along[:, :, None]) / denominator
+        crossed_y = start[..., 1][:, :, None] + t * along[..., 1][:, :, None]
+    crossing = np.triu(np.ones((corners, corners), np.bool_), 1) & (0 < t) & (t < 1) & (0 < u) & (u < 1)
+    cut_y = np.concatenate((points[..., 1].reshape(-1), crossed_y[crossing]))
+    cut_row = np.concatenate((np.repeat(np.arange(rows), corners), np.nonzero(crossing)[0]))
+    order = np.lexsort((cut_y, cut_row))
+    cut_y, cut_row = cut_y[order], cut_row[order]
+    band = np.flatnonzero((cut_row[1:] == cut_row[:-1]) & (cut_y[1:] > cut_y[:-1]))
+    row, top, bottom = cut_row[band], cut_y[band], cut_y[band + 1]
+    middle = ((top + bottom) / 2)[:, None]
+    x0, y0, x1, y1 = start[row, :, 0], start[row, :, 1], end[row, :, 0], end[row, :, 1]
+    meets = (y0 > middle) != (y1 > middle)
+    slope = (x1 - x0) / np.where(meets, y1 - y0, 1.0)
+    edge = np.argsort(np.where(meets, x0 + (middle - y0) * slope, np.inf), axis=1)
+    pairs = np.where(np.take_along_axis(meets, edge[:, 1::2], axis=1))  # An odd count never happens in a closed loop.
+    owner = pairs[0]
+    out = np.empty((len(owner), 4, 2))
+    for side, taken in enumerate((edge[:, 0::2], edge[:, 1::2])):
+        chosen = taken[pairs]
+        for level, y in enumerate((top[owner], bottom[owner])):
+            out[:, level * 2 + side, 0] = x0[owner, chosen] + (y - y0[owner, chosen]) * slope[owner, chosen]
+            out[:, level * 2 + side, 1] = y
+    return out, row[owner]
 
 
 def _fill_quads(positions: NDArray[np.float64], colors: NDArray[np.uint8]) -> NDArray[np.void]:
@@ -323,10 +345,10 @@ def _fill_quads(positions: NDArray[np.float64], colors: NDArray[np.uint8]) -> ND
 
 
 def _fills(points: NDArray[np.float64], fill: NDArray[np.uint8], dpr: float) -> NDArray[np.void]:
-    """Anti-aliased fills of polygons (rows, corners, 2) in pixels: triangles inside, a fading ring outside.
+    """Anti-aliased odd-even fills of polygons (rows, corners, 2) in pixels: trapezoids inside, a fading ring outside.
 
     The edge sits half a device pixel from where the colour is full and from where it is gone. Corners are mitered up
-    to a limit. Convex polygons are fanned; others are ear clipped, and polygons that cross themselves approximate.
+    to a limit.
     """
     following = np.roll(points, -1, axis=1)
     area = np.sum(points[..., 0] * following[..., 1] - following[..., 0] * points[..., 1], axis=1) / 2
@@ -334,31 +356,23 @@ def _fills(points: NDArray[np.float64], fill: NDArray[np.uint8], dpr: float) -> 
     points, fill, area = points[ok], fill[ok], area[ok]
     if not len(points):
         return np.zeros(0, OVERLAY_VERTEX)
-    points = np.where((area < 0)[:, None, None], points[:, ::-1], points)
     rows, corners = points.shape[:2]
-    edges = np.roll(points, -1, axis=1) - points
-    ahead = np.roll(edges, -1, axis=1)
-    convex = np.all(edges[..., 0] * ahead[..., 1] - edges[..., 1] * ahead[..., 0] >= 0, axis=1)
+    edges = following[ok] - points
+    step = max(1, _CHUNK // corners**2)
+    normals = np.concatenate([_outward_normals(points[first : first + step]) for first in range(0, rows, step)])
     fringe = 0.5 / dpr
-    miter = _miter(points)
+    miter = _miter(normals)
     # Polygons thinner than the fringe band keep their outline as the inside edge instead of inverting.
     thin = (4 * np.abs(area) / np.sum(np.hypot(edges[..., 0], edges[..., 1]), axis=1) < 4 * fringe)[:, None, None]
     inner = np.where(thin, points, points - miter * fringe)
     outer = points + miter * fringe
-    triangles = np.tile(np.array([(0, index, index + 1) for index in range(1, corners - 1)]), (rows, 1, 1))
-    for row in np.flatnonzero(~convex):
-        triangles[row] = _triangulate(inner[row])
-    gathered = inner[np.arange(rows)[:, None, None], triangles]  # (rows, triangles, 3, 2)
-    inside = gathered[:, :, [0, 1, 2, 2]].reshape(-1, 4, 2)  # A triangle repeats its last corner.
+    chunks = [_odd_even(inner[first : first + step]) for first in range(0, rows, step)]
+    inside = np.concatenate([quads for quads, _ in chunks])
+    owner = np.concatenate([row + first for (_, row), first in zip(chunks, range(0, rows, step))])
     ring = np.stack((outer, np.roll(outer, -1, axis=1), inner, np.roll(inner, -1, axis=1)), axis=2).reshape(-1, 4, 2)
     faded = np.zeros((rows, corners, 4, 4), np.uint8)
     faded[:, :, 2:] = fill[:, None, None, :]
-    return np.concatenate(
-        (
-            _fill_quads(inside, np.repeat(fill, corners - 2, axis=0)[:, None, :]),
-            _fill_quads(ring, faded.reshape(-1, 4, 4)),
-        )
-    )
+    return np.concatenate((_fill_quads(inside, fill[owner][:, None, :]), _fill_quads(ring, faded.reshape(-1, 4, 4))))
 
 
 def polygon_quads(

@@ -26,7 +26,7 @@ from ax_devil.modules.video_player.engine.render_context import RenderContext
 logger = get_logger(__name__)
 
 FilteredSceneKey = Hashable | None
-RenderCacheKey = tuple[FilteredSceneKey, tuple[str, str]]
+RenderCacheKey = tuple[FilteredSceneKey, tuple[str, str], tuple[int, int]]
 SceneRenderCatalogProvider = Callable[[], SceneRenderCatalog | None]
 CatalogErrorIdentity = tuple[str, str, str]
 
@@ -107,7 +107,7 @@ class CachedSceneOverlay:
         if catalog is None:
             return EMPTY_DRAWING
         filtered_scene = self.filtered_scene()
-        render_key = (self._filtered_scene_key(), catalog.rendering_identity)
+        render_key = (self._filtered_scene_key(), catalog.rendering_identity, (context.width, context.height))
         covered = self._settings is not None and self._settings.covers(buffer.settings)
         cache_hit = self._render_key == render_key and self._drawing is not None and covered
         if cache_hit:
