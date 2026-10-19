@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -317,7 +316,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             if allow_previous:
                 raise ValueError("Sticky sequence overlays require the video's frame timeline")
 
-        timestamp_key = int(frame_identifier.timestamp_monotime_us)
+        timestamp_key = frame_identifier.timestamp_us
 
         scene = self._load_scene(timestamp_key)
         if scene is not None:
@@ -380,7 +379,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self, frame_id: FrameIdentifier, timeline: FrameTimeline, *, allow_previous: bool
     ) -> OverlayLookupResult:
         """Resolve frame-keyed annotations using actual video timestamps for their age."""
-        requested_time = int(frame_id.timestamp_monotime_us)
+        requested_time = frame_id.timestamp_us
         sample = sequence_sample(
             self._sorted_sequences, frame_id.sequence_id, requested_time, timeline, allow_previous=allow_previous
         )
@@ -437,7 +436,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._samples = replace(self._samples, policy=policy)
 
     def get_available_frames(self) -> set[int]:
-        """Get the set of available frame timestamps (as monotime microseconds)."""
+        """Get the set of available frame timestamps (as media-clock microseconds)."""
         return set(self._available_frame_ids)
 
     def get_total_frames(self) -> int:
@@ -483,12 +482,11 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
 
     def _extract_timestamp_key(self, scene: Scene) -> int | None:
         """Derive a monotonic timestamp key for a scene."""
+        timestamp_us = scene.time_slice.start_timestamp_us
+        if timestamp_us is not None:
+            return timestamp_us
         start = scene.time_slice.start
-        if isinstance(start, datetime):
-            return int(start.timestamp() * 1_000_000)
-        if isinstance(start, (int, float)):
-            return int(start)
-        return None
+        return start if isinstance(start, int) else None
 
     def _extract_sequence_key(self, scene: Scene, fallback_sequence: int) -> int:
         """Determine the sequence identifier for a scene."""

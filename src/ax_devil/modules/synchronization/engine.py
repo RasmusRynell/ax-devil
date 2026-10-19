@@ -8,13 +8,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
+from ax_devil.core.time_units import ms_to_seconds, seconds_to_ms
 from ax_devil.modules.settings.logging_config import get_logger
 
 # Generic types for maximum reusability
 FrameType = TypeVar("FrameType")
 OverlayType = TypeVar("OverlayType")
 logger = get_logger(__name__)
-LIVE_OVERLAY_MATCH_TOLERANCE_S = 0.010
+LIVE_OVERLAY_MATCH_TOLERANCE_US = 10_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,8 +23,8 @@ class TimestampedData(Generic[FrameType]):
     """Container for data with proper timestamp semantics."""
 
     data: FrameType
-    capture_time: float  # When data was created/captured
-    arrival_time: float  # When sync engine received it
+    capture_time_us: int  # When data was created/captured, on the media clock
+    arrival_at: float  # When sync engine received it, in monotonic seconds
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +39,7 @@ class StreamSync(Generic[FrameType, OverlayType]):
     """Pure Python synchronization engine for live streaming data.
 
     Design principles:
-    - Timestamp semantics: sync on capture_time, not arrival_time
+    - Timestamp semantics: sync on capture time (media clock), not arrival time
     - Event-driven release: frame and overlay arrivals release frames whose delay has elapsed
     - Idle streams: a buffered tail frame is intentionally not released without another input event
     - Overlay selection: newest update within 10 ms before the frame, including the boundary
@@ -47,7 +48,7 @@ class StreamSync(Generic[FrameType, OverlayType]):
     """
 
     def __init__(self, delay_ms: int = 50, max_queue_size: int = 100):
-        self.delay_s = delay_ms / 1000.0
+        self.delay_s = ms_to_seconds(delay_ms)
 
         self._frame_queue: deque[TimestampedData[FrameType]] = deque(maxlen=max_queue_size)
         self._overlay_queue: deque[TimestampedData[OverlayType]] = deque(maxlen=max_queue_size)
@@ -66,18 +67,18 @@ class StreamSync(Generic[FrameType, OverlayType]):
         self._overlay_queue.clear()
         self._early_eviction_logged = False
 
-    def push_frame(self, frame_data: FrameType, capture_time: float) -> None:
+    def push_frame(self, frame_data: FrameType, capture_time_us: int) -> None:
         """Add frame data with capture timestamp."""
-        timestamped = TimestampedData(data=frame_data, capture_time=capture_time, arrival_time=time.monotonic())
+        timestamped = TimestampedData(data=frame_data, capture_time_us=capture_time_us, arrival_at=time.monotonic())
         if (
             not self._early_eviction_logged
             and self._frame_queue
             and len(self._frame_queue) == self._frame_queue.maxlen
-            and self._frame_queue[0].arrival_time > timestamped.arrival_time - self.delay_s
+            and self._frame_queue[0].arrival_at > timestamped.arrival_at - self.delay_s
         ):
             logger.error(
                 f"Live playback buffer is discarding frames before they can display "
-                f"({self.delay_s * 1000:g} ms delay, {self._frame_queue.maxlen} frame capacity). "
+                f"({seconds_to_ms(self.delay_s):g} ms delay, {self._frame_queue.maxlen} frame capacity). "
                 f"High frame rates or bursts may stall playback; reduce the source frame rate. "
                 f"Reported once until synchronization resets."
             )
@@ -85,9 +86,9 @@ class StreamSync(Generic[FrameType, OverlayType]):
         self._frame_queue.append(timestamped)
         self._process_ready_frames()
 
-    def push_overlay(self, overlay_data: OverlayType, capture_time: float) -> None:
+    def push_overlay(self, overlay_data: OverlayType, capture_time_us: int) -> None:
         """Add overlay data with capture timestamp."""
-        timestamped = TimestampedData(data=overlay_data, capture_time=capture_time, arrival_time=time.monotonic())
+        timestamped = TimestampedData(data=overlay_data, capture_time_us=capture_time_us, arrival_at=time.monotonic())
         self._overlay_queue.append(timestamped)
         # Synchronization is deliberately input-driven. Overlay arrivals wake ready-frame processing just like frame
         # arrivals; no timer is needed because an idle live stream has no new presentation work, and the bounded queues
@@ -102,17 +103,17 @@ class StreamSync(Generic[FrameType, OverlayType]):
         now = time.monotonic()
         deadline = now - self.delay_s
 
-        while self._frame_queue and self._frame_queue[0].arrival_time <= deadline:
+        while self._frame_queue and self._frame_queue[0].arrival_at <= deadline:
             frame = self._frame_queue.popleft()
             selected: TimestampedData[OverlayType] | None = None
-            earliest_match = frame.capture_time - LIVE_OVERLAY_MATCH_TOLERANCE_S
+            earliest_match_us = frame.capture_time_us - LIVE_OVERLAY_MATCH_TOLERANCE_US
             # Scan the bounded queue so late arrivals cannot hide behind a future update.
             for _ in range(len(self._overlay_queue)):
                 candidate = self._overlay_queue.popleft()
-                if candidate.capture_time > frame.capture_time:
+                if candidate.capture_time_us > frame.capture_time_us:
                     self._overlay_queue.append(candidate)
-                elif candidate.capture_time >= earliest_match and (
-                    selected is None or candidate.capture_time >= selected.capture_time
+                elif candidate.capture_time_us >= earliest_match_us and (
+                    selected is None or candidate.capture_time_us >= selected.capture_time_us
                 ):
                     selected = candidate
             self._emit(frame, selected)

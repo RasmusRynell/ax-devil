@@ -102,7 +102,7 @@ class DataHubWebSocketClient:
 
     _topic_sample_method = "data-hub_v1:topicSample"
     _list_topics_method = "data-hub_v1:listTopics"
-    _request_timeout = 10.0
+    _request_timeout_s = 10.0
 
     def __init__(
         self,
@@ -310,7 +310,7 @@ class DataHubWebSocketClient:
                 return message
 
         try:
-            return await asyncio.wait_for(exchange(), timeout=self._request_timeout)
+            return await asyncio.wait_for(exchange(), timeout=self._request_timeout_s)
         except asyncio.TimeoutError as exc:
             message = f"Timed out waiting for DataHub response to {method}."
             if last_notification is not None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -143,7 +143,7 @@ def test_start_panel_buttons_trigger_actions_and_recent_rows_request_their_works
     panel = StartPanel(host)
     panel.set_shortcut_manager(manager)
     recent = [tmp_path / f"{name}.ax-devil.workspace" for name in ("Parking lot", "Exp 3")]
-    panel.set_recent_workspaces([RecentWorkspace(path, datetime.now()) for path in recent])
+    panel.set_recent_workspaces([RecentWorkspace(path, datetime.now(timezone.utc)) for path in recent])
     panel.resize(320, 600)
     host.show()
     triggered: list[str] = []
@@ -188,7 +188,7 @@ def test_start_panel_dates_recents_by_last_use_without_their_files_and_recompute
     qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A recent on an unreachable mount still shows its date; a panel left open across midnight updates on show."""
-    used = datetime(2026, 10, 10, 9, 30)
+    used = datetime(2026, 10, 10, 9, 30).astimezone()
     monkeypatch.setattr(start_panel, "_today", lambda: used.date())
     panel = StartPanel()
     qtbot.addWidget(panel)
@@ -208,7 +208,7 @@ def test_start_panel_never_overflows_a_narrow_sidebar(qtbot: QtBot, tmp_path: Pa
     folder = tmp_path / ("very-long-folder-name-" * 6)
     folder.mkdir()
     long_name = folder / f"{'Long workspace name ' * 6}.ax-devil.workspace"
-    panel.set_recent_workspaces([RecentWorkspace(long_name, datetime.now())])
+    panel.set_recent_workspaces([RecentWorkspace(long_name, datetime.now(timezone.utc))])
     panel.resize(160, 400)
     panel.show()
     QApplication.processEvents()

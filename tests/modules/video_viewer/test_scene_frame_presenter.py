@@ -13,6 +13,7 @@ from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.filtering import build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
@@ -81,7 +82,7 @@ def _build_frame(sequence: int) -> FrameData:
     image = QImage(4, 4, QImage.Format.Format_RGB32)
     image.fill(0)
     return FrameData(
-        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_monotime_us=float(sequence * 1_000_000)),
+        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_us=seconds_to_us(sequence)),
         content=image,
         source_id="video",
         metadata={"frame": sequence},
@@ -90,7 +91,7 @@ def _build_frame(sequence: int) -> FrameData:
 
 def _build_overlay(sequence: int, scene: Scene, metadata: dict[str, Any] | None = None) -> OverlayData:
     return OverlayData(
-        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_monotime_us=float(sequence * 1_000_000)),
+        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_us=seconds_to_us(sequence)),
         content=scene,
         source_id="overlay",
         metadata=metadata,
@@ -109,11 +110,11 @@ def test_presenter_assembles_video_frame_with_scene_overlay_and_merged_metadata(
     )
 
     assert presentation.display_frame.frame.frame_id == 1
-    assert presentation.display_frame.frame.timestamp_monotime_us == 1_000_000.0
+    assert presentation.display_frame.frame.timestamp_us == 1_000_000
     assert presentation.display_frame.frame.metadata == {"frame": 1}
     assert presentation.display_frame.overlays is not None
     assert presentation.display_frame.overlays.overlay_id == 1
-    assert presentation.display_frame.overlays.timestamp_monotime_us == 1_000_000.0
+    assert presentation.display_frame.overlays.timestamp_us == 1_000_000
     assert presentation.display_frame.overlays.metadata == {
         "source": "decoder",
         "overlay_opacity": 0.75,
@@ -147,7 +148,7 @@ def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes
     inspected_scene = presentation.inspection.scene
     assert inspected_scene is not None
     assert not inspected_scene.entities
-    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_monotime_us=1_000_000.0)
+    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_us=1_000_000)
     overlay = presentation.display_frame.overlays
     assert overlay is not None
     provider = overlay.interaction_provider
@@ -208,7 +209,7 @@ def test_presenter_falls_back_to_unfiltered_inspector_scene_when_filtering_fails
     assert presentation.display_frame.frame.frame_id == 1
     assert presentation.display_frame.overlays is not None
     assert presentation.inspection.scene is scene
-    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_monotime_us=1_000_000.0)
+    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_us=1_000_000)
 
 
 def _catalog_with_disabled_human_recipe() -> SceneRenderCatalog:

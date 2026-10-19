@@ -15,6 +15,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QProgressBar
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
@@ -31,7 +32,7 @@ class _VideoSource:
     total_frames = 3
     fps = 25.0
     file_path = "/unused/source.mp4"
-    timestamps = (0.0, 40_000.0, 80_000.0)
+    timestamps = (0, 40_000, 80_000)
     size = 2
     colors = (0, 0, 0)
 
@@ -225,7 +226,7 @@ def test_successful_export_replaces_destination_with_source_timing(
     assert source.requested_frames == [0, 1, 2]
     assert progress[-1] == (2, 3)
     with av.open(str(output)) as container:
-        timestamps = [round(frame.time * 1_000_000) for frame in container.decode(video=0)]
+        timestamps = [seconds_to_us(frame.time) for frame in container.decode(video=0)]
     assert timestamps == [0, 40_000, 240_000]
     assert not list(tmp_path.glob(".output-*.mp4"))
 
@@ -329,7 +330,7 @@ def test_export_selects_retained_sample_without_playback_history(
         assert ExportJob([lane], output).run()
     displayed = frames[1]
     assert displayed.overlays is not None
-    assert displayed.overlays.timestamp_monotime_us == 0
+    assert displayed.overlays.timestamp_us == 0
     assert displayed.overlays.metadata is not None
     assert displayed.overlays.metadata["overlay_reused"] is True
     assert displayed.overlays.metadata["overlay_opacity"] == 0.4

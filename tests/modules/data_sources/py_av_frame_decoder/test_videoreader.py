@@ -151,7 +151,7 @@ def test_concurrent_sync_requests_each_receive_their_frame(reader: VideoFrameRea
     reader.open()
     indices = [24, 3, 26, 10, 28]
     with ThreadPoolExecutor(max_workers=len(indices)) as executor:
-        frames = list(executor.map(lambda index: reader.get_frame_sync(index, timeout=3.0), indices))
+        frames = list(executor.map(lambda index: reader.get_frame_sync(index, timeout_s=3.0), indices))
     assert [frame.frame_index if frame is not None else None for frame in frames] == indices
 
 

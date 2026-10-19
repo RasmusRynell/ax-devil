@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QMessageBox, QV
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.background_jobs import BackgroundJobs, JobScope, LatestRequest, background_jobs
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Radius, Space
@@ -185,7 +186,7 @@ class OfflineLane:
         """Display a synced frame and update lane-owned controls."""
         self.display.display_frame(frame)
         if self.controls is not None and frame.frame.frame_id is not None:
-            self.controls.set_current_frame(frame.frame.frame_id, frame.frame.timestamp)
+            self.controls.set_current_frame(frame.frame.frame_id, us_to_seconds(frame.frame.timestamp_us))
 
     def present_frame(self, frame_data: FrameData) -> None:
         """Present one offline frame using direct overlay lookup."""
@@ -946,9 +947,7 @@ class OfflineSession(QObject):
 
         if source_index == 0:
             self._current_frame = self._bounded_frame(frame_data.frame_id.sequence_id)
-            self._presented_frame = PresentedFrame(
-                self._current_frame, frame_data.frame_id.timestamp_monotime_us / 1_000_000
-            )
+            self._presented_frame = PresentedFrame(self._current_frame, us_to_seconds(frame_data.frame_id.timestamp_us))
             self.currentFrameChanged.emit(self.current_frame)
         for lane in self.lanes:
             if lane.source_index == source_index:

@@ -331,12 +331,12 @@ class FrameReaderWorker(BaseWorker):
         """Return the decoded frames held in the cache as inclusive ``(first, last)`` runs."""
         return self._cache.cached_ranges()
 
-    def get_frame_time_us(self, frame_index: int) -> float:
+    def get_frame_time_us(self, frame_index: int) -> int:
         """Return frame presentation time in microseconds since the first indexed frame."""
         with self._pyav_lock:
             return self._frame_processor.get_frame_time_us(frame_index)
 
-    def try_frame_time_us(self, frame_index: int) -> float | None:
+    def try_frame_time_us(self, frame_index: int) -> int | None:
         """Return a frame's presentation time, or None at once when the decoder is busy, so callers never wait."""
         if not self._pyav_lock.acquire(blocking=False):
             return None
@@ -370,7 +370,7 @@ class VideoFrameReader:
         cache_budget_bytes: int = 256 * 1024 * 1024,
         prefetch_count: int = 30,
         callback_threads: int = 4,
-        worker_timeout: float = 5.0,
+        worker_timeout_s: float = 5.0,
         cache_path: Path | None = None,
         open_config: VideoOpenConfig | None = None,
     ) -> None:
@@ -379,7 +379,7 @@ class VideoFrameReader:
         self._cache_budget_bytes = cache_budget_bytes
         self._prefetch_count = prefetch_count
         self._callback_threads = callback_threads
-        self._worker_timeout = worker_timeout
+        self._worker_timeout_s = worker_timeout_s
         self._cache_path = cache_path
         self._open_config = open_config
 
@@ -422,7 +422,7 @@ class VideoFrameReader:
 
         self._worker = FrameWorker(
             work_executor=self._frame_reader_worker,
-            worker_timeout=self._worker_timeout,
+            worker_timeout_s=self._worker_timeout_s,
             thread_name="VideoFrameReader",
         )
 
@@ -437,7 +437,7 @@ class VideoFrameReader:
 
         self._worker.start()
 
-    def get_frame_sync(self, frame_index: int, timeout: float = 5.0) -> DecodedFrame | None:
+    def get_frame_sync(self, frame_index: int, timeout_s: float = 5.0) -> DecodedFrame | None:
         """Get a specific frame by index, blocking until available or timeout."""
         # Check if we're shutting down first
         if self._shutting_down:
@@ -463,10 +463,10 @@ class VideoFrameReader:
         self._frame_reader_worker.get_frame_async(frame_index, sync_callback)
 
         # Wait for completion or timeout
-        if completion_event.wait(timeout=timeout):
+        if completion_event.wait(timeout=timeout_s):
             logger.debug(f"get_frame_sync({frame_index}): completed successfully")
             return result[0]
-        logger.warning(f"get_frame_sync({frame_index}): timeout after {timeout}s")
+        logger.warning(f"get_frame_sync({frame_index}): timeout after {timeout_s}s")
         return None
 
     def get_frame_async(self, frame_index: int, callback: Callable[[DecodedFrame | None], None]) -> None:
@@ -492,7 +492,7 @@ class VideoFrameReader:
         assert self._frame_reader_worker is not None, "Frame reader worker must be available"
         return self._frame_reader_worker.get_total_frames()
 
-    def get_frame_time_us(self, frame_index: int) -> float:
+    def get_frame_time_us(self, frame_index: int) -> int:
         """Return frame presentation time in microseconds since the first indexed frame."""
         self._ensure_open()
         assert self._frame_reader_worker is not None, "Frame reader worker must be available"

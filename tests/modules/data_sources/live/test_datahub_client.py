@@ -118,7 +118,7 @@ def _client(session: _FakeSession, *, topic: str | None = None, protocol: str = 
 
 def test_request_timeout_is_not_extended_by_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
     """A device that only sends status notifications cannot hold a request open forever."""
-    monkeypatch.setattr(DataHubWebSocketClient, "_request_timeout", 0.05)
+    monkeypatch.setattr(DataHubWebSocketClient, "_request_timeout_s", 0.05)
     status: dict[str, object] = {"jsonrpc": "2.0", "method": "data-hub_v1:status"}
     # The first notification arrives without yielding, so the timeout cannot fire before any notification was seen.
     session = _FakeSession(_FakeWebSocket([status], repeat=status))

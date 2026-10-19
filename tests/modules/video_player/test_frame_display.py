@@ -107,7 +107,7 @@ def test_cleanup_releases_mounted_overlays_and_side_panel(qtbot: QtBot) -> None:
 
 
 def test_side_panel_hides_its_content_while_collapsed(qtbot: QtBot) -> None:
-    panel = DraggablePanel(animation_duration=1)
+    panel = DraggablePanel(animation_duration_ms=1)
     qtbot.addWidget(panel)
     content = QWidget()
     panel.set_content_widget(content)
@@ -134,7 +134,7 @@ def test_dragging_side_panel_open_to_a_width_and_closed_updates_content_visibili
     host.resize(800, 400)
     layout = QHBoxLayout(host)
     handle = DraggableHandle(host)
-    panel = DraggablePanel(host, animation_duration=1)
+    panel = DraggablePanel(host, animation_duration_ms=1)
     layout.addWidget(handle)
     layout.addStretch()
     layout.addWidget(panel)

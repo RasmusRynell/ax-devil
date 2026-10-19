@@ -53,8 +53,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 
 ## Frame Identity
 
-- Every frame has both `FrameIdentifier.sequence_id` and `FrameIdentifier.timestamp_monotime_us`. Offline timestamps
-  are measured from the start of the video; live timestamps from the Unix epoch.
+- Every frame has `FrameIdentifier.sequence_id` and `FrameIdentifier.timestamp_us`: integer microseconds on the media
+  clock, a Scene datetime's time since the Unix epoch. Live frames carry capture time; an offline video's first frame is
+  0, so timestamp-keyed files for a recording count from the epoch. Convert units only through `core/time_units`.
 - Timestamp matching is a synchronization policy: exact timestamp first, then the latest previous overlay timestamp
   within the configured tolerance. Future overlay timestamps are never selected early.
 - Timestamp-keyed files match exact timestamps, then configured past tolerance. Frame-keyed files (MOT/CVAT) match

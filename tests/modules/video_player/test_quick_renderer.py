@@ -51,7 +51,7 @@ def _frame(image: QImage, primitives: DrawCalls, opacity: float = 1.0) -> VideoF
     return VideoFrameWithOverlays(
         VideoFrame(image, 0),
         VideoOverlayData(
-            lambda _context, buffer: prepare_calls(primitives, buffer), metadata={"overlay_opacity": opacity}
+            lambda _context, buffer: prepare_calls(primitives, buffer), 0, metadata={"overlay_opacity": opacity}
         ),
     )
 
@@ -207,7 +207,7 @@ def test_hidden_viewport_prepares_only_the_latest_frame_and_overlay_when_shown(q
             prepared.append(color)
             return prepare_calls([BoxCall(0, 0, 0.25 if color == "green" else 1, 1, _FILL)], buffer)
 
-        return VideoFrameWithOverlays(VideoFrame(_image(color), 0), VideoOverlayData(draw))
+        return VideoFrameWithOverlays(VideoFrame(_image(color), 0), VideoOverlayData(draw, 0))
 
     widget.display_frame(frame("blue"))
     stack.setCurrentIndex(1)  # Cancel preparation already queued before changing tabs.

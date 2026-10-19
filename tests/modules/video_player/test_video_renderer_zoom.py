@@ -22,7 +22,7 @@ def renderer(qtbot: QtBot) -> VideoFrameRenderer:
 
     image = QImage(1920, 1080, QImage.Format.Format_RGB32)
     image.fill(0)
-    frame = VideoFrame(image=image, timestamp=0.0, frame_id=0)
+    frame = VideoFrame(image=image, timestamp_us=0, frame_id=0)
     renderer.display_frame(
         VideoFrameWithOverlays(
             frame=frame,

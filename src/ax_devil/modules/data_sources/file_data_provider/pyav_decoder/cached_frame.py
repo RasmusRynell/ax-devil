@@ -24,7 +24,7 @@ class CachedFrame:
         *,
         frame_index: int,
         video_frame: av.VideoFrame,
-        timestamp_us: float,
+        timestamp_us: int,
         period_after_s: float | None,
         source_timing_metadata: dict[str, Any],
     ) -> None:

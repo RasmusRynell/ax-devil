@@ -110,10 +110,10 @@ class FileOverlaySource(QObject):
                     if lookup_result.matched_sequence_id is not None
                     else frame_id.sequence_id
                 ),
-                timestamp_monotime_us=(
+                timestamp_us=(
                     lookup_result.matched_timestamp_us
                     if lookup_result.matched_timestamp_us is not None
-                    else frame_id.timestamp_monotime_us
+                    else frame_id.timestamp_us
                 ),
             ),
             source_id=self.source_id,

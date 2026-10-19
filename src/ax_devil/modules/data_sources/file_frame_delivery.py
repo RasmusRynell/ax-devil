@@ -155,7 +155,7 @@ class FileFrameDelivery(BaseWorker):
             self._requests.append(_FrameRequest(frame_number=frame_number, callback=callback))
             self._condition.notify_all()
 
-    def read_decoded_frame(self, frame_number: int, timeout: float = 5.0) -> DecodedFrame | None:
+    def read_decoded_frame(self, frame_number: int, timeout_s: float = 5.0) -> DecodedFrame | None:
         """Read one frame for a non-playback caller through the delivery worker."""
         synchronous_read = _SynchronousRead(completed=threading.Event())
         with self._condition:
@@ -163,7 +163,7 @@ class FileFrameDelivery(BaseWorker):
                 return None
             self._requests.append(_FrameRequest(frame_number=frame_number, synchronous_read=synchronous_read))
             self._condition.notify_all()
-        if synchronous_read.completed.wait(timeout):
+        if synchronous_read.completed.wait(timeout_s):
             return synchronous_read.result
         logger.warning(f"Timed out reading frame {frame_number} from file delivery")
         return None
@@ -203,11 +203,11 @@ class FileFrameDelivery(BaseWorker):
         """Return the frames that are decoded and cached, as inclusive ``(first, last)`` runs."""
         return self._decoder.get_cached_ranges()
 
-    def get_frame_time_us(self, frame_number: int) -> float:
+    def get_frame_time_us(self, frame_number: int) -> int:
         """Return one frame's presentation time in microseconds since the first frame."""
         return self._decoder.get_frame_time_us(frame_number)
 
-    def try_frame_time_us(self, frame_number: int) -> float | None:
+    def try_frame_time_us(self, frame_number: int) -> int | None:
         """Return one frame's presentation time, or None without waiting when the decoder is busy."""
         return self._decoder.try_frame_time_us(frame_number)
 
