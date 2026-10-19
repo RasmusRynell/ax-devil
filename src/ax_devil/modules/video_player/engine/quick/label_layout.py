@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 
 from ..drawing import ANCHORS, LabelColumns, RunColumns
 from . import glyphs as atlas_module
-from .glyphs import FontKey, GlyphAtlas, ShapedTexts
+from .glyphs import FontKey, GlyphAtlas
 from .overlay_vertex import CORNER_U, CORNER_V, OVERLAY_VERTEX, PAD, OverlayKind, per_row, premultiplied
 
 if TYPE_CHECKING:
@@ -183,7 +183,10 @@ class _Run:
     ascent: NDArray[np.float64]
     descent: NDArray[np.float64]
     cap_height: NDArray[np.float64]
-    shaped: list[tuple[NDArray[np.intp], ShapedTexts]] = field(default_factory=list)
+    text: NDArray[np.object_]
+    """What each row draws: bars have none."""
+    fonts: list[tuple[NDArray[np.intp], FontKey]] = field(default_factory=list)
+    """Rows that share a font; their glyphs go on the atlas only once culling has left the visible ones."""
     offset: NDArray[np.float64] = field(default_factory=lambda: np.zeros(0))
 
 
@@ -209,19 +212,19 @@ def _shape_run(
         np.zeros(count),
         np.zeros(count),
         np.zeros(count),
+        np.where(is_bar, "", text),
     )
     for group in _groups((labels.family, labels.size, columns.weight), np.flatnonzero(shown)):
         first = int(group[0])
         key = FontKey(str(_value(labels.family, first)), float(size[first] * dpr), str(_value(columns.weight, first)))  # type: ignore[arg-type]
         bars = is_bar[group]
-        texts = text[group]
-        shaped = atlas.shape(np.where(bars, "", texts) if bars.any() else texts, key)
-        run.advance[group] = np.where(bars, size[group] * _BAR_LENGTH, shaped.width)
-        run.ink[group] = shaped.ink
-        run.ascent[group], run.descent[group] = shaped.ascent, shaped.descent
+        measured = atlas.measure(run.text[group], key)
+        run.advance[group] = np.where(bars, size[group] * _BAR_LENGTH, measured.width)
+        run.ink[group] = measured.ink
+        run.ascent[group], run.descent[group] = measured.ascent, measured.descent
         if bars.any():
-            run.cap_height[group] = -float(atlas.shape(["H"], key).ink[0, 1])
-        run.shaped.append((group, shaped))
+            run.cap_height[group] = -float(atlas.measure(["H"], key).ink[0, 1])
+        run.fonts.append((group, key))
     return run
 
 
@@ -327,14 +330,14 @@ def label_quads(
                 _BARS,
                 2 * index + 1,
             )
-        for group, shaped in run.shaped:
-            keep = np.flatnonzero(drawn[group])
-            rows = group[keep]
+        for group, key in run.fonts:
+            rows = group[drawn[group]]
+            shaped = atlas.shape(run.text[rows], key)  # Only labels that survive culling take atlas space.
             glyphs = text_quads(
                 shaped.glyphs,
                 shaped.start,
                 shaped.count,
-                keep,
+                np.arange(len(rows)),
                 np.rint((inner_x + run.offset)[rows] * dpr).astype(np.int64),
                 np.rint(baseline[rows] * dpr).astype(np.int64),
                 premultiplied(color[rows], 255),

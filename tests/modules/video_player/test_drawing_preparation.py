@@ -361,3 +361,16 @@ def test_a_label_font_larger_than_the_atlas_page_is_not_rasterized(monkeypatch: 
     LabelCall(0.1, 0.5, "top-left", replace(_label("Person"), size=5.0)).submit(buffer)
     drawing = buffer.finish()
     assert not rasterized and not len(_quads(drawing, OverlayKind.GLYPH))
+
+
+def test_labels_outside_the_culling_area_take_no_atlas_space_from_the_visible_ones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(glyphs, "PAGE_SIZE", 64)
+    monkeypatch.setitem(glyphs._ATLASES, (94, 1.0), glyphs.GlyphAtlas(94, 1.0))
+    buffer = DrawingBuffer(replace(_SETTINGS, dpi=94, viewport=(0, 0, 200, 100)))
+    for base in range(0x0100, 0x0200, 8):  # Far more distinct glyphs than a 64 px page holds, all off screen.
+        LabelCall(5.0, 0.5, "top-left", _label("".join(chr(base + offset) for offset in range(8)))).submit(buffer)
+    LabelCall(0.1, 0.5, "top-left", _label("Person")).submit(buffer)
+    drawing = buffer.finish()
+    assert len(drawing) == 1 and len(_quads(drawing, OverlayKind.GLYPH)) == len("Person")

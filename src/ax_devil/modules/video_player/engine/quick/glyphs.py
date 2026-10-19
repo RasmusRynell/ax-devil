@@ -70,6 +70,16 @@ class ShapedTexts:
     glyphs: NDArray[np.void]
 
 
+@dataclass(frozen=True, slots=True)
+class MeasuredTexts:
+    """Rows of :class:`ShapedTexts` that need no atlas space: widths, ink boxes and the font's ascent and descent."""
+
+    width: NDArray[np.float32]
+    ink: NDArray[np.float32]
+    ascent: float
+    descent: float
+
+
 class AtlasFull(Exception):
     """The atlas page has no room for a glyph; internal to preparation, which resets the atlas and lays out again."""
 
@@ -115,6 +125,8 @@ class GlyphAtlas:
         self._fonts: dict[FontKey, _FontSetup] = {}
         self._strings: dict[FontKey, dict[str, int]] = {}
         self._slots: dict[tuple[str, str, int, float, int], _Slot | None] = {}
+        self._extents: dict[tuple[str, str, int, float, int], _Slot | None] = {}
+        self._measures: dict[FontKey, dict[str, tuple[float, NDArray[np.float32]]]] = {}
         self._snapshot: QImage | None = None
         self._arena: NDArray[np.void] = np.empty(0, GLYPH)
         self._spans: NDArray[np.intp] = np.zeros((0, 2), np.intp)
@@ -139,6 +151,31 @@ class GlyphAtlas:
             start=spans[:, 0],
             count=spans[:, 1],
             glyphs=glyphs,
+        )
+
+    def measure(self, texts: Sequence[str] | NDArray[np.object_], font: FontKey) -> MeasuredTexts:
+        """Width and ink of *texts* in *font* without rasterizing glyphs onto the page, so a caller can cull first.
+
+        The numbers equal those of :meth:`shape` for the same strings when no glyph is dropped.
+        """
+        setup = self._setup(font)
+        strings = list(texts)
+        cache = self._measures.setdefault(font, {})
+        if any(text not in cache for text in strings):
+            if sum(map(len, self._measures.values())) + len(strings) > MAX_STRINGS:
+                self._measures.clear()
+                self._extents.clear()
+                cache = self._measures.setdefault(font, {})
+            for text in strings:
+                if text not in cache:
+                    _, width, ink = self._build(text, setup, place=False)
+                    cache[text] = (width, ink)
+        found = [cache[text] for text in strings]
+        return MeasuredTexts(
+            width=np.array([width for width, _ in found], np.float32),
+            ink=np.array([ink for _, ink in found], np.float32).reshape(len(found), 4),
+            ascent=setup.ascent,
+            descent=setup.descent,
         )
 
     def snapshot(self) -> QImage:
@@ -188,7 +225,7 @@ class GlyphAtlas:
                 cache = self._strings.setdefault(key, {})
                 missing = dict.fromkeys(strings)
             for text in missing:
-                cache[text] = self._store(*self._build(text, setup))
+                cache[text] = self._store(*self._build(text, setup, place=True))
                 self._string_count += 1
             found = list(map(cache.__getitem__, strings))
         return np.array(found, np.intp)
@@ -222,8 +259,11 @@ class GlyphAtlas:
         self._spans = np.zeros((256, 2), np.intp)
         self._floats = np.zeros((256, 5), np.float32)
 
-    def _build(self, text: str, setup: _FontSetup) -> tuple[NDArray[np.void], float, NDArray[np.float32]]:
-        """Lay out *text* one QTextLayout per line and collect snapped glyph rectangles."""
+    def _build(self, text: str, setup: _FontSetup, place: bool) -> tuple[NDArray[np.void], float, NDArray[np.float32]]:
+        """Lay out *text* one QTextLayout per line and collect snapped glyph rectangles.
+
+        Without *place* no glyph is drawn onto the page and the rectangles' page positions are meaningless.
+        """
         dpr = self._dpr
         spacing = setup.line_height * dpr
         option = QTextOption()
@@ -247,7 +287,7 @@ class GlyphAtlas:
                 raw = QRawFont(run.rawFont())  # The same face at device size, for the bitmaps.
                 raw.setPixelSize(raw.pixelSize() * dpr)
                 for glyph, position in zip(run.glyphIndexes(), run.positions()):
-                    slot = self._slot(raw, glyph)
+                    slot = self._slot(raw, glyph) if place else self._extent(raw, glyph)
                     if slot is not None:
                         dx = round(position.x() * dpr) + slot.left
                         dy = baseline + round((position.y() - line.ascent()) * dpr) + slot.top
@@ -260,6 +300,21 @@ class GlyphAtlas:
         else:
             ink = _NO_INK
         return glyphs, width, ink
+
+    def _extent(self, raw: QRawFont, glyph: int) -> _Slot | None:
+        """Return the glyph's size and bearings, with no page position and no space taken on the page."""
+        key = (raw.familyName(), raw.styleName(), raw.weight(), round(raw.pixelSize(), 3), glyph)
+        if key not in self._extents:
+            extent: _Slot | None = None
+            if raw.pixelSize() > PAGE_SIZE:
+                _warn_oversized_font(raw.pixelSize())
+            else:
+                image = raw.alphaMapForGlyph(glyph, QRawFont.AntialiasingType.PixelAntialiasing, QTransform())
+                if not image.isNull() and 0 < image.width() <= PAGE_SIZE and 0 < image.height() <= PAGE_SIZE:
+                    box = raw.boundingRect(glyph)
+                    extent = _Slot(0, 0, image.width(), image.height(), math.floor(box.x()), math.floor(box.y()))
+            self._extents[key] = extent
+        return self._extents[key]
 
     def _slot(self, raw: QRawFont, glyph: int) -> _Slot | None:
         """Return the glyph's page rectangle, drawing it into the atlas on first use."""
