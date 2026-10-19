@@ -54,7 +54,6 @@ SURFACES: dict[type[QWidget], Callable[[], QWidget]] = {
 EXEMPT = {
     "AddPlaylistDialog": "needs a playlist resolver; its fields are covered in the add-content tests",
     "CatalogViewerWindow": "needs a catalog manager; covered in test_catalog_viewer_window",
-    "DebugWindow": "covered in test_debug_window",
     "ExportDialog": "needs export lanes; sized and fitted in test_export",
     "MainWindow": "needs the whole application; covered by the UI screenshots",
     "_FullscreenWindow": "only exists around a playing video",

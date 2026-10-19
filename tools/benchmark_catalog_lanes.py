@@ -34,7 +34,6 @@ from PySide6.QtCore import QEvent, QObject, QRectF, QTimer
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication, QGridLayout, QWidget
 
-from ax_devil.modules.diagnostics.metrics_gate import set_metrics_enabled
 from ax_devil.modules.scene.model import (
     Attribute,
     BoundingBox,
@@ -209,7 +208,7 @@ class LaneBenchmark(QWidget):
             lane.display_frame(
                 VideoFrameWithOverlays(
                     VideoFrame(image, self._round / 25, self._round),
-                    VideoOverlayData(self._timed_generator(overlay), self._round / 25, self._round),
+                    VideoOverlayData(self._timed_generator(overlay), overlay_id=self._round),
                 )
             )
 
@@ -282,7 +281,6 @@ class LaneBenchmark(QWidget):
                 "paths": len(drawing.paths),
                 "texts": len(drawing.texts),
                 "labels": len(drawing.labels),
-                "primitives": dict(drawing.counts),
             },
             "round_median_ms": {key: round(median(s[key] for s in self._samples), 2) for key in self._samples[0]},
             "round_p95_ms": {
@@ -381,7 +379,6 @@ def main() -> None:
     if min(args.lanes, args.entities, args.frames, args.scene_variants) < 1:
         parser.error("lanes, entities, frames and scene variants must be positive")
     setup_logging(console_only=True)
-    set_metrics_enabled(False)
     preference = GraphicsAcceleration.OFF if args.software else GraphicsAcceleration.AUTO
     preference.configure()
     app = QApplication([])

@@ -9,8 +9,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-from ax_devil.modules.chrome import BaseDialog, ChromeWindow, window_uses_custom_frame
-from ax_devil.modules.diagnostics.debug_window import DebugWindow
+from ax_devil.modules.chrome import BaseDialog, ChromeWindow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
 from tests.helpers.shortcuts import make_shortcut_manager
@@ -31,8 +30,8 @@ def _explicit_child_window(qtbot: QtBot, _catalogs: SceneRenderCatalogManager, c
     return [parent], [child]
 
 
-def _dialog_and_tool_windows(qtbot: QtBot, catalogs: SceneRenderCatalogManager, custom_frame: bool) -> _Built:
-    """A dialog and a tool window that follow their parent main window's frame."""
+def _dialog_window(qtbot: QtBot, catalogs: SceneRenderCatalogManager, custom_frame: bool) -> _Built:
+    """A dialog follows its parent main window's frame."""
     window = MainWindow(
         shortcut_manager=make_shortcut_manager(), render_catalog_manager=catalogs, use_custom_frame=custom_frame
     )
@@ -40,8 +39,7 @@ def _dialog_and_tool_windows(qtbot: QtBot, catalogs: SceneRenderCatalogManager, 
     assert not window.shows_custom_frame_border
     assert _direct_window_border(window) is None
     dialog = BaseDialog(parent=window, title="Shared Chrome")
-    debug_window = DebugWindow(parent=window, use_custom_frame=window_uses_custom_frame(window))
-    return [window], [dialog, debug_window]
+    return [window], [dialog]
 
 
 def _nested_shortcut_editor(qtbot: QtBot, _catalogs: SceneRenderCatalogManager, custom_frame: bool) -> _Built:
@@ -55,7 +53,7 @@ def _nested_shortcut_editor(qtbot: QtBot, _catalogs: SceneRenderCatalogManager, 
 @pytest.mark.parametrize("custom_frame", [True, False])
 @pytest.mark.parametrize(
     "build",
-    [_explicit_child_window, _dialog_and_tool_windows, _nested_shortcut_editor],
+    [_explicit_child_window, _dialog_window, _nested_shortcut_editor],
     ids=lambda build: build.__name__,
 )
 def test_child_windows_get_the_expected_frame(

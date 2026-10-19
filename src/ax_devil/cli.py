@@ -57,7 +57,6 @@ def _apply_cli_config_and_load_plugins(config: Path | None) -> None:
 def _run_app(
     log_level: str,
     config: Path | None,
-    debug: bool,
     items: Sequence[WorkspaceItem] = (),
     workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
@@ -69,7 +68,6 @@ def _run_app(
         app = create_app(
             log_level=log_level,
             config_path=config,
-            debug=debug,
             items=items,
             workspace_file=workspace_file,
             open_catalog_viewer=open_catalog_viewer,
@@ -83,27 +81,24 @@ def _run_app(
         sys.exit(130)
     except Exception as e:
         click.echo(f"Application failed to start: {e}", err=True)
-        if debug or log_level == "DEBUG":
+        if log_level == "DEBUG":
             traceback.print_exc()
         sys.exit(1)
 
 
-def _build_runtime_context(log_level: str, config: Path | None, debug: bool) -> dict[str, Any]:
+def _build_runtime_context(log_level: str, config: Path | None) -> dict[str, Any]:
     """Build shared runtime context for CLI commands."""
     return {
         "log_level": log_level,
         "config": config,
-        "debug": debug,
         "run_with_items": lambda items: _run_app(
             log_level=log_level,
             config=config,
-            debug=debug,
             items=items,
         ),
         "run_catalog_viewer": lambda: _run_app(
             log_level=log_level,
             config=config,
-            debug=debug,
             open_catalog_viewer=True,
         ),
     }
@@ -124,16 +119,15 @@ def cli(
     ctx: click.Context,
     log_level: str,
     config: Path | None,
-    debug: bool,
 ) -> None:
     """View video, live Axis cameras, and analytics overlays.
 
     Run without a command to open the start panel.
     """
     setup_logging(console_log_level="WARNING", console_only=True)
-    ctx.obj = _build_runtime_context(log_level=log_level, config=config, debug=debug)
+    ctx.obj = _build_runtime_context(log_level=log_level, config=config)
     if ctx.invoked_subcommand is None:
-        _run_app(log_level, config, debug)
+        _run_app(log_level, config)
 
 
 def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click.Command:
@@ -359,7 +353,7 @@ def local(
         choices = _overlay_choices_by_extension([path.resolve() for path in overlays], runtime["config"])
 
     item = VideoFileSelection(video.resolve(), tuple(choices)).to_item()
-    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], items=[item])
 
 
 def _overlay_choices_by_extension(paths: Sequence[Path], config: Path | None) -> list[OverlayChoice]:
@@ -396,7 +390,6 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
     _run_app(
         log_level=runtime["log_level"],
         config=runtime["config"],
-        debug=runtime["debug"],
         workspace_file=workspace_file.absolute(),
     )
 
@@ -520,7 +513,7 @@ def live(
         if values.websocket_channel_id < 1:
             raise click.ClickException("--channel-id must be a positive integer.")
 
-    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], items=[item])
 
 
 # Listed for --help; the launcher runs `plugins` in the base app before this CLI loads.

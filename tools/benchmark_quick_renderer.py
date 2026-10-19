@@ -2,7 +2,6 @@
 
 This measures process CPU consumed through render submission and separately reports
 wall-clock delivery (which includes event-loop/vsync waiting), not GPU or screen latency.
-The ordinary diagnostics intentionally measure a smaller GUI-preparation scope.
 """
 
 from __future__ import annotations
@@ -126,7 +125,7 @@ class BenchmarkViewer(VideoFrameRenderer):
         self._stages = dict.fromkeys(self._stages, 0.0)
         frame = VideoFrameWithOverlays(
             VideoFrame(image, self._number / 30, self._number),
-            VideoOverlayData(generate, self._number / 30),
+            VideoOverlayData(generate),
         )
         self._prepared = False
         self._started = perf_counter()

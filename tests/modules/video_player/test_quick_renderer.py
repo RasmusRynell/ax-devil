@@ -31,7 +31,12 @@ from ax_devil.modules.video_player.engine.drawing import (
 from ax_devil.modules.video_player.engine.quick import labels as label_layer
 from ax_devil.modules.video_player.engine.quick.items import TextItem
 from ax_devil.modules.video_player.engine.quick.labels import _LabelNode
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, LabelData, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import (
+    EMPTY_DRAWING,
+    DrawingBuffer,
+    LabelData,
+    PreparedDrawing,
+)
 from ax_devil.modules.video_player.engine.quick.surface import QuickSurface
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
@@ -65,7 +70,7 @@ def _frame(image: QImage, primitives: DrawCalls, opacity: float = 1.0) -> VideoF
     return VideoFrameWithOverlays(
         VideoFrame(image, 0),
         VideoOverlayData(
-            lambda _context, buffer: prepare_calls(primitives, buffer), 0, metadata={"overlay_opacity": opacity}
+            lambda _context, buffer: prepare_calls(primitives, buffer), metadata={"overlay_opacity": opacity}
         ),
     )
 
@@ -222,7 +227,7 @@ def test_hidden_viewport_prepares_only_the_latest_frame_and_overlay_when_shown(q
             prepared.append(color)
             return prepare_calls([BoxCall(0, 0, 0.25 if color == "green" else 1, 1, _FILL)], buffer)
 
-        return VideoFrameWithOverlays(VideoFrame(_image(color), 0), VideoOverlayData(draw, 0))
+        return VideoFrameWithOverlays(VideoFrame(_image(color), 0), VideoOverlayData(draw))
 
     widget.display_frame(frame("blue"))
     stack.setCurrentIndex(1)  # Cancel preparation already queued before changing tabs.
@@ -577,11 +582,6 @@ def test_culling_matches_unculled_output(surface: QuickSurface, target: QRectF) 
                 TextCall(x, 0.5, "Offscreen", style),
             ]
         )
-    _present_target(surface, primitives, target)
-    count = len(surface._overlays._drawing)
-    _present_target(surface, [], target)
-    _present_target(surface, primitives, target, cull=False)
-    assert len(surface._overlays._drawing) > count
     # Compare each operation independently: removing offscreen siblings can change
     # Qt's batching and accumulated blending roundoff in the composite image.
     for primitive in primitives:
@@ -604,15 +604,14 @@ def test_pan_and_viewport_resize_reveal_unchanged_instructions(surface: QuickSur
     left = QRectF(0, 0, 400, 100)
     right = QRectF(-200, 0, 400, 100)
     _present_target(surface, primitives, left)
-    assert len(surface._overlays._drawing) == 0
+    assert surface._overlays._drawing == EMPTY_DRAWING
     visible = _present_target(surface, primitives, right)
-    assert len(surface._overlays._drawing) == 2
     assert visible.pixelColor(120, 40).red() > 100
     _present_target(surface, primitives, left)
-    assert len(surface._overlays._drawing) == 0
+    assert surface._overlays._drawing == EMPTY_DRAWING
     surface.resize(400, 100)
-    _present_target(surface, primitives, left)
-    assert len(surface._overlays._drawing) == 2
+    resized = _present_target(surface, primitives, left)
+    assert resized.pixelColor(320, 40).red() > 100
 
 
 @dataclass(frozen=True)
@@ -636,7 +635,6 @@ def test_culling_keeps_paths_without_bounds_and_drops_offscreen_rows(surface: Qu
         )
     )
     actual = _render(surface, [compound])
-    assert len(surface._overlays._drawing) == 2
     assert actual.pixelColor(25, 25) == QColor("red")
     assert actual.pixelColor(80, 50) == QColor("blue")
     assert _render(surface, [BoxCall(-10, -10, 1, 1, _FILL), compound]) == actual
