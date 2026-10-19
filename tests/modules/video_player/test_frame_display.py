@@ -158,8 +158,7 @@ def test_dragging_side_panel_open_to_a_width_and_closed_updates_content_visibili
             QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
             QTest.mouseMove(handle, closed)
             QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=closed)
-            qtbot.waitUntil(content.isHidden)
-            assert panel.width() == panel.collapsed_width
+            qtbot.waitUntil(lambda: content.isHidden() and panel.width() == panel.collapsed_width)
     finally:
         handle.cleanup()
         panel.cleanup()

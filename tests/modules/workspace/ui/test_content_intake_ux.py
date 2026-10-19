@@ -179,8 +179,9 @@ def test_rebinding_updates_the_start_panel_and_activity_bar_tooltips(qtbot: QtBo
     manager.set_binding("app.open_workspace", QKeySequence("Ctrl+Alt+Shift+K"))
     manager.set_binding("app.settings", QKeySequence("Ctrl+Alt+Shift+J"))
 
-    assert "Ctrl+Alt+Shift+K" in panel.open_button("app.open_workspace").toolTip()
-    assert "Ctrl+Alt+Shift+J" in bar_button.toolTip()
+    native = QKeySequence.SequenceFormat.NativeText
+    assert QKeySequence("Ctrl+Alt+Shift+K").toString(native) in panel.open_button("app.open_workspace").toolTip()
+    assert QKeySequence("Ctrl+Alt+Shift+J").toString(native) in bar_button.toolTip()
 
 
 def test_start_panel_dates_recents_by_last_use_without_their_files_and_recomputes_when_shown(

@@ -89,15 +89,10 @@ jobs:
             env:
               QSG_RHI_BACKEND: d3d11
               QSG_RHI_PREFER_SOFTWARE_RENDERER: "1"
-          # Whether hosted macOS runners expose Metal is unverified; the OpenGL leg is the fallback to compare.
-          - name: macos-metal
+          - name: macos
             os: macos-latest
             env:
               QSG_RHI_BACKEND: metal
-          - name: macos-opengl
-            os: macos-latest
-            env:
-              QSG_RHI_BACKEND: opengl
     env: ${{ matrix.env }}
     steps:
       - uses: actions/checkout@v4

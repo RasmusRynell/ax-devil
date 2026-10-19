@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -298,6 +299,9 @@ def test_a_bookmark_whose_entry_is_gone_is_shown_missing_and_opens_nothing(sessi
     assert session.focused_widget() is opened
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin", reason="macOS opens context menus natively; a test cannot see or drive them"
+)
 def test_the_menu_renames_changes_the_kind_and_removes_a_bookmark(
     session: WorkspaceSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

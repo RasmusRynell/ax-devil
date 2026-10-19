@@ -40,8 +40,11 @@ def test_subprocess_only_removes_its_own_home(tmp_path: Path, nested: bool, work
 
         import tests
 
-        assert os.environ["QT_QPA_PLATFORM"] == "xcb"
-        assert os.environ["DISPLAY"] == os.environ["AX_DEVIL_TESTS_DISPLAY"]
+        if sys.platform == "linux":
+            assert os.environ["QT_QPA_PLATFORM"] == "xcb"
+            assert os.environ["DISPLAY"] == os.environ["AX_DEVIL_TESTS_DISPLAY"]
+        else:
+            assert "QT_QPA_PLATFORM" not in os.environ
         assert "QT_QPA_PLATFORMTHEME" not in os.environ
         Path(sys.argv[1]).write_text(str(tests.TEST_HOME), encoding="utf-8")
         import subprocess

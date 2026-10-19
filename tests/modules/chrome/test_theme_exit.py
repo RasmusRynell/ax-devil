@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -29,7 +30,13 @@ def test_finished_os_theme_thread_is_not_terminated_at_exit(tmp_path: Path) -> N
 
     result = subprocess.run(
         [sys.executable, "-c", SCRIPT],
-        env={"PATH": str(no_tools), "QT_QPA_PLATFORM": "offscreen", "HOME": str(tmp_path)},
+        env={
+            "PATH": str(no_tools),
+            "QT_QPA_PLATFORM": "offscreen",
+            "HOME": str(tmp_path),
+            # Windows cannot start Python without its system folder.
+            **({"SYSTEMROOT": os.environ["SYSTEMROOT"]} if sys.platform == "win32" else {}),
+        },
         capture_output=True,
         text=True,
         timeout=60,

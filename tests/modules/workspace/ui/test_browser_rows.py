@@ -94,9 +94,9 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert row.is_open
     assert row.information_factory is not None
     information = row.information_factory()
-    assert ("path", "/tmp/test.mp4") in information.fields
+    assert ("path", str(Path("/tmp/test.mp4"))) in information.fields
     assert information.children[0].title == "Overlay 1"
-    assert ("path", "/tmp/Overlay 1.txt") in information.children[0].fields
+    assert ("path", str(Path("/tmp/Overlay 1.txt"))) in information.children[0].fields
     assert ("handler type", "AXIS_JSON") in information.children[0].fields
     assert [child.label for child in row.children] == ["Overlay 1", "Overlay 2"]
     assert row.children[0].activation_target == (video, 0)
@@ -195,11 +195,11 @@ def test_same_named_rows_get_shortest_distinguishing_folder_hint() -> None:
     assert [(row.label, row.detail) for row in rows] == [
         ("parking_lot_cam3.mp4", "site_a"),
         ("parking_lot_cam3.mp4", "site_b"),
-        ("gate.mp4", "site_c/day1"),
-        ("gate.mp4", "site_d/day1"),
+        ("gate.mp4", str(Path("site_c/day1"))),
+        ("gate.mp4", str(Path("site_d/day1"))),
         ("unique.mp4", ""),
     ]
-    assert rows[0].tooltip == "Video\n/data/site_a/parking_lot_cam3.mp4"
+    assert rows[0].tooltip == f"Video\n{Path('/data/site_a/parking_lot_cam3.mp4')}"
 
 
 def test_same_named_playlist_entries_get_folder_hints() -> None:
@@ -247,8 +247,8 @@ def test_same_named_overlay_lanes_show_overlay_folder_hints_and_paths(in_playlis
         ("tracks.txt", "detector_b"),
     ]
     assert [row.tooltip for row in lane_rows] == [
-        "Overlay\n/detector_a/tracks.txt",
-        "Overlay\n/detector_b/tracks.txt",
+        f"Overlay\n{Path('/detector_a/tracks.txt')}",
+        f"Overlay\n{Path('/detector_b/tracks.txt')}",
     ]
 
 

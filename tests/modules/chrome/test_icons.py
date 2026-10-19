@@ -3,7 +3,7 @@
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPalette
-from PySide6.QtWidgets import QApplication, QMenu, QWidget
+from PySide6.QtWidgets import QApplication, QMenu, QStyleFactory, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.icons import Icon
@@ -46,6 +46,7 @@ def test_fixed_color_icon_dims_when_disabled(qapp: QApplication) -> None:
 
 def test_menu_button_puts_the_chevron_after_the_text_and_keeps_the_menu_left_to_right(qtbot: QtBot) -> None:
     window = QWidget()
+    window.setStyle(QStyleFactory.create("Fusion"))  # The pixel scan needs a flat button; macOS draws its own frame.
     window.setLayoutDirection(Qt.LayoutDirection.RightToLeft)  # the menu would inherit this unless the button resets it
     qtbot.addWidget(window)
     menu = QMenu(window)

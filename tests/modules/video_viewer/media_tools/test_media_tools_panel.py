@@ -8,7 +8,7 @@ from typing import Any, cast
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QMenu, QTabBar, QToolButton, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QLineEdit, QMenu, QTabBar, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameIdentifier
@@ -643,7 +643,9 @@ def test_panel_keeps_its_width_whatever_it_shows(
     QHBoxLayout(window).addWidget(display := FrameDisplay())
     display.enable_side_panel()
     display.set_side_panel_widget(panel)
-    window.resize(1400, 700)
+    screen = QApplication.primaryScreen()
+    wide = min(1400, screen.availableGeometry().width() - 100)  # A native desktop never gives a window more than that.
+    window.resize(wide, 700)
     window.show()
     display.set_side_panel_open(True)
     side_panel = display.findChild(DraggablePanel)
@@ -695,9 +697,9 @@ def test_panel_keeps_its_width_whatever_it_shows(
     unchanged()
     panel._open_event(event)  # An event page whose back button is named after the object's id.
     unchanged()
-    window.resize(1400, 160)  # Short enough for every list and page to need its scroll bar.
+    window.resize(wide, 160)  # Short enough for every list and page to need its scroll bar.
     unchanged()
-    window.resize(1400, 700)
+    window.resize(wide, 700)
     panel._stack.show_root(panel._tab_roots[0])
     unchanged()
 

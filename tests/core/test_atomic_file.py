@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -23,5 +24,6 @@ def test_a_failed_write_keeps_the_old_file_and_a_finished_one_keeps_its_permissi
     with write_atomically(target) as file:
         file.write("new")
     assert target.read_text() == "new"
-    assert target.stat().st_mode & 0o777 == 0o640
+    if os.name == "posix":  # Windows has no permission bits beyond read-only.
+        assert target.stat().st_mode & 0o777 == 0o640
     assert list(target.parent.iterdir()) == [target]

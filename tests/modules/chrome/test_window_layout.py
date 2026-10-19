@@ -341,7 +341,10 @@ def test_close_before_activation_does_not_save_temporary_size(
     window.setObjectName("testWindow")
     qtbot.addWidget(window)
     window.show()
-    assert not window.isActiveWindow()
+    if window.isActiveWindow():
+        pytest.skip(
+            "A native desktop activates a window while it maps, so closing before activation cannot be observed"
+        )
     window.resize(500, 350)
     window.close()
 

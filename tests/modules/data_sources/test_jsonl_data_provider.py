@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -281,6 +282,8 @@ def test_open_provider_stops_serving_a_source_rewritten_in_place(
     tmp_path: Path, storage_mode: StorageMode, in_place: bool
 ) -> None:
     """An in-place rewrite must not show another file's overlays; a renamed-over file leaves the open one valid."""
+    if sys.platform == "win32" and storage_mode is StorageMode.SOURCE_INDEX and not in_place:
+        pytest.skip("Windows cannot rename over the source file the provider holds open")
     path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
     provider = _build_provider(path, storage_mode=storage_mode)
     try:

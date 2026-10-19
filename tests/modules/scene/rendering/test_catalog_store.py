@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -104,6 +105,7 @@ def test_catalog_store_recovers_from_invalid_built_in_choices(tmp_path: Path, na
     assert len(listing.catalogs) == len(BUILT_IN_CATALOG_PATHS)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="A colon cannot be part of a Windows filename")
 def test_catalog_store_distinguishes_user_filenames_from_built_in_choices(
     tmp_path: Path, small_catalog_path: Path
 ) -> None:

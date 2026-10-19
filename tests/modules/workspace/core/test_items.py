@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, cast
 
@@ -95,7 +96,7 @@ def test_video_item_with_a_missing_file_fails_with_the_path(tmp_path: Path, miss
             path.write_bytes(b"")
     item = VideoItem(label="Lot", video=paths["video"], overlays=(OverlayFile(paths["overlay"], "FILE"),))
 
-    with pytest.raises(ItemResolutionError, match=str(paths[missing])):
+    with pytest.raises(ItemResolutionError, match=re.escape(str(paths[missing]))):
         item.resolve(_CONTEXT, NEVER)
 
 
