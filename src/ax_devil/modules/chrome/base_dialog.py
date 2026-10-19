@@ -18,7 +18,7 @@ from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.title_bar import TitleBar
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.chrome.window_frame_controller import WindowFrameController
-from ax_devil.modules.chrome.window_geometry import bounded_window_size, fit_window
+from ax_devil.modules.chrome.window_geometry import fit_window
 from ax_devil.modules.settings.logging_config import get_logger
 
 _DialogT = TypeVar("_DialogT", bound="BaseDialog")
@@ -58,7 +58,6 @@ class BaseDialog(QDialog):
         self._frame_controller: WindowFrameController | None = None
 
         self._positioned = False
-        self._screen_checked = False
         on_text_size_applied(self._refit_to_text_size)
         self._setup_window_properties(title, modal)
         self._setup_base_layout(scroll_content=scroll_content)
@@ -200,17 +199,13 @@ class BaseDialog(QDialog):
         super().showEvent(event)
         if self._title_bar is not None:
             self._title_bar.sync_buttons()
-        if not self._screen_checked:
-            self._screen_checked = True
-            self._keep_within_screen()
 
-    def _keep_within_screen(self) -> None:
-        """Shrink a dialog the desktop or layout enlarged beyond the screen while mapping it; later resizing is free."""
-        if self.isMaximized() or self.isFullScreen():
-            return
-        bounded = bounded_window_size(self, self.size(), screen_margin=self._screen_margin()).boundedTo(self.size())
-        if bounded != self.size():
-            self.resize(bounded)
+    def hasHeightForWidth(self) -> bool:
+        """A dialog's content scrolls, so any height above its minimum is acceptable.
+
+        This stops Windows from growing the dialog to its content.
+        """
+        return False
 
     def changeEvent(self, event: QEvent) -> None:  # noqa: D401 - Qt override
         """Propagate window-state changes to custom chrome."""

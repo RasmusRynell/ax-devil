@@ -31,7 +31,8 @@ def bounded_window_size(
     if maximum_size is not None:
         limit = limit.boundedTo(maximum_size)
     width = min(size.width(), limit.width())
-    if window.hasHeightForWidth():
+    layout = window.layout()
+    if layout is not None and layout.hasHeightForWidth():
         size.setHeight(max(size.height(), window.heightForWidth(width)))
     return size.boundedTo(limit)
 
