@@ -15,7 +15,7 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-from ax_devil.modules.video_player.ui.controls import video_control_icon
+from ax_devil.modules.video_player.ui.control_panel import video_control_icon
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
@@ -23,7 +23,7 @@ from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
 from ax_devil.modules.workspace.core import LiveVideoContent
-from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 logger = get_logger(__name__)

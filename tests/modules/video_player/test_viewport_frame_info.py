@@ -9,7 +9,7 @@ from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
-from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.prepared import PreparedDrawing
 from ax_devil.modules.video_player.ui.viewport import FrameViewport
 
 

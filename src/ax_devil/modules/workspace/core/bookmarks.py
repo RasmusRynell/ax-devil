@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any, TypeVar
 
 from ax_devil.modules.workspace.core.content import Content
-from ax_devil.modules.workspace.core.items import _read, new_item_id
+from ax_devil.modules.workspace.core.item_base import new_item_id, read_field
 
 _EntryT = TypeVar("_EntryT")
 
@@ -34,7 +34,7 @@ class BookmarkTarget:
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> BookmarkTarget:
         """Return the target in *data*'s ``item`` and ``entry``; raise ``ValueError`` saying what is malformed."""
-        return cls(_read(data, "item", str), _read(data, "entry", str, ""))
+        return cls(read_field(data, "item", str), read_field(data, "entry", str, ""))
 
 
 def entry_target(content: Content, entry_index: int) -> BookmarkTarget:
@@ -145,12 +145,12 @@ class Bookmark:
         if isinstance(time_s, bool) or not isinstance(time_s, (int, float)):
             raise ValueError("'time' must be a number")
         return cls(
-            id=_read(data, "id", str),
+            id=read_field(data, "id", str),
             target=BookmarkTarget.from_json(data),
-            frame=_read(data, "frame", int),
+            frame=read_field(data, "frame", int),
             time_s=float(time_s),
-            kind=BookmarkKind.from_value(_read(data, "kind", str, BookmarkKind.NOTE.value)),
-            note=_read(data, "note", str, ""),
+            kind=BookmarkKind.from_value(read_field(data, "kind", str, BookmarkKind.NOTE.value)),
+            note=read_field(data, "note", str, ""),
         )
 
 
@@ -180,7 +180,7 @@ def _read_entries(
     Raises ``ValueError`` naming the first malformed entry by *name* and its position, counted from 1.
     """
     entries = []
-    for index, entry in enumerate(_read(document, key, list, []), start=1):
+    for index, entry in enumerate(read_field(document, key, list, []), start=1):
         if not isinstance(entry, Mapping):
             raise ValueError(f"{name} {index} is not a JSON object")
         try:

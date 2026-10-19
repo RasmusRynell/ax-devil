@@ -24,7 +24,7 @@ from ax_devil.modules.scene.model import (
     Score,
     TimeSlice,
 )
-from ax_devil.modules.video_player.ui.controls import video_control_icon
+from ax_devil.modules.video_player.ui.control_panel import video_control_icon
 from ax_devil.modules.video_viewer.media_tools.events_page import EventsPage
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectsPage

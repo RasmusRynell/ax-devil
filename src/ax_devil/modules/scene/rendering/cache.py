@@ -8,19 +8,13 @@ from typing import Protocol
 
 from ax_devil.modules.scene.inspection import EntitySummary, entity_summary
 from ax_devil.modules.scene.model import Entity, Scene
-from ax_devil.modules.scene.rendering.catalog import (
-    SceneRenderCatalog,
-    get_built_in_scene_render_catalog,
-)
+from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
+from ax_devil.modules.scene.rendering.catalog_loader import get_built_in_scene_render_catalog
 from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import HoverHit
-from ax_devil.modules.video_player.engine.quick.preparation import (
-    EMPTY_DRAWING,
-    DrawingBuffer,
-    DrawingSettings,
-    PreparedDrawing,
-)
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
+from ax_devil.modules.video_player.engine.quick.prepared import EMPTY_DRAWING, DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 logger = get_logger(__name__)

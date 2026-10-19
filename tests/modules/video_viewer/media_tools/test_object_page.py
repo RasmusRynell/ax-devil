@@ -13,8 +13,10 @@ from PySide6.QtTest import QTest
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.copy_cell import CopiedMark
-from ax_devil.modules.object_inspection import fields_view
-from ax_devil.modules.object_inspection.fields_view import FieldRow, FieldsModel, FieldsView, RowFonts, Section, id_row
+from ax_devil.modules.object_inspection import fields_model
+from ax_devil.modules.object_inspection.fields_model import FieldsModel, Section
+from ax_devil.modules.object_inspection.fields_view import FieldsView
+from ax_devil.modules.object_inspection.rows import FieldRow, RowFonts, id_row
 from ax_devil.modules.scene.inspection import InspectionField
 from ax_devil.modules.scene.model import (
     BoundingBox,
@@ -44,13 +46,13 @@ def test_copy_icons_copy_the_full_id_and_the_raw_section_as_json(qtbot: QtBot, m
     scene = Scene(time_slice=TimeSlice(start=0, end=0))
     scene.add_entity(entity)
     made: list[None] = []
-    to_json = fields_view._json_of
+    to_json = fields_model._json_of
 
     def counting_json(items: Sequence[InspectionField]) -> str:
         made.append(None)
         return to_json(items)
 
-    monkeypatch.setattr(fields_view, "_json_of", counting_json)
+    monkeypatch.setattr(fields_model, "_json_of", counting_json)
     page = ObjectPage(_ID, {"Raw": False})
     qtbot.addWidget(page)
     page.resize(200, 400)  # Too narrow for the whole id

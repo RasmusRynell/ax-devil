@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QWidget
 
-from ax_devil.modules.workspace.core.content import ConsiderationQuery, Content, LiveVideoContent
+from ax_devil.modules.workspace.core.consideration import ConsiderationQuery
+from ax_devil.modules.workspace.core.content import Content, LiveVideoContent
 
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering import SceneRenderCatalogManager

@@ -14,7 +14,7 @@ from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.cached_frame 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache import (
     FrameCache,
 )
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import FrameReaderWorker
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_reader_worker import FrameReaderWorker
 from tests.helpers.video import cached_frames, create_test_video, drain_prefetch, make_cached_frame
 
 

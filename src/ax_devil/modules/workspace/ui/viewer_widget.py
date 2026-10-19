@@ -26,7 +26,7 @@ SHARED_ACTION_IDS = ("view.toggle_media_tools", "view.toggle_lane_fullscreen", "
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
     from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition, BookmarkTarget
-    from ax_devil.modules.workspace.core.content import ConsiderationItemRef, OnScreenWorkspaceItem
+    from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
 
 
 class ViewerWidget(QFrame):

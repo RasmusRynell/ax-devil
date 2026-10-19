@@ -10,7 +10,8 @@ from PySide6.QtGui import QImage
 from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderProgramCompiler
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from ax_devil.modules.video_player.engine.drawing import DrawingStyle, LabelContent, LabelRun, Paint, label_sprite
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
+from ax_devil.modules.video_player.engine.quick.prepared import DrawingSettings
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from tests.drawing_helpers import BoxCall, CircleCall, DrawCall, LabelCall, TextCall
 

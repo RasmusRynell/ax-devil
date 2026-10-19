@@ -20,8 +20,10 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors
-from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog, get_built_in_scene_render_catalog
-from ax_devil.modules.video_player.engine.quick.preparation import EMPTY_DRAWING, DrawingBuffer, DrawingSettings
+from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
+from ax_devil.modules.scene.rendering.catalog_loader import get_built_in_scene_render_catalog
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
+from ax_devil.modules.video_player.engine.quick.prepared import EMPTY_DRAWING, DrawingSettings
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 

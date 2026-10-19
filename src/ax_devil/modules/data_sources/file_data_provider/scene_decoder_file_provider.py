@@ -14,21 +14,23 @@ from ax_devil.core.load_warning import SkippedRecords
 from ax_devil.core.source_paths import Fingerprint
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
 from ax_devil.modules.data_sources.file_data_provider.lookup_metadata import (
-    OverlayLookupMatchType,
     OverlayLookupResult,
 )
-from ax_devil.modules.data_sources.file_data_provider.stores import (
-    IndexedFrameSceneStore,
-    RuntimeSceneCache,
+from ax_devil.modules.data_sources.file_data_provider.scene_catalog import (
     SceneBuildResult,
     SceneCatalog,
     SceneStore,
     SceneStoreContext,
+)
+from ax_devil.modules.data_sources.file_data_provider.scene_lookup import lookup_scene
+from ax_devil.modules.data_sources.file_data_provider.stores import (
+    IndexedFrameSceneStore,
+    RuntimeSceneCache,
     SourceIndexedSceneStore,
 )
-from ax_devil.modules.data_sources.overlay_samples import OverlaySamples, sequence_sample
+from ax_devil.modules.data_sources.overlay_samples import OverlaySamples
 from ax_devil.modules.data_sources.scene_history import SceneHistory
-from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentBasis
+from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.filtering.filter_config import FilterConfig, build_default_filter_config
 from ax_devil.modules.scene.decoding import (
     PayloadToSceneDecoder,
@@ -38,7 +40,6 @@ from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.synchronization.timestamp_matching import (
     TimestampFallbackPolicy,
-    find_matching_overlay_timestamp,
 )
 
 logger = get_logger(__name__)
@@ -305,121 +306,14 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
     ) -> OverlayLookupResult:
         """Load scene data using FrameIdentifier with timestamp and optional sequence lookup.
 
-        Frame-keyed providers use frame_timeline to resolve annotation sequence IDs
-        into video time. Otherwise lookup uses exact timestamps, optional sequence
-        fallback, then timestamp matching. With allow_previous, select the latest
-        earlier sample beyond matching tolerance; the caller applies its age limit.
+        See :func:`lookup_scene` for the matching order.
         """
-        if self._sequence_lookup_enabled:
-            if frame_timeline is not None:
-                return self._lookup_video_sequence(frame_identifier, frame_timeline, allow_previous=allow_previous)
-            if allow_previous:
-                raise ValueError("Sticky sequence overlays require the video's frame timeline")
-
-        timestamp_key = frame_identifier.timestamp_us
-
-        scene = self._load_scene(timestamp_key)
-        if scene is not None:
-            result = self._lookup_result(
-                scene=scene,
-                requested_timestamp_us=timestamp_key,
-                matched_timestamp_us=timestamp_key,
-                requested_sequence_id=frame_identifier.sequence_id,
-                matched_sequence_id=self._timestamp_to_sequence.get(timestamp_key),
-                match_type="exact",
-            )
-            return result
-
-        if self._sequence_lookup_enabled:
-            ts_from_seq = self._sequence_to_timestamp.get(frame_identifier.sequence_id)
-            if ts_from_seq is not None and ts_from_seq <= timestamp_key:
-                scene = self._load_scene(ts_from_seq)
-                if scene is not None:
-                    result = self._lookup_result(
-                        scene=scene,
-                        requested_timestamp_us=timestamp_key,
-                        matched_timestamp_us=ts_from_seq,
-                        requested_sequence_id=frame_identifier.sequence_id,
-                        matched_sequence_id=frame_identifier.sequence_id,
-                        alignment_basis="sequence",
-                        match_type="sequence",
-                    )
-                    return result
-
-        match = find_matching_overlay_timestamp(
-            sorted_overlay_timestamps_us=self._sorted_frame_ids,
-            video_timestamp_us=timestamp_key,
-            policy=self._timestamp_fallback_policy,
+        return lookup_scene(
+            self._samples,
+            self._load_scene,
+            frame_identifier,
             allow_previous=allow_previous,
-        )
-        if match.overlay_timestamp_us is not None:
-            scene = self._load_scene(match.overlay_timestamp_us)
-            if scene is not None:
-                result = self._lookup_result(
-                    scene=scene,
-                    requested_timestamp_us=timestamp_key,
-                    matched_timestamp_us=match.overlay_timestamp_us,
-                    requested_sequence_id=frame_identifier.sequence_id,
-                    matched_sequence_id=self._timestamp_to_sequence.get(match.overlay_timestamp_us),
-                    match_type=match.match_type,
-                )
-                return result
-
-        result = self._lookup_result(
-            scene=None,
-            requested_timestamp_us=timestamp_key,
-            matched_timestamp_us=None,
-            requested_sequence_id=frame_identifier.sequence_id,
-            matched_sequence_id=None,
-            match_type="missing",
-        )
-        return result
-
-    def _lookup_video_sequence(
-        self, frame_id: FrameIdentifier, timeline: FrameTimeline, *, allow_previous: bool
-    ) -> OverlayLookupResult:
-        """Resolve frame-keyed annotations using actual video timestamps for their age."""
-        requested_time = frame_id.timestamp_us
-        sample = sequence_sample(
-            self._sorted_sequences, frame_id.sequence_id, requested_time, timeline, allow_previous=allow_previous
-        )
-        sequence, sample_time = sample if sample is not None else (None, None)
-        scene = self._load_scene(self._sequence_to_timestamp[sequence]) if sequence is not None else None
-        match_type: OverlayLookupMatchType = "missing"
-        if scene is not None:
-            match_type = "sequence" if sequence == frame_id.sequence_id else "retained"
-        result = self._lookup_result(
-            scene=scene,
-            requested_timestamp_us=requested_time,
-            matched_timestamp_us=sample_time if scene is not None else None,
-            requested_sequence_id=frame_id.sequence_id,
-            matched_sequence_id=sequence if scene is not None else None,
-            match_type=match_type,
-            alignment_basis="sequence",
-        )
-        return result
-
-    def _lookup_result(
-        self,
-        *,
-        scene: Scene | None,
-        requested_timestamp_us: int,
-        matched_timestamp_us: int | None,
-        requested_sequence_id: int | None,
-        matched_sequence_id: int | None,
-        match_type: OverlayLookupMatchType,
-        alignment_basis: OverlayAlignmentBasis = "timestamp",
-    ) -> OverlayLookupResult:
-        """Return a lookup result using the current timestamp policy."""
-        return OverlayLookupResult(
-            scene=scene,
-            requested_timestamp_us=requested_timestamp_us,
-            matched_timestamp_us=matched_timestamp_us,
-            match_type=match_type,
-            timestamp_fallback_policy=self._timestamp_fallback_policy,
-            requested_sequence_id=requested_sequence_id,
-            matched_sequence_id=matched_sequence_id,
-            alignment_basis=alignment_basis,
+            frame_timeline=frame_timeline,
         )
 
     def get_timestamp_fallback_policy(self) -> TimestampFallbackPolicy:

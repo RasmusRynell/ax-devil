@@ -6,7 +6,8 @@ from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
 from ax_devil.modules.video_player.engine.quick.surface import QuickSurface
-from ax_devil.modules.workspace.ui.split_view import SplitDirection, SplitView
+from ax_devil.modules.workspace.ui.split_panes import SplitDirection
+from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeItem
 from tests.drawing_helpers import PolylineCall, prepare_calls
@@ -203,10 +204,10 @@ def test_moving_widget_between_leaves_does_not_restart_or_clean_it(qtbot: QtBot)
     split_view.add_viewer_widget(second)
     target_leaf = split_view._leaf_for_widget(second)
     assert target_leaf is not None
-    first_id = split_view._id_for_widget(first)
+    first_id = split_view.id_for_widget(first)
     assert first_id is not None
 
-    split_view._handle_drop(target_leaf, first_id, SplitDirection.LEFT)
+    split_view.handle_drop(target_leaf, first_id, SplitDirection.LEFT)
 
     assert first.attach_count == 1
     assert first.cleanup_count == 0
@@ -340,10 +341,10 @@ def test_collapsing_a_split_keeps_the_moved_pane_overlays_usable(qtbot: QtBot) -
     _present_polyline(hosting.surface)
     assert hosting.surface._overlays._paths.items
     left_leaf = sv._leaf_for_widget(left)
-    dragged_id = sv._id_for_widget(dragged)
+    dragged_id = sv.id_for_widget(dragged)
     assert left_leaf is not None and dragged_id is not None
 
-    sv._handle_drop(left_leaf, dragged_id, SplitDirection.TOP)
+    sv.handle_drop(left_leaf, dragged_id, SplitDirection.TOP)
 
     _present_polyline(hosting.surface)
     assert all(isValid(path.item) for path in hosting.surface._overlays._paths.items)

@@ -19,6 +19,21 @@ class LoadingIndicator(QWidget):
         if parent is not None:
             parent.installEventFilter(self)
 
+    @classmethod
+    def cover(cls, parent: QWidget) -> LoadingIndicator:
+        """Return a running indicator covering *parent*."""
+        indicator = cls(parent)
+        indicator.setGeometry(parent.rect())
+        indicator.raise_()
+        indicator.show()
+        indicator.start()
+        return indicator
+
+    def dismiss(self) -> None:
+        """Stop the spinner and delete the indicator."""
+        self.stop()
+        self.deleteLater()
+
     def eventFilter(self, obj: QObject, event: object) -> bool:  # noqa: N802
         """Track parent resizes so the indicator always covers the full area."""
         if isinstance(event, QResizeEvent) and obj is self.parent() and isinstance(obj, QWidget):

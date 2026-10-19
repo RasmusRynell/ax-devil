@@ -99,7 +99,7 @@ cameras a scan found and what the scan learned about held cameras. Live's scan s
 `SectionsView` is also the one shell, with a fixed layout that views fill rather than change; see the
 [workspace module README](../../src/ax_devil/modules/workspace/README.md#sidebar-view-shell).
 
-Every view shows a browser row the same way. The projection (`browser_rows.py`) decides a row's look and the
+Every view shows a browser row the same way. The projection (`browser_projection.py`) decides a row's look and the
 `RowAction`s it offers, each disabled with a reason where it cannot be done yet (Export until the row is open). A row's
 menu lists them in groups split by separators: Open, Inspect, Hide or Unhide, and Edit.
 `SectionTree` has one outgoing request for a row, `row_action_requested(row, RowAction)`, whichever gesture asked. It

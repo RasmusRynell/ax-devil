@@ -10,7 +10,7 @@ from weakref import ref
 from ax_devil.core.data_types import FrameData, OverlayData
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors, SceneFilter
-from ax_devil.modules.scene.rendering.catalog import get_built_in_scene_render_catalog
+from ax_devil.modules.scene.rendering.catalog_loader import get_built_in_scene_render_catalog
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player import VideoFrame, VideoOverlayData
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays

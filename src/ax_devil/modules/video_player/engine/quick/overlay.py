@@ -14,7 +14,7 @@ from PySide6.QtQuick import QQuickItem
 from .geometry import GeometryItem
 from .items import TextItem
 from .labels import LabelLayer
-from .preparation import EMPTY_DRAWING, PathData, PreparedDrawing, TextData
+from .prepared import EMPTY_DRAWING, PathData, PreparedDrawing, TextData
 
 _Item = TypeVar("_Item")
 _Record = TypeVar("_Record", PathData, TextData)

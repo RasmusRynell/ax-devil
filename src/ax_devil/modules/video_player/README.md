@@ -8,7 +8,7 @@ orchestration.
 - `engine/`
 	- `renderer.py`: frame handoff, Quick preparation and viewport interaction.
 	- `quick/`: native video textures, retained shapes, and glyph rendering for display and native-size image export.
-	- `viewport_state.py`: zoom/pan state machine and clamping math (no widget dependencies).
+	- `viewport_state.py`: zoom/pan state machine, clamping and resize-follow math, and the fit rectangle (no widget dependencies).
 	- `render_context.py`: render-time context and pixel-to-normalized helpers.
 	- `drawing.py`: generic drawing target, styles and shared text preparation.
 	- `quick/preparation.py`: transactional conversion directly into final backend data.

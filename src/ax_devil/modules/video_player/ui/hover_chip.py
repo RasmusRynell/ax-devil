@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRectF, Qt
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPaintEvent, QPalette
 from PySide6.QtWidgets import QWidget
 
@@ -55,6 +55,31 @@ class HoverChip(QWidget):
         self._refit()
         self.show()
         self.raise_()
+
+    def show_over(self, hit: HoverHit | None, target: QRectF) -> None:
+        """Show the chip beside *hit*, whose bounds are normalized to *target*; hide it when there is no hit."""
+        if hit is None:
+            self.hide_chip()
+            return
+
+        anchor = self._anchor_point(hit, target)
+        self.show_for(hit, int(anchor.x()), int(anchor.y()), avoid_rect=self._avoid_rect(hit, target))
+
+    @staticmethod
+    def _anchor_point(hit: HoverHit, target: QRectF) -> QPointF:
+        """Return the widget-space anchor point near the target bounds."""
+        x, y, w, _h = hit.bounds
+        return QPointF(target.x() + (x + w) * target.width(), target.y() + y * target.height())
+
+    @staticmethod
+    def _avoid_rect(hit: HoverHit, target: QRectF) -> tuple[int, int, int, int]:
+        """Return widget-space bounds that the chip should avoid covering when possible."""
+        x, y, w, h = hit.bounds
+        rect_x = round(target.x() + x * target.width())
+        rect_y = round(target.y() + y * target.height())
+        rect_w = max(1, round(w * target.width()))
+        rect_h = max(1, round(h * target.height()))
+        return (rect_x, rect_y, rect_w, rect_h)
 
     def hide_chip(self) -> None:
         """Hide the chip."""

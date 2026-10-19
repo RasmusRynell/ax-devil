@@ -18,7 +18,7 @@ from PySide6.QtQuick import (
 from shiboken6 import delete
 
 from ..drawing import LabelSprite
-from .preparation import LabelData
+from .prepared import LabelData
 
 _SPARE_TEXTURES = 1024
 _SPARE_BYTES = 8 * 1024 * 1024

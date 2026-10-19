@@ -5,12 +5,16 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
 ## Quick map
 
 - `live_video_viewer.py`: live Workspace viewer widget and live workflow composition.
-- `offline_video_viewer.py`: offline and playlist Workspace viewer widget.
-- `stream_media_controller.py`: live source lifecycle, connection status, retry, and `QtStreamSync` orchestration.
+- `offline_video_viewer.py`: offline and playlist Workspace viewer widget; `offline_transport.py` holds its shared
+  transport bar and playback speed, and `offline_viewer_widgets.py` its overlay host, entry navigation bar and lane menu.
+- `stream_media_controller.py`: live source lifecycle, connection status, retry, and `QtStreamSync` orchestration;
+  `live_transports.py` opens its RTSP and overlay transports.
 - `live_connection.py`: `LiveConnectionStatus` model; per-feed (video, overlay) state, reason, and display text.
 - `offline_entry_media.py`: `open_entry_media` opens an entry's sources on a worker thread and delivers `EntryMedia`.
-- `offline_viewer_runtime.py`: `OfflineSession` and `OfflineLane`; owns offline source pooling,
-  direct overlay lookup, timeline commands, viewport sync, cleanup, and player composition.
+- `offline_viewer_runtime.py`: `OfflineSession`; owns offline source pooling, timeline commands, viewport sync,
+  cleanup, and player composition. `offline_lane.py` holds `OfflineLane` (direct overlay lookup, presenter use and
+  background analyses), `offline_lane_builder.py` builds the lane displays, `offline_frame_pool.py` the pooled
+  sources and their frame relays, and `offline_export.py` the export of lanes.
 - `offline_viewer_navigation.py`: playlist entry and consideration navigation policy.
 - `scene_frame_presenter.py`: frame plus Scene overlay presentation assembly for live and offline display.
 - `scene_inspection.py`: Scene inspection update payloads and the side-panel delivery contract.

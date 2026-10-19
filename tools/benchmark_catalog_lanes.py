@@ -49,16 +49,14 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay
-from ax_devil.modules.scene.rendering.catalog import (
-    BUILT_IN_CATALOG_PATH,
-    SceneRenderCatalog,
-    SceneRenderCatalogLoader,
-)
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH, SceneRenderCatalog
+from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader
 from ax_devil.modules.scene.rendering.visibility import OverlayFeature, OverlayVisibility
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger, setup_logging
 from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
+from ax_devil.modules.video_player.engine.quick.prepared import PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
 

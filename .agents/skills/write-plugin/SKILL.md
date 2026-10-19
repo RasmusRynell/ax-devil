@@ -26,8 +26,8 @@ supported format only needs a resolver; a new format with a folder layout may ne
    polygons), object ids, classes, scores, and any extra fields worth keeping as attributes. Ask about anything you
    cannot infer, such as the frame size for pixel coordinates.
 2. **Read the contract.** [reference.md](reference.md) has a minimal package and the packaging rules. Read the
-   built-in model from the table above end to end, and `src/ax_devil/modules/scene/model.py` for the Scene types
-   (`Entity`, `Observation`, `BoundingBox`, `Classification`, `Attribute`).
+   built-in model from the table above end to end, and `src/ax_devil/modules/scene/model.py` (and `model_values.py`,
+   which it re-exports) for the Scene types (`Entity`, `Observation`, `BoundingBox`, `Classification`, `Attribute`).
 3. **Create the package outside this repository**, in a directory the user picks (default
    `~/ax-devil-plugins/<name>/`): `pyproject.toml` with the entry point plus one module. Keep the user's data
    untouched and out of the package. A plugin meant to ship with ax-devil is development instead: it goes in

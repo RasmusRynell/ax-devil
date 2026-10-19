@@ -13,7 +13,7 @@ from ax_devil.modules.device_discovery.network_scan import Login, parse_scan_tar
 from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings, SettingsState
-from ax_devil.modules.workspace.core.content import LiveOverlayMode
+from ax_devil.modules.workspace.core.source_specs import LiveOverlayMode
 
 
 @dataclass(frozen=True)
