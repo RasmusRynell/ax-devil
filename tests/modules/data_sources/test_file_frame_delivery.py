@@ -15,7 +15,7 @@ from pytestqt.qtbot import QtBot
 import ax_devil.modules.data_sources.file_frame_delivery as delivery_module
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import FrameReaderWorker
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_reader_worker import FrameReaderWorker
 from ax_devil.modules.data_sources.file_frame_delivery import FileFrameDelivery
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from tests.helpers.video import create_test_video

@@ -15,14 +15,17 @@ from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH, category_color
 from ax_devil.modules.chrome.tokens import Height, Space
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
-from ax_devil.modules.object_inspection.fields_view import FieldRow, FieldsView
+from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
+from ax_devil.modules.object_inspection.rows import FieldRow
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import EntityId, Scene
 from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
 from ax_devil.modules.video_viewer.media_tools.presence import Presence
-from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
+from ax_devil.modules.video_viewer.media_tools.row_columns import CellKind, Column, Labeled
+from ax_devil.modules.video_viewer.media_tools.row_model import RowTableModel
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 _OBJECTS = "Objects involved"
 _SAME_MOMENT = "Same moment"

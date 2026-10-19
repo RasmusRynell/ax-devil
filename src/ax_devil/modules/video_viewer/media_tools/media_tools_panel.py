@@ -4,38 +4,22 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from enum import Enum
-from functools import partial
-from html import escape
 from time import monotonic
 from typing import Any
 
 from PySide6.QtCore import QSize, QTimer, Signal
 from PySide6.QtGui import QAction, QFontMetrics, QHideEvent, QShowEvent
-from PySide6.QtWidgets import (
-    QApplication,
-    QHBoxLayout,
-    QLabel,
-    QLayout,
-    QMenu,
-    QTabBar,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-    QWidgetAction,
-)
+from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameIdentifier
-from ax_devil.core.time_units import seconds_to_ms, us_to_ms
+from ax_devil.core.time_units import seconds_to_ms
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
-from ax_devil.modules.synchronization.timestamp_matching import DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
@@ -43,95 +27,20 @@ from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 from .entity_filter_widget import EntityFilterWidget
 from .event_page import EventPage
 from .events_page import EventsPage
+from .media_tools_section import MediaToolsSection
 from .object_page import ObjectPage
 from .objects_page import ObjectsPage
 from .overlay_persistence_controls import OverlayPersistenceControls
 from .overlay_visibility_widget import OverlayVisibilityWidget
 from .page_stack import EventPageKey, ObjectPageKey, PageKey, PageStack
+from .panel_tab_row import PanelTabRow
 from .scene_render_catalog_selector import SceneRenderCatalogSelector
 
 _INSPECTION_INTERVAL_S = 0.1
 
 _HISTORY_NOTICE_MARGINS = (0, Space.M, Space.M, 0)
-_MENU_CONTENT_MARGINS = (Space.M, Space.M, Space.M, Space.M)
 _MIN_CHARS = 37
 """Average characters of body text the panel always has room for: the tabs with their counts, and at least the pages."""
-
-
-class MediaToolsSection(Enum):
-    """Parts of the media tools panel that carry help text: the root pages and the overlay controls in its menu."""
-
-    OVERLAY_SYNC = "overlay_sync"
-    FILTERS = "filters"
-    OVERLAY_PERSISTENCE = "overlay_persistence"
-    RENDER_CATALOG = "render_catalog"
-    OVERLAY_DETAILS = "overlay_details"
-    OBJECTS = "objects"
-    EVENTS = "events"
-
-    @property
-    def title(self) -> str:
-        """Return the section heading."""
-        return {
-            MediaToolsSection.OVERLAY_SYNC: "Overlay sync",
-            MediaToolsSection.FILTERS: "Overlay filter",
-            MediaToolsSection.OVERLAY_PERSISTENCE: "Sticky overlays",
-            MediaToolsSection.RENDER_CATALOG: "Catalog",
-            MediaToolsSection.OVERLAY_DETAILS: "Overlay details",
-            MediaToolsSection.OBJECTS: "Objects",
-            MediaToolsSection.EVENTS: "Events",
-        }[self]
-
-    @property
-    def description(self) -> str:
-        """Return help text explaining the section controls."""
-        return {
-            MediaToolsSection.OVERLAY_SYNC: (
-                "Match overlay data to video frames when timestamps differ slightly.\n\n"
-                "After exact and source-provided matching, Previous allows the latest earlier sample "
-                f"within the tolerance ({us_to_ms(DEFAULT_TIMESTAMP_MATCH_TOLERANCE_US):g} ms by default). "
-                "Exact disables this fallback. Previous can match one sample to several frames."
-            ),
-            MediaToolsSection.OVERLAY_PERSISTENCE: (
-                "Show the latest earlier overlay when no new overlay matches a frame, including after seeks.\n\n"
-                "Expiry is measured from the original sample timestamp; pausing does not use it up. "
-                "Reused overlay opacity controls how strongly retained overlays are shown."
-            ),
-            MediaToolsSection.FILTERS: (
-                "Show only objects of the checked types. The choice applies to the overlay, the object list and "
-                "the exported video."
-            ),
-            MediaToolsSection.OVERLAY_DETAILS: (
-                "Choose which details this view draws. Choices apply immediately, including while paused. "
-                "Hidden details remain available in inspection and the hover chip. Reset enables every detail."
-            ),
-            MediaToolsSection.RENDER_CATALOG: (
-                "Choose how overlay entities are drawn. The choice applies to this view only.\n\n"
-                "Changes to the catalog file appear here as soon as it is saved. View shows the catalog on example "
-                "objects, Reload reads the file again, and ⋯ applies the catalog to every open view or makes it the "
-                "default for new ones."
-            ),
-            MediaToolsSection.OBJECTS: (
-                "The objects in the displayed frame. Search by id, class or state, or by any attribute with "
-                "field:value or field>0.5; ? shows the syntax.\n\n"
-                "For files, File lists every object in the overlay and dims those not in the displayed frame. "
-                "Click an object to open its page."
-            ),
-            MediaToolsSection.EVENTS: (
-                "Scene events such as deletes and renames, listed on the video frame where each takes effect.\n\n"
-                "For files, the list holds every event in the overlay, each on the first frame at or after its "
-                "sample. Events on the displayed frame are highlighted. Click an event to open its page, "
-                "which can jump to its frame. For live streams, events are added when their overlay is "
-                "first shown. Times are the video position for files and UTC clock time for live streams.\n\n"
-                "Search by kind:merge or object:17, or by text in the label; ? shows the syntax."
-            ),
-        }[self]
-
-    @property
-    def help_html(self) -> str:
-        """Return the section help as rich text."""
-        paragraphs = "".join(f"<p>{escape(paragraph)}</p>" for paragraph in self.description.split("\n\n"))
-        return f'<table width="300"><tr><td><b>{self.title}</b>{paragraphs}</td></tr></table>'
 
 
 class MediaToolsPanel(QWidget):
@@ -214,42 +123,23 @@ class MediaToolsPanel(QWidget):
         self._stack = PageStack({section.title: root for section, root in roots}, self._build_page, self)
         self._stack.pageChanged.connect(self._on_page_changed)
 
-        self._tabs = QTabBar(self)
-        self._tabs.setObjectName("mediaToolsTabs")
-        self._tabs.setDocumentMode(True)
-        self._tabs.setExpanding(False)
-        # Show every tab: the panel widens to fit them instead of hiding some behind scroll arrows.
-        self._tabs.setUsesScrollButtons(False)
-        for section, _root in roots:
-            self._tabs.setTabToolTip(self._tabs.addTab(section.title), section.help_html)
+        self._tab_row = PanelTabRow(
+            [section for section, _root in roots],
+            catalog_selector=self._catalog_selector,
+            visibility_widget=self._visibility_widget,
+            filter_widget=self._filter_widget,
+            overlay_controls=self._overlay_controls,
+            timing_controls=timing_controls,
+            export_action=export_action,
+            parent=self,
+        )
         self._tab_roots = [root for _section, root in roots]
-        self._tabs.currentChanged.connect(lambda index: self._stack.show_root(self._tab_roots[index]))
-        self._objects.countChanged.connect(lambda count: self._set_tab_count(0, MediaToolsSection.OBJECTS, count))
-        self._events.countChanged.connect(lambda count: self._set_tab_count(1, MediaToolsSection.EVENTS, count))
+        self._tab_row.tabs.currentChanged.connect(lambda index: self._stack.show_root(self._tab_roots[index]))
+        self._objects.countChanged.connect(lambda count: self._tab_row.set_count(0, count))
+        self._events.countChanged.connect(lambda count: self._tab_row.set_count(1, count))
         self._events.rowsChanged.connect(self._refresh_event_steps)
-        self._set_tab_count(0, MediaToolsSection.OBJECTS, self._objects.count)
-        self._set_tab_count(1, MediaToolsSection.EVENTS, self._events.count)
-
-        self._more_menu = QMenu(self)
-        self._more_menu.setToolTipsVisible(True)
-        self._more_button = QToolButton(self)
-        self._more_button.setObjectName("mediaToolsMoreButton")
-        self._more_button.setIcon(Icon.MORE.icon())
-        self._more_button.setAutoRaise(True)
-        self._more_button.setToolTip("Catalog, overlay settings and export")
-        self._more_button.setAccessibleName("More")
-        self._more_button.setMenu(self._more_menu)
-        self._more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self._more_button.setStyleSheet("QToolButton::menu-indicator { image: none; width: 0px; }")
-        self._build_menu(export_action, timing_controls)
-
-        self._tab_row = QWidget(self)
-        tab_row_layout = QHBoxLayout(self._tab_row)
-        tab_row_layout.setContentsMargins(0, 0, Space.S, 0)
-        tab_row_layout.setSpacing(Space.S)
-        tab_row_layout.addWidget(self._tabs)
-        tab_row_layout.addStretch(1)
-        tab_row_layout.addWidget(self._more_button)
+        self._tab_row.set_count(0, self._objects.count)
+        self._tab_row.set_count(1, self._events.count)
 
         self._history_notice = QLabel(self)
         self._history_notice.setObjectName("historyOutOfDateNotice")
@@ -282,46 +172,6 @@ class MediaToolsPanel(QWidget):
         tabs = _MIN_CHARS * QFontMetrics(QApplication.font()).averageCharWidth()
         width = max(tabs, self._stack.narrowest_width())
         return QSize(width, super().minimumSizeHint().height())
-
-    def _build_menu(self, export_action: QAction | None, timing_controls: QWidget | None) -> None:
-        """Fill the overflow menu: one submenu per control group, then the viewer's export command."""
-        catalog_menu = self._section_menu(MediaToolsSection.RENDER_CATALOG, self._catalog_selector)
-        self._catalog_selector.catalogViewerRequested.connect(catalog_menu.close)
-        self._catalog_selector.catalogViewerRequested.connect(self._more_menu.close)
-        self._section_menu(MediaToolsSection.OVERLAY_DETAILS, self._visibility_widget)
-        self._filter_menu = self._section_menu(MediaToolsSection.FILTERS, self._filter_widget)
-        self._section_menu(MediaToolsSection.OVERLAY_PERSISTENCE, self._overlay_controls)
-        if timing_controls is not None:
-            self._section_menu(MediaToolsSection.OVERLAY_SYNC, timing_controls)
-        if export_action is not None:
-            # Export is a one-shot command, so it sits beside the submenus. The lane owns the action, so this entry
-            # and the lane's context menu are one command.
-            self._more_menu.addSeparator()
-            self._more_menu.addAction(export_action)
-
-    def _section_menu(self, section: MediaToolsSection, content: QWidget) -> QMenu:
-        """Add a submenu titled by *section* to the overflow menu that hosts *content*; its help is the tooltip."""
-        submenu = self._more_menu.addMenu(section.title)
-        assert submenu is not None
-        submenu.setToolTipsVisible(True)
-        submenu.menuAction().setToolTip(section.help_html)
-        container = QWidget(submenu)
-        container.setToolTip(section.help_html)
-        container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(*_MENU_CONTENT_MARGINS)
-        container_layout.addWidget(content)
-        action = QWidgetAction(submenu)
-        action.setDefaultWidget(container)
-        submenu.addAction(action)
-        # A widget that is hidden does not pass a size change up to its layout, so the content of a menu closed during
-        # a text-size change would be measured at the old size and clip.
-        submenu.aboutToShow.connect(partial(self._remeasure, container))
-        return submenu
-
-    @staticmethod
-    def _remeasure(container: QWidget) -> None:
-        for layout in container.findChildren(QLayout):
-            layout.invalidate()
 
     def cleanup(self) -> None:
         """Disconnect persistent selection observers when the owning view closes."""
@@ -531,13 +381,9 @@ class MediaToolsPanel(QWidget):
         if self._followed is not None and self._last_frame_id is not None:
             self._followed.update_scene(self._last_scene, self._last_frame_id.sequence_id, defer=defer)
 
-    def _set_tab_count(self, index: int, section: MediaToolsSection, count: int) -> None:
-        self._tabs.setTabText(index, f"{section.title} {count}")
-
     def _on_filter_changed(self) -> None:
         enabled, total = self.filter_model.enabled_count, len(self.filter_model.options)
-        title = MediaToolsSection.FILTERS.title
-        self._filter_menu.setTitle(title if enabled == total else f"{title} {enabled}/{total}")
+        self._tab_row.set_filter_count(enabled, total)
         self._objects.refilter()
         if self._refilter is not None and self._last_frame_id is not None:
             self._last_scene = self._refilter()

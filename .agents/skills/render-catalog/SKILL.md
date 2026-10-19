@@ -69,7 +69,7 @@ level of detail are the house style.
 
 **Routing.** An object uses the classification recipe whose `selector.types` contains its class (`"human"`, `"car"`,
 ...); otherwise the `classified` fallback; with no class at all, the `unclassified` fallback. A class may belong to
-only one recipe. Known classes are in `KnownClassificationType` in `src/ax_devil/modules/scene/model.py`.
+only one recipe. Known classes are in `KnownClassificationType` in `src/ax_devil/modules/scene/model_values.py`.
 
 **Recipes** (object types and relations) have `id`, `label`, `description`, `selector`, optionally `enabled`,
 `bindings` and `values`, and `steps`. **Drawing order is by kind, not by step**: shapes, then text, then labels.

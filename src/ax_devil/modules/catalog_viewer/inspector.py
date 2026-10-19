@@ -7,7 +7,9 @@ from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space, TextRole
-from ax_devil.modules.object_inspection.fields_view import FieldsView, field_sections, id_row
+from ax_devil.modules.object_inspection.fields_model import field_sections
+from ax_devil.modules.object_inspection.fields_view import FieldsView
+from ax_devil.modules.object_inspection.rows import id_row
 from ax_devil.modules.object_inspection.title_row import TitleRow
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import Entity

@@ -28,7 +28,8 @@ from ax_devil.modules.scene.model import (
     Score,
     TimeSlice,
 )
-from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH, SceneRenderCatalogLoader
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH
+from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader
 
 FRAME_INTERVAL_US = 33333
 _ADF_CLASSES: tuple[tuple[str, dict[str, Any]], ...] = (

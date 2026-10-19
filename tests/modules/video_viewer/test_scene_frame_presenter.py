@@ -28,11 +28,8 @@ from ax_devil.modules.scene.model import (
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
-from ax_devil.modules.scene.rendering.catalog import (
-    SceneRenderCatalog,
-    SceneRenderCatalogLoader,
-    get_built_in_scene_render_catalog,
-)
+from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
+from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader, get_built_in_scene_render_catalog
 from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings

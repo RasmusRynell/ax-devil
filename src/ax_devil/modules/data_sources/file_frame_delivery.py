@@ -12,8 +12,8 @@ from pathlib import Path
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, scale_frame_period
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache_pool import FrameCachePool
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_reader_worker import FrameReaderWorker
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_worker import BaseWorker, FrameWorker
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import FrameReaderWorker
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import VideoOpenConfig
 from ax_devil.modules.data_sources.timing_reports import VideoTimingProfile
 from ax_devil.modules.settings.logging_config import get_logger

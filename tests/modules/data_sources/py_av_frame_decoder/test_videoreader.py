@@ -12,10 +12,8 @@ import numpy as np
 import pytest
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import (
-    FrameReaderWorker,
-    VideoFrameReader,
-)
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_reader_worker import FrameReaderWorker
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import VideoFrameReader
 from tests.helpers.video import drain_prefetch
 
 

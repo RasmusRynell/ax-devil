@@ -138,13 +138,13 @@ it cannot affect later ones. A test that needs files uses `tmp_path`.
 
 ## Quick renderer verification
 
-`tests/modules/video_player/test_quick_renderer.py` exercises rendered output, text
-ordering, opacity, texture replacement, and reparenting.
+`tests/modules/video_player/engine/test_quick_*.py` exercise rendered output, text/path
+ordering, opacity, texture replacement, software rendering, and reparenting.
 `tests/modules/video_player/engine/test_image_renderer.py` verifies native dimensions,
 edge pixels, overlay removal, and source-context dimensions. Run it with
 `QT_SCALE_FACTOR=1.5` to verify export independently of desktop scaling.
 For fractional/high-DPI geometry, add `QT_SCALE_FACTOR=1.5` and select only
-`tests/modules/video_player/test_quick_renderer.py -k numeric_geometry`; repeat at scale 2.
+`tests/modules/video_player/engine/test_quick_geometry.py -k numeric_geometry`; repeat at scale 2.
 Other pixel-coordinate tests assume scale 1. Linux/OpenGL results do not certify other graphics APIs.
 
 ## Rendering benchmarks

@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QSpinBox,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -22,24 +21,12 @@ from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
 from ax_devil.modules.chrome.tokens import reserve_line
 from ax_devil.modules.settings.config_manager import (
     ConfigManager,
-    default_hint,
     expand_environment_reference,
     integer_default,
 )
 from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem
-from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
-from ax_devil.modules.workspace.ui.add_content.analytics_discovery import (
-    AnalyticsChoiceLoader,
-    list_analytics_data_source_keys,
-    list_datahub_topics,
-)
+from ax_devil.modules.workspace.ui.add_content.live_transport_pages import TransportPages, apply_env_hint
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
-
-
-def _apply_env_hint(edit: QLineEdit, raw_value: str, *, mask: bool = False) -> None:
-    """Show the default *raw_value* stands for as placeholder text; the caller falls back to it for an empty field."""
-    if hint := default_hint(raw_value, mask=mask):
-        edit.setPlaceholderText(hint)
 
 
 class AddLiveStreamDialog(BaseDialog):
@@ -96,7 +83,7 @@ class AddLiveStreamDialog(BaseDialog):
         self._name_edit = QLineEdit()
         connection_layout.addRow("Display Name", self._name_edit)
 
-        hint = _apply_env_hint
+        hint = apply_env_hint
 
         self._host_edit = QLineEdit()
         self._host_edit.setPlaceholderText("e.g. 192.168.1.100")
@@ -154,80 +141,9 @@ class AddLiveStreamDialog(BaseDialog):
         self._mqtt_device_protocol_combo.setToolTip("Protocol used to reach the device's API (HTTPS or HTTP).")
         overlay_layout.addRow("Device Protocol", self._mqtt_device_protocol_combo)
 
-        # One page per mode, in combo order; the stack is sized for the largest page. The None page explains every
-        # mode, and each other page starts with its own description.
-        transport_pages = {mode: QWidget() for mode in LiveOverlayMode}
-        transport_forms = {mode: FormLayout(page) for mode, page in transport_pages.items()}
-        for mode, transport_form in transport_forms.items():
-            transport_form.setContentsMargins(0, 0, 0, 0)
-            descriptions = [mode.description]
-            if mode is LiveOverlayMode.NONE:
-                descriptions += [
-                    f"{other.display_name}: {other.description}" for other in LiveOverlayMode if other != mode
-                ]
-            for description in descriptions:
-                label = QLabel(description)
-                label.setWordWrap(True)
-                transport_form.addRow(label)
-        mqtt_layout = transport_forms[LiveOverlayMode.MQTT]
-
-        self._mqtt_host_edit = QLineEdit()
-        hint(
-            self._mqtt_host_edit,
-            str(raw_mqtt_defaults.get("broker_host", "")),
-        )
-        mqtt_layout.addRow("MQTT Host", self._mqtt_host_edit)
-
-        self._mqtt_username_edit = QLineEdit()
-        hint(
-            self._mqtt_username_edit,
-            str(raw_mqtt_defaults.get("broker_username", "")),
-        )
-        mqtt_layout.addRow("MQTT Username", self._mqtt_username_edit)
-
-        self._mqtt_password_edit = QLineEdit()
-        hint(
-            self._mqtt_password_edit,
-            str(raw_mqtt_defaults.get("broker_password", "")),
-            mask=True,
-        )
-        self._mqtt_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        mqtt_layout.addRow("MQTT Password", self._mqtt_password_edit)
-
-        self._mqtt_port_spin = QSpinBox()
-        self._mqtt_port_spin.setRange(1, 65535)
-        self._mqtt_port_spin.setValue(integer_default(mqtt_defaults.get("broker_port"), 1883))
-        mqtt_layout.addRow("MQTT Port", self._mqtt_port_spin)
-
-        self._data_source_choice = AnalyticsChoice(
-            AnalyticsChoiceLoader(list_analytics_data_source_keys, "data sources", self),
-            str(mqtt_defaults.get("data_source_key", "")),
-        )
-        mqtt_layout.addRow("Data Source", self._data_source_choice)
-
-        websocket_layout = transport_forms[LiveOverlayMode.WEBSOCKET]
-
-        self._websocket_topic_choice = AnalyticsChoice(
-            AnalyticsChoiceLoader(list_datahub_topics, "DataHub topics", self),
-            str(websocket_defaults.get("topic", "")),
-        )
-        websocket_layout.addRow("DataHub Topic", self._websocket_topic_choice)
-
-        self._websocket_channel_id_spin = QSpinBox()
-        self._websocket_channel_id_spin.setRange(1, 9999)
-        self._websocket_channel_id_spin.setValue(integer_default(websocket_defaults.get("channel_id"), 1))
-        self._websocket_channel_id_spin.setToolTip("Instance of the DataHub topic to subscribe to. Most devices use 1.")
-        websocket_layout.addRow("Topic Channel", self._websocket_channel_id_spin)
-
-        self._transport_choices = {
-            LiveOverlayMode.MQTT: self._data_source_choice,
-            LiveOverlayMode.WEBSOCKET: self._websocket_topic_choice,
-        }
-        self._transport_pages = QStackedWidget()
-        for mode in LiveOverlayMode:
-            self._transport_pages.addWidget(transport_pages[mode])
-        overlay_layout.addRow(self._transport_pages)
-        align_label_columns(overlay_layout, *transport_forms.values())
+        self._transports = TransportPages(raw_mqtt_defaults, mqtt_defaults, websocket_defaults, self)
+        overlay_layout.addRow(self._transports)
+        align_label_columns(overlay_layout, *self._transports.forms)
 
         self._host_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
         self._username_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
@@ -308,11 +224,11 @@ class AddLiveStreamDialog(BaseDialog):
             self._mqtt_device_protocol_combo.setCurrentText(self._websocket_device_protocol_default)
 
         self._handler_combo.setEnabled(mode.requires_handler)
-        self._mqtt_device_protocol_combo.setEnabled(mode in self._transport_choices)
-        self._transport_pages.setCurrentIndex(index)
+        self._mqtt_device_protocol_combo.setEnabled(mode in self._transports.choices)
+        self._transports.setCurrentIndex(index)
 
         self._invalidate_discovery_for_connection_change()
-        choice = self._transport_choices.get(mode)
+        choice = self._transports.choices.get(mode)
         if choice is not None and not choice.loader.loaded:
             choice.loader.load()
 
@@ -332,8 +248,8 @@ class AddLiveStreamDialog(BaseDialog):
 
     def _invalidate_discovery_for_connection_change(self) -> None:
         connection = self._current_device_connection()
-        self._data_source_choice.loader.set_connection(connection)
-        self._websocket_topic_choice.loader.set_connection(connection)
+        self._transports.data_source_choice.loader.set_connection(connection)
+        self._transports.websocket_topic_choice.loader.set_connection(connection)
 
     def _populate_handler_types(self) -> None:
         """Populate handler combo from Workspace live overlay decoder options."""
@@ -380,8 +296,8 @@ class AddLiveStreamDialog(BaseDialog):
         if not camera_head.isdigit():
             raise ValueError("Camera Head must be a positive integer.")
 
-        analytics_data_source_key = self._data_source_choice.combo.currentData()
-        websocket_topic_value = self._websocket_topic_choice.combo.currentData()
+        analytics_data_source_key = self._transports.data_source_choice.combo.currentData()
+        websocket_topic_value = self._transports.websocket_topic_choice.combo.currentData()
         websocket_topic = str(websocket_topic_value) if isinstance(websocket_topic_value, str) else ""
 
         item = LiveStreamItem(
@@ -394,18 +310,20 @@ class AddLiveStreamDialog(BaseDialog):
             stream_url=self._stream_url_edit.text().strip() or None,
             overlay_mode=mode,
             handler_type=handler_type,
-            mqtt_host=self._text_or_default(self._mqtt_host_edit, str(raw_mqtt_defaults.get("broker_host") or "")),
-            mqtt_port=self._mqtt_port_spin.value(),
+            mqtt_host=self._text_or_default(
+                self._transports.mqtt_host_edit, str(raw_mqtt_defaults.get("broker_host") or "")
+            ),
+            mqtt_port=self._transports.mqtt_port_spin.value(),
             mqtt_username=self._text_or_default(
-                self._mqtt_username_edit, str(raw_mqtt_defaults.get("broker_username") or "")
+                self._transports.mqtt_username_edit, str(raw_mqtt_defaults.get("broker_username") or "")
             ),
             mqtt_password=self._text_or_default(
-                self._mqtt_password_edit, str(raw_mqtt_defaults.get("broker_password") or "")
+                self._transports.mqtt_password_edit, str(raw_mqtt_defaults.get("broker_password") or "")
             ),
             analytics_data_source_key=(str(analytics_data_source_key) if analytics_data_source_key is not None else ""),
             device_api_protocol=self._mqtt_device_protocol_combo.currentText(),
             websocket_topic=websocket_topic,
-            websocket_channel_id=self._websocket_channel_id_spin.value(),
+            websocket_channel_id=self._transports.websocket_channel_id_spin.value(),
         )
         resolution = ItemResolution.of(item, self._context, NEVER)
         if resolution.error is not None:
@@ -427,5 +345,5 @@ class AddLiveStreamDialog(BaseDialog):
 
     def cleanup(self) -> None:
         """Release asynchronous dialog resources."""
-        self._data_source_choice.cleanup()
-        self._websocket_topic_choice.cleanup()
+        self._transports.data_source_choice.cleanup()
+        self._transports.websocket_topic_choice.cleanup()

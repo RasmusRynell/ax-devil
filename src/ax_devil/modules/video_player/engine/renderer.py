@@ -10,7 +10,6 @@ from PySide6.QtWidgets import QWidget
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
-from ax_devil.modules.video_player.engine.video_transforms import calculate_aspect_preserving_fit
 
 from ..ui.hover_chip import HoverChip
 from .data_types import (
@@ -20,7 +19,7 @@ from .data_types import (
 )
 from .quick.surface import Bounds, QuickSurface
 from .render_context import RenderContext
-from .viewport_state import NormalizedViewport, ViewportState, ZoomStep
+from .viewport_state import NormalizedViewport, ViewportState, ZoomStep, fit_frame_rect
 
 logger = get_logger(__name__)
 
@@ -126,7 +125,10 @@ class VideoFrameRenderer(QWidget):
         self._quick.cleanup()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        self._preserve_viewport_on_resize(event)
+        if self._video_frame is not None:
+            self._stable_viewport = self._viewport.follow_resize(
+                self._stable_viewport, self._video_frame.frame.image.size(), event.oldSize(), event.size()
+            )
         super().resizeEvent(event)
         self._quick.setGeometry(self.rect())
         self._clear_hover()
@@ -163,41 +165,7 @@ class VideoFrameRenderer(QWidget):
         return None if visible.isEmpty() else visible
 
     def _base_rect(self, img_size: QtCore.QSize) -> QtCore.QRectF:
-        return self._base_rect_for_container(img_size, self.rect())
-
-    def _base_rect_for_container(
-        self, img_size: QtCore.QSize, widget_rect: QtCore.QRect | QtCore.QRectF
-    ) -> QtCore.QRectF:
-        content_size = (img_size.width(), img_size.height())
-        container_size = (round(widget_rect.width()), round(widget_rect.height()))
-        transform = calculate_aspect_preserving_fit(content_size, container_size)
-        fitted_w, fitted_h = transform.fitted_size
-        offset_x, offset_y = transform.center_offset
-        return QtCore.QRectF(widget_rect.left() + offset_x, widget_rect.top() + offset_y, fitted_w, fitted_h)
-
-    def _preserve_viewport_on_resize(self, event: QResizeEvent) -> None:
-        if self._video_frame is None or self._viewport.zoom_level <= self._viewport.zoom_min:
-            return
-
-        old_size = event.oldSize()
-        new_size = event.size()
-        if new_size.isEmpty():
-            return
-
-        image_size = self._video_frame.frame.image.size()
-        new_rect = QtCore.QRectF(0.0, 0.0, float(new_size.width()), float(new_size.height()))
-        new_base = self._base_rect_for_container(image_size, new_rect)
-        if new_base.isEmpty():
-            return
-        if self._stable_viewport is None:
-            if not old_size.isValid() or old_size.isEmpty():
-                return
-            old_rect = QtCore.QRectF(0.0, 0.0, float(old_size.width()), float(old_size.height()))
-            old_base = self._base_rect_for_container(image_size, old_rect)
-            if old_base.isEmpty():
-                return
-            self._stable_viewport = self._viewport.to_normalized(old_base)
-        self._viewport.apply_normalized(self._stable_viewport, new_base, new_rect)
+        return fit_frame_rect(img_size, self.rect())
 
     def _store_stable_viewport(self, base: QtCore.QRectF) -> None:
         if self._video_frame is not None:
@@ -370,37 +338,12 @@ class VideoFrameRenderer(QWidget):
         hit = self._hit_test(nx, ny)
         if self._update_hover_hit(hit):
             self._request_repaint()  # Repaint to show/hide highlight
-        self._show_hover_chip_for_hit(hit, target)
+        self._chip.show_over(hit, target)
 
     def _hover_target_rect(self) -> QtCore.QRectF | None:
         if self._video_frame is None or self._video_frame.overlays is None:
             return None
         return self._aspect_respected_rect(self._video_frame.frame.image.size())
-
-    def _show_hover_chip_for_hit(self, hit: HoverHit | None, target: QtCore.QRectF) -> None:
-        if hit is None:
-            self._chip.hide_chip()
-            return
-
-        anchor = self._hover_chip_anchor_point(hit, target)
-        avoid_rect = self._hover_chip_avoid_rect(hit, target)
-        self._chip.show_for(hit, int(anchor.x()), int(anchor.y()), avoid_rect=avoid_rect)
-
-    def _hover_chip_anchor_point(self, hit: HoverHit, target: QtCore.QRectF) -> QtCore.QPointF:
-        """Return widget-space anchor point near the target bounds."""
-        x, y, w, _h = hit.bounds
-        anchor_x = target.x() + (x + w) * target.width()
-        anchor_y = target.y() + y * target.height()
-        return QtCore.QPointF(anchor_x, anchor_y)
-
-    def _hover_chip_avoid_rect(self, hit: HoverHit, target: QtCore.QRectF) -> tuple[int, int, int, int]:
-        """Return widget-space bounds that the hover chip should avoid covering when possible."""
-        x, y, w, h = hit.bounds
-        rect_x = round(target.x() + x * target.width())
-        rect_y = round(target.y() + y * target.height())
-        rect_w = max(1, round(w * target.width()))
-        rect_h = max(1, round(h * target.height()))
-        return (rect_x, rect_y, rect_w, rect_h)
 
     def _update_hover_hit(self, hit: HoverHit | None) -> bool:
         """Retain the hit and rebuild the highlight only when its geometry changes."""

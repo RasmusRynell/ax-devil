@@ -128,7 +128,7 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
         assert viewer._runtime is not None
         assert viewer._runtime.presented_frame is not None and viewer._runtime.presented_frame.frame == 2
         assert viewer._runtime.is_playing is False
-        assert viewer._playback_speed == 2.0
+        assert viewer._transport.speed == 2.0
         assert _shown_boxes(viewer) == 2
 
         overlay.write_text(_BROKEN, encoding="utf-8")

@@ -11,7 +11,9 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.chrome.copy_cell import copy_column_px
 from ax_devil.modules.chrome.theme import apply_text_size
 from ax_devil.modules.chrome.tokens import TextRole, body_px
-from ax_devil.modules.video_viewer.media_tools.row_table import CellKind, Column, Labeled, RowTableModel, RowTableView
+from ax_devil.modules.video_viewer.media_tools.row_columns import CellKind, Column, Labeled
+from ax_devil.modules.video_viewer.media_tools.row_model import RowTableModel
+from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 _UUID = "0f8fad5b-d9cb-469f-a165-70867728950e"
 _ROWS = [(_UUID, "human", "0.93", "10:25-12:03"), ("1a8fad5b-d9cb-469f-a165-70867728950f", "car", "0.71", "0.4")]

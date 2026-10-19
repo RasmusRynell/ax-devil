@@ -249,7 +249,7 @@ def _read_catalog_document(path: Path) -> dict[str, Any]:
 
 
 def _validate_catalog_document(document: Mapping[str, Any]) -> None:
-    from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalogLoader
+    from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader
 
     SceneRenderCatalogLoader().validate_document(document)
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ax_devil.modules.workspace.core.bookmarks import Bookmark, BookmarkKind, BookmarkTarget
-from ax_devil.modules.workspace.core.items import WorkspaceItem
+from ax_devil.modules.workspace.core.item_base import WorkspaceItem
 
 UNTITLED_NAME = "Untitled"
 WORKSPACE_FILE_SUFFIX = ".ax-devil.workspace"

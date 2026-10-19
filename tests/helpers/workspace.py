@@ -35,7 +35,7 @@ from ax_devil.modules.workspace.core import (
     WorkspaceItem,
     entry_target,
 )
-from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.start_panel import StartPanel
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget

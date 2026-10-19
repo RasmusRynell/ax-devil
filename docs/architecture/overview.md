@@ -68,9 +68,9 @@ and last saved Workspace (file format in [Workspace](workspace.md#file-format)),
 ([resolution](workspace.md#resolution)), and consideration refs. `workspace_replaced` fires when another Workspace is
 opened or created, and `state_changed` when the modified flag, name or path changes.
 
-`build_browser_sections` (`workspace/ui/browser_rows.py`) projects the contents, the consideration query and the open
-items into the rows every sidebar view renders (see [UI Framework](ui-framework.md#sidebar-views)). The views do not
-decide playlist expansion, lane expansion, open-row identity or information payloads.
+`build_browser_sections` (`workspace/ui/browser_projection.py`) projects the contents, the consideration query and the
+open items into the rows every sidebar view renders (see [UI Framework](ui-framework.md#sidebar-views)). The views do
+not decide playlist expansion, lane expansion, open-row identity or information payloads.
 
 ## Data Sources
 
