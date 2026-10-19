@@ -10,6 +10,7 @@ from typing import Any
 
 from PySide6.QtGui import QColor, QImage
 
+from ax_devil.core.time_units import datetime_to_us
 from ax_devil.modules.scene.model import (
     RGB,
     Attribute,
@@ -156,7 +157,7 @@ def write_overlay_files(directory: Path, lanes: int, entities: int, variants: in
                     )
                 timestamp = stamp.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
                 handle.write(json.dumps({"frame": {"timestamp": timestamp, "detections": detections}}) + "\n")
-    return [int(stamp.timestamp() * 1_000_000) for stamp in stamps]
+    return [datetime_to_us(stamp) for stamp in stamps]
 
 
 def images(width: int, height: int, seed: int) -> list[QImage]:

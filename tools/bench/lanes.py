@@ -209,8 +209,8 @@ class LaneBenchmark(QWidget):
             image = self._images[index][self._round % 2]
             lane.display_frame(
                 VideoFrameWithOverlays(
-                    VideoFrame(image, self._round / 25, self._round),
-                    VideoOverlayData(self._timed_generator(overlay), **_OVERLAY_FIELDS, overlay_id=self._round),
+                    VideoFrame(image, self._round * 40_000, self._round),
+                    VideoOverlayData(self._timed_generator(overlay), timestamp_us=0, overlay_id=self._round),
                 )
             )
 
@@ -221,7 +221,7 @@ class LaneBenchmark(QWidget):
             return self._scenes[lane][variant]
         started = perf_counter()
         overlay = self._sources[lane].get_overlay_at_frame(
-            FrameIdentifier(sequence_id=variant, timestamp_monotime_us=self._timestamps[variant])
+            FrameIdentifier(sequence_id=variant, timestamp_us=self._timestamps[variant])
         )
         self._totals["decode"] += (perf_counter() - started) * 1000
         if overlay is None:
@@ -316,10 +316,6 @@ class LaneBenchmark(QWidget):
         for lane in self._lanes:
             lane.frame_timer.remove()
             lane.cleanup()
-
-
-# Refs before the removal of in-app diagnostics still require the overlay timestamp.
-_OVERLAY_FIELDS: dict[str, Any] = {"timestamp": 0.0} if "timestamp" in VideoOverlayData.__dataclass_fields__ else {}
 
 
 def run(options: dict[str, Any]) -> report.Record:
