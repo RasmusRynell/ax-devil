@@ -14,7 +14,6 @@ from typing import Any
 _PREPARATION = "ax_devil.modules.video_player.engine.quick.preparation"
 TABLE: tuple[tuple[str, str, str], ...] = (
     (_PREPARATION, "label_quads", "label_layout"),
-    (_PREPARATION, "text_primitive_quads", "label_layout"),
     (_PREPARATION, "DrawingBuffer._overlay_layers", "label_place"),  # Refs before the single quad stream.
     (_PREPARATION, "DrawingBuffer._text_and_labels", "label_place"),
     (_PREPARATION, "DrawingBuffer._flush", "flush"),

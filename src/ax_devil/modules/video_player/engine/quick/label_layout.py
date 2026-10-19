@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 from numpy.typing import NDArray
 
-from ..drawing import ANCHORS, LabelColumns, Paint, RunColumns
+from ..drawing import ANCHORS, LabelColumns, RunColumns
 from . import glyphs as atlas_module
-from .glyphs import LINE_BREAKS, FontKey, GlyphAtlas, ShapedTexts
+from .glyphs import FontKey, GlyphAtlas, ShapedTexts
 from .overlay_vertex import CORNER_U, CORNER_V, OVERLAY_VERTEX, PAD, OverlayKind, per_row, premultiplied
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class GlyphQuads(NamedTuple):
 
 
 class LabelQuads(NamedTuple):
-    """Quads of labels (or texts) in drawing order and how many labels (texts) are shown."""
+    """Quads of labels in drawing order and how many labels are shown."""
 
     vertices: NDArray[np.void]
     labels: int
@@ -92,76 +92,6 @@ def text_quads(
     out["kind"] = float(OverlayKind.GLYPH)
     _set_color(out["fill"], _pack(fill)[owner][:, None])
     return GlyphQuads(out, owner)
-
-
-def text_primitive_quads(
-    x: NDArray[np.float64],
-    y: NDArray[np.float64],
-    text: NDArray[np.object_],
-    anchor: NDArray[np.object_],
-    paint: Paint,
-    settings: DrawingSettings,
-    atlas: GlyphAtlas,
-) -> LabelQuads:
-    """Glyph quads of the text primitive at normalized *x*, *y*; ``baseline`` anchors put the baseline at the point.
-
-    Other anchors place the text's line box (font ascent and descent plus any further lines) by its fraction of the
-    box. Text lands on whole device pixels, in fonts snapped to half device pixels so that sizes following object
-    sizes share a few fonts, and rows outside the culling rectangle produce nothing.
-    """
-    count, dpr = len(x), settings.dpr
-    pixels = np.rint(per_row(paint.font_size, count, np.float64) * settings.scale * dpr * 2) / 2
-    ok = np.isfinite(pixels) & (pixels > 0) & np.isfinite(x) & np.isfinite(y)
-    rgb = np.column_stack([per_row(channel, count, np.float64) for channel in (paint.pen_r, paint.pen_g, paint.pen_b)])
-    empty = LabelQuads(np.zeros((0, 4), OVERLAY_VERTEX), 0)
-    if not ok.any():
-        return empty
-    width, ink = np.zeros(count), np.zeros((count, 4))
-    ascent, descent, line_height = np.zeros(count), np.zeros(count), np.zeros(count)
-    shaped: list[tuple[NDArray[np.intp], ShapedTexts]] = []
-    for group in _groups((paint.font_family, pixels), np.flatnonzero(ok)):
-        first = int(group[0])
-        key = FontKey(str(_value(paint.font_family, first)), float(pixels[first]), "regular")
-        font = atlas.shape(text[group], key)
-        width[group], ink[group] = font.width, font.ink
-        ascent[group], descent[group], line_height[group] = font.ascent, font.descent, font.line_height
-        shaped.append((group, font))
-    rows = np.flatnonzero(ok)
-    lines = np.zeros(count, np.intp)
-    lines[rows] = np.fromiter((len(LINE_BREAKS.findall(item)) for item in text[rows].tolist()), np.intp, len(rows))
-    height = ascent + descent + lines * line_height
-    factors = _anchor_factors(anchor, count)
-    left = x * settings.width - factors[:, 0] * width
-    base = y * settings.height + np.where(anchor == "baseline", 0.0, ascent - factors[:, 1] * height)
-    seen = visible_rows(
-        settings.culling(),
-        dpr,
-        left + ink[:, 0],
-        base + ink[:, 1],
-        ink[:, 2] - ink[:, 0],
-        ink[:, 3] - ink[:, 1],
-        np.zeros(count),
-    )
-    shown = seen & ok
-    batches = []
-    for group, font in shaped:
-        keep = np.flatnonzero(shown[group])
-        rows = group[keep]
-        batches.append(
-            text_quads(
-                font.glyphs,
-                font.start,
-                font.count,
-                keep,
-                np.rint(left[rows] * dpr).astype(np.int64),
-                np.rint(base[rows] * dpr).astype(np.int64),
-                premultiplied(rgb[rows], 255),
-                dpr,
-            ).vertices
-        )
-    if not shown.any():
-        return empty
-    return LabelQuads(np.concatenate(batches), int(np.count_nonzero(shown)))
 
 
 def _pack(rgba: NDArray[np.uint8]) -> NDArray[np.uint32]:

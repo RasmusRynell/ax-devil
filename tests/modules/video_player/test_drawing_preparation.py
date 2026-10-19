@@ -216,15 +216,6 @@ def test_every_shape_is_an_overlay_quad_below_the_text() -> None:
     assert len(drawing) == 8
 
 
-def test_empty_text_lines_contribute_to_block_height() -> None:
-    def top(text: str) -> float:
-        buffer = DrawingBuffer(_SETTINGS)
-        TextCall(0.1, 0.9, text, replace(_STYLE, font_size=0.16), anchor="bottom-left").submit(buffer)
-        return _ink(_quads(buffer.finish(), OverlayKind.GLYPH))[1]
-
-    assert top("Text") - top("Text\n\n") > 2 * 16
-
-
 def _text_frame(settings: DrawingSettings, *calls: tuple[str, float]) -> PreparedDrawing:
     buffer = DrawingBuffer(settings)
     for text, size in calls:

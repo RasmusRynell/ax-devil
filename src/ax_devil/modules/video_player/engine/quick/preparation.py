@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -13,10 +14,10 @@ from PySide6.QtGui import QImage
 
 from ax_devil.modules.settings.logging_config import get_logger
 
-from ..drawing import LabelColumns, Paint, Points, concatenate_columns, concatenate_labels
+from ..drawing import LabelColumns, Paint, Points, RunColumns, concatenate_columns, concatenate_labels
 from ..render_context import RenderContext
 from .glyphs import AtlasFull, GlyphAtlas, glyph_atlas
-from .label_layout import LabelQuads, label_quads, text_primitive_quads, visible_rows
+from .label_layout import LabelQuads, label_quads, visible_rows
 from .overlay_vertex import OVERLAY_VERTEX, per_row
 from .shape_quads import box_quads, circle_quads, line_quads, point_quads, polygon_quads, polyline_quads
 
@@ -84,6 +85,8 @@ class PreparedDrawing:
 EMPTY_DRAWING = PreparedDrawing()
 logger = get_logger(__name__)
 _warned_dropped_glyphs = False
+_Placed = tuple[NDArray[np.float64], NDArray[np.float64], object, LabelColumns]
+"""Normalized x, y, anchor and content of a batch of labels, or of texts drawn as unpadded labels."""
 _EMPTY_QUADS = LabelQuads(np.zeros((0, 4), OVERLAY_VERTEX), 0)
 
 
@@ -110,10 +113,8 @@ class DrawingBuffer:
         self._culling = settings.culling()
         self._shapes: list[NDArray[np.void]] = []
         self._drawn_shapes = 0
-        self._texts: list[
-            tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.object_], NDArray[np.object_], Paint]
-        ] = []
-        self._labels: list[tuple[NDArray[np.float64], NDArray[np.float64], object, LabelColumns]] = []
+        self._texts: list[_Placed] = []
+        self._labels: list[_Placed] = []
         self._counts: Counter[str] = Counter()
         self._queued: defaultdict[tuple[str, int], list[tuple[tuple[object, ...], Paint]]] = defaultdict(list)
 
@@ -237,32 +238,13 @@ class DrawingBuffer:
         self._labels.append((x, y, anchor, content))
 
     def _text_and_labels(
-        self,
-        texts: list[tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.object_], NDArray[np.object_], Paint]],
-        labels: list[tuple[NDArray[np.float64], NDArray[np.float64], object, LabelColumns]],
-        atlas: GlyphAtlas,
+        self, texts: list[_Placed], labels: list[_Placed], atlas: GlyphAtlas
     ) -> tuple[LabelQuads, LabelQuads]:
         """Lay out text primitives and labels on *atlas*; raises AtlasFull when its page is too small."""
-        return self._text_quads(texts, atlas), self._label_quads(labels, atlas)
+        return self._label_quads(texts, atlas), self._label_quads(labels, atlas)
 
-    def _text_quads(
-        self,
-        queued: list[tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.object_], NDArray[np.object_], Paint]],
-        atlas: GlyphAtlas,
-    ) -> LabelQuads:
-        """Glyph quads of the queued text primitives."""
-        batches = [
-            text_primitive_quads(x, y, text, anchor, paint, self.settings, atlas)
-            for x, y, text, anchor, paint in queued
-        ]
-        if not batches:
-            return _EMPTY_QUADS
-        return LabelQuads(np.concatenate([batch.vertices for batch in batches]), sum(batch.labels for batch in batches))
-
-    def _label_quads(
-        self, queued: list[tuple[NDArray[np.float64], NDArray[np.float64], object, LabelColumns]], atlas: GlyphAtlas
-    ) -> LabelQuads:
-        """Lay out the queued labels, merged into one batch so that their drawing order is kept."""
+    def _label_quads(self, queued: list[_Placed], atlas: GlyphAtlas) -> LabelQuads:
+        """Lay out the queued labels or texts, merged into one batch so that their drawing order is kept."""
         if not queued:
             return _EMPTY_QUADS
         counts = [len(x) for x, _, _, _ in queued]
@@ -395,5 +377,11 @@ class DrawingBuffer:
     ) -> None:
         """Queue text for the atlas layout that finish() performs together with the labels."""
         self._counts["text"] += len(x)
-        columns = (np.asarray(text, dtype=object), np.asarray(anchor, dtype=object))
-        self._texts.append((x, y, *columns, paint))
+        s, count = self.settings, len(x)
+        # Fonts snap to half device pixels, so sizes that follow object sizes share a few fonts.
+        pixels = np.rint(per_row(paint.font_size, count) * s.scale * s.dpr * 2) / 2
+        anchors = np.where(np.asarray(anchor, dtype=object) == "baseline", "bottom-left", anchor)
+        shown = np.asarray(text, dtype=object)
+        run = RunColumns(shown, math.nan, paint.pen_r, paint.pen_g, paint.pen_b, "regular", True)
+        content = LabelColumns((run,), pixels / (s.dpr * s.scale), paint.font_family, None, 0.0, 0.0, 0.0, 0.0)
+        self._texts.append((x, y, anchors, content))
