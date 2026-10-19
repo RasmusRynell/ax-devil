@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -23,7 +22,6 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.row_menu import build_row_menu
-from ax_devil.modules.workspace.ui.section_tree import SectionTree
 from tests.helpers.section_tree import press, row, row_texts, shown_rows, titles
 from tests.helpers.section_tree_rows import item_at, playlist_row, row_widget, show_tree
 
@@ -267,25 +265,12 @@ def test_keyboard_focus_stays_on_a_rows_action_when_cameras_are_found_around_it(
     QApplication.processEvents()
     [button] = row(tree, "10.0.0.2").findChildren(SmallButton)
     button.setFocus()
-    _trace("after setFocus", tree, button)  # TEMP-INSTRUMENTATION: remove after the macOS focus run.
     assert tree.focusWidget() is button
     tree.set_sections(_hosts("10.0.0.1", "10.0.0.2", "10.0.0.3"))
-    _trace("after set_sections", tree, button)  # TEMP-INSTRUMENTATION
 
     assert titles(tree) == ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
     QApplication.processEvents()  # Deferred row updates must not take the focus away either.
-    _trace("after processEvents", tree, button)  # TEMP-INSTRUMENTATION
     assert tree.focusWidget() is button
-
-
-def _trace(step: str, tree: SectionTree, button: SmallButton) -> None:  # TEMP-INSTRUMENTATION
-    focused = tree.focusWidget()
-    sys.stdout.write(
-        f"FOCUSTRACE {step}: focus={type(focused).__name__ if focused else None} same={focused is button} "
-        f"visible={button.isVisible()} policy={button.focusPolicy()} active={tree.window().isActiveWindow()} "
-        f"appfocus={type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else None}\n"
-    )
-    sys.stdout.flush()
 
 
 def test_pressing_add_after_an_update_runs_the_add_the_row_has_now(qtbot: QtBot) -> None:
