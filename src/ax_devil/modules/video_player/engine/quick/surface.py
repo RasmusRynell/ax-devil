@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QRectF, QSizeF, Qt, QUrl
+from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, QUrl
 from PySide6.QtGui import QImage, QShowEvent
 from PySide6.QtQuick import QSGRendererInterface
 from PySide6.QtQuickWidgets import QQuickWidget
@@ -113,7 +113,8 @@ class QuickSurface(QQuickWidget):
         extent = QSizeF(max(0.0, self.width() - target.x()), max(0.0, self.height() - target.y()))
         for item in (self._overlay, self._highlight):
             item.setSize(extent)
-        self._overlay.present(EMPTY_DRAWING if drawing is None else drawing, opacity)
+        visible = QRectF(self.rect()).translated(-target.topLeft()).intersected(QRectF(QPointF(), extent))
+        self._overlay.present(EMPTY_DRAWING if drawing is None else drawing, opacity, visible)
         highlight = EMPTY_DRAWING
         if hovered is not None or selected is not None:
             buffer = DrawingBuffer(self.drawing_settings(target, scale))

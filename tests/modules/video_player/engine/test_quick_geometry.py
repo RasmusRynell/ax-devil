@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
+from PySide6.QtQml import QQmlProperty
+from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.video_player.engine.quick.surface import QuickSurface
 from tests.drawing_helpers import (
@@ -21,6 +23,7 @@ from tests.drawing_helpers import (
     PointCall,
     PolygonCall,
     PolylineCall,
+    prepare_calls,
 )
 from tests.helpers.quick_surface import (
     FILL,
@@ -81,6 +84,18 @@ def test_a_faded_overlay_is_as_dark_at_a_join_as_along_a_segment(surface: QuickS
     faded = render_calls(surface, [line], 0.5)
     assert faded.pixelColor(100, 50) == faded.pixelColor(70, 50)
     assert faded.pixelColor(70, 50) != render_calls(surface, [], 0.5).pixelColor(70, 50)
+
+
+def test_a_faded_overlay_at_deep_zoom_renders_only_the_viewport(surface: QuickSurface) -> None:
+    """The overlay item spans from the zoomed image's origin, so its fade layer must stay the size of the view."""
+    target = QRectF(-1800, -900, 2000, 1000)  # A 10x zoom of the 200x100 view, panned to its middle.
+    surface.set_frame_image(solid_image(), target)
+    prepared = prepare_calls([BoxCall(0.0, 0.0, 1.0, 1.0, FILL)], surface.drawing_buffer(target, 1000))
+    surface.set_overlays(prepared, 0.5, target, 1000, None)
+    QApplication.processEvents()
+    assert surface.grabFramebuffer().pixelColor(100, 50).red() > 100
+    layer = QQmlProperty(surface._overlay, "layer.sourceRect").read()
+    assert (layer.width(), layer.height()) == (surface.width(), surface.height())
 
 
 def test_dash_zero_stroke_and_zero_area(surface: QuickSurface) -> None:

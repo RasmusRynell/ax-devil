@@ -96,16 +96,21 @@ class OverlayItem(QQuickItem):
         self._changed = False
         self._uploaded_page = -1
         self._layer = QQmlProperty(self, "layer.enabled")
+        self._layer_source = QQmlProperty(self, "layer.sourceRect")
 
-    def present(self, drawing: PreparedDrawing, opacity: float) -> None:
+    def present(self, drawing: PreparedDrawing, opacity: float, visible: QRectF | None = None) -> None:
         """Show *drawing* at *opacity*; the same drawing as before uploads nothing.
 
         Below full opacity the item renders into a layer first, so overlapping quads (round joins, translucent fills
-        that cross themselves) composite once and fade together instead of each quad being blended separately.
+        that cross themselves) composite once and fade together instead of each quad being blended separately. The item
+        spans from the target's origin to the viewport's far corner, which at deep zoom dwarfs the screen, so the layer
+        is limited to *visible*, the part of the item the viewport shows, in the item's coordinates.
         """
         self.setOpacity(opacity)
         if self._layer.read() != (opacity < 1):
             self._layer.write(opacity < 1)
+        if opacity < 1 and visible is not None and self._layer_source.read() != visible:
+            self._layer_source.write(visible)
         if drawing is self._drawing:
             return
         self._drawing = drawing
