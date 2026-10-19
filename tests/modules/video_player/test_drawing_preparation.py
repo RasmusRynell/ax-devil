@@ -306,10 +306,18 @@ def test_dropping_glyphs_is_only_for_the_frame_that_needs_it_after_a_clean_retry
     def chars(base: int, count: int) -> str:
         return "".join(chr(base + offset) for offset in range(count))
 
-    fits = drawn(chars(0x0100, 12))  # How many glyphs of this font one page holds.
-    assert 2 <= fits < 12 and drawn(chars(0x0100, fits)) == fits
-    frames = [chars(base, fits) for base in (0x0100, 0x0180, 0x0200)]
-    assert drawn(frames[0] + frames[1]) < 2 * fits  # Two frames never fit one page together.
+    def fitting(base: int) -> int:
+        """The most leading glyphs of the block at *base* that one fresh page holds, measured as they are drawn."""
+        count = 1
+        while drawn(chars(base, count + 1)) == count + 1:
+            count += 1
+            assert count < 12  # The page must be small enough for the test to mean anything.
+        return count
+
+    bases = (0x0100, 0x0180, 0x0200)
+    fits = min(fitting(base) for base in bases)
+    frames = [chars(base, fits) for base in bases]
+    assert fits >= 1 and drawn(frames[0] + frames[1]) < 2 * fits  # Two frames never fit one page together.
     monkeypatch.setitem(glyphs._ATLASES, (93, 1.0), glyphs.GlyphAtlas(93, 1.0))
     assert [len(_quads(_text_frame(settings, (text, 0.3)), OverlayKind.GLYPH)) for text in frames] == [fits] * 3
 

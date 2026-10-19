@@ -34,18 +34,20 @@ def write_atomically(
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    os.close(descriptor)
     try:
+        # Opened by name, so a caller can open its own handle on the temporary file through ``name``.
         if mode == "wb":
-            with os.fdopen(descriptor, "wb") as binary:
+            with open(temporary_name, "w+b") as binary:  # Readable, so a caller can duplicate it for reading.
                 yield binary
         else:
-            with os.fdopen(descriptor, "w", encoding="utf-8", newline=newline) as text:
+            with open(temporary_name, "w", encoding="utf-8", newline=newline) as text:
                 yield text
         try:
             os.chmod(temporary_name, stat.S_IMODE(path.stat().st_mode))
         except FileNotFoundError:
             pass
-        os.replace(temporary_name, path)
+        replace_file(Path(temporary_name), path)
     except BaseException:
         Path(temporary_name).unlink(missing_ok=True)
         raise
@@ -80,3 +82,62 @@ def open_replaceable(path: Path) -> BinaryIO:
     if handle == wintypes.HANDLE(-1).value:
         raise ctypes.WinError(ctypes.get_last_error())
     return os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDONLY), "rb")
+
+
+def replace_file(source: Path, target: Path) -> None:
+    """Rename *source* over *target*, which readers may have open.
+
+    Windows' ordinary rename cannot replace a file that anything has open. Where it is available, the rename with
+    POSIX semantics can, provided the readers opened with ``FILE_SHARE_DELETE`` (see ``open_replaceable``); it keeps
+    their handles on the old contents. Elsewhere, and where Windows lacks it, this is ``os.replace``.
+    """
+    if sys.platform == "win32" and _posix_rename(source, target):
+        return
+    os.replace(source, target)
+
+
+def _posix_rename(source: Path, target: Path) -> bool:
+    """Rename *source* over *target* with POSIX semantics; return whether Windows did it."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class RenameInfo(ctypes.Structure):
+        _fields_ = [
+            ("Flags", wintypes.DWORD),
+            ("RootDirectory", wintypes.HANDLE),
+            ("FileNameLength", wintypes.DWORD),
+            ("FileName", ctypes.c_wchar * 32768),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel.SetFileInformationByHandle.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    name = str(target.absolute())
+    if len(name) >= 32768:
+        return False
+    delete, share_all, open_existing = 0x10000, 0x1 | 0x2 | 0x4, 3
+    handle = kernel.CreateFileW(str(source), delete, share_all, None, open_existing, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        return False
+    try:
+        info = RenameInfo()
+        info.Flags = 0x1 | 0x2  # FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS
+        info.FileName = name
+        info.FileNameLength = len(name) * 2
+        file_rename_info_ex = 22
+        size = RenameInfo.FileName.offset + info.FileNameLength + 2
+        return bool(kernel.SetFileInformationByHandle(handle, file_rename_info_ex, ctypes.byref(info), size))
+    finally:
+        kernel.CloseHandle(handle)

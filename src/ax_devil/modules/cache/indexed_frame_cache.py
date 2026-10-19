@@ -171,8 +171,8 @@ class IndexedFrameCache:
 
         # Replace atomically: a reader may still have the old file open or mapped. Our own reader is a duplicate of
         # the written file's descriptor, so a rebuild by another process landing later cannot pair this provider's
-        # catalog with a different file. Windows cannot rename a file while any handle is open on it, so there the
-        # reader opens the published file by path instead.
+        # catalog with a different file. Windows has no duplicate of a file that survives its rename, so there the
+        # reader is a second handle on the temporary file, opened to share deletion.
         self.close()  # Windows cannot replace the file while this cache still has it open.
         reader: BinaryIO | None = None
         with write_atomically(self.cache_file, "wb") as fh:
@@ -180,11 +180,12 @@ class IndexedFrameCache:
             for enc in encoded_frames:
                 fh.write(enc)
             fh.flush()
-            if os.name != "nt":
+            if os.name == "nt":
+                reader = open_replaceable(Path(fh.name))
+            else:
                 reader = os.fdopen(os.dup(fh.fileno()), "rb")
                 reader.seek(0)
-        if reader is None:
-            reader = open_replaceable(self.cache_file)
+        assert reader is not None
 
         logger.debug(f"Cached {len(items)} frames ({len(header_bytes) + 1 + offset} bytes) → {self.cache_file.name}")
 

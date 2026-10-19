@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = """
 import sys
 
@@ -23,6 +25,7 @@ listener.terminate = lambda: sys.stdout.write("terminate called\\n")
 """
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows watches the theme in the registry, not through gsettings")
 def test_finished_os_theme_thread_is_not_terminated_at_exit(tmp_path: Path) -> None:
     """Terminating an ended thread signals a recycled native thread and crashes a normally closed app."""
     no_tools = tmp_path / "empty"
