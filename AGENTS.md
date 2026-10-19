@@ -61,6 +61,7 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 
 - Ruff enforces `E`, `F`, `I` and a few pyupgrade (`UP`) rules, a 120-character line limit, and double quotes.
 - mypy strict mode applies: add type hints throughout and avoid `disallow_untyped_defs` violations.
+- Keep each file under 5,000 tokens (bytes / 4); the `file-token-limit` pre-commit hook rejects larger staged files and prints how to split them.
 - Use `from ax_devil.modules.settings.logging_config import get_logger` and `logger = get_logger(__name__)`. Do not use `print()`.
 - Use f-strings only. Do not use string concatenation or `%` formatting.
 - Add docstrings to public classes, methods, and functions.
