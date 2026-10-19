@@ -513,8 +513,8 @@ def test_group_options_reach_the_app_launched_by_a_command(tmp_path: Path, start
     target.write_text('{"version": 1, "name": "Lot", "items": []}', encoding="utf-8")
     arguments = ["--video", str(target)] if command == "local" else [str(target)]
 
-    result = _invoke("--debug", "--log-level", "DEBUG", "--config", str(config_path), command, *arguments)
+    result = _invoke("--log-level", "DEBUG", "--config", str(config_path), command, *arguments)
 
     assert result.exit_code == 0, result.output
     kwargs = startups.kwargs
-    assert (kwargs["debug"], kwargs["log_level"], kwargs["config_path"]) == (True, "DEBUG", config_path)
+    assert (kwargs["log_level"], kwargs["config_path"]) == ("DEBUG", config_path)

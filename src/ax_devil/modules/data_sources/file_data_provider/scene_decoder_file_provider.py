@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -30,13 +30,6 @@ from ax_devil.modules.data_sources.file_data_provider.stores import (
 from ax_devil.modules.data_sources.overlay_samples import OverlaySamples, sequence_sample
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentBasis
-from ax_devil.modules.diagnostics.metrics_store import (
-    get_metrics_store,
-    metrics_enabled,
-    remove_instance,
-    set_metric,
-    source_identity,
-)
 from ax_devil.modules.filtering.filter_config import FilterConfig, build_default_filter_config
 from ax_devil.modules.scene.decoding import (
     PayloadToSceneDecoder,
@@ -81,27 +74,6 @@ class SceneDecoderFileMetadata:
     all_metadata: dict[str, Any]
 
 
-@dataclass(slots=True)
-class _RetrievalStats:
-    """Unique request outcomes for a single provider instance.
-
-    Buckets contain timestamps observed with each outcome. A timestamp may
-    occur in multiple buckets when lookup policy changes; their union is the
-    set of unique requests.
-    """
-
-    requested: int = 0
-    exact: set[int] = field(default_factory=set)
-    resolved: set[int] = field(default_factory=set)
-    misses: set[int] = field(default_factory=set)
-
-    def record(self, timestamp: int, outcomes: set[int]) -> None:
-        """Count a unique timestamp once, even when its outcome changes on a later lookup."""
-        if timestamp not in self.exact and timestamp not in self.resolved and timestamp not in self.misses:
-            self.requested += 1
-        outcomes.add(timestamp)
-
-
 class SceneDecoderFileProvider(FrameIdentifierDataProvider):
     """Common functionality for file sources decoded into :class:`Scene` objects."""
 
@@ -141,7 +113,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                 exact timestamp lookup and provider-owned sequence lookup fail.
         """
         self.file_path = Path(file_path)
-        self._metrics_id = source_identity(self)
         self.decoder_name = str(decoder_name)
         self._artifact_version = int(artifact_version)
         if self._artifact_version < 1:
@@ -159,10 +130,8 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._sorted_frame_ids: tuple[int, ...] = ()
         self._sequence_to_timestamp: dict[int, int] = {}
         self._timestamp_to_sequence: dict[int, int] = {}
-        self._stats = _RetrievalStats()
         self._store = self._build_store()
         self._apply_catalog(self._store.catalog)
-        get_metrics_store().register(self._metrics_id, f"Overlay lookup · {self.file_path}")
 
         name = self.file_path.name
         if self._sorted_frame_ids:
@@ -360,8 +329,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                 matched_sequence_id=self._timestamp_to_sequence.get(timestamp_key),
                 match_type="exact",
             )
-            self._stats.record(timestamp_key, self._stats.exact)
-            self._push_metrics()
             return result
 
         if self._sequence_lookup_enabled:
@@ -378,8 +345,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                         alignment_basis="sequence",
                         match_type="sequence",
                     )
-                    self._stats.record(timestamp_key, self._stats.resolved)
-                    self._push_metrics()
                     return result
 
         match = find_matching_overlay_timestamp(
@@ -399,8 +364,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                     matched_sequence_id=self._timestamp_to_sequence.get(match.overlay_timestamp_us),
                     match_type=match.match_type,
                 )
-                self._stats.record(timestamp_key, self._stats.resolved)
-                self._push_metrics()
                 return result
 
         result = self._lookup_result(
@@ -411,8 +374,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             matched_sequence_id=None,
             match_type="missing",
         )
-        self._stats.record(timestamp_key, self._stats.misses)
-        self._push_metrics()
         return result
 
     def _lookup_video_sequence(
@@ -437,8 +398,6 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             match_type=match_type,
             alignment_basis="sequence",
         )
-        self._stats.record(requested_time, self._stats.resolved if scene is not None else self._stats.misses)
-        self._push_metrics()
         return result
 
     def _lookup_result(
@@ -477,29 +436,9 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._timestamp_fallback_policy = policy
         self._samples = replace(self._samples, policy=policy)
 
-    def _push_metrics(self) -> None:
-        """Push current retrieval stats to the metrics store for live debugging."""
-        if not metrics_enabled():
-            return
-        instance_id = self._metrics_id
-        s = self._stats
-        set_metric(instance_id, "Available", len(self._available_frame_ids))
-        set_metric(instance_id, "Unique requested timestamps", s.requested)
-        set_metric(instance_id, "Unique exact matches", len(s.exact))
-        set_metric(instance_id, "Unique fallback matches", len(s.resolved))
-        set_metric(instance_id, "Unique missing timestamps", len(s.misses))
-
     def get_available_frames(self) -> set[int]:
         """Get the set of available frame timestamps (as monotime microseconds)."""
         return set(self._available_frame_ids)
-
-    def uses_sequence_lookup(self) -> bool:
-        """Return whether sequence identifiers participate in lookup."""
-        return self._sequence_lookup_enabled
-
-    def get_available_sequences(self) -> set[int]:
-        """Get the set of available overlay sequence identifiers."""
-        return set(self._sequence_to_timestamp)
 
     def get_total_frames(self) -> int:
         """Get the total number of frames available."""
@@ -523,43 +462,19 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             raise RuntimeError("Metadata not available - file may not have been processed")
         return self._metadata
 
-    def get_metadata_value(self, path: str) -> Any:
-        """Get a specific metadata value using dot notation."""
-        metadata = self.get_metadata()
-        value: Any = metadata
-        for key in path.split("."):
-            if hasattr(value, key):
-                value = getattr(value, key)
-            elif isinstance(value, dict) and key in value:
-                value = value[key]
-            else:
-                raise KeyError(f"Metadata path '{path}' not found")
-        return value
-
     def close(self) -> None:
         """Close the provider and clean up resources."""
-        remove_instance(self._metrics_id)
-        self._log_retrieval_summary()
+        self._log_parse_summary()
         self._runtime_cache.clear()
         self._store.close()
 
-    def _log_retrieval_summary(self) -> None:
-        """Log parse and retrieval completeness."""
+    def _log_parse_summary(self) -> None:
+        """Log records that did not produce a scene."""
         total_lines = self._metadata.total_lines if self._metadata else 0
         total_available = len(self._available_frame_ids)
-        s = self._stats
         skipped_at_parse = total_lines - total_available
         name = self.file_path.name
         dec = self.decoder_name
-
-        total_requests = s.requested
-        total_hits = len(s.exact | s.resolved)
-        logger.debug(
-            f"{name} [{dec}] summary: "
-            f"{total_available} available, {total_requests} unique requested timestamps "
-            f"({total_hits} hits [{len(s.exact)} exact, {len(s.resolved)} resolved], "
-            f"{len(s.misses)} misses)"
-        )
 
         if skipped_at_parse > 0:
             logger.debug(

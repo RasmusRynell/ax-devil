@@ -139,22 +139,6 @@ class CVATSceneDataProvider(SceneDecoderFileProvider):
         """Return CVAT-specific metadata captured during parsing."""
         return self._require_cvat_metadata()
 
-    def get_metadata_value(self, path: str) -> Any:
-        """Resolve a metadata value by dot-separated path."""
-        metadata = self._require_cvat_metadata().all_metadata
-        current: Any = metadata
-        for part in path.split("."):
-            if isinstance(current, dict) and part in current:
-                current = current[part]
-            elif isinstance(current, list) and part.isdigit():
-                index = int(part)
-                if index >= len(current):
-                    return None
-                current = current[index]
-            else:
-                return None
-        return current
-
     def list_metadata_paths(self) -> list[str]:
         """List available metadata paths for discovery."""
         metadata = self._require_cvat_metadata().all_metadata

@@ -46,13 +46,11 @@ class FrameReaderWorker(BaseWorker):
         cache_budget_bytes: int,
         prefetch_count: int,
         cache_path: Path | None = None,
-        cache_identifier: str | None = None,
         open_config: VideoOpenConfig | None = None,
         cache_pool: FrameCachePool | None = None,
     ) -> None:
         self._frame_processor = PyAvAbstraction(video_path, cache_path, open_config=open_config)
-        identifier = cache_identifier or Path(video_path).name
-        self._cache = FrameCache(cache_budget_bytes, identifier=identifier, pool=cache_pool)
+        self._cache = FrameCache(cache_budget_bytes, pool=cache_pool)
         self._request_queue: Queue[tuple[int, Callable[[DecodedFrame | None], None]]] = Queue()
         self._prefetch_count = prefetch_count
 
@@ -374,7 +372,6 @@ class VideoFrameReader:
         callback_threads: int = 4,
         worker_timeout: float = 5.0,
         cache_path: Path | None = None,
-        cache_identifier: str | None = None,
         open_config: VideoOpenConfig | None = None,
     ) -> None:
         # Store parameters for recreating worker
@@ -384,7 +381,6 @@ class VideoFrameReader:
         self._callback_threads = callback_threads
         self._worker_timeout = worker_timeout
         self._cache_path = cache_path
-        self._cache_identifier = cache_identifier
         self._open_config = open_config
 
         self._callback_executor = ThreadPoolExecutor(max_workers=callback_threads, thread_name_prefix="callback")
@@ -421,7 +417,6 @@ class VideoFrameReader:
             cache_budget_bytes=self._cache_budget_bytes,
             prefetch_count=self._prefetch_count,
             cache_path=self._cache_path,
-            cache_identifier=self._cache_identifier,
             open_config=self._open_config,
         )
 

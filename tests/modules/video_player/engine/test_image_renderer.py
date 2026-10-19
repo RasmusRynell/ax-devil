@@ -62,7 +62,6 @@ def _make_display_frame(image: QImage, scene: Scene | None = None) -> VideoFrame
         cached = CachedSceneOverlay(scene=scene)
         overlay = VideoOverlayData(
             drawing_generator=cached.prepare_drawing,
-            timestamp=0.0,
         )
     return VideoFrameWithOverlays(
         frame=video_frame,
@@ -98,7 +97,7 @@ def test_export_raises_when_overlay_generator_fails(renderer: FrameImageRenderer
     frame = VideoFrame(image=_make_solid_frame(), timestamp=0.0, frame_id=0)
     display = VideoFrameWithOverlays(
         frame=frame,
-        overlays=VideoOverlayData(drawing_generator=_raise_render_error, timestamp=0.0),
+        overlays=VideoOverlayData(drawing_generator=_raise_render_error),
     )
 
     with pytest.raises(ValueError, match="bad overlay"):
@@ -118,7 +117,7 @@ def test_export_keeps_native_pixels_and_context_under_display_scaling(
         contexts.append(context)
         return prepare_calls([BoxCall(0.1, 0.1, 0.5, 0.5, DrawingStyle(pen_width=0, brush_r=255, brush_a=255))], buffer)
 
-    frame = VideoFrameWithOverlays(VideoFrame(image, 0), VideoOverlayData(generate, 0))
+    frame = VideoFrameWithOverlays(VideoFrame(image, 0), VideoOverlayData(generate))
     rendered = renderer.render_frame(frame)
     assert rendered.size() == image.size()
     assert rendered.devicePixelRatio() == 1

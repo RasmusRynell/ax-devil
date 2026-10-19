@@ -37,7 +37,7 @@ _TRIANGLE = ((0.1, 0.1), (0.3, 0.1), (0.3, 0.3))
 
 
 def test_failed_template_discards_all_output_kinds_and_preserves_prior_drawing() -> None:
-    """A late failure must leave no geometry, glyphs, counts or stale reuse entries."""
+    """A late failure must leave no geometry, glyphs or stale reuse entries."""
     catalog = RenderProgramCompiler().compile_catalog(
         {
             "main": {
@@ -95,13 +95,11 @@ def test_failed_template_discards_all_output_kinds_and_preserves_prior_drawing()
             with pytest.raises(TemplateRuntimeError, match="zero"):
                 catalog.render("main", {"divisor": divisor}, buffer, context=context)
             drawing = buffer.finish()
-            assert drawing.counts == (("circle", 1),)
             assert len(drawing) == 1
         else:
             catalog.render("main", {"divisor": divisor}, buffer, context=context)
             drawing = buffer.finish()
             assert len(drawing) == 5
-            assert sum(count for _, count in drawing.counts) == 5
 
 
 def _label(*texts: str) -> LabelContent:
@@ -295,9 +293,9 @@ def test_a_label_outside_the_culling_area_is_not_counted() -> None:
         LabelCall(x, 0.5, "top-left", _label("Person")).submit(buffer)
         return buffer.finish()
 
-    assert (len(frame(0.1)), dict(frame(0.1).counts)["label"]) == (1, 1)
+    assert len(frame(0.1)) == 1
     outside = frame(5.0)
-    assert len(outside) == 0 and not len(outside.vertices) and dict(outside.counts).get("label", 0) == 0
+    assert len(outside) == 0 and not len(outside.vertices)
 
 
 def test_a_label_font_larger_than_the_atlas_page_is_not_rasterized(monkeypatch: pytest.MonkeyPatch) -> None:

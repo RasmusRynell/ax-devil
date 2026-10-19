@@ -25,7 +25,6 @@ from PySide6.QtWidgets import QApplication, QGridLayout, QWidget
 
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
-from ax_devil.modules.diagnostics.metrics_gate import set_metrics_enabled
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay
 from ax_devil.modules.scene.rendering.visibility import OverlayFeature, OverlayVisibility
@@ -211,7 +210,7 @@ class LaneBenchmark(QWidget):
             lane.display_frame(
                 VideoFrameWithOverlays(
                     VideoFrame(image, self._round / 25, self._round),
-                    VideoOverlayData(self._timed_generator(overlay), self._round / 25, self._round),
+                    VideoOverlayData(self._timed_generator(overlay), **_OVERLAY_FIELDS, overlay_id=self._round),
                 )
             )
 
@@ -319,11 +318,14 @@ class LaneBenchmark(QWidget):
             lane.cleanup()
 
 
+# Refs before the removal of in-app diagnostics still require the overlay timestamp.
+_OVERLAY_FIELDS: dict[str, Any] = {"timestamp": 0.0} if "timestamp" in VideoOverlayData.__dataclass_fields__ else {}
+
+
 def run(options: dict[str, Any]) -> report.Record:
     """Run one multi-lane measurement in this process and return its result."""
     args = SimpleNamespace(**options)
     setup_logging(console_only=True)
-    set_metrics_enabled(False)
     app = QApplication([])
     totals = dict.fromkeys(_LANE_STAGES, 0.0)
     stages.install(totals)

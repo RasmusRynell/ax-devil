@@ -37,7 +37,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Drawing Instruction | A catalog operation (box, circle, line, point, polygon, polyline, text or label) emitted directly to the drawing target. JSON still calls these `primitive` steps. | Intermediate drawable object |
 | Prepared Drawing | One stream of overlay quads for shapes, text and labels, with its glyph atlas page, ready for the Qt Quick item. | Primitive list |
 | Draw Recipe | Catalog-owned entity or relation rendering logic that emits Drawing Instructions. | Object renderer, type switch |
-| Cached Scene Overlay | The adapter that keeps one Scene and provides prepared drawings, hover hits, and preparation metrics to the video player. | Render cache, Scene renderer |
+| Cached Scene Overlay | The adapter that keeps one Scene and provides prepared drawings and hover hits to the video player. | Render cache, Scene renderer |
 
 ## Relationships
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import cast
@@ -75,7 +75,6 @@ class PreparedDrawing:
 
     vertices: NDArray[np.void] = field(default_factory=lambda: np.zeros(0, OVERLAY_VERTEX))
     page: QImage | None = None
-    counts: tuple[tuple[str, int], ...] = ()
     drawn: int = 0
 
     def __len__(self) -> int:
@@ -115,7 +114,6 @@ class DrawingBuffer:
         self._drawn_shapes = 0
         self._texts: list[_Placed] = []
         self._labels: list[_Placed] = []
-        self._counts: Counter[str] = Counter()
         self._queued: defaultdict[tuple[str, int], list[tuple[tuple[object, ...], Paint]]] = defaultdict(list)
 
     def finish(self) -> PreparedDrawing:
@@ -135,7 +133,6 @@ class DrawingBuffer:
                 atlas.reset()
                 atlas.drop_overflow = True  # Even a fresh page is too small: draw the glyphs that fit.
                 text, label = self._text_and_labels(texts, labels, atlas)
-            self._counts["label"] += label.labels
             parts += [text.vertices.reshape(-1), label.vertices.reshape(-1)]
             drawn += text.labels + label.labels
             page = atlas.snapshot()
@@ -144,7 +141,7 @@ class DrawingBuffer:
                 atlas.reset()  # Later frames must not reuse strings shaped with missing glyphs.
         vertices = np.concatenate(parts) if parts else np.zeros(0, OVERLAY_VERTEX)
         vertices.flags.writeable = False
-        return PreparedDrawing(vertices, page, tuple(sorted(self._counts.items())), drawn)
+        return PreparedDrawing(vertices, page, drawn)
 
     def _flush(self) -> None:
         # Order within a layer is free, so each kind is prepared once for all its rows: the fixed
@@ -291,7 +288,6 @@ class DrawingBuffer:
     ) -> None:
         """Prepare visible rectangles as overlay quads; zero-area rows draw nothing."""
         s = self.settings
-        self._counts["box"] += int(np.count_nonzero((w > 0) & (h > 0)))
         stroke = np.maximum(0.0, per_row(paint.pen_width, len(x)) * s.scale)
         visible = self._visible_rows(x * s.width, y * s.height, w * s.width, h * s.height, stroke)
         self._add_shapes(box_quads, visible, (x, y, w, h), paint)
@@ -306,7 +302,6 @@ class DrawingBuffer:
     ) -> None:
         """Prepare visible square-capped lines as rotated overlay quads."""
         s = self.settings
-        self._counts["line"] += len(x1)
         stroke = np.maximum(0.0, per_row(paint.pen_width, len(x1)) * s.scale)
         visible = self._visible_rows(
             np.minimum(x1, x2) * s.width,
@@ -322,7 +317,6 @@ class DrawingBuffer:
     ) -> None:
         """Prepare visible circles as overlay quads."""
         s = self.settings
-        self._counts["circle"] += int(np.count_nonzero(radius > 0))
         r = radius * min(s.width, s.height)
         stroke = np.maximum(0.0, per_row(paint.pen_width, len(x)) * s.scale)
         visible = self._visible_rows(x * s.width - r, y * s.height - r, 2 * r, 2 * r, stroke)
@@ -331,7 +325,6 @@ class DrawingBuffer:
     def _draw_points(self, x: NDArray[np.float64], y: NDArray[np.float64], paint: Paint) -> None:
         """Prepare visible square points as overlay quads."""
         s = self.settings
-        self._counts["point"] += len(x)
         size = np.maximum(0.0, per_row(paint.pen_width, len(x)) * s.scale)
         visible = self._visible_rows(x * s.width - size / 2, y * s.height - size / 2, size, size, np.zeros(len(x)))
         self._add_shapes(point_quads, visible, (x, y), paint)
@@ -339,7 +332,6 @@ class DrawingBuffer:
     def _draw_polygons(self, shapes: NDArray[np.float64], paint: Paint) -> None:
         """Prepare polygons of one corner count: visible rows become fills and outlines."""
         s = self.settings
-        self._counts["polygon"] += len(shapes)
         stroke = np.maximum(0.0, per_row(paint.pen_width, len(shapes)) * s.scale)
         pixels = shapes * (s.width, s.height)
         low, high = pixels.min(axis=1), pixels.max(axis=1)
@@ -353,7 +345,6 @@ class DrawingBuffer:
         """Prepare the visible polylines of two or more points as round-jointed segments."""
         s = self.settings
         shown = [row for row, shape in enumerate(points) if len(shape) >= 2]
-        self._counts["polyline"] += len(shown)
         shapes = [np.asarray(points[row], dtype=np.float64) for row in shown]
         stroke = np.maximum(0.0, per_row(paint.pen_width, len(points)) * s.scale)[shown]
         low = np.array([shape.min(axis=0) for shape in shapes]).reshape(-1, 2) * (s.width, s.height)
@@ -376,7 +367,6 @@ class DrawingBuffer:
         paint: Paint,
     ) -> None:
         """Queue text for the atlas layout that finish() performs together with the labels."""
-        self._counts["text"] += len(x)
         s, count = self.settings, len(x)
         # Fonts snap to half device pixels, so sizes that follow object sizes share a few fonts.
         pixels = np.rint(per_row(paint.font_size, count) * s.scale * s.dpr * 2) / 2

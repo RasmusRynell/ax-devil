@@ -15,7 +15,6 @@ from typing import Any
 
 from PySide6.QtWidgets import QApplication
 
-from ax_devil.modules.diagnostics.metrics_gate import set_metrics_enabled
 from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
@@ -27,7 +26,6 @@ _TARGET = (960, 540)
 def run(options: dict[str, Any]) -> report.Record:
     """Measure preparation of one scene in this process and return its result."""
     args = SimpleNamespace(**options)
-    set_metrics_enabled(False)
     _app = QApplication([])  # Must outlive the measurement.
     totals: dict[str, float] = {}
     stages.install(totals)

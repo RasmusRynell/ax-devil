@@ -61,7 +61,6 @@ def test_frame_alignment_tracking_and_empty_frames_survive_cache_and_source_chan
                 )
             provider = UVGVCMSceneDataProvider(path)
             try:
-                assert provider.get_available_sequences() == {0, 1, 2}
                 first = _load(provider, 0).entities[EntityId("7")].observations[0]
                 assert first.frame_number == 0
                 assert first.timestamp is None
@@ -84,7 +83,6 @@ def test_frame_alignment_tracking_and_empty_frames_survive_cache_and_source_chan
     _write(path, {"1": [_detection(class_id=33)]})
     provider = UVGVCMSceneDataProvider(path)
     try:
-        assert provider.get_available_sequences() == {0}
         classification = _load(provider, 0).entities[EntityId("7")].observations[0].primary_classification
         assert classification is not None and classification.type == "sports ball"
         assert provider.get_filter_config().option_ids() == ("show_sports_ball",)

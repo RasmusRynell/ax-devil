@@ -304,39 +304,6 @@ def test_open_provider_stops_serving_a_source_rewritten_in_place(
         provider.close()
 
 
-def test_lookup_diagnostics_count_unique_timestamps_across_policy_changes(temp_dir: Path) -> None:
-    """Repeated lookups are not calls, and changing fallback policy does not double-count a timestamp."""
-    from ax_devil.modules.diagnostics.metrics_store import get_metrics_store, set_metrics_enabled, source_identity
-
-    set_metrics_enabled(True)
-    path = temp_dir / "diagnostics.jsonl"
-    path.write_text(json.dumps({"timestamp": "2024-01-01T12:00:00Z", "detections": []}), encoding="utf-8")
-    first = _build_provider(path)
-    second = _build_provider(path)
-    store = get_metrics_store()
-    try:
-        timestamp = next(iter(first.get_available_frames()))
-        requested = FrameIdentifier(sequence_id=100, timestamp_monotime_us=timestamp + 5_000)
-        first.lookup_by_frame_id(requested)
-        first.lookup_by_frame_id(requested)
-        metrics = store.snapshot()[source_identity(first)]
-        assert metrics.observations["Unique requested timestamps"].value == 1
-        assert metrics.observations["Unique missing timestamps"].value == 1
-        first.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=10_000))
-        first.lookup_by_frame_id(requested)
-        metrics = store.snapshot()[source_identity(first)]
-        assert metrics.observations["Unique requested timestamps"].value == 1
-        assert metrics.observations["Unique fallback matches"].value == 1
-        second.lookup_by_frame_id(requested)
-        assert source_identity(first) != source_identity(second)
-        first.close()
-        assert source_identity(first) not in store.snapshot()
-        assert source_identity(second) in store.snapshot()
-    finally:
-        first.close()
-        second.close()
-
-
 @pytest.mark.parametrize("storage_mode", list(StorageMode))
 def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode, tmp_path: Path) -> None:
     """Reuse two resolved scenes, preserve them across misses, and reload evicted history."""

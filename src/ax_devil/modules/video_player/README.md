@@ -6,7 +6,7 @@ orchestration.
 ## Quick map
 
 - `engine/`
-	- `renderer.py`: frame handoff, Quick preparation, viewport interaction, and viewer diagnostics.
+	- `renderer.py`: frame handoff, Quick preparation and viewport interaction.
 	- `quick/`: native video textures, overlay quads for shapes and glyphs, for display and native-size image export.
 	- `viewport_state.py`: zoom/pan state machine and clamping math (no widget dependencies).
 	- `render_context.py`: render-time context and pixel-to-normalized helpers.
@@ -88,12 +88,7 @@ consumes prepared data. Rules worth knowing before changing `engine/quick/`:
 ## Testing focus
 
 - Viewport behavior: `tests/modules/video_player/test_video_renderer_zoom.py`.
-- Metrics identity behavior: `tests/modules/video_player/test_video_renderer_metrics.py`.
 - Transform sizing math: `tests/modules/video_player/test_video_transforms.py`.
-
-Rendering diagnostics use `modules/diagnostics/render_metrics.py`; viewer owners set a content/lane label through
-`display.viewport.set_diagnostics_label(...)`. Timing boundaries are in the
-[measurement definitions](../diagnostics/README.md#measurement-definitions).
 
 ## Lane fullscreen
 

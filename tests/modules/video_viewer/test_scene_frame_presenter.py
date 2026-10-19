@@ -126,13 +126,9 @@ def test_presenter_applies_overlay_persistence_and_marks_reused_overlay() -> Non
     policy = OverlayPersistencePolicy(OverlayPersistenceSettings(enabled=True, timeout_ms=5000, opacity=0.3))
     presenter = SceneFramePresenter()
 
-    first = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene), overlay_policy=policy)
+    presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene), overlay_policy=policy)
     second = presenter.prepare_frame(_build_frame(2), None, overlay_policy=policy)
 
-    assert first.selected_overlay is not None
-    assert first.overlay_reused is False
-    assert second.selected_overlay is first.selected_overlay
-    assert second.overlay_reused is True
     assert second.display_frame.overlays is not None
     assert second.display_frame.overlays.metadata == {
         "overlay_reused": True,

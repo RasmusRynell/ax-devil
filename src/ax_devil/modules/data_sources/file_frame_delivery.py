@@ -89,7 +89,6 @@ class FileFrameDelivery(BaseWorker):
                 cache_pool=cache_pool,
                 prefetch_count=prefetch_count,
                 cache_path=cache_path,
-                cache_identifier=source_id,
                 open_config=open_config,
             ),
             fps=fps,

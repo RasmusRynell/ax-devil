@@ -27,7 +27,6 @@ from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.data_sources.base import SeekableFrameSource
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
-from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, SceneRenderCatalogStore
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -183,7 +182,6 @@ class _TrackedOverlaySource:
 
     def __init__(self, name: str) -> None:
         self.name = name
-        self.diagnostics_id = f"test-overlay:{id(self):x}"
         self.close_calls = 0
         self.delete_later_calls = 0
         self.requested_frame_ids: list[FrameIdentifier] = []
@@ -402,10 +400,9 @@ def _count_frame_viewports() -> int:
 
 
 def _assert_no_stale_renderers(widget: OfflineVideoViewerWidget, baseline_frame_viewports: int) -> None:
-    """Assert only the shown lanes' viewports exist and report render metrics."""
+    """Assert only the shown lanes' viewports exist."""
 
     live = len(widget.findChildren(FrameViewport))
-    assert len(get_render_metrics_store().snapshot()) == live
     assert _count_frame_viewports() == baseline_frame_viewports + live
 
 
@@ -1332,7 +1329,6 @@ class TestOfflineVideoViewerWidget:
 
     def test_lane_toggles_rebuild_compared_videos_and_release_old_sources(self, qtbot: QtBot) -> None:
         """Excluding and restoring a lane rebuilds the entry, releasing every replaced source and renderer."""
-        get_render_metrics_store().clear()
         frame_sources: list[_TrackedFrameSource] = []
         overlay_sources: list[_TrackedOverlaySource] = []
         videos = [
@@ -1391,12 +1387,10 @@ class TestOfflineVideoViewerWidget:
         _assert_no_stale_renderers(widget, baseline_frame_viewports)
 
         widget.cleanup()
-        assert get_render_metrics_store().snapshot() == ()
         assert _count_frame_viewports() == baseline_frame_viewports
 
     def test_lane_toggles_rebuild_shared_video_lanes_and_release_old_sources(self, qtbot: QtBot) -> None:
         """Lanes comparing overlays on one video keep sharing one source across rebuilds and release the old ones."""
-        get_render_metrics_store().clear()
         frame_sources: list[_TrackedFrameSource] = []
         overlay_sources: list[_TrackedOverlaySource] = []
         content = _make_seekable_content(
@@ -1433,12 +1427,10 @@ class TestOfflineVideoViewerWidget:
         _assert_no_stale_renderers(widget, baseline_frame_viewports)
 
         widget.cleanup()
-        assert get_render_metrics_store().snapshot() == ()
         assert _count_frame_viewports() == baseline_frame_viewports
 
     def test_entry_navigation_leaves_no_stale_renderers(self, qtbot: QtBot) -> None:
-        """Offline entry rebuilds should keep renderers and their metrics scoped to the shown lanes."""
-        get_render_metrics_store().clear()
+        """Offline entry rebuilds should keep renderers scoped to the shown lanes."""
         first = _make_local_content("A", with_overlay=True)
         second = _make_seekable_content("B", overlays=(_make_overlay_content("o1"), _make_overlay_content("o2")))
         playlist = PlaylistContent(
@@ -1460,7 +1452,6 @@ class TestOfflineVideoViewerWidget:
         _assert_no_stale_renderers(widget, baseline_frame_viewports)
 
         widget.cleanup()
-        assert get_render_metrics_store().snapshot() == ()
         assert _count_frame_viewports() == baseline_frame_viewports
 
     def test_selected_playback_speed_is_reapplied_after_entry_switch(self, qtbot: QtBot) -> None:

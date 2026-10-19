@@ -14,26 +14,15 @@ from ax_devil.modules.scene.model import (
     EntityId,
     KnownClassificationType,
     MotionState,
-    NormalizedPoint,
     Observation,
-    Polygon,
     Scene,
     Score,
     TimeSlice,
 )
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors
 from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog, get_built_in_scene_render_catalog
-from ax_devil.modules.video_player.engine.data_types import DrawingBuildReason
 from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
-
-
-class _EmptySceneFilter(SessionFilter):
-    """Filter adapter returning a caller-controlled Scene."""
-
-    def process_scene(self, scene: Scene) -> Scene:
-        """Return an empty Scene even though filter state allows the source entity."""
-        return Scene(time_slice=scene.time_slice)
 
 
 class _FailingCatalog:
@@ -118,45 +107,10 @@ def test_cached_scene_overlay_misses_when_catalog_identity_changes() -> None:
     assert different_identity is not first
 
 
-def test_cached_scene_overlay_reports_drawing_preparation_metrics() -> None:
-    scene = _polygon_scene()
-    overlay = CachedSceneOverlay(scene=scene)
-
-    primitives = overlay.prepare_drawing(
-        RenderContext.create(640, 480), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(640, 480)))
-    )
-    metrics = overlay.latest_drawing_preparation_metrics()
-
-    assert sum(count for _, count in metrics.primitive_counts) == len(primitives)
-    assert dict(metrics.primitive_counts).get("polygon", 0) == 1
-    assert metrics.filtered_entity_count == 1
-    assert metrics.filter_time_ms is not None
-    assert metrics.generation_time_ms is not None
-
-
 def _motion_scene() -> Scene:
     scene = Scene(time_slice=TimeSlice(start=0, end=1))
     entity = Entity(id=EntityId("motion-1"), motion_state=MotionState.Moving)
     entity.add_observation(Observation(geometry=BoundingBox.from_xywh(0.1, 0.2, 0.3, 0.4), frame_number=0))
-    scene.add_entity(entity)
-    return scene
-
-
-def _polygon_scene() -> Scene:
-    scene = Scene(time_slice=TimeSlice(start=0, end=1))
-    entity = Entity(id=EntityId("poly-1"))
-    entity.add_observation(
-        Observation(
-            geometry=Polygon(
-                points=[
-                    NormalizedPoint(0.1, 0.1),
-                    NormalizedPoint(0.2, 0.1),
-                    NormalizedPoint(0.2, 0.2),
-                ]
-            ),
-            frame_number=0,
-        )
-    )
     scene.add_entity(entity)
     return scene
 
@@ -175,63 +129,6 @@ def _classified_scene(kind: KnownClassificationType = KnownClassificationType.Hu
     )
     scene.add_entity(entity)
     return scene
-
-
-def test_filter_work_before_paint_is_reported_once_and_cache_hits_have_no_duration() -> None:
-    scene = _classified_scene()
-    overlay = CachedSceneOverlay(scene=scene, scene_filter=_EmptySceneFilter())
-    context = RenderContext.create(640, 480)
-    overlay.filtered_scene()  # Presenter/inspector does this before the paint handler.
-    overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    first = overlay.latest_drawing_preparation_metrics()
-    assert first.filter_time_ms is not None
-    assert first.generation_time_ms is not None
-    assert not first.filter_cache_hit
-    assert not first.drawing_cache_hit
-    assert first.input_entity_count == 1
-    assert first.filtered_entity_count == 0
-    overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    second = overlay.latest_drawing_preparation_metrics()
-    assert second.filter_time_ms is None
-    assert second.generation_time_ms is None
-    assert second.filter_cache_hit
-    assert second.drawing_cache_hit
-    overlay.prepare_drawing(
-        RenderContext.create(1280, 720), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(1280, 720)))
-    )
-    resized = overlay.latest_drawing_preparation_metrics()
-    assert resized.filter_cache_hit
-    assert resized.generation_time_ms is not None
-    assert not resized.drawing_cache_hit
-
-
-def _build_reasons(overlay: CachedSceneOverlay) -> tuple[DrawingBuildReason, ...]:
-    # A call stops mypy narrowing the attribute after one assertion and flagging the next as unreachable.
-    return overlay.latest_metrics.build_reasons
-
-
-def test_primitive_build_reasons_follow_changed_inputs_and_clear_on_reuse() -> None:
-    """Explain rebuilds even when several render inputs change between retrievals."""
-
-    scene = _classified_scene()
-    filter_config = build_default_filter_config()
-    filter_state = SessionFilter(filter_config)
-    overlay = CachedSceneOverlay(scene=scene, scene_filter=filter_state)
-    context = RenderContext.create(640, 480)
-    first = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert _build_reasons(overlay) == (DrawingBuildReason.INITIAL,)
-    assert overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context))) is first
-    assert _build_reasons(overlay) == ()
-    overlay.prepare_drawing(
-        RenderContext.create(1280, 720), DrawingBuffer(DrawingSettings.for_context(RenderContext.create(1280, 720)))
-    )
-    assert _build_reasons(overlay) == (DrawingBuildReason.TARGET,)
-    filter_state.set_enabled("show_humans", False)
-    overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert _build_reasons(overlay) == (DrawingBuildReason.FILTER, DrawingBuildReason.TARGET)
-    overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert overlay.latest_metrics.drawing_cache_hit
-    assert _build_reasons(overlay) == ()
 
 
 def test_hover_hit_summarizes_the_entity_once_and_omits_what_the_decoder_did_not_report() -> None:
@@ -278,7 +175,6 @@ def test_panning_within_the_culling_margin_reuses_the_drawing() -> None:
     assert prepare(320.0) is first and prepare(500.0) is first
     moved = prepare(150.0)
     assert moved is not first
-    assert _build_reasons(overlay) == (DrawingBuildReason.TARGET,)
 
 
 def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:

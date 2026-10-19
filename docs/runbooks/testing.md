@@ -29,15 +29,6 @@ uv run ax-devil plugins --help
 uv run ax-devil --help
 ```
 
-Standalone trace-viewer checks:
-
-```bash
-make -C tools/trace-viewer check  # Python relay/schema tests and Node parser/navigation tests
-```
-
-The combined CI quality job runs these checks too. The tool's MCP dependencies remain separate from the application
-environment.
-
 The regular suite covers plugin installation with uv mocked, plus real entry-point discovery and decoding of the
 minimal package from `.agents/skills/write-plugin/reference.md` in fresh Python processes.
 
@@ -47,7 +38,7 @@ removal. It may download and build packages, needs the same system libraries as 
 nothing.
 
 CI runs these jobs on pull requests, `main`, and release tags: `quality` shares one Python 3.12 environment for
-application checks, trace-viewer checks, the regular suite, installation smoke tests, and package builds; `test` runs
+application checks, the regular suite, installation smoke tests, and package builds; `test` runs
 the regular suite on the minimum supported Python 3.10 on Ubuntu, Windows (Direct3D 11 on the WARP software adapter)
 and macOS, serially because windows on one native desktop fight over focus; `lowest` runs it on Python 3.10 with the oldest allowed
 dependencies (`uv pip install --resolution lowest-direct -e . --group dev`). A newer push to a PR cancels its
