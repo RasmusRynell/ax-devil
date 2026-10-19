@@ -13,6 +13,7 @@ from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.filtering import build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
@@ -32,7 +33,12 @@ from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalogLoader,
     get_built_in_scene_render_catalog,
 )
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import (
+    EMPTY_DRAWING,
+    DrawingBuffer,
+    DrawingSettings,
+    PreparedDrawing,
+)
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
@@ -81,7 +87,7 @@ def _build_frame(sequence: int) -> FrameData:
     image = QImage(4, 4, QImage.Format.Format_RGB32)
     image.fill(0)
     return FrameData(
-        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_monotime_us=float(sequence * 1_000_000)),
+        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_us=seconds_to_us(sequence)),
         content=image,
         source_id="video",
         metadata={"frame": sequence},
@@ -90,7 +96,7 @@ def _build_frame(sequence: int) -> FrameData:
 
 def _build_overlay(sequence: int, scene: Scene, metadata: dict[str, Any] | None = None) -> OverlayData:
     return OverlayData(
-        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_monotime_us=float(sequence * 1_000_000)),
+        frame_id=FrameIdentifier(sequence_id=sequence, timestamp_us=seconds_to_us(sequence)),
         content=scene,
         source_id="overlay",
         metadata=metadata,
@@ -109,11 +115,11 @@ def test_presenter_assembles_video_frame_with_scene_overlay_and_merged_metadata(
     )
 
     assert presentation.display_frame.frame.frame_id == 1
-    assert presentation.display_frame.frame.timestamp_monotime_us == 1_000_000.0
+    assert presentation.display_frame.frame.timestamp_us == 1_000_000
     assert presentation.display_frame.frame.metadata == {"frame": 1}
     assert presentation.display_frame.overlays is not None
     assert presentation.display_frame.overlays.overlay_id == 1
-    assert presentation.display_frame.overlays.timestamp_monotime_us == 1_000_000.0
+    assert presentation.display_frame.overlays.timestamp_us == 1_000_000
     assert presentation.display_frame.overlays.metadata == {
         "source": "decoder",
         "overlay_opacity": 0.75,
@@ -126,13 +132,9 @@ def test_presenter_applies_overlay_persistence_and_marks_reused_overlay() -> Non
     policy = OverlayPersistencePolicy(OverlayPersistenceSettings(enabled=True, timeout_ms=5000, opacity=0.3))
     presenter = SceneFramePresenter()
 
-    first = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene), overlay_policy=policy)
+    presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene), overlay_policy=policy)
     second = presenter.prepare_frame(_build_frame(2), None, overlay_policy=policy)
 
-    assert first.selected_overlay is not None
-    assert first.overlay_reused is False
-    assert second.selected_overlay is first.selected_overlay
-    assert second.overlay_reused is True
     assert second.display_frame.overlays is not None
     assert second.display_frame.overlays.metadata == {
         "overlay_reused": True,
@@ -151,7 +153,7 @@ def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes
     inspected_scene = presentation.inspection.scene
     assert inspected_scene is not None
     assert not inspected_scene.entities
-    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_monotime_us=1_000_000.0)
+    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_us=1_000_000)
     overlay = presentation.display_frame.overlays
     assert overlay is not None
     provider = overlay.interaction_provider
@@ -160,7 +162,7 @@ def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes
     for enabled in (False, True, False):
         model.set_enabled("show_humans", enabled)
         drawing = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
-        assert bool(drawing) == enabled
+        assert (drawing != EMPTY_DRAWING) == enabled
         assert (provider.hit_test(0.2, 0.2) is not None) == enabled
 
 
@@ -212,7 +214,7 @@ def test_presenter_falls_back_to_unfiltered_inspector_scene_when_filtering_fails
     assert presentation.display_frame.frame.frame_id == 1
     assert presentation.display_frame.overlays is not None
     assert presentation.inspection.scene is scene
-    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_monotime_us=1_000_000.0)
+    assert presentation.inspection.frame_id == FrameIdentifier(sequence_id=1, timestamp_us=1_000_000)
 
 
 def _catalog_with_disabled_human_recipe() -> SceneRenderCatalog:
@@ -314,7 +316,7 @@ def test_visibility_change_reuses_filtered_scene_and_hover_cards(
     hidden = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
     current_hit = overlay.interaction_provider.get_hit_by_id("entity-1")
     assert current_hit is hit
-    assert len(hidden) < len(initial)
+    assert hidden != initial
     assert scene_filter.calls == 1
     selection.reset_visibility()
     assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == initial

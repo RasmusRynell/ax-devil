@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QMessageBox, QV
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.background_jobs import BackgroundJobs, JobScope, LatestRequest, background_jobs
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Radius, Space
@@ -61,11 +62,6 @@ def _stale_message(what: str, lane_name: str, error: Exception, retry_settings: 
     """Say that the *what* shown for a lane is out of date because refreshing it failed, and what retries it."""
     reason = str(error) or type(error).__name__
     return f"{what} of lane '{lane_name}' is out of date: {reason}. Change {retry_settings} to retry."
-
-
-def _diagnostics_label(item_name: str, lane_name: str) -> str:
-    """Return the render diagnostics label of a lane: its workspace item's name and the lane's content name."""
-    return f"{item_name} · {lane_name}"
 
 
 def show_video_on_controls(controls: SeekableVideoControlPanel, source: FileFrameSource) -> None:
@@ -190,7 +186,7 @@ class OfflineLane:
         """Display a synced frame and update lane-owned controls."""
         self.display.display_frame(frame)
         if self.controls is not None and frame.frame.frame_id is not None:
-            self.controls.set_current_frame(frame.frame.frame_id, frame.frame.timestamp)
+            self.controls.set_current_frame(frame.frame.frame_id, us_to_seconds(frame.frame.timestamp_us))
 
     def present_frame(self, frame_data: FrameData) -> None:
         """Present one offline frame using direct overlay lookup."""
@@ -448,11 +444,6 @@ class OfflineSession(QObject):
         """Return all active lane displays in presentation order."""
         return tuple(lane.display for lane in self.lanes)
 
-    def set_display_name(self, name: str) -> None:
-        """Relabel every lane's render diagnostics with the renamed workspace item *name*."""
-        for lane in self.lanes:
-            lane.display.viewport.set_diagnostics_label(_diagnostics_label(name, lane.name))
-
     def focused_display(self) -> FrameDisplay | None:
         """Return the display of the focused lane, or the first lane's when focus is outside the displays."""
         displays = self.displays
@@ -644,7 +635,6 @@ class OfflineSession(QObject):
         video = opened.video
         display = FrameDisplay()
         rollback.callback(display.cleanup)
-        display.viewport.set_diagnostics_label(_diagnostics_label(pane_title, lane_content.display_name))
         controls = SeekableVideoControlPanel(display.viewport) if use_lane_controls else None
         if controls is not None:
             display.mount_overlay(controls, position=OverlayPosition.BOTTOM_FULL_WIDTH)
@@ -656,7 +646,6 @@ class OfflineSession(QObject):
         pooled_source = source_pool[opened.source_index]
         overlay_source = opened.overlay_source
         overlay_policy = opened.overlay_policy
-        display.viewport.set_diagnostics_sources((overlay_source.diagnostics_id,) if overlay_source else ())
         timing_controls = TimingDiagnosticsWidget()
         render_catalog_selection = render_catalog_manager.create_selection(
             visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container
@@ -958,9 +947,7 @@ class OfflineSession(QObject):
 
         if source_index == 0:
             self._current_frame = self._bounded_frame(frame_data.frame_id.sequence_id)
-            self._presented_frame = PresentedFrame(
-                self._current_frame, frame_data.frame_id.timestamp_monotime_us / 1_000_000
-            )
+            self._presented_frame = PresentedFrame(self._current_frame, us_to_seconds(frame_data.frame_id.timestamp_us))
             self.currentFrameChanged.emit(self.current_frame)
         for lane in self.lanes:
             if lane.source_index == source_index:

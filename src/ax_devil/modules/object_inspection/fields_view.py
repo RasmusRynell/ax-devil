@@ -257,7 +257,7 @@ class EventRow(Row):
 
     def __init__(self, event: FrameEvent) -> None:
         self.event = event
-        self.label = format_frame_time(event.frame_id.timestamp_monotime_us)
+        self.label = format_frame_time(event.frame_id.timestamp_us)
 
     @property
     def key(self) -> Hashable:

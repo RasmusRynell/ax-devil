@@ -27,7 +27,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
+from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY_MS
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
@@ -353,7 +353,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 self._global_controls = controls
                 self._global_control_visibility = ControlVisibilityController(
                     timer_parent=self,
-                    idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY,
+                    idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY_MS,
                     request_show=controls.fade_in,
                     request_hide=controls.start_auto_hide_timer,
                 )
@@ -564,8 +564,6 @@ class OfflineVideoViewerWidget(ViewerWidget):
     def set_display_name(self, name: str) -> None:
         """Show *name* in the header and on the next pane title, after the item is renamed."""
         self._display_name = name
-        if self._runtime is not None:
-            self._runtime.set_display_name(name)
         super().set_display_name(name)
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem:

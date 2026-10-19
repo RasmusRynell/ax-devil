@@ -101,7 +101,7 @@ def test_samples_become_overlays_keyed_by_scene_time(qtbot: QtBot) -> None:
         source.deleteLater()
 
     assert [overlay.frame_id.sequence_id for overlay in overlays] == [1, 2]
-    assert [overlay.frame_id.timestamp_monotime_us for overlay in overlays] == [12_500_000, 13_000_000]
+    assert [overlay.frame_id.timestamp_us for overlay in overlays] == [12_500_000, 13_000_000]
     assert set(overlays[0].content.entities) == {EntityId("a")}
     assert overlays[0].metadata == {
         "websocket_topic": "topic",

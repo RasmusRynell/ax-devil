@@ -16,7 +16,7 @@ class DecodedFrame:
 
     frame_index: int
     pixels: NDArray[Any]
-    timestamp_us: float
+    timestamp_us: int
     period_after_s: float | None = None
     source_timing_metadata: dict[str, Any] = field(default_factory=dict)
     duration_s: float | None = None

@@ -80,8 +80,7 @@ default to folders under `~/.ax_devil/`.
 Keep these private:
 
 - Configuration can store manually entered credentials as plain JSON.
-- Logs may contain credentials or authenticated URLs, and performance traces contain local paths.
-  Redact diagnostics before sharing.
+- Logs may contain credentials or authenticated URLs. Redact them before sharing.
 - Keep cache and config folders user-owned. Do not load third-party caches or distribute your own.
 
 ## Video overlays

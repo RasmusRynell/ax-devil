@@ -2,7 +2,6 @@
 
 This measures process CPU consumed through render submission and separately reports
 wall-clock delivery (which includes event-loop/vsync waiting), not GPU or screen latency.
-The ordinary diagnostics intentionally measure a smaller GUI-preparation scope.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
+from ax_devil.core.time_units import seconds_to_ms, seconds_to_us
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import (
@@ -125,8 +125,8 @@ class BenchmarkViewer(VideoFrameRenderer):
 
         self._stages = dict.fromkeys(self._stages, 0.0)
         frame = VideoFrameWithOverlays(
-            VideoFrame(image, self._number / 30, self._number),
-            VideoOverlayData(generate, self._number / 30),
+            VideoFrame(image, seconds_to_us(self._number / 30), self._number),
+            VideoOverlayData(generate, seconds_to_us(self._number / 30)),
         )
         self._prepared = False
         self._started = perf_counter()
@@ -136,7 +136,7 @@ class BenchmarkViewer(VideoFrameRenderer):
     def _prepare_quick_frame(self) -> None:
         started = process_time()
         super()._prepare_quick_frame()
-        self._stages["gui_prepare"] += (process_time() - started) * 1000
+        self._stages["gui_prepare"] += seconds_to_ms(process_time() - started)
         self._prepared = True
 
     def _begin_stage(self) -> None:
@@ -144,18 +144,18 @@ class BenchmarkViewer(VideoFrameRenderer):
 
     def _end_sync(self) -> None:
         if self._prepared:
-            self._stages["scene_sync"] += (process_time() - self._stage_start) * 1000
+            self._stages["scene_sync"] += seconds_to_ms(process_time() - self._stage_start)
 
     def _end_render(self) -> None:
         if self._prepared:
-            self._stages["render_submission"] += (process_time() - self._stage_start) * 1000
+            self._stages["render_submission"] += seconds_to_ms(process_time() - self._stage_start)
 
     def completed(self) -> None:
         """Capture one sample per submitted frame and queue the next event-loop turn."""
         if self._started is None or not self._prepared:
             return
-        elapsed = (process_time() - self._cpu_started) * 1000
-        wall_elapsed = (perf_counter() - self._started) * 1000
+        elapsed = seconds_to_ms(process_time() - self._cpu_started)
+        wall_elapsed = seconds_to_ms(perf_counter() - self._started)
         self._started = None
         if self._number >= 10:
             self._samples.append(elapsed)

@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QPainter, QPaintEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.chrome.appearance import on_text_size_applied
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -170,11 +171,11 @@ class FrameViewport(VideoFrameRenderer):
         stats: dict[str, Any] = {
             "Timing": None,
             "Unit": "microseconds",
-            "Status": self._causal_status_text(frame.timestamp_monotime_us, None),
+            "Status": self._causal_status_text(frame.timestamp_us, None),
             "Frame - overlay": "None",
             "Frame": None,
             "Frame id": self._format_optional_id(frame.frame_id),
-            "Frame timestamp": self._format_optional_timestamp_us(frame.timestamp_monotime_us),
+            "Frame timestamp": str(frame.timestamp_us),
         }
         self._add_timing_metadata(stats, frame.metadata)
         if overlay is None:
@@ -189,28 +190,23 @@ class FrameViewport(VideoFrameRenderer):
 
         stats.update(
             {
-                "Status": self._causal_status_text(frame.timestamp_monotime_us, overlay.timestamp_monotime_us),
-                "Frame - overlay": self._format_timestamp_delta_us(
-                    frame.timestamp_monotime_us,
-                    overlay.timestamp_monotime_us,
-                ),
+                "Status": self._causal_status_text(frame.timestamp_us, overlay.timestamp_us),
+                "Frame - overlay": str(frame.timestamp_us - overlay.timestamp_us),
                 "Overlay": None,
                 "Overlay id": self._format_optional_id(overlay.overlay_id),
-                "Overlay timestamp": self._format_optional_timestamp_us(overlay.timestamp_monotime_us),
+                "Overlay timestamp": str(overlay.timestamp_us),
             }
         )
         self._add_timing_metadata(stats, overlay.metadata)
         return stats
 
     @classmethod
-    def _causal_status_text(cls, frame_timestamp_us: float | None, overlay_timestamp_us: float | None) -> str:
+    def _causal_status_text(cls, frame_timestamp_us: int, overlay_timestamp_us: int | None) -> str:
         if overlay_timestamp_us is None:
             return "NO OVERLAY"
-        if frame_timestamp_us is None:
-            return "UNKNOWN frame timestamp missing"
         delta_us = frame_timestamp_us - overlay_timestamp_us
         if delta_us < 0:
-            return f"VIOLATION overlay is {cls._format_optional_timestamp_us(abs(delta_us))} after frame"
+            return f"VIOLATION overlay is {abs(delta_us)} after frame"
         if delta_us == 0:
             return "OK exact timestamp match"
         return "OK overlay is before frame"
@@ -228,7 +224,7 @@ class FrameViewport(VideoFrameRenderer):
     @classmethod
     def _format_timing_metadata_value(cls, key: str, value: Any) -> Any:
         if key == "video_period_after_s" and isinstance(value, int | float):
-            return cls._format_optional_timestamp_us(float(value) * 1_000_000.0)
+            return str(seconds_to_us(float(value)))
         return value
 
     @staticmethod
@@ -236,22 +232,6 @@ class FrameViewport(VideoFrameRenderer):
         if value is None:
             return "None"
         return str(value)
-
-    @staticmethod
-    def _format_optional_timestamp_us(value: float | int | None) -> str:
-        if value is None:
-            return "None"
-        if isinstance(value, int):
-            return str(value)
-        if value.is_integer():
-            return str(int(value))
-        return str(value)
-
-    @classmethod
-    def _format_timestamp_delta_us(cls, frame_timestamp_us: float | None, overlay_timestamp_us: float | None) -> str:
-        if frame_timestamp_us is None or overlay_timestamp_us is None:
-            return "None"
-        return cls._format_optional_timestamp_us(frame_timestamp_us - overlay_timestamp_us)
 
     def add_overlay(
         self,

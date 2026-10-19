@@ -51,7 +51,7 @@ def make_cached_frame(index: int = 0, *, width: int = 16, height: int = 16) -> C
     return CachedFrame(
         frame_index=index,
         video_frame=av.VideoFrame(width, height, "rgb24"),
-        timestamp_us=float(index * 1000),
+        timestamp_us=index * 1000,
         period_after_s=0.001,
         source_timing_metadata={},
     )

@@ -4,6 +4,7 @@ import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 
+from ax_devil.core.time_units import ms_to_seconds
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -37,11 +38,11 @@ class FrameWorker:
     def __init__(
         self,
         work_executor: BaseWorker,
-        worker_timeout: float = 5.0,
+        worker_timeout_s: float = 5.0,
         thread_name: str = "FrameWorker",
     ) -> None:
         self._work_executor: BaseWorker | None = work_executor
-        self._worker_timeout = worker_timeout
+        self._worker_timeout_s = worker_timeout_s
         self._thread_name = thread_name
 
         # Thread management
@@ -130,7 +131,7 @@ class FrameWorker:
             self._work_available_event.set()
 
         if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=self._worker_timeout)
+            self._worker_thread.join(timeout=self._worker_timeout_s)
             if self._worker_thread.is_alive():
                 logger.warning(f"{self._thread_name} did not stop gracefully within timeout")
 
@@ -144,7 +145,7 @@ class FrameWorker:
         worker_thread = self._worker_thread
         if worker_thread is None:
             return True
-        worker_thread.join(timeout=max(0, timeout_ms) / 1000)
+        worker_thread.join(timeout=ms_to_seconds(max(0, timeout_ms)))
         return not worker_thread.is_alive()
 
     def signal_work_available(self) -> None:

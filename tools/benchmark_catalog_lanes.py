@@ -34,7 +34,7 @@ from PySide6.QtCore import QEvent, QObject, QRectF, QTimer
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication, QGridLayout, QWidget
 
-from ax_devil.modules.diagnostics.metrics_gate import set_metrics_enabled
+from ax_devil.core.time_units import seconds_to_ms, seconds_to_us
 from ax_devil.modules.scene.model import (
     Attribute,
     BoundingBox,
@@ -95,7 +95,7 @@ class EventTimer(QObject):
         finally:
             self._inside = False
         if counted:
-            self._record((perf_counter() - started) * 1000)
+            self._record(seconds_to_ms(perf_counter() - started))
         return True
 
     def remove(self) -> None:
@@ -118,7 +118,7 @@ class LaneViewer(VideoFrameRenderer):
         def timed_image(image: QImage, target: QRectF) -> None:
             started = perf_counter()
             set_frame_image(image, target)
-            self._stages["image"] += (perf_counter() - started) * 1000
+            self._stages["image"] += seconds_to_ms(perf_counter() - started)
 
         def timed_overlays(
             drawing: PreparedDrawing | None,
@@ -130,7 +130,7 @@ class LaneViewer(VideoFrameRenderer):
         ) -> None:
             started = perf_counter()
             set_overlays(drawing, opacity, target, scale, hovered, selected)
-            self._stages["binding"] += (perf_counter() - started) * 1000
+            self._stages["binding"] += seconds_to_ms(perf_counter() - started)
             self.drawing = drawing
 
         surface.set_frame_image = timed_image  # type: ignore[method-assign]
@@ -152,7 +152,7 @@ class LaneViewer(VideoFrameRenderer):
 
     def _end_stage(self, name: str) -> None:
         if self.pending:
-            self._stages[name] += (perf_counter() - self._stage_start) * 1000
+            self._stages[name] += seconds_to_ms(perf_counter() - self._stage_start)
 
     def _rendered(self) -> None:
         if self.pending and self.drawing is not None:
@@ -208,8 +208,10 @@ class LaneBenchmark(QWidget):
             lane.pending = True
             lane.display_frame(
                 VideoFrameWithOverlays(
-                    VideoFrame(image, self._round / 25, self._round),
-                    VideoOverlayData(self._timed_generator(overlay), self._round / 25, self._round),
+                    VideoFrame(image, seconds_to_us(self._round / 25), self._round),
+                    VideoOverlayData(
+                        self._timed_generator(overlay), seconds_to_us(self._round / 25), overlay_id=self._round
+                    ),
                 )
             )
 
@@ -219,7 +221,7 @@ class LaneBenchmark(QWidget):
         def generate(context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
             started = perf_counter()
             drawing = overlay.prepare_drawing(context, buffer)
-            self._stages["catalog"] += (perf_counter() - started) * 1000
+            self._stages["catalog"] += seconds_to_ms(perf_counter() - started)
             return drawing
 
         return generate
@@ -233,7 +235,7 @@ class LaneBenchmark(QWidget):
             if rhi is not None:
                 started = perf_counter()
                 rhi.finish()
-                self._stages["gpu_wait"] += (perf_counter() - started) * 1000
+                self._stages["gpu_wait"] += seconds_to_ms(perf_counter() - started)
         self._complete()
 
     def _uncomposed(self) -> None:
@@ -251,8 +253,8 @@ class LaneBenchmark(QWidget):
                 {
                     **self._stages,
                     "frame_total": sum(self._stages[stage] for stage in _FRAME_STAGES),
-                    "process_cpu": (process_time() - self._cpu_started) * 1000,
-                    "wall": (perf_counter() - self._started) * 1000,
+                    "process_cpu": seconds_to_ms(process_time() - self._cpu_started),
+                    "wall": seconds_to_ms(perf_counter() - self._started),
                 }
             )
         self._round += 1
@@ -282,7 +284,6 @@ class LaneBenchmark(QWidget):
                 "paths": len(drawing.paths),
                 "texts": len(drawing.texts),
                 "labels": len(drawing.labels),
-                "primitives": dict(drawing.counts),
             },
             "round_median_ms": {key: round(median(s[key] for s in self._samples), 2) for key in self._samples[0]},
             "round_p95_ms": {
@@ -381,7 +382,6 @@ def main() -> None:
     if min(args.lanes, args.entities, args.frames, args.scene_variants) < 1:
         parser.error("lanes, entities, frames and scene variants must be positive")
     setup_logging(console_only=True)
-    set_metrics_enabled(False)
     preference = GraphicsAcceleration.OFF if args.software else GraphicsAcceleration.AUTO
     preference.configure()
     app = QApplication([])

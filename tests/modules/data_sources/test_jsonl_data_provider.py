@@ -91,7 +91,7 @@ def _record(second: int, *entity_ids: str) -> dict[str, Any]:
 
 
 def _frame(timestamp_us: int, sequence_id: int = 0) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=sequence_id, timestamp_monotime_us=float(timestamp_us))
+    return FrameIdentifier(sequence_id=sequence_id, timestamp_us=timestamp_us)
 
 
 def test_records_are_indexed_by_timestamp_and_load_their_scenes(tmp_path: Path) -> None:
@@ -304,39 +304,6 @@ def test_open_provider_stops_serving_a_source_rewritten_in_place(
         provider.close()
 
 
-def test_lookup_diagnostics_count_unique_timestamps_across_policy_changes(temp_dir: Path) -> None:
-    """Repeated lookups are not calls, and changing fallback policy does not double-count a timestamp."""
-    from ax_devil.modules.diagnostics.metrics_store import get_metrics_store, set_metrics_enabled, source_identity
-
-    set_metrics_enabled(True)
-    path = temp_dir / "diagnostics.jsonl"
-    path.write_text(json.dumps({"timestamp": "2024-01-01T12:00:00Z", "detections": []}), encoding="utf-8")
-    first = _build_provider(path)
-    second = _build_provider(path)
-    store = get_metrics_store()
-    try:
-        timestamp = next(iter(first.get_available_frames()))
-        requested = FrameIdentifier(sequence_id=100, timestamp_monotime_us=timestamp + 5_000)
-        first.lookup_by_frame_id(requested)
-        first.lookup_by_frame_id(requested)
-        metrics = store.snapshot()[source_identity(first)]
-        assert metrics.observations["Unique requested timestamps"].value == 1
-        assert metrics.observations["Unique missing timestamps"].value == 1
-        first.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=10_000))
-        first.lookup_by_frame_id(requested)
-        metrics = store.snapshot()[source_identity(first)]
-        assert metrics.observations["Unique requested timestamps"].value == 1
-        assert metrics.observations["Unique fallback matches"].value == 1
-        second.lookup_by_frame_id(requested)
-        assert source_identity(first) != source_identity(second)
-        first.close()
-        assert source_identity(first) not in store.snapshot()
-        assert source_identity(second) in store.snapshot()
-    finally:
-        first.close()
-        second.close()
-
-
 @pytest.mark.parametrize("storage_mode", list(StorageMode))
 def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode, tmp_path: Path) -> None:
     """Reuse two resolved scenes, preserve them across misses, and reload evicted history."""
@@ -357,7 +324,7 @@ def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode,
         timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=10_000),
     )
     timestamps = sorted(provider.get_available_frames())
-    frames = [FrameIdentifier(sequence_id=index, timestamp_monotime_us=ts) for index, ts in enumerate(timestamps)]
+    frames = [FrameIdentifier(sequence_id=index, timestamp_us=ts) for index, ts in enumerate(timestamps)]
     try:
         with patch.object(provider._store, "load_scene", wraps=provider._store.load_scene) as load:
             first = provider.load_by_frame_id(frames[0])
@@ -366,9 +333,9 @@ def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode,
             assert provider.load_by_frame_id(frames[0]) is first
             assert provider.load_by_frame_id(frames[1]) is second
 
-            missing = FrameIdentifier(sequence_id=99, timestamp_monotime_us=timestamps[-1] + 1_000_000)
+            missing = FrameIdentifier(sequence_id=99, timestamp_us=timestamps[-1] + 1_000_000)
             assert provider.load_by_frame_id(missing) is None
-            fallback = FrameIdentifier(sequence_id=99, timestamp_monotime_us=timestamps[0] + 1_000)
+            fallback = FrameIdentifier(sequence_id=99, timestamp_us=timestamps[0] + 1_000)
             assert provider.load_by_frame_id(fallback) is first
             assert load.call_count == 2
 
@@ -410,7 +377,7 @@ def test_sticky_selection_is_independent_of_navigation(tmp_path: Path) -> None:
         ]:
             selection = policy.select_from_source(source, FrameIdentifier(1, timestamp))
             assert selection.overlay is not None
-            assert selection.overlay.frame_id.timestamp_monotime_us == expected
+            assert selection.overlay.frame_id.timestamp_us == expected
             assert selection.reused is (timestamp != expected)
             assert selection.effective_opacity == (0.4 if selection.reused else 1.0)
             assert bool(selection.overlay.content.entities) is (expected == first)

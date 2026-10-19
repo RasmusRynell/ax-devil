@@ -94,16 +94,12 @@ class MQTTWorker(Worker):
                               things might not work correctly! be careful"
                     )
 
-                if isinstance(scene.time_slice.start, int):
+                capture_time_us = scene.time_slice.start_timestamp_us
+                if capture_time_us is None:
                     raise ValueError("Streamed data with ints as timestamps is not supported at this moment")
 
-                capture_timestamp = scene.time_slice.start.timestamp()
-
                 # Create FrameIdentifier using device-provided timestamp from MQTT
-                frame_id = FrameIdentifier(
-                    sequence_id=self.message_count,
-                    timestamp_monotime_us=capture_timestamp * 1000000.0,  # Convert seconds to microseconds
-                )
+                frame_id = FrameIdentifier(sequence_id=self.message_count, timestamp_us=capture_time_us)
 
                 overlay_data = OverlayData(
                     content=scene,
@@ -292,9 +288,9 @@ class MQTTOverlaySource(OverlaySource):
         self.worker.stop()
         self.cleanup_posted_events()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for overlay production to complete."""
-        return bool(self.worker.wait(timeout))
+        return bool(self.worker.wait(timeout_ms))
 
     def get_filter_config(self) -> FilterConfig:
         """Return the filter configuration for this overlay source."""
