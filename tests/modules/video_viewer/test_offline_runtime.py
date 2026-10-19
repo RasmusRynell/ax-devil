@@ -582,27 +582,6 @@ def test_lane_retains_a_recent_overlay_at_its_original_sample_time() -> None:
     assert display.frames[3].overlays is None
 
 
-class _LabelRecordingViewport:
-    """Viewport test double recording the render diagnostics labels it is given."""
-
-    def __init__(self) -> None:
-        self.labels: list[str] = []
-
-    def set_diagnostics_label(self, label: str) -> None:
-        """Record the label."""
-        self.labels.append(label)
-
-
-def test_renamed_item_relabels_existing_lane_diagnostics(qtbot: QtBot) -> None:
-    session, display, _source = _make_primary_session(qtbot)
-    viewport = _LabelRecordingViewport()
-    display.viewport = viewport  # type: ignore[attr-defined]
-
-    session.set_display_name("Renamed item")
-
-    assert viewport.labels == ["Renamed item · lane"]
-
-
 class _Panel:
     """Tools panel test double recording the histories it shows and the notices that they are out of date."""
 

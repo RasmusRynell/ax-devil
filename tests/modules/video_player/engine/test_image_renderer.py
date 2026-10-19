@@ -119,7 +119,7 @@ def test_export_keeps_native_pixels_and_context_under_display_scaling(
         contexts.append(context)
         return prepare_calls([BoxCall(0.1, 0.1, 0.5, 0.5, DrawingStyle(pen_width=0, brush_r=255, brush_a=255))], buffer)
 
-    frame = VideoFrameWithOverlays(VideoFrame(image, 0), VideoOverlayData(generate, 0))
+    frame = VideoFrameWithOverlays(VideoFrame(image, 0), VideoOverlayData(generate, timestamp_us=0))
     rendered = renderer.render_frame(frame)
     assert rendered.size() == image.size()
     assert rendered.devicePixelRatio() == 1

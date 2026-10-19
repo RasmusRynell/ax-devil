@@ -71,14 +71,6 @@ class FrameIdentifierDataProvider(Protocol):
         """Return an immutable copy of the sample keys, history and timestamp policy for analysis on any thread."""
         ...
 
-    def uses_sequence_lookup(self) -> bool:
-        """Return whether provider-owned sequence lookup is enabled."""
-        ...
-
-    def get_available_sequences(self) -> set[int]:
-        """Get set of available sequence identifiers."""
-        ...
-
     def close(self) -> None:
         """Close the data provider and clean up resources."""
         ...

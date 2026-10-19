@@ -7,8 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 from weakref import ref
 
-from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
-from ax_devil.core.time_units import us_to_seconds
+from ax_devil.core.data_types import FrameData, OverlayData
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors, SceneFilter
 from ax_devil.modules.scene.rendering.catalog import get_built_in_scene_render_catalog
@@ -30,9 +29,6 @@ class SceneFramePresentation:
     """Result of assembling one displayable frame."""
 
     display_frame: VideoFrameWithOverlays
-    selected_overlay: OverlayData | None
-    overlay_reused: bool
-    metadata: dict[str, Any]
     inspection: SceneInspectionUpdate
 
 
@@ -99,12 +95,10 @@ class SceneFramePresenter:
         """Prepare a frame and its selected overlay for display."""
         selected_overlay = candidate_overlay
         metadata = self._merge_overlay_metadata(selected_overlay, overlay_metadata)
-        overlay_reused = bool(metadata.get("overlay_reused", False))
 
         if overlay_policy is not None:
             selection = overlay_policy.select_overlay(frame_data.frame_id, candidate_overlay)
             selected_overlay = selection.overlay
-            overlay_reused = selection.reused
             metadata = self._merge_overlay_metadata(selected_overlay, selection.to_metadata(), overlay_metadata)
 
         cached_overlay = self._build_cached_overlay(selected_overlay)
@@ -112,9 +106,6 @@ class SceneFramePresenter:
 
         return SceneFramePresentation(
             display_frame=self._to_display_frame(frame_data, selected_overlay, cached_overlay, metadata),
-            selected_overlay=selected_overlay,
-            overlay_reused=overlay_reused,
-            metadata=metadata,
             inspection=SceneInspectionUpdate(
                 scene=filtered_scene,
                 frame_id=frame_data.frame_id,
@@ -146,7 +137,6 @@ class SceneFramePresenter:
                 overlay_id=overlay_data.frame_id.sequence_id,
                 metadata=metadata,
                 interaction_provider=cached_overlay,
-                metrics_provider=cached_overlay,
             )
 
         return VideoFrameWithOverlays(
@@ -202,18 +192,3 @@ class SceneFramePresenter:
             if layer:
                 metadata.update(layer)
         return metadata
-
-
-def describe_frame_id(frame_id: FrameIdentifier | None) -> str:
-    """Return a compact representation of a frame identifier for debug metrics."""
-    if frame_id is None:
-        return "None"
-    return f"#{frame_id.sequence_id} @ {us_to_seconds(frame_id.timestamp_us):.3f}s"
-
-
-def describe_overlay_data(overlay: OverlayData | None, *, reused: bool = False) -> str:
-    """Return a descriptive label for overlay debug metrics."""
-    base = describe_frame_id(overlay.frame_id) if overlay is not None else "None"
-    if reused:
-        return f"{base} (reused)"
-    return base

@@ -91,11 +91,6 @@ class LeafContainer(QFrame):
         if widget:
             self.set_widget(widget)
 
-        container_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, container_id=container_id: logger.debug(f"LeafContainer.destroyed id={container_id}")
-        )
-
     def get_widget(self) -> ViewerWidget | None:
         """Return the viewer widget hosted by this leaf, if any."""
         return self._widget
@@ -219,11 +214,6 @@ class SplitView(QWidget):
         self._welcome_widget = WelcomeWidget()
         self._welcome_scroll.setWidget(self._welcome_widget)
         self._welcome_scroll.show()
-
-        split_view_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, split_view_id=split_view_id: logger.debug(f"SplitView.destroyed id={split_view_id}")
-        )
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -677,10 +667,6 @@ class _HeaderDragFilter(QObject):
         # Store only a weak reference to avoid strong reference cycles retaining the widget
         self._widget_ref: weakref.ReferenceType[ViewerWidget] = weakref.ref(widget)
         self._drag_start_pos: QPoint | None = None
-        filter_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, filter_id=filter_id: logger.debug(f"_HeaderDragFilter.destroyed id={filter_id}")
-        )
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
@@ -762,10 +748,6 @@ class _DropOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        overlay_id = id(self)
-        self.destroyed.connect(
-            lambda _=None, overlay_id=overlay_id: logger.debug(f"_DropOverlay.destroyed id={overlay_id}")
-        )
 
     def set_hint(self, direction: SplitDirection | None) -> None:
         self._direction = direction

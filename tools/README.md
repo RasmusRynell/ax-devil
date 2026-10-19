@@ -2,12 +2,11 @@
 
 Standalone scripts for diagnosing and measuring ax-devil. They are not part of the application or its wheel, and the
 app never imports them. Run them from the repository root. `make check` lints and type-checks the scripts in this
-folder; `make -C tools/trace-viewer check` covers the trace viewer.
+folder.
 
 | Tool | Use it to |
 |------|-----------|
 | [`demo_recorder/`](demo_recorder/README.md) | Record the whole application on a private display, recreate catalog/comparison demos, and restyle saved takes as MP4/WebP. |
-| [`trace-viewer/`](trace-viewer/README.md) | Explore a performance recording from **Debug → Debug Metrics** as a timeline and flame graph, optionally with an AI agent. |
 | `benchmark_quick_renderer.py` | Measure Qt Quick renderer CPU cost with synthetic shapes. |
 | `benchmark_catalog_lanes.py` | Measure production viewers rendering the packaged catalog across several lanes. |
 | `benchmark_template_runtime.py` | Measure catalog evaluation and drawing preparation offscreen. |

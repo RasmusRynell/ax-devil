@@ -13,7 +13,6 @@ from collections.abc import Sequence
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.core.time_units import seconds_to_ms
-from ax_devil.modules.diagnostics.metrics_gate import set_metrics_enabled
 from ax_devil.modules.scene.model import (
     RGB,
     Attribute,
@@ -55,7 +54,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     setup_logging(console_only=True)
-    set_metrics_enabled(False)
     app = QApplication.instance() or QApplication(["catalog-benchmark", "-platform", "offscreen"])
     assert app is not None
     loader = SceneRenderCatalogLoader()
@@ -70,10 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             OverlayVisibility(frozenset(OverlayFeature(value) for value in args.hide_feature))
         )
         logger.info(f"Visibility specialization: {seconds_to_ms(time.perf_counter() - started):.2f} ms")
-    logger.info(
-        f"Python {platform.python_version()}; {platform.platform()}; "
-        "diagnostics disabled; catalog and backend preparation"
-    )
+    logger.info(f"Python {platform.python_version()}; {platform.platform()}; catalog and backend preparation")
     logger.info(
         f"Workload: {args.entities} entities/lane; {args.lanes} lanes; {args.iterations} samples; 1280x720 target"
     )
@@ -85,14 +80,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         catalog.render_scene(scene, context, buffer)
         return buffer.finish()
 
-    output = [prepare(scene, context) for scene, context in zip(scenes, contexts)]
-    expected_counts = [len(primitives) for primitives in output]
-    logger.info(f"Primitives per lane: {expected_counts}")
-
     def generate() -> None:
-        for index, (scene, context) in enumerate(zip(scenes, contexts)):
-            result = prepare(scene, context)
-            assert len(result) == expected_counts[index]
+        for scene, context in zip(scenes, contexts):
+            prepare(scene, context)
 
     def evaluate_catalog() -> None:
         for scene, context in zip(scenes, contexts):

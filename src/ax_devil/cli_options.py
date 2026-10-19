@@ -25,11 +25,10 @@ LOG_LEVEL_OPTION = click.option(
     type=click.Choice(LOG_LEVELS),
     help="Set logging level (default: INFO)",
 )
-DEBUG_OPTION = click.option("--debug", is_flag=True, help="Enable debug window")
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
 def apply_run_options(command: F) -> F:
-    """Apply standard --log-level, --config, --debug options."""
-    return LOG_LEVEL_OPTION(CONFIG_OPTION(DEBUG_OPTION(command)))
+    """Apply standard --log-level and --config options."""
+    return LOG_LEVEL_OPTION(CONFIG_OPTION(command))

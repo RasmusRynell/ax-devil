@@ -283,13 +283,7 @@ class FrameIndex:
             "video_pts_delta": pts - first_pts,
         }
         if self.time_base is not None:
-            metadata.update(
-                {
-                    "video_time_base": f"{self.time_base.numerator}/{self.time_base.denominator}",
-                    "video_time_base_numerator": self.time_base.numerator,
-                    "video_time_base_denominator": self.time_base.denominator,
-                }
-            )
+            metadata["video_time_base"] = f"{self.time_base.numerator}/{self.time_base.denominator}"
         return metadata
 
     def analyze_timing_profile(self) -> VideoTimingProfile:

@@ -13,7 +13,6 @@ from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.cached_frame import CachedFrame
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache import (
     FrameCache,
-    get_frame_cache_registry,
 )
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import FrameReaderWorker
 from tests.helpers.video import cached_frames, create_test_video, drain_prefetch, make_cached_frame
@@ -32,14 +31,12 @@ def test_mixed_sizes_replacement_and_oversized_admission() -> None:
     assert not cache.contains(1)
     assert cache.contains(0)
     assert cache.put(2, make_cached_frame(2))
-    snapshot = get_frame_cache_registry().snapshot_details()[str(id(cache))]
-    assert snapshot["reserved_bytes"] == 3 * 768
+    assert cache.can_admit(3, 768, range(0, 4))
     assert not cache.put(4, make_cached_frame(4, width=128))
     assert cache.size() == 3
     cache.clear()
-    snapshot = get_frame_cache_registry().snapshot_details()[str(id(cache))]
-    assert snapshot["reserved_bytes"] == 0
-    assert snapshot["ranges"] == ()
+    assert cache.size() == 0
+    assert cache.cached_ranges() == ()
 
 
 @pytest.mark.parametrize("pixel_format", ["yuv420p", "yuv444p10le", "rgb24"])
@@ -56,7 +53,7 @@ def test_reservation_covers_source_planes_and_converted_rgb(pixel_format: str) -
     decoded = frame.to_decoded_frame()
     assert reservation >= decoded.pixels.nbytes
     assert frame.reserved_bytes == reservation
-    assert get_frame_cache_registry().snapshot_details()[str(id(cache))]["reserved_bytes"] == reservation
+    assert not cache.can_admit(1, 1, range(0, 1))
 
 
 @pytest.mark.parametrize("retained_frames", [0, 1, 3])
@@ -79,8 +76,7 @@ def test_small_budget_forward_backward_and_prefetch(tmp_path: Path, retained_fra
                 drain_prefetch(worker, limit=51)
                 if retained_frames:
                     assert worker._cache.contains(index)
-                snapshot = get_frame_cache_registry().snapshot_details()[str(id(worker._cache))]
-                assert snapshot["reserved_bytes"] <= max(1, retained_frames * frame_bytes)
+                assert worker._cache.size() <= retained_frames
             assert jump.call_count <= 1, "Forward playback should not repeatedly seek when the cache fills"
         for index in (5, 4, 3, 25, 0, 29):
             frame = worker.read_decoded_frame(index)
@@ -274,3 +270,25 @@ def test_eviction_during_lookup_still_delivers_the_requested_frame(tmp_path: Pat
         np.testing.assert_array_equal(actual.pixels, expected.pixels)
     finally:
         worker.cleanup()
+
+
+def test_cached_ranges_follow_merges_replacements_and_lru_eviction() -> None:
+    """Timeline cache marks follow retained frames when gaps close or eviction splits a run."""
+    cache = FrameCache(6 * 768)
+    try:
+        for index in (0, 1, 4, 5):
+            assert cache.put(index, make_cached_frame(index))
+        assert cache.cached_ranges() == ((0, 1), (4, 5))
+        for index in (3, 2):
+            assert cache.put(index, make_cached_frame(index))
+        assert cache.cached_ranges() == ((0, 5),)
+        assert cache.get(0) is not None
+        assert cache.put(6, make_cached_frame(6))
+        assert cache.cached_ranges() == ((0, 0), (2, 6))
+        assert not cache.contains(1)
+        replacement = make_cached_frame(3)
+        assert cache.put(3, replacement)
+        assert cache.get(3) is replacement
+        assert cache.cached_ranges() == ((0, 0), (2, 6))
+    finally:
+        cache.close()

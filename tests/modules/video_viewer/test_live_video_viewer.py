@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.background_jobs import BackgroundJobs
-from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, SceneRenderCatalogStore
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
 from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
@@ -196,7 +195,7 @@ def test_closing_a_live_viewer_ends_its_pending_use_as_default(
         loader.release_all()
 
 
-def test_set_display_name_updates_the_name_header_and_render_diagnostics(
+def test_set_display_name_updates_the_name_header(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     with patch(_CONTROLLER, _FakeStreamMediaController):
@@ -207,9 +206,6 @@ def test_set_display_name_updates_the_name_header_and_render_diagnostics(
 
     assert widget.get_display_name() == "North gate cam"
     assert widget._title_label.text() == "North gate cam"
-    labels = {viewer.label for viewer in get_render_metrics_store().snapshot()}
-    assert "North gate cam" in labels
-    assert "Gate cam" not in labels
     widget.cleanup()
 
 

@@ -33,7 +33,12 @@ from ax_devil.modules.scene.rendering.catalog import (
     SceneRenderCatalogLoader,
     get_built_in_scene_render_catalog,
 )
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import (
+    EMPTY_DRAWING,
+    DrawingBuffer,
+    DrawingSettings,
+    PreparedDrawing,
+)
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
@@ -127,13 +132,9 @@ def test_presenter_applies_overlay_persistence_and_marks_reused_overlay() -> Non
     policy = OverlayPersistencePolicy(OverlayPersistenceSettings(enabled=True, timeout_ms=5000, opacity=0.3))
     presenter = SceneFramePresenter()
 
-    first = presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene), overlay_policy=policy)
+    presenter.prepare_frame(_build_frame(1), _build_overlay(1, scene), overlay_policy=policy)
     second = presenter.prepare_frame(_build_frame(2), None, overlay_policy=policy)
 
-    assert first.selected_overlay is not None
-    assert first.overlay_reused is False
-    assert second.selected_overlay is first.selected_overlay
-    assert second.overlay_reused is True
     assert second.display_frame.overlays is not None
     assert second.display_frame.overlays.metadata == {
         "overlay_reused": True,
@@ -161,7 +162,7 @@ def test_presenter_keeps_retained_drawings_and_hover_in_sync_with_filter_changes
     for enabled in (False, True, False):
         model.set_enabled("show_humans", enabled)
         drawing = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
-        assert bool(drawing) == enabled
+        assert (drawing != EMPTY_DRAWING) == enabled
         assert (provider.hit_test(0.2, 0.2) is not None) == enabled
 
 
@@ -315,7 +316,7 @@ def test_visibility_change_reuses_filtered_scene_and_hover_cards(
     hidden = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
     current_hit = overlay.interaction_provider.get_hit_by_id("entity-1")
     assert current_hit is hit
-    assert len(hidden) < len(initial)
+    assert hidden != initial
     assert scene_filter.calls == 1
     selection.reset_visibility()
     assert overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context))) == initial

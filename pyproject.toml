@@ -81,8 +81,6 @@ python_version = "3.10"
 strict = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
-# tools/trace-viewer has its own check with extra dependencies.
-exclude = "tools/trace-viewer/"
 # Disable PySide6-related error codes since there are no official type stubs
 disable_error_code = ["misc"]
 
@@ -97,7 +95,6 @@ disable_error_code = ["misc", "no-untyped-call", "no-untyped-def"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-exclude = ["tools/trace-viewer"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP006", "UP007", "UP035", "UP045"]

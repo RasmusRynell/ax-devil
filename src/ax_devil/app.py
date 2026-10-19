@@ -11,10 +11,10 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
+from ax_devil.modules.application_shell.exception_handler import install_exception_handler
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.restart import relaunch_if_requested
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme, setup_theme
-from ax_devil.modules.diagnostics.exception_handler import install_exception_handler
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import create_scene_render_catalog_manager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -34,7 +34,6 @@ class Application:
         self,
         log_level: str = "INFO",
         config_path: Path | None = None,
-        debug: bool = False,
         items: Sequence[WorkspaceItem] = (),
         workspace_file: Path | None = None,
         open_catalog_viewer: bool = False,
@@ -43,7 +42,6 @@ class Application:
         and whether to show the catalog viewer on start. Without either, the start panel stays."""
         self.log_level = log_level
         self.config_path = config_path or DEFAULT_CONFIG_PATH
-        self.debug = debug
         self.items = tuple(items)
         self.workspace_file = workspace_file
         self.open_catalog_viewer = open_catalog_viewer
@@ -110,11 +108,8 @@ class Application:
         try:
             self.start()
             assert self.app is not None and self.logger is not None and self._shortcut_manager is not None
-            install_exception_handler(show_dialog=True)
+            install_exception_handler()
             _collect_garbage_on_gui_thread(self.app, self.logger)
-
-            if self.debug and self.main_window is not None:
-                self.main_window.show_debug_window()
 
             exit_code = int(self.app.exec() if self.app else 1)
 
@@ -127,17 +122,14 @@ class Application:
             if self.app is not None:
                 relaunch_if_requested(self.app, self._global_options())
             return exit_code
-        except Exception as exc:
+        except Exception:
             logger = self.logger or get_logger(__name__)
             logger.exception("Unhandled exception while running application")
-            if self.debug:
-                raise exc
-            raise exc
+            raise
 
     def _global_options(self) -> list[str]:
         """Return the command line options that apply to every launch, for a restarted process to keep."""
-        options = ["--log-level", self.log_level, "--config", str(self.config_path)]
-        return [*options, "--debug"] if self.debug else options
+        return ["--log-level", self.log_level, "--config", str(self.config_path)]
 
     def _show_startup_windows(self) -> None:
         """Open start-up windows in order; a modal dialog returns only when closed, so they never stack."""
@@ -178,7 +170,6 @@ def _collect_due_generation() -> None:
 def create_app(
     log_level: str = "INFO",
     config_path: Path | None = None,
-    debug: bool = False,
     items: Sequence[WorkspaceItem] = (),
     workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
@@ -187,7 +178,6 @@ def create_app(
     return Application(
         log_level=log_level,
         config_path=config_path,
-        debug=debug,
         items=items,
         workspace_file=workspace_file,
         open_catalog_viewer=open_catalog_viewer,

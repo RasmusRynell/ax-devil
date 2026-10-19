@@ -13,7 +13,6 @@ from ax_devil.modules.data_sources.file_data_provider.base import FileDataProvid
 from ax_devil.modules.data_sources.overlay_samples import OverlaySamples
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
-from ax_devil.modules.diagnostics.metrics_store import source_identity
 from ax_devil.modules.filtering import FilterConfig
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
@@ -45,11 +44,6 @@ class FileOverlaySource(QObject):
         self.data_provider.set_timestamp_fallback_policy(timestamp_fallback_policy or TimestampFallbackPolicy())
 
         logger.debug(f"[{self.source_id}] FileOverlaySource initialized with {self.get_total_frames()} frames")
-
-    @property
-    def diagnostics_id(self) -> str:
-        """Identify observations from the owned provider, when it publishes diagnostics."""
-        return source_identity(self.data_provider)
 
     @property
     def handler_type(self) -> str:
