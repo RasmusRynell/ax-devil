@@ -75,6 +75,13 @@ def test_text_sits_on_its_bottom_anchor_by_its_ink_not_the_font_descent(surface:
     assert rendered.height() // 2 - 1 - rows[-1] <= 1
 
 
+def test_a_bar_without_background_or_padding_is_still_drawn(surface: QuickSurface) -> None:
+    content = LabelContent((LabelRun("", (255, 255, 255), bar=1.0),), 0.12)
+    rendered = render_calls(surface, [LabelCall(0.1, 0.5, "center-left", content)])
+    black = QColor("black")
+    assert any(rendered.pixelColor(x, y) != black for x in range(200) for y in range(100))
+
+
 @pytest.mark.parametrize("origin", [(20, 10), (-20, -10)])
 @pytest.mark.parametrize("opacity", [1.0, 0.5])
 def test_new_and_returning_labels_keep_viewport_transform_and_opacity(

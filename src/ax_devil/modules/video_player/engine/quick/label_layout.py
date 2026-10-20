@@ -224,6 +224,11 @@ def _shape_run(
         run.ascent[group], run.descent[group] = measured.ascent, measured.descent
         if bars.any():
             run.cap_height[group] = -float(atlas.measure(["H"], key).ink[0, 1])
+            # A bar's ink is the track: centred on half the cap height above the baseline, like drawing places it.
+            middle = -run.cap_height[group][bars] / 2
+            half = np.maximum(2.0, size[group][bars] * _BAR_THICKNESS) / 2
+            length = run.advance[group][bars]
+            run.ink[group[bars]] = np.column_stack((np.zeros(len(half)), middle - half, length, middle + half))
         run.fonts.append((group, key))
     return run
 
