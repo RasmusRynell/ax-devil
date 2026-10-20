@@ -21,7 +21,7 @@ from . import report
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "ax-devil-bench"
 RESULT_PREFIX = "AX_BENCH_RESULT "
-_CATALOGS = ROOT / "src/ax_devil/modules/scene/rendering/catalog_definitions"
+_CATALOGS = Path("ax_devil/modules/scene/rendering/catalog_definitions")
 _CHILD_SECONDS = 600
 
 
@@ -36,9 +36,10 @@ class Side(NamedTuple):
     source: Path
 
 
-def builtin_catalogs() -> list[str]:
-    """Return the names of the catalogs that ship with the app."""
-    return sorted(path.stem for path in _CATALOGS.glob("*.json") if path.name != "catalog.schema.json")
+def builtin_catalogs(side: Side) -> set[str]:
+    """Return the names of the catalogs that ship with *side*'s code."""
+    folder = side.source / _CATALOGS
+    return {path.stem for path in folder.glob("*.json") if path.name != "catalog.schema.json"}
 
 
 def _git(*args: str, cwd: Path = ROOT) -> str:

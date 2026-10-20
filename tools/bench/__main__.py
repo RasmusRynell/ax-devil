@@ -43,17 +43,17 @@ def _parser() -> argparse.ArgumentParser:
 
     prepare = command("prepare", "Catalog evaluation and drawing preparation, no GPU")
     workload(prepare, "standard")
-    prepare.add_argument("--entities", type=int, default=500)
-    prepare.add_argument("--frames", type=int, default=60)
+    prepare.add_argument("--entities", type=positive, default=500)
+    prepare.add_argument("--frames", type=positive, default=60)
     prepare.add_argument("--warmup", type=int, default=10)
     prepare.add_argument("--profile", type=int, default=0, metavar="N", help="Also print the top N functions")
 
     lanes = command("lanes", "Production viewers in one window, per-stage round times")
     workload(lanes, "standard")
     display(lanes)
-    lanes.add_argument("--lanes", type=int, default=4)
-    lanes.add_argument("--entities", type=int, default=250)
-    lanes.add_argument("--frames", type=int, default=100)
+    lanes.add_argument("--lanes", type=positive, default=4)
+    lanes.add_argument("--entities", type=positive, default=250)
+    lanes.add_argument("--frames", type=positive, default=100)
     lanes.add_argument("--warmup", type=int, default=10)
     lanes.add_argument(
         "--decode", action="store_true", help="Read Scenes from a synthetic ADF v1 file as playback does"
@@ -84,11 +84,17 @@ def _child(command: str, options: dict[str, object]) -> None:
 def _measure(work: argparse.Namespace, ref: str | None, repeat: int, json_file: str | None) -> None:
     """Measure the working tree, or REF and the working tree alternately, once per catalog."""
     sides = [runner.head()] if ref is None else [runner.base(ref), runner.head()]
-    catalogs = runner.builtin_catalogs() if work.catalog == "all" else [work.catalog]
+    available = {side.label: runner.builtin_catalogs(side) for side in sides}
+    catalogs = sorted(set().union(*available.values())) if work.catalog == "all" else [work.catalog]
     with runner.session(
         getattr(work, "display", "private"), work.command != "prepare", getattr(work, "real_swap", False)
     ) as env:
         for catalog in catalogs:
+            if work.catalog == "all" and (
+                owners := [label for label, names in available.items() if catalog in names]
+            ) != [side.label for side in sides]:
+                report.emit(f"\n{work.command} {catalog}: only in {owners[0]}")
+                continue
             runs: dict[str, list[report.Record]] = {side.label: [] for side in sides}
             for _ in range(repeat):
                 for side in sides:
