@@ -114,3 +114,27 @@ def test_closing_playlist_dialog_interrupts_its_resolution(
 
     qtbot.waitUntil(stopped.is_set)
     assert dialog.get_result() is None
+
+
+@pytest.mark.parametrize("available", [False, True], ids=["missing-plugin", "unsupported-restoration"])
+def test_playlist_edit_cannot_submit_blank_settings_when_source_cannot_restore(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, available: bool
+) -> None:
+    from ax_devil.modules.plugin_system import PlaylistResolverWidget
+    from tests.helpers.dialogs import visible_texts
+
+    monkeypatch.setattr(PlaylistResolverWidget, "restore_settings", lambda self, settings: False)
+    if available:
+        from ax_devil.plugins.playlist_resolvers.folder_pair.settings_widget import FolderPairSettingsWidget
+
+        monkeypatch.setattr(FolderPairSettingsWidget, "restore_settings", lambda self, settings: False)
+    item = PlaylistItem(resolver="folder_pair" if available else "not-installed", settings={"keep": [1, 2]})
+    dialog = AddPlaylistDialog(inline_resolver(), existing=item)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    assert any("cannot restore" in text or "unavailable" in text for text in visible_texts(dialog))
+    for form in dialog.findChildren(PlaylistResolverWidget):
+        form.submit_settings({})
+    assert dialog.get_result() is None
+    assert item.settings == {"keep": [1, 2]}
+    dialog.close()

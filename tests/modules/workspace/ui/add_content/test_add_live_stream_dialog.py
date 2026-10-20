@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -222,3 +223,39 @@ def test_add_live_stream_mqtt_needs_broker_and_data_source_then_builds_spec(
         analytics_data_source_key="analytics/source",
         device_api_protocol="https",
     )
+
+
+def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
+    qtbot: QtBot, live_handler: None, monkeypatch: pytest.MonkeyPatch, discovery: Discovery
+) -> None:
+    monkeypatch.setenv("EDIT_CAMERA", "camera.local")
+    item = LiveStreamItem(
+        host="$EDIT_CAMERA",
+        username="",
+        password="",
+        camera_head=3,
+        resolution="640x480",
+        stream_url="rtsp://custom/live",
+        overlay_mode=LiveOverlayMode.RTSP,
+        handler_type="TEST_HANDLER",
+        mqtt_host="$EDIT_BROKER",
+        mqtt_username="",
+        mqtt_password="  secret  ",
+        mqtt_port=2883,
+        analytics_data_source_key="saved/source",
+        websocket_topic="saved/topic",
+        websocket_channel_id=4,
+        device_api_protocol="http",
+    )
+    dialog = AddLiveStreamDialog(existing=item)
+    qtbot.addWidget(dialog)
+    form_field(dialog, "Camera Head", QLineEdit).setText("5")
+    set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
+    discovery.finish()
+    set_overlay_mode(dialog, LiveOverlayMode.RTSP)
+    dialog.accept()
+
+    result = dialog.get_result()
+    assert result is not None and result.item == replace(item, camera_head=5)
+    assert result.contents[0].item_id == item.id
+    dialog.cleanup()

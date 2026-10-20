@@ -48,6 +48,14 @@ class PlaylistResolverWidget(QWidget):
         # its own, so a slow folder scan never holds up scans, discovery or item resolution.
         self.jobs: JobScope = background_jobs("plugins").scope(self)
 
+    def restore_settings(self, settings: PlaylistSettings) -> bool:
+        """Restore a copied saved recipe for editing; return False when restoration is unsupported.
+
+        Implementations retain unrecognized settings and preserve absent keys with special meaning. Returning False
+        leaves the host with no submission path; existing plugins can continue to support adding only.
+        """
+        return False
+
     def submit_settings(self, settings: PlaylistSettings) -> None:
         """Hand the edited settings to the host dialog."""
         self.settings_submitted.emit(settings)

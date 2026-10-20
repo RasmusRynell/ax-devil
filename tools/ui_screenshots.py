@@ -406,3 +406,12 @@ def test_media_tools_screenshots(
         lane_panel.show_object("7")
     qtbot.wait(500)
     shoot("grid-object")
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_edit_screenshots(qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, theme: str) -> None:
+    """Save populated Edit forms in every appearance."""
+    from tools.ui_shots_editing import edit_screenshots
+
+    monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "camera.example")
+    edit_screenshots(qtbot, tmp_path, theme)

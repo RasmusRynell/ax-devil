@@ -12,6 +12,7 @@ class AnalyticsChoice(QWidget):
         super().__init__(parent)
         self.loader = loader
         self._selection = preferred
+        self._preserve_saved = False
         self.combo = QComboBox()
         self.refresh = QPushButton("Refresh")
         layout = QHBoxLayout(self)
@@ -22,6 +23,13 @@ class AnalyticsChoice(QWidget):
         loader.changed.connect(self._render)
         self._render()
 
+    def restore_selection(self, selection: str) -> None:
+        """Retain a saved choice even while discovery has not found it."""
+        self._preserve_saved = True
+        self._selection = selection
+        self.combo.clear()
+        self._render()
+
     def _render(self) -> None:
         selected = self.combo.currentData()
         if isinstance(selected, str):
@@ -30,6 +38,8 @@ class AnalyticsChoice(QWidget):
         self.combo.addItem(self.loader.status, None)
         for choice in self.loader.choices:
             self.combo.addItem(choice, choice)
+        if self._preserve_saved and self._selection and self._selection not in self.loader.choices:
+            self.combo.addItem(self._selection, self._selection)
         index = self.combo.findData(self._selection)
         if index >= 0:
             self.combo.setCurrentIndex(index)

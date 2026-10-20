@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -76,12 +77,15 @@ class OverlayFileRow(QWidget):
         remove.clicked.connect(self.remove_requested)
         follow_appearance(remove, lambda: remove.setFixedSize(Height.CONTROL.px, Height.CONTROL.px))
 
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(Space.XS)
-        layout.addWidget(_file_row(self._path_edit, self._browse, "an overlay file"), 1)
+        file_layout = QHBoxLayout()
+        file_layout.setSpacing(Space.XS)
+        file_layout.addWidget(_file_row(self._path_edit, self._browse, "an overlay file"), 1)
+        file_layout.addWidget(remove)
+        layout.addLayout(file_layout)
         layout.addWidget(self._handler_combo)
-        layout.addWidget(remove)
 
         self._path_edit.textChanged.connect(self._on_path_changed)
         self._handler_combo.currentIndexChanged.connect(self.changed)
@@ -137,8 +141,7 @@ class OverlayFileRow(QWidget):
 
     def _select_handler(self, handler_type: str) -> None:
         index = self._handler_combo.findData(handler_type)
-        if index >= 0:
-            self._handler_combo.setCurrentIndex(index)
+        self._handler_combo.setCurrentIndex(max(0, index))
 
 
 class AddVideoDialog(BaseDialog):
@@ -148,13 +151,27 @@ class AddVideoDialog(BaseDialog):
     shown inline under the form.
     """
 
-    def __init__(self, parent: QWidget | None = None, initial: VideoFileSelection | None = None) -> None:
-        super().__init__(parent, title="Add Video")
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        initial: VideoFileSelection | None = None,
+        *,
+        existing: VideoItem | None = None,
+    ) -> None:
+        super().__init__(parent, title="Edit Video" if existing is not None else "Add Video")
+        self._existing = existing
+        if existing is not None:
+            initial = VideoFileSelection(
+                existing.video, tuple(OverlayChoice(o.path, o.decoder) for o in existing.overlays)
+            )
         self._result: VideoItem | None = None
         self._intake = default_workspace_intake()
         self._overlay_rows: list[OverlayFileRow] = []
         self._setup_form()
         self._ok_button, _ = self.add_standard_buttons()
+        if existing is not None:
+            self._ok_button.setText("Save")
+            self._name_edit.setText(existing.label)
         if initial is not None:
             self._video_path_edit.setText(str(initial.video))
         for choice in initial.overlays if initial is not None else (None,):
@@ -229,7 +246,8 @@ class AddVideoDialog(BaseDialog):
         """Return the Video Item described by the current form."""
         choices = (choice for row in self._overlay_rows if (choice := row.choice()) is not None)
         selection = VideoFileSelection(Path(self._video_path_edit.text().strip()), tuple(choices))
-        return selection.to_item(self._name_edit.text().strip())
+        item = selection.to_item(self._name_edit.text().strip())
+        return replace(item, id=self._existing.id) if self._existing is not None else item
 
     def _problem(self) -> str:
         """Return why the form cannot be accepted yet, or an empty string when it can."""
@@ -252,7 +270,15 @@ class AddVideoDialog(BaseDialog):
         """Accept only a complete selection."""
         if self._problem():
             return
-        self._result = self._item()
+        item = self._item()
+        try:
+            self._intake.create_seekable_video(
+                video_path=item.video, display_name=item.default_name, overlays=item.overlays
+            )
+        except ValueError as exc:
+            self._message_label.setText(str(exc))
+            return
+        self._result = item
         super().accept()
 
     def get_result(self) -> VideoItem | None:

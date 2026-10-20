@@ -133,6 +133,8 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
     closes, `work` stops at its next poll of `job.token` (`for path in job.token.polled(paths):`), which raises
     `Cancelled`, a `BaseException` that `except Exception` does not catch. Import `JobContext` (and `Cancelled`, to
     clean up) from `ax_devil.modules.plugin_system`.
+    For saved-item editing, override the optional `restore_settings(settings) -> bool` hook described on
+    [`PlaylistResolverWidget`](../../../src/ax_devil/modules/plugin_system/playlist_resolvers.py); the default supports adding only.
   - `create_cli_command()` is optional: it builds the same settings from CLI arguments and passes
     `[PlaylistItem(resolver=cls.plugin_id(), settings=settings)]` to
     `ctx.obj["run_with_items"]`.

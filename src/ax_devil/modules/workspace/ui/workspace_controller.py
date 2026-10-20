@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,7 +13,14 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem, entry_target
+from ax_devil.modules.workspace.core import (
+    ConsiderationItemRef,
+    Content,
+    ItemResolution,
+    WorkspaceItem,
+    entry_target,
+    find_entry,
+)
 from ax_devil.modules.workspace.ui.browser_projection import build_browser_sections
 from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
@@ -29,14 +37,12 @@ if TYPE_CHECKING:
 
 
 class WorkspaceController(QObject):
-    """Coordinate workspace UI state across the sidebar views, center area, and viewers.
+    """Coordinate sidebar actions, projected rows and hosted viewers.
 
-    The sidebar views read ``sections`` and follow ``sections_changed``, which reports every change to the rows,
-    including which Content is open in a viewer, and hand their ``SectionTree`` to ``connect_tree``, so a row does the
-    same in every view: whatever the user asks of a row, by its button, menu, double-click or a key, is a ``RowAction``
-    carried out by ``perform_row_action``.
+    Views follow ``sections_changed`` and route their SectionTree intent through ``perform_row_action``.
     """
 
+    edit_requested = Signal(str)  # item id; the session owns the shared content forms
     sections_changed = Signal(object)  # tuple[WorkspaceBrowserSection, ...]
 
     def __init__(
@@ -55,6 +61,7 @@ class WorkspaceController(QObject):
         self._logger = get_logger(__name__)
         # The id of the item whose Content each open viewer shows.
         self._widget_item_ids: dict[ViewerWidget, str] = {}
+        self._edited_items: set[str] = set()
         self._shared_actions: Mapping[str, QAction] = {}
 
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
@@ -68,6 +75,7 @@ class WorkspaceController(QObject):
             RowAction.EXPORT_VIDEO: self._export_video,
             RowAction.HIDE: partial(self._set_considered, considered=False),
             RowAction.UNHIDE: partial(self._set_considered, considered=True),
+            RowAction.EDIT: self._edit,
             RowAction.RENAME: self._rename,
             RowAction.REMOVE: self._remove,
         }
@@ -117,14 +125,7 @@ class WorkspaceController(QObject):
     def perform_row_action(
         self, row: WorkspaceBrowserRow, action: RowAction, viewer: ViewerWidget | None = None
     ) -> None:
-        """Carry out *action* on *row*, whichever view and gesture asked; one the row does not offer, or offers
-        disabled, does nothing.
-
-        An Export the *viewer* asked for is that viewer's, not the first viewer showing the same thing.
-
-        The row may be older than the Workspace, such as when a menu was open as its item was removed; an action on an
-        item that is gone does nothing.
-        """
+        """Carry out an enabled row action; stale items do nothing and exports use the requesting viewer."""
         offered = row.offered(action)
         if offered is None or offered.disabled_reason:
             return
@@ -151,6 +152,7 @@ class WorkspaceController(QObject):
         self._workspace_store.sources_changed.connect(self._on_sources_changed)
         self._workspace_store.item_removed.connect(self._close_orphaned_viewers)
         self._workspace_store.workspace_replaced.connect(self._close_all_viewers)
+        self._workspace_store.item_edited.connect(self._on_item_edited)
         self._workspace_store.item_renamed.connect(self._on_item_renamed)
         self._workspace_store.item_consideration_changed.connect(self._on_item_consideration_changed)
         self._center_area.widget_removed.connect(self._on_widget_removed)
@@ -166,11 +168,7 @@ class WorkspaceController(QObject):
         self.sections_changed.emit(self._sections)
 
     def _show_viewer_menu(self, widget: ViewerWidget, global_pos: QPoint) -> None:
-        """Show the menu of the Content *widget* shows at *global_pos*: what its sidebar row offers, as that row does.
-
-        An item can resolve to several Contents, so the row is the one of the Content on screen. A viewer whose
-        Content has no row, such as one just removed, shows no menu.
-        """
+        """Show the current Content row menu, with editing available only from the sidebar."""
         shown = widget.current_on_screen_item()
         row = next(
             (
@@ -182,6 +180,7 @@ class WorkspaceController(QObject):
             None,
         )
         if row is not None:
+            row = replace(row, actions=tuple(a for a in row.actions if a.action is not RowAction.EDIT))
             show_row_menu(
                 row,
                 self._window_parent(),
@@ -238,12 +237,13 @@ class WorkspaceController(QObject):
                 widget.export_video()
                 return
 
-    def _rename(self, row: WorkspaceBrowserRow) -> None:
-        """Ask for a new name for the row's item and rename it when the user confirms.
+    def _edit(self, row: WorkspaceBrowserRow) -> None:
+        """Ask the session to edit the current saved item."""
+        if (item := self._held_item(row)) is not None and item.editable:
+            self.edit_requested.emit(item.id)
 
-        An unlabeled item shows its default name on the row, which can differ from ``item.display_name`` when several
-        playlists share the row; keeping the name the row shows leaves the item without a label.
-        """
+    def _rename(self, row: WorkspaceBrowserRow) -> None:
+        """Rename the saved item; keeping an unlabeled row's name retains its default-name semantics."""
         if (item := self._held_item(row)) is None:
             return
         name = ask_new_name(
@@ -274,12 +274,39 @@ class WorkspaceController(QObject):
                 widget.set_display_name(names[on_screen.content_id])
         self._publish_sections()
 
-    def _on_items_resolved(self, resolutions: list[ItemResolution], open_first: bool) -> None:
-        """Show resolved items; with *open_first*, tell which could not open and preview the first Content.
+    def _on_item_edited(self, item: WorkspaceItem) -> None:
+        """Refresh this item's open viewers when its new resolution arrives."""
+        self._edited_items.add(item.id)
+        self._publish_sections()
 
-        Only adding items opens a viewer, and a camera never opens one by being added to the Live view; opening,
-        creating, or restoring a Workspace lists its items and opens nothing.
-        """
+    def _replace_item_viewers(self, resolution: ItemResolution) -> None:
+        """Reopen affected viewers at their surviving entry and frame, in the same pane."""
+        for widget, item_id in tuple(self._widget_item_ids.items()):
+            if item_id != resolution.item.id:
+                continue
+            target = widget.bookmark_target()
+            shown = widget.current_on_screen_item()
+            found = find_entry(resolution.contents, target) if target is not None else None
+            if target is None and shown is not None:
+                content = next((c for c in resolution.contents if c.content_id == shown.content_id), None)
+                found = (content, 0) if content is not None else None
+            if found is None:
+                self._center_area.remove_viewer_widget(widget)
+                continue
+            position = widget.bookmark_position()
+            self._open_content(
+                found[0],
+                start_index=found[1],
+                start_frame=position.frame if position is not None else (0 if target is not None else None),
+                place=partial(self._center_area.replace_viewer_widget, widget),
+            )
+
+    def _on_items_resolved(self, resolutions: list[ItemResolution], open_first: bool) -> None:
+        """Refresh edited viewers and rows; only newly added items may open their first Content."""
+        for resolution in resolutions:
+            if resolution.item.id in self._edited_items:
+                self._edited_items.discard(resolution.item.id)
+                self._replace_item_viewers(resolution)
         self._publish_sections()
         if not open_first:
             return
@@ -301,11 +328,8 @@ class WorkspaceController(QObject):
         self._publish_sections()
 
     def _close_all_viewers(self) -> None:
-        """Close every viewer when another Workspace replaces the current one, and refresh the rows.
-
-        The new Workspace's items are resolved afresh, with exclusions back at their defaults, so no viewer keeps
-        Content or names from before; opening a Workspace opens nothing on its own.
-        """
+        """Close all viewers and pending edits when another Workspace becomes current."""
+        self._edited_items.clear()
         self._center_area.clear_all_widgets()
         self._publish_sections()
 

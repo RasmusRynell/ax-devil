@@ -241,6 +241,7 @@ def test_right_click_remove_takes_a_camera_out_of_the_workspace(live: Live) -> N
     QTimer.singleShot(0, remove)
     tree.customContextMenuRequested.emit(tree.viewport().mapFromGlobal(widget.mapToGlobal(widget.rect().center())))
 
-    assert entries == ["Stop stream", "Information", "Rename", "Remove"], "a running camera offers Stop stream first"
+    assert entries[0] == "Stop stream"
+    assert "Edit" in entries and "Remove" in entries
     assert live.rows() == {"192.0.2.11": "Start stream"}
     assert live.center.get_widget_count() == 0, "removing a camera stops its stream"

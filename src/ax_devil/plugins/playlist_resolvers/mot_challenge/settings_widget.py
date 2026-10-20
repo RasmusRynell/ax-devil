@@ -6,6 +6,7 @@ in a checkable list, and submits the root and the checked sequence names.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.plugin_system import JobContext, LatestRequest, PlaylistResolverWidget
+from ax_devil.modules.workspace.core import PlaylistSettings
 
 from .resolver import SequenceInfo, discover_sequences
 
@@ -44,10 +46,23 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._restored: PlaylistSettings = {}
+        self._saved_names: set[str] | None = None
+        self._all_sequences = False
         self._sequences: list[SequenceInfo] = []
         self._scanned_root: Path | None = None
         self._scan = LatestRequest(self)
         self._setup_ui()
+
+    def restore_settings(self, settings: PlaylistSettings) -> bool:
+        """Restore the root and selection after scanning, preserving the all-sequences recipe."""
+        self._root_input.setText(str(settings.get("root", "")))
+        self._restored = deepcopy(settings)
+        self._all_sequences = "sequences" not in settings
+        self._saved_names = None if self._all_sequences else set(settings["sequences"])
+        self._load_btn.setText("Save")
+        self._scan_sequences()
+        return True
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -92,8 +107,12 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             self._root_input.setText(path)
             self._scan_sequences()
 
-    def _clear_sequences(self) -> None:
+    def _clear_sequences(self, *, input_changed: bool = True) -> None:
         """Invalidate both pending and completed discovery when its input changes."""
+        if input_changed:
+            self._saved_names = None
+            self._all_sequences = False
+            self._restored = {key: value for key, value in self._restored.items() if key != "sequences"}
         self._scan.cancel()
         self._scanned_root = None
         self._sequences = []
@@ -102,7 +121,7 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
         self._status_label.setText("")
 
     def _scan_sequences(self) -> None:
-        self._clear_sequences()
+        self._clear_sequences(input_changed=False)
         root_text = self._root_input.text().strip()
         if not root_text:
             self._status_label.setText("Please enter a root directory path.")
@@ -132,10 +151,13 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             label = f"{seq.name}  —  {seq.width}x{seq.height} @ {seq.fps} fps, {seq.frame_count} frames"
             item = QListWidgetItem(label)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
+            checked = self._saved_names is None or seq.name in self._saved_names
+            item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
             self._seq_list.addItem(item)
 
-        self._status_label.setText(f"Found {len(self._sequences)} sequence(s).")
+        missing = (self._saved_names or set()) - {seq.name for seq in self._sequences}
+        detail = f" {len(missing)} saved sequences not found: {', '.join(sorted(missing))}." if missing else ""
+        self._status_label.setText(f"Found {len(self._sequences)} sequence(s).{detail}")
         self._load_btn.setEnabled(True)
 
     def _on_load(self) -> None:
@@ -151,4 +173,13 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             self._status_label.setText("No sequences selected.")
             return
 
-        self.submit_settings({"root": str(self._scanned_root), "sequences": [sequence.name for sequence in selected]})
+        settings = {**self._restored, "root": self._root_input.text().strip()}
+        if not self._all_sequences or len(selected) != len(self._sequences):
+            selected_names = [sequence.name for sequence in selected]
+            discovered = {sequence.name for sequence in self._sequences}
+            original = self._restored.get("sequences", [])
+            kept = [name for name in original if name in selected_names or name not in discovered]
+            settings["sequences"] = [*kept, *(name for name in selected_names if name not in kept)]
+        else:
+            settings.pop("sequences", None)
+        self.submit_settings(settings)

@@ -18,6 +18,8 @@ from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import (
     ItemResolution,
+    LiveStreamItem,
+    PlaylistItem,
     RecentWorkspaces,
     VideoFileSelection,
     VideoItem,
@@ -102,6 +104,7 @@ class WorkspaceSession(QObject):
             render_catalog_manager=self._render_catalog_manager,
             parent=self._window,
         )
+        self._workspace_controller.edit_requested.connect(self.edit_item)
         self._workspace_listing = SectionsViewController(
             self._workspace_view, self._workspace_controller, HELD_SECTIONS
         )
@@ -244,6 +247,30 @@ class WorkspaceSession(QObject):
                 if result is not None:
                     self.add_resolved([result])
                     self._logger.info(f"Added playlist: {result.item.display_name}")
+
+    def edit_item(self, item_id: str) -> None:
+        """Edit a saved recipe with its Add form, committing only an accepted result."""
+        if not self._workspace_store.workspace.has_item(item_id):
+            return
+        item = self._workspace_store.workspace.item(item_id)
+        if isinstance(item, VideoItem):
+            with AddVideoDialog(self._window, existing=item) as video_dialog:
+                if video_dialog.exec() == video_dialog.DialogCode.Accepted:
+                    video = video_dialog.get_result()
+                    if video is not None:
+                        self._workspace_store.edit_item(video)
+        elif isinstance(item, LiveStreamItem):
+            with AddLiveStreamDialog(self._window, existing=item) as live_dialog:
+                if live_dialog.exec() == live_dialog.DialogCode.Accepted:
+                    live = live_dialog.get_result()
+                    if live is not None:
+                        self._workspace_store.edit_item(live.item, live)
+        elif isinstance(item, PlaylistItem):
+            with AddPlaylistDialog(self._resolver, self._window, existing=item) as playlist_dialog:
+                if playlist_dialog.exec() == playlist_dialog.DialogCode.Accepted:
+                    playlist = playlist_dialog.get_result()
+                    if playlist is not None:
+                        self._workspace_store.edit_item(playlist.item, playlist)
 
     def open_files(self, paths: Sequence[Path]) -> None:
         """Add dropped files as one batch, asking for an overlay's data handler when several decoders may read it."""

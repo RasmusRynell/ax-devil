@@ -31,6 +31,7 @@ class VideoItem(WorkspaceItem):
     """A video file with optional overlay files, each read by a file decoder."""
 
     kind: ClassVar[str] = "video"
+    editable: ClassVar[bool] = True
     bookmarkable: ClassVar[bool] = True
     video: Path
     overlays: tuple[OverlayFile, ...] = ()
@@ -81,6 +82,7 @@ class PlaylistItem(WorkspaceItem):
     """A playlist resolver id plus that resolver's JSON-serializable settings."""
 
     kind: ClassVar[str] = "playlist"
+    editable: ClassVar[bool] = True
     bookmarkable: ClassVar[bool] = True
     resolver: str
     settings: PlaylistSettings = field(default_factory=dict)

@@ -162,6 +162,19 @@ class SplitView(QWidget):
 
         self._attach_and_start_widget(leaf, widget)
 
+    def replace_viewer_widget(self, old: ViewerWidget, new: ViewerWidget) -> None:
+        """Replace a hosted viewer in its pane, keeping its pin and restoring it if startup fails."""
+        leaf = self._leaf_for_widget(old)
+        if leaf is None:
+            raise ValueError("The viewer to replace is no longer hosted.")
+        focused = self._focused_widget
+        new.set_pinned(old.is_pinned())
+        old_id = self._untrack_widget(old)
+        leaf.set_widget(None)
+        self._attach_and_start_widget(leaf, new, displaced_widget=old, displaced_id=old_id)
+        if focused is not old and focused is not None:
+            self._set_focused_widget(focused)
+
     def open_to_side(self, widget: ViewerWidget) -> None:
         """Open *widget* pinned in a new split beside the focused pane, never replacing a pane."""
         widget.set_pinned(True)
