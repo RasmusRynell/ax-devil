@@ -89,6 +89,7 @@ class RowAction(Enum):
     EXPORT_VIDEO = ("Export video", "", None, "", False, RowActionGroup.INSPECT)
     HIDE = ("Hide", "", None, "Skip it in playback", False, RowActionGroup.VISIBILITY)
     UNHIDE = ("Unhide", "", None, "Play it again", False, RowActionGroup.VISIBILITY)
+    EDIT = ("Edit", "", None, "", False, RowActionGroup.EDIT)
     RENAME = ("Rename", "", None, "", False, RowActionGroup.EDIT)
     REMOVE = ("Remove", "", None, "", False, RowActionGroup.EDIT)
 

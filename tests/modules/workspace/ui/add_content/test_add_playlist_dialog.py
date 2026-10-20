@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import Event
 
 import pytest
+from PySide6.QtWidgets import QLineEdit
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
@@ -21,6 +22,8 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from tests.helpers.add_dialogs import Discovery
+from tests.helpers.forms import form_field
+from tests.helpers.widgets import button
 from tests.helpers.workspace import FakeResolutionContext, FakeResolver, inline_resolver
 
 
@@ -114,3 +117,69 @@ def test_closing_playlist_dialog_interrupts_its_resolution(
 
     qtbot.waitUntil(stopped.is_set)
     assert dialog.get_result() is None
+
+
+@pytest.mark.parametrize("retry", [False, True], ids=["successful-save", "failed-save-retry"])
+def test_playlist_save_locks_settings_and_keeps_latest_name_with_failure_retry(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, discovery: Discovery, retry: bool
+) -> None:
+    release, started = Event(), Event()
+    resolve = _Resolver.resolve
+
+    def slow(self: _Resolver, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
+        started.set()
+        assert release.wait(5)
+        return resolve(self, settings, token)
+
+    monkeypatch.setattr(_Resolver, "resolve", slow)
+    dialog = AddPlaylistDialog(ItemResolver(_AnyResolverContext()))
+    qtbot.addWidget(dialog)
+    form = next(iter(dialog._settings._resolver_by_widget))
+    dialog._settings._resolver_combo.setCurrentIndex(dialog._settings._resolver_combo.findData(form))
+    name = form_field(dialog, "Display Name", QLineEdit)
+    name.setText("Before")
+    try:
+        form.submit_settings({"root": "/gone" if retry else "/selected"})
+        discovery.release_all()
+        qtbot.waitUntil(started.is_set)
+        assert not form.isEnabled()
+        assert button(dialog, "Cancel").isEnabled()
+        assert name.isEnabled()
+        name.setText("Latest")
+        release.set()
+        if retry:
+            qtbot.waitUntil(form.isEnabled)
+            assert dialog.get_result() is None
+            form.submit_settings({"root": "/selected"})
+            discovery.release_all()
+        qtbot.waitUntil(lambda: dialog.get_result() is not None)
+        result = dialog.get_result()
+        assert result is not None and result.item.label == "Latest"
+        assert result.contents[0].display_name == "Latest"
+    finally:
+        release.set()
+        dialog.cleanup()
+
+
+@pytest.mark.parametrize("available", [False, True], ids=["missing-plugin", "unsupported-restoration"])
+def test_playlist_edit_cannot_submit_blank_settings_when_source_cannot_restore(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, available: bool
+) -> None:
+    from ax_devil.modules.plugin_system import PlaylistResolverWidget
+    from tests.helpers.dialogs import visible_texts
+
+    monkeypatch.setattr(PlaylistResolverWidget, "restore_settings", lambda self, settings: False)
+    if available:
+        from ax_devil.plugins.playlist_resolvers.folder_pair.settings_widget import FolderPairSettingsWidget
+
+        monkeypatch.setattr(FolderPairSettingsWidget, "restore_settings", lambda self, settings: False)
+    item = PlaylistItem(resolver="folder_pair" if available else "not-installed", settings={"keep": [1, 2]})
+    dialog = AddPlaylistDialog(inline_resolver(), existing=item)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    assert any("cannot restore" in text or "unavailable" in text for text in visible_texts(dialog))
+    for form in dialog.findChildren(PlaylistResolverWidget):
+        form.submit_settings({})
+    assert dialog.get_result() is None
+    assert item.settings == {"keep": [1, 2]}
+    dialog.close()

@@ -76,6 +76,8 @@ def _with_actions(row: WorkspaceBrowserRow, inline: RowAction | None = None) -> 
     if row.consideration_ref is not None:
         offered.append(OfferedAction(RowAction.HIDE if row.is_considered else RowAction.UNHIDE))
     if row.item is not None:
+        if row.item.editable:
+            offered.append(OfferedAction(RowAction.EDIT))
         offered.append(OfferedAction(RowAction.RENAME, "" if row.item.renamable else "This item cannot be renamed"))
         offered.append(OfferedAction(RowAction.REMOVE))
     return replace(row, actions=tuple(offered))

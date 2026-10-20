@@ -264,6 +264,8 @@ def test_only_cameras_offer_an_inline_action(tmp_path: Path) -> None:
     nested = [child for row in rows.values() for child in row.children]
     nested += [lane for row in nested for lane in row.children]
     assert nested and all(inline_action(child) is None for child in nested)
+    assert all(row.offered(RowAction.EDIT) is not None for row in rows.values() if row.item and row.item.editable)
+    assert all(child.offered(RowAction.EDIT) is None for child in nested)
 
 
 def _offers(row: WorkspaceBrowserRow) -> dict[RowAction, str]:
@@ -306,9 +308,11 @@ def test_a_camera_cannot_open_or_export_and_an_item_that_cannot_be_renamed_says_
     assert list(_offers(camera)) == [
         RowAction.START_STREAM,
         RowAction.INFORMATION,
+        RowAction.EDIT,
         RowAction.RENAME,
         RowAction.REMOVE,
     ]
+    assert RowAction.EDIT not in _offers(unreadable)
     assert _offers(unreadable)[RowAction.OPEN] == "", "opening an item that failed says why, so it is offered"
     assert _offers(unreadable)[RowAction.RENAME] != ""
     assert _offers(unreadable)[RowAction.REMOVE] == ""
@@ -320,6 +324,7 @@ def test_an_item_still_loading_is_idle_and_marked_with_its_kind() -> None:
     sections = build_browser_sections([ItemResolution.pending(item) for item in items], lambda _ref: True)
 
     rows = [row for section in sections for row in section.rows]
+    assert all(row.offered(RowAction.EDIT) is not None for row in rows)
     assert [(row.icon_kind, row.idle, inline_action(row)) for row in rows] == [
         ("live_video", True, None),
         ("playlist", True, None),

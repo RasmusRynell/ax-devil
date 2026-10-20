@@ -38,6 +38,7 @@ class LiveStreamItem(WorkspaceItem):
     """
 
     kind: ClassVar[str] = "live_stream"
+    editable: ClassVar[bool] = True
     host: str
     username: str = field(default="", repr=False)
     password: str = field(default="", repr=False)

@@ -79,6 +79,8 @@ class WorkspaceItem(ABC):
     """
 
     kind: ClassVar[str]
+    editable: ClassVar[bool] = False
+    """Whether the saved recipe can be edited with an existing content form."""
     renamable: ClassVar[bool] = True
     """Whether a new label survives saving; an item written back unchanged cannot be renamed."""
     bookmarkable: ClassVar[bool] = False

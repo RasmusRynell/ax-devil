@@ -256,6 +256,7 @@ class LiveViewController(QObject):
         self._scan = scan
         self._check = check
         self._checked: dict[str, DiscoveredCamera] = {}  # By item id, what signing in with the item's login found.
+        self._checks: dict[str, LatestRequest] = {}
         self._given_range, self._logins = _defaults()  # The range is what the view's field was last given by default.
         view.set_scan_range(self._given_range)
         view.set_logins(self._logins)
@@ -271,7 +272,9 @@ class LiveViewController(QObject):
         view.scan_requested.connect(self._rescan)
         view.logins_edited.connect(self._save_logins)
         view.destroyed.connect(self._forget_view)
-        store.workspace_replaced.connect(self._checked.clear)
+        store.workspace_replaced.connect(self._clear_access)
+        store.item_edited.connect(self._invalidate_access)
+        store.item_removed.connect(self._invalidate_access)
         store.items_resolved.connect(self._check_access_of)
         orders = [self._device_order(order) for order in DeviceOrder]
         orders.insert(1, BY_NAME)  # After the address, which the device orders start from.
@@ -320,6 +323,7 @@ class LiveViewController(QObject):
         """Stop showing the outcome of a scan still running."""
         self._found_refresh.stop()
         self._scan_request.close()
+        self._clear_access()
         self._jobs.close()
 
     def _save_logins(self, logins: tuple[Login, ...]) -> None:
@@ -363,9 +367,22 @@ class LiveViewController(QObject):
     def _rescan(self, ip_range: str) -> None:
         """Scan again as the user asked, and sign in again to the workspace's cameras, so a login fixed meanwhile is
         noticed."""
-        self._checked.clear()
+        self._clear_access()
         self._check_access(self._store.workspace.items)
         self.scan(ip_range)
+
+    def _invalidate_access(self, item: WorkspaceItem) -> None:
+        self._checked.pop(item.id, None)
+        check = self._checks.pop(item.id, None)
+        if check is not None:
+            check.close()
+        self._refresh()
+
+    def _clear_access(self) -> None:
+        self._checked.clear()
+        for check in self._checks.values():
+            check.close()
+        self._checks.clear()
 
     def _check_access_of(self, resolutions: list[ItemResolution], _open_first: bool) -> None:
         self._check_access([resolution.item for resolution in resolutions])
@@ -378,7 +395,13 @@ class LiveViewController(QObject):
             request = _access_request(item)
             if request is None or item.id in self._checked:
                 continue
-            self._jobs.submit(
+            check = self._checks.get(item.id)
+            if check is None:
+                check = self._checks[item.id] = LatestRequest(self)
+            if check.pending:
+                continue
+            check.submit(
+                self._jobs,
                 "camera access check",
                 partial(_run_check, self._check, *request),
                 on_result=partial(self._on_checked, item.id, request),

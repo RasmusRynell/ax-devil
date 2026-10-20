@@ -127,6 +127,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if not keep_shown:
             self._teardown_runtime()
             self._current_index = index
+            self._start_frame = start_frame
             self._update_nav_state()
             self.current_entry_changed.emit(index)
             self.on_screen_item_changed.emit(self.current_on_screen_item())
@@ -396,6 +397,10 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if presented is None:
             return None
         return BookmarkPosition(self._content, self._current_index, presented.frame, presented.seconds)
+
+    def playhead_frame(self) -> int:
+        """Return the runtime playhead or the frame requested while this entry is still opening."""
+        return self._runtime.current_frame if self._runtime is not None else (self._start_frame or 0)
 
     def get_contents(self) -> list[SeekableVideoContent]:
         return self._navigation.videos(self._current_index)

@@ -157,7 +157,8 @@ Recipes need resolvers that run without a widget:
 - `resolve(settings, token) -> list[PlaylistContent]` — headless, and run away from the GUI thread; `settings` is a
   JSON-serializable mapping. Settings that are invalid or point at nothing raise `ValueError` or `OSError` with a
   user-facing message.
-- `create_settings_widget()` — edits settings and calls `submit_settings(settings)`.
+- `create_settings_widget()` — edits settings and calls `submit_settings(settings)`; its optional restoration hook is
+  defined on [`PlaylistResolverWidget`](../../src/ax_devil/modules/plugin_system/playlist_resolvers.py).
 - `create_cli_command()` — builds settings from CLI arguments and passes a `PlaylistItem` to
   `ctx.obj["run_with_items"]`.
 

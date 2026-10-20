@@ -340,6 +340,11 @@ class ViewerWidget(QFrame):
         """Return the frame on screen as a bookmark would mark it, or None when nothing on screen can be bookmarked."""
         return None
 
+    def playhead_frame(self) -> int | None:
+        """Return the shown or requested frame to restore when reopening, or None for a nonseekable viewer."""
+        position = self.bookmark_position()
+        return position.frame if position is not None else None
+
     def bookmark_target(self) -> BookmarkTarget | None:
         """Return the target of the entry shown, or None when nothing shown can be bookmarked."""
         return None

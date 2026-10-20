@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtWidgets import QLabel, QLineEdit, QSpinBox, QStackedWidget, QWidget
+from PySide6.QtWidgets import QLabel, QLineEdit, QStackedWidget, QWidget
 
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.settings.config_manager import default_hint, integer_default
@@ -76,10 +76,8 @@ class TransportPages(QStackedWidget):
         self.mqtt_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         mqtt_layout.addRow("MQTT Password", self.mqtt_password_edit)
 
-        self.mqtt_port_spin = QSpinBox()
-        self.mqtt_port_spin.setRange(1, 65535)
-        self.mqtt_port_spin.setValue(integer_default(mqtt_defaults.get("broker_port"), 1883))
-        mqtt_layout.addRow("MQTT Port", self.mqtt_port_spin)
+        self.mqtt_port_edit = QLineEdit(str(integer_default(mqtt_defaults.get("broker_port"), 1883)))
+        mqtt_layout.addRow("MQTT Port", self.mqtt_port_edit)
 
         self.data_source_choice = AnalyticsChoice(
             AnalyticsChoiceLoader(list_analytics_data_source_keys, "data sources", self),
@@ -95,11 +93,9 @@ class TransportPages(QStackedWidget):
         )
         websocket_layout.addRow("DataHub Topic", self.websocket_topic_choice)
 
-        self.websocket_channel_id_spin = QSpinBox()
-        self.websocket_channel_id_spin.setRange(1, 9999)
-        self.websocket_channel_id_spin.setValue(integer_default(websocket_defaults.get("channel_id"), 1))
-        self.websocket_channel_id_spin.setToolTip("Instance of the DataHub topic to subscribe to. Most devices use 1.")
-        websocket_layout.addRow("Topic Channel", self.websocket_channel_id_spin)
+        self.websocket_channel_id_edit = QLineEdit(str(integer_default(websocket_defaults.get("channel_id"), 1)))
+        self.websocket_channel_id_edit.setToolTip("Instance of the DataHub topic to subscribe to. Most devices use 1.")
+        websocket_layout.addRow("Topic Channel", self.websocket_channel_id_edit)
 
         self.choices = {
             LiveOverlayMode.MQTT: self.data_source_choice,
@@ -110,3 +106,18 @@ class TransportPages(QStackedWidget):
             self.addWidget(transport_pages[mode])
         self.forms = list(transport_forms.values())
         """The form of each page, in page order, so the dialog can align their label columns."""
+
+    def mqtt_port(self) -> int:
+        """Return the entered broker port without clamping inactive saved settings."""
+        return _integer(self.mqtt_port_edit, "MQTT Port")
+
+    def websocket_channel_id(self) -> int:
+        """Return the entered channel id without an artificial upper bound."""
+        return _integer(self.websocket_channel_id_edit, "Topic Channel")
+
+
+def _integer(edit: QLineEdit, label: str) -> int:
+    try:
+        return int(edit.text())
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an integer.") from exc

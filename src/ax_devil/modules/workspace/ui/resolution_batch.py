@@ -30,18 +30,22 @@ class ResolutionBatch:
         if item_id not in self._results:
             return
         cancel = self._cancels.pop(item_id, None)
+        del self._results[item_id]
         if cancel is not None:
             cancel()
-        del self._results[item_id]
         self._publish_if_ready()
 
     def cancel(self) -> None:
         """Cancel the entire batch without publishing it."""
-        for cancel in self._cancels.values():
-            cancel()
+        cancels = tuple(self._cancels.values())
         self._cancels.clear()
+        self._results.clear()
+        for cancel in cancels:
+            cancel()
 
     def _resolved(self, result: ItemResolution) -> None:
+        if result.item.id not in self._results or self._results[result.item.id] is not None:
+            return
         self._cancels.pop(result.item.id, None)
         self._results[result.item.id] = result
         self._publish_if_ready()

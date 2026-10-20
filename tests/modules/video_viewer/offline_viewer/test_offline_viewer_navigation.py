@@ -166,7 +166,9 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
 
         assert shown_entry_index(widget) == 1
 
-    def test_a_bookmark_opens_its_entry_at_its_frame_even_when_the_entry_is_excluded(self, qtbot: QtBot) -> None:
+    def test_a_bookmark_opens_its_entry_at_its_frame_even_when_the_entry_is_excluded(
+        self, qtbot: QtBot, deferred_background: DeferredBackground
+    ) -> None:
         """Opening a bookmark of an excluded entry shows that entry, not the next considered one."""
         playlist = playlist_content("A", "B")
         workspace_store, playlist = store_with(playlist)
@@ -180,6 +182,9 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         )
         attach_offline_widget(qtbot, widget)
 
+        assert widget.bookmark_position() is None
+        assert widget.playhead_frame() == 5
+        deferred_background.finish_next()
         assert shown_entry_index(widget) == 0
         assert widget._runtime is not None and widget._runtime.current_frame == 5
 
