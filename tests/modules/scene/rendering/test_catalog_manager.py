@@ -5,11 +5,15 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from typing import TextIO
 
 import pytest
 from pytestqt.qtbot import QtBot
 
+import ax_devil.modules.scene.rendering.catalog_loader as catalog_loader_module
 import ax_devil.modules.scene.rendering.catalog_manager as catalog_manager_module
+import ax_devil.modules.scene.rendering.catalog_store as catalog_store_module
+from ax_devil.core.atomic_file import open_replaceable_text
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogListing,
@@ -130,8 +134,15 @@ def test_catalog_files_are_read_off_the_gui_thread(
         note(self)
         return open_path(self, *args, **kwargs)  # type: ignore[call-overload]
 
+    def noting_open_replaceable_text(file: Path) -> TextIO:
+        note(file)
+        return open_replaceable_text(file)
+
     monkeypatch.setattr(Path, "read_text", noting_read_text)
     monkeypatch.setattr(Path, "open", noting_open)
+    # Windows opens the readers' handles through the API, not ``Path.open``, so catalog reads are noted here.
+    monkeypatch.setattr(catalog_loader_module, "open_replaceable_text", noting_open_replaceable_text)
+    monkeypatch.setattr(catalog_store_module, "open_replaceable_text", noting_open_replaceable_text)
 
     manager = create_ready_catalog_manager(qtbot, store)
     selection = _selection(qtbot, manager)
