@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import Event
 
 import pytest
+from PySide6.QtWidgets import QLineEdit
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
@@ -21,6 +22,7 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from tests.helpers.add_dialogs import Discovery
+from tests.helpers.forms import form_field
 from tests.helpers.workspace import FakeResolutionContext, FakeResolver, inline_resolver
 
 
@@ -114,6 +116,39 @@ def test_closing_playlist_dialog_interrupts_its_resolution(
 
     qtbot.waitUntil(stopped.is_set)
     assert dialog.get_result() is None
+
+
+def test_playlist_save_keeps_the_name_visible_when_resolution_finishes(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, discovery: Discovery
+) -> None:
+    release, started = Event(), Event()
+    resolve = _Resolver.resolve
+
+    def slow(self: _Resolver, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
+        started.set()
+        assert release.wait(5)
+        return resolve(self, settings, token)
+
+    monkeypatch.setattr(_Resolver, "resolve", slow)
+    dialog = AddPlaylistDialog(ItemResolver(_AnyResolverContext()))
+    qtbot.addWidget(dialog)
+    form = next(iter(dialog._settings._resolver_by_widget))
+    dialog._settings._resolver_combo.setCurrentIndex(dialog._settings._resolver_combo.findData(form))
+    name = form_field(dialog, "Display Name", QLineEdit)
+    name.setText("Before")
+    try:
+        form.submit_settings({"root": "/selected"})
+        discovery.release_all()
+        qtbot.waitUntil(started.is_set)
+        name.setText("Latest")
+        release.set()
+        qtbot.waitUntil(lambda: dialog.get_result() is not None)
+        result = dialog.get_result()
+        assert result is not None and result.item.label == "Latest"
+        assert result.contents[0].display_name == "Latest"
+    finally:
+        release.set()
+        dialog.cleanup()
 
 
 @pytest.mark.parametrize("available", [False, True], ids=["missing-plugin", "unsupported-restoration"])

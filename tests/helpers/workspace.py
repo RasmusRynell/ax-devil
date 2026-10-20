@@ -242,6 +242,10 @@ class DummyViewer(ViewerWidget):
         """Return the position a test gave, as the frame on screen."""
         return self.position
 
+    def playhead_frame(self) -> int | None:
+        """Return the shown frame or the pending frame supplied to the test viewer."""
+        return self.position.frame if self.position is not None else self.start_frame
+
     def bookmark_target(self) -> BookmarkTarget | None:
         """Return the target of the entry shown, as a video viewer does; live content has none."""
         if isinstance(self.payload, (SeekableVideoContent, PlaylistContent)):

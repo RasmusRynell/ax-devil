@@ -72,7 +72,7 @@ class AddPlaylistDialog(BaseDialog):
         if resolution.error is not None:
             self._message_label.setText(str(resolution.error))
             return
-        self._result = resolution
+        self._result = resolution.renamed(resolution.item.with_label(self._name_edit.text().strip()))
         self.accept()
 
     def get_result(self) -> ItemResolution | None:

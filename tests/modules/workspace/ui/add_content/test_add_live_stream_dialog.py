@@ -242,10 +242,10 @@ def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
         mqtt_host="$EDIT_BROKER",
         mqtt_username="",
         mqtt_password="  secret  ",
-        mqtt_port=2883,
+        mqtt_port=2**40,
         analytics_data_source_key="saved/source",
         websocket_topic="saved/topic",
-        websocket_channel_id=4,
+        websocket_channel_id=2**40,
         device_api_protocol="http",
     )
     dialog = AddLiveStreamDialog(existing=item)
@@ -262,6 +262,46 @@ def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
     expected = replace(item, camera_head=5, resolution="1280x720" if clear_resolution else item.resolution)
     assert result is not None and result.item == expected
     assert result.contents[0].item_id == item.id
+    dialog.cleanup()
+
+
+def test_live_edit_normalizes_changed_connection_fields_but_keeps_password_spaces(qtbot: QtBot) -> None:
+    item = LiveStreamItem(host="old-camera.local", stream_url="rtsp://old/live", mqtt_host="old-broker.local")
+    dialog = AddLiveStreamDialog(existing=item)
+    qtbot.addWidget(dialog)
+    for label, text in (
+        ("Host", " new-camera.local "),
+        ("MQTT Host", " new-broker.local "),
+        ("Custom Stream URL", "   "),
+        ("Password", " secret "),
+    ):
+        form_field(dialog, label, QLineEdit).setText(text)
+    dialog.accept()
+    result = dialog.get_result()
+    assert result is not None
+    assert result.item == replace(
+        item, host="new-camera.local", mqtt_host="new-broker.local", stream_url=None, password=" secret "
+    )
+
+
+@pytest.mark.parametrize("field", ["Host", "MQTT Host"])
+def test_live_edit_cannot_save_whitespace_as_a_required_connection(
+    qtbot: QtBot, live_handler: None, field: str
+) -> None:
+    item = LiveStreamItem(
+        host="camera.local",
+        overlay_mode=LiveOverlayMode.MQTT if field == "MQTT Host" else LiveOverlayMode.NONE,
+        handler_type="TEST_HANDLER" if field == "MQTT Host" else None,
+        mqtt_host="broker.local",
+        analytics_data_source_key="saved/source",
+    )
+    dialog = AddLiveStreamDialog(existing=item)
+    qtbot.addWidget(dialog)
+    form_field(dialog, field, QLineEdit).setText("   ")
+    dialog.accept()
+    assert dialog.get_result() is None
+    expected = "Enter the device host." if field == "Host" else "MQTT Host is required for MQTT overlay mode."
+    assert shows_text(dialog, expected)
     dialog.cleanup()
 
 

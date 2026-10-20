@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtWidgets import QComboBox, QLineEdit, QSpinBox
+from PySide6.QtWidgets import QComboBox, QLineEdit
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.core import (
@@ -106,7 +106,7 @@ def test_add_live_stream_websocket_shows_its_fields_and_builds_spec(
 
     assert topic.combo.currentData() == "com.axis.scene.frame.v1"
     assert topic.isVisibleTo(dialog)
-    assert form_field(dialog, "Topic Channel", QSpinBox).isVisibleTo(dialog)
+    assert form_field(dialog, "Topic Channel", QLineEdit).isVisibleTo(dialog)
     assert not form_field(dialog, "MQTT Host", QLineEdit).isVisibleTo(dialog)
     assert not form_field(dialog, "Data Source", AnalyticsChoice).isVisibleTo(dialog)
 
@@ -168,5 +168,5 @@ def test_live_stream_numeric_defaults_handle_changed_environment(
     qtbot.addWidget(dialog)
     valid = resolved == "8883"
     assert form_field(dialog, "Camera Head", QLineEdit).text() == ("8883" if valid else "1")
-    assert form_field(dialog, "MQTT Port", QSpinBox).value() == (8883 if valid else 1883)
-    assert form_field(dialog, "Topic Channel", QSpinBox).value() == (8883 if valid else 1)
+    assert form_field(dialog, "MQTT Port", QLineEdit).text() == ("8883" if valid else "1883")
+    assert form_field(dialog, "Topic Channel", QLineEdit).text() == ("8883" if valid else "1")

@@ -25,8 +25,10 @@ from tests.helpers.workspace_session import (
 )
 
 
+@pytest.mark.parametrize("pending", [False, True], ids=["presented-frame", "pending-frame"])
 def test_edit_reopens_matching_playlist_entry_in_same_pinned_pane_and_keeps_other_viewer(
     workspace_session: WorkspaceSession,
+    pending: bool,
 ) -> None:
     entries = tuple(PlaylistEntry(make_video(name).standalone_lanes(), True) for name in ("A", "B", "C"))
     playlist = PlaylistContent(display_name="Set", entries=entries)
@@ -36,7 +38,9 @@ def test_edit_reopens_matching_playlist_entry_in_same_pinned_pane_and_keeps_othe
         old = focused_viewer(workspace_session)
         old.start_index = 1
         assert isinstance(old.payload, PlaylistContent)
-        old.position = BookmarkPosition(content=old.payload, entry_index=1, frame=12, time_s=0.4)
+        old.start_frame = 12
+        if not pending:
+            old.position = BookmarkPosition(content=old.payload, entry_index=1, frame=12, time_s=0.4)
         old.set_pinned(True)
         pane = old.parentWidget()
         workspace_session.add_items([content_item(make_video("unrelated"))])

@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QLabel,
     QLineEdit,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -71,8 +70,8 @@ class AddLiveStreamDialog(BaseDialog):
         ):
             edit.setPlaceholderText("")
             edit.setText(value)
-        self._transports.mqtt_port_spin.setValue(item.mqtt_port)
-        self._transports.websocket_channel_id_spin.setValue(item.websocket_channel_id)
+        self._transports.mqtt_port_edit.setText(str(item.mqtt_port))
+        self._transports.websocket_channel_id_edit.setText(str(item.websocket_channel_id))
         self._set_overlay_mode(item.overlay_mode)
         if item.handler_type is not None and self._handler_combo.findData(item.handler_type) < 0:
             self._handler_combo.addItem(f"{item.handler_type} (unavailable)", item.handler_type)
@@ -240,9 +239,11 @@ class AddLiveStreamDialog(BaseDialog):
         index = self._handler_combo.findData(handler_type)
         self._handler_combo.setCurrentIndex(index if index >= 0 else 0)
 
-    def _text_or_default(self, edit: QLineEdit, default: str) -> str:
-        """Return user text if entered, otherwise the config default."""
+    def _text_or_default(self, edit: QLineEdit, default: str, *, saved: str | None = None) -> str:
+        """Keep saved text, trim changed connection fields and apply defaults only when adding."""
         text = edit.text() if self._existing is not None else edit.text().strip()
+        if saved is not None and text != saved:
+            text = text.strip()
         return text if text or self._existing is not None else default
 
     def _on_host_changed(self, text: str) -> None:
@@ -279,7 +280,13 @@ class AddLiveStreamDialog(BaseDialog):
         """Return the device connection discovery uses; ``$VARIABLE`` references are expanded for the request only."""
         device_defaults = self._defaults["device"]
         return (
-            expand_environment_reference(self._text_or_default(self._host_edit, device_defaults.get("host", ""))),
+            expand_environment_reference(
+                self._text_or_default(
+                    self._host_edit,
+                    device_defaults.get("host", ""),
+                    saved=self._existing.host if self._existing else "",
+                )
+            ),
             expand_environment_reference(
                 self._text_or_default(self._username_edit, device_defaults.get("username", ""))
             ),
@@ -305,8 +312,6 @@ class AddLiveStreamDialog(BaseDialog):
             edit.textChanged.connect(self._update_validation)
         for combo in self.findChildren(QComboBox):
             combo.currentIndexChanged.connect(self._update_validation)
-        for spin in self.findChildren(QSpinBox):
-            spin.valueChanged.connect(self._update_validation)
 
     def _update_validation(self) -> None:
         """Show what still needs fixing and enable OK only for a complete form."""
@@ -324,7 +329,11 @@ class AddLiveStreamDialog(BaseDialog):
         raw_device_defaults = self._raw_defaults["device"]
         raw_mqtt_defaults = self._raw_defaults["live_stream"].get("analytics-mqtt", {}) or {}
 
-        host = self._text_or_default(self._host_edit, str(raw_device_defaults.get("host") or ""))
+        host = self._text_or_default(
+            self._host_edit,
+            str(raw_device_defaults.get("host") or ""),
+            saved=self._existing.host if self._existing else "",
+        )
         if not expand_environment_reference(host):
             raise ValueError("Enter the device host.")
 
@@ -343,7 +352,9 @@ class AddLiveStreamDialog(BaseDialog):
         websocket_topic_value = self._transports.websocket_topic_choice.combo.currentData()
         websocket_topic = str(websocket_topic_value) if isinstance(websocket_topic_value, str) else ""
 
-        stream_url = self._text_or_default(self._stream_url_edit, "")
+        stream_url = self._text_or_default(
+            self._stream_url_edit, "", saved=(self._existing.stream_url or "") if self._existing else ""
+        )
         saved_empty_url = self._existing is not None and self._existing.stream_url == ""
         item = LiveStreamItem(
             label=self._name_edit.text().strip(),
@@ -356,9 +367,11 @@ class AddLiveStreamDialog(BaseDialog):
             overlay_mode=mode,
             handler_type=handler_type,
             mqtt_host=self._text_or_default(
-                self._transports.mqtt_host_edit, str(raw_mqtt_defaults.get("broker_host") or "")
+                self._transports.mqtt_host_edit,
+                str(raw_mqtt_defaults.get("broker_host") or ""),
+                saved=self._existing.mqtt_host if self._existing else "",
             ),
-            mqtt_port=self._transports.mqtt_port_spin.value(),
+            mqtt_port=self._transports.mqtt_port(),
             mqtt_username=self._text_or_default(
                 self._transports.mqtt_username_edit, str(raw_mqtt_defaults.get("broker_username") or "")
             ),
@@ -368,7 +381,7 @@ class AddLiveStreamDialog(BaseDialog):
             analytics_data_source_key=(str(analytics_data_source_key) if analytics_data_source_key is not None else ""),
             device_api_protocol=self._mqtt_device_protocol_combo.currentText(),
             websocket_topic=websocket_topic,
-            websocket_channel_id=self._transports.websocket_channel_id_spin.value(),
+            websocket_channel_id=self._transports.websocket_channel_id(),
         )
         if self._existing is not None:
             item = replace(item, id=self._existing.id)

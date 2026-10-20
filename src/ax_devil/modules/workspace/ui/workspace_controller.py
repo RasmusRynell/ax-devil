@@ -293,11 +293,10 @@ class WorkspaceController(QObject):
             if found is None:
                 self._center_area.remove_viewer_widget(widget)
                 continue
-            position = widget.bookmark_position()
             self._open_content(
                 found[0],
                 start_index=found[1],
-                start_frame=position.frame if position is not None else (0 if target is not None else None),
+                start_frame=widget.playhead_frame() if target is not None else None,
                 place=partial(self._center_area.replace_viewer_widget, widget),
             )
 
