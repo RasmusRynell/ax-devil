@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import stat
 import sys
@@ -90,6 +91,11 @@ def open_replaceable(path: Path) -> BinaryIO:
     if handle == wintypes.HANDLE(-1).value:
         raise ctypes.WinError(ctypes.get_last_error())
     return os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDONLY), "rb")
+
+
+def open_replaceable_text(path: Path) -> TextIO:
+    """Open *path* for reading UTF-8 text with the guarantees of ``open_replaceable``."""
+    return io.TextIOWrapper(open_replaceable(path), encoding="utf-8")
 
 
 def replace_file(source: Path, target: Path) -> None:

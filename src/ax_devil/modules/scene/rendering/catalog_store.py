@@ -10,7 +10,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any, cast
 
-from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.atomic_file import open_replaceable_text, write_atomically
 from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH, BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
@@ -241,8 +241,13 @@ def _write_text(destination: Path, text: str) -> None:
         output.write(text)
 
 
+def _read_text(path: Path) -> str:
+    with open_replaceable_text(path) as stream:
+        return stream.read()
+
+
 def _read_catalog_document(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(_read_text(path))
     if not isinstance(value, dict):
         raise TemplateRuntimeError(f"Scene render catalog file '{path}' must contain an object.")
     return cast(dict[str, Any], value)
