@@ -181,8 +181,16 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
         self.submit_settings(
             {
                 **self._restored,
-                "videos_dir": self._videos_input.text().strip() if self._restored else str(scanned.videos_dir),
-                "overlays_dir": self._overlays_input.text().strip() if self._restored else str(scanned.overlays_dir),
+                "videos_dir": (
+                    self._restored["videos_dir"]
+                    if self._videos_input.text() == self._restored.get("videos_dir")
+                    else str(scanned.videos_dir)
+                ),
+                "overlays_dir": (
+                    self._restored["overlays_dir"]
+                    if self._overlays_input.text() == self._restored.get("overlays_dir")
+                    else str(scanned.overlays_dir)
+                ),
                 "handler_type": handler_type,
             }
         )

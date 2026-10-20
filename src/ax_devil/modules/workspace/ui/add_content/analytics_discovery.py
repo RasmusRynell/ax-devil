@@ -29,6 +29,7 @@ class AnalyticsChoiceLoader(QObject):
     """
 
     changed = Signal()
+    connection_changed = Signal()
 
     def __init__(
         self, fetch: FetchChoices, label: str, parent: QObject | None = None, *, jobs: BackgroundJobs | None = None
@@ -58,6 +59,7 @@ class AnalyticsChoiceLoader(QObject):
         self.loaded = False
         self.choices = ()
         self.status = f"Connection changed — refresh {self.label}"
+        self.connection_changed.emit()
         self.changed.emit()
 
     def load(self) -> None:

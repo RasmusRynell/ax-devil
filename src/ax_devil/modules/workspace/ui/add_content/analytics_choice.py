@@ -20,6 +20,7 @@ class AnalyticsChoice(QWidget):
         layout.addWidget(self.combo, 1)
         layout.addWidget(self.refresh)
         self.refresh.clicked.connect(loader.load)
+        loader.connection_changed.connect(self._forget_saved_selection)
         loader.changed.connect(self._render)
         self._render()
 
@@ -29,6 +30,12 @@ class AnalyticsChoice(QWidget):
         self._selection = selection
         self.combo.clear()
         self._render()
+
+    def _forget_saved_selection(self) -> None:
+        if self._preserve_saved:
+            self._preserve_saved = False
+            self._selection = ""
+            self.combo.clear()
 
     def _render(self) -> None:
         selected = self.combo.currentData()

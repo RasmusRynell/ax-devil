@@ -351,7 +351,7 @@ class AddLiveStreamDialog(BaseDialog):
             username=self._text_or_default(self._username_edit, str(raw_device_defaults.get("username") or "")),
             password=self._text_or_default(self._password_edit, str(raw_device_defaults.get("password") or "")),
             camera_head=int(camera_head),
-            resolution=self._text_or_default(self._resolution_edit, "1280x720"),
+            resolution=self._resolution_edit.text().strip() or "1280x720",
             stream_url=stream_url if stream_url or saved_empty_url else None,
             overlay_mode=mode,
             handler_type=handler_type,

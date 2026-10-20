@@ -140,14 +140,19 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: L
     assert live.checker.calls == [("192.0.2.10", Login("root", "pw"))]
 
 
-def test_rescan_checks_a_refused_camera_again_so_a_fixed_login_is_noticed(live: Live) -> None:
+@pytest.mark.parametrize("edit", [False, True], ids=["rescan", "edit"])
+def test_a_refused_camera_can_be_checked_again_so_a_fixed_login_is_noticed(live: Live, edit: bool) -> None:
     refused = DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)
     live.checker.cameras = {"192.0.2.10": refused}
-    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
+    item = LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw")
+    live.open_workspace(item)
     live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "")
 
     live.checker.cameras = {"192.0.2.10": replace(refused, sign_in=SignIn.SIGNED_IN)}
-    scan(live)
+    if edit:
+        live.store.edit_item(replace(item, password="fixed"))
+    else:
+        scan(live)
 
     live.qtbot.waitUntil(lambda: len(live.checker.calls) == 2)
     live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "Start stream")
@@ -221,7 +226,7 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
     entrance = LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw")
     live.open_workspace(entrance)
     live.qtbot.waitUntil(lambda: live.checker.calls == [("192.0.2.10", Login("root", "pw"))])
-    live.open_workspace(replace(entrance, host="192.0.2.20"))  # Same id, another camera.
+    live.store.edit_item(replace(entrance, host="192.0.2.20"))
 
     live.checker.gate.set()
 

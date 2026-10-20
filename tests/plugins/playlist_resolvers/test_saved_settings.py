@@ -24,12 +24,13 @@ def _sequence(root: Path, name: str) -> None:
 
 @pytest.mark.parametrize("explicit", [False, True], ids=["all-future-sequences", "explicit-subset"])
 def test_mot_restore_preserves_selection_meaning_order_and_missing_names(
-    tmp_path: Path, qtbot: QtBot, explicit: bool
+    tmp_path: Path, qtbot: QtBot, explicit: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     for name in ("A", "B", "C"):
         _sequence(tmp_path, name)
     settings: PlaylistSettings = {
-        "root": str(tmp_path),
+        "root": ".",
         "extension": {"retain": True},
         **({"sequences": ["B", "gone", "A"]} if explicit else {}),
     }
@@ -56,7 +57,7 @@ def test_mot_restore_preserves_selection_meaning_order_and_missing_names(
     _sequence(other, "NEW")
     root = widget.findChild(QLineEdit)
     assert root is not None
-    root.setText(str(other))
+    root.setText("other")
     button(widget, "Scan").click()
     qtbot.waitUntil(save.isEnabled)
     with qtbot.waitSignal(widget.settings_submitted) as submitted:
@@ -64,15 +65,18 @@ def test_mot_restore_preserves_selection_meaning_order_and_missing_names(
     assert submitted.args[0] == {"root": str(other), "sequences": ["NEW"], "extension": {"retain": True}}
 
 
-def test_folder_pair_restore_submits_saved_folders_decoder_and_unknown_settings(tmp_path: Path, qtbot: QtBot) -> None:
+def test_folder_pair_restore_submits_saved_folders_decoder_and_unknown_settings(
+    tmp_path: Path, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     videos, overlays = tmp_path / "videos", tmp_path / "overlays"
     videos.mkdir()
     overlays.mkdir()
     (videos / "clip.mp4").touch()
     (overlays / "clip.json").write_text("{}")
     settings: PlaylistSettings = {
-        "videos_dir": str(videos),
-        "overlays_dir": str(overlays),
+        "videos_dir": "videos",
+        "overlays_dir": "overlays",
         "handler_type": "ADF_BETA_FRAME",
         "extension": [1, 2],
     }
@@ -82,3 +86,11 @@ def test_folder_pair_restore_submits_saved_folders_decoder_and_unknown_settings(
     with qtbot.waitSignal(widget.settings_submitted) as submitted:
         button(widget, "Save").click()
     assert submitted.args[0] == settings
+
+    new_videos = tmp_path / "new-videos"
+    new_videos.mkdir()
+    (new_videos / "clip.mp4").touch()
+    widget.findChildren(QLineEdit)[0].setText("new-videos")
+    with qtbot.waitSignal(widget.settings_submitted) as submitted:
+        button(widget, "Save").click()
+    assert submitted.args[0] == {**settings, "videos_dir": str(new_videos)}

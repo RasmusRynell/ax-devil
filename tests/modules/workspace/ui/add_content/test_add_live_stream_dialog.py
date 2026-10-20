@@ -225,8 +225,9 @@ def test_add_live_stream_mqtt_needs_broker_and_data_source_then_builds_spec(
     )
 
 
+@pytest.mark.parametrize("clear_resolution", [False, True])
 def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
-    qtbot: QtBot, live_handler: None, monkeypatch: pytest.MonkeyPatch, discovery: Discovery
+    qtbot: QtBot, live_handler: None, monkeypatch: pytest.MonkeyPatch, discovery: Discovery, clear_resolution: bool
 ) -> None:
     monkeypatch.setenv("EDIT_CAMERA", "camera.local")
     item = LiveStreamItem(
@@ -250,12 +251,37 @@ def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
     dialog = AddLiveStreamDialog(existing=item)
     qtbot.addWidget(dialog)
     form_field(dialog, "Camera Head", QLineEdit).setText("5")
+    if clear_resolution:
+        form_field(dialog, "Resolution", QLineEdit).clear()
     set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
     discovery.finish()
     set_overlay_mode(dialog, LiveOverlayMode.RTSP)
     dialog.accept()
 
     result = dialog.get_result()
-    assert result is not None and result.item == replace(item, camera_head=5)
+    expected = replace(item, camera_head=5, resolution="1280x720" if clear_resolution else item.resolution)
+    assert result is not None and result.item == expected
     assert result.contents[0].item_id == item.id
+    dialog.cleanup()
+
+
+def test_edit_drops_saved_analytics_choices_only_when_the_connection_changes(
+    qtbot: QtBot, live_handler: None, discovery: Discovery
+) -> None:
+    item = LiveStreamItem(host="camera.local", analytics_data_source_key="saved/source", websocket_topic="saved/topic")
+    dialog = AddLiveStreamDialog(existing=item)
+    qtbot.addWidget(dialog)
+    source = form_field(dialog, "Data Source", AnalyticsChoice)
+    topic = form_field(dialog, "DataHub Topic", AnalyticsChoice)
+    assert source.combo.currentData() == "saved/source" and topic.combo.currentData() == "saved/topic"
+    form_field(dialog, "Camera Head", QLineEdit).setText("2")
+    assert source.combo.currentData() == "saved/source" and topic.combo.currentData() == "saved/topic"
+
+    form_field(dialog, "Host", QLineEdit).setText("new-camera.local")
+    assert source.combo.findData("saved/source") == topic.combo.findData("saved/topic") == -1
+    source.refresh.click()
+    discovery.finish()
+    topic.refresh.click()
+    discovery.finish()
+    assert source.combo.findData("saved/source") == topic.combo.findData("saved/topic") == -1
     dialog.cleanup()

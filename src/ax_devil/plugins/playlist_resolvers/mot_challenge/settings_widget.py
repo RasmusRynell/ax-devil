@@ -173,7 +173,9 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             self._status_label.setText("No sequences selected.")
             return
 
-        settings = {**self._restored, "root": self._root_input.text().strip()}
+        saved_root = self._restored.get("root")
+        root = saved_root if self._root_input.text() == saved_root else str(self._scanned_root)
+        settings = {**self._restored, "root": root}
         if not self._all_sequences or len(selected) != len(self._sequences):
             selected_names = [sequence.name for sequence in selected]
             discovered = {sequence.name for sequence in self._sequences}
