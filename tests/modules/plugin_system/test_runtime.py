@@ -129,6 +129,12 @@ class UndeclaredSceneModel(DecoderPlugin):
         return "Undeclared"
 
 
+class PreviousSceneMajor(ExternalDecoder):
+    @classmethod
+    def scene_model_version(cls) -> tuple[int, int]:
+        return (1, 0)
+
+
 class NewerSceneMajor(ExternalDecoder):
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
@@ -203,6 +209,11 @@ def test_a_distribution_with_unreadable_metadata_is_listed_as_failed_and_the_res
         pytest.param(PreviousApi, "requires plugin API 1, host provides 3", id="previous-api"),
         pytest.param(WrongType, "expected 'decoder'", id="wrong-family"),
         pytest.param(UndeclaredSceneModel, "does not implement scene_model_version", id="no-scene-model"),
+        pytest.param(
+            PreviousSceneMajor,
+            "built for Scene model 1.0, this ax-devil uses Scene model 2.0; update the plugin",
+            id="previous-scene-major",
+        ),
         pytest.param(NewerSceneMajor, f"built for Scene model {SCENE_MODEL_VERSION[0] + 1}.0", id="scene-major"),
         pytest.param(
             NewerSceneMinor, f"built for Scene model {SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1] + 1}", id="minor"

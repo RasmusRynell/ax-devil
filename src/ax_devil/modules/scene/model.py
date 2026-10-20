@@ -73,7 +73,7 @@ _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (1, 2)
+SCENE_MODEL_VERSION: tuple[int, int] = (2, 0)
 
 
 class OperationType(enum.Enum):

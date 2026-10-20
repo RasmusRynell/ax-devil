@@ -88,8 +88,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows and queries
   `Observation.debug`; `Scene.debug` is kept for diagnostics only. Scene filtering, rendering, synchronization, and
   hit-testing never read either.
-- Changing Scene model dataclass fields requires bumping `SCENE_MODEL_VERSION`: major when breaking, minor when
-  additive. Decoder plugins declaring another major, or a newer minor, fail to load; the Plugins view lists them and flags its button.
+- Changing the Scene contract requires bumping `SCENE_MODEL_VERSION`: major when breaking, including stricter value
+  requirements, minor when additive. Scene datetimes must be timezone-aware. Decoder plugins declaring another major,
+  or a newer minor, fail to load; the Plugins view lists them and flags its button.
 
 ## Workspace And Viewers
 

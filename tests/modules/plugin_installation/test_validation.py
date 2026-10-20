@@ -80,11 +80,16 @@ class ExampleDecoder(DecoderPlugin):
 
 
 @pytest.mark.usefixtures("unloaded_plugins")
-@pytest.mark.parametrize("wrong_family,other_owner", [(False, False), (True, False), (False, True)])
+@pytest.mark.parametrize(
+    "wrong_family,other_owner,old_scene_model",
+    [(False, False, False), (True, False, False), (False, True, False), (False, False, True)],
+)
 def test_validate_entry_point_family_and_owner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrong_family: bool, other_owner: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrong_family: bool, other_owner: bool, old_scene_model: bool
 ) -> None:
-    """A class registered elsewhere cannot validate a rejected entry point."""
+    """Reject wrong-family, shadowed or incompatible plugins before activating an installation."""
+    if old_scene_model:
+        monkeypatch.setattr(ExampleDecoder, "scene_model_version", classmethod(lambda cls: (1, 0)))
     distribution = SimpleNamespace(name="example-distribution", locate_file=lambda _: tmp_path)
     groups = ["ax_devil.decoder_plugins"]
     if wrong_family:
@@ -109,8 +114,9 @@ def test_validate_entry_point_family_and_owner(
     monkeypatch.setattr(
         importlib.metadata, "entry_points", lambda *, group: [ep for ep in visible_entries if ep.group == group]
     )
-    if wrong_family or other_owner:
-        with pytest.raises(ValueError):
+    if wrong_family or other_owner or old_scene_model:
+        reason = "built for Scene model 1.0, this ax-devil uses Scene model 2.0" if old_scene_model else None
+        with pytest.raises(ValueError, match=reason):
             validate.validate_plugins([distribution.name])
     else:
         validate.validate_plugins([distribution.name])

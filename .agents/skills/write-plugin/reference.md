@@ -63,7 +63,7 @@ class ExamplePlugin(DecoderPlugin):
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
         """Declare the Scene model version this decoder builds Scenes for."""
-        return (1, 0)
+        return (2, 0)
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -106,8 +106,8 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   earlier version is rejected at load; there is no compatibility path, so rebuild it against the current version.
 - Decoder plugins must declare `scene_model_version()` as `(major, minor)`. ax-devil exposes its own as
   `ax_devil.modules.scene.model.SCENE_MODEL_VERSION`. A plugin loads when the major matches and its minor is not
-  newer. ax-devil bumps the major when Scene fields are removed, renamed, or change meaning, and the minor when fields
-  are added. Plugins that fail to load are listed in a dialog at startup. Derived caches rebuild automatically when
+  newer. Breaking changes, including stricter requirements on Scene values, bump the major; additive fields bump the
+  minor. Scene datetimes must be timezone-aware. Plugins that fail to load are listed in the Plugins view. Derived caches rebuild automatically when
   the Scene model version changes; bump the `artifact_version` argument to `SceneDecoderFileProvider` (see `decoders/mot/provider.py`) only when your
   own decoded output changes.
 - Keep plugin IDs and handler types unique. Duplicate or incompatible registrations fail installation.
