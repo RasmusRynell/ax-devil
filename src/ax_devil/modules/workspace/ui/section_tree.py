@@ -141,11 +141,18 @@ class SectionTree(QTreeWidget):
         """Bring the items to the current sections, whose kinds and kept rows' order are those they show, and build
         widgets only for rows added or whose look changed."""
         expansion = {row.row_id: (item.isExpanded(), row.is_open) for item, row in self._row_items()}
+        focused = self.focusWidget()
         with self._folding_sections():
             for index, section in enumerate(self._sections):
                 if (heading := self.topLevelItem(index)) is not None:
                     self._update_children(heading, section.rows)
             self._restore_expansion(expansion)
+        if focused is not None and focused is not self and focused.isVisibleTo(self):
+            # Lay the rows out now: while the layout is pending the tree hides the widget of a row it cannot place
+            # yet, and a hidden widget gives up the keyboard focus (macOS moves it to the tree).
+            self.doItemsLayout()
+            if self.focusWidget() is not focused:
+                focused.setFocus()
 
     def _update_children(self, parent: QTreeWidgetItem, rows: Sequence[WorkspaceBrowserRow]) -> None:
         """Make the items under *parent* show *rows*: drop the gone ones, add the new ones, update the kept ones."""

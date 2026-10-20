@@ -259,6 +259,10 @@ def test_camera_add_buttons_keep_their_width_when_rows_are_narrow(qtbot: QtBot) 
 
 def test_keyboard_focus_stays_on_a_rows_action_when_cameras_are_found_around_it(qtbot: QtBot) -> None:
     tree = show_tree(qtbot, _camera("10.0.0.2"), kind=BrowserSection.NETWORK)
+    # A native desktop activates the window some time after it is shown, and activation can move the focus.
+    tree.window().activateWindow()
+    qtbot.waitUntil(tree.window().isActiveWindow)
+    QApplication.processEvents()
     [button] = row(tree, "10.0.0.2").findChildren(SmallButton)
     button.setFocus()
     assert tree.focusWidget() is button

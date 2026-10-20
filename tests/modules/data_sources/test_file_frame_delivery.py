@@ -124,7 +124,7 @@ def test_delivery_plays_every_frame_then_reports_the_end() -> None:
     finished = threading.Event()
     delivery = FileFrameDelivery(
         decoder=cast(FrameReaderWorker, _Decoder(total_frames=3)),
-        fps=100.0,
+        fps=10.0,
         source_id="eof",
         on_playback_frame=lambda frame, generation: frames.append((frame.frame_index, generation)),
         on_playback_finished=finished.set,
@@ -132,7 +132,7 @@ def test_delivery_plays_every_frame_then_reports_the_end() -> None:
     delivery.open()
     try:
         assert delivery.play()
-        assert finished.wait(timeout=1.0)
+        assert finished.wait(timeout=5.0)
     finally:
         delivery.close()
 

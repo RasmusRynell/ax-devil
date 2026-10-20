@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
@@ -50,7 +49,6 @@ class TestGlobalSettingsConfigRoundTrip:
 
         settings = GlobalSettings()
         settings.theme = ThemeMode.DARK
-        settings.graphics_acceleration = GraphicsAcceleration.OFF
         settings.text_size = TextSize.LARGER
         settings.custom_frame = False
         settings.quick_setup_done = True

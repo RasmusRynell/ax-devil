@@ -15,26 +15,12 @@ from typing import Any, cast
 import numpy as np
 from numpy.typing import NDArray
 
+from ax_devil.modules.video_player.engine.drawing import ANCHORS
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 from .values import TemplateRuntimeError, record, sequence
 
 Check = tuple[str, str, str]
-ANCHORS = {
-    "top-left": (0.0, 0.0),
-    "top-center": (0.5, 0.0),
-    "top-right": (1.0, 0.0),
-    "center-left": (0.0, 0.5),
-    "center": (0.5, 0.5),
-    "center-right": (1.0, 0.5),
-    "bottom-left": (0.0, 1.0),
-    "bottom-center": (0.5, 1.0),
-    "bottom-right": (1.0, 1.0),
-    "top": (0.5, 0.0),
-    "bottom": (0.5, 1.0),
-    "left": (0.0, 0.5),
-    "right": (1.0, 0.5),
-}
 
 
 class RowState:

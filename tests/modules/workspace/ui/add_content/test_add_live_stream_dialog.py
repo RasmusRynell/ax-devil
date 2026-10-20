@@ -29,13 +29,14 @@ def test_live_transport_selection_preserves_usable_geometry(qtbot: QtBot, small_
         dialog.resize(420, 300)
     QApplication.processEvents()
     opening_size = dialog.size()
+    fits_the_screen = dialog.height() >= dialog.opening_size_hint().height()  # A small screen scrolls legitimately.
     scroll_area = dialog.findChild(QScrollArea)
     assert scroll_area is not None
     for mode in (*LiveOverlayMode, LiveOverlayMode.NONE):
         set_overlay_mode(dialog, mode)
         QApplication.processEvents()
         assert dialog.size() == opening_size
-        if not small_window:
+        if not small_window and fits_the_screen:
             assert scroll_area.horizontalScrollBar().maximum() == 0
             assert scroll_area.verticalScrollBar().maximum() == 0
         for button in dialog.findChildren(QPushButton):

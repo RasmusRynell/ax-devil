@@ -8,6 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from ax_devil.core.atomic_file import open_replaceable_text
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.core.load_warning import SkippedRecords
@@ -205,7 +206,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
     def _iter_payloads(self) -> Iterable[str]:
         """Yield normalized payload strings from the source file."""
         try:
-            with self.file_path.open("r", encoding="utf-8") as file_obj:
+            with open_replaceable_text(self.file_path) as file_obj:
                 for raw_line in file_obj:
                     if normalized_line := self._normalize_payload(raw_line):
                         yield normalized_line

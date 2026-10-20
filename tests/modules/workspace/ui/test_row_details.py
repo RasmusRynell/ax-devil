@@ -40,11 +40,11 @@ def test_same_named_rows_get_shortest_distinguishing_folder_hint() -> None:
     assert [(row.label, row.detail) for row in rows] == [
         ("parking_lot_cam3.mp4", "site_a"),
         ("parking_lot_cam3.mp4", "site_b"),
-        ("gate.mp4", "site_c/day1"),
-        ("gate.mp4", "site_d/day1"),
+        ("gate.mp4", str(Path("site_c/day1"))),
+        ("gate.mp4", str(Path("site_d/day1"))),
         ("unique.mp4", ""),
     ]
-    assert rows[0].tooltip == "Video\n/data/site_a/parking_lot_cam3.mp4"
+    assert rows[0].tooltip == f"Video\n{Path('/data/site_a/parking_lot_cam3.mp4')}"
 
 
 def test_same_named_playlist_entries_get_folder_hints() -> None:
@@ -92,8 +92,8 @@ def test_same_named_overlay_lanes_show_overlay_folder_hints_and_paths(in_playlis
         ("tracks.txt", "detector_b"),
     ]
     assert [row.tooltip for row in lane_rows] == [
-        "Overlay\n/detector_a/tracks.txt",
-        "Overlay\n/detector_b/tracks.txt",
+        f"Overlay\n{Path('/detector_a/tracks.txt')}",
+        f"Overlay\n{Path('/detector_b/tracks.txt')}",
     ]
 
 

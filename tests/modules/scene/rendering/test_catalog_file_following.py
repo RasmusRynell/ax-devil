@@ -20,6 +20,7 @@ from tests.catalog_helpers import new_selection as _selection
 from tests.catalog_helpers import ready_manager as _ready
 from tests.catalog_helpers import refreshed_listing as _refreshed
 from tests.catalog_helpers import select_catalog as _select
+from tests.helpers.editor_replace import replace_like_an_editor
 
 
 def _set_marker_x(path: Path, value: float) -> None:
@@ -61,7 +62,7 @@ def test_a_catalog_file_replaced_by_an_editor_is_still_followed(
         replacement.write_text(catalog_file.path.read_text(encoding="utf-8"), encoding="utf-8")
         _set_marker_x(replacement, value)
         with qtbot.waitSignal(selection.activeCatalogChanged, timeout=10_000):
-            replacement.replace(catalog_file.path)
+            replace_like_an_editor(replacement, catalog_file.path)
         wait_for_catalogs(qtbot, manager)
         active = selection.active_catalog()
         assert active is not None and selection.active_catalog_loaded()

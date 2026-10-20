@@ -17,7 +17,7 @@ from ax_devil.modules.video_player.engine.data_types import (
     VideoFrameWithOverlays,
     VideoOverlayData,
 )
-from ax_devil.modules.video_player.engine.quick.prepared import PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
 from ax_devil.modules.video_player.ui.hover_chip import HoverChip
 from ax_devil.modules.video_player.ui.viewport import FrameViewport

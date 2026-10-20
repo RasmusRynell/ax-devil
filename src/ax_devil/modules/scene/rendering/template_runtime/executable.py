@@ -22,6 +22,8 @@ from typing import Any, cast
 
 import numpy as np
 
+from ax_devil.modules.video_player.engine.drawing import LabelColumns
+
 from . import emission
 from .definitions import CONTEXT, ValueType
 from .kernels import RowState
@@ -51,7 +53,7 @@ class _Builder(OperationBuilder):
                     f"{amount.code} {comparison} 0", amount.varying, f"Label {name} must be {rule}.", active, location
                 )
                 fields[name] = Value(self.assign(f"{amount.code} / context.scale_factor"), varying=amount.varying)
-            return Value(self.rows(replace(style, fields=fields)), varying=varying)
+            return replace(style, fields=fields)
         if primitive == "text":
             style = self.field(value, "text")
             assert style.fields is not None
@@ -158,17 +160,57 @@ class _Builder(OperationBuilder):
         elif kind == "text":
             self.add("texts", rows, "nnvvs", [x, y, fields.items[1].code, fields.items[2].code, paint.code])
         elif kind == "label":
-            # Keep shared labels shared when every row succeeded; inactive/failed rows never assemble content.
-            active = self.both(rows, self.assign("~S.fail if S.hits else True"))
-            content = self.assign(
-                f"per_row({self.bind(emission.label_content)}, {paint.code}, {self.rows(fields.items[2])}, {active})"
+            assert paint.fields is not None
+            style = paint.fields
+            runs = self.label_runs(fields.items[2])
+            family = style["family"]
+            if family.present != TRUE:
+                family = Value(self.assign(f"masked({family.code}, {family.present}, '')"))
+            lengths = ", ".join(style[name].code for name in ("padding_x", "padding_y", "radius", "gap"))
+            columns = self.assign(
+                f"{self.bind(LabelColumns)}({runs}, {style['size'].code}, {family.code}, "
+                f"{self.label_fill(style['background'])}, {lengths})"
             )
-            self.add("labels", rows, "nnvv", [x, y, fields.items[1].code, content])
+            self.add("labels", rows, "nncl", [x, y, fields.items[1].code, columns])
         elif kind == "circle":
             radius = self.pixels(fields.items[1], rows, location)
             self.require(f"{radius.code} >= 0", radius.varying, "Radius must be nonnegative.", rows, location)
             drawn = self.both(rows, self.assign(f"{radius.code} > 0"))
             self.add("circles", drawn, "nnns", [x, y, f"{radius.code} / context.scale_factor", paint.code])
+
+    def label_fill(self, background: Value) -> str:
+        """Build a label's background columns (red, green, blue, alpha), or None when it never has one."""
+        if background.present == FALSE:
+            return "None"
+        color, alpha = self.field(background, "color"), self.field(background, "alpha")
+        assert color.items is not None
+        channels = ", ".join(item.code for item in color.items)
+        return self.assign(f"fill_columns({channels}, {alpha.code}, {background.present})")
+
+    def label_runs(self, runs: Value) -> str:
+        """Build a label's run columns: straight from item-by-item runs, or by padding whole run lists."""
+        if runs.items is None:
+            return self.assign(f"collection_runs({self.rows(runs)})")
+        columns = []
+        for index, run in enumerate(runs.items):
+            within = TRUE if runs.size is None else self.assign(f"{runs.size} > {index}")
+            present = self.both(run.present, within)
+            color = self.field(run, "color") if run.fields is not None else None
+            if run.fields is None or color is None or color.items is None:
+                columns.append(self.assign(f"run_records({self.rows(run)}, {within})"))
+                continue
+            text, bar = (
+                self.field(run, name) if name in run.fields else Value(present=FALSE) for name in ("text", "bar")
+            )
+            weight = self.field(run, "weight")
+            red, green, blue = (item.code for item in color.items)
+            columns.append(
+                self.assign(
+                    f"run_columns({text.code}, {text.present}, {bar.code}, {bar.present}, "
+                    f"{red}, {green}, {blue}, {weight.code}, {present})"
+                )
+            )
+        return f"({', '.join(columns)},)"
 
     def add(self, kind: str, rows: str, spec: str, args: list[str]) -> None:
         self.line(f"S.pending.append(({kind!r}, {rows}, {spec!r}, ({', '.join(args)},)))")

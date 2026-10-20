@@ -13,18 +13,18 @@ from ax_devil.modules.scene.rendering.catalog_loader import get_built_in_scene_r
 from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import HoverHit
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
-from ax_devil.modules.video_player.engine.quick.prepared import EMPTY_DRAWING, DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import (
+    EMPTY_DRAWING,
+    DrawingBuffer,
+    DrawingSettings,
+    PreparedDrawing,
+)
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 logger = get_logger(__name__)
 
 FilteredSceneKey = Hashable | None
-RenderCacheKey = tuple[
-    FilteredSceneKey,
-    tuple[int, int, DrawingSettings],
-    tuple[str, str],
-]
+RenderCacheKey = tuple[FilteredSceneKey, tuple[str, str], tuple[int, int]]
 SceneRenderCatalogProvider = Callable[[], SceneRenderCatalog | None]
 CatalogErrorIdentity = tuple[str, str, str]
 
@@ -94,18 +94,20 @@ class CachedSceneOverlay:
         self._hover_hits: list[_IndexedHit] | None = None
         self._hover_hits_by_id: dict[str, _IndexedHit] = {}
         self._render_key: RenderCacheKey | None = None
+        self._settings: DrawingSettings | None = None
         self._drawing: PreparedDrawing | None = None
         self._reported_errors = reported_errors if reported_errors is not None else ReportedCatalogErrors()
         self._hover_hits_by_target: dict[str, HoverHit] = {}
 
     def prepare_drawing(self, context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
-        """Return final backend data for this overlay and exact drawing settings."""
+        """Return the prepared quads for this overlay and exact drawing settings."""
         catalog = self._current_catalog()
         if catalog is None:
             return EMPTY_DRAWING
         filtered_scene = self.filtered_scene()
-        render_key = self._render_cache_key(context, buffer.settings, catalog)
-        cache_hit = self._render_key == render_key and self._drawing is not None
+        render_key = (self._filtered_scene_key(), catalog.rendering_identity, (context.width, context.height))
+        covered = self._settings is not None and self._settings.covers(buffer.settings)
+        cache_hit = self._render_key == render_key and self._drawing is not None and covered
         if cache_hit:
             assert self._drawing is not None
             drawing = self._drawing
@@ -118,6 +120,7 @@ class CachedSceneOverlay:
                 if self._reported_errors.is_new(identity):
                     logger.warning(f"Render catalog {catalog.catalog_id}: {diagnostic.location}: {diagnostic.message}")
             self._render_key = render_key
+            self._settings = buffer.settings
             self._drawing = drawing
         return drawing
 
@@ -205,15 +208,6 @@ class CachedSceneOverlay:
         if self._catalog is None:
             self._catalog = get_built_in_scene_render_catalog()
         return self._catalog
-
-    def _render_cache_key(
-        self, context: RenderContext, settings: DrawingSettings, catalog: SceneRenderCatalog
-    ) -> RenderCacheKey:
-        return (
-            self._filtered_scene_key(),
-            (context.width, context.height, settings),
-            catalog.rendering_identity,
-        )
 
     def _hover_hit_from_indexed(self, indexed: _IndexedHit) -> HoverHit:
         hit = self._hover_hits_by_target.get(indexed.target_id)

@@ -114,8 +114,12 @@ def test_the_lane_menu_offers_export_the_windows_actions_and_leaving_the_lane_ou
     assert "sidebar" in listed[-1].toolTip()
 
 
-def test_right_clicking_a_lane_focuses_it_before_the_menu_shows_and_export_targets_it(opened: _Open) -> None:
+def test_right_clicking_a_lane_focuses_it_before_the_menu_shows_and_export_targets_it(
+    opened: _Open, qtbot: QtBot
+) -> None:
     first, second = opened.lanes
+    opened.viewer.window().activateWindow()  # Focus needs an active window, and Xvfb has no window manager.
+    qtbot.waitUntil(opened.viewer.window().isActiveWindow)
     first.display.viewport.setFocus()
     assert opened.viewer._runtime.focused_display() is first.display  # type: ignore[union-attr]
     focused: list[object] = []

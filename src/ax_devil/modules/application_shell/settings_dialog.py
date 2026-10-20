@@ -34,7 +34,6 @@ from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.device_discovery.network_scan import Login
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget
@@ -102,19 +101,6 @@ class SettingsDialog(BaseDialog):
         appearance_layout.addRow("Text size", self._text_size_combo)
         self._custom_frame = QCheckBox(_restart_label("Use the app title bar"))
         appearance_layout.addRow(self._custom_frame)
-        self._acceleration_combo = QComboBox()
-        for mode in GraphicsAcceleration:
-            self._acceleration_combo.addItem(mode.label, mode.value)
-        appearance_layout.addRow(_restart_label("Graphics acceleration"), self._acceleration_combo)
-        self._acceleration_description = QLabel()
-        self._acceleration_description.setWordWrap(True)
-        appearance_layout.addRow(self._acceleration_description)
-        override = self._settings.graphics_acceleration_override
-        if override is not None:
-            override_label = QLabel(f"Widget presentation is overridden by QT_WIDGETS_RHI={override}.")
-            override_label.setWordWrap(True)
-            appearance_layout.addRow(override_label)
-        self._acceleration_combo.currentIndexChanged.connect(self._update_acceleration_description)
         layout.addWidget(appearance_group)
 
         playback_group = QGroupBox("Playback")
@@ -254,10 +240,6 @@ class SettingsDialog(BaseDialog):
             checkbox.setChecked(self._settings.is_overlay_enabled(preference))
         self._theme_combo.setCurrentIndex(self._theme_combo.findData(self._settings.theme.value))
         self._text_size_combo.setCurrentIndex(self._text_size_combo.findData(self._settings.text_size.value))
-        self._acceleration_combo.setCurrentIndex(
-            self._acceleration_combo.findData(self._settings.graphics_acceleration.value)
-        )
-        self._update_acceleration_description()
 
     def _update_video_cache_controls(self) -> None:
         auto = bool(self._video_cache_mode.currentData())
@@ -270,16 +252,11 @@ class SettingsDialog(BaseDialog):
             return VideoCacheBudget()
         return VideoCacheBudget(round(self._video_cache_spin.value() * 1024))
 
-    def _update_acceleration_description(self) -> None:
-        mode = GraphicsAcceleration(self._acceleration_combo.currentData())
-        self._acceleration_description.setText(mode.description)
-
     def _build_snapshot(self) -> SettingsState:
         """Replace edited typed preferences while retaining fields this dialog does not show."""
         return replace(
             self._settings.snapshot(),
             video_cache_budget=self._selected_cache_budget(),
-            graphics_acceleration=GraphicsAcceleration(self._acceleration_combo.currentData()),
             theme=ThemeMode(self._theme_combo.currentData()),
             text_size=TextSize(self._text_size_combo.currentData()),
             custom_frame=self._custom_frame.isChecked(),
@@ -335,6 +312,5 @@ class SettingsDialog(BaseDialog):
         ]
         return (
             self._settings.custom_frame,
-            self._settings.graphics_acceleration,
             *(field_value(self._config, field) for field in restart_fields),
         )

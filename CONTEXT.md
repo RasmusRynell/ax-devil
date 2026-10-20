@@ -36,7 +36,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Built-in Catalog | The packaged, app-owned, read-only Scene Render Catalog. | Default catalog, packaged default |
 | Default Catalog | The Scene Render Catalog new views start from; the Built-in Catalog until the user picks another. | Active catalog, remembered selection |
 | Drawing Instruction | A catalog operation (box, circle, line, point, polygon, polyline, text or label) emitted directly to the drawing target. JSON still calls these `primitive` steps. | Intermediate drawable object |
-| Prepared Drawing | Final vertex bytes, resolved path properties and shaped text ready for retained Qt item binding. | Primitive list |
+| Prepared Drawing | One stream of overlay quads for shapes, text and labels, with its glyph atlas page, ready for the Qt Quick item. | Primitive list |
 | Draw Recipe | Catalog-owned entity or relation rendering logic that emits Drawing Instructions. | Object renderer, type switch |
 | Cached Scene Overlay | The adapter that keeps one Scene and provides prepared drawings and hover hits to the video player. | Render cache, Scene renderer |
 
@@ -51,6 +51,6 @@ Shared language for ax-devil's inspection workspace. This file names the current
 
 - Use **Seekable Video Content** for the Workspace description and `Seekable*Source` for runtime source capability.
 - Use **Frame Display** for the reusable display shell and **Video Viewer** for the workflow that owns media behavior.
-- Use **Overlay Content** for companion data and **Drawing Instruction** for catalog operations and **Prepared Drawing** for backend submission data.
+- Use **Overlay Content** for companion data and **Drawing Instruction** for catalog operations and **Prepared Drawing** for the quads handed to the display.
 - Use **Scene Render Catalog** for task-selected rendering setups that own templates and catalog-defined recipes.
 - Use **Draw Recipe** for catalog-owned entity rendering behavior. Classification strings are decoder evidence; recipe selection is Scene Render Catalog policy.

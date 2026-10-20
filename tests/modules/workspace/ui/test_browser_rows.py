@@ -58,9 +58,9 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert row.is_open
     assert row.information_factory is not None
     information = row.information_factory()
-    assert ("path", "/tmp/test.mp4") in information.fields
+    assert ("path", str(Path("/tmp/test.mp4"))) in information.fields
     assert information.children[0].title == "Overlay 1"
-    assert ("path", "/tmp/Overlay 1.txt") in information.children[0].fields
+    assert ("path", str(Path("/tmp/Overlay 1.txt"))) in information.children[0].fields
     assert ("handler type", "AXIS_JSON") in information.children[0].fields
     assert [child.label for child in row.children] == ["Overlay 1", "Overlay 2"]
     assert row.children[0].activation_target == (video, 0)

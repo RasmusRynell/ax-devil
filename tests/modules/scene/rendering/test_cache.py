@@ -22,8 +22,11 @@ from ax_devil.modules.scene.model import (
 from ax_devil.modules.scene.rendering.cache import CachedSceneOverlay, ReportedCatalogErrors
 from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
 from ax_devil.modules.scene.rendering.catalog_loader import get_built_in_scene_render_catalog
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
-from ax_devil.modules.video_player.engine.quick.prepared import EMPTY_DRAWING, DrawingSettings
+from ax_devil.modules.video_player.engine.quick.preparation import (
+    DrawingBuffer,
+    DrawingSettings,
+    PreparedDrawing,
+)
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 
@@ -82,13 +85,13 @@ def test_cached_scene_overlay_filter_removes_primitives_and_hover(kind: KnownCla
     context = RenderContext.create(640, 480)
 
     drawing_before = overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert drawing_before != EMPTY_DRAWING
+    assert len(drawing_before) > 0
     assert overlay.hit_test(0.2, 0.3) is not None
     assert overlay.get_hit_by_id("object-1") is not None
 
     filter_state.set_enabled(option, False)
 
-    assert overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context))) == EMPTY_DRAWING
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(DrawingSettings.for_context(context)))) == 0
     assert overlay.hit_test(0.2, 0.3) is None
     assert overlay.get_hit_by_id("object-1") is None
 
@@ -150,8 +153,6 @@ def test_hover_hit_summarizes_the_entity_once_and_omits_what_the_decoder_did_not
         DrawingSettings(640, 480, 479.5),
         DrawingSettings(640, 480, 480, dpi=120),
         DrawingSettings(640, 480, 480, dpr=1.5),
-        DrawingSettings(640, 480, 480, hardware=True),
-        DrawingSettings(640, 480, 480, viewport=(-200.0, 0.0, 640.0, 480.0)),
     ],
 )
 def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettings) -> None:
@@ -165,6 +166,33 @@ def test_final_drawing_cache_includes_every_surface_input(changed: DrawingSettin
     assert overlay.prepare_drawing(context, DrawingBuffer(changed)) is second
 
 
+def test_a_context_of_other_dimensions_is_not_served_the_drawing_prepared_for_another() -> None:
+    """Catalog lengths resolve against the context, so a native export cannot reuse a scaled viewer drawing."""
+    settings = DrawingSettings(500, 250, 250, dpr=2.0)
+    overlay = CachedSceneOverlay(scene=_motion_scene())
+    viewer, export = RenderContext.create(500, 250), RenderContext.create(1000, 500)
+
+    first = overlay.prepare_drawing(viewer, DrawingBuffer(settings))
+
+    assert overlay.prepare_drawing(export, DrawingBuffer(settings)) is not first
+
+
+def test_panning_within_the_culling_margin_reuses_the_drawing() -> None:
+    """Pan keeps the prepared drawing until the viewport leaves the margin prepared around it."""
+    context = RenderContext.create(1000, 400)
+    overlay = CachedSceneOverlay(scene=_motion_scene())
+
+    def prepare(left: float) -> PreparedDrawing:
+        return overlay.prepare_drawing(
+            context, DrawingBuffer(DrawingSettings(1000, 400, 400, viewport=(left, 0.0, 200.0, 400.0)))
+        )
+
+    first = prepare(400.0)
+    assert prepare(320.0) is first and prepare(500.0) is first
+    moved = prepare(150.0)
+    assert moved is not first
+
+
 def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:
     scene = _classified_scene()
     model = SessionFilter(build_default_filter_config())
@@ -172,11 +200,11 @@ def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:
     context = RenderContext.create(640, 480)
     settings = DrawingSettings.for_context(context)
     first = overlay.prepare_drawing(context, DrawingBuffer(settings))
-    assert first != EMPTY_DRAWING
+    assert len(first) > 0
     assert overlay.hit_test(0.2, 0.3) is not None
 
     model.toggle_all()
-    assert overlay.prepare_drawing(context, DrawingBuffer(settings)) == EMPTY_DRAWING
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
     assert overlay.hit_test(0.2, 0.3) is None
 
 
@@ -193,12 +221,12 @@ def test_hover_targets_follow_catalog_readiness_even_with_a_cached_hit_index(ini
         assert overlay.get_hit_by_id("object-1") is not None
         catalog = None
 
-    assert overlay.prepare_drawing(context, DrawingBuffer(settings)) == EMPTY_DRAWING
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
     assert overlay.hit_test(0.2, 0.3) is None
     assert overlay.get_hit_by_id("object-1") is None
 
     catalog = ready_catalog
 
-    assert overlay.prepare_drawing(context, DrawingBuffer(settings)) != EMPTY_DRAWING
+    assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) > 0
     assert overlay.hit_test(0.2, 0.3) is not None
     assert overlay.get_hit_by_id("object-1") is not None

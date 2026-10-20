@@ -59,6 +59,7 @@ ax_devil = [
     "resources/icons/*.svg",
     "resources/icons/LICENSE",
     "modules/video_player/engine/quick/*.qml",
+    "modules/video_player/engine/quick/shaders/*.qsb",
     "modules/scene/rendering/catalog_definitions/*.json",
 ]
 

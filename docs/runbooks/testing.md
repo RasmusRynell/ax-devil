@@ -3,8 +3,8 @@
 ## Running tests
 
 ```bash
-make test                                       # Regular offline suite; Qt defaults to offscreen
-QT_QPA_PLATFORM=offscreen make test-integration  # Real development, pip/tool, and upgrade checks; may download packages
+make test                                       # Regular offline suite, on a private Xvfb display
+make test-integration                           # Real development, pip/tool, and upgrade checks; may download packages
 make check                                     # Formatting, linting, logging conventions, and strict types
 ```
 
@@ -16,15 +16,15 @@ Focused `uv run pytest ...` commands and the installation integration suite stay
 To run a specific test file or test:
 
 ```bash
-QT_QPA_PLATFORM=offscreen uv run pytest tests/modules/workspace/core/test_content.py
-QT_QPA_PLATFORM=offscreen uv run pytest tests/modules/workspace/core/test_content.py::test_specific_case -v
-QT_QPA_PLATFORM=offscreen uv run pytest tests/ -k "keyword"
+uv run pytest tests/modules/workspace/core/test_content.py
+uv run pytest tests/modules/workspace/core/test_content.py::test_specific_case -v
+uv run pytest tests/ -k "keyword"
 ```
 
 Plugin runtime checks:
 
 ```bash
-QT_QPA_PLATFORM=offscreen uv run pytest tests/modules/plugin_system tests/modules/plugin_installation
+uv run pytest tests/modules/plugin_system tests/modules/plugin_installation
 uv run ax-devil plugins --help
 uv run ax-devil --help
 ```
@@ -37,9 +37,10 @@ outside the checkout with isolated storage, then checks launching, decoding, upg
 removal. It may download and build packages, needs the same system libraries as a normal installation, and publishes
 nothing.
 
-CI runs three jobs on pull requests, `main`, and release tags: `quality` shares one Python 3.12 environment for
+CI runs these jobs on pull requests, `main`, and release tags: `quality` shares one Python 3.12 environment for
 application checks, the regular suite, installation smoke tests, and package builds; `test` runs
-the regular suite on the minimum supported Python 3.10; `lowest` runs it on Python 3.10 with the oldest allowed
+the regular suite on the minimum supported Python 3.10 on Ubuntu, Windows (Direct3D 11 on the WARP software adapter)
+and macOS, serially because windows on one native desktop fight over focus; `lowest` runs it on Python 3.10 with the oldest allowed
 dependencies (`uv pip install --resolution lowest-direct -e . --group dev`). A newer push to a PR cancels its
 superseded run; runs for `main` commits and releases always finish.
 Pytest excludes the `integration` marker by default; `-m integration` selects it explicitly.
@@ -54,47 +55,28 @@ A published release must remain available to the plugin resolver at its exact ve
 `tools/release-check/run.sh [tool|pip|py310|source]` needs Docker. It installs the candidate in fresh Ubuntu 24.04
 containers by running the documented prerequisite and source commands as written. The `tool`, `pip`, and `py310`
 scenarios install the built wheel, with a local directory standing in for PyPI and every dependency coming from PyPI;
-they render catalogs, install the documented plugin, play a generated video offscreen, upgrade the app, and check that
+they render catalogs, install the documented plugin, play a generated video on a virtual display, upgrade the app, and check that
 plugins follow. `source` clones the candidate, runs `make check`, `make test`, and `make test-integration`, and checks
 that editable plugin edits apply without reinstalling.
 
 ## GUI verification
 
-All agent verification runs away from the user's desktop. Use the offscreen commands above for
-normal tests and visual checks. Save `QWidget.grab()` or `QQuickWindow.grabWindow()` output to
-`tmp_path` or `/tmp` and inspect that image. Send interactions through Qt test events.
-For application UI, see [the write-ui skill's checks](../../.agents/skills/write-ui/SKILL.md#check-it).
+All agent verification runs away from the user's desktop, on a private Xvfb display with Mesa's OpenGL (llvmpipe).
+The test suite starts one itself (see below), so plain `make test` and `uv run pytest` need nothing else; Xvfb must be
+installed: `sudo pacman -S --needed xorg-server-xvfb xorg-xauth` on Arch/Omarchy, or
+`sudo apt install xvfb xauth libgl1-mesa-dri` on Debian/Ubuntu.
+Save `QWidget.grab()` or `QQuickWindow.grabWindow()` output to `tmp_path` or `/tmp` and inspect that image. Send
+interactions through Qt test events. For application UI, see
+[the write-ui skill's checks](../../.agents/skills/write-ui/SKILL.md#check-it).
 
-For native-window and OpenGL checks, run the existing tests on a private Xvfb display:
-
-```bash
-env -u WAYLAND_DISPLAY -u QT_QPA_PLATFORMTHEME -u QT_QUICK_BACKEND -u QSG_RHI_BACKEND \
-  -u QT_WIDGETS_RHI -u QT_WIDGETS_RHI_BACKEND AX_DEVIL_TESTS_QPA_PLATFORM=xcb \
-  __GLX_VENDOR_LIBRARY_NAME=mesa LIBGL_ALWAYS_SOFTWARE=1 \
-  xvfb-run -a -s "-screen 0 1920x1080x24 -nolisten tcp" uv run pytest \
-  tests/modules/catalog_viewer/test_catalog_commands.py \
-  tests/modules/catalog_viewer/test_catalog_viewer_window.py \
-  tests/modules/video_player/engine \
-  tests/modules/video_player/test_lane_fullscreen.py \
-  tests/modules/workspace/ui/test_offline_playback.py
-```
-
-Run these groups together so catalog window teardown is followed by image export and renderer creation in the same
-process, without globally forcing widget RHI: this also checks main-window preparation and raster Settings/menu
-windows. The close/reopen test waits for preview preparation and native destruction and checks that the reopened
-viewer can render. This setup uses Mesa software OpenGL, overriding inherited desktop driver selection: an NVIDIA
-GLX override on Xvfb can leave invalid contexts after window teardown. It still exercises Qt's OpenGL scene graph,
-unlike the normal offscreen Qt Quick software backend. It does not verify the physical GPU or its driver.
-
-Install prerequisites once: `sudo pacman -S --needed xorg-server-xvfb xorg-xauth` on Arch/Omarchy,
-or `sudo apt install xvfb xauth` on Debian/Ubuntu. `xvfb-run` allocates a private display and
-cleans up its server and authority file when the command ends. Standalone GUI tools use the same
-`QT_QPA_PLATFORM=xcb xvfb-run -a` prefix and must close their windows and workers when finished.
+Standalone GUI tools and commands that render (`ax-devil catalog render`, the app itself) get a display from
+`xvfb-run -a -s "-screen 0 1920x1080x24"`, or from `tools/private_display.py`, which starts one on a free display
+number without touching others. They must close their windows and workers when finished.
 The pytest suite isolates app storage too; standalone app checks must use temporary settings and fixtures.
 
-Xvfb has no window manager and may use software OpenGL. Window-manager interaction, Wayland, and
-physical GPU checks need a separate test session or machine with its own display and input.
-Never launch verification windows, send input, or capture screenshots on the user's desktop.
+Xvfb has no window manager, so tests that need keyboard focus activate their window first. It does not verify the
+physical GPU or its driver, Wayland, or window-manager interaction; those need a separate session or machine with its
+own display and input. Never launch verification windows, send input, or capture screenshots on the user's desktop.
 If the required isolated environment is unavailable, report the check as unrun and its coverage limit.
 Real-device checks use configured test devices; the offline suite mocks external services.
 
@@ -102,7 +84,7 @@ Real-device checks use configured test devices; the offline suite mocks external
 
 ```
 tests/
-├── conftest.py                    Shared fixtures (temp dirs, plugin loading, Qt offscreen)
+├── conftest.py                    Shared fixtures (temp dirs, plugin loading, Qt display)
 ├── core/                          Root CLI, package metadata, and `ax_devil.core` tests
 ├── modules/                       Concept-owned module tests for workspace, viewer workflow, scene, sources, sync, cache, and playback
 ├── plugins/                       Plugin decoder and playlist resolver tests
@@ -114,11 +96,13 @@ Config and settings tests live under `tests/modules/settings/`.
 ## Key conventions
 
 - **Regular tests stay offline.** Only the explicit installation integration test may download packages. Mock all external services (RTSP, MQTT, device APIs).
-- **Qt offscreen.** `tests/__init__.py` sets `QT_QPA_PLATFORM=offscreen` before importing Qt or application modules,
-  replacing inherited desktop platform settings, so plain `uv run pytest` and CI use the same platform. Offscreen runs
-  clear `QT_QPA_PLATFORMTHEME` so a desktop theme cannot initialize GTK and try to open the user's display. Set
-  `AX_DEVIL_TESTS_QPA_PLATFORM=xcb` only for the private-display checks above. Create applications through pytest-qt's
-  `qapp`/`qtbot`, never during collection.
+- **Private display.** `tests/__init__.py` starts Xvfb (one per xdist worker, so windows cannot take each other's
+  keyboard focus) and sets `QT_QPA_PLATFORM=xcb`, Mesa's software OpenGL and `DISPLAY` before importing Qt or
+  application modules, replacing inherited desktop settings, so plain `uv run pytest`, CI and a stray
+  `QT_QPA_PLATFORM=offscreen` all use the same platform; Qt Quick has no GPU backend under offscreen. Missing Xvfb
+  fails the run. Off Linux the suite uses Qt's native platform plugin and starts no display; the graphics API comes
+  from the `QSG_RHI_*` variables (see CI). `AX_DEVIL_TESTS_QPA_PLATFORM` names a platform plugin on any OS and skips Xvfb. Create
+  applications through pytest-qt's `qapp`/`qtbot`, never during collection.
 - **Plugins isolated.** A session-scoped fixture loads built-ins while installed external entry points are patched out.
 - **Qt teardown.** Register widgets with `qtbot.addWidget()`. Register only top-level widgets: Qt deletes children with their parent, and a registered child whose parent was garbage-collected first makes pytest-qt close an already-deleted widget. The shared teardown hook drains Qt's deferred deletions after pytest-qt closes widgets, keeping native destruction on the GUI thread and out of later tests. Like the app, the suite runs with automatic cyclic GC off and collects in that hook, so a collection never runs inside a Qt callback; do not re-enable `gc` in a test without restoring it.
 - **Temp directories.** Use pytest's `tmp_path` for file-system tests. `temp_dir` is an alias; `test_temp_root` supplies a session directory for shared generated media. Pytest manages their retention and cleanup.
@@ -159,74 +143,19 @@ ordering, opacity, texture replacement, software rendering, and reparenting.
 `tests/modules/video_player/engine/test_image_renderer.py` verifies native dimensions,
 edge pixels, overlay removal, and source-context dimensions. Run it with
 `QT_SCALE_FACTOR=1.5` to verify export independently of desktop scaling.
-Normal tests use the software scene graph. For native-window verification after rendering or startup
-changes, use the isolated command in [GUI verification](#gui-verification).
 For fractional/high-DPI geometry, add `QT_SCALE_FACTOR=1.5` and select only
 `tests/modules/video_player/engine/test_quick_geometry.py -k numeric_geometry`; repeat at scale 2.
 Other pixel-coordinate tests assume scale 1. Linux/OpenGL results do not certify other graphics APIs.
 
 ## Rendering benchmarks
 
-Baseline, measured in the full app playing a 45 s 1080p25 H.264 clip (8 Mbit/s) in a playlist of 1, 2 or 4 lanes,
-each with an ADF overlay of 250 moving objects, on Qt 6.10.2 with an RTX 5080 and a cgroup CPU quota standing in for
-a slower machine: the GUI thread is the limit and decoding that clip costs about 0.09 cores; two lanes play at full
-rate and four lanes saturate one core, where playback stays in real time by showing fewer frames. On the same
-machine, one round of `tools/benchmark_catalog_lanes.py --lanes 4 --entities 250` (which generates its images and
-does not decode video) costs about 24 ms of catalog evaluation and drawing preparation, 4.1 ms of item binding,
-0.8 ms of scene graph sync and 3.6 ms of render submission, for 36 ms of process CPU. On Xvfb, OpenGL composition
-adds about 24 ms per round because each frame is copied back to the X server; a real display differs.
-`--gpu-sync` adds about 0 ms there, and software-backend rounds spike near 170 ms regardless of the change under
-test. `tools/benchmark_quick_renderer.py` measures the Quick renderer with synthetic shapes. For a native-window
-comparison on a private display, run each backend separately. These results do not certify physical GPU performance:
-
-```bash
-QT_QPA_PLATFORM=xcb xvfb-run -a uv run python tools/benchmark_quick_renderer.py --moving --text
-QT_QPA_PLATFORM=xcb xvfb-run -a uv run python tools/benchmark_quick_renderer.py --software --moving --text
-QT_QPA_PLATFORM=xcb xvfb-run -a uv run python tools/benchmark_quick_renderer.py --changing-content --mixed --text
-QT_QPA_PLATFORM=xcb xvfb-run -a uv run python tools/benchmark_quick_renderer.py --moving --text --fixed-image
-```
-
-This synthetic workload reports process CPU consumed from submission through render
-submission, including Quick scene graph work. It separately reports elapsed wall
-time, which includes event-loop/vsync waiting. It excludes source generation,
-framebuffer readback, GPU completion, and display latency; it is not a playback FPS benchmark. Omitting
-`--moving` measures resource reuse with a changing video frame and static overlays.
-
-The benchmark also reports CPU scopes for GUI preparation, scene graph synchronization
-(`beforeSynchronizing` to `afterSynchronizing`), and render submission (`beforeRendering`
-to `afterRendering`). These are process CPU durations, not GPU timestamps. Their medians
-do not sum to the total median, and work outside these scopes remains in the total.
-The benchmark window stays above other windows to avoid occlusion suppressing rendering; keep it on the private display.
-`--mixed` includes boxes, circles, lines, polygons, and polylines; `--changing-content`
-changes dimensions and label text as well as positions. `--fixed-image` retains the
-video texture while updating overlays. Run cases sequentially without competing work.
-
-`tools/benchmark_catalog_lanes.py` measures production viewers rendering the packaged catalog, with a new moving Scene
-and video image per lane every round. A round ends when the window has composited it. It reports the catalog and binding
-stages, each lane's whole Qt Quick frame (`quick_frame`: polish, sync, render and frame end, with `scene_sync` and
-`render_submission` as parts of it), the window's composition and flush (`compose`), and their sum (`frame_total`),
-which should match wall time and process CPU; `uncomposed_rounds` counts rounds that ended without composition.
-`--gpu-sync` also waits for the GPU after each round (`gpu_wait`); that serializes CPU and GPU, so leave it off when
-comparing CPU cost. `tools/benchmark_template_runtime.py` isolates catalog evaluation and drawing preparation offscreen.
-
-```bash
-QT_QPA_PLATFORM=xcb xvfb-run -a uv run python tools/benchmark_catalog_lanes.py --lanes 4 --entities 250
-QT_QPA_PLATFORM=xcb xvfb-run -a uv run python tools/benchmark_catalog_lanes.py --lanes 4 --entities 250 --changing-scores
-QT_QPA_PLATFORM=offscreen uv run python tools/benchmark_template_runtime.py --iterations 30 --entities 250
-```
-
-Use `--catalog FILE` to compare appearances and `--changing-scores` to exercise label texture replacement rather
-than only moving stable labels. Compare changes with the same catalog, backend, viewport and workload, sequentially
-without other verification running. Confidence values cycle through sixty two-decimal values; this is a repeatable
-cache workload, not a claim about every camera's score distribution. Label tests in `test_quick_text_and_labels.py` cover
-shared textures, bounded eviction, disappearing instances, clearing and scene-graph recreation. Run them on both
-the offscreen software backend and the private OpenGL display to check native resource destruction.
+Measure rendering cost and compare it with an older ref using [`tools/bench`](../../tools/bench/README.md).
 
 ## Playback memory
 
 To check the [video cache memory](../settings.md#video-cache-memory) figures, generate clips with FFmpeg `testsrc2`
 at 1080p and 4K, 30 fps, 20 seconds:
 `libx264 -preset ultrafast -crf 28 -g 60 -pix_fmt yuv420p -threads 2` (long-GOP: `-g 300 -sc_threshold 0`). Play
-them offscreen without overlays with Manual 1 GiB in fresh processes, recording indexing separately from cached opens.
+them on the private display without overlays with Manual 1 GiB in fresh processes, recording indexing separately from cached opens.
 Play to the end, probe retained and evicted frames, change the allowance during playback, and open and close sources
 to check redistribution and cleanup.

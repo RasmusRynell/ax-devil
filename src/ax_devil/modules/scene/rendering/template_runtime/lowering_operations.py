@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from ax_devil.modules.video_player.engine.drawing import ANCHORS
+
 from . import colormaps, kernels
 from .definitions import ValueType
-from .kernels import ANCHORS
 from .lowering_expressions import ExpressionBuilder, Scope
 from .lowering_values import Value
 from .lowering_writer import FALSE, MISSING, TRUE

@@ -101,7 +101,7 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
 
 ## Check it
 
-1. Take screenshots before and after the change, offscreen and isolated from the user's settings:
+1. Take screenshots before and after the change, on a private display and isolated from the user's settings:
    `PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/ui-before uv run pytest -p tests.conftest tools/ui_screenshots.py -q`
    (then again with `/tmp/ui-after`). Add the surface you changed to `tools/ui_screenshots.py` if it is missing.
    Shots are drawn at 2 device pixels per logical pixel; set `AX_DEVIL_UI_SHOTS_SCALE=1` for smaller files.
@@ -109,7 +109,7 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
    when nothing is clipped, overlapping or unreadable and the new UI matches its neighbours' sizes and spacing.
    To read one image instead of two, join a before and after shot with ImageMagick:
    `montage /tmp/ui-before/X.png /tmp/ui-after/X.png -tile 2x1 -geometry +4+0 /tmp/X-compare.png`.
-   Also measure the fit, offscreen with `HOME` set to a temporary folder, at text sizes 13 and 21: show the window,
+   Also measure the fit, on a private display (`tools/private_display.py`) with `HOME` set to a temporary folder, at text sizes 13 and 21: show the window,
    and for each page compare its content's `sizeHint()` with the scroll area's viewport, check the scroll bars and
    tab bar, and compare each field's width with its `sizeHint()`. Numbers catch a page that only just scrolls.
 3. Add the window or dialog to `SURFACES` in `tests/modules/chrome/test_surface_fit.py`, which checks that no button

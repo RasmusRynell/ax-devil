@@ -20,8 +20,7 @@ from ax_devil.modules.scene.rendering import CachedSceneOverlay, SceneRenderCata
 from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic
 from ax_devil.modules.video_player.engine.data_types import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
 from ax_devil.modules.video_player.engine.drawing import Paint
-from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
-from ax_devil.modules.video_player.engine.quick.prepared import DrawingSettings, PreparedDrawing
+from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings, PreparedDrawing
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 

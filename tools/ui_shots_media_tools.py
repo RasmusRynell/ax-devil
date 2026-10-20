@@ -44,7 +44,7 @@ def save_shot(window: QWidget, theme: str, name: str, menu: QMenu | None = None,
     """Save *window* as ``<theme>-<name>.png``.
 
     An open *menu* is painted in below *anchor*, right-aligned, because popups are windows of their own and the
-    offscreen screen keeps them inside its 800x800 area.
+    private display keeps them inside its 800x800 area.
     """
     shot = window.grab()
     if menu is not None and anchor is not None:

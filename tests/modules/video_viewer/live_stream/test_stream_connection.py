@@ -202,8 +202,7 @@ def test_visibility_refreshes_paused_live_overlay_without_another_frame(
     """A visibility change refreshes the retained display while the transport stays paused."""
     from ax_devil.modules.scene.model import BoundingBox, Classification, Entity, EntityId, Observation, Score
     from ax_devil.modules.scene.rendering import OverlayFeature
-    from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer
-    from ax_devil.modules.video_player.engine.quick.prepared import DrawingSettings
+    from ax_devil.modules.video_player.engine.quick.preparation import DrawingBuffer, DrawingSettings
     from ax_devil.modules.video_player.engine.render_context import RenderContext
 
     displayed: list[VideoFrameWithOverlays] = []
@@ -235,5 +234,5 @@ def test_visibility_refreshes_paused_live_overlay_without_another_frame(
 
     refresh.assert_called_once()
     hidden = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert len(hidden.labels) < len(initial.labels)
+    assert len(hidden) < len(initial)
     assert controller.is_paused and len(displayed) == 1

@@ -1,65 +1,150 @@
-"""Final geometry, path and glyph preparation from drawing batches, for display and export."""
+"""Overlay quad preparation from one frame of drawing batches, for display and export."""
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
 from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
-from PySide6.QtCore import QPointF, QRectF
+from PySide6.QtGui import QImage
 
-from ..drawing import (
-    _ANCHORS,
-    DrawingStyle,
-    LabelContent,
-    Paint,
-    Points,
-    _circle_path,
-    _poly_bounds,
-    _poly_path,
-    _rectangle_path,
-    _rounded_rectangle_path,
-    label_sprite,
-)
-from .batching import GeometryPacker, RectangleBatch, VertexBatch
-from .columns import _colors, _floats, _join, _select
-from .geometry import convex_rows, polygon_batch, rectangle_template
-from .prepared import DrawingSettings, LabelData, MeshData, PathData, PreparedDrawing, TextData, color
-from .texts import prepare_texts
+from ax_devil.modules.settings.logging_config import get_logger
+
+from ..drawing import LabelColumns, Paint, Points, RunColumns, concatenate_columns, concatenate_labels
+from ..render_context import RenderContext
+from .glyphs import AtlasFull, GlyphAtlas, glyph_atlas
+from .label_layout import LabelQuads, label_quads, visible_rows
+from .overlay_vertex import OVERLAY_VERTEX, per_row
+from .shape_quads import box_quads, circle_quads, line_quads, point_quads, polygon_quads, polyline_quads
+
+
+@dataclass(frozen=True, slots=True)
+class DrawingSettings:
+    """Exact display/export geometry and font inputs, separate from catalog units."""
+
+    width: float
+    height: float
+    scale: float
+    dpi: int = 96
+    dpr: float = 1.0
+    viewport: tuple[float, float, float, float] | None = None
+
+    def culling(self) -> tuple[float, float, float, float] | None:
+        """The viewport, letterbox included, grown by half its size on each side; None draws everything."""
+        if self.viewport is None:
+            return None
+        left, top, width, height = self.viewport
+        return (left - width / 2, top - height / 2, width * 2, height * 2)
+
+    def covers(self, other: DrawingSettings) -> bool:
+        """Whether a drawing prepared with these settings also holds all that *other* shows.
+
+        True when every field but the viewport is equal and the other viewport lies inside
+        :meth:`culling`, so panning within the margin reuses the prepared drawing.
+        """
+        if replace(self, viewport=None) != replace(other, viewport=None):
+            return False
+        culling = self.culling()
+        if culling is None:
+            return True
+        if other.viewport is None:
+            return False
+        left, top, width, height = other.viewport
+        cx, cy, cw, ch = culling
+        return cx <= left and cy <= top and left + width <= cx + cw and top + height <= cy + ch
+
+    @classmethod
+    def for_context(cls, context: RenderContext) -> DrawingSettings:
+        """Construct uncropped preparation settings for a logical target."""
+        return cls(context.width, context.height, context.scale_factor)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class PreparedDrawing:
+    """Immutable submission data: one stream of overlay quads and the atlas page their glyphs sample.
+
+    *vertices* are ``OVERLAY_VERTEX``, four per quad, drawn in order as shapes, texts, then labels, so text stays
+    readable. Order across entities is not preserved; within a kind emission order is kept. *drawn* counts the
+    shapes, texts and labels in them. Identity is meaningful: a drawing is never modified, so the same object
+    means the same pixels.
+    """
+
+    vertices: NDArray[np.void] = field(default_factory=lambda: np.zeros(0, OVERLAY_VERTEX))
+    page: QImage | None = None
+    drawn: int = 0
+
+    def __len__(self) -> int:
+        return self.drawn
+
+
+EMPTY_DRAWING = PreparedDrawing()
+logger = get_logger(__name__)
+_warned_dropped_glyphs = False
+_Placed = tuple[NDArray[np.float64], NDArray[np.float64], object, LabelColumns]
+"""Normalized x, y, anchor and content of a batch of labels, or of texts drawn as unpadded labels."""
+_EMPTY_QUADS = LabelQuads(np.zeros((0, 4), OVERLAY_VERTEX), 0)
+
+
+def _warn_dropped_glyphs(count: int) -> None:
+    """Log, once per process, that a frame's text needed more glyph space than the atlas page holds."""
+    global _warned_dropped_glyphs
+    if not _warned_dropped_glyphs:
+        _warned_dropped_glyphs = True
+        logger.warning(f"Glyph atlas page is full: {count} glyphs were left out of a frame")
+
+
+def _join(values: list[object]) -> object:
+    """Concatenate per-row arguments of several batches."""
+    if all(type(value) is np.ndarray for value in values):
+        return np.concatenate(cast(list[NDArray[np.generic]], values))
+    return [item for value in values for item in cast(Sequence[object], value)]
 
 
 class DrawingBuffer:
-    """Prepare final backend data from batches of compiled catalog instructions."""
+    """Collect one frame of compiled catalog instructions and prepare its overlay quads."""
 
     def __init__(self, settings: DrawingSettings) -> None:
         self.settings = settings
-        self._viewport = settings.viewport
-        self._meshes: list[VertexBatch] = []
-        self._paths: list[PathData] = []
-        self._texts: list[TextData] = []
-        self._labels: list[LabelData] = []
+        self._culling = settings.culling()
+        self._shapes: list[NDArray[np.void]] = []
+        self._drawn_shapes = 0
+        self._texts: list[_Placed] = []
+        self._labels: list[_Placed] = []
         self._queued: defaultdict[tuple[str, int], list[tuple[tuple[object, ...], Paint]]] = defaultdict(list)
-        self._packer = GeometryPacker()
-
-    def reset(self, settings: DrawingSettings) -> None:
-        """Start a frame; live glyphs and shared topology retain their own resources."""
-        self.settings = settings
-        self._viewport = settings.viewport
-        self._meshes, self._paths, self._texts, self._labels = [], [], [], []
-        self._queued = defaultdict(list)
 
     def finish(self) -> PreparedDrawing:
         """Prepare every queued batch, then publish without retaining mutable builder collections."""
         self._flush()
-        drawing = PreparedDrawing(
-            tuple(MeshData(payload) for payload in self._packer.pack(self._meshes)),
-            tuple(self._paths),
-            tuple(self._texts),
-            tuple(self._labels),
-        )
-        return drawing
+        shapes, self._shapes = self._shapes, []
+        texts, self._texts = self._texts, []
+        labels, self._labels = self._labels, []
+        parts = list(shapes)
+        drawn = self._drawn_shapes
+        page = None
+        if texts or labels:
+            atlas = glyph_atlas(self.settings.dpi, self.settings.dpr)
+            try:
+                text, label = self._text_and_labels(texts, labels, atlas)
+            except AtlasFull:  # The page filled up: start a fresh one and lay out everything once more.
+                atlas.reset()
+                atlas.drop_overflow = True  # Even a fresh page may be too small: draw the glyphs that fit.
+                try:
+                    text, label = self._text_and_labels(texts, labels, atlas)
+                finally:
+                    atlas.drop_overflow = False
+            parts += [text.vertices.reshape(-1), label.vertices.reshape(-1)]
+            drawn += text.labels + label.labels
+            page = atlas.snapshot()
+            if atlas.dropped:
+                _warn_dropped_glyphs(atlas.dropped)
+                atlas.reset()  # Later frames must not reuse strings shaped with missing glyphs.
+        vertices = np.concatenate(parts) if parts else np.zeros(0, OVERLAY_VERTEX)
+        vertices.flags.writeable = False
+        return PreparedDrawing(vertices, page, drawn)
 
     def _flush(self) -> None:
         # Order within a layer is free, so each kind is prepared once for all its rows: the fixed
@@ -114,7 +199,7 @@ class DrawingBuffer:
         self._queued["points", 0].append(((x, y), paint))
 
     def polylines(self, points: Sequence[Points] | NDArray[np.float64], paint: Paint) -> None:
-        """Queue open polylines with bevel joins."""
+        """Queue open polylines with round joins."""
         self._queued["polylines", 0].append(((list(points),), paint))
 
     def polygons(self, points: Sequence[Points] | NDArray[np.float64], paint: Paint) -> None:
@@ -146,36 +231,27 @@ class DrawingBuffer:
         self,
         x: NDArray[np.float64],
         y: NDArray[np.float64],
-        anchor: Sequence[str],
-        content: Sequence[LabelContent],
+        anchor: object,
+        content: LabelColumns,
     ) -> None:
-        """Paint each distinct label once and place it on whole device pixels, so its text stays crisp.
+        """Queue labels; they are laid out on the glyph atlas when the frame finishes."""
+        self._labels.append((x, y, anchor, content))
 
-        Labels are prepared row by row, so unlike the other kinds they gain nothing from being queued.
-        """
-        s = self.settings
-        for row, item in enumerate(content):
-            if not item.runs:
-                continue
-            sprite = label_sprite(item, s.scale, s.dpi, s.dpr)
-            if sprite is None:
-                continue
-            fx, fy = _ANCHORS.get(str(anchor[row]), (0.0, 0.0))
-            left = float(x[row]) * s.width - fx * sprite.width
-            top = float(y[row]) * s.height - fy * sprite.height
-            if not self._visible(left, top, sprite.width, sprite.height):
-                continue
-            position = QPointF(round(left * s.dpr) / s.dpr, round(top * s.dpr) / s.dpr)
-            self._labels.append(LabelData(sprite, position))
+    def _text_and_labels(
+        self, texts: list[_Placed], labels: list[_Placed], atlas: GlyphAtlas
+    ) -> tuple[LabelQuads, LabelQuads]:
+        """Lay out text primitives and labels on *atlas*; raises AtlasFull when its page is too small."""
+        return self._label_quads(texts, atlas), self._label_quads(labels, atlas)
 
-    def _visible(self, x: float, y: float, width: float, height: float, stroke: float = 0.0) -> bool:
-        if self._viewport is None:
-            return True
-        left, top, w, h = self._viewport
-        margin = max(0.0, stroke) * 0.7071067811865476 + 2 / self.settings.dpr
-        return (
-            x - margin < left + w and x + width + margin > left and y - margin < top + h and y + height + margin > top
-        )
+    def _label_quads(self, queued: list[_Placed], atlas: GlyphAtlas) -> LabelQuads:
+        """Lay out the queued labels or texts, merged into one batch so that their drawing order is kept."""
+        if not queued:
+            return _EMPTY_QUADS
+        counts = [len(x) for x, _, _, _ in queued]
+        x, y = (np.concatenate([call[index] for call in queued]) for index in (0, 1))
+        anchor = concatenate_columns([anchor for _, _, anchor, _ in queued], counts)
+        content = concatenate_labels([(count, labels) for count, (_, _, _, labels) in zip(counts, queued)])
+        return label_quads(x, y, anchor, content, self.settings, atlas)
 
     def _visible_rows(
         self,
@@ -185,13 +261,25 @@ class DrawingBuffer:
         height: NDArray[np.float64],
         stroke: NDArray[np.float64],
     ) -> NDArray[np.bool_]:
-        if self._viewport is None:
-            return np.ones(len(x), dtype=np.bool_)
-        left, top, w, h = self._viewport
-        margin = np.maximum(0.0, stroke) * 0.7071067811865476 + 2 / self.settings.dpr
-        return (
-            (x - margin < left + w) & (x + width + margin > left) & (y - margin < top + h) & (y + height + margin > top)
-        )
+        return visible_rows(self._culling, self.settings.dpr, x, y, width, height, stroke)
+
+    def _add_shapes(
+        self,
+        make: Callable[..., NDArray[np.void]],
+        visible: NDArray[np.bool_],
+        columns: tuple[NDArray[np.float64], ...],
+        paint: Paint,
+        *extra: float,
+    ) -> None:
+        """Queue the quads of the visible rows (one shape per quad); rows are culled before any quad is built."""
+        s = self.settings
+        if not visible.all():
+            rows = np.flatnonzero(visible)
+            columns, paint = tuple(column[rows] for column in columns), paint.take(rows)
+        if len(columns[0]):
+            quads = make(*columns, paint, s.width, s.height, s.scale, *extra)
+            self._shapes.append(quads)
+            self._drawn_shapes += len(quads) // 4
 
     def _draw_boxes(
         self,
@@ -201,60 +289,11 @@ class DrawingBuffer:
         h: NDArray[np.float64],
         paint: Paint,
     ) -> None:
-        """Prepare visible rectangles: bulk vertices on hardware, Qt paths for dashed, narrow or rounded ones."""
+        """Prepare visible rectangles as overlay quads; zero-area rows draw nothing."""
         s = self.settings
-        area = (w > 0) & (h > 0)
-        count = len(x)
-        stroke = np.maximum(0.0, _floats(paint.pen_width, count) * s.scale)
-        left, top, width, height = x * s.width, y * s.height, w * s.width, h * s.height
-        drawn = area & self._visible_rows(left, top, width, height, stroke)
-        pixel = 1 / s.dpr
-        radius = _floats(paint.radius, count) * s.scale
-        mesh = (
-            drawn
-            & s.hardware
-            & (radius <= 0)
-            & ~np.broadcast_to(np.asarray(paint.dashed, dtype=np.bool_), (count,))
-            & ~((stroke > 0) & (stroke < pixel))
-            # Tolerate rounding: a one-pixel catalog length need not map back to exactly one pixel.
-            & (np.minimum(width, height) >= stroke + pixel - 1e-6)
-        )
-        for row in np.flatnonzero(drawn & ~mesh):
-            self.path(
-                _rounded_rectangle_path(float(width[row]), float(height[row]), float(radius[row]))
-                if radius[row] > 0
-                else _rectangle_path(float(width[row]), float(height[row])),
-                paint.style(int(row)),
-                fill=True,
-                origin=QPointF(left[row], top[row]),
-            )
-        rows = np.flatnonzero(mesh)
-        if not rows.size:
-            return
-        fill = _colors(paint.brush_r, paint.brush_g, paint.brush_b, paint.brush_a, rows)
-        pen = _colors(paint.pen_r, paint.pen_g, paint.pen_b, 255, rows)
-        # Rows share a topology when stroke width and fill presence agree; usually all rows do.
-        if type(paint.pen_width) is not np.ndarray and type(paint.brush_a) is not np.ndarray:
-            unique = np.array([[stroke[0], float(np.asarray(paint.brush_a) > 0)]])
-            groups = None
-        else:
-            filled = np.broadcast_to(np.asarray(paint.brush_a) > 0, (count,))
-            unique, groups = np.unique(np.column_stack((stroke[rows], filled[rows])), axis=0, return_inverse=True)
-        for index, (key_stroke, key_filled) in enumerate(unique):
-            selected = np.arange(len(rows)) if groups is None else np.flatnonzero(groups == index)
-            chosen = rows[selected]
-            self._meshes.append(
-                RectangleBatch(
-                    rectangle_template(float(key_stroke), bool(key_filled), s.dpr),
-                    width[chosen],
-                    height[chosen],
-                    left[chosen],
-                    top[chosen],
-                    None,
-                    _select(fill, selected),
-                    _select(pen, selected),
-                )
-            )
+        stroke = np.maximum(0.0, per_row(paint.pen_width, len(x)) * s.scale)
+        visible = self._visible_rows(x * s.width, y * s.height, w * s.width, h * s.height, stroke)
+        self._add_shapes(box_quads, visible, (x, y, w, h), paint)
 
     def _draw_lines(
         self,
@@ -264,160 +303,63 @@ class DrawingBuffer:
         y2: NDArray[np.float64],
         paint: Paint,
     ) -> None:
-        """Prepare visible square-capped lines as rotated rectangles on hardware."""
+        """Prepare visible square-capped lines as rotated overlay quads."""
         s = self.settings
-        count = len(x1)
-        same = (x1 == x2) & (y1 == y2)
-        for row in np.flatnonzero(same):
-            self._point(float(x1[row]), float(y1[row]), paint.style(int(row)))
-        left, top = x1 * s.width, y1 * s.height
-        dx, dy = (x2 - x1) * s.width, (y2 - y1) * s.height
-        stroke = _floats(paint.pen_width, count) * s.scale
-        drawn = ~same & self._visible_rows(
-            np.minimum(x1, x2) * s.width, np.minimum(y1, y2) * s.height, np.abs(dx), np.abs(dy), stroke
+        stroke = np.maximum(0.0, per_row(paint.pen_width, len(x1)) * s.scale)
+        visible = self._visible_rows(
+            np.minimum(x1, x2) * s.width,
+            np.minimum(y1, y2) * s.height,
+            np.abs(x2 - x1) * s.width,
+            np.abs(y2 - y1) * s.height,
+            stroke,
         )
-        length = np.hypot(dx, dy)
-        mesh = (
-            drawn
-            & s.hardware
-            & ~np.broadcast_to(np.asarray(paint.dashed, dtype=np.bool_), (count,))
-            & (stroke >= 1 / s.dpr)
-            & (length > 0)
-        )
-        for row in np.flatnonzero(drawn & ~mesh):
-            self.path(
-                f"m 0 0 l {dx[row]:.12g} {dy[row]:.12g}",
-                paint.style(int(row)),
-                fill=False,
-                origin=QPointF(left[row], top[row]),
-            )
-        rows = np.flatnonzero(mesh)
-        if not rows.size:
-            return
-        width, run, rise = stroke[rows], dx[rows], dy[rows]
-        half = width / (2 * length[rows])
-        color = _colors(paint.pen_r, paint.pen_g, paint.pen_b, 255, rows)
-        self._meshes.append(
-            RectangleBatch(
-                rectangle_template(0.0, True, s.dpr),
-                length[rows] + width,
-                width,
-                left[rows] + half * (rise - run),
-                top[rows] - half * (run + rise),
-                np.degrees(np.arctan2(rise, run)),
-                color,
-                color,
-            )
-        )
+        self._add_shapes(line_quads, visible, (x1, y1, x2, y2), paint)
 
     def _draw_circles(
         self, x: NDArray[np.float64], y: NDArray[np.float64], radius: NDArray[np.float64], paint: Paint
     ) -> None:
-        """Prepare circular Qt paths with conservative bounds."""
+        """Prepare visible circles as overlay quads."""
         s = self.settings
-        for row in np.flatnonzero(radius > 0):
-            r = float(radius[row]) * min(s.width, s.height)
-            self.path(
-                _circle_path(r),
-                paint.style(int(row)),
-                fill=True,
-                origin=QPointF(x[row] * s.width, y[row] * s.height),
-                bounds=QRectF(-r, -r, 2 * r, 2 * r),
-            )
+        r = radius * min(s.width, s.height)
+        stroke = np.maximum(0.0, per_row(paint.pen_width, len(x)) * s.scale)
+        visible = self._visible_rows(x * s.width - r, y * s.height - r, 2 * r, 2 * r, stroke)
+        self._add_shapes(circle_quads, visible, (x, y, radius), paint)
 
     def _draw_points(self, x: NDArray[np.float64], y: NDArray[np.float64], paint: Paint) -> None:
-        """Prepare square points."""
-        for row in range(len(x)):
-            self._point(float(x[row]), float(y[row]), paint.style(row))
-
-    def _point(self, x: float, y: float, style: DrawingStyle) -> None:
+        """Prepare visible square points as overlay quads."""
         s = self.settings
-        size = style.pen_width * s.scale
-        if size <= 0:
-            return
-        fill = DrawingStyle(pen_width=0, brush_r=style.pen_r, brush_g=style.pen_g, brush_b=style.pen_b, brush_a=255)
-        self.path(
-            _rectangle_path(size, size),
-            fill,
-            fill=True,
-            origin=QPointF(x * s.width - size / 2, y * s.height - size / 2),
-            bounds=QRectF(0, 0, size, size),
-        )
+        size = np.maximum(0.0, per_row(paint.pen_width, len(x)) * s.scale)
+        visible = self._visible_rows(x * s.width - size / 2, y * s.height - size / 2, size, size, np.zeros(len(x)))
+        self._add_shapes(point_quads, visible, (x, y), paint)
 
     def _draw_polygons(self, shapes: NDArray[np.float64], paint: Paint) -> None:
-        """Prepare polygons of one corner count: convex ones as bulk vertices on hardware, others as Qt paths."""
+        """Prepare polygons of one corner count: visible rows become fills and outlines."""
         s = self.settings
-        count = len(shapes)
-        stroke = np.maximum(0.0, _floats(paint.pen_width, count) * s.scale)
-        dashed = np.broadcast_to(np.asarray(paint.dashed, dtype=np.bool_), (count,))
-        filled = np.broadcast_to(np.asarray(paint.brush_a) > 0, (count,))
-        pixel = 1 / s.dpr
+        stroke = np.maximum(0.0, per_row(paint.pen_width, len(shapes)) * s.scale)
         pixels = shapes * (s.width, s.height)
         low, high = pixels.min(axis=1), pixels.max(axis=1)
-        size = high - low
-        visible = self._visible_rows(low[:, 0], low[:, 1], size[:, 0], size[:, 1], stroke)
-        mesh = (
-            visible
-            & s.hardware
-            & ~dashed
-            & ~((stroke > 0) & (stroke < pixel))
-            & convex_rows(pixels, np.where(stroke > 0, stroke + pixel, 1e-9))
-        )
-        for row in np.flatnonzero(visible & ~mesh):
-            self._polygon(shapes[row], paint.style(int(row)), True)
-        for fill in (True, False):
-            chosen = np.flatnonzero(mesh & (filled == fill))
-            if not chosen.size or (not fill and not np.any(stroke[chosen] > 0)):
-                continue
-            self._meshes.append(
-                polygon_batch(
-                    pixels[chosen],
-                    stroke[chosen],
-                    _colors(paint.brush_r, paint.brush_g, paint.brush_b, paint.brush_a, chosen),
-                    _colors(paint.pen_r, paint.pen_g, paint.pen_b, 255, chosen),
-                    fill,
-                    s.dpr,
-                )
-            )
+        visible = self._visible_rows(low[:, 0], low[:, 1], high[:, 0] - low[:, 0], high[:, 1] - low[:, 1], stroke)
+        rows = np.flatnonzero(visible)
+        if rows.size:
+            self._shapes.append(polygon_quads(shapes[rows], paint.take(rows), s.width, s.height, s.scale, s.dpr))
+            self._drawn_shapes += rows.size
 
     def _draw_polylines(self, points: Sequence[Points | NDArray[np.float64]], paint: Paint) -> None:
-        """Prepare connected segments with the standard Qt joins."""
-        for row, shape in enumerate(points):
-            if len(shape) >= 2:
-                self._polygon(shape, paint.style(row), False)
-
-    def _polygon(self, points: Points | NDArray[np.float64], style: DrawingStyle, fill: bool) -> None:
+        """Prepare the visible polylines of two or more points as round-jointed segments."""
         s = self.settings
-        path = _poly_path(points, s.width, s.height)
-        if fill:
-            path = f"{path} z"
-        self.path(
-            path,
-            style,
-            fill=fill,
-            origin=QPointF(points[0][0] * s.width, points[0][1] * s.height),
-            bounds=_poly_bounds(points, s.width, s.height),
-        )
-
-    def path(
-        self, path: str, style: DrawingStyle, *, fill: bool, origin: QPointF, bounds: QRectF | None = None
-    ) -> None:
-        """Prepare final Qt path properties; unknown bounds never cause rejection."""
-        s = self.settings
-        if bounds is not None and not self._visible(
-            bounds.x() + origin.x(), bounds.y() + origin.y(), bounds.width(), bounds.height(), style.pen_width * s.scale
-        ):
-            return
-        self._paths.append(
-            PathData(
-                path,
-                origin,
-                color(style.pen_r, style.pen_g, style.pen_b),
-                color(style.brush_r, style.brush_g, style.brush_b, style.brush_a if fill else 0),
-                style.pen_width * s.scale if style.pen_width > 0 else -1,
-                style.pen_style == "dash",
+        shown = [row for row, shape in enumerate(points) if len(shape) >= 2]
+        shapes = [np.asarray(points[row], dtype=np.float64) for row in shown]
+        stroke = np.maximum(0.0, per_row(paint.pen_width, len(points)) * s.scale)[shown]
+        low = np.array([shape.min(axis=0) for shape in shapes]).reshape(-1, 2) * (s.width, s.height)
+        high = np.array([shape.max(axis=0) for shape in shapes]).reshape(-1, 2) * (s.width, s.height)
+        visible = self._visible_rows(low[:, 0], low[:, 1], high[:, 0] - low[:, 0], high[:, 1] - low[:, 1], stroke)
+        rows = np.flatnonzero(visible)
+        if rows.size:
+            chosen = np.array(shown)[rows]
+            self._shapes.append(
+                polyline_quads([shapes[row] for row in rows], paint.take(chosen), s.width, s.height, s.scale)
             )
-        )
+            self._drawn_shapes += rows.size
 
     def _draw_texts(
         self,
@@ -427,5 +369,11 @@ class DrawingBuffer:
         anchor: Sequence[str],
         paint: Paint,
     ) -> None:
-        """Prepare final glyph layouts and positions of the visible rows."""
-        self._texts.extend(prepare_texts(self.settings, self._visible, self._visible_rows, x, y, text, anchor, paint))
+        """Queue text for the atlas layout that finish() performs together with the labels."""
+        s, count = self.settings, len(x)
+        # Fonts snap to half device pixels, so sizes that follow object sizes share a few fonts.
+        pixels = np.rint(per_row(paint.font_size, count) * s.scale * s.dpr * 2) / 2
+        shown = np.asarray(text, dtype=object)
+        run = RunColumns(shown, math.nan, paint.pen_r, paint.pen_g, paint.pen_b, "regular", True)
+        content = LabelColumns((run,), pixels / (s.dpr * s.scale), paint.font_family, None, 0.0, 0.0, 0.0, 0.0)
+        self._texts.append((x, y, np.asarray(anchor, dtype=object), content))

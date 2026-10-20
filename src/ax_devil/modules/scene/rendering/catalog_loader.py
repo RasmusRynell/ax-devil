@@ -14,6 +14,7 @@ from typing import Any, cast
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
+from ax_devil.core.atomic_file import open_replaceable_text
 from ax_devil.modules.scene.rendering.catalog import (
     BUILT_IN_CATALOG_PATH,
     BUILT_IN_CATALOG_PATHS,
@@ -129,7 +130,7 @@ class SceneRenderCatalogLoader:
     @staticmethod
     def read_document(path: Path) -> CatalogJsonDocument:
         """Read a bounded catalog JSON file, rejecting duplicate keys."""
-        with path.open(encoding="utf-8") as stream:
+        with open_replaceable_text(path) as stream:
             text = stream.read(MAX_DOCUMENT_BYTES + 1)
         if len(text.encode("utf-8")) > MAX_DOCUMENT_BYTES:
             raise TemplateRuntimeError("Catalog document size limit exceeded.", code="execution_limit")

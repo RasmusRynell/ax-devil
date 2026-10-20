@@ -1,4 +1,4 @@
-"""Save offscreen screenshots of the main UI surfaces, for checking a UI change before and after.
+"""Save screenshots, drawn on a private display, of the main UI surfaces, for checking a UI change before and after.
 
 The video surfaces show a generated clip with a small ONVIF metadata file, so the canvas has boxes and labels and the
 media tools list entities and events. Runs inside the test suite's isolated home folder, so it never reads or changes

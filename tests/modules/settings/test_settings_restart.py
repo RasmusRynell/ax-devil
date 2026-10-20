@@ -35,7 +35,7 @@ def test_settings_dialog_marks_restart_only_settings_one_way(qtbot: QtBot) -> No
     ]
     marker = "(requires restart)"
     marked = {text.removesuffix(f" {marker}") for text in texts if text.endswith(marker)}
-    assert marked == {"Use the app title bar", "Graphics acceleration", "Storage locations"}
+    assert marked == {"Use the app title bar", "Storage locations"}
     assert not [text for text in texts if "restart" in text.lower() and not text.endswith(marker)]
 
 

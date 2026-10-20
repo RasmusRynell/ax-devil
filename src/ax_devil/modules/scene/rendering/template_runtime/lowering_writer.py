@@ -12,7 +12,7 @@ import numpy as np
 
 from ax_devil.modules.video_player.engine.drawing import Paint
 
-from . import colormaps, kernels
+from . import colormaps, emission, kernels
 from .definitions import ValueType
 
 MISSING = object()
@@ -36,6 +36,11 @@ _HELPERS = (
     kernels.lengths,
     kernels.isin,
     kernels.per_row,
+    emission.masked,
+    emission.run_columns,
+    emission.run_records,
+    emission.collection_runs,
+    emission.fill_columns,
     kernels.arrow,
     colormaps.ramp,
     colormaps.ramp_rows,

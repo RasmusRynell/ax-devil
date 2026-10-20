@@ -1,36 +1,31 @@
-"""Widget-compatible Quick surface with native video, paths, and glyph rendering."""
+"""Widget-compatible Quick surface with native video and overlay rendering."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QRectF, Qt, QUrl
+from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, QUrl
 from PySide6.QtGui import QImage, QShowEvent
 from PySide6.QtQuick import QSGRendererInterface
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.chrome.theme import VIDEO_CANVAS
+from ax_devil.modules.settings.logging_config import get_logger
 
-from ..drawing import DrawingStyle, Paint
+from ..drawing import Paint
 from .items import VideoTextureItem
-from .overlay import QuickOverlay, ShapeComponents
-from .preparation import DrawingBuffer
-from .prepared import DrawingSettings, PreparedDrawing
+from .overlay_material import OverlayItem
+from .preparation import EMPTY_DRAWING, DrawingBuffer, DrawingSettings, PreparedDrawing
 
-_HOVER_HIGHLIGHT_STYLE = DrawingStyle(
-    pen_r=255,
-    pen_g=255,
-    pen_b=255,
-    pen_width=0.004,
-    brush_r=255,
-    brush_g=255,
-    brush_b=255,
-    brush_a=30,
+logger = get_logger(__name__)
+
+_HOVER_HIGHLIGHT = Paint(
+    pen_width=0.004, pen_r=255, pen_g=255, pen_b=255, brush_r=255, brush_g=255, brush_b=255, brush_a=30
 )
 # Heavier than any catalog box, so the selected object reads at a glance; owned here, not by catalogs.
-_SELECTED_STYLE = DrawingStyle(pen_r=255, pen_g=255, pen_b=255, pen_width=0.009)
+_SELECTED = Paint(pen_r=255, pen_g=255, pen_b=255, pen_width=0.009)
 
 Bounds = tuple[float, float, float, float]  # Normalized (x, y, width, height)
 
@@ -59,39 +54,48 @@ class QuickSurface(QQuickWidget):
         self._root = root
         self.setResizeMode(QQuickWidget.ResizeMode.SizeRootObjectToView)
         self._video = VideoTextureItem(self._root)
-        self._components = ShapeComponents(self.engine())
-        self._overlays = QuickOverlay(self._root, self._components)
-        self._highlight = QuickOverlay(self._root, self._components)
-        self._drawing_buffer = DrawingBuffer(DrawingSettings(0, 0, 1))
-        self._overlays.item.setZ(1)
-        self._highlight.item.setZ(2)
+        self._overlay = OverlayItem(self._root)
+        self._highlight = OverlayItem(self._root)
+        self._overlay.setZ(1)
+        self._highlight.setZ(2)
+        self.quickWindow().sceneGraphInitialized.connect(self._check_graphics_api)
+
+    @property
+    def draws_overlays(self) -> bool:
+        """Whether Qt Quick runs on a graphics API; its software fallback cannot draw the overlay shader."""
+        api = self.quickWindow().rendererInterface().graphicsApi()
+        return api not in (QSGRendererInterface.GraphicsApi.Software, QSGRendererInterface.GraphicsApi.Unknown)
+
+    def _check_graphics_api(self) -> None:
+        if not self.draws_overlays:
+            logger.error(
+                "Qt Quick fell back to software rendering, so overlays will not draw. Install a working GPU "
+                "driver (Linux: LIBGL_ALWAYS_SOFTWARE=1 uses Mesa; Windows: QSG_RHI_PREFER_SOFTWARE_RENDERER=1)."
+            )
 
     def set_frame_image(self, image: QImage, target: QRectF) -> None:
         """Queue the image and its viewport transform for the next scene graph sync."""
         self._video.setPosition(target.topLeft())
         self._video.setSize(target.size())
         self._video.set_image(image)
-        self._overlays.item.setPosition(target.topLeft())
-        self._highlight.item.setPosition(target.topLeft())
+        self._overlay.setPosition(target.topLeft())
+        self._highlight.setPosition(target.topLeft())
 
     def drawing_settings(self, target: QRectF, scale: float) -> DrawingSettings:
         """Describe all inputs affecting final geometry and glyph preparation."""
         viewport = QRectF(self.rect()).translated(-target.topLeft())
-        api = self.quickWindow().rendererInterface().graphicsApi()
         return DrawingSettings(
             target.width(),
             target.height(),
             scale,
             self.logicalDpiY(),
             self.devicePixelRatioF(),
-            api not in (QSGRendererInterface.GraphicsApi.Software, QSGRendererInterface.GraphicsApi.Unknown),
             (viewport.x(), viewport.y(), viewport.width(), viewport.height()),
         )
 
     def drawing_buffer(self, target: QRectF, scale: float) -> DrawingBuffer:
-        """Begin preparation with this surface's bounded previous-frame reuse."""
-        self._drawing_buffer.reset(self.drawing_settings(target, scale))
-        return self._drawing_buffer
+        """Begin preparing a frame for this surface."""
+        return DrawingBuffer(self.drawing_settings(target, scale))
 
     def set_overlays(
         self,
@@ -106,23 +110,26 @@ class QuickSurface(QQuickWidget):
 
         *hovered* and *selected* are normalized boxes drawn above the overlays in their own styles.
         """
-        self._overlays.present(drawing, opacity)
-        highlight_drawing = None
+        extent = QSizeF(max(0.0, self.width() - target.x()), max(0.0, self.height() - target.y()))
+        for item in (self._overlay, self._highlight):
+            item.setSize(extent)
+        visible = QRectF(self.rect()).translated(-target.topLeft()).intersected(QRectF(QPointF(), extent))
+        self._overlay.present(EMPTY_DRAWING if drawing is None else drawing, opacity, visible)
+        highlight = EMPTY_DRAWING
         if hovered is not None or selected is not None:
             buffer = DrawingBuffer(self.drawing_settings(target, scale))
-            for bounds, style in ((selected, _SELECTED_STYLE), (hovered, _HOVER_HIGHLIGHT_STYLE)):
+            for bounds, paint in ((selected, _SELECTED), (hovered, _HOVER_HIGHLIGHT)):
                 if bounds is not None:
                     x, y, width, height = (np.array([value]) for value in bounds)
-                    buffer.boxes(x, y, width, height, Paint.of(style))
-            highlight_drawing = buffer.finish()
-        self._highlight.present(highlight_drawing, 1.0)
+                    buffer.boxes(x, y, width, height, paint)
+            highlight = buffer.finish()
+        self._highlight.present(highlight, 1.0)
 
     def clear(self) -> None:
         """Release the submitted image and overlay references."""
         self._video.set_image(QImage())
-        self._drawing_buffer = DrawingBuffer(DrawingSettings(0, 0, 1))
-        self._overlays.present(None, 1)
-        self._highlight.present(None, 1)
+        self._overlay.present(EMPTY_DRAWING, 1)
+        self._highlight.present(EMPTY_DRAWING, 1)
 
     def cleanup(self) -> None:
         """Release frame data and let Qt retire render-thread-owned resources."""
