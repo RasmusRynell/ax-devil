@@ -23,6 +23,7 @@ from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPla
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from tests.helpers.add_dialogs import Discovery
 from tests.helpers.forms import form_field
+from tests.helpers.widgets import button
 from tests.helpers.workspace import FakeResolutionContext, FakeResolver, inline_resolver
 
 
@@ -118,8 +119,9 @@ def test_closing_playlist_dialog_interrupts_its_resolution(
     assert dialog.get_result() is None
 
 
-def test_playlist_save_keeps_the_name_visible_when_resolution_finishes(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, discovery: Discovery
+@pytest.mark.parametrize("retry", [False, True], ids=["successful-save", "failed-save-retry"])
+def test_playlist_save_locks_settings_and_keeps_latest_name_with_failure_retry(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, discovery: Discovery, retry: bool
 ) -> None:
     release, started = Event(), Event()
     resolve = _Resolver.resolve
@@ -137,11 +139,19 @@ def test_playlist_save_keeps_the_name_visible_when_resolution_finishes(
     name = form_field(dialog, "Display Name", QLineEdit)
     name.setText("Before")
     try:
-        form.submit_settings({"root": "/selected"})
+        form.submit_settings({"root": "/gone" if retry else "/selected"})
         discovery.release_all()
         qtbot.waitUntil(started.is_set)
+        assert not form.isEnabled()
+        assert button(dialog, "Cancel").isEnabled()
+        assert name.isEnabled()
         name.setText("Latest")
         release.set()
+        if retry:
+            qtbot.waitUntil(form.isEnabled)
+            assert dialog.get_result() is None
+            form.submit_settings({"root": "/selected"})
+            discovery.release_all()
         qtbot.waitUntil(lambda: dialog.get_result() is not None)
         result = dialog.get_result()
         assert result is not None and result.item.label == "Latest"

@@ -20,7 +20,7 @@ class AddPlaylistDialog(BaseDialog):
 
     Embeds PlaylistSettingsUI and resolves the submitted Playlist Item with *resolver*, away from the GUI thread. It
     accepts with the result when the item resolves; otherwise the dialog stays open with the reason shown under the
-    form. While the item resolves, further submissions are ignored. *resolver_id* chooses the playlist resolver the
+    form. While the item resolves, its settings are disabled. *resolver_id* chooses the playlist resolver the
     dialog opens with.
     """
 
@@ -60,20 +60,25 @@ class AddPlaylistDialog(BaseDialog):
         if self._resolution.pending:
             return
         item = replace(item, label=self._name_edit.text().strip())
+        self._settings.setEnabled(False)
         self._message_label.setText("Finding playlists…")
         self._resolution.start(
             lambda result, _error: self._resolver.resolve(item, result),
             on_result=self._on_resolved,
-            on_error=lambda error: self._message_label.setText(str(error)),
+            on_error=self._on_resolution_error,
         )
 
     def _on_resolved(self, resolution: ItemResolution) -> None:
         """Accept with the resolved item, or show why it did not resolve."""
         if resolution.error is not None:
-            self._message_label.setText(str(resolution.error))
+            self._on_resolution_error(resolution.error)
             return
         self._result = resolution.renamed(resolution.item.with_label(self._name_edit.text().strip()))
         self.accept()
+
+    def _on_resolution_error(self, error: Exception) -> None:
+        self._settings.setEnabled(True)
+        self._message_label.setText(str(error))
 
     def get_result(self) -> ItemResolution | None:
         """Return the resolved Playlist Item of the accepted dialog session, or None if it was cancelled."""
