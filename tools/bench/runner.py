@@ -138,7 +138,7 @@ def run_child(side: Side, command: str, options: dict[str, object], env: dict[st
             result = json.loads(line.removeprefix(RESULT_PREFIX))
         else:
             report.emit(line)
-    if result is None:
+    if result is None or done.returncode != 0:
         raise RuntimeError(f"{command} failed on {side.ref} (exit {done.returncode}):\n{done.stderr[-3000:]}")
     return {
         "schema": report.SCHEMA,

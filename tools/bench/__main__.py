@@ -15,9 +15,17 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m tools.bench", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
 
+    def positive(text: str) -> int:
+        value = int(text)
+        if value < 1:
+            raise argparse.ArgumentTypeError("must be at least 1")
+        return value
+
     def command(name: str, help_text: str, repeat: int = 1) -> argparse.ArgumentParser:
         sub = commands.add_parser(name, help=help_text)
-        sub.add_argument("--repeat", type=int, default=repeat, help="Runs in fresh processes; the median of medians")
+        sub.add_argument(
+            "--repeat", type=positive, default=repeat, help="Runs in fresh processes; the median of medians"
+        )
         sub.add_argument("--json", metavar="FILE", help="Append each result as one JSON line")
         return sub
 

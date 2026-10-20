@@ -34,15 +34,23 @@ def write_atomically(
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
-    os.close(descriptor)
+    # Written through the descriptor mkstemp created, never by reopening the name, which another writer of the
+    # folder could have swapped for a symlink. ``opener`` hands that descriptor to ``open`` so ``name`` stays the
+    # path, which a caller needs to open its own handle on the temporary file.
     try:
-        # Opened by name, so a caller can open its own handle on the temporary file through ``name``.
         if mode == "wb":
-            with open(temporary_name, "w+b") as binary:  # Readable, so a caller can duplicate it for reading.
-                yield binary
+            stream: TextIO | BinaryIO = open(temporary_name, "w+b", opener=lambda _path, _flags: descriptor)
         else:
-            with open(temporary_name, "w", encoding="utf-8", newline=newline) as text:
-                yield text
+            stream = open(
+                temporary_name, "w", encoding="utf-8", newline=newline, opener=lambda _path, _flags: descriptor
+            )
+    except BaseException:
+        os.close(descriptor)  # ``open`` failed before it took the descriptor.
+        Path(temporary_name).unlink(missing_ok=True)
+        raise
+    try:
+        with stream:
+            yield stream
         try:
             os.chmod(temporary_name, stat.S_IMODE(path.stat().st_mode))
         except FileNotFoundError:
