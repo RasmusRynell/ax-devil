@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 from PySide6.QtGui import QImage
 
@@ -135,3 +137,11 @@ def test_zero_area_and_non_finite_rows_produce_no_quads() -> None:
     assert len(boxes) == 4
     lines = line_quads(arr(0.1, nan), arr(0.1, 0.1), arr(0.5, 0.5), arr(0.5, 0.5), paint, SIZE, SIZE, SIZE)
     assert len(lines) == 4
+
+
+def test_a_polygon_that_crosses_itself_too_often_is_drawn_as_its_outline_only() -> None:
+    angle = np.arange(2001) * (np.pi * 1000 / 2001)  # A 2001-pointed star: about two million crossings.
+    star = (0.5 + 0.4 * np.stack((np.cos(angle), np.sin(angle)), axis=1))[None]
+    outline = Paint(pen_width=0.01)
+    filled = polygon_quads(star, replace(outline, brush_r=255, brush_a=255), SIZE, SIZE, SIZE, 1.0)
+    assert len(filled) == len(polygon_quads(star, outline, SIZE, SIZE, SIZE, 1.0))

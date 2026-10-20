@@ -17,8 +17,13 @@ from collections.abc import Sequence
 import numpy as np
 from numpy.typing import NDArray
 
+from ax_devil.modules.settings.logging_config import get_logger
+
 from ..drawing import Paint
 from .overlay_vertex import CORNER_U, CORNER_V, OVERLAY_VERTEX, PAD, OverlayKind, per_row, premultiplied
+
+logger = get_logger(__name__)
+_warned_complex = False
 
 _DASH_PERIOD = 6.0
 """Dash period in stroke widths: a dash and a gap of three widths each."""
@@ -26,6 +31,8 @@ _MITER_LIMIT = 4.0
 """Longest a polygon fringe corner may reach, in fringe widths, before it is cut short."""
 _CHUNK = 1 << 18
 """Most elements (polygons times corners squared) one batch of corner-pair arrays may have, about 2 MB each."""
+_FILL_LIMIT = 1 << 21
+"""Most bands times corners one polygon's fill may take; a polygon that crosses itself more often is not filled."""
 _PROBE = 1e-3
 """How far beside an edge, in pixels, the test for which side of it is filled looks."""
 
@@ -306,13 +313,15 @@ def _cross(a: NDArray[np.float64], b: NDArray[np.float64]) -> NDArray[np.float64
     return a[..., 0] * b[..., 1] - a[..., 1] * b[..., 0]
 
 
-def _odd_even(points: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.intp]]:
-    """Trapezoids (k, 4, 2) covering polygons (rows, corners, 2) by the odd-even rule, and each one's polygon row.
+def _odd_even(points: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.intp], NDArray[np.bool_]]:
+    """Trapezoids (k, 4, 2) covering polygons (rows, corners, 2) by the odd-even rule, their rows, and given-up rows.
 
     Horizontal lines through every corner and every crossing of two edges cut a polygon into bands in which the
     edges do not cross, so the edges a band's middle line meets, paired from the left, bound its filled spans. Corners
     run top left, top right, bottom left, bottom right, so a trapezoid is two triangles of a strip. Edge pairs and
-    bands are handled in blocks of ``_CHUNK`` elements, so a polygon of any size stays within a few megabytes.
+    bands are handled in blocks of ``_CHUNK`` elements. A polygon whose bands times corners exceed ``_FILL_LIMIT``
+    is given up (reported in the last result, no trapezoids) as soon as its crossings show it, so the crossings and
+    bands kept never exceed a bound that grows with the limit, not with the square of the corners.
     """
     rows, corners = points.shape[:2]
     start, end = points, np.roll(points, -1, axis=1)
@@ -320,6 +329,7 @@ def _odd_even(points: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray
     cut_y = [points[..., 1].reshape(-1)]
     cut_row = [np.repeat(np.arange(rows), corners)]
     later = np.arange(corners)
+    seen, given_up = np.zeros(rows, np.int64), np.zeros(rows, np.bool_)
     step = _block(rows * corners)
     for first in range(0, corners, step):
         edges = slice(first, first + step)
@@ -331,9 +341,14 @@ def _odd_even(points: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray
             u = _cross(gap, along[:, edges, None]) / denominator
             crossed_y = start[:, edges, None, 1] + t * along[:, edges, None, 1]
         crossing = (later[None, :] > later[edges, None])[None] & (0 < t) & (t < 1) & (0 < u) & (u < 1)
+        crossing &= ~given_up[:, None, None]
         cut_y.append(crossed_y[crossing])
         cut_row.append(np.nonzero(crossing)[0])
+        seen += np.bincount(cut_row[-1], minlength=rows)
+        given_up |= (seen + corners) * corners > _FILL_LIMIT
     all_y, all_row = np.concatenate(cut_y), np.concatenate(cut_row)
+    kept = ~given_up[all_row]
+    all_y, all_row = all_y[kept], all_row[kept]
     order = np.lexsort((all_y, all_row))
     all_y, all_row = all_y[order], all_row[order]
     band = np.flatnonzero((all_row[1:] == all_row[:-1]) & (all_y[1:] > all_y[:-1]))
@@ -358,7 +373,17 @@ def _odd_even(points: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray
                 out[:, level * 2 + side, 1] = y
         quads.append(out)
         owners.append(row[owner])
-    return np.concatenate(quads), np.concatenate(owners)
+    if not quads:
+        return np.zeros((0, 4, 2)), np.zeros(0, np.intp), given_up
+    return np.concatenate(quads), np.concatenate(owners), given_up
+
+
+def _warn_too_complex(count: int) -> None:
+    """Log, once per process, that polygons crossing themselves too often keep their outline but get no fill."""
+    global _warned_complex
+    if not _warned_complex:
+        _warned_complex = True
+        logger.warning(f"{count} polygon(s) cross themselves too often to fill and are drawn as outlines only")
 
 
 def _fill_quads(positions: NDArray[np.float64], colors: NDArray[np.uint8]) -> NDArray[np.void]:
@@ -393,12 +418,18 @@ def _fills(points: NDArray[np.float64], fill: NDArray[np.uint8], dpr: float) -> 
     inner = np.where(thin, points, points - miter * fringe)
     outer = points + miter * fringe
     chunks = [_odd_even(inner[first : first + step]) for first in range(0, rows, step)]
-    inside = np.concatenate([quads for quads, _ in chunks])
-    owner = np.concatenate([row + first for (_, row), first in zip(chunks, range(0, rows, step))])
+    inside = np.concatenate([quads for quads, _, _ in chunks])
+    owner = np.concatenate([row + first for (_, row, _), first in zip(chunks, range(0, rows, step))])
+    given_up = np.concatenate([skipped for _, _, skipped in chunks])
+    inside_fill = fill[owner][:, None, :]
+    if given_up.any():
+        _warn_too_complex(int(np.count_nonzero(given_up)))
+        outer, inner = outer[~given_up], inner[~given_up]
+        fill = fill[~given_up]
     ring = np.stack((outer, np.roll(outer, -1, axis=1), inner, np.roll(inner, -1, axis=1)), axis=2).reshape(-1, 4, 2)
-    faded = np.zeros((rows, corners, 4, 4), np.uint8)
+    faded = np.zeros((len(outer), corners, 4, 4), np.uint8)
     faded[:, :, 2:] = fill[:, None, None, :]
-    return np.concatenate((_fill_quads(inside, fill[owner][:, None, :]), _fill_quads(ring, faded.reshape(-1, 4, 4))))
+    return np.concatenate((_fill_quads(inside, inside_fill), _fill_quads(ring, faded.reshape(-1, 4, 4))))
 
 
 def polygon_quads(

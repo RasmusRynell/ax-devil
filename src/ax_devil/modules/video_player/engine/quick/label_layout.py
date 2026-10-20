@@ -258,6 +258,9 @@ def label_quads(
         running = running + np.where(run.shown, run.advance + gap, 0.0)
         ascent, descent = np.maximum(ascent, run.ascent), np.maximum(descent, run.descent)
     total = running - gap
+    if labels.background is None:
+        # Nothing is drawn behind plain text, so its box is the ink and the baseline origin: glyphs sit on the anchor.
+        ascent, descent = np.zeros(count), np.zeros(count)
     left, right, top, bottom = np.zeros(count), total, -ascent, descent
     for run in runs:
         left = np.minimum(left, np.where(run.shown, run.offset + run.ink[:, 0], 0.0))

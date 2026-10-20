@@ -66,6 +66,14 @@ def test_label_draws_its_background_above_geometry_and_moves(surface: QuickSurfa
     assert moved.pixelColor(102, 12) == QColor("blue")
 
 
+def test_text_sits_on_its_bottom_anchor_by_its_ink_not_the_font_descent(surface: QuickSurface) -> None:
+    rendered = render_calls(surface, [TextCall(0.1, 0.5, "xx", WHITE, anchor="bottom-left")])
+    black = QColor("black")
+    rows = [y for y in range(rendered.height()) if any(rendered.pixelColor(x, y) != black for x in range(20, 60))]
+    # Lowercase letters without descenders end at the anchor, where the font's descent would leave a gap below.
+    assert rows[-1] == rendered.height() // 2 - 1
+
+
 @pytest.mark.parametrize("origin", [(20, 10), (-20, -10)])
 @pytest.mark.parametrize("opacity", [1.0, 0.5])
 def test_new_and_returning_labels_keep_viewport_transform_and_opacity(
