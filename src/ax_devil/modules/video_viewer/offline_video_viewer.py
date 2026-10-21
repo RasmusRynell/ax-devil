@@ -43,8 +43,8 @@ logger = get_logger(__name__)
 class OfflineVideoViewerWidget(ViewerWidget):
     """Offline video viewer for local playback with multi-lane support.
 
-    It opens at entry *start_index* and plays it, or shows its frame *start_frame* paused when given; later entries
-    start at their first frame.
+    An explicit *start_index* opens that entry even when hidden; otherwise the first considered entry opens.
+    It plays the entry, or shows *start_frame* paused when given; later entries start at their first frame.
     """
 
     current_entry_changed = Signal(int)
@@ -53,7 +53,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self,
         content: SeekableVideoContent | PlaylistContent,
         render_catalog_manager: SceneRenderCatalogManager,
-        start_index: int = 0,
+        start_index: int | None = None,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
         start_frame: int | None = None,
@@ -62,11 +62,9 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
         self._navigation = OfflineViewerNavigation(content, consideration_query)
-        # A start frame belongs to the requested entry, which opens even when the workspace excludes it, so the frame
-        # is never moved to another video. Without one, an excluded entry gives way to the next considered one.
         self._current_index = (
-            self._navigation.normalize_entry_index(start_index)
-            if start_frame is None
+            self._navigation.normalize_entry_index(0)
+            if start_index is None
             else self._navigation.bound_entry_index(start_index)
         )
         self._start_frame = start_frame

@@ -87,8 +87,8 @@ class WorkspaceController(QObject):
         """Return the rows of every item, grouped in sections."""
         return self._sections
 
-    def open_content(self, content: Content, start_index: int = 0, *, to_side: bool = False) -> None:
-        """Open *content*, from its playlist entry *start_index*, as a double click in the browser does.
+    def open_content(self, content: Content, start_index: int | None = None, *, to_side: bool = False) -> None:
+        """Open *content*, or exactly its entry *start_index* when supplied, including hidden entries.
 
         It replaces the preview pane, or opens in a new split with *to_side*. Other viewers keep their playback state.
         """
@@ -334,7 +334,7 @@ class WorkspaceController(QObject):
         self,
         content: Content,
         *,
-        start_index: int = 0,
+        start_index: int | None = None,
         place: Callable[[ViewerWidget], None] | None = None,
         start_frame: int | None = None,
     ) -> None:

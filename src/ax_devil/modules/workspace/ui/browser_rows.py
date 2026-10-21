@@ -129,7 +129,7 @@ class WorkspaceBrowserRow:
     row_id: str
     label: str
     icon_kind: WorkspaceBrowserIconKind
-    activation_target: tuple[Content, int] | None = None
+    activation_target: tuple[Content, int | None] | None = None
     consideration_ref: ConsiderationItemRef | None = None
     item: WorkspaceItem | None = None
     """The item a top-level row stands for, which the row can remove or rename; None for nested rows."""

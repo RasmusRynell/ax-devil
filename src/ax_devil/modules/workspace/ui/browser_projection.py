@@ -171,7 +171,7 @@ class _RowProjection:
                     row_id=content.content_id,
                     label=content.display_name,
                     icon_kind="playlist",
-                    activation_target=(content, 0),
+                    activation_target=(content, None),
                     item=item,
                     information_factory=partial(build_playlist_information, content),
                     is_open=self._is_content_open(content.content_id, open_items),

@@ -203,13 +203,13 @@ class DummyViewer(ViewerWidget):
         self,
         payload: object,
         render_catalog_manager: SceneRenderCatalogManager,
-        start_index: int = 0,
+        start_index: int | None = None,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
         start_frame: int | None = None,
     ) -> None:
         self.payload = payload
-        self.start_index = start_index
+        self.start_index = start_index if start_index is not None else 0
         self.start_frame = start_frame
         self.position: BookmarkPosition | None = None
         self.shown_frames: list[int] = []

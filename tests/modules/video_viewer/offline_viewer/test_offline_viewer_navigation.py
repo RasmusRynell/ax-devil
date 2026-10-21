@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from PySide6.QtCore import QCoreApplication, QPoint
 from pytestqt.qtbot import QtBot
 
@@ -166,10 +167,11 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
 
         assert shown_entry_index(widget) == 1
 
-    def test_a_bookmark_opens_its_entry_at_its_frame_even_when_the_entry_is_excluded(
-        self, qtbot: QtBot, deferred_background: DeferredBackground
+    @pytest.mark.parametrize("start_frame", [None, 5])
+    def test_explicit_open_keeps_a_hidden_entry_and_bookmarks_show_the_requested_frame(
+        self, qtbot: QtBot, deferred_background: DeferredBackground, start_frame: int | None
     ) -> None:
-        """Opening a bookmark of an excluded entry shows that entry, not the next considered one."""
+        """Explicit Open plays a hidden entry; a bookmark shows its frame paused without unhiding it."""
         playlist = playlist_content("A", "B")
         workspace_store, playlist = store_with(playlist)
         workspace_store.set_item_considered(playlist.entry_consideration_ref(0), False)
@@ -178,15 +180,22 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
             consideration_query=workspace_store,
             render_catalog_manager=self._render_catalog_manager,
             start_index=0,
-            start_frame=5,
+            start_frame=start_frame,
         )
         attach_offline_widget(qtbot, widget)
 
         assert widget.bookmark_position() is None
-        assert widget.playhead_frame() == 5
+        assert widget.playhead_frame() == (start_frame or 0)
         deferred_background.finish_next()
         assert shown_entry_index(widget) == 0
-        assert widget._runtime is not None and widget._runtime.current_frame == 5
+        assert widget._runtime is not None and widget._runtime.current_frame == (start_frame or 0)
+        assert bool(widget._runtime.is_playing) == (start_frame is None)
+        assert not workspace_store.is_item_considered(playlist.entry_consideration_ref(0))
+
+        widget.step_next_entry()
+        deferred_background.finish_next()
+        widget.step_prev_entry()
+        assert shown_entry_index(widget) == 1
 
     def test_source_paths_are_the_overlay_files_of_the_considered_lanes_on_screen(self, qtbot: QtBot) -> None:
         """A hidden lane's overlay file is not watched for the entry on screen, so rewriting it offers no reload."""
