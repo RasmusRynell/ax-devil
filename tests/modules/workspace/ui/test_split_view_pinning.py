@@ -327,6 +327,9 @@ def test_reloading_an_inactive_pane_preserves_keyboard_target(qtbot: QtBot, fail
     assert QTest.qWaitForWindowActive(sv)
     button = active.findChildren(QAbstractButton)[0]
     button.setFocus()
+    QCoreApplication.processEvents()
+    assert button.hasFocus()
+    assert sv.get_focused_widget() is active
     candidate = _LifecycleWidget(fail_attach=fail)
     if fail:
         with pytest.raises(RuntimeError, match="attach failed"):
