@@ -188,8 +188,8 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         assert widget.playhead_frame() == (start_frame or 0)
         deferred_background.finish_next()
         assert shown_entry_index(widget) == 0
-        assert widget._runtime is not None and widget._runtime.current_frame == (start_frame or 0)
-        assert bool(widget._runtime.is_playing) == (start_frame is None)
+        assert widget._runtime is not None and widget._runtime.playback.current_frame == (start_frame or 0)
+        assert bool(widget._runtime.playback.is_playing) == (start_frame is None)
         assert not workspace_store.is_item_considered(playlist.entry_consideration_ref(0))
 
         widget.step_next_entry()

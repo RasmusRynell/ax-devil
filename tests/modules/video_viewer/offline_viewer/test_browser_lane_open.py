@@ -61,7 +61,7 @@ def test_browser_opens_exact_lane_and_reuses_active_matching_viewer_without_seek
     window.activateWindow()
     qtbot.waitUntil(lambda: runtime.focused_display() is runtime.lanes[1].display)
     assert runtime.lanes[1].lane_index == 2
-    assert runtime.is_playing
+    assert runtime.playback.is_playing
     viewer.show_frame(7)
     controller.perform_row_action(_lane_rows(controller, playlist)[1], RowAction.OPEN_TO_SIDE)
     window.activateWindow()
@@ -72,13 +72,13 @@ def test_browser_opens_exact_lane_and_reuses_active_matching_viewer_without_seek
     for playing in (False, True):
         if playing:
             duplicate.toggle_playback()
-        frame = shown_session(duplicate).current_frame
+        frame = shown_session(duplicate).playback.current_frame
         controller.perform_row_action(_lane_rows(controller, playlist)[2], RowAction.OPEN)
         assert split.get_widget_count() == 2 and split.get_focused_widget() is duplicate
-        assert shown_session(duplicate).current_frame == frame
-        assert shown_session(duplicate).is_playing is playing
+        assert shown_session(duplicate).playback.current_frame == frame
+        assert shown_session(duplicate).playback.is_playing is playing
         assert shown_session(duplicate).focused_display() is shown_session(duplicate).lanes[1].display
-        assert shown_session(viewer).current_frame == 7 and not shown_session(viewer).is_playing
+        assert shown_session(viewer).playback.current_frame == 7 and not shown_session(viewer).playback.is_playing
     if entry_ref is not None:
         assert not store.is_item_considered(entry_ref)
 

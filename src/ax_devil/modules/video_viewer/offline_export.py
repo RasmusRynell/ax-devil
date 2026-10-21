@@ -7,8 +7,6 @@ from collections.abc import Callable
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.video_viewer.offline_lane import OfflineLane
-from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy
-from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
 
 
 def run_lane_export(
@@ -24,12 +22,12 @@ def run_lane_export(
     exported. Playback is paused for the export and stays paused; *set_export_allowed* forbids another export while
     the dialog is open.
     """
-    from ax_devil.modules.video_viewer.export import ExportDialog, ExportLane
+    from ax_devil.modules.video_viewer.export import ExportDialog
 
     if not lanes:
         return
-    catalogs = [lane.presenter.scene_render_catalog if lane.presenter is not None else None for lane in lanes]
-    if any(catalog is None for catalog in catalogs):
+    inputs = [lane.export_lane() for lane in lanes]
+    if any(lane is None for lane in inputs):
         QMessageBox.warning(container, "Export video", "Render catalogs are still loading. Try again in a moment.")
         return
 
@@ -39,26 +37,7 @@ def run_lane_export(
     # Disable export to prevent re-entrant launches
     set_export_allowed(False)
 
-    export_lanes: list[ExportLane] = []
-    for lane, active_catalog in zip(lanes, catalogs, strict=True):
-        assert lane.video_source is not None
-        # Snapshot filter state so it can't change during export
-        frozen_filter = lane.filter_model.snapshot() if lane.filter_model is not None else None
-
-        # Export uses the same timestamp selection settings as the viewer.
-        export_lanes.append(
-            ExportLane(
-                name=lane.name or lane.content.display_name,
-                video_source=lane.video_source,
-                presenter=SceneFramePresenter(scene_filter=frozen_filter, scene_render_catalog=active_catalog),
-                overlay_source=lane.overlay_source,
-                overlay_policy=(
-                    OverlayPersistencePolicy(lane.overlay_policy.settings.copy())
-                    if lane.overlay_policy is not None
-                    else None
-                ),
-            )
-        )
+    export_lanes = [lane for lane in inputs if lane is not None]
 
     try:
         with ExportDialog(export_lanes, parent=container) as dialog:

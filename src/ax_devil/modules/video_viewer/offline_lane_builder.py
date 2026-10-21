@@ -8,8 +8,10 @@ from functools import partial
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
 
+from ax_devil.modules.background_jobs import JobScope
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Radius, Space
+from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import (
     OverlayVisibility,
@@ -25,7 +27,6 @@ from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.offline_entry_media import (
     OpenedLane,
 )
-from ax_devil.modules.video_viewer.offline_frame_pool import PooledVideoSource
 from ax_devil.modules.video_viewer.offline_lane import OfflineLane
 from ax_devil.modules.video_viewer.overlay_persistence import (
     OverlayPersistenceSettings,
@@ -102,7 +103,8 @@ def build_lane(
     container: QWidget,
     lane_layout: QGridLayout,
     *,
-    source_pool: list[PooledVideoSource],
+    opened_source: FileFrameSource,
+    analysis_jobs: JobScope,
     render_catalog_manager: SceneRenderCatalogManager,
     use_lane_controls: bool,
     lane_visibility: dict[int, OverlayVisibility],
@@ -121,9 +123,7 @@ def build_lane(
         parent_widget, lane_layout, lane_count, position, lane_content, display, pane_title
     )
 
-    pooled_source = source_pool[opened.source_index]
-    overlay_source = opened.overlay_source
-    overlay_policy = opened.overlay_policy
+    overlay_source = opened.overlay.source if opened.overlay else None
     timing_controls = TimingDiagnosticsWidget()
     render_catalog_selection = render_catalog_manager.create_selection(
         visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container
@@ -151,37 +151,30 @@ def build_lane(
         await_catalog=True,
     )
 
-    def refresh_display_overlays(_catalog: object, *, lane_display: FrameDisplay = display) -> None:
-        lane_display.refresh_overlays()
-
     display.set_side_panel_widget(tools_panel)
     tools_panel.link_selection(display)
     filter_model.changed.connect(display.refresh_overlays)
-    render_catalog_selection.activeCatalogChanged.connect(presenter.attach_scene_render_catalog)
-    render_catalog_selection.activeCatalogChanged.connect(refresh_display_overlays)
     tools_panel.catalogViewerRequested.connect(partial(open_catalog_viewer, container, render_catalog_selection))
-    if overlay_policy is not None:
-        tools_panel.overlayPersistenceChanged.connect(overlay_policy.update_settings)
 
     lane = OfflineLane(
         content=video,
         name=lane_content.display_name,
         display=display,
-        overlay_source=overlay_source,
+        overlay=opened.overlay,
         export_action=export_action,
         lane_index=opened.lane_index,
-        controls=controls,
-        overlay_policy=overlay_policy,
         presenter=presenter,
         tools_panel=tools_panel,
         filter_model=filter_model,
         timing_controls=timing_controls,
         alignment_indicator=alignment_indicator,
-        video_source=pooled_source.source,
-        source_index=pooled_source.source_index,
+        video_source=opened_source,
+        source_index=opened.source_index,
+        analysis_jobs=analysis_jobs,
     )
-    # Connected after the presenter's own, so the lane sees the catalog the presenter has just taken.
-    render_catalog_selection.activeCatalogChanged.connect(lambda _catalog, lane=lane: lane.update_export_action())
+    render_catalog_selection.activeCatalogChanged.connect(lane.apply_catalog)
+    tools_panel.overlayPersistenceChanged.connect(lane.apply_overlay_persistence)
+    timing_controls.timestampFallbackPolicyChanged.connect(lane.apply_timestamp_policy)
     lane.update_export_action()
     lane.initialize_timing_diagnostics(opened.alignment_report)
     return lane

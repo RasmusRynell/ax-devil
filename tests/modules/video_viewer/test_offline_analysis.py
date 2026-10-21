@@ -21,7 +21,11 @@ from ax_devil.modules.filtering.filter_config import build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Entity, EntityId
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
-from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
+from ax_devil.modules.synchronization.timestamp_matching import (
+    TimestampFallbackMode,
+    TimestampFallbackPolicy,
+    find_matching_overlay_timestamp,
+)
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
@@ -44,6 +48,9 @@ class _Panel:
     def __init__(self) -> None:
         self.histories: list[SceneHistory] = []
         self.notices: list[str] = []
+
+    def update_scene(self, *args: object) -> None:
+        """Accept inspection of the held frame."""
 
     def refresh_scene(self) -> None:
         """Match MediaToolsPanel's immediate inspection refresh."""
@@ -154,8 +161,20 @@ class _SampledOverlaySource:
         return snapshot
 
     def get_overlay_at_frame(self, frame_id: FrameIdentifier, *, allow_previous: bool = False) -> OverlayData | None:
-        """Find no overlay for any frame."""
-        return None
+        """Look up a sample using the same timestamp rules as history placement."""
+        match = find_matching_overlay_timestamp(
+            sorted_overlay_timestamps_us=self._samples.timestamps_us,
+            video_timestamp_us=frame_id.timestamp_us,
+            policy=self._samples.policy,
+            allow_previous=allow_previous,
+        )
+        if match.overlay_timestamp_us is None:
+            return None
+        return replace(
+            make_overlay(1),
+            frame_id=FrameIdentifier(1, match.overlay_timestamp_us),
+            metadata={"timestamp_match_type": match.match_type},
+        )
 
 
 class _AnalysisRig:
@@ -178,16 +197,17 @@ class _AnalysisRig:
         self.timing = _AlignmentView()
         self.indicator = _AlignmentView()
         self.persistence = OverlayPersistencePolicy(persistence or OverlayPersistenceSettings.default_enabled())
+        self.jobs = BackgroundJobs()
         self.lane = make_lane(
             self.display,
             overlay_source=cast(FakeOverlaySource, self.overlay),
             video_source=PlaybackSource(),
             overlay_policy=self.persistence,
             tools_panel=cast(MediaToolsPanel, self.panel),
+            analysis_jobs=self.jobs.scope(self.display),
+            timing_controls=cast(TimingDiagnosticsWidget, self.timing),
+            alignment_indicator=cast(OverlayAlignmentIndicator, self.indicator),
         )
-        self.lane.timing_controls = cast(TimingDiagnosticsWidget, self.timing)
-        self.lane.alignment_indicator = cast(OverlayAlignmentIndicator, self.indicator)
-        self.jobs = BackgroundJobs()
         self._finished = threading.Semaphore(0)
         self.jobs.finished.connect(
             lambda _job, finished=self._finished: finished.release(), Qt.ConnectionType.DirectConnection
@@ -215,12 +235,12 @@ def test_policy_change_keeps_the_viewer_responsive_while_analysis_runs(qtbot: Qt
     rig = _AnalysisRig(qtbot, OverlayPersistenceSettings(enabled=False))
     rig.overlay.hold.clear()
 
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY))
     rig.wait_until_analyses_run(qtbot)
-    rig.session.jump_to_frame(2)
+    rig.session.playback.seek(2)
     QCoreApplication.processEvents()
 
-    assert rig.session.current_frame == 2
+    assert rig.session.playback.current_frame == 2
     assert rig.panel.histories == []
     assert rig.timing.reports == []
 
@@ -239,13 +259,13 @@ def test_newest_policy_change_is_the_only_one_shown(qtbot: QtBot) -> None:
     """Analyses of a superseded policy finishing late never replace what the newest policy shows."""
     rig = _AnalysisRig(qtbot, OverlayPersistenceSettings(enabled=False))
     rig.overlay.hold.clear()
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=10_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=10_000))
     rig.wait_until_analyses_run(qtbot)
     superseded_hold = rig.overlay.hold
     rig.overlay.hold = threading.Event()
     rig.overlay.hold.set()
 
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=30_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=30_000))
     rig.wait_for_analyses(2)
 
     assert rig.shown_spans() == [("a", ((0, 1),))]  # The 20 ms sample is within 30 ms of frame 1 at 40 ms.
@@ -261,21 +281,31 @@ def test_sticky_overlay_changes_place_the_history_again(qtbot: QtBot) -> None:
     """History follows sticky overlays: retained samples keep an object shown past the fallback tolerance."""
     rig = _AnalysisRig(qtbot)
 
+    rig.lane.present_frame(replace(make_frame(3), frame_id=FrameIdentifier(3, 120_000)))
     rig.lane.refresh_scene_history()
     rig.wait_for_analyses(1)
     assert rig.shown_spans() == [("a", ((0, 3),))]
+    assert rig.display.frames[-1].overlays is not None
 
-    rig.persistence.update_settings(OverlayPersistenceSettings(enabled=False))
-    rig.lane.refresh_scene_history()
+    rig.lane.apply_overlay_persistence(OverlayPersistenceSettings(enabled=False))
+    assert rig.display.frames[-1].overlays is None
     rig.wait_for_analyses(1)
     assert rig.shown_spans() == [("a", ((0, 1),))]
+
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=110_000))
+    assert rig.display.frames[-1].overlays is not None
+    assert rig.display.frame_ids() == [3, 3, 3]
+    assert cast(PlaybackSource, rig.lane.video_source).jump_calls == []
+    rig.wait_for_analyses(2)
+    assert rig.shown_spans() == [("a", ((0, 3),))]
+    assert rig.timing.reports[-1] is not None and rig.timing.reports[-1].tolerance_us == 110_000
 
 
 def test_ending_the_session_drops_analysis_still_running(qtbot: QtBot) -> None:
     """An analysis finishing after teardown shows nothing and never reaches back into the released source."""
     rig = _AnalysisRig(qtbot)
     rig.overlay.hold.clear()
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY))
     rig.wait_until_analyses_run(qtbot)
     requested = len(rig.overlay.snapshots)
 
@@ -295,10 +325,10 @@ def test_superseded_analyses_stop_early_instead_of_occupying_the_workers(qtbot: 
     """Rapid policy changes leave no obsolete whole-file work running beside the analyses the user is waiting for."""
     rig = _AnalysisRig(qtbot, OverlayPersistenceSettings(enabled=False))
     rig.overlay.hold.clear()
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=10_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=10_000))
     rig.wait_until_analyses_run(qtbot)
     superseded = list(rig.overlay.snapshots)
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=30_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=30_000))
     rig.wait_until_analyses_run(qtbot)
 
     rig.overlay.hold.set()
@@ -314,12 +344,12 @@ def test_failed_analysis_marks_the_last_history_and_report_out_of_date_until_a_r
 ) -> None:
     """A policy whose analysis fails keeps the previous results usable but says, per lane, that they are old and why."""
     rig = _AnalysisRig(qtbot, OverlayPersistenceSettings(enabled=False))
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(mode=TimestampFallbackMode.EXACT_ONLY))
     rig.wait_for_analyses(2)
     last_report = rig.timing.reports[-1]
 
     rig.overlay.failure = "frame index unreadable"
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=30_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=30_000))
     rig.wait_for_analyses(2)
 
     assert rig.shown_spans() == [("a", ((0, 0),))]
@@ -336,7 +366,7 @@ def test_failed_analysis_marks_the_last_history_and_report_out_of_date_until_a_r
     assert "overlay alignment of lane 'lane'" in caplog.text
 
     rig.overlay.failure = None
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=30_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=30_000))
     rig.wait_for_analyses(2)
 
     assert rig.shown_spans() == [("a", ((0, 1),))]
@@ -352,7 +382,7 @@ def test_stale_notices_name_only_the_settings_that_retry_what_failed(qtbot: QtBo
     rig.overlay.failure = "report unreadable"
     rig.overlay.failure_spares_history = True
 
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=30_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=30_000))
     rig.wait_for_analyses(2)
 
     assert rig.panel.notices == []
@@ -369,7 +399,7 @@ def test_stale_notices_name_only_the_settings_that_retry_what_failed(qtbot: QtBo
     assert "sync or sticky" in history_notice
 
     rig.overlay.failure = None
-    rig.lane.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=10_000))
+    rig.lane.apply_timestamp_policy(TimestampFallbackPolicy(tolerance_us=10_000))
     rig.wait_for_analyses(2)
 
     assert [report.tolerance_us for report in rig.timing.reports if report is not None] == [10_000]
@@ -400,19 +430,19 @@ def test_session_pause_and_seek_flush_the_actual_displayed_inspection(
         model = view.rows_model
         return [cast(ObjectPageKey, model.key_at(row)).entity_id for row in range(model.rowCount())]
 
-    session.start_playback()
+    session.playback.play()
     present(0)
     present(1)
     assert shown() == ["0"]
-    session.pause_playback()
+    session.playback.pause()
     assert shown() == ["1"]
-    session.step_frames(-1)
+    session.playback.step(-1)
     present(0)
     assert shown() == ["0"]
-    session.start_playback()
+    session.playback.play()
     present(1)
     present(2)
     assert shown() != ["2"]
-    session.jump_to_frame(9)
+    session.playback.seek(9)
     present(9)
     assert shown() == ["9"]

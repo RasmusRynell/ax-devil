@@ -12,19 +12,22 @@ from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
-from ax_devil.modules.background_jobs import BackgroundJobs
+from ax_devil.modules.background_jobs import BackgroundJobs, JobScope
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Scene, TimeSlice
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
-from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
-from ax_devil.modules.video_viewer.offline_frame_pool import FrameDeliveryRelay, PooledVideoSource
+from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia, LaneOverlay
 from ax_devil.modules.video_viewer.offline_lane import OfflineLane
+from ax_devil.modules.video_viewer.offline_playback import OfflinePlayback
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy
+from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
+from ax_devil.modules.video_viewer.timing_diagnostics_widget import OverlayAlignmentIndicator, TimingDiagnosticsWidget
 from ax_devil.modules.workspace.core import (
     SeekableVideoContent,
 )
@@ -47,25 +50,6 @@ class FakeDisplay(QObject):
     def frame_ids(self) -> list[int | None]:
         """Return the ids of the displayed frames in order."""
         return [frame.frame.frame_id for frame in self.frames]
-
-
-class StepBackDuringDisplay(FakeDisplay):
-    """Display test double that triggers a playback step while presenting a frame."""
-
-    def __init__(self, *, trigger_frame: int, delta: int) -> None:
-        super().__init__()
-        self.trigger_frame = trigger_frame
-        self.delta = delta
-        self.session: OfflineSession | None = None
-        self.current_frame_seen_during_display: int | None = None
-
-    def display_frame(self, frame: VideoFrameWithOverlays) -> None:
-        """Record the frame and trigger one relative step during presentation."""
-        super().display_frame(frame)
-        if frame.frame.frame_id != self.trigger_frame or self.session is None:
-            return
-        self.current_frame_seen_during_display = self.session.current_frame
-        self.session.step_frames(self.delta)
 
 
 class FakeOverlaySource:
@@ -104,10 +88,15 @@ class FakeSignal:
 class AsyncFrameSource:
     """Secondary frame source test double that lets tests complete requests out of order."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, total_frames: int = 1000) -> None:
+        self.total_frames = total_frames
         self.frameReady = FakeSignal()
         self.requests: list[int] = []
         self.callbacks: dict[int, Callable[[FrameData | None], None]] = {}
+
+    def get_total_frames(self) -> int:
+        """Return the secondary video length."""
+        return self.total_frames
 
     def request_frame_async(self, frame_number: int, callback: Callable[[FrameData | None], None]) -> None:
         """Record the callback for explicit test completion."""
@@ -218,50 +207,67 @@ def make_lane(
     source_index: int = 0,
     overlay_policy: OverlayPersistencePolicy | None = None,
     tools_panel: MediaToolsPanel | None = None,
+    analysis_jobs: JobScope | None = None,
+    timing_controls: TimingDiagnosticsWidget | None = None,
+    alignment_indicator: OverlayAlignmentIndicator | None = None,
 ) -> OfflineLane:
     return OfflineLane(
         content=cast(SeekableVideoContent, object()),
         name="lane",
         display=cast(FrameDisplay, display),
-        overlay_source=cast(FileOverlaySource | None, overlay_source),
+        overlay=LaneOverlay(cast(FileOverlaySource, overlay_source), overlay_policy or OverlayPersistencePolicy())
+        if overlay_source is not None
+        else None,
         export_action=QAction("Export video"),
-        video_source=cast(FileFrameSource | None, video_source),
+        video_source=cast(FileFrameSource, video_source or PlaybackSource()),
         source_index=source_index,
-        overlay_policy=overlay_policy,
-        tools_panel=tools_panel,
+        presenter=SceneFramePresenter(),
+        tools_panel=tools_panel or cast(MediaToolsPanel, _InspectionPanel()),
+        filter_model=SessionFilter(),
+        timing_controls=timing_controls or cast(TimingDiagnosticsWidget, object()),
+        alignment_indicator=alignment_indicator or cast(OverlayAlignmentIndicator, object()),
+        analysis_jobs=analysis_jobs or BackgroundJobs().scope(display),
     )
+
+
+class _InspectionPanel:
+    """Minimal scene inspection sink for lane presentation tests."""
+
+    def update_scene(self, *args: object, **kwargs: object) -> None:
+        """Accept an inspection update."""
+
+    def clear_scene(self) -> None:
+        """Accept an empty scene."""
+
+    def cleanup(self) -> None:
+        """Release no resources."""
 
 
 def make_session(
     qtbot: QtBot, lanes: list[OfflineLane], sources: list[object], *, jobs: BackgroundJobs | None = None
 ) -> OfflineSession:
-    """Wire a session over test sources the way `OfflineSession.build` wires opened media.
-
-    `build` needs real displays; the source pool and the frame slot are private, so this is the one place tests
-    reach them.
-    """
+    """Compose the session with its real playback controller."""
     container = QWidget()
     qtbot.addWidget(container)
-    pool = [
-        PooledVideoSource(
-            source=cast(FileFrameSource, source),
-            relay=FrameDeliveryRelay(index, container),
-            source_index=index,
-        )
-        for index, source in enumerate(sources)
-    ]
-    session = OfflineSession(lanes, container, media=EntryMedia(), source_pool=pool, jobs=jobs)
-    for pooled in pool:
-        pooled.source.frameReady.connect(pooled.relay.deliver)
-        pooled.relay.frameReady.connect(session._on_frame_ready)  # noqa: SLF001
-    return session
+    playback = OfflinePlayback([cast(FileFrameSource, source) for source in sources])
+    scope = lanes[0].analysis_jobs if lanes else (jobs or BackgroundJobs()).scope(container)
+    return OfflineSession(lanes, container, media=EntryMedia(), playback=playback, analysis_jobs=scope)
 
 
-def make_primary_session(
+def make_playback(qtbot: QtBot, sources: list[object]) -> OfflinePlayback:
+    """Build a playback controller over fake video sources."""
+    owner = QWidget()
+    playback = OfflinePlayback([cast(FileFrameSource, source) for source in sources], owner)
+    qtbot.addWidget(owner, before_close_func=lambda widget, owner=owner: playback.close())
+    return playback
+
+
+def make_primary_playback(
     qtbot: QtBot, *, current_frame: int = 0, total_frames: int = 1000
-) -> tuple[OfflineSession, FakeDisplay, PlaybackSource]:
-    display = FakeDisplay()
+) -> tuple[OfflinePlayback, list[int], PlaybackSource]:
     source = PlaybackSource(total_frames=total_frames)
     source.current_frame = current_frame
-    session = make_session(qtbot, [make_lane(display, video_source=source)], [source])
-    return session, display, source
+    playback = make_playback(qtbot, [source])
+    frames: list[int] = []
+    playback.frameReady.connect(lambda _index, frame: frames.append(frame.frame_id.sequence_id))
+    return playback, frames, source

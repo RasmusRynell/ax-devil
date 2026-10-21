@@ -84,7 +84,7 @@ def test_workspace_opens_seeks_and_closes_real_video(
         menu.hide()
 
         assert viewer._runtime is not None
-        source = viewer._runtime.get_primary_video_source()
+        source = viewer._runtime.iter_video_sources()[0]
         assert source is not None
         delivery = source._frame_delivery
         assert delivery is not None
@@ -94,10 +94,10 @@ def test_workspace_opens_seeks_and_closes_real_video(
         fullscreen = viewport.window()
         qtbot.waitUntil(fullscreen.isActiveWindow)
         assert fullscreen.isFullScreen()
-        with qtbot.waitSignal(viewer._runtime.playbackStateChanged) as started:
+        with qtbot.waitSignal(viewer._runtime.playback.playingChanged) as started:
             QTest.keyClick(viewport, Qt.Key.Key_Space)
         assert started.args == [True]
-        with qtbot.waitSignal(viewer._runtime.playbackStateChanged) as paused:
+        with qtbot.waitSignal(viewer._runtime.playback.playingChanged) as paused:
             QTest.keyClick(viewport, Qt.Key.Key_Space)
         assert paused.args == [False]
         QTest.keyClick(viewport, Qt.Key.Key_Right)

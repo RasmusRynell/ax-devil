@@ -19,7 +19,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Main window menus, app-wide dialogs (including Settings and Quick Setup), exception reporting | `src/ax_devil/modules/application_shell/` |
 | Workspace model: the Workspace, Workspace Items and their resolution, file format, recent workspaces, content, intake, item information (Qt-free) | `src/ax_devil/modules/workspace/core/` |
 | Workspace interface: `WorkspaceStore`, plugin-backed background resolution, browser rows and the section tree that shows them, add-content and rename dialogs, workspace lifecycle and prompts, split-view hosting, `ViewerWidget`, viewer factory, session/controller, the activity bar, sidebar host and the Workspace, Live, Offline and Bookmarks views | `src/ax_devil/modules/workspace/ui/` |
-| Live/offline viewer workflows, media tools, offline entry opening (`open_entry_media`, `EntryMedia`), `OfflineSession`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
+| Live/offline viewer workflows, media tools, offline entry opening (`open_entry_media`, `EntryMedia`), `OfflineSession`, `OfflinePlayback`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation | `src/ax_devil/modules/video_player/` |
 | Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
 | The read-only fields tree and title row of an object, shared by the media tools and the render catalog viewer (neither imports the other's widgets) | `src/ax_devil/modules/object_inspection/` |

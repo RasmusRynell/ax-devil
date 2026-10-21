@@ -174,7 +174,7 @@ class TestOfflineViewerAnalysisExport(OfflineViewerTest):
         with patch.object(lane.display, "refresh_overlays", wraps=lane.display.refresh_overlays) as refresh:
             confidence.setChecked(False)
             refresh.assert_called_once()
-        assert not shown_session(widget).is_playing
+        assert not shown_session(widget).playback.is_playing
         assert lane.presenter.scene_render_catalog is not full
         widget.step_next_entry()
         lane = shown_session(widget).lanes[0]

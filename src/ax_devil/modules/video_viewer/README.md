@@ -11,7 +11,7 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
   `live_transports.py` opens its RTSP and overlay transports.
 - `live_connection.py`: `LiveConnectionStatus` model; per-feed (video, overlay) state, reason, and display text.
 - `offline_entry_media.py`: `open_entry_media` opens an entry's sources on a worker thread and delivers `EntryMedia`.
-- `offline_viewer_runtime.py`: `OfflineSession`; owns offline source pooling, timeline commands, viewport sync,
+- `offline_viewer_runtime.py`: `OfflineSession`; composes `offline_playback.py` (source pooling and playback), viewport sync,
   cleanup, and player composition. `offline_lane.py` holds `OfflineLane` (direct overlay lookup, presenter use and
   background analyses), `offline_lane_builder.py` builds the lane displays, `offline_frame_pool.py` the pooled
   sources and their frame relays, and `offline_export.py` the export of lanes.
@@ -34,8 +34,8 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
 
 - `video_viewer` owns workflows inside an open Video Viewer.
 - Offline viewer ownership is split between `OfflineVideoViewerWidget` as the workflow shell and `OfflineSession` as the
-  active entry runtime. `OfflineSession` owns primary frame position and playback state, and each `OfflineLane` owns one
-  visible display lane plus media tools, direct overlay lookup, presenter use, and async non-primary frame rendering.
+  active entry runtime. `OfflinePlayback` owns primary frame position and playback state, and each `OfflineLane` owns one
+  visible display lane plus media tools, overlay selection, presentation, background analysis, and frozen export inputs.
 - Offline lanes delegate frame plus Scene assembly to `SceneFramePresenter`; they do not create or own Qt sync adapters.
 - `SceneFramePresenter` returns display and inspection data. Live controllers and offline lanes display frames first, then
   deliver Scene inspection updates. The panel owns which visible inspection work is due.
