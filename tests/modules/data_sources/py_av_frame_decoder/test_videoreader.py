@@ -206,7 +206,7 @@ def test_frames_match_ffmpeg(video_and_references: tuple[Path, Path], indices: t
             assert decoded.frame_index == index
             reference = cv2.imread(str(references / f"frame_{index + 1:04d}.png"))
             assert reference is not None, f"Failed to load reference frame {index}"
-            np.testing.assert_array_equal(decoded.pixels, cv2.cvtColor(reference, cv2.COLOR_BGR2RGB))
+            np.testing.assert_array_equal(decoded.pixels[..., :3], cv2.cvtColor(reference, cv2.COLOR_BGR2RGB))
             # Fill the prefetch window between reads, as playback does, so later reads hit prefetched frames.
             drain_prefetch(worker, limit=20)
     finally:

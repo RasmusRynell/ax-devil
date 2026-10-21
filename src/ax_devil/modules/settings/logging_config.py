@@ -78,11 +78,11 @@ def setup_logging(
     if console_only:
         if root.handlers:
             return get_logger("main")
-        root.setLevel(_logging.DEBUG)
         handler = _logging.StreamHandler()
         handler.setLevel(console_numeric_level)
         handler.setFormatter(_ColorFormatter())
         root.addHandler(handler)
+        _set_root_level_to_lowest_handler(root)
         return get_logger("main")
 
     # Full setup — clears any previous handlers (including console-only ones).
@@ -92,7 +92,6 @@ def setup_logging(
     logs_path.mkdir(parents=True, exist_ok=True)
 
     root.handlers.clear()
-    root.setLevel(_logging.DEBUG)  # capture everything; handlers decide display
 
     # Plain-text file handler.
     plain_handler = _handlers.RotatingFileHandler(
@@ -110,6 +109,7 @@ def setup_logging(
     console_handler.setLevel(console_numeric_level)
     console_handler.setFormatter(_ColorFormatter())
     root.addHandler(console_handler)
+    _set_root_level_to_lowest_handler(root)
 
     # Quiet noisy libs
     for noisy in ("urllib3", "botocore", "s3transfer", "ax_devil_rtsp"):
@@ -118,6 +118,11 @@ def setup_logging(
     logger = get_logger("main")
     logger.debug("Logging initialized")
     return logger
+
+
+def _set_root_level_to_lowest_handler(root: _logging.Logger) -> None:
+    """Drop records no handler would show before they are built, instead of capturing everything."""
+    root.setLevel(min(handler.level for handler in root.handlers))
 
 
 def get_logger(name: str) -> _logging.Logger:  # noqa: D401

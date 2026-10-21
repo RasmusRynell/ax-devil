@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 
 @dataclass(frozen=True, slots=True)
 class DecodedFrame:
-    """Decoded RGB pixels plus source timing facts for one video frame.
+    """Decoded RGBA pixels (alpha 255, shape height x width x 4) plus source timing facts for one video frame.
 
     ``duration_s`` is the decoded source duration, when available. ``period_after_s``
     is the indexed playback delay, which may use the preceding gap for the last frame.
