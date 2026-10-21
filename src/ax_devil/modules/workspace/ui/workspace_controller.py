@@ -90,10 +90,9 @@ class WorkspaceController(QObject):
     def open_content(self, content: Content, start_index: int = 0, *, to_side: bool = False) -> None:
         """Open *content*, from its playlist entry *start_index*, as a double click in the browser does.
 
-        It replaces the preview pane, or opens in a new split with *to_side*; open viewers pause.
+        It replaces the preview pane, or opens in a new split with *to_side*. Other viewers keep their playback state.
         """
         place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
-        self._pause_all_viewers()
         self._open_content(content, start_index=start_index, place=place)
 
     def show_frame(self, content: Content, entry_index: int, frame: int) -> None:
@@ -101,7 +100,6 @@ class WorkspaceController(QObject):
         and takes focus, otherwise the entry opens as ``open_content`` would.
         """
         target = entry_target(content, entry_index)
-        self._pause_all_viewers()
         viewer = next(
             (
                 widget
@@ -331,11 +329,6 @@ class WorkspaceController(QObject):
         self._edited_items.clear()
         self._center_area.clear_all_widgets()
         self._publish_sections()
-
-    def _pause_all_viewers(self) -> None:
-        """Pause playback on all open viewers."""
-        for widget in self._widget_item_ids:
-            widget.pause_playback()
 
     def _open_content(
         self,
