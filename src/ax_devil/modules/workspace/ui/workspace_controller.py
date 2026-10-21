@@ -67,6 +67,7 @@ class WorkspaceController(QObject):
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
         self._row_handlers: dict[RowAction, Callable[[WorkspaceBrowserRow], None]] = {
             RowAction.OPEN: self._open_row,
+            RowAction.UNHIDE_AND_OPEN: self._unhide_and_open,
             RowAction.OPEN_TO_SIDE: partial(self._open_row, to_side=True),
             RowAction.START_STREAM: self._start_stream,
             RowAction.STOP_STREAM: self._stop_stream,
@@ -196,10 +197,38 @@ class WorkspaceController(QObject):
         """Open what *row* opens, in a new split with *to_side*; a row that cannot open says why instead."""
         if row.unavailable_reason is not None:
             QMessageBox.warning(self._window_parent(), "Open Content", f"{row.label}: {row.unavailable_reason}")
-        elif row.activation_target is not None and self._workspace_store.workspace.has_item(
-            row.activation_target[0].item_id
+        elif (target := row.activation_target) is not None and self._workspace_store.workspace.has_item(
+            target.content.item_id
         ):
-            self.open_content(*row.activation_target, to_side=to_side)
+            lane_index = target.lane_index
+            if lane_index is not None and row.consideration_ref is not None:
+                if not self._workspace_store.is_item_considered(row.consideration_ref):
+                    return
+            if lane_index is not None and not to_side:
+                entry = entry_target(target.content, target.entry_index or 0)
+                viewer = next(
+                    (
+                        widget
+                        for widget in (self._center_area.get_focused_widget(), *self._widget_item_ids)
+                        if widget is not None and widget.bookmark_target() == entry
+                    ),
+                    None,
+                )
+                if viewer is not None:
+                    self._center_area.focus_widget(viewer)
+                    viewer.focus_lane(lane_index)
+                    return
+            self._open_content(
+                target.content,
+                start_index=target.entry_index,
+                place=self._center_area.open_to_side if to_side else self._center_area.replace_or_open,
+                lane_index=lane_index,
+            )
+
+    def _unhide_and_open(self, row: WorkspaceBrowserRow) -> None:
+        """Explicitly unhide the selected lane before opening it through its normal target."""
+        self._set_considered(row, considered=True)
+        self._open_row(row)
 
     def _start_stream(self, row: WorkspaceBrowserRow) -> None:
         """Open the camera beside the open viewers, never in place of one, so one stream never stops another."""
@@ -337,6 +366,7 @@ class WorkspaceController(QObject):
         start_index: int | None = None,
         place: Callable[[ViewerWidget], None] | None = None,
         start_frame: int | None = None,
+        lane_index: int | None = None,
     ) -> None:
         """Open Workspace content using the Workspace viewer factory.
 
@@ -357,6 +387,8 @@ class WorkspaceController(QObject):
             return
 
         try:
+            if lane_index is not None:
+                opened.widget.focus_lane(lane_index)
             self._open_widget(
                 opened.widget,
                 content,

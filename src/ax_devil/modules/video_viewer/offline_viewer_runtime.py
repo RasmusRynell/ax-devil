@@ -104,6 +104,14 @@ class OfflineSession(QObject):
         """Return all active lane displays in presentation order."""
         return tuple(lane.display for lane in self.lanes)
 
+    def focus_lane(self, lane_index: int) -> bool:
+        """Focus the lane with this original entry index, returning whether it is currently shown."""
+        lane = next((lane for lane in self.lanes if lane.lane_index == lane_index), None)
+        if lane is None:
+            return False
+        lane.display.viewport.setFocus()
+        return True
+
     def focused_display(self) -> FrameDisplay | None:
         """Return the display of the focused lane, or the first lane's when focus is outside the displays."""
         displays = self.displays

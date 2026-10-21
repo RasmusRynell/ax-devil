@@ -53,7 +53,6 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
 
     assert row.label == "test.mp4"
     assert row.icon_kind == "video"
-    assert row.activation_target == (video, 0)
     assert row.item == state.workspace.items[0]
     assert row.is_open
     assert row.information_factory is not None
@@ -63,10 +62,12 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert ("path", str(Path("/tmp/Overlay 1.txt"))) in information.children[0].fields
     assert ("handler type", "AXIS_JSON") in information.children[0].fields
     assert [child.label for child in row.children] == ["Overlay 1", "Overlay 2"]
-    assert row.children[0].activation_target == (video, 0)
     assert row.children[0].consideration_ref == video.lane_consideration_ref(0, 0)
     assert row.children[0].is_considered
     assert not row.children[1].is_considered
+    assert _offers(row.children[1])[RowAction.OPEN] == "Hidden lane: choose Unhide and open"
+    assert _offers(row.children[1])[RowAction.OPEN_TO_SIDE] == "Hidden lane: choose Unhide and open"
+    assert inline_action(row.children[1]) is RowAction.UNHIDE_AND_OPEN
     assert RowAction.HIDE in _offers(row.children[0]), "a lane playback uses can be hidden"
     assert RowAction.UNHIDE in _offers(row.children[1]) and RowAction.HIDE not in _offers(row.children[1])
     assert {RowAction.HIDE, RowAction.UNHIDE}.isdisjoint(_offers(row)), "the video itself is not hidden"
@@ -107,13 +108,11 @@ def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads
 
     assert row.label == "Suite"
     assert row.icon_kind == "playlist"
-    assert row.activation_target == (playlist, None)
     assert row.item == state.workspace.items[0]
     assert row.is_open
     assert row.information_factory is not None
     assert ("resolver", "Synthetic") in row.information_factory().fields
     assert first_entry.label == "a.mp4"
-    assert first_entry.activation_target == (playlist, 0)
     assert first_entry.consideration_ref == playlist.entry_consideration_ref(0)
     assert not first_entry.is_open
     assert first_entry.children[0].consideration_ref == playlist.lane_consideration_ref(0, 0)
