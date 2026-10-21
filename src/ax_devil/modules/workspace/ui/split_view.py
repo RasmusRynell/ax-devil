@@ -143,14 +143,19 @@ class SplitView(QWidget):
         return len(self._widget_ids)
 
     def replace_or_open(self, widget: ViewerWidget) -> None:
-        """Replace the first unpinned (preview) widget, or open a new split if all are pinned."""
+        """Replace the active preview, or open beside the active pinned pane."""
         if self.get_widget_count() == 0:
             self.add_viewer_widget(widget)
             return
 
-        leaf = self._find_unpinned_leaf()
+        focused = self._focused_widget
+        leaf = self._leaf_for_widget(focused) if focused is not None else None
         if leaf is None:
             self.add_viewer_widget(widget)
+            return
+
+        if focused is not None and focused.is_pinned():
+            self._split_target_leaf_and_insert_widget(leaf, widget, None, SplitDirection.RIGHT)
             return
 
         old_widget = leaf.get_widget()
@@ -186,14 +191,6 @@ class SplitView(QWidget):
         self._split_target_leaf_and_insert_widget(leaf, widget, None, SplitDirection.RIGHT)
 
     # Internal helpers
-    def _find_unpinned_leaf(self) -> LeafContainer | None:
-        """Return the first leaf containing an unpinned widget, or None."""
-        for leaf in list_leaves(self._root_layout):
-            w = leaf.get_widget()
-            if w is not None and not w.is_pinned():
-                return leaf
-        return None
-
     def _update_welcome_visibility(self) -> None:
         """Show the welcome screen when no widgets are present, hide otherwise."""
         self._welcome_scroll.setVisible(self.get_widget_count() == 0)
@@ -354,11 +351,16 @@ class SplitView(QWidget):
         """Set the currently focused widget."""
         if self._focused_widget is widget:
             return
+        if self._focused_widget is not None:
+            self._focused_widget.set_active(False)
         self._focused_widget = widget
+        if widget is not None:
+            widget.set_active(True)
 
     def focus_widget(self, widget: ViewerWidget) -> None:
         """Make *widget* the focused pane."""
-        self._set_focused_widget(widget)
+        if widget in self._widget_ids:
+            self._set_focused_widget(widget)
 
     def get_focused_widget(self) -> ViewerWidget | None:
         """Return the currently focused widget."""

@@ -1,6 +1,7 @@
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRectF
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QKeySequence
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractButton
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
@@ -92,21 +93,22 @@ def test_all_pinned_creates_new_split(qtbot: QtBot) -> None:
     assert _panes(sv) == [*pinned, newcomer]
 
 
-def test_mixed_panes_replace_only_the_unpinned_widget(qtbot: QtBot) -> None:
-    """A pinned first pane survives replacement and only the displaced pane is cleaned."""
+def test_open_replaces_the_active_unpinned_widget(qtbot: QtBot) -> None:
+    """An earlier preview survives when the user activates another preview to replace."""
     sv = _make_split_view(qtbot)
-    pinned, unpinned, replacement = (_LifecycleWidget(sv) for _ in range(3))
-    for widget in (pinned, unpinned, replacement):
+    earlier, active, replacement = (_LifecycleWidget(sv) for _ in range(3))
+    for widget in (earlier, active, replacement):
         qtbot.addWidget(widget)
-    sv.add_viewer_widget(pinned)
-    sv.add_viewer_widget(unpinned)
-    pinned.set_pinned(True)
+    sv.add_viewer_widget(earlier)
+    sv.add_viewer_widget(active)
+    QTest.mouseClick(earlier.get_header_widget(), Qt.MouseButton.LeftButton)
+    QTest.mouseClick(active.get_header_widget(), Qt.MouseButton.LeftButton)
 
     sv.replace_or_open(replacement)
 
     assert sv.get_focused_widget() is replacement
-    assert _panes(sv) == [pinned, replacement]
-    assert (pinned.cleanup_count, unpinned.cleanup_count, replacement.cleanup_count) == (0, 1, 0)
+    assert _panes(sv) == [earlier, replacement]
+    assert (earlier.cleanup_count, active.cleanup_count, replacement.cleanup_count) == (0, 1, 0)
     assert replacement.attach_count == 1
 
 
@@ -268,7 +270,7 @@ def test_welcome_rows_follow_shortcut_manager_bindings(qtbot: QtBot) -> None:
 
 
 def test_open_to_side_splits_beside_focused_pane_and_keeps_both(qtbot: QtBot) -> None:
-    """open_to_side adds a pinned pane next to the focused one; the next open replaces only the preview."""
+    """Opening while the side pane is active preserves the earlier preview and opens beside the pinned pane."""
     sv = _make_split_view(qtbot)
     preview = _make_dummy(qtbot)
     sv.replace_or_open(preview)
@@ -282,7 +284,8 @@ def test_open_to_side_splits_beside_focused_pane_and_keeps_both(qtbot: QtBot) ->
     replacement = _make_dummy(qtbot)
     sv.replace_or_open(replacement)
 
-    assert _panes(sv) == [replacement, side]
+    assert _panes(sv) == [preview, side, replacement]
+    assert not replacement.is_pinned()
 
 
 def test_open_to_side_on_empty_view_adds_widget(qtbot: QtBot) -> None:
@@ -294,6 +297,28 @@ def test_open_to_side_on_empty_view_adds_widget(qtbot: QtBot) -> None:
 
     assert sv.get_widget_count() == 1
     assert sv.get_focused_widget() is widget
+
+
+def test_removing_active_pane_selects_a_survivor_and_ignores_removed_activation(qtbot: QtBot) -> None:
+    """Closing the active pane leaves a usable target; late events cannot reactivate the removed viewer."""
+    sv = _make_split_view(qtbot)
+    first, second, replacement = (_make_dummy(qtbot) for _ in range(3))
+    sv.add_viewer_widget(first)
+    sv.add_viewer_widget(second)
+    sv.remove_viewer_widget(second)
+    sv.focus_widget(second)
+    sv.replace_or_open(replacement)
+    assert _panes(sv) == [replacement]
+
+
+def test_no_active_pane_opens_without_replacing_any_existing_viewer(qtbot: QtBot) -> None:
+    """A missing active target must never select an unrelated preview for replacement."""
+    sv = _make_split_view(qtbot)
+    existing, newcomer = (_make_dummy(qtbot) for _ in range(2))
+    sv.add_viewer_widget(existing)
+    sv._set_focused_widget(None)
+    sv.replace_or_open(newcomer)
+    assert _panes(sv) == [existing, newcomer]
 
 
 def test_pin_button_and_pinned_state_stay_in_sync(qtbot: QtBot) -> None:

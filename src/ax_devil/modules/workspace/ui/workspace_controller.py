@@ -90,7 +90,7 @@ class WorkspaceController(QObject):
     def open_content(self, content: Content, start_index: int | None = None, *, to_side: bool = False) -> None:
         """Open *content*, or exactly its entry *start_index* when supplied, including hidden entries.
 
-        It replaces the preview pane, or opens in a new split with *to_side*. Other viewers keep their playback state.
+        It targets the active pane, or opens in a new split with *to_side*. Other viewers keep their playback state.
         """
         place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
         self._open_content(content, start_index=start_index, place=place)
@@ -340,7 +340,7 @@ class WorkspaceController(QObject):
     ) -> None:
         """Open Workspace content using the Workspace viewer factory.
 
-        *place* inserts the widget into the center area; it defaults to replacing the preview pane.
+        *place* inserts the widget into the center area; it defaults to targeting the active pane.
         """
         try:
             opened = self._viewer_factory.open(

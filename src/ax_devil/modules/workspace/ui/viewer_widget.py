@@ -230,6 +230,11 @@ class ViewerWidget(QFrame):
         """Expose the header widget used for dragging in split view."""
         return self._header_widget
 
+    def set_active(self, active: bool) -> None:
+        """Mark the pane whose content ordinary Open targets, even while the sidebar has keyboard focus."""
+        color = "palette(highlight)" if active else "transparent"
+        self._header_widget.setStyleSheet(f"#ViewerWidgetHeader {{ border-bottom: {Space.XS}px solid {color}; }}")
+
     def on_workspace_attached(self) -> None:
         """Run after this widget has been attached to the workspace split view."""
 
@@ -270,7 +275,7 @@ class ViewerWidget(QFrame):
         else:
             self._pin_button.setIcon(Icon.PIN.icon())
             self._pin_button.setToolTip("Pin: keep this pane open when other content is opened")
-            self._title_label.setToolTip("Preview (italic): the next opened content replaces this pane")
+            self._title_label.setToolTip("Preview (italic): opened content replaces this pane while it is active")
         title_font = (TextRole.STRONG if self._pinned else TextRole.BODY).font()
         title_font.setItalic(not self._pinned)
         self._title_label.setFont(title_font)

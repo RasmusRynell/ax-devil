@@ -4,6 +4,8 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 
 from ax_devil.modules.workspace.core import LiveStreamItem, WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import RowAction
@@ -62,6 +64,7 @@ def test_opening_and_replacing_content_preserves_other_viewers_playback(
         assert playing.playing and not paused.playing and preview.playing
         assert not any(viewer.cleaned_up for viewer in (playing, paused, preview))
 
+        QTest.mouseClick(preview.get_header_widget(), Qt.MouseButton.LeftButton)
         controller.open_content(store_of(session).contents()[1])
 
     assert preview.cleaned_up
