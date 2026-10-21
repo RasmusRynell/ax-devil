@@ -73,7 +73,14 @@ class RowAction(Enum):
     button text and icon.
     """
 
-    OPEN = ("Open", "", None, "Replace the preview (unpinned) pane", False, RowActionGroup.OPEN)
+    OPEN = (
+        "Open",
+        "",
+        None,
+        "Replace the active preview, or open beside the active pinned pane",
+        False,
+        RowActionGroup.OPEN,
+    )
     OPEN_TO_SIDE = (
         "Open to the Side",
         "",

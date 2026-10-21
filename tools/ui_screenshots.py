@@ -415,3 +415,33 @@ def test_edit_screenshots(qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.Monk
 
     monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "camera.example")
     edit_screenshots(qtbot, tmp_path, theme)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_active_pane_screenshots(qtbot: QtBot, qapp: QApplication, theme: str) -> None:
+    """Show active and inactive viewer headers at both text sizes and window widths."""
+    from ax_devil.modules.workspace.ui.split_view import SplitView
+    from tests.helpers.workspace import PlainViewerWidget
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    split = SplitView()
+    qtbot.addWidget(split)
+    left, right = PlainViewerWidget(), PlainViewerWidget()
+    for viewer in (left, right):
+        viewer.get_content_layout().addWidget(QWidget(), 1)
+    left.set_display_name("Entrance")
+    right.set_display_name("Parking lot")
+    split.add_viewer_widget(left)
+    split.open_to_side(right)
+    split.show()
+    for text_size in TEXT_SIZES:
+        apply_theme(theme)
+        apply_text_size(text_size.body_px)
+        for width in (1000, 1440):
+            split.resize(width, 400)
+            QTest.qWait(30)
+            for viewer in (left, right):
+                header = viewer.get_header_widget()
+                assert header.width() >= header.sizeHint().width()
+                assert header.height() >= header.sizeHint().height()
+            split.grab().save(str(OUT / f"{theme}-{text_size.value}-active-pane-{width}.png"))
