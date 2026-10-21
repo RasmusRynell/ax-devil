@@ -15,6 +15,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent, VideoItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import (
+    BrowserOpenTarget,
     BrowserSection,
     OfferedAction,
     RowAction,
@@ -261,7 +262,7 @@ def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
             row_id="row-13",
             label="Video",
             icon_kind="video",
-            activation_target=(video, 0),
+            activation_target=BrowserOpenTarget(video, 0),
             children=(WorkspaceBrowserRow(row_id="row-14", label="Overlay", icon_kind="overlay"),),
         ),
     )

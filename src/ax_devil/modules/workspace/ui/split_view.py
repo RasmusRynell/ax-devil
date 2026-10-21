@@ -117,7 +117,7 @@ class SplitView(QWidget):
         if leaf is None:
             return False
         self._detach_widget(widget, leaf)
-        widget.setParent(None)
+        widget.hide()
         widget.deleteLater()
         self._update_welcome_visibility()
         return True
@@ -143,14 +143,19 @@ class SplitView(QWidget):
         return len(self._widget_ids)
 
     def replace_or_open(self, widget: ViewerWidget) -> None:
-        """Replace the first unpinned (preview) widget, or open a new split if all are pinned."""
+        """Replace the active preview, or open beside the active pinned pane."""
         if self.get_widget_count() == 0:
             self.add_viewer_widget(widget)
             return
 
-        leaf = self._find_unpinned_leaf()
+        focused = self._focused_widget
+        leaf = self._leaf_for_widget(focused) if focused is not None else None
         if leaf is None:
             self.add_viewer_widget(widget)
+            return
+
+        if focused is not None and focused.is_pinned():
+            self._split_target_leaf_and_insert_widget(leaf, widget, None, SplitDirection.RIGHT)
             return
 
         old_widget = leaf.get_widget()
@@ -171,9 +176,13 @@ class SplitView(QWidget):
         new.set_pinned(old.is_pinned())
         old_id = self._untrack_widget(old)
         leaf.set_widget(None)
-        self._attach_and_start_widget(leaf, new, displaced_widget=old, displaced_id=old_id)
-        if focused is not old and focused is not None:
-            self._set_focused_widget(focused)
+        try:
+            self._attach_and_start_widget(
+                leaf, new, displaced_widget=old, displaced_id=old_id, take_focus=focused is old
+            )
+        finally:
+            if focused is not old and focused is not None:
+                self._set_focused_widget(focused)
 
     def open_to_side(self, widget: ViewerWidget) -> None:
         """Open *widget* pinned in a new split beside the focused pane, never replacing a pane."""
@@ -186,14 +195,6 @@ class SplitView(QWidget):
         self._split_target_leaf_and_insert_widget(leaf, widget, None, SplitDirection.RIGHT)
 
     # Internal helpers
-    def _find_unpinned_leaf(self) -> LeafContainer | None:
-        """Return the first leaf containing an unpinned widget, or None."""
-        for leaf in list_leaves(self._root_layout):
-            w = leaf.get_widget()
-            if w is not None and not w.is_pinned():
-                return leaf
-        return None
-
     def _update_welcome_visibility(self) -> None:
         """Show the welcome screen when no widgets are present, hide otherwise."""
         self._welcome_scroll.setVisible(self.get_widget_count() == 0)
@@ -205,9 +206,10 @@ class SplitView(QWidget):
         *,
         displaced_widget: ViewerWidget | None = None,
         displaced_id: str | None = None,
+        take_focus: bool = True,
     ) -> None:
         """Attach and start a widget, restoring a displaced pane when startup fails."""
-        self._attach_widget(leaf, widget)
+        self._attach_widget(leaf, widget, take_focus=take_focus)
         self._update_welcome_visibility()
         try:
             widget.on_workspace_attached()
@@ -216,7 +218,7 @@ class SplitView(QWidget):
                 self.remove_viewer_widget(widget)
             else:
                 self._discard_failed_replacement(widget, leaf)
-                self._restore_widget(leaf, displaced_widget, displaced_id)
+                self._restore_widget(leaf, displaced_widget, displaced_id, take_focus=take_focus)
                 self._update_welcome_visibility()
             raise
         if displaced_widget is not None:
@@ -230,7 +232,7 @@ class SplitView(QWidget):
         """Return the welcome screen shown while no widgets are open."""
         return self._welcome_widget
 
-    def _attach_widget(self, leaf: LeafContainer, widget: ViewerWidget) -> None:
+    def _attach_widget(self, leaf: LeafContainer, widget: ViewerWidget, *, take_focus: bool) -> None:
         leaf.set_widget(widget)
         wid = _next_id()
         self._id_to_leaf[wid] = leaf
@@ -239,6 +241,8 @@ class SplitView(QWidget):
         self._install_activation_tracking(widget)
         widget.close_requested.connect(self._on_widget_close_requested)
         self._set_focused_widget(widget)
+        if take_focus:
+            widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _detach_widget(self, widget: ViewerWidget, leaf: LeafContainer) -> None:
         """Logically remove a widget from the split view before deferred Qt deletion."""
@@ -261,13 +265,15 @@ class SplitView(QWidget):
             self._set_focused_widget(None)
         return wid
 
-    def _restore_widget(self, leaf: LeafContainer, widget: ViewerWidget, wid: str | None) -> None:
+    def _restore_widget(self, leaf: LeafContainer, widget: ViewerWidget, wid: str | None, *, take_focus: bool) -> None:
         """Restore an untracked widget after a failed replacement."""
         leaf.set_widget(widget)
         restored_id = wid or _next_id()
         self._widget_ids[widget] = restored_id
         self._id_to_leaf[restored_id] = leaf
         self._set_focused_widget(widget)
+        if take_focus:
+            widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _discard_failed_replacement(self, widget: ViewerWidget, leaf: LeafContainer) -> None:
         """Clean up a failed replacement without collapsing the leaf being restored."""
@@ -278,13 +284,13 @@ class SplitView(QWidget):
             self._id_to_leaf.pop(wid, None)
         if self._focused_widget is widget:
             self._set_focused_widget(None)
-        widget.setParent(None)
+        widget.hide()
         widget.deleteLater()
 
     def _cleanup_replaced_widget(self, widget: ViewerWidget) -> None:
         """Clean up a replaced widget after its replacement has started successfully."""
         self._cleanup_widget(widget)
-        widget.setParent(None)
+        widget.hide()
         widget.deleteLater()
         self.widget_removed.emit(widget)
 
@@ -354,11 +360,16 @@ class SplitView(QWidget):
         """Set the currently focused widget."""
         if self._focused_widget is widget:
             return
+        if self._focused_widget is not None:
+            self._focused_widget.set_active(False)
         self._focused_widget = widget
+        if widget is not None:
+            widget.set_active(True)
 
     def focus_widget(self, widget: ViewerWidget) -> None:
         """Make *widget* the focused pane."""
-        self._set_focused_widget(widget)
+        if widget in self._widget_ids:
+            self._set_focused_widget(widget)
 
     def get_focused_widget(self) -> ViewerWidget | None:
         """Return the currently focused widget."""

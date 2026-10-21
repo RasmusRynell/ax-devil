@@ -415,3 +415,65 @@ def test_edit_screenshots(qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.Monk
 
     monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "camera.example")
     edit_screenshots(qtbot, tmp_path, theme)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_active_pane_screenshots(qtbot: QtBot, qapp: QApplication, theme: str) -> None:
+    """Show active and inactive viewer headers at both text sizes and window widths."""
+    from ax_devil.modules.workspace.ui.split_view import SplitView
+    from tests.helpers.workspace import PlainViewerWidget
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    split = SplitView()
+    qtbot.addWidget(split)
+    left, right = PlainViewerWidget(), PlainViewerWidget()
+    for viewer in (left, right):
+        viewer.get_content_layout().addWidget(QWidget(), 1)
+    left.set_display_name("Entrance")
+    right.set_display_name("Parking lot")
+    split.add_viewer_widget(left)
+    split.open_to_side(right)
+    split.show()
+    for text_size in TEXT_SIZES:
+        apply_theme(theme)
+        apply_text_size(text_size.body_px)
+        for width in (1000, 1440):
+            split.resize(width, 400)
+            QTest.qWait(30)
+            for viewer in (left, right):
+                header = viewer.get_header_widget()
+                assert header.width() >= header.sizeHint().width()
+                assert header.height() >= header.sizeHint().height()
+            split.grab().save(str(OUT / f"{theme}-{text_size.value}-active-pane-{width}.png"))
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_hidden_lane_open_screenshots(qtbot: QtBot, theme: str) -> None:
+    """Show the explicit hidden-lane opening action at narrow and wide sidebar widths."""
+    from ax_devil.modules.workspace.ui.browser_projection import build_browser_sections
+    from ax_devil.modules.workspace.ui.row_menu import build_row_menu
+    from tests.helpers.contents import make_video
+    from tests.helpers.section_tree_rows import show_tree
+    from tests.helpers.workspace import store_with
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    store, video = store_with(make_video("Entrance", overlay_count=2))
+    store.set_item_considered(video.lane_consideration_ref(0, 1), False)
+    row = build_browser_sections(store.resolutions(), store.is_item_considered)[0].rows[0]
+    tree = show_tree(qtbot, row)
+    tree.expandAll()
+    menu = build_row_menu(row.children[1], tree, lambda _action: None)
+    try:
+        for text_size in TEXT_SIZES:
+            apply_theme(theme)
+            apply_text_size(text_size.body_px)
+            for width in (320, 480):
+                tree.resize(width, 300)
+                QTest.qWait(30)
+                tree.grab().save(str(OUT / f"{theme}-{text_size.value}-hidden-lane-{width}.png"))
+            menu.show()
+            QTest.qWait(30)
+            menu.grab().save(str(OUT / f"{theme}-{text_size.value}-hidden-lane-menu.png"))
+            menu.hide()
+    finally:
+        menu.deleteLater()

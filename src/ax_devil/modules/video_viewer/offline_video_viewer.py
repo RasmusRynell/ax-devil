@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import partial
 
 from PySide6.QtCore import QPoint, QThread, Signal
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from ax_devil.core.playback_speed import step_playback_speed
 from ax_devil.core.source_paths import SourcePaths
@@ -43,8 +43,8 @@ logger = get_logger(__name__)
 class OfflineVideoViewerWidget(ViewerWidget):
     """Offline video viewer for local playback with multi-lane support.
 
-    It opens at entry *start_index* and plays it, or shows its frame *start_frame* paused when given; later entries
-    start at their first frame.
+    An explicit *start_index* opens that entry even when hidden; otherwise the first considered entry opens.
+    It plays the entry, or shows *start_frame* paused when given; later entries start at their first frame.
     """
 
     current_entry_changed = Signal(int)
@@ -53,7 +53,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self,
         content: SeekableVideoContent | PlaylistContent,
         render_catalog_manager: SceneRenderCatalogManager,
-        start_index: int = 0,
+        start_index: int | None = None,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
         start_frame: int | None = None,
@@ -62,14 +62,13 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
         self._navigation = OfflineViewerNavigation(content, consideration_query)
-        # A start frame belongs to the requested entry, which opens even when the workspace excludes it, so the frame
-        # is never moved to another video. Without one, an excluded entry gives way to the next considered one.
         self._current_index = (
-            self._navigation.normalize_entry_index(start_index)
-            if start_frame is None
+            self._navigation.normalize_entry_index(0)
+            if start_index is None
             else self._navigation.bound_entry_index(start_index)
         )
         self._start_frame = start_frame
+        self._pending_lane_focus: tuple[int, int] | None = None
         self._runtime: OfflineSession | None = None
         self._viewer_host: ViewerOverlayHost | None = None
         self._entry_bar: EntryNavigationBar | None = None
@@ -123,6 +122,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if self._is_cleaned_up:
             return
         self._initial_entry_loaded = True
+        if self._pending_lane_focus is not None and self._pending_lane_focus[0] != index:
+            self._pending_lane_focus = None
         self._opening.cancel()
         if not keep_shown:
             self._teardown_runtime()
@@ -150,6 +151,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
         )
 
     def _on_entry_opened(self, index: int, start_frame: int | None, keep_shown: bool, media: EntryMedia) -> None:
+        focus = QApplication.focusWidget()
+        keep_focus = focus is self or (focus is not None and self.isAncestorOf(focus))
         self._hide_loading_indicator()
         error = media.error
         runtime: OfflineSession | None = None
@@ -167,6 +170,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 logger.exception(f"Failed to build displays for entry {index + 1}")
                 error = str(exc)
         if runtime is None:
+            self._pending_lane_focus = None
             release_media(media)
             message = f"Could not {'reload' if keep_shown else 'load'} entry {index + 1}: {error}"
             if keep_shown and self._reload_offered():
@@ -183,18 +187,20 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._install_entry(runtime, start_frame)
         if playing:
             self._start_playback()
+        if self._pending_lane_focus is not None:
+            _, lane_index = self._pending_lane_focus
+            self.focus_lane(lane_index)
+        elif keep_focus and runtime.lanes:
+            runtime.focus_lane(runtime.lanes[0].lane_index)
 
     def source_paths(self) -> SourcePaths:
-        """Return the overlay files of the considered lanes of the entry on screen; video files are not included."""
+        """Return overlay paths of the considered lanes on screen."""
         return self._navigation.overlay_paths(self._current_index)
 
     def reload(self) -> None:
-        """Read the entry on screen again from its files, keeping the frame, play state and everything the viewer holds.
+        """Reload in the background, retaining the shown frame and playback on success or the old entry on failure.
 
-        The new media opens in the background while the current entry stays on screen and playing. When it is ready it
-        replaces the current one at the frame the current one is on then, clamped to the new length, and playing if it
-        was. When it cannot be shown, the current entry stays and a warning says why. Zoom and the media tools reset,
-        as for any entry change.
+        Zoom and media tools reset as for any entry change.
         """
         self._open_entry(self._current_index, keep_shown=True)
 
@@ -218,6 +224,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
         if self._viewer_host is not None:
             self._viewer_host.set_content(runtime.container)
+            runtime.container.show()
         entries = self._navigation.get_entries()
         self._transport.install(runtime, shared=runtime.has_multiple_lanes or len(entries) > 1)
         # Lanes of different videos have no single size or length to show.
@@ -259,12 +266,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if self._runtime is not None:
             self._runtime.playback.step(delta)
 
-    # ------------------------------------------------------------------
-    # Public API for shortcut routing
-    # ------------------------------------------------------------------
-
     def pause_playback(self) -> None:
-        """Pause playback if currently playing. No-op if already paused."""
+        """Pause playback if currently playing."""
         runtime = self._runtime
         if runtime is not None and runtime.playback.is_playing:
             runtime.playback.pause()
@@ -368,6 +371,20 @@ class OfflineVideoViewerWidget(ViewerWidget):
     def bookmark_target(self) -> BookmarkTarget:
         """Return the target of the entry shown."""
         return entry_target(self._content, self._current_index)
+
+    def set_active(self, active: bool) -> None:
+        """Cancel deferred lane focus when another pane becomes active."""
+        super().set_active(active)
+        if not active:
+            self._pending_lane_focus = None
+
+    def focus_lane(self, lane_index: int) -> None:
+        """Focus a visible lane now, or when the current entry finishes opening; never seek or restart it."""
+        if self._is_cleaned_up:
+            return
+        self._pending_lane_focus = (self._current_index, lane_index)
+        if self._runtime is not None and self._runtime.focus_lane(lane_index):
+            self._pending_lane_focus = None
 
     def show_frame(self, frame: int) -> None:
         """Show *frame* of the entry shown, paused; an entry still opening opens at it instead."""

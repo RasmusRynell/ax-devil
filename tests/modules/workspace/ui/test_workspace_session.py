@@ -83,7 +83,7 @@ def test_views_follow_the_rows_and_open_and_close_content_through_the_controller
         assert not row.is_open
 
         assert row.activation_target is not None
-        controller.open_content(*row.activation_target)
+        controller.perform_row_action(row, RowAction.OPEN)
         assert center_of(workspace_session).get_widget_count() == 1
 
 

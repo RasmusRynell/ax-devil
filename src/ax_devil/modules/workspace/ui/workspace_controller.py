@@ -67,6 +67,7 @@ class WorkspaceController(QObject):
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
         self._row_handlers: dict[RowAction, Callable[[WorkspaceBrowserRow], None]] = {
             RowAction.OPEN: self._open_row,
+            RowAction.UNHIDE_AND_OPEN: self._unhide_and_open,
             RowAction.OPEN_TO_SIDE: partial(self._open_row, to_side=True),
             RowAction.START_STREAM: self._start_stream,
             RowAction.STOP_STREAM: self._stop_stream,
@@ -87,13 +88,12 @@ class WorkspaceController(QObject):
         """Return the rows of every item, grouped in sections."""
         return self._sections
 
-    def open_content(self, content: Content, start_index: int = 0, *, to_side: bool = False) -> None:
-        """Open *content*, from its playlist entry *start_index*, as a double click in the browser does.
+    def open_content(self, content: Content, start_index: int | None = None, *, to_side: bool = False) -> None:
+        """Open *content*, or exactly its entry *start_index* when supplied, including hidden entries.
 
-        It replaces the preview pane, or opens in a new split with *to_side*; open viewers pause.
+        It targets the active pane, or opens in a new split with *to_side*. Other viewers keep their playback state.
         """
         place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
-        self._pause_all_viewers()
         self._open_content(content, start_index=start_index, place=place)
 
     def show_frame(self, content: Content, entry_index: int, frame: int) -> None:
@@ -101,7 +101,6 @@ class WorkspaceController(QObject):
         and takes focus, otherwise the entry opens as ``open_content`` would.
         """
         target = entry_target(content, entry_index)
-        self._pause_all_viewers()
         viewer = next(
             (
                 widget
@@ -198,10 +197,38 @@ class WorkspaceController(QObject):
         """Open what *row* opens, in a new split with *to_side*; a row that cannot open says why instead."""
         if row.unavailable_reason is not None:
             QMessageBox.warning(self._window_parent(), "Open Content", f"{row.label}: {row.unavailable_reason}")
-        elif row.activation_target is not None and self._workspace_store.workspace.has_item(
-            row.activation_target[0].item_id
+        elif (target := row.activation_target) is not None and self._workspace_store.workspace.has_item(
+            target.content.item_id
         ):
-            self.open_content(*row.activation_target, to_side=to_side)
+            lane_index = target.lane_index
+            if lane_index is not None and row.consideration_ref is not None:
+                if not self._workspace_store.is_item_considered(row.consideration_ref):
+                    return
+            if lane_index is not None and not to_side:
+                entry = entry_target(target.content, target.entry_index or 0)
+                viewer = next(
+                    (
+                        widget
+                        for widget in (self._center_area.get_focused_widget(), *self._widget_item_ids)
+                        if widget is not None and widget.bookmark_target() == entry
+                    ),
+                    None,
+                )
+                if viewer is not None:
+                    self._center_area.focus_widget(viewer)
+                    viewer.focus_lane(lane_index)
+                    return
+            self._open_content(
+                target.content,
+                start_index=target.entry_index,
+                place=self._center_area.open_to_side if to_side else self._center_area.replace_or_open,
+                lane_index=lane_index,
+            )
+
+    def _unhide_and_open(self, row: WorkspaceBrowserRow) -> None:
+        """Explicitly unhide the selected lane before opening it through its normal target."""
+        self._set_considered(row, considered=True)
+        self._open_row(row)
 
     def _start_stream(self, row: WorkspaceBrowserRow) -> None:
         """Open the camera beside the open viewers, never in place of one, so one stream never stops another."""
@@ -332,22 +359,18 @@ class WorkspaceController(QObject):
         self._center_area.clear_all_widgets()
         self._publish_sections()
 
-    def _pause_all_viewers(self) -> None:
-        """Pause playback on all open viewers."""
-        for widget in self._widget_item_ids:
-            widget.pause_playback()
-
     def _open_content(
         self,
         content: Content,
         *,
-        start_index: int = 0,
+        start_index: int | None = None,
         place: Callable[[ViewerWidget], None] | None = None,
         start_frame: int | None = None,
+        lane_index: int | None = None,
     ) -> None:
         """Open Workspace content using the Workspace viewer factory.
 
-        *place* inserts the widget into the center area; it defaults to replacing the preview pane.
+        *place* inserts the widget into the center area; it defaults to targeting the active pane.
         """
         try:
             opened = self._viewer_factory.open(
@@ -364,6 +387,8 @@ class WorkspaceController(QObject):
             return
 
         try:
+            if lane_index is not None:
+                opened.widget.focus_lane(lane_index)
             self._open_widget(
                 opened.widget,
                 content,

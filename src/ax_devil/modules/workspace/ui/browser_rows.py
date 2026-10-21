@@ -73,13 +73,28 @@ class RowAction(Enum):
     button text and icon.
     """
 
-    OPEN = ("Open", "", None, "Replace the preview (unpinned) pane", False, RowActionGroup.OPEN)
+    OPEN = (
+        "Open",
+        "",
+        None,
+        "Replace the active preview, or open beside the active pinned pane",
+        False,
+        RowActionGroup.OPEN,
+    )
     OPEN_TO_SIDE = (
         "Open to the Side",
         "",
         None,
         "Open pinned in a new split (Ctrl+double-click)",
         False,
+        RowActionGroup.OPEN,
+    )
+    UNHIDE_AND_OPEN = (
+        "Unhide and open",
+        "Unhide and open",
+        None,
+        "Unhide this lane and focus it",
+        True,
         RowActionGroup.OPEN,
     )
     START_STREAM = ("Start stream", "Start stream", None, "", True, RowActionGroup.OPEN)
@@ -119,6 +134,15 @@ class OfferedAction:
 
 
 @dataclass(frozen=True, slots=True)
+class BrowserOpenTarget:
+    """Content and optional exact entry and lane selected by a browser row."""
+
+    content: Content
+    entry_index: int | None
+    lane_index: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class WorkspaceBrowserRow:
     """Explicit row data rendered by every sidebar view's section tree.
 
@@ -129,7 +153,7 @@ class WorkspaceBrowserRow:
     row_id: str
     label: str
     icon_kind: WorkspaceBrowserIconKind
-    activation_target: tuple[Content, int] | None = None
+    activation_target: BrowserOpenTarget | None = None
     consideration_ref: ConsiderationItemRef | None = None
     item: WorkspaceItem | None = None
     """The item a top-level row stands for, which the row can remove or rename; None for nested rows."""

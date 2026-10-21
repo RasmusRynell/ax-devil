@@ -23,15 +23,12 @@ from ax_devil.modules.workspace.core import (
     WorkspaceItem,
 )
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
-from ax_devil.modules.workspace.ui.browser_rows import RowAction
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
-from ax_devil.modules.workspace.ui.split_panes import LeafContainer
 from tests.helpers.widgets import required_child
 from tests.helpers.workspace import DummyViewer, content_item
 from tests.helpers.workspace_session import (
     LIVE_VIEWER,
     OFFLINE_VIEWER,
-    ask_row_action,
     center_of,
     focused_viewer,
     item_is_open,
@@ -270,29 +267,3 @@ def test_replaced_viewer_stops_receiving_consideration_updates(
     assert first_widget.cleaned_up
     assert first_widget.refresh_calls == []
     assert second_widget.refresh_calls == [(item_ref, False)]
-
-
-def test_open_to_side_keeps_preview_viewer_and_next_open_replaces_only_the_preview(
-    workspace_session: WorkspaceSession,
-) -> None:
-    first = video_content("first.mp4")
-    second = video_content("second.mp4")
-
-    def shown_names() -> list[str]:
-        leaves = center_of(workspace_session).findChildren(LeafContainer)
-        return sorted(widget.get_display_name() for leaf in leaves if (widget := leaf.get_widget()) is not None)
-
-    with patch(OFFLINE_VIEWER, DummyViewer):
-        workspace_session.add_items([content_item(first)])
-        workspace_session.add_items([content_item(second)])
-        assert shown_names() == ["second.mp4"]
-
-        stored_first = store_of(workspace_session).contents()[0]
-        ask_row_action(workspace_session, stored_first.item_id, RowAction.OPEN_TO_SIDE)
-        assert shown_names() == ["first.mp4", "second.mp4"]
-
-        ask_row_action(workspace_session, stored_first.item_id, RowAction.OPEN)
-
-    assert shown_names() == ["first.mp4", "first.mp4"]
-    ask_row_action(workspace_session, stored_first.item_id, RowAction.REMOVE)
-    assert center_of(workspace_session).get_widget_count() == 0

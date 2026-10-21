@@ -122,8 +122,8 @@ does nothing for an item that is gone. **Rename** and **Remove** act on the whol
 behavior; `WorkspaceController` owns viewer selection and registration. Each `LeafContainer` hosts at most one
 `ViewerWidget`; dropping onto an occupied leaf splits it.
 
-Unpinned panes are previews, and `replace_or_open` replaces the first one with newly opened content. Pinned panes are
-never replaced; when every pane is pinned, new content opens in a new split. `open_to_side` always adds a pinned pane
+Unpinned panes are previews: `replace_or_open` replaces the active pane if unpinned, otherwise opens beside it.
+Without an active pane, opening adds a pane without replacing another. `open_to_side` always adds a pinned pane
 to the right of the focused pane.
 
 ## Viewer Widgets
