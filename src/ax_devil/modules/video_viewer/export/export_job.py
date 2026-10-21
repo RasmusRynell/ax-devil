@@ -189,12 +189,10 @@ class ExportJob:
     @staticmethod
     def _decoded_frame_to_image(decoded_frame: DecodedFrame) -> QImage:
         """Convert one decoded frame from the video source into a QImage."""
-        frame_rgb = np.asarray(decoded_frame.pixels)
-        height, width, _ = frame_rgb.shape
-        bytes_per_line = 3 * width
-        frame_rgb = np.ascontiguousarray(frame_rgb)
+        pixels = np.ascontiguousarray(decoded_frame.pixels)
+        height, width, _ = pixels.shape
         # .copy() detaches from the numpy buffer so the QImage owns its data
-        return QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888).copy()
+        return QImage(pixels.data, width, height, 4 * width, QImage.Format.Format_RGBX8888).copy()
 
     @staticmethod
     def _present_frame(

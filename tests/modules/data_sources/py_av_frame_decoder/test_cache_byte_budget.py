@@ -40,19 +40,20 @@ def test_mixed_sizes_replacement_and_oversized_admission() -> None:
 
 
 @pytest.mark.parametrize("pixel_format", ["yuv420p", "yuv444p10le", "rgb24"])
-def test_reservation_covers_source_planes_and_converted_rgb(pixel_format: str) -> None:
-    """Pixel format and plane padding cannot make conversion exceed its reservation."""
-    raw = av.VideoFrame(18, 16, pixel_format)
+@pytest.mark.parametrize("width", [16, 18])
+def test_reservation_is_source_planes_and_delivery_is_opaque_rgba(pixel_format: str, width: int) -> None:
+    """The cache holds source planes only; each delivery is full-width RGBA, including widths swscale mishandles."""
+    raw = av.VideoFrame(width, 16, pixel_format)
     for plane in raw.planes:
         plane.update(bytes(plane.buffer_size))
     frame = CachedFrame(frame_index=0, video_frame=raw, timestamp_us=0, period_after_s=None, source_timing_metadata={})
-    reservation = frame.reserved_bytes
-    assert reservation >= sum(plane.buffer_size for plane in raw.planes)
-    cache = FrameCache(reservation)
+    assert frame.reserved_bytes == sum(plane.buffer_size for plane in raw.planes)
+    cache = FrameCache(frame.reserved_bytes)
     assert cache.put(0, frame)
-    decoded = frame.to_decoded_frame()
-    assert reservation >= decoded.pixels.nbytes
-    assert frame.reserved_bytes == reservation
+    pixels = frame.to_decoded_frame().pixels
+    assert pixels.shape == (16, width, 4)
+    assert (pixels[..., 3] == 255).all()
+    assert (pixels[..., :3] == raw.to_ndarray(format="rgb24")).all()
     assert not cache.can_admit(1, 1, range(0, 1))
 
 
@@ -63,14 +64,14 @@ def test_small_budget_forward_backward_and_prefetch(tmp_path: Path, retained_fra
     create_test_video(path)
     with av.open(str(path)) as container:
         reference = [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
-    frame_bytes = reference[0].nbytes
+    frame_bytes = _frame_bytes(path)
     worker = FrameReaderWorker(str(path), max(1, retained_frames * frame_bytes), prefetch_count=50)
     try:
         with patch.object(worker._frame_processor, "jump_to", wraps=worker._frame_processor.jump_to) as jump:
             for index in range(20):
                 frame = worker.read_decoded_frame(index)
                 assert frame is not None
-                np.testing.assert_array_equal(frame.pixels, reference[index])
+                np.testing.assert_array_equal(frame.pixels[..., :3], reference[index])
                 assert frame.frame_index == index
                 assert frame.timestamp_us == seconds_to_us(Fraction(index, 30))
                 drain_prefetch(worker, limit=51)
@@ -81,7 +82,7 @@ def test_small_budget_forward_backward_and_prefetch(tmp_path: Path, retained_fra
         for index in (5, 4, 3, 25, 0, 29):
             frame = worker.read_decoded_frame(index)
             assert frame is not None
-            np.testing.assert_array_equal(frame.pixels, reference[index])
+            np.testing.assert_array_equal(frame.pixels[..., :3], reference[index])
             assert frame.frame_index == index
     finally:
         worker.cleanup()
@@ -144,9 +145,7 @@ def test_prefetch_under_a_small_budget_decodes_each_keyframe_group_once(tmp_path
     """Frames a seek returns together never evict each other, so the group is not decoded again."""
     path = tmp_path / "video.mp4"
     create_test_video(path, duration=6.0, gop=10)
-    with av.open(str(path)) as container:
-        frame_bytes = next(container.decode(video=0)).to_ndarray(format="rgb24").nbytes
-    worker = FrameReaderWorker(str(path), 5 * frame_bytes, prefetch_count=5)
+    worker = FrameReaderWorker(str(path), 5 * _frame_bytes(path), prefetch_count=5)
     try:
         for index in range(171):
             assert worker.read_decoded_frame(index) is not None
@@ -244,7 +243,7 @@ def test_forward_prefetch_jumps_into_a_group_longer_than_the_budget(tmp_path: Pa
 
 def _frame_bytes(path: Path) -> int:
     with av.open(str(path)) as container:
-        return int(next(container.decode(video=0)).to_ndarray(format="rgb24").nbytes)
+        return sum(plane.buffer_size for plane in next(container.decode(video=0)).planes)
 
 
 def test_eviction_during_lookup_still_delivers_the_requested_frame(tmp_path: Path) -> None:

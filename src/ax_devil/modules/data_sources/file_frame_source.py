@@ -304,11 +304,10 @@ class FileFrameSource(SeekableFrameSource):
         position_generation: int | None = None,
     ) -> FrameData:
         """Convert a decoded reader frame into ``FrameData``."""
-        frame_rgb = decoded_frame.pixels
-        height, width, _ = frame_rgb.shape
-        bytes_per_line = 3 * width
-        frame_rgb = np.ascontiguousarray(frame_rgb)
-        qimage = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+        pixels = np.ascontiguousarray(decoded_frame.pixels)
+        height, width, _ = pixels.shape
+        # The QImage keeps the buffer alive and shares it without copying; alpha is always 255.
+        qimage = QImage(pixels.data, width, height, 4 * width, QImage.Format.Format_RGBX8888)
         frame_id = FrameIdentifier(
             sequence_id=decoded_frame.frame_index,
             timestamp_us=decoded_frame.timestamp_us,

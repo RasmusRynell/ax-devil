@@ -44,7 +44,7 @@ class _VideoSource:
         self.requested_frames.append(frame_number)
         return DecodedFrame(
             frame_index=frame_number,
-            pixels=np.full((self.size, self.size, 3), self.colors[frame_number], dtype=np.uint8),
+            pixels=np.full((self.size, self.size, 4), (*[self.colors[frame_number]] * 3, 255), dtype=np.uint8),
             timestamp_us=self.timestamps[frame_number],
         )
 

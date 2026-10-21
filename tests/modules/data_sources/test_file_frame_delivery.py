@@ -36,7 +36,7 @@ class _Decoder:
         self.read_frames.append(frame_number)
         return DecodedFrame(
             frame_index=frame_number,
-            pixels=np.zeros((2, 2, 3), dtype=np.uint8),
+            pixels=np.zeros((2, 2, 4), dtype=np.uint8),
             timestamp_us=frame_number * 1_000,
         )
 
