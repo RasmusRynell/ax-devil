@@ -21,7 +21,6 @@ from PySide6.QtGui import (
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
-    QApplication,
     QFrame,
     QScrollArea,
     QSplitter,
@@ -118,7 +117,7 @@ class SplitView(QWidget):
         if leaf is None:
             return False
         self._detach_widget(widget, leaf)
-        widget.setParent(None)
+        widget.hide()
         widget.deleteLater()
         self._update_welcome_visibility()
         return True
@@ -174,9 +173,6 @@ class SplitView(QWidget):
         if leaf is None:
             raise ValueError("The viewer to replace is no longer hosted.")
         focused = self._focused_widget
-        keyboard_focus = QApplication.focusWidget()
-        if keyboard_focus is old or (keyboard_focus is not None and old.isAncestorOf(keyboard_focus)):
-            keyboard_focus = None
         new.set_pinned(old.is_pinned())
         old_id = self._untrack_widget(old)
         leaf.set_widget(None)
@@ -186,8 +182,6 @@ class SplitView(QWidget):
             )
         finally:
             if focused is not old and focused is not None:
-                if keyboard_focus is not None:
-                    keyboard_focus.setFocus(Qt.FocusReason.OtherFocusReason)
                 self._set_focused_widget(focused)
 
     def open_to_side(self, widget: ViewerWidget) -> None:
@@ -290,13 +284,13 @@ class SplitView(QWidget):
             self._id_to_leaf.pop(wid, None)
         if self._focused_widget is widget:
             self._set_focused_widget(None)
-        widget.setParent(None)
+        widget.hide()
         widget.deleteLater()
 
     def _cleanup_replaced_widget(self, widget: ViewerWidget) -> None:
         """Clean up a replaced widget after its replacement has started successfully."""
         self._cleanup_widget(widget)
-        widget.setParent(None)
+        widget.hide()
         widget.deleteLater()
         self.widget_removed.emit(widget)
 

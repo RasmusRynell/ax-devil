@@ -72,10 +72,13 @@ class LeafContainer(QFrame):
                 continue
             existing_widget = item.widget()
             if existing_widget is not None:
-                existing_widget.setParent(None)
+                # Keep extracted viewers owned: a queued child-show must never open a top-level window.
+                existing_widget.setParent(self._manager)
+                existing_widget.hide()
         self._widget = widget
         if widget is not None:
             layout.addWidget(widget)
+            widget.show()
 
     # Drag-and-drop events
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:

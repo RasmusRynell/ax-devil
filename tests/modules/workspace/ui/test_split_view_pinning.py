@@ -2,7 +2,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QAbstractButton, QApplication
+from PySide6.QtWidgets import QAbstractButton
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
@@ -332,34 +332,14 @@ def test_reloading_an_inactive_pane_preserves_keyboard_target(qtbot: QtBot, fail
     assert sv.get_focused_widget() is active
     candidate = _LifecycleWidget(fail_attach=fail)
 
-    def focus_state() -> dict[str, object]:
-        return {
-            "focus": repr(QApplication.focusWidget()),
-            "active_window": repr(QApplication.activeWindow()),
-            "host_active": sv.isActiveWindow(),
-            "button_focused": button.hasFocus(),
-            "old_visible": old.isVisible() if isValid(old) else "deleted",
-            "candidate": (
-                (
-                    candidate.isVisible(),
-                    candidate.isWindow(),
-                    candidate.testAttribute(Qt.WidgetAttribute.WA_WState_Created),
-                )
-                if isValid(candidate)
-                else "deleted"
-            ),
-            "visible_windows": [repr(window) for window in QApplication.topLevelWidgets() if window.isVisible()],
-        }
-
-    before = focus_state()
     if fail:
         with pytest.raises(RuntimeError, match="attach failed"):
             sv.replace_viewer_widget(old, candidate)
+        assert not candidate.isWindow(), "A failed pane must not become a separate application window."
     else:
         sv.replace_viewer_widget(old, candidate)
-    immediate = focus_state()
     QCoreApplication.processEvents()
-    assert button.hasFocus(), {"before": before, "immediate": immediate, "after": focus_state()}
+    assert button.hasFocus()
     assert sv.get_focused_widget() is active
 
 
