@@ -107,7 +107,7 @@ def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads
 
     assert row.label == "Suite"
     assert row.icon_kind == "playlist"
-    assert row.activation_target == (playlist, 0)
+    assert row.activation_target == (playlist, None)
     assert row.item == state.workspace.items[0]
     assert row.is_open
     assert row.information_factory is not None
