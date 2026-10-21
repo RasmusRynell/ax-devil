@@ -215,7 +215,9 @@ class _StagedOpen:
         monkeypatch.setattr(
             offline_entry_media,
             "create_overlay_source",
-            lambda _overlay, *, frame_timeline: self._run("overlay open", (self.overlay_source, policy)),
+            lambda _overlay, *, frame_timeline: self._run(
+                "overlay open", offline_entry_media.LaneOverlay(self.overlay_source, policy)
+            ),
         )
         overlay = OverlayContent(
             display_name="overlay",

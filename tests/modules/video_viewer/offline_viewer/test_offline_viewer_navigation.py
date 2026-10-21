@@ -186,7 +186,7 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         assert widget.playhead_frame() == 5
         deferred_background.finish_next()
         assert shown_entry_index(widget) == 0
-        assert widget._runtime is not None and widget._runtime.current_frame == 5
+        assert widget._runtime is not None and widget._runtime.playback.current_frame == 5
 
     def test_source_paths_are_the_overlay_files_of_the_considered_lanes_on_screen(self, qtbot: QtBot) -> None:
         """A hidden lane's overlay file is not watched for the entry on screen, so rewriting it offers no reload."""

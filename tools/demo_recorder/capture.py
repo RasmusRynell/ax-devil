@@ -166,8 +166,8 @@ def capture(args: argparse.Namespace) -> None:
         wait_until(lambda: viewer._runtime is not None, "video and overlays to open")
         runtime = viewer._runtime
         assert runtime is not None
-        runtime.pause_playback()
-        source = runtime.get_primary_video_source()
+        runtime.playback.pause()
+        source = runtime.iter_video_sources()[0]
         assert source is not None
         schedule = frame_schedule(source.get_frame_timestamps_us(), args.start, args.frames, args.fps)
         first_lane = runtime.lanes[0]
@@ -182,7 +182,7 @@ def capture(args: argparse.Namespace) -> None:
         )
         active_catalog = catalog_paths[0]
         for index, frame in enumerate(schedule):
-            runtime.jump_to_frame(frame)
+            runtime.playback.seek(frame)
             wait_until(
                 lambda: all(
                     lane.display.viewport._video_frame is not None

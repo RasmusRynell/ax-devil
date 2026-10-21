@@ -45,10 +45,11 @@ def _write_boxes(path: Path, count: int) -> None:
 
 def _shown_boxes(viewer: OfflineVideoViewerWidget) -> int:
     """Return how many boxes the overlay holds at the frame on screen."""
-    assert viewer._runtime is not None and viewer._runtime.presented_frame is not None
-    source = viewer._runtime.lanes[0].overlay_source
-    assert source is not None
-    shown = viewer._runtime.presented_frame
+    assert viewer._runtime is not None and viewer._runtime.playback.presented_frame is not None
+    pair = viewer._runtime.lanes[0].overlay
+    assert pair is not None
+    source = pair.source
+    shown = viewer._runtime.playback.presented_frame
     overlay = source.get_overlay_at_frame(FrameIdentifier(shown.frame, seconds_to_us(shown.seconds)))
     assert overlay is not None
     return len(overlay.content.entities)
@@ -106,8 +107,8 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
         qtbot.waitUntil(
             lambda: (
                 viewer._runtime is not None
-                and viewer._runtime.presented_frame is not None
-                and viewer._runtime.presented_frame.frame == 2
+                and viewer._runtime.playback.presented_frame is not None
+                and viewer._runtime.playback.presented_frame.frame == 2
             )
         )
         assert _shown_boxes(viewer) == 1
@@ -123,11 +124,13 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
         assert isinstance(banner, Banner)
         banner.action.click()
         qtbot.waitUntil(lambda: viewer._runtime is not old_runtime)
-        qtbot.waitUntil(lambda: viewer._runtime is not None and viewer._runtime.presented_frame is not None)
+        qtbot.waitUntil(lambda: viewer._runtime is not None and viewer._runtime.playback.presented_frame is not None)
         assert _banner(viewer) is None
         assert viewer._runtime is not None
-        assert viewer._runtime.presented_frame is not None and viewer._runtime.presented_frame.frame == 2
-        assert viewer._runtime.is_playing is False
+        assert (
+            viewer._runtime.playback.presented_frame is not None and viewer._runtime.playback.presented_frame.frame == 2
+        )
+        assert viewer._runtime.playback.is_playing is False
         assert viewer._transport.speed == 2.0
         assert _shown_boxes(viewer) == 2
 

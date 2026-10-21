@@ -178,7 +178,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         previous = self._runtime
         if previous is not None:
             # Only a reload finds an entry still shown: the new one takes over where it is.
-            start_frame, playing = previous.current_frame, previous.is_playing
+            start_frame, playing = previous.playback.current_frame, previous.playback.is_playing
             self._teardown_runtime()
         self._install_entry(runtime, start_frame)
         if playing:
@@ -213,11 +213,6 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
     def _install_entry(self, runtime: OfflineSession, start_frame: int | None) -> None:
         self._runtime = runtime
-        runtime.currentFrameChanged.connect(self._sync_global_current_frame)
-        runtime.playbackStateChanged.connect(self._sync_global_playback_state)
-        runtime.playbackFinished.connect(lambda: self._sync_global_playback_state(False))
-
-        runtime.set_playback_speed(self._transport.speed)
         for lane in runtime.lanes:
             lane.display.contextMenuRequested.connect(partial(self._show_lane_menu, lane))
 
@@ -248,27 +243,21 @@ class OfflineVideoViewerWidget(ViewerWidget):
         hide = partial(self.consideration_change_requested.emit, ref, False) if hideable else None
         exec_lane_menu(self.window(), lane, actions, hide, global_pos)
 
-    def _sync_global_current_frame(self, frame: int) -> None:
-        self._transport.show_frame(frame, self._runtime)
-
-    def _sync_global_playback_state(self, playing: bool) -> None:
-        self._transport.show_playing(playing)
-
     def _start_playback(self) -> None:
         if self._runtime is not None:
-            self._runtime.start_playback()
+            self._runtime.playback.play()
 
     def _pause_playback(self) -> None:
         if self._runtime is not None:
-            self._runtime.pause_playback()
+            self._runtime.playback.pause()
 
     def _jump_to_frame(self, frame_num: int) -> None:
         if self._runtime is not None:
-            self._runtime.jump_to_frame(frame_num)
+            self._runtime.playback.seek(frame_num)
 
     def _step_frames(self, delta: int) -> None:
         if self._runtime is not None:
-            self._runtime.step_frames(delta)
+            self._runtime.playback.step(delta)
 
     # ------------------------------------------------------------------
     # Public API for shortcut routing
@@ -277,8 +266,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
     def pause_playback(self) -> None:
         """Pause playback if currently playing. No-op if already paused."""
         runtime = self._runtime
-        if runtime is not None and runtime.is_playing:
-            runtime.pause_playback()
+        if runtime is not None and runtime.playback.is_playing:
+            runtime.playback.pause()
 
     def export_video(self) -> None:
         """Export the shown entry, letting the user choose which lanes to include."""
@@ -290,10 +279,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         runtime = self._runtime
         if runtime is None:
             return
-        if runtime.is_playing:
-            runtime.pause_playback()
-        else:
-            runtime.start_playback()
+        runtime.playback.toggle()
 
     def step_frames(self, delta: int) -> None:
         """Step playback by *delta* frames (positive=forward, negative=backward)."""
@@ -393,14 +379,14 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the entry and frame on screen, or None before the entry shows its first frame."""
-        presented = self._runtime.presented_frame if self._runtime is not None else None
+        presented = self._runtime.playback.presented_frame if self._runtime is not None else None
         if presented is None:
             return None
         return BookmarkPosition(self._content, self._current_index, presented.frame, presented.seconds)
 
     def playhead_frame(self) -> int:
         """Return the runtime playhead or the frame requested while this entry is still opening."""
-        return self._runtime.current_frame if self._runtime is not None else (self._start_frame or 0)
+        return self._runtime.playback.current_frame if self._runtime is not None else (self._start_frame or 0)
 
     def get_contents(self) -> list[SeekableVideoContent]:
         return self._navigation.videos(self._current_index)

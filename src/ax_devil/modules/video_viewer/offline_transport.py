@@ -11,7 +11,6 @@ from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_
 from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY_MS
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
-from ax_devil.modules.video_viewer.offline_lane import show_video_on_controls
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.video_viewer.offline_viewer_widgets import ViewerOverlayHost
 
@@ -73,40 +72,27 @@ class OfflineTransport:
         self._use_shared(viewer, commands, shared)
         self._connect_visibility(runtime)
 
-        primary_controls = runtime.primary_controls
-        if primary_controls is not None and not self.active:
-            commands.connect(primary_controls)
-            primary_controls.set_playback_speed(self.speed)
-
-        primary_source = runtime.get_primary_video_source()
-        if self.active and self._panel is not None:
-            if primary_source is not None:
-                show_video_on_controls(self._panel, primary_source)
-            else:
-                # An entry without considered lanes has nothing to play; keep only the playlist navigation.
-                self._panel.show_video(total_frames=0, frame_rate=0.0)
-
-    def show_frame(self, frame: int, runtime: OfflineSession | None) -> None:
-        """Show *frame* on the shared bar, with the time of the frame on screen when *runtime* has one."""
-        if self.active and self._panel is not None:
-            presented = runtime.presented_frame if runtime is not None else None
-            self._panel.set_current_frame(frame, presented.seconds if presented is not None else None)
-
-    def show_playing(self, playing: bool) -> None:
-        """Show whether playback runs on the shared bar."""
-        if self.active and self._panel is not None:
-            self._panel.sync_playback_state(playing)
+        controls = (
+            self._panel
+            if self.active
+            else next(
+                (panel for display in runtime.displays for panel in display.findChildren(SeekableVideoControlPanel)),
+                None,
+            )
+        )
+        if controls is not None:
+            if not self.active:
+                commands.connect(controls)
+            runtime.playback.set_speed(self.speed)
+            runtime.playback.follow(controls)
 
     def set_speed(self, speed: float, runtime: OfflineSession | None) -> None:
-        """Set the playback speed, clamped, on *runtime* and on whichever bar is shown."""
-        clamped = clamp_playback_speed(speed)
-        self.speed = clamped
+        """Remember speed across entries and apply it to the active playback."""
+        self.speed = clamp_playback_speed(speed)
         if runtime is not None:
-            runtime.set_playback_speed(clamped)
-        if self._panel is not None:
-            self._panel.set_playback_speed(clamped, emit_signals=False)
-        if runtime is not None and not self.active and runtime.primary_controls is not None:
-            runtime.primary_controls.set_playback_speed(clamped, emit_signals=False)
+            runtime.playback.set_speed(self.speed)
+        elif self._panel is not None:
+            self._panel.set_playback_speed(self.speed, emit_signals=False)
 
     def cleanup(self) -> None:
         """Release the bar and its visibility controller; the transport installs nothing afterwards."""
@@ -149,6 +135,6 @@ class OfflineTransport:
         if not self.active or self._panel is None or self._visibility is None:
             return
         self._panel.set_hover_sink(self._visibility)
-        for lane in runtime.lanes:
-            lane.display.controlsRequested.connect(self._visibility.on_mouse_move)
-            lane.display.controlsHideRequested.connect(self._visibility.on_mouse_leave)
+        for display in runtime.displays:
+            display.controlsRequested.connect(self._visibility.on_mouse_move)
+            display.controlsHideRequested.connect(self._visibility.on_mouse_leave)
