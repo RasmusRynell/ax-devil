@@ -274,12 +274,17 @@ def test_open_to_side_splits_beside_focused_pane_and_keeps_both(qtbot: QtBot) ->
     sv = _make_split_view(qtbot)
     preview = _make_dummy(qtbot)
     sv.replace_or_open(preview)
+    sv.activateWindow()
+    assert QTest.qWaitForWindowActive(sv)
+    preview.findChildren(QAbstractButton)[0].setFocus()
 
     side = _make_dummy(qtbot)
     sv.open_to_side(side)
 
     assert side.is_pinned() and not preview.is_pinned()
     assert _panes(sv) == [preview, side]
+    assert sv.get_focused_widget() is side
+    assert side.hasFocus()
 
     replacement = _make_dummy(qtbot)
     sv.replace_or_open(replacement)
@@ -309,6 +314,28 @@ def test_removing_active_pane_selects_a_survivor_and_ignores_removed_activation(
     sv.focus_widget(second)
     sv.replace_or_open(replacement)
     assert _panes(sv) == [replacement]
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_reloading_an_inactive_pane_preserves_keyboard_target(qtbot: QtBot, fail: bool) -> None:
+    """Refreshing another pane must keep keyboard input and ordinary Open on the user's active pane."""
+    sv = _make_split_view(qtbot)
+    old, active = (_make_dummy(qtbot) for _ in range(2))
+    sv.add_viewer_widget(old)
+    sv.add_viewer_widget(active)
+    sv.activateWindow()
+    assert QTest.qWaitForWindowActive(sv)
+    button = active.findChildren(QAbstractButton)[0]
+    button.setFocus()
+    candidate = _LifecycleWidget(fail_attach=fail)
+    if fail:
+        with pytest.raises(RuntimeError, match="attach failed"):
+            sv.replace_viewer_widget(old, candidate)
+    else:
+        sv.replace_viewer_widget(old, candidate)
+    QCoreApplication.processEvents()
+    assert button.hasFocus()
+    assert sv.get_focused_widget() is active
 
 
 def test_no_active_pane_opens_without_replacing_any_existing_viewer(qtbot: QtBot) -> None:

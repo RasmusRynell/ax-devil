@@ -90,6 +90,8 @@ def test_catalog_selection_reload_adopts_repaired_catalog_matching_last_good_cat
 ) -> None:
     manager = _ready(qtbot, tmp_path)
     selection = _selection(qtbot, manager)
+    last_good = selection.active_catalog()
+    assert last_good is not None
     copy_path = tmp_path / "copy.json"
     copy_path.write_text("{ broken", encoding="utf-8")
     _select(qtbot, selection, copy_path)
@@ -100,7 +102,10 @@ def test_catalog_selection_reload_adopts_repaired_catalog_matching_last_good_cat
 
     assert selection.active_catalog_path() == copy_path
     assert selection.active_catalog_loaded()
-    assert selection.status() == "Render catalog reloaded."
+    # A file-watcher reload may win the explicit reload; both must adopt the repaired path.
+    repaired = selection.active_catalog()
+    assert repaired is not None
+    assert repaired.content_hash == last_good.content_hash
 
 
 def test_catalog_selection_failed_reload_stays_failed_until_a_reload_compiles(
