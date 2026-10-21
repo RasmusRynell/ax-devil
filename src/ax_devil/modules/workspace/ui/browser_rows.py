@@ -89,6 +89,14 @@ class RowAction(Enum):
         False,
         RowActionGroup.OPEN,
     )
+    UNHIDE_AND_OPEN = (
+        "Unhide and open",
+        "Unhide and open",
+        None,
+        "Unhide this lane and focus it",
+        True,
+        RowActionGroup.OPEN,
+    )
     START_STREAM = ("Start stream", "Start stream", None, "", True, RowActionGroup.OPEN)
     STOP_STREAM = ("Stop stream", "Stop stream", None, "", True, RowActionGroup.OPEN)
     ADD = ("Add", "Add", Icon.ADD, "", True, RowActionGroup.OPEN)
@@ -126,6 +134,15 @@ class OfferedAction:
 
 
 @dataclass(frozen=True, slots=True)
+class BrowserOpenTarget:
+    """Content and optional exact entry and lane selected by a browser row."""
+
+    content: Content
+    entry_index: int | None
+    lane_index: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class WorkspaceBrowserRow:
     """Explicit row data rendered by every sidebar view's section tree.
 
@@ -136,7 +153,7 @@ class WorkspaceBrowserRow:
     row_id: str
     label: str
     icon_kind: WorkspaceBrowserIconKind
-    activation_target: tuple[Content, int | None] | None = None
+    activation_target: BrowserOpenTarget | None = None
     consideration_ref: ConsiderationItemRef | None = None
     item: WorkspaceItem | None = None
     """The item a top-level row stands for, which the row can remove or rename; None for nested rows."""

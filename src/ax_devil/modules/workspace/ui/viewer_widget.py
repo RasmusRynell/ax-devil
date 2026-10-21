@@ -354,6 +354,9 @@ class ViewerWidget(QFrame):
         """Return the target of the entry shown, or None when nothing shown can be bookmarked."""
         return None
 
+    def focus_lane(self, lane_index: int) -> None:
+        """Focus the lane with its original entry index, once ready, without changing playback."""
+
     def show_frame(self, frame: int) -> None:
         """Show *frame* of the entry shown, paused, when supported by the hosted tool."""
 

@@ -111,7 +111,7 @@ def build_lane(
 ) -> OfflineLane:
     lane_content = opened.lane
     video = opened.video
-    display = FrameDisplay()
+    display = FrameDisplay(initial_focus=False)
     rollback.callback(display.cleanup)
     controls = SeekableVideoControlPanel(display.viewport) if use_lane_controls else None
     if controls is not None:

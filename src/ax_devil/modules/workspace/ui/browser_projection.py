@@ -29,6 +29,7 @@ from ax_devil.modules.workspace.core.items import ItemResolution, PlaylistItem, 
 from ax_devil.modules.workspace.core.live_stream_item import LiveStreamItem
 from ax_devil.modules.workspace.core.source_specs import OverlaySourceKind
 from ax_devil.modules.workspace.ui.browser_rows import (
+    BrowserOpenTarget,
     BrowserSection,
     OfferedAction,
     RowAction,
@@ -63,10 +64,16 @@ def _with_actions(row: WorkspaceBrowserRow, inline: RowAction | None = None) -> 
     is for a row playback can skip, and Rename needs an item that keeps a new name.
     """
     offered: list[OfferedAction] = []
+    hidden_lane = (
+        row.activation_target is not None and row.activation_target.lane_index is not None and not row.is_considered
+    )
+    open_reason = "Hidden lane: choose Unhide and open" if hidden_lane else ""
     if row.activation_target is not None or row.unavailable_reason is not None:
-        offered.append(OfferedAction(RowAction.OPEN))
+        offered.append(OfferedAction(RowAction.OPEN, open_reason))
     if row.activation_target is not None:
-        offered.append(OfferedAction(RowAction.OPEN_TO_SIDE))
+        offered.append(OfferedAction(RowAction.OPEN_TO_SIDE, open_reason))
+        if hidden_lane:
+            offered.append(OfferedAction(RowAction.UNHIDE_AND_OPEN))
     if inline is not None:
         offered.append(OfferedAction(inline))
     if row.information_factory is not None:
@@ -171,7 +178,7 @@ class _RowProjection:
                     row_id=content.content_id,
                     label=content.display_name,
                     icon_kind="playlist",
-                    activation_target=(content, None),
+                    activation_target=BrowserOpenTarget(content, None),
                     item=item,
                     information_factory=partial(build_playlist_information, content),
                     is_open=self._is_content_open(content.content_id, open_items),
@@ -191,7 +198,7 @@ class _RowProjection:
                 row_id=content.content_id,
                 label=content.display_name,
                 icon_kind=self._icon_kind_for_video(content),
-                activation_target=None if content.is_live else (content, 0),
+                activation_target=None if content.is_live else BrowserOpenTarget(content, 0),
                 item=item,
                 information_factory=partial(build_video_information, content),
                 export_target=None if content.is_live else content.on_screen_item(),
@@ -231,7 +238,7 @@ class _RowProjection:
                 row_id=row_id,
                 label=entry.display_label(entry_index),
                 icon_kind=self._icon_kind_for_playlist_entry(entry),
-                activation_target=(playlist, entry_index),
+                activation_target=BrowserOpenTarget(playlist, entry_index),
                 consideration_ref=ref,
                 information_factory=partial(build_playlist_entry_information, playlist, entry, entry_index),
                 export_target=open_item,
@@ -261,7 +268,7 @@ class _RowProjection:
                         row_id=row_id,
                         label=lane.display_name,
                         icon_kind="overlay",
-                        activation_target=None if video.is_live else (video, 0),
+                        activation_target=None if video.is_live else BrowserOpenTarget(video, 0, lane_index),
                         consideration_ref=lane_ref if consideration_item is not None else None,
                         information_factory=partial(build_video_lane_information, video, lane),
                         is_considered=(self._is_considered(lane_ref) if consideration_item is not None else True),
@@ -289,7 +296,7 @@ class _RowProjection:
                 row_id=row_id,
                 label=lane.display_name,
                 icon_kind="overlay",
-                activation_target=(playlist, entry_index),
+                activation_target=BrowserOpenTarget(playlist, entry_index, lane_index),
                 consideration_ref=ref,
                 information_factory=partial(
                     build_playlist_lane_information,

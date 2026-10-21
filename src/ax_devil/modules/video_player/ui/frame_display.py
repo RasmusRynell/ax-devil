@@ -32,14 +32,14 @@ class FrameDisplay(QWidget):
     sidePanelToggled = Signal(bool)  # True when the side panel opens, False when it closes
     contextMenuRequested = Signal(QPoint)  # Global position of a right click anywhere in the display
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, initial_focus: bool = True) -> None:
         super().__init__(parent)
 
         self.setMouseTracking(True)
 
         self._viewport = FrameViewport(self)
         self._viewport.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self._initial_focus_claimed = False
+        self._initial_focus_claimed = not initial_focus
         self._controls: list[QWidget] = []
         self._main_layout = QHBoxLayout(self)
         self._main_layout.setContentsMargins(0, 0, 0, 0)
