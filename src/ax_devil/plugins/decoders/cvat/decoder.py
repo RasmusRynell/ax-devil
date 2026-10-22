@@ -130,7 +130,7 @@ def build_cvat_filter_config(labels: Iterable[str]) -> FilterConfig:
 
     if not options:
         options.append(
-            make_classification_predicate((), include_empty=True, include_unknown_prefix=False).build_option(
+            make_classification_predicate((), include_empty=True).build_option(
                 id="show_unlabeled",
                 label="Unlabeled",
                 default_enabled=True,

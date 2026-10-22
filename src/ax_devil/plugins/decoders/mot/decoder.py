@@ -9,10 +9,10 @@ from typing import TypedDict
 from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.predicate_utils import make_classification_predicate
+from ax_devil.modules.scene.decoding import UNMAPPED_CLASS, classification_for_id
 from ax_devil.modules.scene.model import (
     Attribute,
     BoundingBox,
-    Classification,
     Entity,
     EntityId,
     Observation,
@@ -151,8 +151,6 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
             allow_outside=True,
         )
 
-        label = MOT_CLASSES.get(class_id, "unknown")
-
         attributes = [
             Attribute("source", source),
             Attribute("raw_score", raw_score),
@@ -170,7 +168,7 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
             frame_number=frame_index,
             geometry=normalized_bbox,
             confidence=observation_confidence,
-            classification=[Classification(label, class_score, attributes)],
+            classification=[classification_for_id(class_id, MOT_CLASSES, class_score, attributes)],
         )
 
         entity_id = _entity_id_for_detection(track_id, frame_index, detection_index)
@@ -310,14 +308,13 @@ def build_mot_filter_config() -> FilterConfig:
             )
         )
 
-    if "unknown" not in labels:
-        options.append(
-            make_classification_predicate(("unknown",)).build_option(
-                id="show_unknown",
-                label="Unknown",
-                default_enabled=True,
-                sort_key=len(options),
-            )
+    options.append(
+        make_classification_predicate((UNMAPPED_CLASS,)).build_option(
+            id="show_unmapped",
+            label="Unmapped",
+            default_enabled=True,
+            sort_key=len(options),
         )
+    )
 
     return FilterConfig(options=tuple(options), name="mot")

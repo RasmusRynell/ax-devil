@@ -34,7 +34,9 @@ supported format only needs a resolver; a new format with a folder layout may ne
    `src/ax_devil/plugins/` next to its model, with tests, following `AGENTS.md`, and needs no install step.
 4. **Map their data to Scenes.** Normalize geometry to 0–1 of the frame. Keep stable object ids so tracking,
    history and ID-colored catalogs work. Put extra fields in `Attribute`s on the classification so the inspector
-   shows them and render catalogs can use them. Set `file_extensions` on file handlers.
+   shows them and render catalogs can use them. For numeric class ids, build the classification with
+   `classification_for_id` from `ax_devil.modules.scene.decoding`; an id missing from the name table shows as
+   `?<id>`, and the raw id stays in the `class_id` attribute. Set `file_extensions` on file handlers.
 5. **Prove it on their data before installing.** Run a short script with `uv run python` from this repository, with
    the package directory on `PYTHONPATH`, that decodes the user's sample and prints the frame count, objects on a
    few frames and one decoded object with its attributes. Compare against the raw file. A resolver calls

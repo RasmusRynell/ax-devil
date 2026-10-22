@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from ax_devil.modules.scene.decoding import (
+    classification_for_id,
     parse_bounding_box,
     parse_colors_webcolors,
     parse_timestamp,
@@ -92,3 +93,11 @@ def test_parse_colors_webcolors_converts_payloads() -> None:
 def test_parse_colors_webcolors_rejects_missing_payload() -> None:
     with pytest.raises(ValueError, match="Color data is None"):
         parse_colors_webcolors(None)
+
+
+def test_classification_for_id_names_mapped_ids_and_marks_unmapped_ones() -> None:
+    names = {1: "person"}
+    for class_id, expected in ((1, "person"), (3, "?3")):
+        classification = classification_for_id(class_id, names, Score(0.5))
+        assert classification.type == expected
+        assert [(a.name, a.value) for a in classification.attributes] == [("class_id", class_id)]
