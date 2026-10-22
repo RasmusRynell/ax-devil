@@ -45,29 +45,9 @@ def test_each_change_runs_the_matching_plugins_command(monkeypatch: pytest.Monke
     assert {tuple(command[:2]) for command in commands} == {("/venv/bin/python", "/venv/bin/ax-devil")}
 
 
-def test_a_failed_command_reports_the_line_that_says_why(monkeypatch: pytest.MonkeyPatch) -> None:
-    stderr = (
-        "Resolved 40 packages\n"
-        "  × No solution found when resolving dependencies:\n"
-        "  ╰─▶ Because missing-plugin was not found in the package registry, the requirements are unsatisfiable.\n"
-        "Error: Command '['/uv', 'sync']' returned non-zero exit status 1.\n"
-    )
-
-    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise subprocess.CalledProcessError(1, command, output="", stderr=stderr)
-
-    monkeypatch.setattr(subprocess, "run", run)
-
-    with pytest.raises(plugin_changes.PluginChangeError) as failure:
-        run_plugins_command(PluginChange.install("missing-plugin"))
-
-    assert f"{failure.value}" == (
-        "Because missing-plugin was not found in the package registry, the requirements are unsatisfiable."
-    )
-
-
 def test_a_failure_the_command_reports_itself_is_shown_without_its_prefix() -> None:
-    assert failure_reason("Error: Plugin is not installed: yolo\n") == "Plugin is not installed: yolo"
+    output = "Resolved 40 packages\n  × No solution found\n\nError: Plugin is not installed: yolo\n"
+    assert failure_reason(output) == "Plugin is not installed: yolo"
     assert failure_reason("") == ""
 
 

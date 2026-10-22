@@ -134,16 +134,17 @@ def test_failed_preparation_preserves_current(plugin: Path, uv: Mock, failed_ste
         step = calls
         calls += 1
         if step == failed_step:
-            # Behave like subprocess.run: a failed command only raises when the caller asks it to.
-            if kwargs.get("check"):
-                raise subprocess.CalledProcessError(1, command)
-            return subprocess.CompletedProcess(command, 1)
+            return subprocess.CompletedProcess(
+                command, 1, stdout="example-plugin cannot load: missing dependency: No module named 'cv3'\n"
+            )
         result: subprocess.CompletedProcess[str] = success(command, **kwargs)
         return result
 
     uv.side_effect = fail
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(ValueError, match="example-plugin") as failure:
         project.change_plugins(host, upgrade=True)
+    assert "non-zero exit status" not in f"{failure.value}"
+    assert ("No module named 'cv3'" in f"{failure.value}") == (failed_step == 1)
     assert current.resolve() == original
     assert list(project.installation_root(host).glob("project-*")) == [original]
 

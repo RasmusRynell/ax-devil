@@ -1,7 +1,8 @@
 """Validate the prepared app and its plugins before activating plugin changes.
 
 Runs only as ``python -m`` inside the prepared plugin environment. Neither the launcher nor ``project.py`` may import
-it, because it loads the application's plugin system (and Qt).
+it, because it loads the application's plugin system (and Qt). On failure it writes the reason, naming the package, as
+its last line on stdout and exits 1; diagnostics and tracebacks go to stderr.
 """
 
 from __future__ import annotations
@@ -13,12 +14,8 @@ from pathlib import Path
 
 from packaging.utils import canonicalize_name
 
-from ax_devil.modules.settings.logging_config import get_logger
-
 from .host import current_host
 from .project import read_project, selected_plugins
-
-logger = get_logger(__name__)
 
 
 def validate_plugins(names: list[str]) -> None:
@@ -30,16 +27,20 @@ def validate_plugins(names: list[str]) -> None:
     groups = {family.entrypoint_group: family.plugin_type for family in ApplicationPluginLoader.PLUGIN_FAMILIES}
     for name in names:
         distribution = importlib.metadata.distribution(name)
+        package = canonicalize_name(distribution.name)
         entries = [ep for ep in distribution.entry_points if ep.group in groups]
         if not entries:
             raise ValueError(f"{name} has no plugin entry points")
+        for record in RuntimePluginRegistry.list_plugins():
+            if record.package == package and record.status is PluginStatus.FAILED:
+                raise ValueError(f"{package} cannot load: {record.error}")
         for entry in entries:
             plugin = entry.load()
             record = RuntimePluginRegistry.get_plugin(groups[entry.group], plugin.plugin_id())
             if (
                 record.status is not PluginStatus.LOADED
                 or record.plugin_class is not plugin
-                or record.package != canonicalize_name(distribution.name)
+                or record.package != package
             ):
                 raise ValueError(f"{name}:{entry.name} was rejected: {record.error or 'duplicate plugin ID'}")
 
@@ -64,5 +65,6 @@ if __name__ == "__main__":
     try:
         validate_installation(Path(sys.argv[1]))
     except Exception as exc:
-        logger.error(f"Installation validation failed: {exc}")
+        reason = f"{exc}" or type(exc).__name__
+        sys.stdout.write(f"{reason}\n")
         sys.exit(1)

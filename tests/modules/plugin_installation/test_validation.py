@@ -81,11 +81,22 @@ class ExampleDecoder(DecoderPlugin):
 
 @pytest.mark.usefixtures("unloaded_plugins")
 @pytest.mark.parametrize(
-    "wrong_family,other_owner,old_scene_model",
-    [(False, False, False), (True, False, False), (False, True, False), (False, False, True)],
+    "wrong_family,other_owner,old_scene_model,missing_dependency",
+    [
+        (False, False, False, False),
+        (True, False, False, False),
+        (False, True, False, False),
+        (False, False, True, False),
+        (False, False, False, True),
+    ],
 )
 def test_validate_entry_point_family_and_owner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrong_family: bool, other_owner: bool, old_scene_model: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    wrong_family: bool,
+    other_owner: bool,
+    old_scene_model: bool,
+    missing_dependency: bool,
 ) -> None:
     """Reject wrong-family, shadowed or incompatible plugins before activating an installation."""
     if old_scene_model:
@@ -94,10 +105,13 @@ def test_validate_entry_point_family_and_owner(
     groups = ["ax_devil.decoder_plugins"]
     if wrong_family:
         groups.append("ax_devil.playlist_resolver_plugins")
-    entries = [
-        SimpleNamespace(name="review-example", group=group, dist=distribution, load=lambda: ExampleDecoder)
-        for group in groups
-    ]
+
+    def load() -> type[ExampleDecoder]:
+        if missing_dependency:
+            raise ModuleNotFoundError("No module named 'cv3'", name="cv3")
+        return ExampleDecoder
+
+    entries = [SimpleNamespace(name="review-example", group=group, dist=distribution, load=load) for group in groups]
     distribution.entry_points = entries
     visible_entries = list(entries)
     if other_owner:
@@ -114,7 +128,10 @@ def test_validate_entry_point_family_and_owner(
     monkeypatch.setattr(
         importlib.metadata, "entry_points", lambda *, group: [ep for ep in visible_entries if ep.group == group]
     )
-    if wrong_family or other_owner or old_scene_model:
+    if missing_dependency:
+        with pytest.raises(ValueError, match="example-distribution cannot load: missing dependency"):
+            validate.validate_plugins([distribution.name])
+    elif wrong_family or other_owner or old_scene_model:
         reason = "built for Scene model 1.0, this ax-devil uses Scene model 2.0" if old_scene_model else None
         with pytest.raises(ValueError, match=reason):
             validate.validate_plugins([distribution.name])
