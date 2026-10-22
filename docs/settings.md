@@ -4,7 +4,7 @@
 
 - **General:** theme, text size, window title bar, video cache memory, overlay interaction, and
   keyboard shortcuts.
-- **Stream defaults:** device credentials and RTSP defaults for new live streams.
+- **Stream defaults:** the device protocol, credentials, ports, connection timeout, and RTSP defaults for new live streams.
 - **Analytics:** defaults for MQTT and DataHub overlay connections.
 - **Network scan:** startup discovery, sign-in defaults, the Live view's default IP range, and the logins its scan tries.
 - **Storage:** the folders for window state, cache, logs, and render catalogs.
@@ -12,7 +12,9 @@
 
 **OK** saves all pages and closes, and **Cancel** discards the changes. When a saved change needs a restart, ax-devil
 asks whether to restart now or later.
-Stream defaults apply to newly opened live-stream dialogs. **Default IP range** (`defaults.network_scan.ip_range`) is the
+Stream defaults prefill new live streams. Each stream keeps the protocol, ports, and timeout it was added with, so
+changing a default never changes an existing stream; a device port of `0` means the standard port, 443 for HTTPS or 80
+for HTTP. **Default IP range** (`defaults.network_scan.ip_range`) is the
 addresses the Live view's **Scan settings** start with, such as `192.168.1.0/24`. **Sign-in logins**
 (`defaults.network_scan.credentials`, a list of `username` and `password` pairs) are what **Try to sign in to found
 cameras** tries on each camera, in order; **Add login** adds one, and a row without a username is dropped on save. The
@@ -32,13 +34,13 @@ you can also override its checkbox for a manual scan. Neither option interrupts 
 
 Stream defaults, Analytics, Network scan and Storage fields keep `$VARIABLE_NAME` references as written and read the variable when the value is
 used; any other text is literal, even when it starts with `$` or `~`. Password references stay visible while literal
-passwords are masked. Numeric and storage references must resolve to valid values to save. Storage folders may start
+passwords are masked. The protocol is always HTTPS or HTTP, never a reference. Numeric and storage references must resolve to valid values to save. Storage folders may start
 with `~` for the home folder.
 
 ## Quick Setup
 
-On first start, **Quick Setup** asks for the theme and text size. Choices apply as they are clicked and are saved
-when the dialog closes. **Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to `true`; set it
+On first start, **Quick Setup** asks for the theme, text size, and camera protocol. Theme and text size apply as they are clicked; all three are
+saved when the dialog closes. **Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to `true`; set it
 to `false` to show it on the next start.
 
 ## Text size

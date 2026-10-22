@@ -29,12 +29,10 @@ from ..base import FrameSource, OverlaySource, Worker
 
 logger = get_logger(__name__)
 
-CONNECTION_TIMEOUT_S = 10.0
 
-
-def rtsp_stream_config(*, metadata: bool) -> StreamConfig:
+def rtsp_stream_config(*, metadata: bool, timeout_s: float) -> StreamConfig:
     """Return the session configuration for live video, with embedded scene metadata when requested."""
-    return StreamConfig(video=VideoOutput.RGBA, metadata=metadata, timeout=CONNECTION_TIMEOUT_S)
+    return StreamConfig(video=VideoOutput.RGBA, metadata=metadata, timeout=timeout_s)
 
 
 class _RTSPWorker(Worker):
@@ -73,6 +71,7 @@ class RTSPSource(FrameSource, OverlaySource):
         parent: QObject | None = None,
         *,
         overlay: RTSPOverlayDecoder | None = None,
+        timeout_s: float,
     ) -> None:
         super().__init__(parent=parent)
 
@@ -98,7 +97,7 @@ class RTSPSource(FrameSource, OverlaySource):
 
         self.session: StreamSession | None = StreamSession(
             rtsp_url,
-            rtsp_stream_config(metadata=overlay is not None),
+            rtsp_stream_config(metadata=overlay is not None, timeout_s=timeout_s),
             on_video=self._on_video,
             on_metadata=self._on_metadata if overlay is not None else None,
             on_failure=self._on_failure,

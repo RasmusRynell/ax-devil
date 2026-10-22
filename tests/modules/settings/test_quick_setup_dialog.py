@@ -9,6 +9,7 @@ import pytest
 from PySide6.QtWidgets import QAbstractScrollArea, QApplication
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.device_endpoint import DeviceProtocol
 from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.theme import apply_text_size
@@ -55,6 +56,7 @@ def test_choices_apply_live_and_are_saved_on_close(
         qtbot.addWidget(dialog)
         dialog.theme_row.select(ThemeMode.DARK)
         dialog.text_size_row.select(TextSize.LARGE)
+        dialog.protocol_row.select(DeviceProtocol.HTTP)
         assert settings.theme is ThemeMode.DARK
         assert settings.text_size is TextSize.LARGE
         assert _saved_ui(config)["theme"] == "auto"
@@ -62,6 +64,7 @@ def test_choices_apply_live_and_are_saved_on_close(
 
     saved = _saved_ui(config)
     assert (saved["theme"], saved["text_size"], saved["quick_setup_done"]) == ("dark", "large", True)
+    assert json.loads(config.config_path.read_text(encoding="utf-8"))["defaults"]["device"]["protocol"] == "http"
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

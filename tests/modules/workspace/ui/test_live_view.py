@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -129,7 +130,14 @@ def test_stop_stream_closes_every_viewer_of_the_camera(live: Live) -> None:
 def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: Live) -> None:
     live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
     live.open_workspace(
-        LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"),
+        LiveStreamItem(
+            host="192.0.2.10",
+            label="Entrance",
+            username="root",
+            password="pw",
+            device_api_protocol=DeviceProtocol.HTTP,
+            device_port=8080,
+        ),
         LiveStreamItem(host="192.0.2.11", label="Dock"),
     )
 
@@ -137,7 +145,9 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: L
 
     assert "refused" in row(live.view.tree, "Entrance").toolTip(), "the reason is on hover"
     assert live.rows()["Dock"] == "Start stream", "a camera without a login to try is left alone"
-    assert live.checker.calls == [("192.0.2.10", Login("root", "pw"))]
+    assert live.checker.calls == [(DeviceEndpoint("192.0.2.10", DeviceProtocol.HTTP, 8080), Login("root", "pw"))], (
+        "the check uses the camera's own protocol and port"
+    )
 
 
 @pytest.mark.parametrize("edit", [False, True], ids=["rescan", "edit"])
@@ -225,7 +235,8 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
     live.checker.gate.clear()
     entrance = LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw")
     live.open_workspace(entrance)
-    live.qtbot.waitUntil(lambda: live.checker.calls == [("192.0.2.10", Login("root", "pw"))])
+    endpoint = DeviceEndpoint("192.0.2.10", entrance.device_api_protocol)
+    live.qtbot.waitUntil(lambda: live.checker.calls == [(endpoint, Login("root", "pw"))])
     live.store.edit_item(replace(entrance, host="192.0.2.20"))
 
     live.checker.gate.set()

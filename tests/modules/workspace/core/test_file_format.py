@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from ax_devil.core.cancellation import NEVER
+from ax_devil.core.device_endpoint import DeviceProtocol
 from ax_devil.modules.workspace.core import (
     Bookmark,
     BookmarkKind,
@@ -64,9 +65,12 @@ def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path)
             mqtt_username="user",
             mqtt_password="secret",
             analytics_data_source_key="com.axis.scene",
-            device_api_protocol="http",
             websocket_topic="topic",
             websocket_channel_id=3,
+            device_api_protocol=DeviceProtocol.HTTP,
+            device_port=8080,
+            rtsp_port=8554,
+            connection_timeout_s=5,
         ),
         PlaylistItem(label="Exp 3", resolver="mot_challenge", settings={"root": "runs/exp3", "sequences": ["a", "b"]}),
     )

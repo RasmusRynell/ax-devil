@@ -12,6 +12,7 @@ import pytest
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import OverlayData
+from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
 from ax_devil.modules.data_sources.live.datahub_client import (
     DataHubTopicSample,
     DataHubWebSocketClient,
@@ -67,10 +68,10 @@ def _source(client: _FakeClient) -> WebSocketOverlaySource:
     return WebSocketOverlaySource(
         topic="topic",
         channel_id=4,
-        device_host="camera.local",
+        device=DeviceEndpoint("camera.local", DeviceProtocol.HTTPS),
         device_username="root",
         device_password="pass",
-        device_api_protocol="https",
+        timeout_s=10,
         decoder=_Decoder(),
         handler_type="test",
         client_factory=cast(Callable[..., DataHubWebSocketClient], client),

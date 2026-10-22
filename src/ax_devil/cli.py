@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import click
 
+from ax_devil.core.device_endpoint import DeviceProtocol
 from ax_devil.modules.catalog_viewer.cli import catalog
 from ax_devil.modules.plugin_installation.cli import plugins
 from ax_devil.modules.plugin_system import (
@@ -419,7 +420,8 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
 )
 @click.option(
     "--device-api-protocol",
-    type=click.Choice(["https", "http"]),
+    type=click.Choice([protocol.value for protocol in DeviceProtocol]),
+    callback=lambda _ctx, _param, value: None if value is None else DeviceProtocol(value),
     default=None,
     help="Device API protocol (default: config)",
 )
@@ -442,7 +444,7 @@ def live(
     mqtt_username: str | None,
     mqtt_password: str | None,
     analytics_data_source_key: str | None,
-    device_api_protocol: str | None,
+    device_api_protocol: DeviceProtocol | None,
     websocket_topic: str | None,
     websocket_channel_id: int | None,
 ) -> None:

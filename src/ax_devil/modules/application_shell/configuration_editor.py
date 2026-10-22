@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QWidget
+from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QRadioButton, QWidget
 
 from ax_devil.modules.application_shell.configuration_preferences import ConfigField
 from ax_devil.modules.chrome.browse_button import BrowseButton
@@ -11,7 +11,8 @@ from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
 
 class ConfigurationEditor(QWidget):
-    """Edit a raw value without silently resolving an environment reference."""
+    """Edit a raw value without silently resolving an environment reference; a toggle field shows its choices as
+    radio buttons instead."""
 
     def __init__(self, field: ConfigField, value: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -20,7 +21,19 @@ class ConfigurationEditor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self._choices: QComboBox | None = None
         self._text: QLineEdit | None = None
-        if field.choices or field.decoder:
+        self._toggles: list[QRadioButton] = []
+        if field.toggle:
+            for label, stored in field.choices:
+                radio = QRadioButton(label, self)
+                radio.setProperty("choice", stored)
+                radio.setChecked(stored == value.lower())
+                self._toggles.append(radio)
+                layout.addWidget(radio)
+            if not any(radio.isChecked() for radio in self._toggles):
+                self._toggles[0].setChecked(True)
+            layout.addStretch(1)
+            self.setFocusProxy(next(radio for radio in self._toggles if radio.isChecked()))
+        elif field.choices or field.decoder:
             combo = QComboBox(self)
             combo.setEditable(True)
             combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -57,6 +70,8 @@ class ConfigurationEditor(QWidget):
 
     def text(self) -> str:
         """Return the raw preference represented by the editor."""
+        if self._toggles:
+            return str(next(radio for radio in self._toggles if radio.isChecked()).property("choice"))
         if self._choices is not None:
             combo = self._choices
             index = combo.currentIndex()

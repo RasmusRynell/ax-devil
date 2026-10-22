@@ -36,10 +36,10 @@ def open_overlay_transport(content: LiveVideoContent) -> tuple[RTSPOverlayDecode
                 broker_port=source_spec.broker_port,
                 broker_username=source_spec.broker_username,
                 broker_password=source_spec.broker_password,
-                device_host=content.source_spec.host,
+                device=content.source_spec.endpoint,
                 device_username=content.source_spec.username,
                 device_password=content.source_spec.password,
-                device_api_protocol=source_spec.device_api_protocol,
+                timeout_s=content.source_spec.connection_timeout_s,
                 analytics_data_source_key=source_spec.analytics_data_source_key,
                 decoder=decoder,
                 handler_type=source_spec.handler_type,
@@ -49,10 +49,10 @@ def open_overlay_transport(content: LiveVideoContent) -> tuple[RTSPOverlayDecode
             return None, WebSocketOverlaySource(
                 topic=source_spec.topic,
                 channel_id=source_spec.channel_id,
-                device_host=content.source_spec.host,
+                device=content.source_spec.endpoint,
                 device_username=content.source_spec.username,
                 device_password=content.source_spec.password,
-                device_api_protocol=source_spec.device_api_protocol,
+                timeout_s=content.source_spec.connection_timeout_s,
                 decoder=decoder,
                 handler_type=source_spec.handler_type,
                 filter_factory=filter_factory,
@@ -68,9 +68,10 @@ def build_rtsp_url(source_spec: LiveRTSPStreamSpec, *, metadata: bool) -> str:
     return str(
         build_axis_rtsp_url(
             source_spec.host,
-            rtsp_stream_config(metadata=metadata),
+            rtsp_stream_config(metadata=metadata, timeout_s=source_spec.connection_timeout_s),
             username=source_spec.username,
             password=source_spec.password,
+            port=source_spec.rtsp_port,
             camera=source_spec.camera_head,
             resolution=source_spec.resolution,
         )

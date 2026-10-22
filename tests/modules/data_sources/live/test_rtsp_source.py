@@ -96,7 +96,9 @@ def _sample(pixels: np.ndarray[Any, np.dtype[np.uint8]], capture_ns: int | None 
 @pytest.mark.parametrize("embedded", [False, True])
 def test_frames_and_optional_overlays_use_one_session(qtbot: QtBot, sessions: list[_Session], embedded: bool) -> None:
     """Both modes retain capture timestamps, image ownership, and independent arrivals."""
-    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test") if embedded else None)
+    source = RTSPSource(
+        "rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test") if embedded else None, timeout_s=10
+    )
     session = sessions[0]
     frames: list[FrameData] = []
     overlays: list[OverlayData] = []
@@ -133,7 +135,7 @@ def test_frames_and_optional_overlays_use_one_session(qtbot: QtBot, sessions: li
 
 def test_frames_without_capture_time_are_dropped(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Frames that cannot be synchronized never reach the display."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     frames: list[FrameData] = []
     source.frameReady.connect(frames.append)
     try:
@@ -150,7 +152,7 @@ def test_frames_without_capture_time_are_dropped(qtbot: QtBot, sessions: list[_S
 
 def test_pause_resume_keeps_session_and_stop_is_terminal(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Pausing retains the connection; repeated shutdown never restarts production."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     session = sessions[0]
     try:
         assert source.play()
@@ -173,7 +175,7 @@ def test_pause_resume_keeps_session_and_stop_is_terminal(qtbot: QtBot, sessions:
 
 def test_start_failure_emits_error_and_stops_worker(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Connection failures are reported from the worker, which then stops."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].start_error = StreamError("DESCRIBE failed with 404 Not Found")
     errors: list[str] = []
     source.sourceError.connect(errors.append)
@@ -188,7 +190,7 @@ def test_start_failure_emits_error_and_stops_worker(qtbot: QtBot, sessions: list
 
 def test_stop_cancels_a_slow_connection_promptly_without_error(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Stopping while the camera has not answered returns at once and ends the worker silently."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].block_start = True
     errors: list[str] = []
     source.sourceError.connect(errors.append)
@@ -207,7 +209,7 @@ def test_stop_cancels_a_slow_connection_promptly_without_error(qtbot: QtBot, ses
 
 def test_failure_after_start_is_reported(qtbot: QtBot, sessions: list[_Session]) -> None:
     """A stream that breaks while running reports the session failure."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     errors: list[str] = []
     source.sourceError.connect(errors.append)
     try:
@@ -224,7 +226,7 @@ def test_failure_right_after_connecting_is_reported_after_the_connection(
     qtbot: QtBot, sessions: list[_Session]
 ) -> None:
     """A camera that drops the stream at once still ends in an error, never in a stale connected state."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].failure_while_starting = StreamError("the camera closed the connection")
     events: list[str] = []
     source.sourceConnected.connect(lambda: events.append("connected"))
@@ -240,7 +242,7 @@ def test_failure_right_after_connecting_is_reported_after_the_connection(
 
 def test_callbacks_keep_bounded_buffers(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Paused producers retain only the configured number of recent packets."""
-    source = RTSPSource("rtsp://example", buffer_size=2, overlay=RTSPOverlayDecoder(_Decoder(), "test"))
+    source = RTSPSource("rtsp://example", buffer_size=2, overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=10)
     session = sessions[0]
     assert session.on_metadata is not None
     try:

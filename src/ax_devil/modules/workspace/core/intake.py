@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.modules.settings.config_manager import builtin_default
 from ax_devil.modules.workspace.core.content import LiveVideoContent, OverlayContent, SeekableVideoContent
 from ax_devil.modules.workspace.core.source_specs import (
     FileOverlaySourceSpec,
@@ -105,26 +107,35 @@ class WorkspaceIntake:
         host: str,
         username: str,
         password: str,
-        camera_head: int = 1,
-        resolution: str = "1280x720",
+        device_api_protocol: DeviceProtocol,
+        device_port: int,
+        rtsp_port: int,
+        connection_timeout_s: int,
+        camera_head: int = builtin_default("defaults.live_stream.rtsp.camera_head"),
+        resolution: str = builtin_default("defaults.live_stream.rtsp.resolution"),
         display_name: str,
         stream_url: str | None = None,
         overlay_mode: LiveOverlayMode = LiveOverlayMode.NONE,
         handler_type: str | None = None,
         mqtt_host: str = "",
-        mqtt_port: int = 1883,
+        mqtt_port: int = builtin_default("defaults.live_stream.analytics-mqtt.broker_port"),
         mqtt_username: str = "",
         mqtt_password: str = "",
         analytics_data_source_key: str = "",
-        device_api_protocol: str = "https",
         websocket_topic: str = "",
-        websocket_channel_id: int = 1,
+        websocket_channel_id: int = builtin_default("defaults.live_stream.analytics-websocket.channel_id"),
     ) -> LiveVideoContent:
         """Create live Workspace video content after validating overlay selection."""
         if not host:
             raise ValueError("Enter the device host.")
         if camera_head < 1:
             raise ValueError("Camera Head must be a positive integer.")
+        if not 0 <= device_port <= 65535:
+            raise ValueError("Device port must be between 0 and 65535.")
+        if not 1 <= rtsp_port <= 65535:
+            raise ValueError("RTSP port must be between 1 and 65535.")
+        if connection_timeout_s < 1:
+            raise ValueError("Connection timeout must be at least 1 second.")
         if overlay_mode is LiveOverlayMode.MQTT:
             if not mqtt_host:
                 raise ValueError("MQTT Host is required for MQTT overlay mode.")
@@ -132,15 +143,11 @@ class WorkspaceIntake:
                 raise ValueError("Data Source is required for MQTT overlay mode.")
             if not 1 <= mqtt_port <= 65535:
                 raise ValueError("MQTT Port must be between 1 and 65535.")
-            if device_api_protocol not in {"https", "http"}:
-                raise ValueError("Device API protocol must be http or https.")
         if overlay_mode is LiveOverlayMode.WEBSOCKET:
             if not websocket_topic:
                 raise ValueError("Topic is required for WebSocket overlay mode.")
             if websocket_channel_id < 1:
                 raise ValueError("Channel ID must be a positive integer.")
-            if device_api_protocol not in {"https", "http"}:
-                raise ValueError("Device API protocol must be http or https.")
         if overlay_mode.requires_handler:
             self._require_known_handler(handler_type, self.live_overlay_decoder_options(), "live overlay")
         elif handler_type is not None:
@@ -153,6 +160,10 @@ class WorkspaceIntake:
             camera_head=camera_head,
             resolution=resolution,
             stream_url=stream_url,
+            device_api_protocol=device_api_protocol,
+            device_port=device_port,
+            rtsp_port=rtsp_port,
+            connection_timeout_s=connection_timeout_s,
         )
         overlays: tuple[OverlayContent, ...] = ()
 
@@ -174,7 +185,6 @@ class WorkspaceIntake:
                 broker_username=mqtt_username,
                 broker_password=mqtt_password,
                 analytics_data_source_key=analytics_data_source_key,
-                device_api_protocol=device_api_protocol,
             )
             overlays = (
                 OverlayContent(
@@ -188,7 +198,6 @@ class WorkspaceIntake:
                 handler_type=handler_type,
                 topic=websocket_topic,
                 channel_id=websocket_channel_id,
-                device_api_protocol=device_api_protocol,
             )
             overlays = (
                 OverlayContent(

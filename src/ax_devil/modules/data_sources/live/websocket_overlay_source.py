@@ -9,6 +9,7 @@ from typing import Any
 from PySide6.QtCore import QObject
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
+from ax_devil.core.device_endpoint import DeviceEndpoint
 from ax_devil.modules.filtering import FilterConfig, FilterFactory, build_default_filter_config
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.settings.logging_config import get_logger
@@ -27,10 +28,10 @@ class WebSocketWorker(Worker):
         *,
         topic: str,
         channel_id: int,
-        device_host: str,
+        device: DeviceEndpoint,
         device_username: str,
         device_password: str,
-        device_api_protocol: str,
+        timeout_s: float,
         decoder: PayloadToSceneDecoder,
         source_id: str = "websocket_overlay",
         client_factory: Callable[..., DataHubWebSocketClient] | None = None,
@@ -38,10 +39,10 @@ class WebSocketWorker(Worker):
         super().__init__(source_id)
         self.topic = topic
         self.channel_id = channel_id
-        self.device_host = device_host
+        self.device = device
         self.device_username = device_username
         self.device_password = device_password
-        self.device_api_protocol = device_api_protocol
+        self.timeout_s = timeout_s
         self.decoder = decoder
         self.client_factory = client_factory or DataHubWebSocketClient
         self.client: DataHubWebSocketClient | None = None
@@ -85,10 +86,10 @@ class WebSocketWorker(Worker):
             if not self._is_running():
                 return
             self.client = self.client_factory(
-                host=self.device_host,
+                endpoint=self.device,
                 username=self.device_username,
                 password=self.device_password,
-                protocol=self.device_api_protocol,
+                timeout_s=self.timeout_s,
                 topic=self.topic,
                 channel_id=self.channel_id,
             )
@@ -186,10 +187,10 @@ class WebSocketOverlaySource(OverlaySource):
         *,
         topic: str,
         channel_id: int,
-        device_host: str,
+        device: DeviceEndpoint,
         device_username: str,
         device_password: str,
-        device_api_protocol: str,
+        timeout_s: float,
         decoder: PayloadToSceneDecoder,
         handler_type: str,
         source_id: str = "websocket_overlay",
@@ -204,10 +205,10 @@ class WebSocketOverlaySource(OverlaySource):
         self.worker = WebSocketWorker(
             topic=topic,
             channel_id=channel_id,
-            device_host=device_host,
+            device=device,
             device_username=device_username,
             device_password=device_password,
-            device_api_protocol=device_api_protocol,
+            timeout_s=timeout_s,
             decoder=decoder,
             source_id=source_id,
             client_factory=client_factory,
