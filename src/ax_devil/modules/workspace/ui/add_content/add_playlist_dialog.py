@@ -40,13 +40,16 @@ class AddPlaylistDialog(BaseDialog):
         self._resolution = LatestRequest(self)
         self._setup_form()
         self.add_button("Cancel", self.reject)
+        if existing is not None:
+            self._name_edit.setFocus()
+            self._name_edit.selectAll()
 
     def _setup_form(self) -> None:
         name_form = QWidget()
         layout = FormLayout(name_form)
         self._name_edit = QLineEdit(self._existing.label if self._existing is not None else "")
         self._name_edit.setPlaceholderText("Optional")
-        layout.addRow("Display Name", self._name_edit)
+        layout.addRow("Name", self._name_edit)
         self.add_content_widget(name_form)
         self._settings = PlaylistSettingsUI(resolver_id=self._initial_resolver_id, existing=self._existing)
         self._settings.item_ready.connect(self._on_item_ready)

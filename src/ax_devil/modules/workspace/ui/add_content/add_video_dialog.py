@@ -177,6 +177,9 @@ class AddVideoDialog(BaseDialog):
         for choice in initial.overlays if initial is not None else (None,):
             self._add_overlay_row(choice)
         self._refresh()
+        if existing is not None:
+            self._name_edit.setFocus()
+            self._name_edit.selectAll()
 
     def _setup_form(self) -> None:
         form = QWidget()
@@ -200,7 +203,7 @@ class AddVideoDialog(BaseDialog):
         form_layout.addRow("Overlays", overlays)
 
         self._name_edit = QLineEdit()
-        form_layout.addRow("Display Name", self._name_edit)
+        form_layout.addRow("Name", self._name_edit)
 
         self._message_label = QLabel()
         self._message_label.setWordWrap(True)

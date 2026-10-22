@@ -136,7 +136,7 @@ def test_playlist_save_locks_settings_and_keeps_latest_name_with_failure_retry(
     qtbot.addWidget(dialog)
     form = next(iter(dialog._settings._resolver_by_widget))
     dialog._settings._resolver_combo.setCurrentIndex(dialog._settings._resolver_combo.findData(form))
-    name = form_field(dialog, "Display Name", QLineEdit)
+    name = form_field(dialog, "Name", QLineEdit)
     name.setText("Before")
     try:
         form.submit_settings({"root": "/gone" if retry else "/selected"})

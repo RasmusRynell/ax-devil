@@ -19,12 +19,11 @@ from ax_devil.modules.workspace.core import (
     ItemResolution,
     WorkspaceItem,
     entry_target,
-    find_entry,
 )
 from ax_devil.modules.workspace.ui.browser_projection import build_browser_sections
 from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
-from ax_devil.modules.workspace.ui.rename_dialog import ask_new_name
+from ax_devil.modules.workspace.ui.open_viewers import OpenViewers
 from ax_devil.modules.workspace.ui.row_menu import show_row_menu
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -56,15 +55,17 @@ class WorkspaceController(QObject):
         super().__init__(parent)
         self._workspace_store = workspace_store
         self._center_area = center_area
-        self._render_catalog_manager = render_catalog_manager
-        self._viewer_factory = viewer_factory or default_workspace_viewer_factory(self._render_catalog_manager)
         self._logger = get_logger(__name__)
-        # The id of the item whose Content each open viewer shows.
-        self._widget_item_ids: dict[ViewerWidget, str] = {}
         self._edited_items: set[str] = set()
-        self._shared_actions: Mapping[str, QAction] = {}
-
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
+        self._viewers = OpenViewers(
+            center_area,
+            workspace_store,
+            viewer_factory or default_workspace_viewer_factory(render_catalog_manager),
+            window=self._window_parent(),
+            on_changed=self._publish_sections,
+            show_menu=self._show_viewer_menu,
+        )
         self._row_handlers: dict[RowAction, Callable[[WorkspaceBrowserRow], None]] = {
             RowAction.OPEN: self._open_row,
             RowAction.UNHIDE_AND_OPEN: self._unhide_and_open,
@@ -77,7 +78,6 @@ class WorkspaceController(QObject):
             RowAction.HIDE: partial(self._set_considered, considered=False),
             RowAction.UNHIDE: partial(self._set_considered, considered=True),
             RowAction.EDIT: self._edit,
-            RowAction.RENAME: self._rename,
             RowAction.REMOVE: self._remove,
         }
 
@@ -94,26 +94,18 @@ class WorkspaceController(QObject):
         It targets the active pane, or opens in a new split with *to_side*. Other viewers keep their playback state.
         """
         place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
-        self._open_content(content, start_index=start_index, place=place)
+        self._viewers.open(content, start_index=start_index, place=place)
 
     def show_frame(self, content: Content, entry_index: int, frame: int) -> None:
         """Show *frame* of entry *entry_index* of *content* paused; a viewer already showing that entry seeks there
         and takes focus, otherwise the entry opens as ``open_content`` would.
         """
         target = entry_target(content, entry_index)
-        viewer = next(
-            (
-                widget
-                for widget in (self._center_area.get_focused_widget(), *self._widget_item_ids)
-                if widget is not None and widget.bookmark_target() == target
-            ),
-            None,
-        )
-        if viewer is not None:
+        if (viewer := self._viewers.showing(target)) is not None:
             viewer.show_frame(frame)
             self._center_area.focus_widget(viewer)
         else:
-            self._open_content(
+            self._viewers.open(
                 content, start_index=entry_index, place=self._center_area.replace_or_open, start_frame=frame
             )
 
@@ -135,15 +127,11 @@ class WorkspaceController(QObject):
 
     def set_shared_actions(self, actions: Mapping[str, QAction]) -> None:
         """Give every viewer, open now or opened later, the window's *actions* for its menus."""
-        self._shared_actions = actions
-        for widget in self._widget_item_ids:
-            widget.set_shared_actions(actions)
+        self._viewers.set_shared_actions(actions)
 
-    def close_item_viewers(self, item_id: str) -> None:
-        """Close every viewer showing Content of the item *item_id*."""
-        for widget, widget_item_id in tuple(self._widget_item_ids.items()):
-            if widget_item_id == item_id:
-                self._center_area.remove_viewer_widget(widget)
+    def cleanup(self) -> None:
+        """Close all open viewers."""
+        self._viewers.close_all()
 
     def _connect_signals(self) -> None:
         self._workspace_store.items_added.connect(self._publish_sections)
@@ -154,12 +142,11 @@ class WorkspaceController(QObject):
         self._workspace_store.item_edited.connect(self._on_item_edited)
         self._workspace_store.item_renamed.connect(self._on_item_renamed)
         self._workspace_store.item_consideration_changed.connect(self._on_item_consideration_changed)
-        self._center_area.widget_removed.connect(self._on_widget_removed)
 
     def _publish_sections(self, *_args: object) -> None:
         """Build the rows of the Workspace as it is now and report them."""
         open_items = frozenset(
-            item for widget in self._widget_item_ids if (item := widget.current_on_screen_item()) is not None
+            item for widget in self._viewers.widgets() if (item := widget.current_on_screen_item()) is not None
         )
         self._sections = build_browser_sections(
             self._workspace_store.resolutions(), self._workspace_store.is_item_considered, open_items
@@ -206,19 +193,11 @@ class WorkspaceController(QObject):
                     return
             if lane_index is not None and not to_side:
                 entry = entry_target(target.content, target.entry_index or 0)
-                viewer = next(
-                    (
-                        widget
-                        for widget in (self._center_area.get_focused_widget(), *self._widget_item_ids)
-                        if widget is not None and widget.bookmark_target() == entry
-                    ),
-                    None,
-                )
-                if viewer is not None:
+                if (viewer := self._viewers.showing(entry)) is not None:
                     self._center_area.focus_widget(viewer)
                     viewer.focus_lane(lane_index)
                     return
-            self._open_content(
+            self._viewers.open(
                 target.content,
                 start_index=target.entry_index,
                 place=self._center_area.open_to_side if to_side else self._center_area.replace_or_open,
@@ -239,7 +218,7 @@ class WorkspaceController(QObject):
     def _stop_stream(self, row: WorkspaceBrowserRow) -> None:
         """Close every viewer of the camera."""
         if row.item is not None:
-            self.close_item_viewers(row.item.id)
+            self._viewers.close_item(row.item.id)
 
     def _add(self, row: WorkspaceBrowserRow) -> None:
         """Do what the row's ``add`` does: add what it stands for, or ask how."""
@@ -259,7 +238,7 @@ class WorkspaceController(QObject):
 
     def _export_video(self, row: WorkspaceBrowserRow) -> None:
         """Export from the viewer currently showing the row."""
-        for widget in self._widget_item_ids:
+        for widget in self._viewers.widgets():
             if row.export_target is not None and widget.current_on_screen_item() == row.export_target:
                 widget.export_video()
                 return
@@ -269,16 +248,6 @@ class WorkspaceController(QObject):
         if (item := self._held_item(row)) is not None and item.editable:
             self.edit_requested.emit(item.id)
 
-    def _rename(self, row: WorkspaceBrowserRow) -> None:
-        """Rename the saved item; keeping an unlabeled row's name retains its default-name semantics."""
-        if (item := self._held_item(row)) is None:
-            return
-        name = ask_new_name(
-            self._window_parent(), item.label or row.label, item.default_name if item.label else row.label
-        )
-        if name is not None:
-            self._workspace_store.rename_item(item.id, name)
-
     def _remove(self, row: WorkspaceBrowserRow) -> None:
         """Remove the row's item."""
         if row.item is not None:
@@ -286,7 +255,7 @@ class WorkspaceController(QObject):
 
     def _on_sources_changed(self, paths: frozenset[Path]) -> None:
         """Offer every open viewer that shows one of the changed *paths* to reload."""
-        for widget in tuple(self._widget_item_ids):
+        for widget in self._viewers.widgets():
             if widget.source_paths().files & paths:
                 widget.offer_reload()
 
@@ -295,9 +264,9 @@ class WorkspaceController(QObject):
         names = {
             content.content_id: content.display_name for content in self._workspace_store.resolution(item.id).contents
         }
-        for widget, item_id in self._widget_item_ids.items():
+        for widget in self._viewers.of_item(item.id):
             on_screen = widget.current_on_screen_item()
-            if item_id == item.id and on_screen is not None and on_screen.content_id in names:
+            if on_screen is not None and on_screen.content_id in names:
                 widget.set_display_name(names[on_screen.content_id])
         self._publish_sections()
 
@@ -306,33 +275,12 @@ class WorkspaceController(QObject):
         self._edited_items.add(item.id)
         self._publish_sections()
 
-    def _replace_item_viewers(self, resolution: ItemResolution) -> None:
-        """Reopen affected viewers at their surviving entry and frame, in the same pane."""
-        for widget, item_id in tuple(self._widget_item_ids.items()):
-            if item_id != resolution.item.id:
-                continue
-            target = widget.bookmark_target()
-            shown = widget.current_on_screen_item()
-            found = find_entry(resolution.contents, target) if target is not None else None
-            if target is None and shown is not None:
-                content = next((c for c in resolution.contents if c.content_id == shown.content_id), None)
-                found = (content, 0) if content is not None else None
-            if found is None:
-                self._center_area.remove_viewer_widget(widget)
-                continue
-            self._open_content(
-                found[0],
-                start_index=found[1],
-                start_frame=widget.playhead_frame() if target is not None else None,
-                place=partial(self._center_area.replace_viewer_widget, widget),
-            )
-
     def _on_items_resolved(self, resolutions: list[ItemResolution], open_first: bool) -> None:
         """Refresh edited viewers and rows; only newly added items may open their first Content."""
         for resolution in resolutions:
             if resolution.item.id in self._edited_items:
                 self._edited_items.discard(resolution.item.id)
-                self._replace_item_viewers(resolution)
+                self._viewers.replace_item(resolution)
         self._publish_sections()
         if not open_first:
             return
@@ -344,103 +292,24 @@ class WorkspaceController(QObject):
         contents = [content for resolution in resolutions for content in resolution.contents]
         if contents:
             self._logger.debug(f"New content added: {contents[0].display_name}")
-            self._open_content(contents[0])
+            self._viewers.open(contents[0])
 
     def _close_orphaned_viewers(self, *_args: object) -> None:
         """Close every viewer whose item is no longer in the Workspace, and refresh the rows."""
-        for widget, item_id in tuple(self._widget_item_ids.items()):
-            if not self._workspace_store.workspace.has_item(item_id):
-                self._center_area.remove_viewer_widget(widget)
+        self._viewers.close_orphans()
         self._publish_sections()
 
     def _close_all_viewers(self) -> None:
         """Close all viewers and pending edits when another Workspace becomes current."""
         self._edited_items.clear()
-        self._center_area.clear_all_widgets()
-        self._publish_sections()
-
-    def _open_content(
-        self,
-        content: Content,
-        *,
-        start_index: int | None = None,
-        place: Callable[[ViewerWidget], None] | None = None,
-        start_frame: int | None = None,
-        lane_index: int | None = None,
-    ) -> None:
-        """Open Workspace content using the Workspace viewer factory.
-
-        *place* inserts the widget into the center area; it defaults to targeting the active pane.
-        """
-        try:
-            opened = self._viewer_factory.open(
-                content,
-                start_index=start_index,
-                parent=self._window_parent(),
-                consideration_query=self._workspace_store,
-                start_frame=start_frame,
-            )
-        except Exception as exc:
-            message = str(exc)
-            self._logger.error(f"Failed to open content {content.display_name}: {message}")
-            QMessageBox.warning(self._window_parent(), "Open Content", message)
-            return
-
-        try:
-            if lane_index is not None:
-                opened.widget.focus_lane(lane_index)
-            self._open_widget(
-                opened.widget,
-                content,
-                opened.status_message,
-                place or self._center_area.replace_or_open,
-            )
-        except Exception as exc:
-            message = str(exc)
-            self._logger.error(f"Failed to open content {content.display_name}: {message}")
-            QMessageBox.warning(self._window_parent(), "Open Content", message)
-
-    def _open_widget(
-        self,
-        widget: ViewerWidget,
-        content: Content,
-        status_message: str,
-        place: Callable[[ViewerWidget], None],
-    ) -> None:
-        """Display *widget* and track it against the item its content came from."""
-        place(widget)
-        self._widget_item_ids[widget] = content.item_id
-        widget.set_shared_actions(self._shared_actions)
-        widget.on_screen_item_changed.connect(lambda _=None, w=widget: self._on_widget_on_screen_item_changed(w))
-        widget.context_menu_requested.connect(partial(self._show_viewer_menu, widget))
-        widget.consideration_change_requested.connect(self._workspace_store.set_item_considered)
-        self._publish_sections()
-        self._logger.debug(status_message)
-
-    def _on_widget_on_screen_item_changed(self, widget: ViewerWidget) -> None:
-        """Refresh browser rows when a viewer changes its visible content."""
+        self._viewers.close_all()
         self._publish_sections()
 
     def _on_item_consideration_changed(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Notify open viewers that consideration state may affect displayed content."""
-        for widget in list(self._widget_item_ids):
+        for widget in self._viewers.widgets():
             widget.refresh_item_consideration(item_ref, considered)
         self._publish_sections()
-
-    def _on_widget_removed(self, widget: ViewerWidget) -> None:
-        """Drop widget tracking as soon as the center area logically detaches it."""
-        self._forget_widget(widget)
-
-    def _forget_widget(self, widget: ViewerWidget) -> None:
-        """Remove a detached widget from dependency tracking."""
-        if self._widget_item_ids.pop(widget, None) is None:
-            return
-        self._publish_sections()
-
-    def cleanup(self) -> None:
-        """Clear tracked state and close all open viewers."""
-        self._center_area.clear_all_widgets()
-        self._widget_item_ids.clear()
 
     def _window_parent(self) -> QWidget | None:
         """Return the owning window used as parent for viewers and dialogs."""
