@@ -31,14 +31,13 @@ from ..base import FrameSource, OverlaySource, Worker
 
 logger = get_logger(__name__)
 
-CONNECTION_TIMEOUT_S = 5.0
 RETRY_INITIAL_DELAY_S = 0.25
 RETRY_MAX_DELAY_S = 2.0
 
 
-def rtsp_stream_config(*, metadata: bool) -> StreamConfig:
+def rtsp_stream_config(*, metadata: bool, timeout_s: float) -> StreamConfig:
     """Return the session configuration for live video, with embedded scene metadata when requested."""
-    return StreamConfig(video=VideoOutput.RGBA, metadata=metadata, timeout=CONNECTION_TIMEOUT_S)
+    return StreamConfig(video=VideoOutput.RGBA, metadata=metadata, timeout=timeout_s)
 
 
 class _RTSPWorker(Worker):
@@ -80,6 +79,7 @@ class RTSPSource(FrameSource, OverlaySource):
         parent: QObject | None = None,
         *,
         overlay: RTSPOverlayDecoder | None = None,
+        timeout_s: float,
     ) -> None:
         super().__init__(parent=parent)
 
@@ -88,6 +88,7 @@ class RTSPSource(FrameSource, OverlaySource):
         self.source_id = source_id
         self._rtsp_url = rtsp_url
         self._overlay = overlay
+        self._timeout_s = timeout_s
         self.frame_buffer: deque[VideoSample[NDArray[np.uint8]]] = deque(maxlen=buffer_size)
         self.overlay_buffer: deque[SceneMetadata] = deque(maxlen=buffer_size)
         self.buffer_lock = Lock()
@@ -116,7 +117,7 @@ class RTSPSource(FrameSource, OverlaySource):
         """Build a fresh one-shot RTSP session with this source's callbacks."""
         return StreamSession(
             self._rtsp_url,
-            rtsp_stream_config(metadata=self._overlay is not None),
+            rtsp_stream_config(metadata=self._overlay is not None, timeout_s=self._timeout_s),
             on_video=self._on_video,
             on_metadata=self._on_metadata if self._overlay is not None else None,
             on_failure=self._on_failure,
@@ -242,7 +243,7 @@ class RTSPSource(FrameSource, OverlaySource):
         """Reconnect when video frames stop, even if metadata keeps the RTSP session active."""
         with self._status_lock:
             silent_s = time.monotonic() - self._last_video_received_at
-            if not self._session_started or self._video_stall_reported or silent_s < CONNECTION_TIMEOUT_S:
+            if not self._session_started or self._video_stall_reported or silent_s < self._timeout_s:
                 return
             self._video_stall_reported = True
 

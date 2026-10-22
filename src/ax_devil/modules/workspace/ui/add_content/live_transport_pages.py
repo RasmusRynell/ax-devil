@@ -76,7 +76,9 @@ class TransportPages(QStackedWidget):
         self.mqtt_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         mqtt_layout.addRow("MQTT Password", self.mqtt_password_edit)
 
-        self.mqtt_port_edit = QLineEdit(str(integer_default(mqtt_defaults.get("broker_port"), 1883)))
+        self.mqtt_port_edit = QLineEdit(
+            str(integer_default(mqtt_defaults["broker_port"], "defaults.live_stream.analytics-mqtt.broker_port"))
+        )
         mqtt_layout.addRow("MQTT Port", self.mqtt_port_edit)
 
         self.data_source_choice = AnalyticsChoice(
@@ -93,7 +95,11 @@ class TransportPages(QStackedWidget):
         )
         websocket_layout.addRow("DataHub Topic", self.websocket_topic_choice)
 
-        self.websocket_channel_id_edit = QLineEdit(str(integer_default(websocket_defaults.get("channel_id"), 1)))
+        self.websocket_channel_id_edit = QLineEdit(
+            str(
+                integer_default(websocket_defaults["channel_id"], "defaults.live_stream.analytics-websocket.channel_id")
+            )
+        )
         self.websocket_channel_id_edit.setToolTip("Instance of the DataHub topic to subscribe to. Most devices use 1.")
         websocket_layout.addRow("Topic Channel", self.websocket_channel_id_edit)
 

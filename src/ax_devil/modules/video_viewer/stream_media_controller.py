@@ -89,6 +89,7 @@ class StreamMediaController:
         rtsp_source = RTSPSource(
             build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None),
             overlay=embedded_overlay,
+            timeout_s=content.source_spec.connection_timeout_s,
         )
         self.video_source = rtsp_source
         self.overlay_source = rtsp_source if embedded_overlay is not None else separate_overlay

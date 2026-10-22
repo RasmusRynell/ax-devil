@@ -43,13 +43,11 @@ def _stub_live_stream_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
                 "broker_port": 1883,
                 "data_source_key": "analytics/source",
                 "data_stream_handler": "ADF_BETA_FRAME",
-                "device_api_protocol": "https",
             },
             "analytics-websocket": {
                 "topic": "com.axis.scene.frame.v1",
                 "channel_id": 2,
                 "data_stream_handler": "ADF_BETA_FRAME",
-                "device_api_protocol": "http",
             },
             "overlay_source": "none",
         },

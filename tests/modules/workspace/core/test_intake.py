@@ -5,14 +5,23 @@ from typing import Any
 
 import pytest
 
+from ax_devil.core.device_endpoint import DeviceProtocol
 from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     LiveOverlayMode,
+    LiveRTSPStreamSpec,
     LiveWebSocketOverlaySourceSpec,
     OverlayFile,
     SeekableVideoContent,
 )
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
+
+_DEVICE: dict[str, Any] = {
+    "device_api_protocol": DeviceProtocol.HTTPS,
+    "device_port": 0,
+    "rtsp_port": 554,
+    "connection_timeout_s": 10,
+}
 
 
 class _OptionProvider:
@@ -83,6 +92,7 @@ def test_intake_rejects_unknown_live_overlay_handler_before_creating_content() -
             password="pass",
             overlay_mode=LiveOverlayMode.RTSP,
             handler_type="MISSING",
+            **_DEVICE,
         )
 
 
@@ -98,14 +108,23 @@ def test_intake_creates_websocket_overlay_spec() -> None:
         handler_type="LIVE",
         websocket_topic="com.axis.scene.frame.v1",
         websocket_channel_id=3,
-        device_api_protocol="http",
+        device_api_protocol=DeviceProtocol.HTTP,
+        device_port=8080,
+        rtsp_port=8554,
+        connection_timeout_s=5,
     )
 
+    assert content.source_spec == LiveRTSPStreamSpec(
+        host="camera.local",
+        username="root",
+        password="pass",
+        device_api_protocol=DeviceProtocol.HTTP,
+        device_port=8080,
+        rtsp_port=8554,
+        connection_timeout_s=5,
+    )
     assert content.overlays[0].source_spec == LiveWebSocketOverlaySourceSpec(
-        handler_type="LIVE",
-        topic="com.axis.scene.frame.v1",
-        channel_id=3,
-        device_api_protocol="http",
+        handler_type="LIVE", topic="com.axis.scene.frame.v1", channel_id=3
     )
 
 
@@ -114,7 +133,6 @@ def test_intake_creates_websocket_overlay_spec() -> None:
     [
         ({"websocket_topic": ""}, "Topic is required for WebSocket overlay mode"),
         ({"websocket_channel_id": 0}, "Channel ID must be a positive integer"),
-        ({"device_api_protocol": "ftp"}, "Device API protocol must be http or https"),
     ],
 )
 def test_intake_rejects_invalid_websocket_connection_settings(overrides: dict[str, Any], message: str) -> None:
@@ -128,6 +146,7 @@ def test_intake_rejects_invalid_websocket_connection_settings(overrides: dict[st
         "handler_type": "LIVE",
         "websocket_topic": "com.axis.scene.frame.v1",
         "websocket_channel_id": 1,
+        **_DEVICE,
     }
     arguments.update(overrides)
 
@@ -142,7 +161,6 @@ def test_intake_rejects_invalid_websocket_connection_settings(overrides: dict[st
         ({"analytics_data_source_key": ""}, "Data Source is required for MQTT overlay mode"),
         ({"mqtt_port": 0}, "MQTT Port must be between 1 and 65535"),
         ({"mqtt_port": 65536}, "MQTT Port must be between 1 and 65535"),
-        ({"device_api_protocol": "ftp"}, "Device API protocol must be http or https"),
     ],
 )
 def test_intake_rejects_invalid_mqtt_connection_settings(overrides: dict[str, Any], message: str) -> None:
@@ -156,6 +174,7 @@ def test_intake_rejects_invalid_mqtt_connection_settings(overrides: dict[str, An
         "handler_type": "LIVE",
         "mqtt_host": "broker.local",
         "analytics_data_source_key": "analytics/source",
+        **_DEVICE,
     }
     arguments.update(overrides)
 
@@ -163,12 +182,29 @@ def test_intake_rejects_invalid_mqtt_connection_settings(overrides: dict[str, An
         intake.create_live_stream(**arguments)
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"device_port": 65536}, "Device port must be between 0 and 65535"),
+        ({"rtsp_port": 0}, "RTSP port must be between 1 and 65535"),
+        ({"connection_timeout_s": 0}, "Connection timeout must be at least 1 second"),
+    ],
+)
+def test_intake_rejects_invalid_device_connection_settings(overrides: dict[str, Any], message: str) -> None:
+    intake = WorkspaceIntake(_OptionProvider())
+
+    with pytest.raises(ValueError, match=message):
+        intake.create_live_stream(
+            host="camera.local", display_name="Camera", username="root", password="pass", **{**_DEVICE, **overrides}
+        )
+
+
 def test_intake_rejects_non_positive_camera_head() -> None:
     intake = WorkspaceIntake(_OptionProvider())
 
     with pytest.raises(ValueError, match="Camera Head must be a positive integer"):
         intake.create_live_stream(
-            host="camera.local", display_name="Camera", username="root", password="pass", camera_head=0
+            host="camera.local", display_name="Camera", username="root", password="pass", camera_head=0, **_DEVICE
         )
 
 
@@ -176,4 +212,4 @@ def test_intake_rejects_an_empty_device_host() -> None:
     intake = WorkspaceIntake(_OptionProvider())
 
     with pytest.raises(ValueError, match="Enter the device host"):
-        intake.create_live_stream(host="", display_name="Camera", username="root", password="pass")
+        intake.create_live_stream(host="", display_name="Camera", username="root", password="pass", **_DEVICE)

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
+from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.workspace.core import (
     LiveMQTTOverlaySourceSpec,
+    LiveRTSPStreamSpec,
     LiveWebSocketOverlaySourceSpec,
 )
 from tests.helpers.live_stream import (
@@ -49,14 +53,11 @@ def test_embedded_rtsp_overlay_requests_analytics_on_the_video_stream(
                 broker_host="broker.local",
                 broker_username="mqtt-user",
                 analytics_data_source_key="topic",
-                device_api_protocol="http",
             ),
             {"broker_host": "broker.local", "broker_username": "mqtt-user", "analytics_data_source_key": "topic"},
         ),
         (
-            LiveWebSocketOverlaySourceSpec(
-                handler_type="LIVE", topic="com.axis.scene.frame.v1", channel_id=2, device_api_protocol="http"
-            ),
+            LiveWebSocketOverlaySourceSpec(handler_type="LIVE", topic="com.axis.scene.frame.v1", channel_id=2),
             {"topic": "com.axis.scene.frame.v1", "channel_id": 2},
         ),
     ],
@@ -68,18 +69,29 @@ def test_separate_overlay_spec_opens_its_own_transport_with_device_settings(
     overlay_spec: OverlaySpec,
     expected_options: dict[str, object],
 ) -> None:
-    controller = make_controller(make_live_content(overlay_spec))
+    stream = LiveRTSPStreamSpec(
+        host="camera.local",
+        username="root",
+        password="pass",
+        device_api_protocol=DeviceProtocol.HTTP,
+        device_port=8080,
+        rtsp_port=8554,
+        connection_timeout_s=7,
+    )
+    controller = make_controller(replace(make_live_content(overlay_spec), source_spec=stream))
 
     (video,), (overlay,) = live_transports
     assert "analytics=" not in video.url
+    assert video.url.startswith("rtsp://root:pass@camera.local:8554/")
+    assert video.options["timeout_s"] == 7
     assert (
         overlay.options.items()
         >= {
             **expected_options,
-            "device_host": "camera.local",
+            "device": DeviceEndpoint("camera.local", DeviceProtocol.HTTP, 8080),
             "device_username": "root",
             "device_password": "pass",
-            "device_api_protocol": "http",
+            "timeout_s": 7,
             "decoder": "decoder:LIVE",
             "handler_type": "LIVE",
             "filter_factory": "filters:LIVE",

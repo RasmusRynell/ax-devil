@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.device_endpoint import DeviceProtocol
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.paths import (
@@ -51,6 +52,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "host": "$AX_DEVIL_TARGET_ADDR",
             "username": "$AX_DEVIL_TARGET_USER",
             "password": "$AX_DEVIL_TARGET_PASS",
+            "protocol": DeviceProtocol.HTTPS.value,
+            "port": 0,
+            "rtsp_port": 554,
+            "connection_timeout_s": 10,
         },
         "live_stream": {
             "rtsp": {
@@ -65,13 +70,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "broker_port": 1883,
                 "data_source_key": "com.axis.scene.frame.v1#1",
                 "data_stream_handler": "ADF_V1_FRAME",
-                "device_api_protocol": "https",
             },
             "analytics-websocket": {
                 "topic": "com.axis.scene.frame.v1",
                 "channel_id": 1,
                 "data_stream_handler": "ADF_V1_FRAME",
-                "device_api_protocol": "https",
             },
             "overlay_source": "websocket",
         },
@@ -134,13 +137,33 @@ def default_hint(raw_value: str, *, mask: bool = False) -> str:
     return f"{display}  (via {raw_value})" if is_environment_reference(raw_value) else display
 
 
-def integer_default(value: object, default: int) -> int:
-    """Read a resolved numeric default, falling back if its environment value is missing or invalid."""
+def builtin_default(path: str) -> Any:
+    """Return the built-in value at dotted *path* in the default config, such as ``defaults.device.rtsp_port``."""
+    value: Any = DEFAULT_CONFIG
+    for key in path.split("."):
+        value = value[key]
+    return value
+
+
+def integer_default(value: object, path: str) -> int:
+    """Read a resolved numeric default, falling back to the built-in value at *path* if it is missing or invalid."""
     try:
         return int(str(value))
     except ValueError:
-        logger.warning(f"Invalid numeric default; using {default}.")
-        return default
+        fallback = int(builtin_default(path))
+        logger.warning(f"Invalid numeric default for {path}; using {fallback}.")
+        return fallback
+
+
+def default_protocol(config: ConfigManager) -> DeviceProtocol:
+    """Return the configured default device protocol, or the built-in one if the saved value is invalid."""
+    value = config.get("defaults", {})["device"]["protocol"]
+    try:
+        return DeviceProtocol(value)
+    except ValueError:
+        fallback = DeviceProtocol(builtin_default("defaults.device.protocol"))
+        logger.warning(f"Invalid default device protocol {value!r}; using {fallback.value}.")
+        return fallback
 
 
 def _merge_defaults(config: dict[str, Any], defaults: Mapping[str, Any], *, key_path: str = "config") -> dict[str, Any]:
