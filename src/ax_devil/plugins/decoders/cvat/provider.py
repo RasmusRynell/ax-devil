@@ -80,7 +80,7 @@ class CVATSceneDataProvider(SceneDecoderFileProvider):
             file_path=xml_file,
             decoder_factory=CVATDecoder,
             decoder_name="cvat_xml",
-            artifact_version=2,
+            artifact_version=3,
             supports_sequence_lookup=True,
             filter_config_factory=self._build_filter_config,
             storage_mode=StorageMode.DERIVED_CACHE,

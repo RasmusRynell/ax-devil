@@ -68,7 +68,10 @@ def parse_cvat_document(xml_source: str | Path) -> CVATParseResult:
     all_metadata = _extract_all_metadata(meta)
     width, height, task_name, start_frame, stop_frame, size = _extract_essential_fields(all_metadata)
 
-    frames, labels = _collect_frame_shapes(xml_path)
+    document = ET.Element(root.tag, root.attrib)
+    document.extend(child for child in root if child.tag not in {"meta", "track", "image"})
+    all_metadata["@document"] = _extract_all_metadata(document)
+    frames, labels, frame_debug = _collect_frame_shapes(root)
 
     if size <= 0 and frames:
         highest_frame = max(frames)
@@ -77,9 +80,19 @@ def parse_cvat_document(xml_source: str | Path) -> CVATParseResult:
 
     labels_tuple = tuple(sorted(labels))
 
-    payloads = [
-        serialize_cvat_frame(frame_index, shapes, width, height) for frame_index, shapes in sorted(frames.items())
-    ]
+    payloads = []
+    for frame_index, shapes in sorted(frames.items()):
+        debug = frame_debug[frame_index]
+        image_attributes = debug.get("image", {}).get("@attributes", {})
+        payloads.append(
+            serialize_cvat_frame(
+                frame_index,
+                shapes,
+                _safe_int(image_attributes.get("width")) or width,
+                _safe_int(image_attributes.get("height")) or height,
+                debug={"cvat": debug},
+            )
+        )
 
     metadata = CVATFileMetadata(
         width=width,
@@ -112,6 +125,8 @@ def serialize_cvat_frame(
     shapes: Sequence[CVATShapePayload],
     width: int,
     height: int,
+    *,
+    debug: dict[str, Any] | None = None,
 ) -> CVATDecoderPayload:
     """Serialise a frame payload into a JSON string."""
     frame_payload: CVATFramePayload = {
@@ -119,6 +134,7 @@ def serialize_cvat_frame(
         "width": int(width),
         "height": int(height),
         "shapes": list(shapes),
+        "debug": debug or {},
     }
     return json.dumps(frame_payload)
 
@@ -128,122 +144,71 @@ def serialize_cvat_frame(
 # ---------------------------------------------------------------------------#
 
 
-def _collect_frame_shapes(xml_path: Path) -> tuple[dict[int, list[CVATShapePayload]], set[str]]:
+def _collect_frame_shapes(
+    root: ET.Element,
+) -> tuple[dict[int, list[CVATShapePayload]], set[str], dict[int, dict[str, Any]]]:
     """Collect CVAT shapes grouped by frame index."""
     frame_shapes: dict[int, list[CVATShapePayload]] = {}
     labels: set[str] = set()
-    current_track_id: int | None = None
-    current_track_label: str | None = None
+    frame_debug: dict[int, dict[str, Any]] = {}
     shape_counter = 0
-    current_image_frame: int | None = None
 
-    for event, element in ET.iterparse(xml_path, events=("start", "end")):
-        tag = element.tag
-
-        if event == "start":
-            if tag == "track":
-                try:
-                    current_track_id = int(element.attrib.get("id", -1))
-                except (TypeError, ValueError):
-                    current_track_id = None
-                current_track_label = element.attrib.get("label")
-            elif tag == "image":
-                current_track_id = None
-                current_track_label = None
-                current_image_frame = _safe_int(element.attrib.get("id") or element.attrib.get("frame"))
-        elif event == "end":
-            if tag in {"box", "polygon"}:
-                frame_str = element.attrib.get("frame")
-                frame_candidate: int | None
-                if frame_str is None and current_image_frame is not None:
-                    frame_candidate = current_image_frame
-                else:
-                    frame_candidate = _safe_int(frame_str)
-                if frame_candidate is None:
-                    logger.debug(f"Skipping CVAT shape without frame attribute: {element.attrib}")
-                    element.clear()
-                    continue
-                frame_index = frame_candidate
-
-                outside = element.attrib.get("outside") == "1"
-                if outside:
-                    element.clear()
-                    continue
-
-                label = element.attrib.get("label", current_track_label or "")
-                label = (label or "").strip()
-                if not label:
-                    logger.debug("Skipping CVAT shape without label.")
-                    element.clear()
-                    continue
-
-                labels.add(label.lower())
-
-                track_id_value: int | None
-                if current_track_id is not None:
-                    track_id_value = current_track_id
-                    entity_id = f"cvat_track_{current_track_id}"
-                else:
-                    track_id_value = None
-                    entity_id = f"cvat_shape_{shape_counter}"
-                    shape_counter += 1
-
-                attributes_payload = _extract_attribute_children(element)
-                occluded = element.attrib.get("occluded") == "1"
-                keyframe = element.attrib.get("keyframe") == "1"
-                z_order = _safe_int(element.attrib.get("z_order"))
-                group = _safe_int(element.attrib.get("group_id"))
-
-                shape_payload: CVATShapePayload | None
-                if tag == "box":
-                    shape_payload = _build_box_payload(
-                        element.attrib,
-                        entity_id=entity_id,
-                        frame_index=frame_index,
-                        label=label.lower(),
-                        track_id=track_id_value,
-                        attributes=attributes_payload,
-                        occluded=occluded,
-                        keyframe=keyframe,
-                        z_order=z_order,
-                        group=group,
-                    )
-                elif tag == "polygon":
-                    shape_payload = _build_polygon_payload(
-                        element.attrib,
-                        entity_id=entity_id,
-                        frame_index=frame_index,
-                        label=label.lower(),
-                        track_id=track_id_value,
-                        attributes=attributes_payload,
-                        occluded=occluded,
-                        keyframe=keyframe,
-                        z_order=z_order,
-                        group=group,
-                    )
-                else:
-                    shape_payload = None
-
-                if shape_payload is None:
-                    element.clear()
-                    continue
-
-                frame_shapes.setdefault(frame_index, []).append(shape_payload)
-
-                element.clear()
-            elif tag == "track":
-                current_track_id = None
-                current_track_label = None
-                element.clear()
-            elif tag == "image":
-                current_image_frame = None
-                element.clear()
-            elif tag == "attribute":
+    for container in root:
+        if container.tag not in {"track", "image"}:
+            continue
+        track_id = _safe_int(container.get("id")) if container.tag == "track" else None
+        image_frame = _safe_int(container.get("id", container.get("frame"))) if container.tag == "image" else None
+        context = ET.Element(container.tag, container.attrib)
+        context.extend(child for child in container if child.tag == "attribute" or child.get("frame") is None)
+        if container.tag == "image":
+            context[:] = [child for child in container if child.tag == "attribute"]
+        context_data = _extract_all_metadata(context)
+        if image_frame is not None:
+            frame_shapes.setdefault(image_frame, [])
+            frame_debug.setdefault(image_frame, {})["image"] = context_data
+        for element in container:
+            if element.tag == "attribute":
                 continue
-            else:
-                element.clear()
+            frame_index = _safe_int(element.get("frame")) if element.get("frame") is not None else image_frame
+            if frame_index is None:
+                continue
+            shapes = frame_shapes.setdefault(frame_index, [])
+            debug = frame_debug.setdefault(frame_index, {})
+            if container.tag == "image":
+                debug["image"] = context_data
+            raw_shape = {
+                container.tag: context_data,
+                "shape_type": element.tag,
+                "shape": _extract_all_metadata(element),
+            }
+            label = element.get("label", container.get("label", "")).strip().lower()
+            builder = {"box": _build_box_payload, "polygon": _build_polygon_payload}.get(element.tag)
+            if element.get("outside") == "1" or not label or builder is None:
+                debug.setdefault("unrendered_shapes", []).append(raw_shape)
+                continue
+            attributes = _extract_attribute_children(container) | _extract_attribute_children(element)
+            shape_payload = builder(
+                element.attrib,
+                entity_id=f"cvat_track_{track_id}" if track_id is not None else f"cvat_shape_{shape_counter}",
+                frame_index=frame_index,
+                label=label,
+                track_id=track_id,
+                attributes=attributes,
+                occluded=element.get("occluded") == "1",
+                keyframe=element.get("keyframe") == "1",
+                z_order=_safe_int(element.get("z_order")),
+                group=_safe_int(element.get("group_id", container.get("group_id"))),
+            )
+            if track_id is None:
+                shape_counter += 1
+            if shape_payload is None:
+                debug.setdefault("unrendered_shapes", []).append(raw_shape)
+                continue
+            shape_payload["debug"] = {"cvat": raw_shape}
+            shapes.append(shape_payload)
+            labels.add(label)
 
-    return frame_shapes, labels
+    return frame_shapes, labels, frame_debug
 
 
 def _extract_attribute_children(element: ET.Element) -> dict[str, Any]:
@@ -257,7 +222,6 @@ def _extract_attribute_children(element: ET.Element) -> dict[str, Any]:
             continue
         value = (child.text or "").strip()
         attributes[name] = value
-        child.clear()
     return attributes
 
 
@@ -385,6 +349,8 @@ def _extract_all_metadata(meta: ET.Element) -> dict[str, Any]:
         text = (element.text or "").strip()
         if not data and text:
             return text
+        if text:
+            data["#text"] = text
 
         return data
 

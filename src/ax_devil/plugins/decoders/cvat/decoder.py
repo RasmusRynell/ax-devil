@@ -85,6 +85,10 @@ def decode_cvat_frame(payload: CVATDecoderPayload) -> Scene:
             except (TypeError, ValueError):
                 logger.debug(f"Skipping z_order attribute conversion for shape: {shape_payload}")
 
+        group = shape_payload.get("group")
+        if group is not None:
+            attributes.append(Attribute(name="group_id", value=group))
+
         geometry = _decode_geometry(shape_payload, width=width, height=height)
         if geometry is None:
             logger.debug(f"Skipping CVAT shape with unsupported geometry: {shape_payload}")
@@ -95,6 +99,7 @@ def decode_cvat_frame(payload: CVATDecoderPayload) -> Scene:
             geometry=geometry,
             classification=[Classification(label.lower(), Score(1.0), attributes)],
             confidence=Score(1.0),
+            debug=shape_payload.get("debug", {}),
         )
 
         entity = entities.get(entity_id)
@@ -103,7 +108,9 @@ def decode_cvat_frame(payload: CVATDecoderPayload) -> Scene:
             entities[entity_id] = entity
         entity.add_observation(observation)
 
-    return Scene(time_slice=TimeSlice(frame_index, frame_index), entities=entities)
+    return Scene(
+        time_slice=TimeSlice(frame_index, frame_index), entities=entities, debug=frame_payload.get("debug", {})
+    )
 
 
 def build_cvat_filter_config(labels: Iterable[str]) -> FilterConfig:
