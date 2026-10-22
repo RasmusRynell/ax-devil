@@ -2,24 +2,32 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from typing import Any
 
 from ax_devil.modules.scene.model import (
     RGB,
+    Attribute,
     BoundingBox,
+    Classification,
     ColorClassification,
     NormalizedPoint,
     Score,
 )
 
 __all__: list[str] = [
+    "UNMAPPED_CLASS",
+    "classification_for_id",
+    "is_unmapped_class",
     "parse_timestamp",
     "rgb_from_map",
     "parse_colors_webcolors",
     "parse_bounding_box",
 ]
+
+UNMAPPED_CLASS = "?"
+"""Name prefix of a class id missing from its name table; list it in a filter policy's types to match all of them."""
 
 _COLOR_RGB_MAP = {
     "red": RGB(255, 0, 0),
@@ -39,6 +47,25 @@ _COLOR_RGB_MAP = {
     "magenta": RGB(255, 0, 255),
     "beige": RGB(245, 245, 220),
 }
+
+
+def classification_for_id(
+    class_id: int,
+    names: Mapping[int, str],
+    score: Score,
+    attributes: Iterable[Attribute] = (),
+) -> Classification:
+    """Return the named classification for ``class_id``, or ``?<id>`` if ``names`` lacks it.
+
+    The raw ``class_id`` is always kept as an attribute.
+    """
+    name = names.get(class_id, f"{UNMAPPED_CLASS}{class_id}")
+    return Classification(name, score, [Attribute("class_id", class_id), *attributes])
+
+
+def is_unmapped_class(classification_type: str) -> bool:
+    """Return whether the classification type names a class id missing from its name table."""
+    return classification_type.startswith(UNMAPPED_CLASS)
 
 
 def parse_timestamp(timestamp_str: str | None) -> datetime:
