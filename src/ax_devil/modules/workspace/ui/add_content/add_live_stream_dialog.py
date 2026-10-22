@@ -53,6 +53,9 @@ class AddLiveStreamDialog(BaseDialog):
         self._restoring = False
         self._connect_validation()
         self._update_validation()
+        if existing is not None:
+            self._name_edit.setFocus()
+            self._name_edit.selectAll()
 
     def _restore(self, item: LiveStreamItem) -> None:
         """Restore raw saved values, including inactive transport fields and empty credentials."""
@@ -114,7 +117,7 @@ class AddLiveStreamDialog(BaseDialog):
         connection_layout = FormLayout()
 
         self._name_edit = QLineEdit()
-        connection_layout.addRow("Display Name", self._name_edit)
+        connection_layout.addRow("Name", self._name_edit)
 
         hint = apply_env_hint
 
