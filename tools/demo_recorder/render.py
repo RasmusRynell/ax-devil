@@ -32,7 +32,7 @@ def style_frame(source: QImage, style: str) -> QImage:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
     painter.fillRect(image.rect(), QColor(11, 16, 32, 190))
-    padding = min(width, height) * 0.04  # Same margin on every side, even for a wide, short window.
+    padding = min(width, height) * 0.025  # Same margin on every side, even for a wide, short window.
     target = QRectF(padding, padding, width - padding * 2, height - padding * 2)
     # Fit without changing the application's aspect ratio.
     fit = min(target.width() / width, target.height() / height)
