@@ -215,8 +215,8 @@ def test_adding_a_plugin_installs_what_was_entered(
 def test_the_list_is_read_again_when_the_view_is_shown(qtbot: QtBot, records: list[PluginRecord]) -> None:
     view = _view(qtbot, records, FakeInstaller())
     view.hide()
-    records.append(plugin_record("late", "late-plugin", error="entry-point discovery failed: No module named 'x'"))
+    records.append(plugin_record("late", "late-plugin", error="missing dependency: No module named 'x'"))
 
     view.show()
 
-    assert ("late-plugin", "Entry-point discovery failed: No module named 'x'") in _rows(view)
+    assert ("late-plugin", "Missing dependency: No module named 'x'") in _rows(view)

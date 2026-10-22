@@ -182,8 +182,14 @@ def _sync_and_validate(project: Path, upgrade: bool, upgrade_packages: tuple[str
         command.append("--upgrade")
     for package in upgrade_packages:
         command.extend(["--upgrade-package", package])
-    subprocess.run(command, env=environment, check=True)
-    subprocess.run(
+    resolved = subprocess.run(command, env=environment)
+    if resolved.returncode:
+        names = ", ".join(selected_plugins(project))
+        raise ValueError(
+            f"uv could not resolve or build {names} (exit status {resolved.returncode}); "
+            "the plugin selection is unchanged"
+        )
+    validated = subprocess.run(
         [
             str(project / ".venv/bin/python"),
             "-I",
@@ -192,8 +198,13 @@ def _sync_and_validate(project: Path, upgrade: bool, upgrade_packages: tuple[str
             str(project),
         ],
         env={**environment, "QT_QPA_PLATFORM": "offscreen"},
-        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
     )
+    if validated.returncode:
+        lines = [line for line in (validated.stdout or "").splitlines() if line.strip()]
+        reason = lines[-1] if lines else f"plugin validation stopped with exit status {validated.returncode}"
+        raise ValueError(f"{reason}; the plugin selection is unchanged")
 
 
 def change_plugins(
@@ -286,6 +297,6 @@ def refresh_plugins(host: Host) -> None:
         raise ValueError("The automatic plugin update for this app version failed earlier")
     try:
         change_plugins(host, refresh=True)
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError):
         failed.write_text(host.fingerprint)
         raise
