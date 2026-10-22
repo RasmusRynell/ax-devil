@@ -2,7 +2,8 @@
 
 Runs only as ``python -m`` inside the prepared plugin environment. Neither the launcher nor ``project.py`` may import
 it, because it loads the application's plugin system (and Qt). On failure it writes the reason, naming the package, as
-its last line on stdout and exits 1; diagnostics and tracebacks go to stderr.
+one ``FAILURE_PREFIX`` line of JSON on stdout, so other output cannot hide it, and exits 1; diagnostics and tracebacks
+go to stderr.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from pathlib import Path
 from packaging.utils import canonicalize_name
 
 from .host import current_host
-from .project import read_project, selected_plugins
+from .project import FAILURE_PREFIX, read_project, selected_plugins
 
 
 def validate_plugins(names: list[str]) -> None:
@@ -66,5 +67,5 @@ if __name__ == "__main__":
         validate_installation(Path(sys.argv[1]))
     except Exception as exc:
         reason = f"{exc}" or type(exc).__name__
-        sys.stdout.write(f"{reason}\n")
+        sys.stdout.write(f"{FAILURE_PREFIX}{json.dumps(reason)}\n")
         sys.exit(1)
