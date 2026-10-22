@@ -26,6 +26,10 @@ else:
     import tomli as tomllib
 
 
+FAILURE_PREFIX = "ax-devil-plugin-failure:"
+"""Starts the one stdout line, followed by a JSON string, in which the validation step reports why it failed."""
+
+
 def read_project(directory: Path) -> dict[str, Any]:
     """Read standard Python project metadata."""
     with (directory / "pyproject.toml").open("rb") as file:
@@ -202,9 +206,13 @@ def _sync_and_validate(project: Path, upgrade: bool, upgrade_packages: tuple[str
         text=True,
     )
     if validated.returncode:
-        lines = [line for line in (validated.stdout or "").splitlines() if line.strip()]
-        reason = lines[-1] if lines else f"plugin validation stopped with exit status {validated.returncode}"
-        raise ValueError(f"{reason}; the plugin selection is unchanged")
+        reports = [line for line in (validated.stdout or "").splitlines() if line.startswith(FAILURE_PREFIX)]
+        reason = (
+            json.loads(reports[-1].removeprefix(FAILURE_PREFIX))
+            if reports
+            else f"plugin validation stopped with exit status {validated.returncode}"
+        )
+        raise ValueError(f"{' '.join(reason.split())}; the plugin selection is unchanged")
 
 
 def change_plugins(

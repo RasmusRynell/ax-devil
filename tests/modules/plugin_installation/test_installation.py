@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -134,9 +135,10 @@ def test_failed_preparation_preserves_current(plugin: Path, uv: Mock, failed_ste
         step = calls
         calls += 1
         if step == failed_step:
-            return subprocess.CompletedProcess(
-                command, 1, stdout="example-plugin cannot load: missing dependency: No module named 'cv3'\n"
-            )
+            # The reason spans lines, and the plugin prints more after the validator reported it.
+            reason = "example-plugin cannot load: missing dependency: ABI mismatch\nNo module named 'cv3'"
+            stdout = f"{project.FAILURE_PREFIX}{json.dumps(reason)}\nBackend shutdown complete\n"
+            return subprocess.CompletedProcess(command, 1, stdout=stdout)
         result: subprocess.CompletedProcess[str] = success(command, **kwargs)
         return result
 
@@ -144,7 +146,8 @@ def test_failed_preparation_preserves_current(plugin: Path, uv: Mock, failed_ste
     with pytest.raises(ValueError, match="example-plugin") as failure:
         project.change_plugins(host, upgrade=True)
     assert "non-zero exit status" not in f"{failure.value}"
-    assert ("No module named 'cv3'" in f"{failure.value}") == (failed_step == 1)
+    assert ("ABI mismatch No module named 'cv3'" in f"{failure.value}") == (failed_step == 1)
+    assert "Backend shutdown" not in f"{failure.value}"
     assert current.resolve() == original
     assert list(project.installation_root(host).glob("project-*")) == [original]
 
