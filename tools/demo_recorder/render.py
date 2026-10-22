@@ -32,15 +32,15 @@ def style_frame(source: QImage, style: str) -> QImage:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
     painter.fillRect(image.rect(), QColor(11, 16, 32, 190))
-    padding = width * 0.03
+    padding = min(width, height) * 0.04  # Same margin on every side, even for a wide, short window.
     target = QRectF(padding, padding, width - padding * 2, height - padding * 2)
     # Fit without changing the application's aspect ratio.
     fit = min(target.width() / width, target.height() / height)
     target = QRectF((width - width * fit) / 2, (height - height * fit) / 2, width * fit, height * fit)
-    for spread in range(16, 0, -2):
+    for spread in range(12, 0, -2):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 12))
-        painter.drawRoundedRect(target.adjusted(-spread, -spread + 5, spread, spread + 5), 14 + spread, 14 + spread)
+        painter.drawRoundedRect(target.adjusted(-spread, -spread + 4, spread, spread + 4), 14 + spread, 14 + spread)
     clip = QPainterPath()
     clip.addRoundedRect(target, 14, 14)
     painter.setClipPath(clip)
