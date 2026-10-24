@@ -27,6 +27,7 @@ interpreter; it does not use plugins installed into the user's separate applicat
 - `--start 2`: begin two seconds into the source; variable frame rates use the decoded timeline.
 - `--width 1600 --height 800`: choose the app and output dimensions (even numbers).
 - `--inspector-at 0`: open the panel from the first frame; `-1` disables it.
+- `--select-object 1`: open this object's page in the inspector (default: the first listed, if any).
 - `--catalogs minimal`: choose a built-in catalog for playback or comparison.
 - `--raw-only`: capture without producing styled exports.
 - `--style plain`: export the app without decoration.
@@ -45,7 +46,7 @@ Catalog wipe, with a selected object in the inspector:
 uv run python -m tools.demo_recorder capture \
   --video downloads/uvg-vcm/videos/HighwayDrive.mp4 \
   --overlay downloads/uvg-vcm/overlays/HighwayDrive.json --handler UVG_VCM \
-  --recipe catalogs --inspector-at 0 --width 1600 --height 800 \
+  --recipe catalogs --inspector-at 0 --select-object 1 --width 1600 --height 650 \
   --output downloads/demos/catalogs
 ```
 
@@ -58,11 +59,12 @@ Comparison lanes on one video, with deliberately imperfect, seeded detections de
 ```bash
 uv run python -m tools.demo_recorder capture \
   --video downloads/uvg-vcm/videos/HighwayDrive.mp4 \
-  --overlay downloads/uvg-vcm/overlays/HighwayDrive.json --handler UVG_VCM \
-  --recipe compare --simulate-det --width 1600 --height 660 \
+  --overlay /tmp/gt/GT.json --handler UVG_VCM \
+  --recipe compare --simulate-det --catalogs tracking --width 1600 --height 430 \
   --output downloads/demos/compare
 ```
 
+A lane is named after its overlay file, so copy the annotations to `/tmp/gt/GT.json` first to name the lane **GT**.
 The generated file is `DET (simulated).json` in the take folder, separate from the original annotations, and the lane is named
 **DET (simulated)**. It drops some boxes and perturbs their positions; it is not a model evaluation.
 For real comparison data, replace `--simulate-det` with `--compare-overlay PATH`. Both overlays use `--handler`.
