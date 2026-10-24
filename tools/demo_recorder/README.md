@@ -27,7 +27,7 @@ interpreter; it does not use plugins installed into the user's separate applicat
 - `--start 2`: begin two seconds into the source; variable frame rates use the decoded timeline.
 - `--width 1600 --height 800`: choose the app and output dimensions (even numbers).
 - `--inspector-at 0`: open the panel from the first frame; `-1` disables it.
-- `--select-object 1`: open this object's page in the inspector (default: the first listed).
+- `--select-object 1`: open this object's page in the inspector (default: the first listed, if any).
 - `--catalogs minimal`: choose a built-in catalog for playback or comparison.
 - `--raw-only`: capture without producing styled exports.
 - `--style plain`: export the app without decoration.

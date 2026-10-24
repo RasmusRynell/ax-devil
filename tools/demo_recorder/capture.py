@@ -90,15 +90,21 @@ def apply_catalog(catalogs: SceneRenderCatalogManager, path: Path) -> None:
 
 
 def select_object(objects_page: QWidget, entity_id: str | None) -> None:
-    """Open the page of an object in the inspector (the first listed when *entity_id* is None), as a click would."""
+    """Open the page of object *entity_id* in the inspector, as a click would.
+
+    Without an id, open the first listed object, or do nothing when the inspector lists none (plain video, or a
+    frame without objects). A named object that never appears fails the take.
+    """
     views = objects_page.findChildren(RowTableView)
 
     def listing() -> RowTableView | None:
         return next((view for view in views if view.isVisible() and view.rows_model.rowCount() > 0), None)
 
-    wait_until(lambda: listing() is not None, "the inspector to list objects")
+    if entity_id is not None:
+        wait_until(lambda: listing() is not None, "the inspector to list objects")
     view = listing()
-    assert view is not None
+    if view is None:
+        return
     rows = [cast(FrameRow | FileRow, view.rows_model.row_at(row)) for row in range(view.rows_model.rowCount())]
     matching = [row for row in rows if entity_id is None or row.entity_id == entity_id]
     if not matching:
