@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/src/ax_devil/resources/ax-devil-banner.png" alt="ax-devil — Development Utilities for Axis Devices" width="100%" />
+  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/src/ax_devil/resources/ax-devil-banner.png" alt="ax-devil — Axis camera viewer with analytics overlays" width="100%" />
 </p>
 
-**ax-devil** is a Linux desktop app for viewing video together with analytics overlays. Open recordings with
-their metadata or connect to a live Axis camera, inspect objects frame by frame, and compare results side by side.
+**ax-devil** is a Linux desktop app for viewing live Axis camera streams (RTSP, with ONVIF analytics) and offline
+recordings together with analytics overlays. Inspect objects frame by frame and compare results side by side.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/docs/media/demo-catalogs.webp" alt="ax-devil playing a highway recording with a car selected in the inspector while the overlays switch between render catalogs" width="100%" />
