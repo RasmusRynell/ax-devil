@@ -50,7 +50,9 @@ class ChoiceToggle(QFrame):
         metrics = QFontMetrics(TextRole.BODY.font_at(text_px))
         padding = 2 * (Space.M + 1)  # the theme's button padding and border
         width = sum(metrics.horizontalAdvance(label) + padding for label in self._labels)
-        return QSize(width + 2, text_px + Height.CONTROL.value + 2)
+        # Buttons are at least a control tall, and taller where the font's line is (the theme adds 7 px to it).
+        height = max(text_px + Height.CONTROL.value, metrics.height() + 7)
+        return QSize(width + 2, height + 2)
 
     def _select(self, value: str, checked: bool) -> None:
         if checked:
