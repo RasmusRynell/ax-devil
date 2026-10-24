@@ -49,7 +49,7 @@ def test_prepare_uses_isolated_editable_project(
     # The plugins are imported by the prepared interpreter, isolated from the caller, before activation.
     assert validate.args[0][0] == str(prepared / ".venv/bin/python")
     assert "-I" in validate.args[0]
-    assert validate.args[0][-1] == str(prepared)
+    assert validate.args[0][-2] == str(prepared)
 
 
 def test_installing_with_upgrade_upgrades_beyond_the_lock(plugin: Path, uv: Mock) -> None:
@@ -71,7 +71,7 @@ def test_install_remove_and_lock_reuse(plugin: Path, uv: Mock) -> None:
     original = current.resolve()
     assert project.selected_plugins(current) == {"example-plugin": str(plugin)}
     assert project.runtime_python(host) == original / ".venv/bin/python"
-    assert uv.call_args_list[1].args[0][-1] == str(original)
+    assert uv.call_args_list[1].args[0][-2] == str(original)
     project.change_plugins(host)
     assert current.resolve() != original
     assert original.is_dir()
@@ -119,8 +119,8 @@ def test_add_and_remove_preserve_other_plugins(plugin: Path, uv: Mock, tmp_path:
     assert project.selected_plugins(current) == {"other-plugin": str(other)}
 
 
-@pytest.mark.parametrize("failed_step", [0, 1])
-def test_failed_preparation_preserves_current(plugin: Path, uv: Mock, failed_step: int) -> None:
+@pytest.mark.parametrize(("failed_step", "writes_reason"), [(0, False), (1, True), (1, False)])
+def test_failed_preparation_preserves_current(plugin: Path, uv: Mock, failed_step: int, writes_reason: bool) -> None:
     """Both resolver and real-plugin validation failures preserve the previous installation."""
     host = current_host()
     project.change_plugins(host, install=(str(plugin),))
@@ -134,16 +134,23 @@ def test_failed_preparation_preserves_current(plugin: Path, uv: Mock, failed_ste
         step = calls
         calls += 1
         if step == failed_step:
-            # Behave like subprocess.run: a failed command only raises when the caller asks it to.
-            if kwargs.get("check"):
-                raise subprocess.CalledProcessError(1, command)
+            if writes_reason:  # The validator reports to the result file named after the project.
+                Path(command[-1]).write_text("example-plugin cannot load: missing dependency:\nNo module named 'cv3'")
             return subprocess.CompletedProcess(command, 1)
         result: subprocess.CompletedProcess[str] = success(command, **kwargs)
         return result
 
     uv.side_effect = fail
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(ValueError) as failure:
         project.change_plugins(host, upgrade=True)
+    message = f"{failure.value}"
+    assert "non-zero exit status" not in message
+    if failed_step == 1 and writes_reason:
+        assert "example-plugin cannot load: missing dependency: No module named 'cv3';" in message
+    elif failed_step == 1:
+        assert "plugin validation stopped with exit status 1" in message
+    else:
+        assert "example-plugin" in message
     assert current.resolve() == original
     assert list(project.installation_root(host).glob("project-*")) == [original]
 

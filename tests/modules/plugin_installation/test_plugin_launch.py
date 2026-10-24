@@ -55,7 +55,7 @@ def test_launch_refreshes_outdated_plugins(
     monkeypatch.setattr(cli, "cli", base)
     succeed = uv.side_effect
     if not refreshes:
-        uv.side_effect = subprocess.CalledProcessError(1, ["uv", "sync"])
+        uv.side_effect = lambda command, **_kwargs: subprocess.CompletedProcess(command, 1)
     with pytest.raises(SystemExit) if refreshes else nullcontext():
         launcher.main()
     error = capsys.readouterr().err

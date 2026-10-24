@@ -196,7 +196,11 @@ def test_a_distribution_with_unreadable_metadata_is_listed_as_failed_and_the_res
 @pytest.mark.parametrize(
     ("plugin", "reason"),
     [
-        pytest.param(ImportError("No module named 'missing'"), "entry-point discovery failed", id="import-error"),
+        pytest.param(
+            ImportError("No module named 'missing'", name="missing"),
+            "missing dependency: No module named 'missing'",
+            id="import-error",
+        ),
         pytest.param(
             ImportError("cannot import name 'Gone'", name="ax_devil.modules.workspace"),
             "incompatible with this ax-devil version: cannot import name 'Gone'",
@@ -306,8 +310,8 @@ def test_a_builtin_that_fails_to_import_is_listed_as_failed(
     assert (record.status, record.package) == (PluginStatus.FAILED, None)
     assert record.error is not None and "mot is broken" in record.error
     assert any(r.status is PluginStatus.LOADED for r in RuntimePluginRegistry.get_plugins(DECODER_PLUGIN_TYPE))
-    warnings = [m for m in caplog.messages if "failed to load" in m]
-    assert len(warnings) == 1 and warnings[0].startswith("1 plugin(s) from built-in failed to load")
+    summaries = [m for m in caplog.messages if "plugin(s) from" in m]
+    assert len(summaries) == 1 and summaries[0].startswith("1 plugin(s) from built-in failed to load")
 
 
 def test_a_package_whose_plugins_fail_is_warned_about_once(

@@ -6,6 +6,7 @@ import importlib
 import importlib.metadata
 import pkgutil
 from dataclasses import dataclass
+from logging import DEBUG, WARNING
 from pathlib import Path
 from typing import Any, cast
 
@@ -92,10 +93,13 @@ class ApplicationPluginLoader:
                 package = cls._entrypoint_package(entrypoint)
                 entrypoint_path = cls._entrypoint_path(entrypoint)
                 plugin_cls = entrypoint.load()
+            except ImportError as exc:
+                incompatible = (exc.name or "").startswith("ax_devil.")
+                kind = "incompatible with this ax-devil version" if incompatible else "missing dependency"
+                cls._fail(family, plugin_id_hint, package, f"{kind}: {exc}", exc)
+                continue
             except Exception as exc:
-                reason = f"entry-point discovery failed: {exc}"
-                if isinstance(exc, ImportError) and (exc.name or "").startswith("ax_devil."):
-                    reason = f"incompatible with this ax-devil version: {exc}"
+                reason = f"entry point failed to load: {type(exc).__name__}: {exc}"
                 cls._fail(family, plugin_id_hint, package, reason, exc)
                 continue
 
@@ -193,7 +197,8 @@ class ApplicationPluginLoader:
         exc: Exception | None = None,
     ) -> None:
         """Record a plugin that cannot load; ``_warn_about_failures`` reports it once per source."""
-        logger.debug(f"Plugin {family.plugin_type}:{plugin_id} failed to load: {reason}", exc_info=exc)
+        level = WARNING if exc is not None else DEBUG
+        logger.log(level, f"Plugin {family.plugin_type}:{plugin_id} failed to load: {reason}", exc_info=exc)
         RuntimePluginRegistry.mark_failed(family.plugin_type, plugin_id, package, reason)
 
     @staticmethod
