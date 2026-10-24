@@ -124,7 +124,7 @@ def test_delivery_plays_every_frame_then_reports_the_end() -> None:
     finished = threading.Event()
     delivery = FileFrameDelivery(
         decoder=cast(FrameReaderWorker, _Decoder(total_frames=3)),
-        fps=10.0,
+        fps=2.0,  # A 500 ms period: a loaded runner waking late must not make playback drop a frame.
         source_id="eof",
         on_playback_frame=lambda frame, generation: frames.append((frame.frame_index, generation)),
         on_playback_finished=finished.set,

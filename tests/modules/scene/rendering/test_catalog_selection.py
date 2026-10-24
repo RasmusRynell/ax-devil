@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
+import ax_devil.modules.scene.rendering.catalog_manager as catalog_manager
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogListing,
@@ -21,6 +22,12 @@ from tests.catalog_helpers import ready_manager as _ready
 from tests.catalog_helpers import refreshed_listing as _refreshed
 from tests.catalog_helpers import reload_catalog as _reload
 from tests.catalog_helpers import select_catalog as _select
+
+
+@pytest.fixture(autouse=True)
+def _quiet_file_watcher(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the file watcher from following edits, so only the explicit reload under test adopts them."""
+    monkeypatch.setattr(catalog_manager, "FILE_CHECK_DELAY_MS", 3_600_000)
 
 
 def test_catalog_manager_selects_and_signals_changed_catalog(
@@ -102,7 +109,6 @@ def test_catalog_selection_reload_adopts_repaired_catalog_matching_last_good_cat
 
     assert selection.active_catalog_path() == copy_path
     assert selection.active_catalog_loaded()
-    # A file-watcher reload may win the explicit reload; both must adopt the repaired path.
     repaired = selection.active_catalog()
     assert repaired is not None
     assert repaired.content_hash == last_good.content_hash
