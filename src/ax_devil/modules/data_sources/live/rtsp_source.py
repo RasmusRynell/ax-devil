@@ -31,6 +31,7 @@ from ..base import FrameSource, OverlaySource, Worker
 
 logger = get_logger(__name__)
 
+VIDEO_SILENCE_S = 5.0
 RETRY_INITIAL_DELAY_S = 0.25
 RETRY_MAX_DELAY_S = 2.0
 
@@ -243,7 +244,7 @@ class RTSPSource(FrameSource, OverlaySource):
         """Reconnect when video frames stop, even if metadata keeps the RTSP session active."""
         with self._status_lock:
             silent_s = time.monotonic() - self._last_video_received_at
-            if not self._session_started or self._video_stall_reported or silent_s < self._timeout_s:
+            if not self._session_started or self._video_stall_reported or silent_s < VIDEO_SILENCE_S:
                 return
             self._video_stall_reported = True
 

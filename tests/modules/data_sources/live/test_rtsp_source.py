@@ -279,8 +279,9 @@ def test_video_silence_reconnects_even_while_metadata_arrives(
     qtbot: QtBot, sessions: list[_Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Metadata activity must not hide a stalled video track from the RTSP source."""
+    monkeypatch.setattr(rtsp_source, "VIDEO_SILENCE_S", 0.05)
     monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
-    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=0.05)
+    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=10)
     reconnecting: list[str] = []
     connected: list[bool] = []
     errors: list[str] = []
