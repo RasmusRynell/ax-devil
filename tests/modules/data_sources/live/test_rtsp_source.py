@@ -59,6 +59,11 @@ class _Session:
         self.block_start = False
         self._stopped = threading.Event()
 
+    @property
+    def is_running(self) -> bool:
+        """Fake sessions have no receive thread to join."""
+        return False
+
     def start(self) -> None:
         """Connect, fail, or wait like a slow camera until stopped."""
         self.start_calls += 1
@@ -74,6 +79,9 @@ class _Session:
         """Record a non-blocking stop request."""
         self.stop_calls += 1
         self._stopped.set()
+
+    def join(self, timeout: float | None = None) -> None:
+        """Match StreamSession's join interface; fake sessions finish synchronously."""
 
 
 @pytest.fixture
@@ -172,16 +180,51 @@ def test_pause_resume_keeps_session_and_stop_is_terminal(qtbot: QtBot, sessions:
         source.deleteLater()
 
 
-def test_start_failure_emits_error_and_stops_worker(qtbot: QtBot, sessions: list[_Session]) -> None:
-    """Connection failures are reported from the worker, which then stops."""
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "PLAY failed with 503 Service Unavailable",
+        "the stream has no scene metadata; Axis URLs need analytics=polygon",
+    ],
+)
+def test_start_failure_retries_until_session_connects(
+    qtbot: QtBot, sessions: list[_Session], monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Temporary RTSP or metadata startup failures retry with a fresh session."""
+    monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
     source = RTSPSource("rtsp://example", timeout_s=10)
-    sessions[0].start_error = StreamError("DESCRIBE failed with 404 Not Found")
+    sessions[0].start_error = StreamError(failure)
     errors: list[str] = []
+    events: list[str] = []
     source.sourceError.connect(errors.append)
+    source.sourceReconnecting.connect(events.append)
+    source.sourceConnected.connect(lambda: events.append("connected"))
     try:
         assert source.play()
-        qtbot.waitUntil(lambda: errors == ["Failed to start RTSP: DESCRIBE failed with 404 Not Found"])
+        qtbot.waitUntil(lambda: len(sessions) == 2 and sessions[1].start_calls == 1)
+        qtbot.waitUntil(lambda: events == [f"Failed to start RTSP: {failure}", "connected"])
+        assert errors == []
+    finally:
+        source.stop()
         assert source.wait()
+        source.deleteLater()
+
+
+def test_authentication_failure_is_terminal(qtbot: QtBot, sessions: list[_Session]) -> None:
+    """Bad credentials do not cause an endless automatic reconnect loop."""
+    source = RTSPSource("rtsp://example", timeout_s=10)
+    sessions[0].start_error = StreamError("DESCRIBE was refused with 401 Unauthorized: check credentials")
+    errors: list[str] = []
+    reconnecting: list[str] = []
+    source.sourceError.connect(errors.append)
+    source.sourceReconnecting.connect(reconnecting.append)
+    try:
+        assert source.play()
+        qtbot.waitUntil(lambda: bool(errors))
+        assert errors == ["Failed to start RTSP: DESCRIBE was refused with 401 Unauthorized: check credentials"]
+        assert reconnecting == []
+        assert source.wait()
+        assert len(sessions) == 1
     finally:
         source.stop()
         source.deleteLater()
@@ -206,34 +249,78 @@ def test_stop_cancels_a_slow_connection_promptly_without_error(qtbot: QtBot, ses
         source.deleteLater()
 
 
-def test_failure_after_start_is_reported(qtbot: QtBot, sessions: list[_Session]) -> None:
-    """A stream that breaks while running reports the session failure."""
-    source = RTSPSource("rtsp://example", timeout_s=10)
+def test_failure_after_start_reconnects_embedded_metadata(
+    qtbot: QtBot, sessions: list[_Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A metadata-enabled session that ends is replaced and returns to live without manual retry."""
+    monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
+    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=10)
     errors: list[str] = []
+    events: list[str] = []
     source.sourceError.connect(errors.append)
+    source.sourceReconnecting.connect(events.append)
+    source.sourceConnected.connect(lambda: events.append("connected"))
     try:
         assert source.play()
-        qtbot.waitUntil(lambda: sessions[0].start_calls == 1)
+        qtbot.waitUntil(lambda: events == ["connected"])
         sessions[0].on_failure(StreamError("the camera closed the connection"))
-        qtbot.waitUntil(lambda: errors == ["RTSP Error: the camera closed the connection"])
+        qtbot.waitUntil(lambda: len(sessions) == 2 and sessions[1].start_calls == 1)
+        qtbot.waitUntil(
+            lambda: events == ["connected", "RTSP stream ended: the camera closed the connection", "connected"]
+        )
+        assert sessions[1].config.metadata
+        assert errors == []
     finally:
         source.stop()
         source.deleteLater()
 
 
-def test_failure_right_after_connecting_is_reported_after_the_connection(
-    qtbot: QtBot, sessions: list[_Session]
+def test_video_silence_reconnects_even_while_metadata_arrives(
+    qtbot: QtBot, sessions: list[_Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A camera that drops the stream at once still ends in an error, never in a stale connected state."""
+    """Metadata activity must not hide a stalled video track from the RTSP source."""
+    monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
+    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=0.05)
+    reconnecting: list[str] = []
+    connected: list[bool] = []
+    errors: list[str] = []
+    source.sourceReconnecting.connect(reconnecting.append)
+    source.sourceConnected.connect(lambda: connected.append(True))
+    source.sourceError.connect(errors.append)
+    try:
+        assert source.play()
+        qtbot.waitUntil(lambda: sessions[0].start_calls == 1)
+        assert sessions[0].on_metadata is not None
+        sessions[0].on_metadata(SceneMetadata("valid", 0, None))
+        qtbot.waitUntil(lambda: len(sessions) >= 2 and sessions[1].start_calls == 1)
+        qtbot.waitUntil(lambda: len(connected) == 2)
+        assert connected == [True, True]
+        assert len(reconnecting) == 1
+        assert "No RTSP video frames received" in reconnecting[0]
+        assert errors == []
+    finally:
+        source.stop()
+        source.deleteLater()
+
+
+def test_failure_right_after_connecting_retries_after_reporting_connection(
+    qtbot: QtBot, sessions: list[_Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stream that ends as PLAY returns reports reconnecting after its initial connected state."""
+    monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
     source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].failure_while_starting = StreamError("the camera closed the connection")
     events: list[str] = []
+    errors: list[str] = []
     source.sourceConnected.connect(lambda: events.append("connected"))
-    source.sourceError.connect(events.append)
+    source.sourceReconnecting.connect(events.append)
+    source.sourceError.connect(errors.append)
     try:
         assert source.play()
-        qtbot.waitUntil(lambda: len(events) == 2)
-        assert events == ["connected", "RTSP Error: the camera closed the connection"]
+        qtbot.waitUntil(lambda: len(sessions) == 2 and sessions[1].start_calls == 1)
+        qtbot.waitUntil(lambda: len(events) >= 3 or bool(errors))
+        assert errors == []
+        assert events == ["connected", "RTSP stream ended: the camera closed the connection", "connected"]
     finally:
         source.stop()
         source.deleteLater()
