@@ -26,10 +26,6 @@ else:
     import tomli as tomllib
 
 
-FAILURE_PREFIX = "ax-devil-plugin-failure:"
-"""Starts the one stdout line, followed by a JSON string, in which the validation step reports why it failed."""
-
-
 def read_project(directory: Path) -> dict[str, Any]:
     """Read standard Python project metadata."""
     with (directory / "pyproject.toml").open("rb") as file:
@@ -193,26 +189,29 @@ def _sync_and_validate(project: Path, upgrade: bool, upgrade_packages: tuple[str
             f"uv could not resolve or build {names} (exit status {resolved.returncode}); "
             "the plugin selection is unchanged"
         )
-    validated = subprocess.run(
-        [
-            str(project / ".venv/bin/python"),
-            "-I",
-            "-m",
-            "ax_devil.modules.plugin_installation.validate",
-            str(project),
-        ],
-        env={**environment, "QT_QPA_PLATFORM": "offscreen"},
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    if validated.returncode:
-        reports = [line for line in (validated.stdout or "").splitlines() if line.startswith(FAILURE_PREFIX)]
-        reason = (
-            json.loads(reports[-1].removeprefix(FAILURE_PREFIX))
-            if reports
-            else f"plugin validation stopped with exit status {validated.returncode}"
-        )
-        raise ValueError(f"{' '.join(reason.split())}; the plugin selection is unchanged")
+    with tempfile.TemporaryDirectory() as scratch:
+        # A file, not stdout: plugin output and exit hooks cannot hide or replace the reason.
+        result = Path(scratch) / "reason.txt"
+        returncode = subprocess.run(
+            [
+                str(project / ".venv/bin/python"),
+                "-I",
+                "-m",
+                "ax_devil.modules.plugin_installation.validate",
+                str(project),
+                str(result),
+            ],
+            env={**environment, "QT_QPA_PLATFORM": "offscreen"},
+        ).returncode
+        if returncode:
+            try:
+                reason = " ".join(result.read_text(encoding="utf-8").split())
+            except OSError:
+                reason = ""
+            raise ValueError(
+                f"{reason or f'plugin validation stopped with exit status {returncode}'}; "
+                "the plugin selection is unchanged"
+            )
 
 
 def change_plugins(
