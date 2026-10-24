@@ -6,12 +6,11 @@ import pytest
 from PySide6.QtWidgets import QComboBox, QLineEdit
 from pytestqt.qtbot import QtBot
 
-from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import (
     LiveOverlayMode,
     LiveRTSPStreamSpec,
-    LiveStreamItem,
     LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
 )
@@ -23,8 +22,11 @@ from tests.helpers.forms import form_field
 pytestmark = pytest.mark.usefixtures("_stub_live_stream_defaults", "discovery")
 
 
-def test_add_live_stream_uses_env_backed_defaults_without_copying_them(qtbot: QtBot) -> None:
+def test_add_live_stream_uses_env_backed_defaults_without_copying_them(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Env-backed defaults appear as placeholders naming their variable, and an untouched form uses them."""
+    monkeypatch.setitem(ConfigManager().get_raw("defaults")["device"], "protocol", "http")  # Default resolves to it.
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
@@ -45,26 +47,9 @@ def test_add_live_stream_uses_env_backed_defaults_without_copying_them(qtbot: Qt
     assert result is not None
     [content] = result.contents
     assert isinstance(content, LiveVideoContent)
-    assert content.source_spec == LiveRTSPStreamSpec(host="camera.local", username="root", password="")
-
-
-@pytest.mark.parametrize(
-    ("choice", "expected"), [("Default (HTTP)", DeviceProtocol.HTTP), ("HTTPS", DeviceProtocol.HTTPS)]
-)
-def test_add_live_stream_protocol_default_follows_configuration_until_overridden(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, choice: str, expected: DeviceProtocol
-) -> None:
-    """The Default choice names and resolves to the configured protocol; picking one overrides it."""
-    monkeypatch.setitem(ConfigManager().get_raw("defaults")["device"], "protocol", "http")
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-    protocol = form_field(dialog, "Protocol", QComboBox)
-    protocol.setCurrentIndex(protocol.findText(choice))
-    ok_button(dialog).click()
-    result = dialog.get_result()
-    assert result is not None
-    assert isinstance(result.item, LiveStreamItem)
-    assert result.item.device_api_protocol is expected
+    assert content.source_spec == LiveRTSPStreamSpec(
+        host="camera.local", username="root", password="", device_api_protocol=DeviceProtocol.HTTP
+    )
 
 
 @pytest.mark.parametrize("available", [False, True])

@@ -12,8 +12,7 @@
 
 **OK** saves all pages and closes, and **Cancel** discards the changes. When a saved change needs a restart, ax-devil
 asks whether to restart now or later.
-Each live stream keeps the protocol, ports, and timeout it was added with, so changing a default never changes an
-existing stream. A device port of `0` means the standard port, 443 for HTTPS or 80 for HTTP. **Default IP range** (`defaults.network_scan.ip_range`) is the
+Stream defaults apply to newly opened live-stream dialogs. **Default IP range** (`defaults.network_scan.ip_range`) is the
 addresses the Live view's **Scan settings** start with, such as `192.168.1.0/24`. **Sign-in logins**
 (`defaults.network_scan.credentials`, a list of `username` and `password` pairs) are what **Try to sign in to found
 cameras** tries on each camera, in order; **Add login** adds one, and a row without a username is dropped on save. The
@@ -33,14 +32,14 @@ you can also override its checkbox for a manual scan. Neither option interrupts 
 
 Stream defaults, Analytics, Network scan and Storage fields keep `$VARIABLE_NAME` references as written and read the variable when the value is
 used; any other text is literal, even when it starts with `$` or `~`. Password references stay visible while literal
-passwords are masked. The protocol is always HTTPS or HTTP, never a reference. Numeric and storage references must resolve to valid values to save. Storage folders may start
+passwords are masked. Numeric and storage references must resolve to valid values to save. Storage folders may start
 with `~` for the home folder.
 
 ## Quick Setup
 
-On first start, **Quick Setup** asks for the theme, text size, and default camera protocol. Theme and text size apply as they are
-clicked; everything is saved when the dialog closes. **Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to `true`; set it
-to `false` to show it on the next start.
+On first start, **Quick Setup** asks for the theme, text size and camera protocol. Choices apply as they are clicked
+and are saved when the dialog closes. **Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to
+`true`; set it to `false` to show it on the next start.
 
 ## Text size
 

@@ -14,7 +14,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from ax_devil import cli as cli_module
-from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.settings.config_manager import DEFAULT_CONFIG, ConfigManager
 from ax_devil.modules.workspace.core import OverlayFile
 

@@ -146,9 +146,9 @@ class SettingsDialog(BaseDialog):
         streams = self._add_page("Stream defaults")
         self._add_note(
             streams,
-            "Defaults for Add Live Stream and for cameras added from the Live view. "
-            "Each stream keeps the protocol, ports and timeout it was added with. "
-            "$VARIABLE_NAME uses an environment variable.",
+            "These defaults prefill Add Live Stream. Each stream can override them. "
+            "Existing viewers keep their settings. "
+            "You can enter $VARIABLE_NAME to keep using an environment variable.",
         )
         for section in STREAM_SECTIONS:
             self._add_config_section(streams, section)

@@ -7,10 +7,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
-from ax_devil.modules.settings.config_manager import builtin_default
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
 
 
@@ -126,18 +125,23 @@ class LiveRTSPStreamSpec:
     host: str
     username: str = field(repr=False)
     password: str = field(repr=False)
-    camera_head: int = builtin_default("defaults.live_stream.rtsp.camera_head")
-    resolution: str = builtin_default("defaults.live_stream.rtsp.resolution")
+    camera_head: int = 1
+    resolution: str = "1280x720"
     stream_url: str | None = field(default=None, repr=False)
-    device_api_protocol: DeviceProtocol = DeviceProtocol(builtin_default("defaults.device.protocol"))
-    device_port: int = builtin_default("defaults.device.port")
-    rtsp_port: int = builtin_default("defaults.device.rtsp_port")
-    connection_timeout_s: int = builtin_default("defaults.device.connection_timeout_s")
+    device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS
+    device_port: int = 0
+    rtsp_port: int = 554
 
-    @property
-    def endpoint(self) -> DeviceEndpoint:
-        """Return where the device's web API answers."""
-        return DeviceEndpoint(self.host, self.device_api_protocol, self.device_port)
+    def connection(self, timeout_s: float) -> DeviceConnection:
+        """Return how to reach and sign in to the device's web API, giving up after *timeout_s* seconds."""
+        return DeviceConnection(
+            self.host,
+            self.device_api_protocol,
+            self.device_port,
+            self.username,
+            self.password,
+            timeout_s,
+        )
 
     def info_fields(self) -> InfoFields:
         """Return the device, camera head, and stream settings; never the password."""
@@ -147,10 +151,9 @@ class LiveRTSPStreamSpec:
             ("camera head", self.camera_head),
             ("resolution", self.resolution),
             ("stream URL", self.stream_url or "(default)"),
-            ("device API protocol", self.device_api_protocol.label),
+            ("device API protocol", self.device_api_protocol.name),
             ("device port", self.device_port or "(standard)"),
             ("RTSP port", self.rtsp_port),
-            ("connection timeout (s)", self.connection_timeout_s),
         )
 
 
@@ -174,7 +177,7 @@ class LiveMQTTOverlaySourceSpec:
 
     handler_type: str
     broker_host: str
-    broker_port: int = builtin_default("defaults.live_stream.analytics-mqtt.broker_port")
+    broker_port: int = 1883
     broker_username: str = field(default="", repr=False)
     broker_password: str = field(default="", repr=False)
     analytics_data_source_key: str = ""
@@ -199,7 +202,7 @@ class LiveWebSocketOverlaySourceSpec:
 
     handler_type: str
     topic: str
-    channel_id: int = builtin_default("defaults.live_stream.analytics-websocket.channel_id")
+    channel_id: int = 1
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.WEBSOCKET_SOURCE
     source_location: ClassVar[None] = None
     source_paths: ClassVar[SourcePaths] = SourcePaths()

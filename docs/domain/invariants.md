@@ -19,7 +19,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   [Workspace](../architecture/workspace.md)), and Content records its item's id. Content built outside resolution has
   empty ids and is never top-level Content.
 - Live Stream Items store connection values as entered; a `$VARIABLE` reference is expanded only during resolution.
-  They keep the protocol, ports and timeout they were created with; changed defaults apply to new items only.
+  A camera property (protocol, ports) is stored on the item and editable in the Add dialog; changed defaults only
+  prefill new items. An environment preference (connection timeout) is never stored; it is read when the stream connects.
 - An item's label is what the user named it, or empty. An empty label shows `default_name`, derived from the recipe
   when displayed; derived names such as an expanded host are never stored or saved.
 - An item that fails to resolve stays in the Workspace with its `ItemResolutionError` recorded. An item the file format

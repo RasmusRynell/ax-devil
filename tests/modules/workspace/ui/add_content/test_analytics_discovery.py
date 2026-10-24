@@ -5,13 +5,9 @@ from threading import Event
 import pytest
 from pytestqt.qtbot import QtBot
 
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
-from ax_devil.modules.workspace.ui.add_content.analytics_discovery import AnalyticsChoiceLoader, DeviceConnection
-
-
-def _connection(host: str) -> DeviceConnection:
-    return DeviceConnection(DeviceEndpoint(host, DeviceProtocol.HTTPS), "", "", 10)
+from ax_devil.modules.workspace.ui.add_content.analytics_discovery import AnalyticsChoiceLoader
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -22,7 +18,7 @@ def test_discovery_discards_stale_results_and_can_reload(qtbot: QtBot, fail: boo
     finished = Event()
 
     def fetch(connection: DeviceConnection) -> tuple[str, ...]:
-        host = connection.endpoint.host
+        host = connection.host
         if host == "old-camera":
             started.set()
             try:
@@ -37,10 +33,10 @@ def test_discovery_discards_stale_results_and_can_reload(qtbot: QtBot, fail: boo
     choice = AnalyticsChoice(loader, "")
     qtbot.addWidget(choice)
     try:
-        loader.set_connection(_connection("old-camera"))
+        loader.set_connection(DeviceConnection("old-camera", DeviceProtocol.HTTPS))
         loader.load()
         qtbot.waitUntil(started.is_set)
-        loader.set_connection(_connection("new-camera"))
+        loader.set_connection(DeviceConnection("new-camera", DeviceProtocol.HTTPS))
         assert not loader.loading
         assert choice.refresh.isEnabled()
         assert not loader.loaded
@@ -63,12 +59,12 @@ def test_discovery_instances_load_independently_and_cleanup_ignores_results(qtbo
 
     def fetch(connection: DeviceConnection) -> tuple[str, ...]:
         assert release.wait(5)
-        return (connection.endpoint.host,)
+        return (connection.host,)
 
     loaders = [AnalyticsChoiceLoader(fetch, label) for label in ("data sources", "topics")]
     try:
         for loader in loaders:
-            loader.set_connection(_connection("camera"))
+            loader.set_connection(DeviceConnection("camera", DeviceProtocol.HTTPS))
             loader.load()
         loaders[0].cleanup()
         release.set()
@@ -88,7 +84,7 @@ def test_choice_refresh_preserves_user_selection(qtbot: QtBot) -> None:
     choice = AnalyticsChoice(loader, "default")
     qtbot.addWidget(choice)
     try:
-        loader.set_connection(_connection("camera"))
+        loader.set_connection(DeviceConnection("camera", DeviceProtocol.HTTPS))
         loader.load()
         qtbot.waitUntil(lambda: not loader.loading)
         assert choice.combo.currentData() == "default"

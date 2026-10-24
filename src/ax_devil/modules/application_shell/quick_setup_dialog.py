@@ -1,9 +1,9 @@
 """Quick Setup: theme, text size and camera protocol, shown once on first start and again from Help → Quick Setup.
 
-Theme and text size apply to the running app as soon as they are clicked, so the app itself is the preview. The camera
-protocol is the default for new streams. Closing the dialog in any way keeps what was chosen, saves it, and records
-that setup is done. The dialog opens at the size the largest
-text size needs, because window managers may ignore a later resize; its content keeps its natural size, centered.
+Theme and text size apply to the running app as soon as they are clicked, so the app itself is the preview. Closing
+the dialog in any way keeps what was chosen, saves it (the protocol as the default for new streams), and records that
+setup is done. The dialog opens at the size the largest text size needs, because window managers may ignore a later
+resize; its content keeps its natural size, centered.
 """
 
 from __future__ import annotations
@@ -13,13 +13,12 @@ from dataclasses import replace
 from functools import partial
 from typing import Generic, TypeVar
 
-from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt
+from PySide6.QtCore import QRect, QRectF, QSize, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
     QPainter,
-    QPainterPath,
     QPaintEvent,
     QPalette,
     QPen,
@@ -37,10 +36,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.application_shell.configuration_preferences import DEVICE_PROTOCOL_FIELD, apply_preferences
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.choice_toggle import ChoiceToggle
 from ax_devil.modules.chrome.theme import DARK_COLORS, LIGHT_COLORS
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole, body_px
 from ax_devil.modules.settings.config_manager import ConfigManager, default_protocol
@@ -52,7 +52,7 @@ from ax_devil.modules.settings.theme_mode import ThemeMode
 logger = get_logger(__name__)
 
 
-_ChoiceT = TypeVar("_ChoiceT", ThemeMode, TextSize, DeviceProtocol)
+_ChoiceT = TypeVar("_ChoiceT", ThemeMode, TextSize)
 
 _LABEL_FLAGS = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
 
@@ -251,37 +251,6 @@ def _paint_text_size(size: TextSize) -> _PreviewPainter:
     return paint
 
 
-def _paint_protocol(protocol: DeviceProtocol) -> _PreviewPainter:
-    """Draw a closed padlock for HTTPS and an open one for HTTP."""
-
-    def paint(painter: QPainter, rect: QRectF, palette: QPalette) -> None:
-        text = palette.color(QPalette.ColorRole.Text)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        body = QRectF(0, 0, rect.height() * 0.64, rect.height() * 0.5)
-        body.moveCenter(rect.center())
-        body.moveBottom(rect.bottom())
-        radius = body.width() * 0.3
-        stroke = rect.height() * 0.1
-        left, right = body.center().x() - radius, body.center().x() + radius
-        raised = 0 if protocol is DeviceProtocol.HTTPS else rect.height() * 0.14
-        top = body.top() - rect.height() * 0.3
-        shackle = QPainterPath(QPointF(left, body.top()))
-        shackle.lineTo(left, top + radius)
-        shackle.arcTo(QRectF(left, top, 2 * radius, 2 * radius), 180, -180)
-        shackle.lineTo(right, body.top() - raised)
-        painter.setPen(QPen(text, stroke, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(shackle)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(text)
-        painter.drawRoundedRect(body, Radius.CONTROL, Radius.CONTROL)
-        painter.setBrush(palette.color(QPalette.ColorRole.Base))
-        keyhole = stroke * 0.8
-        painter.drawEllipse(body.center(), keyhole, keyhole)
-
-    return paint
-
-
 def _text_size_at(label: QLabel, role: TextRole) -> Callable[[int], QSize]:
     """Return *label*'s text size, in *role*, at a given body text size."""
     return lambda text_px: QFontMetrics(role.font_at(text_px)).size(0, label.text())
@@ -298,7 +267,7 @@ class QuickSetupDialog(BaseDialog):
         self._settings = GlobalSettings()
         self._config = ConfigManager()
         self._opened_with = self._settings.snapshot()
-        self._opened_protocol = self._protocol = default_protocol(self._config)
+        self._opened_protocol = default_protocol(self._config).value
         self._setup_content()
         self.add_button("Done", self.accept, is_default=True)
 
@@ -351,15 +320,9 @@ class QuickSetupDialog(BaseDialog):
         )
         self._add_section(layout, "Text size", self.text_size_row)
         self._parts.append(self.text_size_row.size_at)
-        self.protocol_row = _TileRow(
-            DeviceProtocol,
-            self._protocol,
-            self._set_protocol,
-            _text_preview_size,
-            _paint_protocol,
-        )
-        self._add_section(layout, "Camera protocol", self.protocol_row)
-        self._parts.append(self.protocol_row.size_at)
+        self.protocol_toggle = ChoiceToggle([(p.value, p.name) for p in DeviceProtocol], self._opened_protocol)
+        self._add_section(layout, "Camera protocol", self.protocol_toggle)
+        self._parts.append(self.protocol_toggle.size_at)
 
         layout.addSpacing(Space.S)
         note = QLabel("You can change these later in File → Settings.")
@@ -389,21 +352,15 @@ class QuickSetupDialog(BaseDialog):
     def _set_text_size(self, size: TextSize) -> None:
         self._settings.text_size = size
 
-    def _set_protocol(self, protocol: DeviceProtocol) -> None:
-        self._protocol = protocol
-
     def done(self, result: int) -> None:
         """Save the choices in effect and record setup as done, however the dialog was closed."""
         snapshot = self._settings.snapshot()
-        if (
-            snapshot == self._opened_with
-            and self._protocol is self._opened_protocol
-            and self._settings.quick_setup_done
-        ):
+        protocol = self.protocol_toggle.value()
+        if snapshot == self._opened_with and protocol == self._opened_protocol and self._settings.quick_setup_done:
             super().done(result)
             return
         snapshot = replace(snapshot, quick_setup_done=True)
-        edits = {DEVICE_PROTOCOL_FIELD: self._protocol.value} if self._protocol is not self._opened_protocol else {}
+        edits = {DEVICE_PROTOCOL_FIELD: protocol} if protocol != self._opened_protocol else {}
         try:
             apply_preferences(self._config, self._settings, snapshot, edits)
         except (ValueError, OSError) as exc:

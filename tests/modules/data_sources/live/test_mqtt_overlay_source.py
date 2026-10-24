@@ -13,7 +13,7 @@ from ax_devil_mqtt import MqttMessage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import OverlayData
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.data_sources.live import mqtt_discovery, mqtt_overlay_source
 from ax_devil.modules.data_sources.live.mqtt_overlay_source import MQTTOverlaySource
 from ax_devil.modules.scene.model import EntityId, Scene
@@ -100,10 +100,7 @@ def _source(
         broker_port=1883,
         broker_username="",
         broker_password="",
-        device=DeviceEndpoint("camera.local", DeviceProtocol.HTTPS),
-        device_username="root",
-        device_password="pass",
-        timeout_s=10,
+        device=DeviceConnection("camera.local", DeviceProtocol.HTTPS, 0, "root", "pass"),
         analytics_data_source_key=data_source_key,
         decoder=decoder or ADFFrameV1Decoder(),
         handler_type="ADF_V1_FRAME",

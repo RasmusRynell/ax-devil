@@ -12,7 +12,7 @@ from ax_devil_mqtt import AxisAnalyticsMqttClient, MqttMessage
 from PySide6.QtCore import QObject
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
-from ax_devil.core.device_endpoint import DeviceEndpoint
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.filtering import FilterConfig, FilterFactory, build_default_filter_config
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.settings.logging_config import get_logger
@@ -36,10 +36,7 @@ class MQTTWorker(Worker):
         broker_port: int,
         broker_username: str,
         broker_password: str,
-        device: DeviceEndpoint,
-        device_username: str,
-        device_password: str,
-        timeout_s: float,
+        device: DeviceConnection,
         analytics_data_source_key: str,
         decoder: PayloadToSceneDecoder,
         source_id: str = "mqtt_overlay",
@@ -51,9 +48,6 @@ class MQTTWorker(Worker):
         self.broker_username = broker_username
         self.broker_password = broker_password
         self.device = device
-        self.device_username = device_username
-        self.device_password = device_password
-        self.timeout_s = timeout_s
         self.analytics_data_source_key = analytics_data_source_key
         self.decoder = decoder
 
@@ -126,9 +120,7 @@ class MQTTWorker(Worker):
         """Establish connection to device and MQTT broker."""
         try:
             logger.info(f"Connecting to device at {self.device.host}")
-            self.device_config = self.device.device_config(
-                self.device_username, self.device_password, timeout_s=self.timeout_s
-            )
+            self.device_config = self.device.device_config()
 
             self._validate_analytics_data_source()
 
@@ -214,10 +206,7 @@ class MQTTOverlaySource(OverlaySource):
         broker_port: int,
         broker_username: str,
         broker_password: str,
-        device: DeviceEndpoint,
-        device_username: str,
-        device_password: str,
-        timeout_s: float,
+        device: DeviceConnection,
         analytics_data_source_key: str,
         decoder: PayloadToSceneDecoder,
         handler_type: str,
@@ -238,9 +227,6 @@ class MQTTOverlaySource(OverlaySource):
             broker_username=broker_username,
             broker_password=broker_password,
             device=device,
-            device_username=device_username,
-            device_password=device_password,
-            timeout_s=timeout_s,
             analytics_data_source_key=analytics_data_source_key,
             decoder=self.decoder,
             source_id=source_id,

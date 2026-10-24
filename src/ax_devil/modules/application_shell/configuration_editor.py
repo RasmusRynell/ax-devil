@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QRadioButton, QWidget
+from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QWidget
 
 from ax_devil.modules.application_shell.configuration_preferences import ConfigField
 from ax_devil.modules.chrome.browse_button import BrowseButton
+from ax_devil.modules.chrome.choice_toggle import ChoiceToggle
 from ax_devil.modules.settings.config_manager import is_environment_reference
 from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
 
 class ConfigurationEditor(QWidget):
-    """Edit a raw value without silently resolving an environment reference; a toggle field shows its choices as
-    radio buttons instead."""
+    """Edit a raw value without silently resolving an environment reference."""
 
     def __init__(self, field: ConfigField, value: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -21,18 +21,12 @@ class ConfigurationEditor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self._choices: QComboBox | None = None
         self._text: QLineEdit | None = None
-        self._toggles: list[QRadioButton] = []
+        self._toggle: ChoiceToggle | None = None
         if field.toggle:
-            for label, stored in field.choices:
-                radio = QRadioButton(label, self)
-                radio.setProperty("choice", stored)
-                radio.setChecked(stored == value.lower())
-                self._toggles.append(radio)
-                layout.addWidget(radio)
-            if not any(radio.isChecked() for radio in self._toggles):
-                self._toggles[0].setChecked(True)
+            self._toggle = ChoiceToggle([(stored, label) for label, stored in field.choices], value.lower(), self)
+            layout.addWidget(self._toggle)
             layout.addStretch(1)
-            self.setFocusProxy(next(radio for radio in self._toggles if radio.isChecked()))
+            self.setFocusProxy(self._toggle)
         elif field.choices or field.decoder:
             combo = QComboBox(self)
             combo.setEditable(True)
@@ -70,8 +64,8 @@ class ConfigurationEditor(QWidget):
 
     def text(self) -> str:
         """Return the raw preference represented by the editor."""
-        if self._toggles:
-            return str(next(radio for radio in self._toggles if radio.isChecked()).property("choice"))
+        if self._toggle is not None:
+            return self._toggle.value()
         if self._choices is not None:
             combo = self._choices
             index = combo.currentIndex()

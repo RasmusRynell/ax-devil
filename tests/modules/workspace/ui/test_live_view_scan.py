@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QProgressBar
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import Cancelled
-from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -94,29 +94,17 @@ def test_add_puts_the_camera_in_the_workspace_without_starting_its_stream(
         {"camera_head": 2, "resolution": "640x480", "data_stream_handler": "ONVIF_XML"}
     )
     defaults["live_stream"]["overlay_source"] = "rtsp"
-    defaults["device"]["protocol"] = "https"
     config.set("defaults", defaults)
-    both = frozenset({DeviceProtocol.HTTP, DeviceProtocol.HTTPS})
     scan(
         live,
-        DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "", sign_in=SignIn.SIGNED_IN, protocols=both),
-        DiscoveredCamera(
-            "192.0.2.35",
-            "AXIS P3265-LVE",
-            "",
-            sign_in=SignIn.SIGNED_IN,
-            protocols=frozenset({DeviceProtocol.HTTP}),
-        ),
+        DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "", sign_in=SignIn.SIGNED_IN, protocol=DeviceProtocol.HTTP),
     )
 
     live.press("192.0.2.34")
-    live.press("192.0.2.35")
 
-    item, http_only = live.store.workspace.items
-    assert isinstance(item, LiveStreamItem) and isinstance(http_only, LiveStreamItem)
-    assert (item.device_api_protocol, http_only.device_api_protocol) == (DeviceProtocol.HTTPS, DeviceProtocol.HTTP), (
-        "the protocol the camera answered on, or the default when it answered on both"
-    )
+    [item] = live.store.workspace.items
+    assert isinstance(item, LiveStreamItem)
+    assert item.device_api_protocol is DeviceProtocol.HTTP, "the protocol the camera answered on"
     assert (item.host, item.label, item.username, item.password) == (
         "192.0.2.34",
         "",
@@ -127,7 +115,7 @@ def test_add_puts_the_camera_in_the_workspace_without_starting_its_stream(
     assert live.rows()["192.0.2.34"] == "Start stream"
     assert live.center.get_widget_count() == 0, "adding is not starting the stream"
     assert live.checker.calls == [], "the scan has just shown the login works"
-    assert captions(live.view.tree) == ["Live, 2", "On the network, 0"]
+    assert captions(live.view.tree) == ["Live, 1", "On the network, 0"]
     assert "No new cameras" in live.texts()
 
 

@@ -23,7 +23,6 @@ from tests.helpers.settings_dialog import (
     click_ok,
     config_editor,
     preference_input,
-    radio,
     save_error,
 )
 from tests.helpers.widgets import button
@@ -81,7 +80,7 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
     }
     for path, value in edits.items():
         preference_input(dialog, path).setText(value)
-    radio(dialog, "HTTP").click()
+    button(dialog, "HTTP").click()
     checkbox(dialog, "Use the app title bar (requires restart)").setChecked(False)
     choose(choice(dialog, "Text size"), "large")
     assert click_ok(dialog), save_error(dialog)
@@ -101,7 +100,6 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
     qtbot.addWidget(reopened)
     assert choice(reopened, "Text size").currentData() == "large"
     assert {path: config_editor(reopened, path).text() for path in edits} == edits
-    assert config_editor(reopened, "defaults.device.protocol").text() == "http"
 
 
 def test_scan_preferences_default_on_and_can_be_cancelled_or_saved(qtbot: QtBot, config: ConfigManager) -> None:
