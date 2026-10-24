@@ -16,11 +16,14 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.core.cancellation import NEVER
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
 from ax_devil.modules.chrome.tokens import reserve_line
 from ax_devil.modules.settings.config_manager import (
     ConfigManager,
+    default_protocol,
+    device_timeout_s,
     expand_environment_reference,
     integer_default,
 )
@@ -72,11 +75,13 @@ class AddLiveStreamDialog(BaseDialog):
             edit.setText(value)
         self._transports.mqtt_port_edit.setText(str(item.mqtt_port))
         self._transports.websocket_channel_id_edit.setText(str(item.websocket_channel_id))
+        self._device_port_edit.setText(str(item.device_port or ""))
+        self._rtsp_port_edit.setText(str(item.rtsp_port))
         self._set_overlay_mode(item.overlay_mode)
         if item.handler_type is not None and self._handler_combo.findData(item.handler_type) < 0:
             self._handler_combo.addItem(f"{item.handler_type} (unavailable)", item.handler_type)
         self._set_handler_selection(item.handler_type or "")
-        self._mqtt_device_protocol_combo.setCurrentText(item.device_api_protocol)
+        self._protocol_combo.setCurrentIndex(self._protocol_combo.findData(item.device_api_protocol.value))
         self._transports.data_source_choice.restore_selection(item.analytics_data_source_key)
         self._transports.websocket_topic_choice.restore_selection(item.websocket_topic)
         self._on_overlay_mode_changed(self._overlay_mode_combo.currentIndex())
@@ -108,8 +113,7 @@ class AddLiveStreamDialog(BaseDialog):
         rtsp_defaults = live_defaults.get("rtsp", {}) or {}
         mqtt_defaults = live_defaults.get("analytics-mqtt", {}) or {}
         websocket_defaults = live_defaults.get("analytics-websocket", {}) or {}
-        self._mqtt_device_protocol_default = str(mqtt_defaults.get("device_api_protocol", "https")).lower()
-        self._websocket_device_protocol_default = str(websocket_defaults.get("device_api_protocol", "https")).lower()
+        self._rtsp_port_default = integer_default(self._defaults["device"].get("rtsp_port"), 554)
 
         connection_layout = FormLayout()
 
@@ -140,10 +144,25 @@ class AddLiveStreamDialog(BaseDialog):
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         connection_layout.addRow("Password", self._password_edit)
 
+        self._protocol_combo = QComboBox()
+        if self._existing is None:
+            self._protocol_combo.addItem(f"Default ({default_protocol(self._config).name})", None)
+        for protocol in DeviceProtocol:
+            self._protocol_combo.addItem(protocol.name, protocol.value)
+        self._device_port_edit = QLineEdit()
+        self._device_port_edit.setPlaceholderText("Standard")
+        self._device_port_edit.setValidator(QIntValidator(0, 65535, self))
+        connection_layout.addRow("Protocol", self._protocol_combo)
+        connection_layout.addRow("Port", self._device_port_edit)
+
         self._camera_head_edit = QLineEdit()
         self._camera_head_edit.setText(str(integer_default(rtsp_defaults.get("camera_head"), 1)))
         self._camera_head_edit.setValidator(QIntValidator(1, 9999, self))
+        self._rtsp_port_edit = QLineEdit()
+        self._rtsp_port_edit.setPlaceholderText(str(self._rtsp_port_default))
+        self._rtsp_port_edit.setValidator(QIntValidator(1, 65535, self))
         connection_layout.addRow("Camera Head", self._camera_head_edit)
+        connection_layout.addRow("RTSP Port", self._rtsp_port_edit)
 
         self._resolution_edit = QLineEdit()
         self._resolution_edit.setText(rtsp_defaults.get("resolution", "1280x720"))
@@ -169,11 +188,6 @@ class AddLiveStreamDialog(BaseDialog):
         self._populate_handler_types()
         overlay_layout.addRow("Handler Type", self._handler_combo)
 
-        self._mqtt_device_protocol_combo = QComboBox()
-        self._mqtt_device_protocol_combo.addItems(["https", "http"])
-        self._mqtt_device_protocol_combo.setToolTip("Protocol used to reach the device's API (HTTPS or HTTP).")
-        overlay_layout.addRow("Device Protocol", self._mqtt_device_protocol_combo)
-
         self._transports = TransportPages(raw_mqtt_defaults, mqtt_defaults, websocket_defaults, self)
         overlay_layout.addRow(self._transports)
         align_label_columns(overlay_layout, *self._transports.forms)
@@ -181,7 +195,8 @@ class AddLiveStreamDialog(BaseDialog):
         self._host_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
         self._username_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
         self._password_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
-        self._mqtt_device_protocol_combo.currentTextChanged.connect(self._invalidate_discovery_for_connection_change)
+        self._device_port_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
+        self._protocol_combo.currentIndexChanged.connect(self._invalidate_discovery_for_connection_change)
 
         layout.addWidget(overlay_group)
 
@@ -215,12 +230,8 @@ class AddLiveStreamDialog(BaseDialog):
             configured_handler = rtsp_defaults.get("data_stream_handler")
         elif configured_mode is LiveOverlayMode.MQTT:
             configured_handler = mqtt_defaults.get("data_stream_handler")
-            if self._mqtt_device_protocol_default in {"https", "http"}:
-                self._mqtt_device_protocol_combo.setCurrentText(self._mqtt_device_protocol_default)
         elif configured_mode is LiveOverlayMode.WEBSOCKET:
             configured_handler = websocket_defaults.get("data_stream_handler")
-            if self._websocket_device_protocol_default in {"https", "http"}:
-                self._mqtt_device_protocol_combo.setCurrentText(self._websocket_device_protocol_default)
 
         if configured_handler is not None and self._handler_combo.findData(str(configured_handler)) >= 0:
             self._set_overlay_mode(configured_mode)
@@ -254,21 +265,7 @@ class AddLiveStreamDialog(BaseDialog):
     def _on_overlay_mode_changed(self, index: int) -> None:
         """Show the selected mode's transport page and enable the fields it uses."""
         mode = LiveOverlayMode.from_value(str(self._overlay_mode_combo.currentData()))
-        if (
-            self._existing is None
-            and mode is LiveOverlayMode.MQTT
-            and self._mqtt_device_protocol_default in {"https", "http"}
-        ):
-            self._mqtt_device_protocol_combo.setCurrentText(self._mqtt_device_protocol_default)
-        elif (
-            self._existing is None
-            and mode is LiveOverlayMode.WEBSOCKET
-            and self._websocket_device_protocol_default in {"https", "http"}
-        ):
-            self._mqtt_device_protocol_combo.setCurrentText(self._websocket_device_protocol_default)
-
         self._handler_combo.setEnabled(mode.requires_handler)
-        self._mqtt_device_protocol_combo.setEnabled(mode in self._transports.choices)
         self._transports.setCurrentIndex(index)
 
         self._invalidate_discovery_for_connection_change()
@@ -276,10 +273,15 @@ class AddLiveStreamDialog(BaseDialog):
         if not self._restoring and choice is not None and not choice.loader.loaded:
             choice.loader.load()
 
-    def _current_device_connection(self) -> tuple[str, str, str, str]:
+    def _protocol(self) -> DeviceProtocol:
+        """Return the chosen protocol; Default means the configured one."""
+        chosen = self._protocol_combo.currentData()
+        return DeviceProtocol(chosen) if chosen else default_protocol(self._config)
+
+    def _current_device_connection(self) -> DeviceConnection:
         """Return the device connection discovery uses; ``$VARIABLE`` references are expanded for the request only."""
         device_defaults = self._defaults["device"]
-        return (
+        return DeviceConnection(
             expand_environment_reference(
                 self._text_or_default(
                     self._host_edit,
@@ -287,13 +289,15 @@ class AddLiveStreamDialog(BaseDialog):
                     saved=self._existing.host if self._existing else "",
                 )
             ),
+            self._protocol(),
+            int(self._device_port_edit.text() or 0),
             expand_environment_reference(
                 self._text_or_default(self._username_edit, device_defaults.get("username", ""))
             ),
             expand_environment_reference(
                 self._text_or_default(self._password_edit, device_defaults.get("password", ""))
             ),
-            self._mqtt_device_protocol_combo.currentText(),
+            device_timeout_s(self._config),
         )
 
     def _invalidate_discovery_for_connection_change(self) -> None:
@@ -379,9 +383,11 @@ class AddLiveStreamDialog(BaseDialog):
                 self._transports.mqtt_password_edit, str(raw_mqtt_defaults.get("broker_password") or "")
             ),
             analytics_data_source_key=(str(analytics_data_source_key) if analytics_data_source_key is not None else ""),
-            device_api_protocol=self._mqtt_device_protocol_combo.currentText(),
+            device_api_protocol=self._protocol(),
             websocket_topic=websocket_topic,
             websocket_channel_id=self._transports.websocket_channel_id(),
+            device_port=int(self._device_port_edit.text() or 0),
+            rtsp_port=int(self._rtsp_port_edit.text() or 0) or self._rtsp_port_default,
         )
         if self._existing is not None:
             item = replace(item, id=self._existing.id)

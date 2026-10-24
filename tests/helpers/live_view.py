@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QCheckBox, QLineEdit, QPushButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login
@@ -68,6 +69,7 @@ class Scanner:
     targets: tuple[str, ...] = ()
     logins: tuple[Login, ...] = ()
     low_impact: bool = False
+    prefer: DeviceProtocol = DeviceProtocol.HTTPS
     on_found: Callable[[], None] = lambda: None
     gate: Event = field(default_factory=Event)
     token: CancelToken | None = None
@@ -82,12 +84,14 @@ class Scanner:
         found: Callable[[DiscoveredCamera], None],
         token: CancelToken,
         low_impact: bool = False,
+        prefer: DeviceProtocol = DeviceProtocol.HTTPS,
     ) -> list[DiscoveredCamera]:
         self.calls += 1
         self.token = token
         self.targets = targets
         self.logins = logins
         self.low_impact = low_impact
+        self.prefer = prefer
         assert self.gate.wait(5)
         if self.error is not None:
             raise self.error
@@ -103,16 +107,16 @@ class Checker:
     a host not listed does not answer; it waits while *gate* is clear."""
 
     cameras: dict[str, DiscoveredCamera] = field(default_factory=dict)
-    calls: list[tuple[str, Login]] = field(default_factory=list)
+    calls: list[tuple[DeviceConnection, Login]] = field(default_factory=list)
     gate: Event = field(default_factory=Event)
 
     def __post_init__(self) -> None:
         self.gate.set()
 
-    def __call__(self, host: str, login: Login, token: CancelToken) -> DiscoveredCamera | None:
-        self.calls.append((host, login))
+    def __call__(self, connection: DeviceConnection, login: Login, token: CancelToken) -> DiscoveredCamera | None:
+        self.calls.append((connection, login))
         assert self.gate.wait(5)
-        return self.cameras.get(host)
+        return self.cameras.get(connection.host)
 
 
 @dataclass

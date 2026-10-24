@@ -10,6 +10,7 @@ import aiohttp
 import pytest
 from multidict import CIMultiDict
 
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.data_sources.live.datahub_client import (
     DataHubTopicSample,
     DataHubWebSocketClient,
@@ -104,25 +105,28 @@ class _FakeSession:
         self.closed = True
 
 
-def _client(session: _FakeSession, *, topic: str | None = None, protocol: str = "https") -> DataHubWebSocketClient:
+def _client(
+    session: _FakeSession,
+    *,
+    topic: str | None = None,
+    protocol: DeviceProtocol = DeviceProtocol.HTTPS,
+    port: int = 0,
+    timeout_s: float = 10,
+) -> DataHubWebSocketClient:
     return DataHubWebSocketClient(
-        host="camera.local",
-        username="root",
-        password="pass",
-        protocol=protocol,
+        device=DeviceConnection("camera.local", protocol, port, "root", "pass", timeout_s),
         topic=topic,
         channel_id=None if topic is None else 1,
         session_factory=lambda: session,
     )
 
 
-def test_request_timeout_is_not_extended_by_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_request_timeout_is_not_extended_by_notifications() -> None:
     """A device that only sends status notifications cannot hold a request open forever."""
-    monkeypatch.setattr(DataHubWebSocketClient, "_request_timeout_s", 0.05)
     status: dict[str, object] = {"jsonrpc": "2.0", "method": "data-hub_v1:status"}
     # The first notification arrives without yielding, so the timeout cannot fire before any notification was seen.
     session = _FakeSession(_FakeWebSocket([status], repeat=status))
-    client = _client(session)
+    client = _client(session, timeout_s=0.05)
 
     async def exercise() -> None:
         await client.connect()
@@ -137,19 +141,12 @@ def test_request_timeout_is_not_extended_by_notifications(monkeypatch: pytest.Mo
 
 def test_client_session_has_bounded_handshake_read_timeout() -> None:
     """A device that accepts the connection but never answers cannot stall the handshake forever."""
-    client = DataHubWebSocketClient(
-        host="camera.local",
-        username="root",
-        password="pass",
-        protocol="https",
-        topic=None,
-        channel_id=None,
-    )
+    client = _client(_FakeSession(_FakeWebSocket([])), timeout_s=7)
 
     async def exercise() -> None:
         session = client._create_session()
         try:
-            assert session.timeout.sock_read is not None
+            assert session.timeout.sock_read == 7
         finally:
             await session.close()
 
@@ -170,10 +167,7 @@ def test_discover_datahub_topics_uses_list_topics_without_subscribing() -> None:
 
     async def exercise() -> tuple[str, ...]:
         return await discover_datahub_topics(
-            host="camera.local",
-            username="root",
-            password="pass",
-            protocol="https",
+            device=DeviceConnection("camera.local", DeviceProtocol.HTTPS, 0, "root", "pass"),
             session_factory=lambda: session,
         )
 
@@ -230,11 +224,11 @@ def test_parse_topic_sample_rejects_invalid_data() -> None:
         )
 
 
-@pytest.mark.parametrize(("protocol", "websocket_scheme"), [("https", "wss"), ("http", "ws")])
+@pytest.mark.parametrize(("protocol", "websocket_scheme"), [(DeviceProtocol.HTTPS, "wss"), (DeviceProtocol.HTTP, "ws")])
 def test_client_subscribes_and_keeps_samples_that_arrive_before_the_response(
-    protocol: str, websocket_scheme: str
+    protocol: DeviceProtocol, websocket_scheme: str
 ) -> None:
-    """Both device protocols subscribe to one channel and deliver samples sent before the subscribe reply."""
+    """Both device protocols subscribe to one channel on a custom port and deliver samples sent before the reply."""
     websocket = _FakeWebSocket(
         [
             {"jsonrpc": "2.0", "method": "data-hub_v1:status", "params": {"state": "ready"}},
@@ -253,7 +247,7 @@ def test_client_subscribes_and_keeps_samples_that_arrive_before_the_response(
         ]
     )
     session = _FakeSession(websocket)
-    client = _client(session, topic="topic", protocol=protocol)
+    client = _client(session, topic="topic", protocol=protocol, port=8443)
 
     async def exercise() -> DataHubTopicSample:
         await client.connect()
@@ -270,8 +264,8 @@ def test_client_subscribes_and_keeps_samples_that_arrive_before_the_response(
         "filters": [{"topics": ["topic"], "instanceFilter": [{"channel_id": 1}]}],
         "startFrom": {"position": "new"},
     }
-    assert session.requested_url == f"{protocol}://camera.local/axis-cgi/wssession.cgi"
-    assert session.websocket_url.startswith(f"{websocket_scheme}://camera.local/")
+    assert session.requested_url == f"{protocol.value}://camera.local:8443/axis-cgi/wssession.cgi"
+    assert session.websocket_url.startswith(f"{websocket_scheme}://camera.local:8443/vapix/ws/v1?")
     assert "headers" not in session.requested_kwargs
     assert "wssession=session-token" in session.websocket_url
     assert "apis=data-hub" in session.websocket_url
@@ -336,7 +330,7 @@ def test_client_does_not_send_credentials_without_supported_challenge(status: in
         _FakeWebSocket([]),
         responses=[_FakeResponse("", status=status, headers={"WWW-Authenticate": challenge})],
     )
-    client = _client(session, protocol="http")
+    client = _client(session, protocol=DeviceProtocol.HTTP)
 
     with pytest.raises(DataHubWebSocketError, match="DataHub session request"):
         asyncio.run(client.connect())
@@ -358,7 +352,7 @@ def test_client_stops_after_rejected_authentication(scheme: str) -> None:
             _FakeResponse("", status=401, headers={"WWW-Authenticate": 'Basic realm="axis"'}),
         ],
     )
-    client = _client(session, protocol="http")
+    client = _client(session, protocol=DeviceProtocol.HTTP)
 
     with pytest.raises(DataHubWebSocketError, match="HTTP 401"):
         asyncio.run(client.connect())

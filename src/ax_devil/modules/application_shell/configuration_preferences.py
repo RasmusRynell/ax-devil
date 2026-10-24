@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.device_discovery.network_scan import Login, parse_scan_targets
 from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
@@ -18,7 +19,11 @@ from ax_devil.modules.workspace.core.source_specs import LiveOverlayMode
 
 @dataclass(frozen=True)
 class ConfigField:
-    """One supported preference with its label, choices and validation."""
+    """One supported preference with its label, choices and validation.
+
+    A *toggle* field is shown as a segmented toggle with one button per choice and always holds one of them, never an
+    environment reference.
+    """
 
     path: str
     label: str
@@ -28,12 +33,15 @@ class ConfigField:
     secret: bool = False
     directory: bool = False
     decoder: bool = False
+    toggle: bool = False
 
     def parse(self, text: str) -> str | int:
         """Validate edited values and numeric references, preserving their raw bindings."""
         value = text if self.secret else text.strip()
         numeric_value = value
         reference = is_environment_reference(value)
+        if reference and self.toggle:
+            raise ValueError(f"{self.label}: choose one of the listed values.")
         if reference:
             if self.directory and not os.getenv(value[1:], "").strip():
                 raise ValueError(f"{self.label}: the environment reference must resolve to a non-empty folder path.")
@@ -80,13 +88,24 @@ NETWORK_SCAN_SECTION = ConfigSection(
 """The scan's section, which Settings shows on a page of its own with the scan's sign-in logins."""
 
 
+DEVICE_PROTOCOL_FIELD = ConfigField(
+    "defaults.device.protocol",
+    "Protocol",
+    choices=tuple((protocol.name, protocol.value) for protocol in DeviceProtocol),
+    toggle=True,
+)
+"""The protocol new streams reach their device with; Quick Setup also saves it."""
+
 STREAM_SECTIONS = (
     ConfigSection(
         "Device",
         (
+            DEVICE_PROTOCOL_FIELD,
             ConfigField("defaults.device.host", "Host"),
             ConfigField("defaults.device.username", "Username"),
             ConfigField("defaults.device.password", "Password", secret=True),
+            ConfigField("defaults.device.rtsp_port", "RTSP port", minimum=1, maximum=65535),
+            ConfigField("defaults.device.connection_timeout_s", "Connection timeout (seconds)", minimum=1, maximum=600),
         ),
     ),
     ConfigSection(
@@ -114,11 +133,6 @@ ANALYTICS_SECTIONS = (
             ConfigField("defaults.live_stream.analytics-mqtt.broker_password", "Broker password", secret=True),
             ConfigField("defaults.live_stream.analytics-mqtt.data_source_key", "Data source"),
             ConfigField("defaults.live_stream.analytics-mqtt.data_stream_handler", "Decoder", decoder=True),
-            ConfigField(
-                "defaults.live_stream.analytics-mqtt.device_api_protocol",
-                "Device protocol",
-                choices=(("HTTPS", "https"), ("HTTP", "http")),
-            ),
         ),
     ),
     ConfigSection(
@@ -129,11 +143,6 @@ ANALYTICS_SECTIONS = (
                 "defaults.live_stream.analytics-websocket.channel_id", "Topic channel", minimum=1, maximum=9999
             ),
             ConfigField("defaults.live_stream.analytics-websocket.data_stream_handler", "Decoder", decoder=True),
-            ConfigField(
-                "defaults.live_stream.analytics-websocket.device_api_protocol",
-                "Device protocol",
-                choices=(("HTTPS", "https"), ("HTTP", "http")),
-            ),
         ),
     ),
 )

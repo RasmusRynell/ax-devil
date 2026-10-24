@@ -6,6 +6,8 @@ import pytest
 from PySide6.QtWidgets import QComboBox, QLineEdit
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import (
     LiveOverlayMode,
     LiveRTSPStreamSpec,
@@ -20,8 +22,11 @@ from tests.helpers.forms import form_field
 pytestmark = pytest.mark.usefixtures("_stub_live_stream_defaults", "discovery")
 
 
-def test_add_live_stream_uses_env_backed_defaults_without_copying_them(qtbot: QtBot) -> None:
+def test_add_live_stream_uses_env_backed_defaults_without_copying_them(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Env-backed defaults appear as placeholders naming their variable, and an untouched form uses them."""
+    monkeypatch.setitem(ConfigManager().get_raw("defaults")["device"], "protocol", "http")  # Default resolves to it.
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
 
@@ -42,7 +47,9 @@ def test_add_live_stream_uses_env_backed_defaults_without_copying_them(qtbot: Qt
     assert result is not None
     [content] = result.contents
     assert isinstance(content, LiveVideoContent)
-    assert content.source_spec == LiveRTSPStreamSpec(host="camera.local", username="root", password="")
+    assert content.source_spec == LiveRTSPStreamSpec(
+        host="camera.local", username="root", password="", device_api_protocol=DeviceProtocol.HTTP
+    )
 
 
 @pytest.mark.parametrize("available", [False, True])
@@ -120,7 +127,6 @@ def test_add_live_stream_websocket_shows_its_fields_and_builds_spec(
         handler_type="TEST_HANDLER",
         topic="com.axis.scene.frame.v1",
         channel_id=2,
-        device_api_protocol="http",
     )
 
 
@@ -135,18 +141,6 @@ def test_add_live_stream_websocket_topics_show_empty_state(qtbot: QtBot, discove
 
     assert topic.currentData() is None
     assert topic.currentText() == "No DataHub topics available"
-
-
-def test_add_live_stream_applies_transport_protocol_defaults_when_mode_changes(qtbot: QtBot) -> None:
-    dialog = AddLiveStreamDialog()
-    qtbot.addWidget(dialog)
-    protocol = form_field(dialog, "Device Protocol", QComboBox)
-
-    set_overlay_mode(dialog, LiveOverlayMode.MQTT)
-    assert protocol.currentText() == "https"
-
-    set_overlay_mode(dialog, LiveOverlayMode.WEBSOCKET)
-    assert protocol.currentText() == "http"
 
 
 @pytest.mark.parametrize("resolved", ["", "not-a-number", "8883"])

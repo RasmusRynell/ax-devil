@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -35,6 +36,7 @@ def test_launch_scan_keeps_results_for_live_and_allows_rescan(
     config = ConfigManager()
     config.set_config_path(tmp_path / "config.json")
     config.set("storage", {key: str(tmp_path / key) for key in config.get_raw("storage")})
+    config.get_raw("defaults")["device"]["protocol"] = "http"
     monkeypatch.setattr(GlobalSettings, "_instance", None)
     settings = GlobalSettings()
     settings.scan_on_startup = startup
@@ -55,6 +57,7 @@ def test_launch_scan_keeps_results_for_live_and_allows_rescan(
         if startup:
             qtbot.waitUntil(lambda: scanner.calls == 1)
             assert scanner.low_impact, "automatic discovery uses the lighter scan"
+            assert scanner.prefer is DeviceProtocol.HTTP, "the scan asks the configured default protocol first"
             assert not rescan.isEnabled(), "startup scan continues without opening Live"
         else:
             assert rescan.isEnabled()
@@ -129,7 +132,14 @@ def test_stop_stream_closes_every_viewer_of_the_camera(live: Live) -> None:
 def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: Live) -> None:
     live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
     live.open_workspace(
-        LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"),
+        LiveStreamItem(
+            host="192.0.2.10",
+            label="Entrance",
+            username="root",
+            password="pw",
+            device_api_protocol=DeviceProtocol.HTTP,
+            device_port=8080,
+        ),
         LiveStreamItem(host="192.0.2.11", label="Dock"),
     )
 
@@ -137,7 +147,7 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: L
 
     assert "refused" in row(live.view.tree, "Entrance").toolTip(), "the reason is on hover"
     assert live.rows()["Dock"] == "Start stream", "a camera without a login to try is left alone"
-    assert live.checker.calls == [("192.0.2.10", Login("root", "pw"))]
+    assert live.checker.calls == [(DeviceConnection("192.0.2.10", DeviceProtocol.HTTP, 8080), Login("root", "pw"))]
 
 
 @pytest.mark.parametrize("edit", [False, True], ids=["rescan", "edit"])
@@ -225,7 +235,8 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
     live.checker.gate.clear()
     entrance = LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw")
     live.open_workspace(entrance)
-    live.qtbot.waitUntil(lambda: live.checker.calls == [("192.0.2.10", Login("root", "pw"))])
+    connection = DeviceConnection("192.0.2.10", entrance.device_api_protocol)
+    live.qtbot.waitUntil(lambda: live.checker.calls == [(connection, Login("root", "pw"))])
     live.store.edit_item(replace(entrance, host="192.0.2.20"))
 
     live.checker.gate.set()

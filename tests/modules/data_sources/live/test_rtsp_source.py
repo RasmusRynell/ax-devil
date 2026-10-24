@@ -104,7 +104,8 @@ def _sample(pixels: np.ndarray[Any, np.dtype[np.uint8]], capture_ns: int | None 
 @pytest.mark.parametrize("embedded", [False, True])
 def test_frames_and_optional_overlays_use_one_session(qtbot: QtBot, sessions: list[_Session], embedded: bool) -> None:
     """Both modes retain capture timestamps, image ownership, and independent arrivals."""
-    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test") if embedded else None)
+    overlay = RTSPOverlayDecoder(_Decoder(), "test") if embedded else None
+    source = RTSPSource("rtsp://example", overlay=overlay, timeout_s=10)
     session = sessions[0]
     frames: list[FrameData] = []
     overlays: list[OverlayData] = []
@@ -141,7 +142,7 @@ def test_frames_and_optional_overlays_use_one_session(qtbot: QtBot, sessions: li
 
 def test_frames_without_capture_time_are_dropped(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Frames that cannot be synchronized never reach the display."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     frames: list[FrameData] = []
     source.frameReady.connect(frames.append)
     try:
@@ -158,7 +159,7 @@ def test_frames_without_capture_time_are_dropped(qtbot: QtBot, sessions: list[_S
 
 def test_pause_resume_keeps_session_and_stop_is_terminal(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Pausing retains the connection; repeated shutdown never restarts production."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     session = sessions[0]
     try:
         assert source.play()
@@ -191,7 +192,7 @@ def test_start_failure_retries_until_session_connects(
 ) -> None:
     """Temporary RTSP or metadata startup failures retry with a fresh session."""
     monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].start_error = StreamError(failure)
     errors: list[str] = []
     events: list[str] = []
@@ -211,7 +212,7 @@ def test_start_failure_retries_until_session_connects(
 
 def test_authentication_failure_is_terminal(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Bad credentials do not cause an endless automatic reconnect loop."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].start_error = StreamError("DESCRIBE was refused with 401 Unauthorized: check credentials")
     errors: list[str] = []
     reconnecting: list[str] = []
@@ -231,7 +232,7 @@ def test_authentication_failure_is_terminal(qtbot: QtBot, sessions: list[_Sessio
 
 def test_stop_cancels_a_slow_connection_promptly_without_error(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Stopping while the camera has not answered returns at once and ends the worker silently."""
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].block_start = True
     errors: list[str] = []
     source.sourceError.connect(errors.append)
@@ -253,7 +254,7 @@ def test_failure_after_start_reconnects_embedded_metadata(
 ) -> None:
     """A metadata-enabled session that ends is replaced and returns to live without manual retry."""
     monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
-    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"))
+    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=10)
     errors: list[str] = []
     events: list[str] = []
     source.sourceError.connect(errors.append)
@@ -278,9 +279,9 @@ def test_video_silence_reconnects_even_while_metadata_arrives(
     qtbot: QtBot, sessions: list[_Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Metadata activity must not hide a stalled video track from the RTSP source."""
-    monkeypatch.setattr(rtsp_source, "CONNECTION_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(rtsp_source, "VIDEO_SILENCE_S", 0.05)
     monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
-    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"))
+    source = RTSPSource("rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=10)
     reconnecting: list[str] = []
     connected: list[bool] = []
     errors: list[str] = []
@@ -308,7 +309,7 @@ def test_failure_right_after_connecting_retries_after_reporting_connection(
 ) -> None:
     """A stream that ends as PLAY returns reports reconnecting after its initial connected state."""
     monkeypatch.setattr(rtsp_source, "RETRY_INITIAL_DELAY_S", 0.01)
-    source = RTSPSource("rtsp://example")
+    source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].failure_while_starting = StreamError("the camera closed the connection")
     events: list[str] = []
     errors: list[str] = []
@@ -328,7 +329,7 @@ def test_failure_right_after_connecting_retries_after_reporting_connection(
 
 def test_callbacks_keep_bounded_buffers(qtbot: QtBot, sessions: list[_Session]) -> None:
     """Paused producers retain only the configured number of recent packets."""
-    source = RTSPSource("rtsp://example", buffer_size=2, overlay=RTSPOverlayDecoder(_Decoder(), "test"))
+    source = RTSPSource("rtsp://example", buffer_size=2, overlay=RTSPOverlayDecoder(_Decoder(), "test"), timeout_s=10)
     session = sessions[0]
     assert session.on_metadata is not None
     try:

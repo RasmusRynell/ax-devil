@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QProgressBar
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import Cancelled
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -88,18 +89,22 @@ def test_add_puts_the_camera_in_the_workspace_without_starting_its_stream(
     config.set_config_path(tmp_path / "config.json")
     config.set("storage", {key: str(tmp_path / key) for key in config.get_raw("storage")})
     defaults = config.get_raw("defaults")
-    defaults["device"] = {"host": "$AX_DEVIL_TARGET_ADDR", "username": "$CAMERA_USER", "password": "$CAMERA_PASS"}
+    defaults["device"].update({"host": "$AX_DEVIL_TARGET_ADDR", "username": "$CAMERA_USER", "password": "$CAMERA_PASS"})
     defaults["live_stream"]["rtsp"].update(
         {"camera_head": 2, "resolution": "640x480", "data_stream_handler": "ONVIF_XML"}
     )
     defaults["live_stream"]["overlay_source"] = "rtsp"
     config.set("defaults", defaults)
-    scan(live, DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "", sign_in=SignIn.SIGNED_IN))
+    scan(
+        live,
+        DiscoveredCamera("192.0.2.34", "AXIS P3265-LVE", "", sign_in=SignIn.SIGNED_IN, protocol=DeviceProtocol.HTTP),
+    )
 
     live.press("192.0.2.34")
 
     [item] = live.store.workspace.items
     assert isinstance(item, LiveStreamItem)
+    assert item.device_api_protocol is DeviceProtocol.HTTP, "the protocol the camera answered on"
     assert (item.host, item.label, item.username, item.password) == (
         "192.0.2.34",
         "",

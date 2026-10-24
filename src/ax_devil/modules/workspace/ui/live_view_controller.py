@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import ipaddress
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from functools import partial
 
 from PySide6.QtCore import QObject, QTimer
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
     DiscoveredCamera,
     Login,
-    SignIn,
+    check_device,
     parse_scan_targets,
     scan_network,
 )
-from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.settings.config_manager import ConfigManager, default_protocol
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import (
@@ -31,14 +32,12 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.ui.browser_rows import (
     BY_NAME,
     BrowserSection,
-    Facet,
-    OfferedAction,
     RowAction,
     RowOrder,
-    WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
+from ax_devil.modules.workspace.ui.live_view_rows import network_row, network_row_id, scan_camera, with_scan
 from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -51,20 +50,15 @@ Found = Callable[[DiscoveredCamera], None]
 Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found, CancelToken, bool], Sequence[DiscoveredCamera]]
 """Search addresses, trying the logins in order on each device found, and report each find; stop when the token is
 cancelled."""
-Check = Callable[[str, Login, CancelToken], DiscoveredCamera | None]
-"""Sign in to the camera at a host with a login, and return what that told, or None when no Axis device answers."""
-
-_REFUSED = "The camera refused the login saved with it."
-"""What a held camera's row says when its own login does not get in."""
-_NOT_SIGNED_IN = "Not signed in: add a login under Try to sign in."
-"""What a found camera's row says on hover when it has no Add."""
-_SIGN_IN_PROBLEMS = (SignIn.REFUSED, SignIn.FAILED)
+Check = Callable[[DeviceConnection, Login, CancelToken], DiscoveredCamera | None]
+"""Sign in to the camera at a connection with a login, and return what that told, or None if no Axis device answers."""
 
 
 def _scan_network(
     targets: tuple[str, ...], logins: tuple[Login, ...], found: Found, token: CancelToken, low_impact: bool
 ) -> list[DiscoveredCamera]:
-    return scan_network(targets=targets, logins=logins, found=found, token=token, low_impact=low_impact)
+    prefer = default_protocol(ConfigManager())
+    return scan_network(targets=targets, logins=logins, found=found, token=token, low_impact=low_impact, prefer=prefer)
 
 
 def _run_scan(
@@ -73,18 +67,15 @@ def _run_scan(
     return tuple(scan(targets, logins, job.report, job.token, low_impact))
 
 
-def _check_access(host: str, login: Login, token: CancelToken) -> DiscoveredCamera | None:
-    cameras = scan_network(targets=(host,), logins=(login,), token=token)
-    return cameras[0] if cameras else None
+def _run_check(
+    check: Check, connection: DeviceConnection, login: Login, job: JobContext[None]
+) -> DiscoveredCamera | None:
+    return check(connection, login, job.token)
 
 
-def _run_check(check: Check, host: str, login: Login, job: JobContext[None]) -> DiscoveredCamera | None:
-    return check(host, login, job.token)
-
-
-def _access_request(item: WorkspaceItem) -> tuple[str, Login] | None:
-    """Return the address and the login to check *item*'s access with, or None when it has no IPv4 address or no
-    username to try."""
+def _access_request(item: WorkspaceItem) -> tuple[DeviceConnection, Login] | None:
+    """Return the connection, as the item reaches the device, and the login to check *item*'s access with, or None
+    when it has no IPv4 address or no username to try."""
     if not isinstance(item, LiveStreamItem):
         return None
     values = item.expanded()
@@ -92,7 +83,8 @@ def _access_request(item: WorkspaceItem) -> tuple[str, Login] | None:
         ipaddress.IPv4Address(values.host)
     except ValueError:
         return None
-    return (values.host, Login(item.username, item.password)) if values.username else None
+    connection = DeviceConnection(values.host, item.device_api_protocol, item.device_port)
+    return (connection, Login(item.username, item.password)) if values.username else None
 
 
 def _defaults() -> tuple[str, tuple[Login, ...]]:
@@ -104,100 +96,6 @@ def _defaults() -> tuple[str, tuple[Login, ...]]:
 def _workspace_hosts(items: Sequence[WorkspaceItem]) -> frozenset[str]:
     """Return the hosts the workspace's items connect to, as entered and with any ``$VARIABLE`` expanded."""
     return frozenset(host for item in items for host in item.hosts)
-
-
-def _network_row_id(camera: DiscoveredCamera) -> str:
-    return f"network/{camera.host}"
-
-
-def _joined(parts: Sequence[str]) -> str:
-    """Return *parts* as one detail line that wraps only between them, never inside one."""
-    return " · ".join(part.replace(" ", "\u00a0") for part in parts if part)
-
-
-def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceBrowserRow:
-    """Return the row of a *camera* the scan found, with its address and all non-secret details visible; it has Add
-    only when the scan signed in to it."""
-    details = _camera_details(camera, show_sign_in_problem=True)
-    can_add = camera.sign_in is SignIn.SIGNED_IN
-    return WorkspaceBrowserRow(
-        row_id=_network_row_id(camera),
-        label=camera.host,
-        icon_kind="live_video",
-        detail=_joined(details),
-        wrap_detail=True,
-        facts=("Camera on the network", *details),
-        warning=None if can_add else _NOT_SIGNED_IN,
-        actions=(OfferedAction(RowAction.ADD),) if can_add else (),
-        add=add if can_add else None,
-        idle=not can_add,
-        search_terms=_camera_search_terms(camera),
-        facets=frozenset(Facet(group, value) for group, value in camera.facets),
-    )
-
-
-def _scan_camera(
-    row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[str, DiscoveredCamera]
-) -> DiscoveredCamera | None:
-    """Return what *checked*, the row's own sign-in, or else a scan in *found* learned about the camera of a row the
-    workspace holds, or None when nothing did."""
-    item = row.item
-    if item is None:
-        return None
-    return checked.get(item.id) or next((found[host] for host in item.hosts if host in found), None)
-
-
-def _with_scan(
-    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[str, DiscoveredCamera]
-) -> WorkspaceBrowserRow:
-    """Return the row of a camera the workspace holds with what *camera*, which signing in or a scan learned about it,
-    shows as a found camera does; one that refuses its own login warns and can not start a stream."""
-    item = row.item
-    if item is None or camera is None:
-        return row
-    own = checked.get(item.id)
-    details = _camera_details(camera, show_sign_in_problem=False)
-    row = replace(
-        row,
-        detail=_joined((row.detail, *details)),
-        facts=(*row.facts, *details),
-        search_terms=_camera_search_terms(camera),
-        facets=row.facets | frozenset(Facet(group, value) for group, value in camera.facets),
-    )
-    if own is not None and own.sign_in is SignIn.REFUSED:
-        return replace(
-            row,
-            icon_kind="unavailable",
-            warning=_REFUSED,
-            actions=tuple(offered for offered in row.actions if offered.action is not RowAction.START_STREAM),
-        )
-    return row
-
-
-def _camera_details(camera: DiscoveredCamera, *, show_sign_in_problem: bool) -> tuple[str, ...]:
-    """Return the non-secret details the row shows for what a scan learned about a camera; with
-    *show_sign_in_problem*, a sign-in that did not work is mentioned."""
-    facts = (
-        camera.model,
-        camera.sign_in.label if show_sign_in_problem and camera.sign_in in _SIGN_IN_PROBLEMS else "",
-        f"Serial {camera.serial}" if camera.serial else "",
-        f"Firmware {camera.firmware}" if camera.firmware else "",
-        f"Type {camera.product_type}" if camera.product_type else "",
-        f"Up {camera.uptime}" if camera.uptime else "",
-        f"Architecture {camera.architecture}" if camera.architecture else "",
-        f"SoC {camera.soc}" if camera.soc else "",
-    )
-    return tuple(fact for fact in facts if fact)
-
-
-def _camera_search_terms(camera: DiscoveredCamera) -> str:
-    """Return what the search finds a camera's row by of what a scan learned about it."""
-    parts = (camera.host, camera.model, camera.serial, camera.firmware, camera.product_type, _platform(camera))
-    return " ".join(part for part in parts if part)
-
-
-def _platform(camera: DiscoveredCamera) -> str:
-    return " · ".join(part for part in (camera.architecture, camera.soc) if part)
 
 
 def _streaming(sections: Sections) -> str:
@@ -212,10 +110,12 @@ def _streaming(sections: Sections) -> str:
 
 
 def _camera_item(camera: DiscoveredCamera) -> LiveStreamItem:
-    """Return the item for *camera* with the stream defaults, and with the login that signed in to it if one did."""
+    """Return the item for *camera* with the stream defaults, but the protocol it answered over, and the login that
+    signed in to it if one did."""
     login = camera.login
     return live_stream_item_from_defaults(
         host=camera.host,
+        device_api_protocol=camera.protocol,
         username=login.username if login is not None else None,
         password=login.password if login is not None else None,
     )
@@ -247,7 +147,7 @@ class LiveViewController(QObject):
         jobs: BackgroundJobs,
         scan: Scan = _scan_network,
         parent: QObject | None = None,
-        check: Check = _check_access,
+        check: Check = check_device,
     ) -> None:
         super().__init__(parent)
         self._view: LiveView | None = view
@@ -408,7 +308,9 @@ class LiveViewController(QObject):
                 on_error=lambda error: logger.debug(f"Camera access check failed: {error}"),
             )
 
-    def _on_checked(self, item_id: str, request: tuple[str, Login], camera: DiscoveredCamera | None) -> None:
+    def _on_checked(
+        self, item_id: str, request: tuple[DeviceConnection, Login], camera: DiscoveredCamera | None
+    ) -> None:
         """Keep what a check found, unless the item was removed or replaced with another address or login meanwhile."""
         item = self._store.workspace.item(item_id) if self._store.workspace.has_item(item_id) else None
         if camera is not None and item is not None and _access_request(item) == request:
@@ -430,17 +332,17 @@ class LiveViewController(QObject):
         for section in held:
             rows = []
             for row in section.rows:
-                camera = _scan_camera(row, by_host, self._checked)
+                camera = scan_camera(row, by_host, self._checked)
                 if camera is not None:
                     self._cameras[row.row_id] = camera
-                rows.append(_with_scan(row, camera, self._checked))
+                rows.append(with_scan(row, camera, self._checked))
             listed.append(replace(section, rows=tuple(rows)))
         if self._found is None:
             return tuple(listed)
         hosts = _workspace_hosts(self._store.workspace.items)
         new = [camera for camera in self._found if camera.host not in hosts]
-        self._cameras.update((_network_row_id(camera), camera) for camera in new)
-        found = tuple(_network_row(camera, partial(self._add, camera)) for camera in new)
+        self._cameras.update((network_row_id(camera), camera) for camera in new)
+        found = tuple(network_row(camera, partial(self._add, camera)) for camera in new)
         return (*listed, WorkspaceBrowserSection(BrowserSection.NETWORK, found))
 
     def _device_order(self, order: DeviceOrder) -> RowOrder:

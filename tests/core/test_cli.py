@@ -14,6 +14,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from ax_devil import cli as cli_module
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.settings.config_manager import DEFAULT_CONFIG, ConfigManager
 from ax_devil.modules.workspace.core import OverlayFile
 
@@ -289,7 +290,7 @@ _WEBSOCKET_FROM_CONFIG = {
     "handler_type": "ADF_V1_FRAME",
     "websocket_topic": "configured.topic",
     "websocket_channel_id": 2,
-    "device_api_protocol": "http",
+    "device_api_protocol": DeviceProtocol.HTTP,
 }
 
 
@@ -316,7 +317,7 @@ _WEBSOCKET_FROM_CONFIG = {
                 **_WEBSOCKET_FROM_CONFIG,
                 "websocket_topic": "override.topic",
                 "websocket_channel_id": 4,
-                "device_api_protocol": "https",
+                "device_api_protocol": DeviceProtocol.HTTPS,
             },
             id="websocket-cli-overrides",
         ),
@@ -332,15 +333,13 @@ def test_live_selects_handler_and_transport_settings(
 ) -> None:
     """The live command normalizes the configured mode and applies transport overrides."""
     config = _default_config()
-    config["defaults"]["device"]["host"] = "camera.example"
+    config["defaults"]["device"].update(host="camera.example", protocol="http")
     live = config["defaults"]["live_stream"]
     live["overlay_source"] = configured_mode
     live["analytics-mqtt"].update(
         data_stream_handler="ADF_BETA_FRAME", broker_host="mqtt.example", data_source_key="analytics/source"
     )
-    live["analytics-websocket"].update(
-        data_stream_handler="ADF_V1_FRAME", topic="configured.topic", channel_id=2, device_api_protocol="http"
-    )
+    live["analytics-websocket"].update(data_stream_handler="ADF_V1_FRAME", topic="configured.topic", channel_id=2)
 
     result = _invoke("--config", _write_config(tmp_path, config), "live", *arguments)
 
