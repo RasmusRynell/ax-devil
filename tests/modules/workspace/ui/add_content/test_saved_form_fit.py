@@ -1,4 +1,4 @@
-"""Populated editors fit the screen with usable fields, including at large text sizes."""
+"""Populated editors fit the screen with usable fields, including at large text sizes, and open on the item's name."""
 
 from pathlib import Path
 
@@ -23,19 +23,25 @@ def test_saved_forms_fit_available_screen_with_usable_fields(
 ) -> None:
     apply_theme(theme)
     apply_text_size(pixels)
-    video = VideoItem(video=tmp_path / "clip.mp4", overlays=(OverlayFile(tmp_path / "tracks.xml", "ONVIF_XML"),))
+    video = VideoItem(
+        video=tmp_path / "clip.mp4", overlays=(OverlayFile(tmp_path / "tracks.xml", "ONVIF_XML"),), label="Gate"
+    )
     playlist = PlaylistItem(
         resolver="folder_pair",
+        label="Gate",
         settings={"videos_dir": str(tmp_path), "overlays_dir": str(tmp_path), "handler_type": "ONVIF_XML"},
     )
     for dialog in (
         AddVideoDialog(existing=video),
-        AddLiveStreamDialog(existing=LiveStreamItem(host="camera.example")),
+        AddLiveStreamDialog(existing=LiveStreamItem(host="camera.example", label="Gate")),
         AddPlaylistDialog(inline_resolver(), existing=playlist),
     ):
         qtbot.addWidget(dialog)
         dialog.show()
         QApplication.processEvents()
+        focused = dialog.focusWidget()
+        assert isinstance(focused, QLineEdit)
+        assert focused.selectedText() == "Gate"
         scroll = dialog.findChild(QScrollArea)
         assert scroll is not None
         assert scroll.horizontalScrollBar().maximum() == 0

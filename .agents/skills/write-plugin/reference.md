@@ -149,7 +149,8 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
 classification policy using `make_classification_predicate(...).build_option(id=..., label=...)` or
 `make_other_classification_predicate(...).build_option(...)` from `ax_devil.modules.filtering.predicate_utils`.
 These policies match both real observations and the classification types recorded in object histories, including
-unclassified objects via `include_empty=True`. `ClassFilterSpec.build_option()` declares the same capability.
+unclassified objects via `include_empty=True`. List `UNMAPPED_CLASS` in a policy's types to match every `?<id>`
+class. `ClassFilterSpec.build_option()` declares the same capability.
 
 A config containing an Entity-only predicate supports frame filtering; its whole-file scope is disabled because
 history does not contain geometry, confidence or other observation data needed to evaluate an arbitrary predicate.

@@ -42,10 +42,10 @@ file format, and the store do not branch on kind.
   returns a different set of playlists.
 - An item shows its `label`, or its default name when the label is empty: a video's file name, a stream's host with
   any `$VARIABLE` expanded, a playlist's names from its resolver. The default name is derived when shown and never
-  saved. Renaming an item to an empty name, or to the name its row already shows while unlabeled, empties its label.
+  saved. An empty name empties its label.
 - A Live Stream Item keeps hosts, usernames, and passwords as entered; a `$VARIABLE` reference is expanded with the
   config's rule only while resolving.
-- `UnreadableItem` stands in for an item this version cannot read. It never resolves, cannot be renamed, and is
+- `UnreadableItem` stands in for an item this version cannot read. It never resolves, cannot be edited, and is
   written back unchanged, so saving never loses it.
 
 ## Bookmarks

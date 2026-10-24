@@ -284,7 +284,6 @@ def test_a_video_row_offers_export_only_once_it_is_open_and_nested_rows_offer_no
         RowAction.OPEN_TO_SIDE,
         RowAction.INFORMATION,
         RowAction.EXPORT_VIDEO,
-        RowAction.RENAME,
         RowAction.REMOVE,
     ]
     assert _offers(closed)[RowAction.EXPORT_VIDEO] != ""
@@ -297,7 +296,7 @@ def test_a_video_row_offers_export_only_once_it_is_open_and_nested_rows_offer_no
     ]
 
 
-def test_a_camera_cannot_open_or_export_and_an_item_that_cannot_be_renamed_says_so() -> None:
+def test_a_camera_cannot_open_or_export_and_an_unreadable_item_cannot_be_edited() -> None:
     store = store_of_items(
         LiveStreamItem(host="192.0.2.10", label="Gate"), UnreadableItem.from_raw({"kind": "radar", "id": "r1"}, "no")
     )
@@ -308,12 +307,10 @@ def test_a_camera_cannot_open_or_export_and_an_item_that_cannot_be_renamed_says_
         RowAction.START_STREAM,
         RowAction.INFORMATION,
         RowAction.EDIT,
-        RowAction.RENAME,
         RowAction.REMOVE,
     ]
     assert RowAction.EDIT not in _offers(unreadable)
     assert _offers(unreadable)[RowAction.OPEN] == "", "opening an item that failed says why, so it is offered"
-    assert _offers(unreadable)[RowAction.RENAME] != ""
     assert _offers(unreadable)[RowAction.REMOVE] == ""
 
 

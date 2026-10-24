@@ -10,6 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from ax_devil.modules.filtering.filter_config import FilterOption, FilterState
+from ax_devil.modules.scene.decoding import UNMAPPED_CLASS, is_unmapped_class
 from ax_devil.modules.scene.model import Entity
 
 
@@ -19,7 +20,6 @@ class ClassificationFilter:
 
     types: frozenset[str]
     include_empty: bool = False
-    include_unknown_prefix: bool = False
     exclude: bool = False
 
     def matches_types(self, types: Sequence[str]) -> bool:
@@ -31,9 +31,9 @@ class ClassificationFilter:
     def _matches_type(self, classification_type: str) -> bool:
         if not classification_type:
             return False
-        if self.include_unknown_prefix and classification_type.startswith("unknown"):
-            return not self.exclude
-        return classification_type not in self.types if self.exclude else classification_type in self.types
+        listed = classification_type in self.types
+        key = classification_type if listed or not is_unmapped_class(classification_type) else UNMAPPED_CLASS
+        return key not in self.types if self.exclude else key in self.types
 
     def __call__(self, entity: Entity, _: FilterState) -> bool:
         """Match any observation's classifications without inspecting other entity data."""
@@ -67,27 +67,14 @@ def make_classification_predicate(
     types: Sequence[str],
     *,
     include_empty: bool = False,
-    include_unknown_prefix: bool | None = None,
 ) -> ClassificationFilter:
     """Create a callable classification policy, optionally including unclassified objects."""
-    return ClassificationFilter(
-        frozenset(t for t in types if t),
-        include_empty=include_empty,
-        include_unknown_prefix=include_unknown_prefix if include_unknown_prefix is not None else include_empty,
-    )
+    return ClassificationFilter(frozenset(t for t in types if t), include_empty=include_empty)
 
 
-def make_other_classification_predicate(
-    excluded: Iterable[str],
-    *,
-    ignore_unknown_prefix: bool = False,
-) -> ClassificationFilter:
+def make_other_classification_predicate(excluded: Iterable[str]) -> ClassificationFilter:
     """Create a callable policy matching classes outside the supplied exclusion set."""
-    return ClassificationFilter(
-        frozenset(item for item in excluded if item),
-        include_unknown_prefix=ignore_unknown_prefix,
-        exclude=True,
-    )
+    return ClassificationFilter(frozenset(item for item in excluded if item), exclude=True)
 
 
 @dataclass(slots=True, frozen=True)
@@ -98,15 +85,12 @@ class ClassFilterSpec:
     label: str
     types: tuple[str, ...]
     include_empty: bool = False
-    include_unknown_prefix: bool | None = None
 
     def build_option(self, sort_key: int) -> FilterOption:
         """Create a FilterOption for this spec."""
-        return make_classification_predicate(
-            self.types,
-            include_empty=self.include_empty,
-            include_unknown_prefix=self.include_unknown_prefix,
-        ).build_option(id=self.option_id, label=self.label, sort_key=sort_key)
+        return make_classification_predicate(self.types, include_empty=self.include_empty).build_option(
+            id=self.option_id, label=self.label, sort_key=sort_key
+        )
 
 
 __all__ = [

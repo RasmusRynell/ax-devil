@@ -61,7 +61,7 @@ def _with_actions(row: WorkspaceBrowserRow, inline: RowAction | None = None) -> 
     """Return *row* offering what its fields allow, and *inline* as its button.
 
     A row that cannot open still offers Open, which says why. Export needs the row open in a viewer, Hide or Unhide
-    is for a row playback can skip, and Rename needs an item that keeps a new name.
+    is for a row playback can skip.
     """
     offered: list[OfferedAction] = []
     hidden_lane = (
@@ -85,7 +85,6 @@ def _with_actions(row: WorkspaceBrowserRow, inline: RowAction | None = None) -> 
     if row.item is not None:
         if row.item.editable:
             offered.append(OfferedAction(RowAction.EDIT))
-        offered.append(OfferedAction(RowAction.RENAME, "" if row.item.renamable else "This item cannot be renamed"))
         offered.append(OfferedAction(RowAction.REMOVE))
     return replace(row, actions=tuple(offered))
 

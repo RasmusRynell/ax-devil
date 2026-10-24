@@ -77,7 +77,7 @@ def test_views_follow_the_rows_and_open_and_close_content_through_the_controller
         [row] = [row for section in controller.sections() for row in section.rows]
         assert row.is_open
 
-        controller.close_item_viewers(row.item.id if row.item else "")
+        center_of(workspace_session).clear_all_widgets()
         assert center_of(workspace_session).get_widget_count() == 0
         [row] = [row for section in controller.sections() for row in section.rows]
         assert not row.is_open

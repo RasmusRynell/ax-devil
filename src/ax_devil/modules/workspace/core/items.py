@@ -161,7 +161,6 @@ class UnreadableItem(WorkspaceItem):
     """
 
     kind: ClassVar[str] = "unreadable"
-    renamable: ClassVar[bool] = False
     id: str = field(default_factory=new_item_id, compare=False)
     raw: Any
     reason: str

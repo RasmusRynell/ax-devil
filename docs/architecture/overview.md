@@ -58,7 +58,7 @@ matches. Live entry points convert persisted overlay strings into `LiveOverlayMo
 
 `WorkspaceViewerFactory` routes by concrete content type to the offline or live viewer widget. Offline viewers receive
 the read-only `ConsiderationQuery` contract, while `WorkspaceStore` remains the mutable state owner.
-`WorkspaceController` places the widget in `SplitView`, tracks which item its Content came from, and closes it when that
+`OpenViewers` places the widget in `SplitView`, tracks which item its Content came from, and closes it when that
 item is removed.
 
 ## Workspace State

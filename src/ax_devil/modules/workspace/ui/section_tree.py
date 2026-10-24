@@ -31,7 +31,7 @@ _HIDDEN_ROLE = Qt.ItemDataRole.UserRole + 1
 _KEY_ACTIONS = {
     Qt.Key.Key_Return: RowAction.OPEN,
     Qt.Key.Key_Enter: RowAction.OPEN,
-    Qt.Key.Key_F2: RowAction.RENAME,
+    Qt.Key.Key_F2: RowAction.EDIT,
     Qt.Key.Key_Delete: RowAction.REMOVE,
 }
 """The action each key asks of the selected row; Ctrl opens to the side."""
@@ -54,7 +54,7 @@ class SectionTree(QTreeWidget):
 
     ``row_action_requested`` carries a row and the ``RowAction`` the user asked of it, however they asked: the row's
     button, its right-click menu (``build_row_menu``), a double-click (Open, or Open to the Side with Ctrl), or a key on
-    the selected row (Enter opens, F2 renames, Delete removes). Asking for an action the row does not offer, or offers
+    the selected row (Enter opens, F2 edits, Delete removes). Asking for an action the row does not offer, or offers
     disabled, is for the receiver to ignore.
     """
 

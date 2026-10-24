@@ -61,7 +61,7 @@ def test_keys_on_the_selected_row_ask_for_its_action_and_on_a_section_caption_fo
     ):
         QTest.keyClick(tree, key, modifier)
 
-    assert requested == [RowAction.OPEN, RowAction.OPEN_TO_SIDE, RowAction.RENAME, RowAction.REMOVE]
+    assert requested == [RowAction.OPEN, RowAction.OPEN_TO_SIDE, RowAction.EDIT, RowAction.REMOVE]
 
     requested.clear()
     item_at(tree, 0).setSelected(False)  # As Ctrl-clicking a selected row does: still current, no longer selected.
@@ -132,7 +132,7 @@ def test_the_menu_splits_open_inspect_visibility_and_edit_actions_with_separator
                 RowAction.INFORMATION,
                 RowAction.EXPORT_VIDEO,
                 RowAction.HIDE,
-                RowAction.RENAME,
+                RowAction.EDIT,
                 RowAction.REMOVE,
             )
         ),
@@ -148,7 +148,7 @@ def test_the_menu_splits_open_inspect_visibility_and_edit_actions_with_separator
         "-",
         "Hide",
         "-",
-        "Rename",
+        "Edit",
         "Remove",
     ]
     bare = replace(entry, actions=(OfferedAction(RowAction.ADD), OfferedAction(RowAction.UNHIDE)))

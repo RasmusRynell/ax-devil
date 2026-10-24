@@ -134,7 +134,7 @@ def test_add_video_selects_the_only_decoder_that_reads_the_overlay(
 
     overlay_edit.setText(str(overlay))
     assert handler.currentData() == "TXT"
-    name_edit = form_field(video_dialog, "Display Name", QLineEdit)
+    name_edit = form_field(video_dialog, "Name", QLineEdit)
     assert name_edit.placeholderText() == "clip.mp4"
     name_edit.setText("Gate camera")
     ok_button(video_dialog).click()
