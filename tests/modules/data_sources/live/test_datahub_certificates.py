@@ -12,7 +12,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.data_sources.live.datahub_client import (
     DataHubWebSocketClient,
     DataHubWebSocketError,
@@ -85,10 +85,7 @@ def test_unverified_https_and_wss_connections(certificate_files: tuple[Path, Pat
         await server.start_server(ssl=server_context)
         try:
             client = DataHubWebSocketClient(
-                endpoint=DeviceEndpoint("127.0.0.1", DeviceProtocol.HTTPS, server.port or 0),
-                username="user",
-                password="pass",
-                timeout_s=10,
+                device=DeviceConnection("127.0.0.1", DeviceProtocol.HTTPS, server.port or 0, "user", "pass"),
                 topic=None,
                 channel_id=None,
             )
@@ -146,10 +143,7 @@ def test_redirects_are_rejected_without_following(
             await source.start_server(ssl=context)
             try:
                 client = DataHubWebSocketClient(
-                    endpoint=DeviceEndpoint("127.0.0.1", DeviceProtocol.HTTPS, source.port or 0),
-                    username="user",
-                    password="pass",
-                    timeout_s=10,
+                    device=DeviceConnection("127.0.0.1", DeviceProtocol.HTTPS, source.port or 0, "user", "pass"),
                     topic=None,
                     channel_id=None,
                 )

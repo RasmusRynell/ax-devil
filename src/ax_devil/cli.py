@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import click
 
-from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.catalog_viewer.cli import catalog
 from ax_devil.modules.plugin_installation.cli import plugins
 from ax_devil.modules.plugin_system import (
@@ -420,8 +420,7 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
 )
 @click.option(
     "--device-api-protocol",
-    type=click.Choice([protocol.value for protocol in DeviceProtocol]),
-    callback=lambda _ctx, _param, value: None if value is None else DeviceProtocol(value),
+    type=click.Choice(DeviceProtocol, case_sensitive=False),
     default=None,
     help="Device API protocol (default: config)",
 )

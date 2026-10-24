@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from dataclasses import dataclass, field
 from threading import Event
 from typing import Any
@@ -11,7 +10,6 @@ import pytest
 from PySide6.QtWidgets import QComboBox, QLabel, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.settings.config_manager import DEFAULT_CONFIG, is_environment_reference
 from ax_devil.modules.workspace.core import LiveOverlayMode
 from ax_devil.modules.workspace.core.intake import WorkspaceDecoderOption, WorkspaceIntake
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
@@ -48,21 +46,9 @@ class DialogOptionProvider:
         return (WorkspaceDecoderOption(handler_type="TEST_HANDLER", display_name="Test Handler"),)
 
 
-def _complete(defaults: dict[str, Any], builtin: dict[str, Any] = DEFAULT_CONFIG["defaults"]) -> dict[str, Any]:
-    """Return *defaults* with the keys it lacks filled from the built-ins as the config does, except env names."""
-    completed = copy.deepcopy(defaults)
-    for key, value in builtin.items():
-        if key in completed and isinstance(value, dict):
-            completed[key] = _complete(completed[key], value)
-        elif key not in completed and not (isinstance(value, str) and is_environment_reference(value)):
-            completed[key] = copy.deepcopy(value)
-    return completed
-
-
 def use_defaults(monkeypatch: pytest.MonkeyPatch, raw: dict[str, Any], resolved: dict[str, Any]) -> None:
     """Replace the dialog's config lookup; the dialog has no other seam for configured defaults."""
-    completed = (_complete(raw), _complete(resolved))
-    monkeypatch.setattr(AddLiveStreamDialog, "_load_defaults", lambda self: completed)
+    monkeypatch.setattr(AddLiveStreamDialog, "_load_defaults", lambda self: (raw, resolved))
 
 
 @dataclass

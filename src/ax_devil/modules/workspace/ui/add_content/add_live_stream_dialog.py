@@ -16,20 +16,18 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.core.cancellation import NEVER
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
 from ax_devil.modules.chrome.tokens import reserve_line
 from ax_devil.modules.settings.config_manager import (
     ConfigManager,
-    builtin_default,
     default_protocol,
+    device_timeout_s,
     expand_environment_reference,
     integer_default,
 )
 from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem
-from ax_devil.modules.workspace.ui.add_content.analytics_discovery import DeviceConnection
-from ax_devil.modules.workspace.ui.add_content.live_stream_defaults import configured_overlay, connection_numbers
 from ax_devil.modules.workspace.ui.add_content.live_transport_pages import TransportPages, apply_env_hint
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 
@@ -80,6 +78,8 @@ class AddLiveStreamDialog(BaseDialog):
             edit.setText(value)
         self._transports.mqtt_port_edit.setText(str(item.mqtt_port))
         self._transports.websocket_channel_id_edit.setText(str(item.websocket_channel_id))
+        self._device_port_edit.setText(str(item.device_port or ""))
+        self._rtsp_port_edit.setText(str(item.rtsp_port))
         self._set_overlay_mode(item.overlay_mode)
         if item.handler_type is not None and self._handler_combo.findData(item.handler_type) < 0:
             self._handler_combo.addItem(f"{item.handler_type} (unavailable)", item.handler_type)
@@ -91,11 +91,17 @@ class AddLiveStreamDialog(BaseDialog):
 
     def _load_defaults(self) -> tuple[dict[str, Any], dict[str, Any]]:
         """Return raw and resolved defaults from config."""
-        raw_defaults = self._config.get_raw("defaults")
-        defaults = self._config.get("defaults")
+        raw_defaults = self._config.get_raw("defaults", {}) or {}
+        defaults = self._config.get("defaults", {}) or {}
         return (
-            {"device": raw_defaults["device"], "live_stream": raw_defaults["live_stream"]},
-            {"device": defaults["device"], "live_stream": defaults["live_stream"]},
+            {
+                "device": raw_defaults.get("device", {}) or {},
+                "live_stream": raw_defaults.get("live_stream", {}) or {},
+            },
+            {
+                "device": defaults.get("device", {}) or {},
+                "live_stream": defaults.get("live_stream", {}) or {},
+            },
         )
 
     def _setup_form(self) -> None:
@@ -105,11 +111,12 @@ class AddLiveStreamDialog(BaseDialog):
 
         raw_device_defaults = self._raw_defaults["device"]
         raw_live_defaults = self._raw_defaults["live_stream"]
-        raw_mqtt_defaults = raw_live_defaults["analytics-mqtt"]
+        raw_mqtt_defaults = raw_live_defaults.get("analytics-mqtt", {}) or {}
         live_defaults = self._defaults["live_stream"]
-        rtsp_defaults = live_defaults["rtsp"]
-        mqtt_defaults = live_defaults["analytics-mqtt"]
-        websocket_defaults = live_defaults["analytics-websocket"]
+        rtsp_defaults = live_defaults.get("rtsp", {}) or {}
+        mqtt_defaults = live_defaults.get("analytics-mqtt", {}) or {}
+        websocket_defaults = live_defaults.get("analytics-websocket", {}) or {}
+        self._rtsp_port_default = integer_default(self._defaults["device"].get("rtsp_port"), 554)
 
         connection_layout = FormLayout()
 
@@ -140,23 +147,28 @@ class AddLiveStreamDialog(BaseDialog):
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         connection_layout.addRow("Password", self._password_edit)
 
-        configured = default_protocol(self._config)
         self._protocol_combo = QComboBox()
-        self._protocol_combo.addItem(f"Default ({configured.label})", None)
+        if self._existing is None:
+            self._protocol_combo.addItem(f"Default ({default_protocol(self._config).name})", None)
         for protocol in DeviceProtocol:
-            self._protocol_combo.addItem(protocol.label, protocol.value)
-        self._protocol_combo.setToolTip("Protocol used to reach the device's web API.")
+            self._protocol_combo.addItem(protocol.name, protocol.value)
+        self._device_port_edit = QLineEdit()
+        self._device_port_edit.setPlaceholderText("Standard")
+        self._device_port_edit.setValidator(QIntValidator(0, 65535, self))
         connection_layout.addRow("Protocol", self._protocol_combo)
+        connection_layout.addRow("Port", self._device_port_edit)
 
         self._camera_head_edit = QLineEdit()
-        self._camera_head_edit.setText(
-            str(integer_default(rtsp_defaults["camera_head"], "defaults.live_stream.rtsp.camera_head"))
-        )
+        self._camera_head_edit.setText(str(integer_default(rtsp_defaults.get("camera_head"), 1)))
         self._camera_head_edit.setValidator(QIntValidator(1, 9999, self))
+        self._rtsp_port_edit = QLineEdit()
+        self._rtsp_port_edit.setPlaceholderText(str(self._rtsp_port_default))
+        self._rtsp_port_edit.setValidator(QIntValidator(1, 65535, self))
         connection_layout.addRow("Camera Head", self._camera_head_edit)
+        connection_layout.addRow("RTSP Port", self._rtsp_port_edit)
 
         self._resolution_edit = QLineEdit()
-        self._resolution_edit.setText(rtsp_defaults["resolution"])
+        self._resolution_edit.setText(rtsp_defaults.get("resolution", "1280x720"))
         connection_layout.addRow("Resolution", self._resolution_edit)
 
         self._stream_url_edit = QLineEdit()
@@ -186,6 +198,7 @@ class AddLiveStreamDialog(BaseDialog):
         self._host_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
         self._username_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
         self._password_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
+        self._device_port_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
         self._protocol_combo.currentIndexChanged.connect(self._invalidate_discovery_for_connection_change)
 
         layout.addWidget(overlay_group)
@@ -201,14 +214,35 @@ class AddLiveStreamDialog(BaseDialog):
         self.add_content_widget(form)
 
         if self._existing is None:
-            self._apply_configured_defaults(live_defaults)
+            self._apply_configured_defaults(rtsp_defaults, mqtt_defaults, websocket_defaults, live_defaults)
         self._on_host_changed(self._host_edit.text())
 
-    def _apply_configured_defaults(self, live_defaults: dict[str, Any]) -> None:
-        installed = {decoder.handler_type for decoder in self._intake.live_overlay_decoder_options()}
-        mode, handler = configured_overlay(live_defaults, installed)
-        self._set_overlay_mode(mode)
-        self._set_handler_selection(handler or "")
+    def _apply_configured_defaults(
+        self,
+        rtsp_defaults: dict[str, Any],
+        mqtt_defaults: dict[str, Any],
+        websocket_defaults: dict[str, Any],
+        live_defaults: dict[str, Any],
+    ) -> None:
+        try:
+            configured_mode = LiveOverlayMode.from_value(str(live_defaults.get("overlay_source", "none")))
+        except ValueError:
+            configured_mode = LiveOverlayMode.NONE
+        configured_handler = None
+        if configured_mode is LiveOverlayMode.RTSP:
+            configured_handler = rtsp_defaults.get("data_stream_handler")
+        elif configured_mode is LiveOverlayMode.MQTT:
+            configured_handler = mqtt_defaults.get("data_stream_handler")
+        elif configured_mode is LiveOverlayMode.WEBSOCKET:
+            configured_handler = websocket_defaults.get("data_stream_handler")
+
+        if configured_handler is not None and self._handler_combo.findData(str(configured_handler)) >= 0:
+            self._set_overlay_mode(configured_mode)
+            self._set_handler_selection(str(configured_handler))
+        else:
+            self._set_overlay_mode(LiveOverlayMode.NONE)
+            self._handler_combo.setCurrentIndex(0)
+
         self._on_overlay_mode_changed(self._overlay_mode_combo.currentIndex())
 
     def _set_overlay_mode(self, mode: LiveOverlayMode) -> None:
@@ -250,19 +284,23 @@ class AddLiveStreamDialog(BaseDialog):
     def _current_device_connection(self) -> DeviceConnection:
         """Return the device connection discovery uses; ``$VARIABLE`` references are expanded for the request only."""
         device_defaults = self._defaults["device"]
-        device_port, _rtsp_port, timeout_s = connection_numbers(device_defaults, self._existing)
-        host = self._text_or_default(
-            self._host_edit, device_defaults.get("host", ""), saved=self._existing.host if self._existing else ""
-        )
         return DeviceConnection(
-            DeviceEndpoint(expand_environment_reference(host), self._protocol(), device_port),
+            expand_environment_reference(
+                self._text_or_default(
+                    self._host_edit,
+                    device_defaults.get("host", ""),
+                    saved=self._existing.host if self._existing else "",
+                )
+            ),
+            self._protocol(),
+            int(self._device_port_edit.text() or 0),
             expand_environment_reference(
                 self._text_or_default(self._username_edit, device_defaults.get("username", ""))
             ),
             expand_environment_reference(
                 self._text_or_default(self._password_edit, device_defaults.get("password", ""))
             ),
-            timeout_s,
+            device_timeout_s(self._config),
         )
 
     def _invalidate_discovery_for_connection_change(self) -> None:
@@ -296,7 +334,7 @@ class AddLiveStreamDialog(BaseDialog):
     def _build_result(self) -> ItemResolution:
         """Return the stream item the form describes, resolved, or raise ``ValueError`` naming what to fix."""
         raw_device_defaults = self._raw_defaults["device"]
-        raw_mqtt_defaults = self._raw_defaults["live_stream"]["analytics-mqtt"]
+        raw_mqtt_defaults = self._raw_defaults["live_stream"].get("analytics-mqtt", {}) or {}
 
         host = self._text_or_default(
             self._host_edit,
@@ -313,9 +351,7 @@ class AddLiveStreamDialog(BaseDialog):
         if mode.requires_handler and not handler_type:
             raise ValueError(f"Select a handler type for {mode.display_name} overlays.")
 
-        camera_head = self._camera_head_edit.text().strip() or str(
-            builtin_default("defaults.live_stream.rtsp.camera_head")
-        )
+        camera_head = self._camera_head_edit.text().strip() or "1"
         if not camera_head.isdigit():
             raise ValueError("Camera Head must be a positive integer.")
 
@@ -327,14 +363,13 @@ class AddLiveStreamDialog(BaseDialog):
             self._stream_url_edit, "", saved=(self._existing.stream_url or "") if self._existing else ""
         )
         saved_empty_url = self._existing is not None and self._existing.stream_url == ""
-        device_port, rtsp_port, connection_timeout_s = connection_numbers(self._defaults["device"], self._existing)
         item = LiveStreamItem(
             label=self._name_edit.text().strip(),
             host=host,
             username=self._text_or_default(self._username_edit, str(raw_device_defaults.get("username") or "")),
             password=self._text_or_default(self._password_edit, str(raw_device_defaults.get("password") or "")),
             camera_head=int(camera_head),
-            resolution=self._resolution_edit.text().strip() or builtin_default("defaults.live_stream.rtsp.resolution"),
+            resolution=self._resolution_edit.text().strip() or "1280x720",
             stream_url=stream_url if stream_url or saved_empty_url else None,
             overlay_mode=mode,
             handler_type=handler_type,
@@ -351,12 +386,11 @@ class AddLiveStreamDialog(BaseDialog):
                 self._transports.mqtt_password_edit, str(raw_mqtt_defaults.get("broker_password") or "")
             ),
             analytics_data_source_key=(str(analytics_data_source_key) if analytics_data_source_key is not None else ""),
+            device_api_protocol=self._protocol(),
             websocket_topic=websocket_topic,
             websocket_channel_id=self._transports.websocket_channel_id(),
-            device_api_protocol=self._protocol(),
-            device_port=device_port,
-            rtsp_port=rtsp_port,
-            connection_timeout_s=connection_timeout_s,
+            device_port=int(self._device_port_edit.text() or 0),
+            rtsp_port=int(self._rtsp_port_edit.text() or 0) or self._rtsp_port_default,
         )
         if self._existing is not None:
             item = replace(item, id=self._existing.id)

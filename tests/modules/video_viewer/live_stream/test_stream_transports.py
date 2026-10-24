@@ -6,12 +6,11 @@ from dataclasses import replace
 
 import pytest
 
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.workspace.core import (
     LiveMQTTOverlaySourceSpec,
-    LiveRTSPStreamSpec,
     LiveWebSocketOverlaySourceSpec,
 )
 from tests.helpers.live_stream import (
@@ -69,29 +68,18 @@ def test_separate_overlay_spec_opens_its_own_transport_with_device_settings(
     overlay_spec: OverlaySpec,
     expected_options: dict[str, object],
 ) -> None:
-    stream = LiveRTSPStreamSpec(
-        host="camera.local",
-        username="root",
-        password="pass",
-        device_api_protocol=DeviceProtocol.HTTP,
-        device_port=8080,
-        rtsp_port=8554,
-        connection_timeout_s=7,
-    )
-    controller = make_controller(replace(make_live_content(overlay_spec), source_spec=stream))
+    content = make_live_content(overlay_spec)
+    stream = replace(content.source_spec, device_api_protocol=DeviceProtocol.HTTP, device_port=8080, rtsp_port=8554)
+    controller = make_controller(replace(content, source_spec=stream))
 
     (video,), (overlay,) = live_transports
     assert "analytics=" not in video.url
     assert video.url.startswith("rtsp://root:pass@camera.local:8554/")
-    assert video.options["timeout_s"] == 7
     assert (
         overlay.options.items()
         >= {
             **expected_options,
-            "device": DeviceEndpoint("camera.local", DeviceProtocol.HTTP, 8080),
-            "device_username": "root",
-            "device_password": "pass",
-            "timeout_s": 7,
+            "device": DeviceConnection("camera.local", DeviceProtocol.HTTP, 8080, "root", "pass"),
             "decoder": "decoder:LIVE",
             "handler_type": "LIVE",
             "filter_factory": "filters:LIVE",

@@ -10,7 +10,7 @@ from functools import partial
 from PySide6.QtCore import QObject, QTimer
 
 from ax_devil.core.cancellation import CancelToken
-from ax_devil.core.device_endpoint import DeviceEndpoint
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
@@ -20,7 +20,7 @@ from ax_devil.modules.device_discovery.network_scan import (
     parse_scan_targets,
     scan_network,
 )
-from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.settings.config_manager import ConfigManager, default_protocol
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import (
@@ -50,14 +50,15 @@ Found = Callable[[DiscoveredCamera], None]
 Scan = Callable[[tuple[str, ...], tuple[Login, ...], Found, CancelToken, bool], Sequence[DiscoveredCamera]]
 """Search addresses, trying the logins in order on each device found, and report each find; stop when the token is
 cancelled."""
-Check = Callable[[DeviceEndpoint, Login, CancelToken], DiscoveredCamera | None]
-"""Sign in to the camera at an endpoint with a login, and return what that told, or None when no Axis device answers."""
+Check = Callable[[DeviceConnection, Login, CancelToken], DiscoveredCamera | None]
+"""Sign in to the camera at a connection with a login, and return what that told, or None if no Axis device answers."""
 
 
 def _scan_network(
     targets: tuple[str, ...], logins: tuple[Login, ...], found: Found, token: CancelToken, low_impact: bool
 ) -> list[DiscoveredCamera]:
-    return scan_network(targets=targets, logins=logins, found=found, token=token, low_impact=low_impact)
+    prefer = default_protocol(ConfigManager())
+    return scan_network(targets=targets, logins=logins, found=found, token=token, low_impact=low_impact, prefer=prefer)
 
 
 def _run_scan(
@@ -66,13 +67,15 @@ def _run_scan(
     return tuple(scan(targets, logins, job.report, job.token, low_impact))
 
 
-def _run_check(check: Check, endpoint: DeviceEndpoint, login: Login, job: JobContext[None]) -> DiscoveredCamera | None:
-    return check(endpoint, login, job.token)
+def _run_check(
+    check: Check, connection: DeviceConnection, login: Login, job: JobContext[None]
+) -> DiscoveredCamera | None:
+    return check(connection, login, job.token)
 
 
-def _access_request(item: WorkspaceItem) -> tuple[DeviceEndpoint, Login] | None:
-    """Return the endpoint, as the item connects to it, and the login to check *item*'s access with, or None when it
-    has no IPv4 address or no username to try."""
+def _access_request(item: WorkspaceItem) -> tuple[DeviceConnection, Login] | None:
+    """Return the connection, as the item reaches the device, and the login to check *item*'s access with, or None
+    when it has no IPv4 address or no username to try."""
     if not isinstance(item, LiveStreamItem):
         return None
     values = item.expanded()
@@ -80,8 +83,8 @@ def _access_request(item: WorkspaceItem) -> tuple[DeviceEndpoint, Login] | None:
         ipaddress.IPv4Address(values.host)
     except ValueError:
         return None
-    endpoint = DeviceEndpoint(values.host, item.device_api_protocol, item.device_port)
-    return (endpoint, Login(item.username, item.password)) if values.username else None
+    connection = DeviceConnection(values.host, item.device_api_protocol, item.device_port)
+    return (connection, Login(item.username, item.password)) if values.username else None
 
 
 def _defaults() -> tuple[str, tuple[Login, ...]]:
@@ -107,13 +110,12 @@ def _streaming(sections: Sections) -> str:
 
 
 def _camera_item(camera: DiscoveredCamera) -> LiveStreamItem:
-    """Return the item for *camera* with the stream defaults, but the protocol it answered over unless it answered over
-    both, and the login that signed in to it if one did."""
+    """Return the item for *camera* with the stream defaults, but the protocol it answered over, and the login that
+    signed in to it if one did."""
     login = camera.login
     return live_stream_item_from_defaults(
         host=camera.host,
         device_api_protocol=camera.protocol,
-        device_port=0,  # The scan found the standard port of that protocol.
         username=login.username if login is not None else None,
         password=login.password if login is not None else None,
     )
@@ -306,7 +308,9 @@ class LiveViewController(QObject):
                 on_error=lambda error: logger.debug(f"Camera access check failed: {error}"),
             )
 
-    def _on_checked(self, item_id: str, request: tuple[DeviceEndpoint, Login], camera: DiscoveredCamera | None) -> None:
+    def _on_checked(
+        self, item_id: str, request: tuple[DeviceConnection, Login], camera: DiscoveredCamera | None
+    ) -> None:
         """Keep what a check found, unless the item was removed or replaced with another address or login meanwhile."""
         item = self._store.workspace.item(item_id) if self._store.workspace.has_item(item_id) else None
         if camera is not None and item is not None and _access_request(item) == request:

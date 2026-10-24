@@ -7,7 +7,6 @@ import json
 import queue
 import threading
 from collections.abc import Callable, Collection, Iterator, Sequence
-from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from typing import Any
@@ -17,7 +16,7 @@ from ax_devil_device_api import DeviceConfig
 from ax_devil_device_api.core.config import AuthMethod
 
 from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.device_discovery import network_scan
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
@@ -45,14 +44,13 @@ class _Device:
     everything if *axis* is false.
 
     Signed-in requests are challenged for HTTP Digest; a Digest answer for the user *accepts* is accepted, after the
-    first *turned_away* answers are turned away with HTTP 429, as a device limiting sign-in attempts does. With
-    *redirect*, everything is redirected there instead.
+    first *turned_away* answers are turned away with HTTP 429, as a device limiting sign-in attempts does. A device
+    with *redirect* set sends every request there.
     """
 
-    def __init__(
-        self, axis: bool, accepts: str | None, turned_away: int, properties: dict[str, str], redirect: str | None = None
-    ) -> None:
+    def __init__(self, axis: bool, accepts: str | None, turned_away: int, properties: dict[str, str]) -> None:
         self.authorizations: list[str] = []
+        self.redirect = ""
         device = self
         turn_away = [turned_away]
 
@@ -62,8 +60,8 @@ class _Device:
                 if authorization:
                     device.authorizations.append(authorization)
                 request = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-                if redirect:
-                    self._answer(307, {}, ("Location", redirect))
+                if device.redirect:
+                    self._answer(307, {}, ("Location", device.redirect))
                 elif not axis:
                     self._answer(404, {})
                 elif self.path == "/axis-cgi/systemready.cgi":
@@ -109,14 +107,9 @@ def serve(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., _Device]]:
     monkeypatch.setattr(network_scan, "_RATE_LIMIT_RETRY_SECONDS", (0.0, 0.0))
 
     def start(
-        *,
-        axis: bool,
-        accepts: str | None = "root",
-        turned_away: int = 0,
-        properties: dict[str, str] = _UNRESTRICTED,
-        redirect: str | None = None,
+        *, axis: bool, accepts: str | None = "root", turned_away: int = 0, properties: dict[str, str] = _UNRESTRICTED
     ) -> _Device:
-        device = _Device(axis, accepts, turned_away, properties, redirect)
+        device = _Device(axis, accepts, turned_away, properties)
         devices.append(device)
         ports[device.port] = DeviceProtocol.HTTP
         return device
@@ -138,7 +131,9 @@ def test_low_impact_scan_runs_fewer_probes_at_once_and_still_finds_every_device(
     def workers_alive() -> int:
         return sum(thread.name == "network-scan" for thread in threading.enumerate())
 
-    def identify(host: str, ports: Collection[int], logins: Sequence[Login], token: CancelToken) -> DiscoveredCamera:
+    def identify(
+        host: str, ports: Collection[int], logins: Sequence[Login], prefer: DeviceProtocol, token: CancelToken
+    ) -> DiscoveredCamera:
         nonlocal active, arrived, peak
         with gate:
             active += 1
@@ -172,18 +167,12 @@ def test_an_axis_device_is_found_with_what_it_gives_without_login(serve: Callabl
 
     cameras = scan_network(targets=["127.0.0.1"], found=found.append)
 
+    http = DeviceProtocol.HTTP
     assert cameras == [
         DiscoveredCamera(
-            "127.0.0.1",
-            "AXIS P3265-LVE",
-            "ACCC8E000001",
-            "12.6.85",
-            "Dome Camera",
-            93600.0,
-            protocols=frozenset({DeviceProtocol.HTTP}),
+            "127.0.0.1", "AXIS P3265-LVE", "ACCC8E000001", "12.6.85", "Dome Camera", 93600.0, protocol=http
         )
     ]
-    assert cameras[0].protocol is DeviceProtocol.HTTP
     assert found == cameras, "each device is reported as soon as it is identified"
     assert cameras[0].uptime == "1d 2h"
 
@@ -256,7 +245,7 @@ def test_no_login_is_sent_once_the_scan_is_cancelled(serve: Callable[..., _Devic
     with pytest.raises(Cancelled):
         network_scan._signed_in(
             DiscoveredCamera("127.0.0.1", "m", "s"),
-            DeviceEndpoint("127.0.0.1", DeviceProtocol.HTTP, device.port),
+            DeviceConnection("127.0.0.1", DeviceProtocol.HTTP, device.port),
             [Login("root", "secret")],
             cancelled,
         )
@@ -341,26 +330,23 @@ def test_another_web_server_is_not_listed_and_does_not_hide_the_axis_one(serve: 
     assert [camera.model for camera in scan_network(targets=["127.0.0.1"])] == ["AXIS P3265-LVE"]
 
 
-@pytest.mark.parametrize(
-    ("protocol", "port", "url"),
-    [
-        (DeviceProtocol.HTTP, 443, "http://cam:443"),
-        (DeviceProtocol.HTTPS, 80, "https://cam:80"),
-        (DeviceProtocol.HTTP, 0, "http://cam"),
-        (DeviceProtocol.HTTPS, 443, "https://cam"),
-    ],
-)
-def test_the_configured_port_is_the_one_the_device_api_asks(protocol: DeviceProtocol, port: int, url: str) -> None:
-    assert DeviceEndpoint("cam", protocol, port).device_config("", "", timeout_s=1).get_base_url() == url
+@pytest.mark.parametrize("prefer", DeviceProtocol)
+def test_a_device_answering_over_both_protocols_is_found_over_the_preferred_one(
+    monkeypatch: pytest.MonkeyPatch, prefer: DeviceProtocol
+) -> None:
+    monkeypatch.setattr(network_scan, "_open_ports", lambda hosts: {host: {80, 443} for host in hosts})
+    monkeypatch.setattr(network_scan, "_described", lambda c: DiscoveredCamera(c.host, "m", "s", protocol=c.protocol))
+
+    [camera] = scan_network(targets=["192.0.2.1"], prefer=prefer)
+
+    assert camera.protocol is prefer
 
 
-def test_a_protocol_that_only_redirects_elsewhere_is_not_recorded_as_answering(serve: Callable[..., _Device]) -> None:
-    elsewhere = _Device(True, "root", 0, _UNRESTRICTED)
-    try:
-        serve(axis=False, redirect=f"http://127.0.0.1:{elsewhere.port}/axis-cgi/basicdeviceinfo.cgi")
-        assert scan_network(targets=["127.0.0.1"]) == []
-    finally:
-        elsewhere.close()
+def test_a_device_that_only_redirects_elsewhere_does_not_answer(serve: Callable[..., _Device]) -> None:
+    elsewhere, redirecting = serve(axis=True), serve(axis=False)
+    redirecting.redirect = f"http://127.0.0.1:{elsewhere.port}/axis-cgi/basicdeviceinfo.cgi"
+
+    assert check_device(DeviceConnection("127.0.0.1", DeviceProtocol.HTTP, redirecting.port), Login("root", "")) is None
 
 
 @pytest.mark.parametrize(
@@ -396,7 +382,7 @@ def test_signing_in_over_https_asks_for_digest_not_basic(monkeypatch: pytest.Mon
 
     camera = network_scan._signed_in(
         DiscoveredCamera("127.0.0.1", "", "", ""),
-        DeviceEndpoint("127.0.0.1", DeviceProtocol.HTTPS),
+        DeviceConnection("127.0.0.1", DeviceProtocol.HTTPS),
         [Login("root", "secret")],
         NEVER,
     )
@@ -413,22 +399,16 @@ def test_signing_in_goes_through_the_endpoint_that_identified_the_device(
 
     [camera] = scan_network(targets=["127.0.0.1"], logins=[Login("root", "secret")])
 
-    assert camera.sign_in is SignIn.SIGNED_IN
+    assert (camera.sign_in, camera.protocol) == (SignIn.SIGNED_IN, DeviceProtocol.HTTP)
     assert axis.authorizations
 
 
-def test_checking_a_device_signs_in_at_the_given_port_without_scanning(
-    serve: Callable[..., _Device], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_checking_a_device_signs_in_at_the_given_port(serve: Callable[..., _Device]) -> None:
     device = serve(axis=True)
-    monkeypatch.setattr(network_scan, "_SCAN_PORTS", {})  # Nothing to scan: only the endpoint given is asked.
-    endpoint = DeviceEndpoint("127.0.0.1", DeviceProtocol.HTTP, device.port)
 
-    camera = check_device(endpoint, Login("root", "secret"))
+    camera = check_device(DeviceConnection("127.0.0.1", DeviceProtocol.HTTP, device.port), Login("root", "secret"))
 
-    assert camera is not None
-    assert (camera.sign_in, camera.protocol, camera.architecture) == (SignIn.SIGNED_IN, DeviceProtocol.HTTP, "aarch64")
-    assert check_device(replace(endpoint, port=device.port + 1), Login("root", "secret")) is None
+    assert camera is not None and camera.sign_in is SignIn.SIGNED_IN
 
 
 def test_credentials_go_only_to_identified_axis_devices_and_only_when_given(serve: Callable[..., _Device]) -> None:

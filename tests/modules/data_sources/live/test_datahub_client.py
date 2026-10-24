@@ -10,7 +10,7 @@ import aiohttp
 import pytest
 from multidict import CIMultiDict
 
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.data_sources.live.datahub_client import (
     DataHubTopicSample,
     DataHubWebSocketClient,
@@ -114,10 +114,7 @@ def _client(
     timeout_s: float = 10,
 ) -> DataHubWebSocketClient:
     return DataHubWebSocketClient(
-        endpoint=DeviceEndpoint("camera.local", protocol, port),
-        username="root",
-        password="pass",
-        timeout_s=timeout_s,
+        device=DeviceConnection("camera.local", protocol, port, "root", "pass", timeout_s),
         topic=topic,
         channel_id=None if topic is None else 1,
         session_factory=lambda: session,
@@ -170,10 +167,7 @@ def test_discover_datahub_topics_uses_list_topics_without_subscribing() -> None:
 
     async def exercise() -> tuple[str, ...]:
         return await discover_datahub_topics(
-            endpoint=DeviceEndpoint("camera.local", DeviceProtocol.HTTPS),
-            username="root",
-            password="pass",
-            timeout_s=10,
+            device=DeviceConnection("camera.local", DeviceProtocol.HTTPS, 0, "root", "pass"),
             session_factory=lambda: session,
         )
 

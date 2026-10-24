@@ -33,7 +33,7 @@ entries when it loads, unless it has more than 200; expand a longer one with its
 
 - **Live**: a camera streams while its viewer is open, and starts only with **Start stream**, never by
   double-clicking it. It can start before ax-devil has checked its login. With sign-in on, a camera whose saved login
-  is refused loses **Start stream** and shows why on hover. That check uses the camera's own protocol and port.
+  is refused loses **Start stream** and shows why on hover.
   - A background scan starts at launch; **Scan settings** takes addresses and ranges such as `192.168.1.0/24`, and an
     empty field searches this computer's `/24` network. Startup scanning and sign-in can each be turned off in
     [Settings → Network scan](settings.md).
@@ -41,8 +41,8 @@ entries when it loads, unless it has more than 200; expand a longer one with its
     Network scan**) on each camera until one works. Logins go only to devices that answered as Axis devices, and only
     as an HTTP Digest answer, never as a plain password.
   - **Add** puts a signed-in camera in the workspace with the **Settings → Stream defaults** and the login that worked,
-    and **Add manually** does the same for a camera you enter. Neither starts the stream. A camera that answered on
-    one protocol is added with it, and one that answered on both gets the default protocol.
+    and **Add manually** does the same for a camera you enter. Neither starts the stream. A scanned camera keeps the
+    protocol it answered on; the default protocol is tried first.
 - **Offline**: videos and playlists follow their overlay files and a playlist's folders: when a tool regenerates or
   adds files, the rows update by themselves and open viewers keep what they show. Known issue: changes on network
   shares (NFS, SMB) are not noticed.
@@ -64,8 +64,8 @@ By default, credentials come from environment variables, which keeps them out of
 **Stream defaults** or **Analytics** text field accepts a `$VARIABLE` reference in place of a value. Command-line
 options override both.
 
-DataHub follows the stream's protocol (HTTPS/WSS or HTTP/WS) with certificate verification disabled: HTTPS traffic is
-encrypted, but the device identity is not authenticated. Use it only on trusted camera networks. There is no automatic
+DataHub defaults to HTTPS/WSS with certificate verification disabled: traffic is encrypted, but the device
+identity is not authenticated. Use it only on trusted camera networks. HTTP/WS is selectable with no automatic
 fallback, and redirects are rejected, so connect directly to the device host. This applies to DataHub only,
 not RTSP or MQTT.
 

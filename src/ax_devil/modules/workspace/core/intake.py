@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ax_devil.core.device_endpoint import DeviceProtocol
-from ax_devil.modules.settings.config_manager import builtin_default
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.workspace.core.content import LiveVideoContent, OverlayContent, SeekableVideoContent
 from ax_devil.modules.workspace.core.source_specs import (
     FileOverlaySourceSpec,
@@ -22,6 +21,8 @@ from ax_devil.modules.workspace.core.source_specs import (
 )
 
 VIDEO_FILE_SUFFIXES = (".mp4", ".avi", ".mkv", ".mov")
+_UNADDRESSABLE_DEVICE_PORTS = {(DeviceProtocol.HTTP, 443), (DeviceProtocol.HTTPS, 80)}
+"""Combinations the device API library cannot reach: it drops ports 80 and 443 from its URLs whatever the protocol."""
 
 
 def is_video_file(path: Path) -> bool:
@@ -107,23 +108,22 @@ class WorkspaceIntake:
         host: str,
         username: str,
         password: str,
-        device_api_protocol: DeviceProtocol,
-        device_port: int,
-        rtsp_port: int,
-        connection_timeout_s: int,
-        camera_head: int = builtin_default("defaults.live_stream.rtsp.camera_head"),
-        resolution: str = builtin_default("defaults.live_stream.rtsp.resolution"),
+        camera_head: int = 1,
+        resolution: str = "1280x720",
         display_name: str,
         stream_url: str | None = None,
         overlay_mode: LiveOverlayMode = LiveOverlayMode.NONE,
         handler_type: str | None = None,
         mqtt_host: str = "",
-        mqtt_port: int = builtin_default("defaults.live_stream.analytics-mqtt.broker_port"),
+        mqtt_port: int = 1883,
         mqtt_username: str = "",
         mqtt_password: str = "",
         analytics_data_source_key: str = "",
         websocket_topic: str = "",
-        websocket_channel_id: int = builtin_default("defaults.live_stream.analytics-websocket.channel_id"),
+        websocket_channel_id: int = 1,
+        device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS,
+        device_port: int = 0,
+        rtsp_port: int = 554,
     ) -> LiveVideoContent:
         """Create live Workspace video content after validating overlay selection."""
         if not host:
@@ -131,11 +131,11 @@ class WorkspaceIntake:
         if camera_head < 1:
             raise ValueError("Camera Head must be a positive integer.")
         if not 0 <= device_port <= 65535:
-            raise ValueError("Device port must be between 0 and 65535.")
+            raise ValueError("Port must be between 0 and 65535.")
         if not 1 <= rtsp_port <= 65535:
-            raise ValueError("RTSP port must be between 1 and 65535.")
-        if connection_timeout_s < 1:
-            raise ValueError("Connection timeout must be at least 1 second.")
+            raise ValueError("RTSP Port must be between 1 and 65535.")
+        if (device_api_protocol, device_port) in _UNADDRESSABLE_DEVICE_PORTS:
+            raise ValueError(f"{device_api_protocol.name} cannot use port {device_port}; use the standard port.")
         if overlay_mode is LiveOverlayMode.MQTT:
             if not mqtt_host:
                 raise ValueError("MQTT Host is required for MQTT overlay mode.")
@@ -163,7 +163,6 @@ class WorkspaceIntake:
             device_api_protocol=device_api_protocol,
             device_port=device_port,
             rtsp_port=rtsp_port,
-            connection_timeout_s=connection_timeout_s,
         )
         overlays: tuple[OverlayContent, ...] = ()
 

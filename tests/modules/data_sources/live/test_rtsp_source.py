@@ -104,9 +104,8 @@ def _sample(pixels: np.ndarray[Any, np.dtype[np.uint8]], capture_ns: int | None 
 @pytest.mark.parametrize("embedded", [False, True])
 def test_frames_and_optional_overlays_use_one_session(qtbot: QtBot, sessions: list[_Session], embedded: bool) -> None:
     """Both modes retain capture timestamps, image ownership, and independent arrivals."""
-    source = RTSPSource(
-        "rtsp://example", overlay=RTSPOverlayDecoder(_Decoder(), "test") if embedded else None, timeout_s=10
-    )
+    overlay = RTSPOverlayDecoder(_Decoder(), "test") if embedded else None
+    source = RTSPSource("rtsp://example", overlay=overlay, timeout_s=10)
     session = sessions[0]
     frames: list[FrameData] = []
     overlays: list[OverlayData] = []

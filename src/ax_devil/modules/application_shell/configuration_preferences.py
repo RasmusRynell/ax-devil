@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.device_discovery.network_scan import Login, parse_scan_targets
 from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
@@ -21,8 +21,8 @@ from ax_devil.modules.workspace.core.source_specs import LiveOverlayMode
 class ConfigField:
     """One supported preference with its label, choices and validation.
 
-    A *toggle* field is shown as one radio button per choice and always holds one of them, never an environment
-    reference.
+    A *toggle* field is shown as a segmented toggle with one button per choice and always holds one of them, never an
+    environment reference.
     """
 
     path: str
@@ -91,7 +91,7 @@ NETWORK_SCAN_SECTION = ConfigSection(
 DEVICE_PROTOCOL_FIELD = ConfigField(
     "defaults.device.protocol",
     "Protocol",
-    choices=tuple((protocol.label, protocol.value) for protocol in DeviceProtocol),
+    choices=tuple((protocol.name, protocol.value) for protocol in DeviceProtocol),
     toggle=True,
 )
 """The protocol new streams reach their device with; Quick Setup also saves it."""
@@ -104,7 +104,6 @@ STREAM_SECTIONS = (
             ConfigField("defaults.device.host", "Host"),
             ConfigField("defaults.device.username", "Username"),
             ConfigField("defaults.device.password", "Password", secret=True),
-            ConfigField("defaults.device.port", "Device port (0 = standard)", minimum=0, maximum=65535),
             ConfigField("defaults.device.rtsp_port", "RTSP port", minimum=1, maximum=65535),
             ConfigField("defaults.device.connection_timeout_s", "Connection timeout (seconds)", minimum=1, maximum=600),
         ),

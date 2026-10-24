@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ax_devil.core.atomic_file import write_atomically
-from ax_devil.core.device_endpoint import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.paths import (
@@ -53,7 +53,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "username": "$AX_DEVIL_TARGET_USER",
             "password": "$AX_DEVIL_TARGET_PASS",
             "protocol": DeviceProtocol.HTTPS.value,
-            "port": 0,
             "rtsp_port": 554,
             "connection_timeout_s": 10,
         },
@@ -137,33 +136,28 @@ def default_hint(raw_value: str, *, mask: bool = False) -> str:
     return f"{display}  (via {raw_value})" if is_environment_reference(raw_value) else display
 
 
-def builtin_default(path: str) -> Any:
-    """Return the built-in value at dotted *path* in the default config, such as ``defaults.device.rtsp_port``."""
-    value: Any = DEFAULT_CONFIG
-    for key in path.split("."):
-        value = value[key]
-    return value
-
-
-def integer_default(value: object, path: str) -> int:
-    """Read a resolved numeric default, falling back to the built-in value at *path* if it is missing or invalid."""
+def integer_default(value: object, default: int) -> int:
+    """Read a resolved numeric default, falling back if its environment value is missing or invalid."""
     try:
         return int(str(value))
     except ValueError:
-        fallback = int(builtin_default(path))
-        logger.warning(f"Invalid numeric default for {path}; using {fallback}.")
-        return fallback
+        logger.warning(f"Invalid numeric default; using {default}.")
+        return default
+
+
+def device_timeout_s(config: ConfigManager) -> int:
+    """Return the seconds to wait for a device: read when a stream connects, never stored per stream."""
+    return integer_default(config.get("defaults", {})["device"]["connection_timeout_s"], 10)
 
 
 def default_protocol(config: ConfigManager) -> DeviceProtocol:
-    """Return the configured default device protocol, or the built-in one if the saved value is invalid."""
+    """Return the configured default device protocol, or HTTPS if the saved value is invalid."""
     value = config.get("defaults", {})["device"]["protocol"]
     try:
         return DeviceProtocol(value)
     except ValueError:
-        fallback = DeviceProtocol(builtin_default("defaults.device.protocol"))
-        logger.warning(f"Invalid default device protocol {value!r}; using {fallback.value}.")
-        return fallback
+        logger.warning(f"Invalid default device protocol {value!r}; using https.")
+        return DeviceProtocol.HTTPS
 
 
 def _merge_defaults(config: dict[str, Any], defaults: Mapping[str, Any], *, key_path: str = "config") -> dict[str, Any]:

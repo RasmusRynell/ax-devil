@@ -1,7 +1,7 @@
 """Drive the Settings dialog through the controls and buttons the user sees."""
 
 import pytest
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QLabel, QLineEdit, QRadioButton
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QLabel, QLineEdit
 
 from ax_devil.modules.application_shell.configuration_editor import ConfigurationEditor
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
@@ -25,11 +25,6 @@ def choose(combo: QComboBox, value: object) -> None:
 def checkbox(dialog: SettingsDialog, text: str) -> QCheckBox:
     """Return the check box labeled *text*."""
     return next(box for box in dialog.findChildren(QCheckBox) if box.text() == text)
-
-
-def radio(dialog: SettingsDialog, text: str) -> QRadioButton:
-    """Return the radio button labeled *text*."""
-    return next(button for button in dialog.findChildren(QRadioButton) if button.text() == text)
 
 
 def config_editor(dialog: SettingsDialog, path: str) -> ConfigurationEditor:

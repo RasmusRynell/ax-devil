@@ -4,27 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
 from functools import partial
 
 from PySide6.QtCore import QObject, Signal
 
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest, background_jobs
 from ax_devil.modules.data_sources.live.datahub_client import discover_datahub_topics
 from ax_devil.modules.data_sources.live.mqtt_discovery import list_mqtt_data_source_keys
-from ax_devil.modules.settings.config_manager import builtin_default
-
-
-@dataclass(frozen=True)
-class DeviceConnection:
-    """The device and credentials analytics choices are discovered from."""
-
-    endpoint: DeviceEndpoint
-    username: str
-    password: str
-    timeout_s: float
-
 
 FetchChoices = Callable[[DeviceConnection], tuple[str, ...]]
 
@@ -52,12 +39,7 @@ class AnalyticsChoiceLoader(QObject):
         self.loaded = False
         self.status = f"Select overlay mode to load {label}"
         self._fetch = fetch
-        self._connection = DeviceConnection(
-            DeviceEndpoint("", DeviceProtocol(builtin_default("defaults.device.protocol"))),
-            "",
-            "",
-            builtin_default("defaults.device.connection_timeout_s"),
-        )
+        self._connection = DeviceConnection("", DeviceProtocol.HTTPS)
         self._request = LatestRequest(self)
         self._jobs = (jobs or background_jobs("discovery")).scope(self)
         self._closed = False
@@ -83,7 +65,7 @@ class AnalyticsChoiceLoader(QObject):
         """Fetch choices for the current connection without blocking the UI."""
         if self.loading or self._closed:
             return
-        if not self._connection.endpoint.host:
+        if not self._connection.host:
             self.status = f"Enter a device host to load {self.label}"
             self.changed.emit()
             return
@@ -119,18 +101,9 @@ class AnalyticsChoiceLoader(QObject):
 
 def list_datahub_topics(connection: DeviceConnection) -> tuple[str, ...]:
     """Return available DataHub topic names from a device."""
-    return asyncio.run(
-        discover_datahub_topics(
-            endpoint=connection.endpoint,
-            username=connection.username,
-            password=connection.password,
-            timeout_s=connection.timeout_s,
-        )
-    )
+    return asyncio.run(discover_datahub_topics(device=connection))
 
 
 def list_analytics_data_source_keys(connection: DeviceConnection) -> tuple[str, ...]:
     """Return available analytics data-source keys from a device."""
-    return list_mqtt_data_source_keys(
-        connection.endpoint.device_config(connection.username, connection.password, timeout_s=connection.timeout_s)
-    )
+    return list_mqtt_data_source_keys(connection.device_config())

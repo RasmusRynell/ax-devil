@@ -2,7 +2,7 @@
 
 A scan identifies devices from what they give without login: the unrestricted ``basicdeviceinfo.cgi`` properties and
 ``systemready.cgi``. Only when given logins does it send credentials, and only to devices that already answered as
-Axis devices, through the endpoint that identified them, as an HTTP Digest answer and never as a plain password.
+Axis devices, over the protocol that identified them, as an HTTP Digest answer and never as a plain password.
 """
 
 from __future__ import annotations
@@ -27,15 +27,14 @@ from ax_devil_device_api.core.config import AuthMethod
 from ax_devil_device_api.utils.errors import AuthenticationError
 
 from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
-from ax_devil.core.device_endpoint import DeviceEndpoint, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 MAX_SCAN_TARGETS = 4096
-# Tried in this order on a device with both open; plain HTTP answers faster and needs no credentials here.
-_SCAN_PORTS: dict[int, DeviceProtocol] = {80: DeviceProtocol.HTTP, 443: DeviceProtocol.HTTPS}
+_SCAN_PORTS = {443: DeviceProtocol.HTTPS, 80: DeviceProtocol.HTTP}  # The standard ports the probe looks for.
 _AXIS_BRAND = "AXIS"
 _CONNECT_TIMEOUT_SECONDS = 0.5
 _MAX_OPEN_SOCKETS = 256
@@ -104,7 +103,7 @@ class SignIn(Enum):
 @dataclass(frozen=True)
 class DiscoveredCamera:
     """An Axis device that answered the network scan; architecture and SoC are known only once signed in, and *login*
-    is the one the device accepted. *protocols* are those its web API identified itself as Axis over."""
+    is the one the device accepted. *protocol* is the one its web API identified itself as Axis over."""
 
     host: str
     model: str
@@ -116,12 +115,7 @@ class DiscoveredCamera:
     soc: str = ""
     sign_in: SignIn = SignIn.NOT_TRIED
     login: Login | None = None
-    protocols: frozenset[DeviceProtocol] = frozenset()
-
-    @property
-    def protocol(self) -> DeviceProtocol | None:
-        """Return the protocol the device answered over, or ``None`` when it answered over both or neither."""
-        return next(iter(self.protocols)) if len(self.protocols) == 1 else None
+    protocol: DeviceProtocol = DeviceProtocol.HTTPS
 
     @property
     def uptime(self) -> str:
@@ -212,6 +206,7 @@ def scan_network(
     found: Callable[[DiscoveredCamera], None] = lambda _camera: None,
     token: CancelToken = NEVER,
     low_impact: bool = False,
+    prefer: DeviceProtocol = DeviceProtocol.HTTPS,
 ) -> list[DiscoveredCamera]:
     """Return the Axis devices at *targets*, or on this computer's /24 network if there are none, sorted by address.
 
@@ -219,6 +214,8 @@ def scan_network(
     returns. With *logins*, the scan also tries them in order on each device until one signs in, for what only a
     signed-in user may read. Once *token* is cancelled the scan asks devices nothing new, calls *found* no more and
     raises `Cancelled` instead of returning.
+
+    A device is asked over *prefer* first, and over the other protocol only when it does not answer there.
 
     With *low_impact*, use one-quarter the probe sockets and identification workers, with four times the completion
     window for queued requests. Request timeouts stay unchanged.
@@ -239,7 +236,7 @@ def scan_network(
         try:
             while (job := pending.get()) is not None:
                 sealed.raise_if_cancelled()
-                camera = _identify(*job, logins, sealed)
+                camera = _identify(*job, logins, prefer, sealed)
                 with lock:
                     sealed.raise_if_cancelled()
                     if camera is not None:
@@ -314,59 +311,53 @@ def _open_ports(hosts: Sequence[str]) -> dict[str, set[int]]:
 
 
 def _identify(
-    host: str, ports: Collection[int], logins: Sequence[Login], token: CancelToken
+    host: str, ports: Collection[int], logins: Sequence[Login], prefer: DeviceProtocol, token: CancelToken
 ) -> DiscoveredCamera | None:
-    """Return the Axis device at *host* from what it gives without login over every open port, signed in to with the
-    first of *logins* it accepts through the first protocol that answered, or ``None`` if no Axis device answers."""
-    described: list[tuple[DeviceEndpoint, DiscoveredCamera]] = []
-    for port, protocol in _SCAN_PORTS.items():
-        endpoint = DeviceEndpoint(host, protocol, port)
-        if port in ports and (answer := _described(endpoint)) is not None:
-            described.append((endpoint, answer))
-    if not described:
-        return None
-    endpoint, camera = described[0]
-    camera = replace(camera, protocols=frozenset(answered.protocol for answered, _answer in described))
-    return _signed_in(camera, endpoint, logins, token) if logins else camera
+    """Return the Axis device at *host* from what it gives without login, asked over *prefer* first and then the other
+    protocol if its port is open, signed in to with the first of *logins* it accepts, or ``None`` if none answers."""
+    for port, protocol in sorted(_SCAN_PORTS.items(), key=lambda entry: entry[1] is not prefer):
+        connection = DeviceConnection(host, protocol, port)
+        if port in ports and (camera := _described(connection)) is not None:
+            return _signed_in(camera, connection, logins, token) if logins else camera
+    return None
 
 
-def check_device(endpoint: DeviceEndpoint, login: Login, token: CancelToken = NEVER) -> DiscoveredCamera | None:
-    """Return the Axis device at *endpoint* signed in to with *login*, or ``None`` if no Axis device answers there.
+def check_device(connection: DeviceConnection, login: Login, token: CancelToken = NEVER) -> DiscoveredCamera | None:
+    """Return the Axis device at *connection* signed in to with *login*, or ``None`` if no Axis device answers there.
 
-    Nothing is scanned: only *endpoint* is asked, so a device on a nonstandard port or protocol is reached as it is.
+    Nothing is scanned: only *connection* is asked, so a device on a nonstandard port or protocol is reached as it is.
     """
-    camera = _described(endpoint)
-    return None if camera is None else _signed_in(camera, endpoint, (login,), token)
+    camera = _described(connection)
+    return None if camera is None else _signed_in(camera, connection, (login,), token)
 
 
-def _described(endpoint: DeviceEndpoint) -> DiscoveredCamera | None:
-    """Return what the device at *endpoint* gives without login if it says it is an Axis device, else ``None``."""
-    config = endpoint.device_config("", "", timeout_s=_REQUEST_TIMEOUT_SECONDS)
+def _described(connection: DeviceConnection) -> DiscoveredCamera | None:
+    """Return what the device at *connection* gives without login if it says it is an Axis device, else ``None``."""
     try:
-        with Client(config) as client:
+        with Client(replace(connection, timeout_s=_REQUEST_TIMEOUT_SECONDS).device_config()) as client:
             client._core._session.max_redirects = 0  # An answer from elsewhere (HTTP to HTTPS) is not this protocol's.
             info: Mapping[str, Any] = client.device.get_info_no_auth()
             if _text(info, "Brand").upper() != _AXIS_BRAND:
-                logger.debug(f"Network scan: {endpoint.host} over {endpoint.protocol.value} is not an Axis device")
+                logger.debug(f"Network scan: {connection.host} over {connection.protocol.value} is not an Axis device")
                 return None
             return DiscoveredCamera(
-                host=endpoint.host,
+                host=connection.host,
                 model=_text(info, "ProdShortName") or _text(info, "ProdFullName") or _text(info, "ProdNbr"),
                 serial=_text(info, "SerialNumber"),
                 firmware=_text(info, "Version"),
                 product_type=_text(info, "ProdType"),
                 uptime_seconds=_uptime_seconds(client),
-                protocols=frozenset({endpoint.protocol}),
+                protocol=connection.protocol,
             )
     except Exception as exc:  # Anything on the range can answer, in any shape; none of that is an Axis device.
-        logger.debug(f"Network scan could not identify {endpoint.host} over {endpoint.protocol.value}: {exc}")
+        logger.debug(f"Network scan could not identify {connection.host} over {connection.protocol.value}: {exc}")
         return None
 
 
 def _signed_in(
-    camera: DiscoveredCamera, endpoint: DeviceEndpoint, logins: Sequence[Login], token: CancelToken
+    camera: DiscoveredCamera, connection: DeviceConnection, logins: Sequence[Login], token: CancelToken
 ) -> DiscoveredCamera:
-    """Return *camera* with what signing in at *endpoint* tells, with the first of *logins* it accepts.
+    """Return *camera* with what signing in at *connection* tells, with the first of *logins* it accepts.
 
     A login whose username expands to nothing is skipped, and no login is sent once *token* is cancelled.
 
@@ -382,9 +373,12 @@ def _signed_in(
         tried = True
         for wait in (*_RATE_LIMIT_RETRY_SECONDS, None):
             token.raise_if_cancelled()
-            config = endpoint.device_config(
-                username, expand_environment_reference(login.password), timeout_s=_REQUEST_TIMEOUT_SECONDS
-            )
+            config = replace(
+                connection,
+                username=username,
+                password=expand_environment_reference(login.password),
+                timeout_s=_REQUEST_TIMEOUT_SECONDS,
+            ).device_config()
             config.auth_method = AuthMethod.DIGEST
             try:
                 with Client(config) as client:
