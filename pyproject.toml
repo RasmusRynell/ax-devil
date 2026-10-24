@@ -5,13 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ax-devil"
 version = "0.1.0"
-description = "Application for working with Axis devices"
+description = "Linux desktop app for viewing Axis camera streams and recordings with analytics overlays"
 readme = "README.md"
+keywords = ["axis", "axis-camera", "ax-devil", "video-analytics", "rtsp", "onvif", "computer-vision", "overlay", "pyside6", "video-viewer"]
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
     {name = "Rasmus Rynell"}
+]
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Image Recognition",
 ]
 dependencies = [
     # Core GUI and video processing
