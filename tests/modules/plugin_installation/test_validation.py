@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import os
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -137,3 +140,25 @@ def test_validate_entry_point_family_and_owner(
             validate.validate_plugins([distribution.name])
     else:
         validate.validate_plugins([distribution.name])
+
+
+def test_failure_reason_reaches_the_result_file_despite_plugin_output_and_exit_hooks(tmp_path: Path) -> None:
+    """A plugin's stdout and exit hooks cannot hide or replace why validation failed."""
+    result = tmp_path / "reason.txt"
+    script = """
+import atexit, os, runpy, sys
+from ax_devil.modules.plugin_installation import project
+
+def unreadable(_):
+    sys.stdout.write("Loading backend...")  # Unterminated, and lost when the exit hook skips flushing.
+    raise ImportError("Binary ABI mismatch\\nReinstall the backend")
+
+project.read_project = unreadable
+atexit.register(os._exit, 18)
+runpy.run_module("ax_devil.modules.plugin_installation.validate", run_name="__main__")
+"""
+    command = [sys.executable, "-c", script, str(tmp_path), str(result)]
+    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    completed = subprocess.run(command, capture_output=True, text=True, env=environment)
+    assert completed.returncode != 0
+    assert result.read_text(encoding="utf-8") == "Binary ABI mismatch\nReinstall the backend"
