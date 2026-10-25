@@ -213,8 +213,15 @@ def test_a_wrapped_detail_shows_every_line_at_any_width(qtbot: QtBot) -> None:
     row = with_scan(held, DiscoveredCamera("192.0.2.25", "AXIS Q1656", "ACCC8E123456"), {})
     assert status in row.detail, "the status keeps ordinary spaces, which are all it can wrap at"
     tree = show_tree(qtbot, row, kind=BrowserSection.LIVE)
-    [label] = [label for label in row_widget(tree, item_at(tree, 0)).findChildren(QLabel) if label.wordWrap()]
+    qtbot.wait(0)  # A palette change on showing queues a rebuild, which replaces the row widgets.
+
+    def wrapped_label() -> QLabel:
+        """Return the detail label of the row's current widget, which a rebuild replaces."""
+        [label] = [label for label in row_widget(tree, item_at(tree, 0)).findChildren(QLabel) if label.wordWrap()]
+        return label
 
     for width in (360, 240):
         tree.resize(width, 600)
-        qtbot.waitUntil(lambda: label.height() >= label.heightForWidth(label.width()) > 0, timeout=2000)
+        qtbot.waitUntil(
+            lambda: (label := wrapped_label()).height() >= label.heightForWidth(label.width()) > 0, timeout=2000
+        )
