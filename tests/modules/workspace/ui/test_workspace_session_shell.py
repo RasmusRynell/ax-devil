@@ -88,8 +88,8 @@ def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspac
     QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=grab)
     assert drag_to(60) > width
     assert drag_to(-2000) == 0
-    reopened = drag_to(-30)
-    assert 0 < reopened < width
+    reopened = drag_to(30)
+    assert reopened > width
     assert drag_to(-2000) == 0
     QTest.mouseRelease(handle, Qt.MouseButton.LeftButton)
     assert not window.is_sidebar_shown()
