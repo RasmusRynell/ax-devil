@@ -16,6 +16,7 @@ from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 
 if TYPE_CHECKING:
+    from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamStatus
     from ax_devil.modules.workspace.ui.split_view import SplitView
     from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
@@ -52,6 +53,15 @@ class OpenViewers:
     def widgets(self) -> tuple[ViewerWidget, ...]:
         """Return every open viewer."""
         return tuple(self._widget_item_ids)
+
+    def stream_statuses(self) -> dict[str, tuple[LiveStreamStatus, ...]]:
+        """Return the stream status of every open viewer that has one, by the id of the content it shows."""
+        statuses: dict[str, tuple[LiveStreamStatus, ...]] = {}
+        for widget in self._widget_item_ids:
+            item, status = widget.current_on_screen_item(), widget.stream_status()
+            if item is not None and status is not None:
+                statuses[item.content_id] = (*statuses.get(item.content_id, ()), status)
+        return statuses
 
     def of_item(self, item_id: str) -> tuple[ViewerWidget, ...]:
         """Return the viewers showing Content of the item *item_id*."""
@@ -161,6 +171,7 @@ class OpenViewers:
         self._widget_item_ids[widget] = content.item_id
         widget.set_shared_actions(self._shared_actions)
         widget.on_screen_item_changed.connect(lambda _=None: self._on_changed())
+        widget.stream_status_changed.connect(lambda: self._on_changed())
         widget.context_menu_requested.connect(partial(self._show_menu, widget))
         widget.consideration_change_requested.connect(self._workspace_store.set_item_considered)
         self._on_changed()

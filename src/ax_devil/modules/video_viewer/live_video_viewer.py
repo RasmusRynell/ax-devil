@@ -18,15 +18,24 @@ from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.ui.control_panel import video_control_icon
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
-from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
+from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
 from ax_devil.modules.workspace.core import LiveVideoContent
 from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 logger = get_logger(__name__)
+
+_STREAM_STATES = {
+    LiveConnectionState.CONNECTING: LiveStreamState.CONNECTING,
+    LiveConnectionState.LIVE: LiveStreamState.LIVE,
+    LiveConnectionState.STALLED: LiveStreamState.STALLED,
+    LiveConnectionState.RECONNECTING: LiveStreamState.RECONNECTING,
+    LiveConnectionState.FAILED: LiveStreamState.FAILED,
+}
 
 
 class LiveStatusPanel(QWidget):
@@ -160,6 +169,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._tools_panel: MediaToolsPanel | None = None
         self._frame_display: FrameDisplay | None = None
         self._status_panel: LiveStatusPanel | None = None
+        self._stream_status: LiveStreamStatus | None = None  # Set up while the base class builds the UI.
         super().__init__(parent)
 
     def _setup_widget_ui(self) -> None:
@@ -189,6 +199,7 @@ class LiveVideoViewerWidget(ViewerWidget):
             self._controller = controller
             self._attach_tools_panel(display, controller)
             controller.start_playback()
+            self._publish_stream_status()  # Statuses the controller reported before it was set read as connecting.
         except Exception as e:
             self.cleanup()
             logger.debug(traceback.format_exc())
@@ -202,6 +213,23 @@ class LiveVideoViewerWidget(ViewerWidget):
         if self._frame_display is not None:
             self._frame_display.viewport.set_background_text(status.placeholder_text)
             self._frame_display.viewport.position_overlays()
+        self._publish_stream_status()
+
+    def stream_status(self) -> LiveStreamStatus:
+        """Return how the stream is doing: paused, else the state of the video feed."""
+        if self._controller is None:
+            return LiveStreamStatus(LiveStreamState.CONNECTING)
+        if self._controller.is_paused:
+            return LiveStreamStatus(LiveStreamState.PAUSED)
+        video = self._controller.connection_status.headline
+        return LiveStreamStatus(_STREAM_STATES[video.state], video.reason, video.attempts)
+
+    def _publish_stream_status(self) -> None:
+        """Tell the sidebar when ``stream_status()`` changed."""
+        status = self.stream_status()
+        if status != self._stream_status:
+            self._stream_status = status
+            self.stream_status_changed.emit()
 
     def retry_connection(self) -> None:
         """Reopen the live stream after a failure; playback resumes."""
@@ -210,6 +238,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._controller.retry()
         if self._status_panel is not None:
             self._status_panel.set_paused(False)
+        self._publish_stream_status()
 
     def _attach_tools_panel(
         self,
@@ -256,6 +285,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._controller.pause_playback()
         if self._status_panel is not None:
             self._status_panel.set_paused(True)
+        self._publish_stream_status()
 
     def toggle_playback(self) -> None:
         """Toggle between playing and paused states for the live stream."""
@@ -267,6 +297,7 @@ class LiveVideoViewerWidget(ViewerWidget):
             self._controller.pause_playback()
         if self._status_panel is not None:
             self._status_panel.set_paused(self._controller.is_paused)
+        self._publish_stream_status()
 
     def toggle_media_tools(self) -> None:
         """Show or hide the media tools panel."""

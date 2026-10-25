@@ -149,7 +149,10 @@ class WorkspaceController(QObject):
             item for widget in self._viewers.widgets() if (item := widget.current_on_screen_item()) is not None
         )
         self._sections = build_browser_sections(
-            self._workspace_store.resolutions(), self._workspace_store.is_item_considered, open_items
+            self._workspace_store.resolutions(),
+            self._workspace_store.is_item_considered,
+            open_items,
+            stream_statuses=self._viewers.stream_statuses(),
         )
         self.sections_changed.emit(self._sections)
 

@@ -19,6 +19,7 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.live_video_viewer import LiveStatusPanel, LiveVideoViewerWidget
 from ax_devil.modules.workspace.core import LiveRTSPStreamSpec, LiveVideoContent
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from tests.catalog_helpers import GatedCatalogLoader, create_catalog, create_ready_catalog_manager, wait_for_catalogs
 
 
@@ -244,6 +245,7 @@ def test_pause_button_pauses_and_resumes_with_visible_status(
 
 
 def test_connection_status_shows_state_reasons_and_retry(
+    qtbot: QtBot,
     live_viewer: tuple[LiveVideoViewerWidget, _FakeStreamMediaController],
 ) -> None:
     """Failures are visible in the pane with their reason, per feed, and Retry reopens the stream."""
@@ -262,14 +264,18 @@ def test_connection_status_shows_state_reasons_and_retry(
     status = controller.connection_status
     status = status.with_status(status.feed(LiveFeed.VIDEO).live())
     status = status.with_status(status.feed(LiveFeed.OVERLAY).reconnecting("Connection refused"))
+    controller.connection_status = status
     controller.connection_changed(status)
 
+    assert widget.stream_status().state is LiveStreamState.LIVE, "the row follows the video feed"
     assert "Connection refused" in problem_text()
     assert retry.isHidden()
 
     status = status.with_status(status.feed(LiveFeed.VIDEO).failed("RTSP Error: Unauthorized"))
+    controller.connection_status = status
     controller.connection_changed(status)
 
+    assert widget.stream_status() == LiveStreamStatus(LiveStreamState.FAILED, "RTSP Error: Unauthorized")
     assert "RTSP Error: Unauthorized" in problem_text()
     assert "Connection refused" in problem_text()
     assert "RTSP Error: Unauthorized" in viewport._background_text  # noqa: SLF001 - only painted, no accessor
@@ -278,7 +284,9 @@ def test_connection_status_shows_state_reasons_and_retry(
     assert panel.height() >= panel.sizeHint().height()
     assert panel.geometry().bottom() == viewport.height() - 1
 
-    widget.pause_playback()
+    with qtbot.waitSignal(widget.stream_status_changed):
+        widget.pause_playback()
+    assert widget.stream_status() == LiveStreamStatus(LiveStreamState.PAUSED)
     retry.click()
 
     assert controller.retries == 1

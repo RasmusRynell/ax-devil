@@ -12,6 +12,7 @@ from enum import Enum
 from typing import Any, Literal
 
 from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.theme import KindColor, StatusColor
 from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.content import (
     Content,
@@ -20,29 +21,48 @@ from ax_devil.modules.workspace.core.item_base import WorkspaceItem
 from ax_devil.modules.workspace.core.item_info import (
     WorkspaceItemInfo,
 )
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamStatus
 
 WorkspaceBrowserIconKind = Literal["video", "live_video", "playlist", "overlay", "unavailable"]
+
+# Each kind keeps one icon and color, so live streams, videos, and playlists read apart in a mixed workspace.
+KIND_MARKS: dict[WorkspaceBrowserIconKind, tuple[Icon, KindColor | StatusColor]] = {
+    "live_video": (Icon.LIVE_VIDEO, KindColor.LIVE),
+    "video": (Icon.VIDEO, KindColor.VIDEO),
+    "playlist": (Icon.PLAYLIST, KindColor.PLAYLIST),
+    "overlay": (Icon.OVERLAY, KindColor.OVERLAY),
+    "unavailable": (Icon.WARNING, StatusColor.WARNING),
+}
 
 
 class BrowserSection(Enum):
     """A titled group of top-level rows, in the order the browser lists them, with the icon kind it is marked by.
 
     An *addable* section lists things the Workspace does not hold yet, which its rows' Add adds; its mark is muted.
-    A section listed without rows says its *empty_text* under its caption, or is hidden when it has none.
+    A section listed without rows says its *empty_text* under its caption, or is hidden when it has none. A section
+    *lit_by_live_stream* marks its caption in its kind's color only while one of its rows has a live stream.
     """
 
-    LIVE = ("Live", "live_video", False)
+    LIVE = ("Live", "live_video", False, "", True)
     VIDEOS = ("Videos", "video", False)
     PLAYLISTS = ("Playlists", "playlist", False)
     OTHER = ("Other", "unavailable", False)
     NETWORK = ("On the network", "live_video", True, "No new cameras")
     """Cameras a network scan found."""
 
-    def __init__(self, title: str, icon_kind: WorkspaceBrowserIconKind, addable: bool, empty_text: str = "") -> None:
+    def __init__(
+        self,
+        title: str,
+        icon_kind: WorkspaceBrowserIconKind,
+        addable: bool,
+        empty_text: str = "",
+        lit_by_live_stream: bool = False,
+    ) -> None:
         self.title = title
         self.icon_kind = icon_kind
         self.addable = addable
         self.empty_text = empty_text
+        self.lit_by_live_stream = lit_by_live_stream
 
 
 HELD_SECTIONS = frozenset(section for section in BrowserSection if not section.addable)
@@ -178,6 +198,8 @@ class WorkspaceBrowserRow:
     """What the Add action of a row for something the Workspace does not hold does: add it, or ask how."""
     idle: bool = False
     """Whether the row's thing is not running: a camera no viewer shows, or an item still loading."""
+    stream: LiveStreamStatus | None = None
+    """How a camera's stream is doing, which marks the row and ends its detail; None for a row of no camera."""
     search_terms: str = ""
     """More text the search matches beyond what the row shows, such as a found camera's serial number."""
     facets: frozenset[Facet] = frozenset()
@@ -203,6 +225,12 @@ class WorkspaceBrowserRow:
     def is_mark_muted(self) -> bool:
         """Return whether the row's kind mark is drawn muted instead of in its kind's color."""
         return self.idle or self.is_available
+
+    @property
+    def mark(self) -> tuple[Icon, KindColor | StatusColor]:
+        """Return the icon and color role of the row's mark: its stream's state or else its kind; muted when idle."""
+        icon, color = self.stream.mark if self.stream is not None else KIND_MARKS[self.icon_kind]
+        return icon, KindColor.MUTED if self.is_mark_muted else color
 
     @property
     def is_dimmed(self) -> bool:
@@ -235,6 +263,14 @@ class WorkspaceBrowserSection:
 
     kind: BrowserSection
     rows: tuple[WorkspaceBrowserRow, ...]
+
+    @property
+    def mark_color(self) -> KindColor | StatusColor:
+        """Return the color of the caption's mark: its kind's, muted when the section is addable or lit by a live
+        stream and none of its rows has one."""
+        kind = self.kind
+        unlit = kind.lit_by_live_stream and not any(row.stream is not None and row.stream.is_live for row in self.rows)
+        return KindColor.MUTED if kind.addable or unlit else KIND_MARKS[kind.icon_kind][1]
 
 
 @dataclass(frozen=True, slots=True)

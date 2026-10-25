@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
@@ -195,3 +195,14 @@ def test_a_section_without_rows_says_so_and_does_not_fold(qtbot: QtBot) -> None:
     assert not is_folded(tree, "On the network")
     assert "No new cameras" in texts(tree)
     assert caption(tree, "On the network").text() == "On the network"
+
+
+def test_a_wrapped_detail_shows_every_line_at_any_width(qtbot: QtBot) -> None:
+    detail = "192.0.2.25 · Failed: RTSP Error: Unauthorized for the login saved with the camera"
+    row = WorkspaceBrowserRow(row_id="cam", label="Camera", icon_kind="live_video", detail=detail, wrap_detail=True)
+    tree = show_tree(qtbot, row, kind=BrowserSection.LIVE)
+    [label] = [label for label in row_widget(tree, item_at(tree, 0)).findChildren(QLabel) if label.wordWrap()]
+
+    for width in (360, 240):
+        tree.resize(width, 600)
+        qtbot.waitUntil(lambda: label.height() >= label.heightForWidth(label.width()) > 0, timeout=2000)

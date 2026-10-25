@@ -37,6 +37,7 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamStatus
 from ax_devil.modules.workspace.ui.start_panel import StartPanel
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.workspace_lifecycle import WorkspaceLifecycle
@@ -217,10 +218,20 @@ class DummyViewer(ViewerWidget):
         self.render_catalog_manager = render_catalog_manager
         self.cleaned_up = False
         self.refresh_calls: list[tuple[object, bool]] = []
+        self.stream: LiveStreamStatus | None = None
         super().__init__(parent)
 
     def _setup_widget_ui(self) -> None:
         pass
+
+    def stream_status(self) -> LiveStreamStatus | None:
+        """Return the stream status a test gave."""
+        return self.stream
+
+    def set_stream(self, status: LiveStreamStatus) -> None:
+        """Change the stream status, as a live viewer does when its stream changes."""
+        self.stream = status
+        self.stream_status_changed.emit()
 
     def get_display_name(self) -> str:
         """Use the content label for workspace titles."""

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.theme import KindColor, StatusColor
 from ax_devil.modules.workspace.core import (
     LiveRTSPStreamSpec,
     LiveStreamItem,
@@ -18,6 +20,7 @@ from ax_devil.modules.workspace.core import (
 from ax_devil.modules.workspace.core.items import ItemResolution, UnreadableItem
 from ax_devil.modules.workspace.ui.browser_projection import build_browser_sections
 from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrowserRow
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from tests.helpers.browser_rows import browser_sections, item_rows, store_of, store_of_items
 from tests.helpers.contents import make_live_video, make_playlist, make_video
 from tests.helpers.workspace import content_item, store_with
@@ -181,17 +184,30 @@ def test_sections_are_present_only_for_kinds_in_the_workspace(tmp_path: Path) ->
     assert browser_sections(store_of_items()) == ()
 
 
-def test_a_live_rows_detail_is_its_host_unless_the_name_is_the_host() -> None:
-    def live(name: str) -> LiveVideoContent:
-        return LiveVideoContent(
-            display_name=name,
-            source_spec=LiveRTSPStreamSpec(host="camera.local", username="root", password="secret"),
-        )
+def test_a_live_rows_detail_and_mark_follow_its_stream_and_its_name_is_not_repeated() -> None:
+    store = store_of_items(LiveStreamItem(label="Gate", host="camera.local"), LiveStreamItem(host="dock.local"))
+    named, unnamed = store.contents()
 
-    named, unnamed = item_rows(store_of(live("Gate"), live("camera.local")))
+    idle_named, idle_unnamed = item_rows(store)
+    (idle_section,) = browser_sections(store)
 
-    assert (named.label, named.detail) == ("Gate", "camera.local")
-    assert (unnamed.label, unnamed.detail) == ("camera.local", "")
+    assert (idle_named.label, idle_named.detail, idle_unnamed.detail) == ("Gate", "camera.local", "")
+    assert idle_named.mark == (Icon.LIVE_VIDEO, KindColor.MUTED)
+    assert idle_section.mark_color is KindColor.MUTED, "no stream is live"
+
+    failed = LiveStreamStatus(LiveStreamState.FAILED, "Unauthorized")
+    paused = LiveStreamStatus(LiveStreamState.PAUSED)
+    live_now = LiveStreamStatus(LiveStreamState.LIVE)
+    statuses = {named.content_id: (live_now, failed), unnamed.content_id: (paused, live_now)}
+    opened = frozenset(OnScreenWorkspaceItem(kind="video", content_id=content_id) for content_id in statuses)
+
+    failing, streaming = item_rows(store, opened, statuses)
+    (section,) = browser_sections(store, opened, statuses)
+
+    assert failing.detail == "camera.local · Failed: Unauthorized", "the most urgent viewer wins"
+    assert failing.mark == (Icon.WARNING, StatusColor.WARNING)
+    assert (streaming.detail, streaming.mark) == ("Live", (Icon.STREAMING, KindColor.LIVE))
+    assert section.mark_color is KindColor.LIVE
 
 
 def test_a_playlists_tooltip_counts_entries_and_those_hidden() -> None:

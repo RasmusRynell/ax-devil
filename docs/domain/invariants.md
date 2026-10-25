@@ -96,8 +96,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 
 ## Workspace And Viewers
 
-- Open, focused, pinned, and current on-screen viewer facts come from the hosted `ViewerWidget` instances; they are
-  not copied into parallel state records.
+- Open, focused, pinned, current on-screen, and live stream status viewer facts come from the hosted `ViewerWidget`
+  instances; they are not copied into parallel state records.
 - Video Viewer navigation reads consideration through the read-only `ConsiderationQuery` contract, not the mutable
   `WorkspaceStore`.
 - `WorkspaceStore` owns the current and last saved Workspace, each item's resolution, consideration refs, and mutation

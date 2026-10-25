@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence, Set
+from collections.abc import Callable, Mapping, Sequence, Set
 from dataclasses import replace
 from functools import partial
 from pathlib import PurePath
+from types import MappingProxyType
 
 from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.content import (
@@ -37,6 +38,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamStatus
 from ax_devil.modules.workspace.ui.row_details import with_details
 
 _SECTION_BY_ITEM_KIND = {
@@ -100,10 +102,16 @@ def _lane_fact(lane: EntryLane) -> str:
 
 
 class _RowProjection:
-    """Build browser rows, asking *is_considered* for the consideration state of each referenced item."""
+    """Build browser rows, asking *is_considered* for the consideration state of each referenced item; a camera row
+    shows the most urgent of the *stream_statuses* of the viewers of its content, by content id."""
 
-    def __init__(self, is_considered: Callable[[ConsiderationItemRef], bool]) -> None:
+    def __init__(
+        self,
+        is_considered: Callable[[ConsiderationItemRef], bool],
+        stream_statuses: Mapping[str, Sequence[LiveStreamStatus]],
+    ) -> None:
         self._is_considered = is_considered
+        self._stream_statuses = stream_statuses
         self._file_paths: dict[str, PurePath] = {}  # Only file rows participate in folder disambiguation.
 
     def sections(
@@ -192,6 +200,12 @@ class _RowProjection:
             self._file_paths[content.content_id] = PurePath(content.source_location)
         overlays = f" · {_counted(len(content.overlays), 'overlay')}" if content.overlays else ""
         is_open = self._is_content_open(content.content_id, open_items)
+        stream = (
+            LiveStreamStatus.of_viewers(self._stream_statuses.get(content.content_id, ())) if content.is_live else None
+        )
+        host_part = (
+            content.source_location if content.is_live and content.source_location != content.display_name else ""
+        )
         return _with_actions(
             WorkspaceBrowserRow(
                 row_id=content.content_id,
@@ -204,11 +218,11 @@ class _RowProjection:
                 is_open=is_open,
                 children=self._video_lane_rows(content),
                 location=content.source_location,
-                detail=content.source_location
-                if content.is_live and content.source_location != content.display_name
-                else "",
+                detail=" · ".join(part for part in (host_part, stream.text if stream else "") if part),
+                wrap_detail=content.is_live,  # A failure reason is read whole, not elided.
                 facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
                 idle=content.is_live and not is_open,
+                stream=stream,
             ),
             inline=(RowAction.STOP_STREAM if is_open else RowAction.START_STREAM) if content.is_live else None,
         )
@@ -332,10 +346,12 @@ def build_browser_sections(
     resolutions: Sequence[ItemResolution],
     is_considered: Callable[[ConsiderationItemRef], bool],
     open_items: Set[OnScreenWorkspaceItem] = frozenset(),
+    *,
+    stream_statuses: Mapping[str, Sequence[LiveStreamStatus]] = MappingProxyType({}),
 ) -> tuple[WorkspaceBrowserSection, ...]:
     """Return the sidebar sections for the items' *resolutions*; an item that failed to resolve gets one row.
 
     *is_considered* answers whether a consideration item participates in navigation and layout; *open_items* are the
-    items currently shown in a viewer.
+    items currently shown in a viewer, and *stream_statuses* the state of each viewer's stream by content id.
     """
-    return _RowProjection(is_considered).sections(resolutions, open_items)
+    return _RowProjection(is_considered, stream_statuses).sections(resolutions, open_items)

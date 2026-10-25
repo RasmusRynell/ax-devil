@@ -78,6 +78,7 @@ def with_scan(
         return replace(
             row,
             icon_kind="unavailable",
+            stream=None,
             warning=_REFUSED,
             actions=tuple(offered for offered in row.actions if offered.action is not RowAction.START_STREAM),
         )

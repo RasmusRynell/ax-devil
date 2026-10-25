@@ -17,10 +17,12 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem
 from ax_devil.modules.workspace.ui.browser_rows import RowAction
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from tests.helpers.live_view import Live, Scanner, scan
 from tests.helpers.section_tree import captions, expand, row, row_texts, shown_rows
 from tests.helpers.widgets import button
+from tests.helpers.workspace import DummyViewer
 
 
 @pytest.mark.parametrize(("startup", "sign_in"), [(True, True), (False, False)])
@@ -109,6 +111,11 @@ def test_rows_show_which_cameras_are_streaming_and_follow_their_viewers(live: Li
     assert live.center.get_widget_count() == 1
     assert live.rows() == {"Entrance": "Stop stream", "192.0.2.11": "Start stream"}
     assert "1 streaming" in live.texts()
+    assert live.detail("Entrance") == "192.0.2.10"
+    viewer = live.center.get_focused_widget()
+    assert isinstance(viewer, DummyViewer)
+    viewer.set_stream(LiveStreamStatus(LiveStreamState.RECONNECTING, attempts=2))
+    assert live.detail("Entrance") == "192.0.2.10 · Reconnecting (2)"
 
     live.press("192.0.2.11")
     assert live.center.get_widget_count() == 2, "starting a stream never stops another"
@@ -116,6 +123,7 @@ def test_rows_show_which_cameras_are_streaming_and_follow_their_viewers(live: Li
 
     live.center.clear_all_widgets()
     assert live.rows() == {"Entrance": "Start stream", "192.0.2.11": "Start stream"}
+    assert live.detail("Entrance") == "192.0.2.10"
 
 
 def test_stop_stream_closes_every_viewer_of_the_camera(live: Live) -> None:
