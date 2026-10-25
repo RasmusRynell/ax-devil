@@ -41,7 +41,8 @@ entries when it loads, unless it has more than 200; expand a longer one with its
     Network scan**) on each camera until one works. Logins go only to devices that answered as Axis devices, and only
     as an HTTP Digest answer, never as a plain password.
   - **Add** puts a signed-in camera in the workspace with the **Settings → Stream defaults** and the login that worked,
-    and **Add manually** does the same for a camera you enter. Neither starts the stream.
+    and **Add manually** does the same for a camera you enter. Neither starts the stream. A scanned camera keeps the
+    protocol it answered on; the default protocol is tried first.
 - **Offline**: videos and playlists follow their overlay files and a playlist's folders: when a tool regenerates or
   adds files, the rows update by themselves and open viewers keep what they show. Known issue: changes on network
   shares (NFS, SMB) are not noticed.

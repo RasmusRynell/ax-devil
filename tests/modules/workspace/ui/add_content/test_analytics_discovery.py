@@ -5,6 +5,7 @@ from threading import Event
 import pytest
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
 from ax_devil.modules.workspace.ui.add_content.analytics_discovery import AnalyticsChoiceLoader
 
@@ -16,7 +17,8 @@ def test_discovery_discards_stale_results_and_can_reload(qtbot: QtBot, fail: boo
     started = Event()
     finished = Event()
 
-    def fetch(host: str, username: str, password: str, protocol: str) -> tuple[str, ...]:
+    def fetch(connection: DeviceConnection) -> tuple[str, ...]:
+        host = connection.host
         if host == "old-camera":
             started.set()
             try:
@@ -31,10 +33,10 @@ def test_discovery_discards_stale_results_and_can_reload(qtbot: QtBot, fail: boo
     choice = AnalyticsChoice(loader, "")
     qtbot.addWidget(choice)
     try:
-        loader.set_connection(("old-camera", "", "", "https"))
+        loader.set_connection(DeviceConnection("old-camera", DeviceProtocol.HTTPS))
         loader.load()
         qtbot.waitUntil(started.is_set)
-        loader.set_connection(("new-camera", "", "", "https"))
+        loader.set_connection(DeviceConnection("new-camera", DeviceProtocol.HTTPS))
         assert not loader.loading
         assert choice.refresh.isEnabled()
         assert not loader.loaded
@@ -55,14 +57,14 @@ def test_discovery_instances_load_independently_and_cleanup_ignores_results(qtbo
     """Closing one pending loader does not affect another transport's discovery."""
     release = Event()
 
-    def fetch(host: str, username: str, password: str, protocol: str) -> tuple[str, ...]:
+    def fetch(connection: DeviceConnection) -> tuple[str, ...]:
         assert release.wait(5)
-        return (host,)
+        return (connection.host,)
 
     loaders = [AnalyticsChoiceLoader(fetch, label) for label in ("data sources", "topics")]
     try:
         for loader in loaders:
-            loader.set_connection(("camera", "", "", "https"))
+            loader.set_connection(DeviceConnection("camera", DeviceProtocol.HTTPS))
             loader.load()
         loaders[0].cleanup()
         release.set()
@@ -78,11 +80,11 @@ def test_discovery_instances_load_independently_and_cleanup_ignores_results(qtbo
 
 def test_choice_refresh_preserves_user_selection(qtbot: QtBot) -> None:
     """Refreshing discovered choices preserves an available user selection."""
-    loader = AnalyticsChoiceLoader(lambda *args: ("default", "selected"), "topics")
+    loader = AnalyticsChoiceLoader(lambda _connection: ("default", "selected"), "topics")
     choice = AnalyticsChoice(loader, "default")
     qtbot.addWidget(choice)
     try:
-        loader.set_connection(("camera", "", "", "https"))
+        loader.set_connection(DeviceConnection("camera", DeviceProtocol.HTTPS))
         loader.load()
         qtbot.waitUntil(lambda: not loader.loading)
         assert choice.combo.currentData() == "default"

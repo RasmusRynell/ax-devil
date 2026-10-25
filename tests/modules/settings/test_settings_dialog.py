@@ -75,20 +75,20 @@ def test_all_preferences_persist_and_storage_waits_for_restart(
         "defaults.device.host": "camera.example",
         "defaults.device.password": "$CAMERA_SECRET",
         "defaults.live_stream.analytics-mqtt.broker_port": "8883",
-        "defaults.live_stream.analytics-websocket.device_api_protocol": "http",
         "defaults.live_stream.rtsp.data_stream_handler": "UNAVAILABLE_PLUGIN",
         "storage.cache_dir": str(tmp_path / "new-cache"),
     }
     for path, value in edits.items():
         preference_input(dialog, path).setText(value)
+    button(dialog, "HTTP").click()
     checkbox(dialog, "Use the app title bar (requires restart)").setChecked(False)
     choose(choice(dialog, "Text size"), "large")
     assert click_ok(dialog), save_error(dialog)
     saved = json.loads(config.config_path.read_text())
     assert saved["defaults"]["device"]["password"] == "$CAMERA_SECRET"
     assert saved["defaults"]["device"]["host"] == "camera.example"
+    assert saved["defaults"]["device"]["protocol"] == "http"
     assert saved["defaults"]["live_stream"]["analytics-mqtt"]["broker_port"] == 8883
-    assert saved["defaults"]["live_stream"]["analytics-websocket"]["device_api_protocol"] == "http"
     assert saved["defaults"]["live_stream"]["rtsp"]["data_stream_handler"] == "UNAVAILABLE_PLUGIN"
     assert saved["ui"]["window"]["custom_frame"] is False
     assert saved["ui"]["text_size"] == "large"

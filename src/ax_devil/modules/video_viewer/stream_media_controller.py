@@ -20,6 +20,7 @@ from ax_devil.modules.data_sources.base import DataSource, FrameSource, OverlayS
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPSource
 from ax_devil.modules.filtering import FilterConfig
 from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.settings.config_manager import ConfigManager, device_timeout_s
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.synchronization import SyncResult
 from ax_devil.modules.synchronization.qt_adapter import QtStreamSync
@@ -85,10 +86,12 @@ class StreamMediaController:
     def _open_sources(self) -> None:
         """Create the video transport and any separate overlay transport for the content."""
         content = self._content
-        embedded_overlay, separate_overlay = open_overlay_transport(content)
+        timeout_s = device_timeout_s(ConfigManager())  # Read on every open, so Retry picks up a changed setting.
+        embedded_overlay, separate_overlay = open_overlay_transport(content, timeout_s)
         rtsp_source = RTSPSource(
-            build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None),
+            build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None, timeout_s=timeout_s),
             overlay=embedded_overlay,
+            timeout_s=timeout_s,
         )
         self.video_source = rtsp_source
         self.overlay_source = rtsp_source if embedded_overlay is not None else separate_overlay

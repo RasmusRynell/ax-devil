@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from ax_devil.core.cancellation import CancelToken
-from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference, integer_default
+from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.modules.settings.config_manager import (
+    ConfigManager,
+    default_protocol,
+    expand_environment_reference,
+    integer_default,
+)
 from ax_devil.modules.workspace.core.content import Content
 from ax_devil.modules.workspace.core.item_base import WorkspaceItem, read_field, read_optional_str
 from ax_devil.modules.workspace.core.resolution import ResolutionContext
@@ -23,10 +29,10 @@ _LIVE_STR_FIELDS = (
     "mqtt_username",
     "mqtt_password",
     "analytics_data_source_key",
-    "device_api_protocol",
     "websocket_topic",
 )
-_LIVE_INT_FIELDS = ("camera_head", "mqtt_port", "websocket_channel_id")
+_LIVE_INT_FIELDS = ("camera_head", "mqtt_port", "websocket_channel_id", "device_port", "rtsp_port")
+_LIVE_ENUM_FIELDS = ("overlay_mode", "device_api_protocol")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -34,7 +40,8 @@ class LiveStreamItem(WorkspaceItem):
     """A camera stream with optional live overlay settings.
 
     The device and MQTT broker hosts, usernames, and passwords are stored as entered: a ``$VARIABLE`` reference stays a
-    reference and is expanded only when the item resolves, using the config's rule.
+    reference and is expanded only when the item resolves, using the config's rule. The connection timeout is not
+    stored: the viewer reads it from the config each time it connects.
     """
 
     kind: ClassVar[str] = "live_stream"
@@ -52,15 +59,17 @@ class LiveStreamItem(WorkspaceItem):
     mqtt_username: str = field(default="", repr=False)
     mqtt_password: str = field(default="", repr=False)
     analytics_data_source_key: str = ""
-    device_api_protocol: str = "https"
+    device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS
     websocket_topic: str = ""
     websocket_channel_id: int = 1
+    device_port: int = 0
+    rtsp_port: int = 554
 
     def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
-        """Return every field as stored; references stay references and the overlay mode is its value string."""
+        """Return every field as stored; references stay references and the enums are their value strings."""
         return {
-            name: getattr(self, name).value if name == "overlay_mode" else getattr(self, name)
-            for name in (*_LIVE_STR_FIELDS, *_LIVE_INT_FIELDS, "stream_url", "overlay_mode", "handler_type")
+            name: getattr(self, name).value if name in _LIVE_ENUM_FIELDS else getattr(self, name)
+            for name in (*_LIVE_STR_FIELDS, *_LIVE_INT_FIELDS, *_LIVE_ENUM_FIELDS, "stream_url", "handler_type")
         }
 
     @classmethod
@@ -74,6 +83,9 @@ class LiveStreamItem(WorkspaceItem):
             "handler_type": read_optional_str(data, "handler_type"),
             "overlay_mode": LiveOverlayMode.from_value(
                 read_field(data, "overlay_mode", str, defaults.overlay_mode.value)
+            ),
+            "device_api_protocol": DeviceProtocol(
+                read_field(data, "device_api_protocol", str, defaults.device_api_protocol.value)
             ),
         }
 
@@ -121,6 +133,8 @@ class LiveStreamItem(WorkspaceItem):
                 device_api_protocol=values.device_api_protocol,
                 websocket_topic=values.websocket_topic,
                 websocket_channel_id=values.websocket_channel_id,
+                device_port=values.device_port,
+                rtsp_port=values.rtsp_port,
             ),
         )
 
@@ -140,14 +154,14 @@ def live_stream_item_from_defaults(
     mqtt_username: str | None = None,
     mqtt_password: str | None = None,
     analytics_data_source_key: str | None = None,
-    device_api_protocol: str | None = None,
+    device_api_protocol: DeviceProtocol | None = None,
     websocket_topic: str | None = None,
     websocket_channel_id: int | None = None,
 ) -> LiveStreamItem:
     """Build a ``LiveStreamItem`` named *label* from the config's stream defaults, with optional overrides.
 
     Device and MQTT broker connection defaults are taken as written in the config, so a ``$VARIABLE`` reference stays
-    a reference in the item.
+    a reference in the item. The protocol and RTSP port come from the config unless given.
     """
     cfg = ConfigManager()
     defaults = cfg.get("defaults", {}) or {}
@@ -168,10 +182,6 @@ def live_stream_item_from_defaults(
     if resolved_handler is None and resolved_overlay is LiveOverlayMode.WEBSOCKET:
         resolved_handler = websocket.get("data_stream_handler")
 
-    configured_protocol = mqtt.get("device_api_protocol", "https")
-    if resolved_overlay is LiveOverlayMode.WEBSOCKET:
-        configured_protocol = websocket.get("device_api_protocol", "https")
-
     return LiveStreamItem(
         label=label,
         host=host or str(device.get("host") or ""),
@@ -186,11 +196,12 @@ def live_stream_item_from_defaults(
         mqtt_username=mqtt_username or str(raw_mqtt.get("broker_username") or ""),
         mqtt_password=mqtt_password or str(raw_mqtt.get("broker_password") or ""),
         analytics_data_source_key=analytics_data_source_key or mqtt.get("data_source_key", ""),
-        device_api_protocol=device_api_protocol or configured_protocol,
+        device_api_protocol=device_api_protocol or default_protocol(cfg),
         websocket_topic=websocket_topic or websocket.get("topic", ""),
         websocket_channel_id=(
             websocket_channel_id
             if websocket_channel_id is not None
             else integer_default(websocket.get("channel_id", 1), 1)
         ),
+        rtsp_port=integer_default(defaults.get("device", {}).get("rtsp_port"), 554),
     )

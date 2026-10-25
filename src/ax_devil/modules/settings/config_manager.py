@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.paths import (
@@ -51,6 +52,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "host": "$AX_DEVIL_TARGET_ADDR",
             "username": "$AX_DEVIL_TARGET_USER",
             "password": "$AX_DEVIL_TARGET_PASS",
+            "protocol": DeviceProtocol.HTTPS.value,
+            "rtsp_port": 554,
+            "connection_timeout_s": 10,
         },
         "live_stream": {
             "rtsp": {
@@ -65,13 +69,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "broker_port": 1883,
                 "data_source_key": "com.axis.scene.frame.v1#1",
                 "data_stream_handler": "ADF_V1_FRAME",
-                "device_api_protocol": "https",
             },
             "analytics-websocket": {
                 "topic": "com.axis.scene.frame.v1",
                 "channel_id": 1,
                 "data_stream_handler": "ADF_V1_FRAME",
-                "device_api_protocol": "https",
             },
             "overlay_source": "websocket",
         },
@@ -141,6 +143,21 @@ def integer_default(value: object, default: int) -> int:
     except ValueError:
         logger.warning(f"Invalid numeric default; using {default}.")
         return default
+
+
+def device_timeout_s(config: ConfigManager) -> int:
+    """Return the seconds to wait for a device: read when a stream connects, never stored per stream."""
+    return integer_default(config.get("defaults", {})["device"]["connection_timeout_s"], 10)
+
+
+def default_protocol(config: ConfigManager) -> DeviceProtocol:
+    """Return the configured default device protocol, or HTTPS if the saved value is invalid."""
+    value = config.get("defaults", {})["device"]["protocol"]
+    try:
+        return DeviceProtocol(value)
+    except ValueError:
+        logger.warning(f"Invalid default device protocol {value!r}; using https.")
+        return DeviceProtocol.HTTPS
 
 
 def _merge_defaults(config: dict[str, Any], defaults: Mapping[str, Any], *, key_path: str = "config") -> dict[str, Any]:

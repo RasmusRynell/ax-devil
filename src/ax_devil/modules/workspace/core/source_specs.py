@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
@@ -127,6 +128,20 @@ class LiveRTSPStreamSpec:
     camera_head: int = 1
     resolution: str = "1280x720"
     stream_url: str | None = field(default=None, repr=False)
+    device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS
+    device_port: int = 0
+    rtsp_port: int = 554
+
+    def connection(self, timeout_s: float) -> DeviceConnection:
+        """Return how to reach and sign in to the device's web API, giving up after *timeout_s* seconds."""
+        return DeviceConnection(
+            self.host,
+            self.device_api_protocol,
+            self.device_port,
+            self.username,
+            self.password,
+            timeout_s,
+        )
 
     def info_fields(self) -> InfoFields:
         """Return the device, camera head, and stream settings; never the password."""
@@ -136,6 +151,9 @@ class LiveRTSPStreamSpec:
             ("camera head", self.camera_head),
             ("resolution", self.resolution),
             ("stream URL", self.stream_url or "(default)"),
+            ("device API protocol", self.device_api_protocol.name),
+            ("device port", self.device_port or "(standard)"),
+            ("RTSP port", self.rtsp_port),
         )
 
 
@@ -163,7 +181,6 @@ class LiveMQTTOverlaySourceSpec:
     broker_username: str = field(default="", repr=False)
     broker_password: str = field(default="", repr=False)
     analytics_data_source_key: str = ""
-    device_api_protocol: str = "https"
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.MQTT_SOURCE
     source_location: ClassVar[None] = None
     source_paths: ClassVar[SourcePaths] = SourcePaths()
@@ -176,7 +193,6 @@ class LiveMQTTOverlaySourceSpec:
             ("broker port", self.broker_port),
             ("broker username", self.broker_username or "(none)"),
             ("data source", self.analytics_data_source_key),
-            ("device API protocol", self.device_api_protocol),
         )
 
 
@@ -187,7 +203,6 @@ class LiveWebSocketOverlaySourceSpec:
     handler_type: str
     topic: str
     channel_id: int = 1
-    device_api_protocol: str = "https"
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.WEBSOCKET_SOURCE
     source_location: ClassVar[None] = None
     source_paths: ClassVar[SourcePaths] = SourcePaths()
@@ -198,7 +213,6 @@ class LiveWebSocketOverlaySourceSpec:
             ("handler type", self.handler_type),
             ("topic", self.topic),
             ("channel ID", self.channel_id),
-            ("device API protocol", self.device_api_protocol),
         )
 
 

@@ -10,6 +10,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QPushButton, QScrollArea
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.workspace.core import LiveMQTTOverlaySourceSpec, LiveOverlayMode, LiveStreamItem, LiveVideoContent
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
@@ -134,10 +135,10 @@ def test_analytics_discovery_expands_typed_environment_references(
     monkeypatch.setenv("AX_DEVIL_TEST_CAMERA_HOST", "camera.local")
     monkeypatch.setenv("AX_DEVIL_TEST_CAMERA_USER", "root")
     monkeypatch.setenv("AX_DEVIL_TEST_CAMERA_PASS", "secret")
-    requested: list[tuple[str, ...]] = []
+    requested: list[DeviceConnection] = []
 
-    def fake_list_keys(*args: str) -> tuple[str, ...]:
-        requested.append(args)
+    def fake_list_keys(connection: DeviceConnection) -> tuple[str, ...]:
+        requested.append(connection)
         return ("analytics/source",)
 
     monkeypatch.setattr(
@@ -152,7 +153,7 @@ def test_analytics_discovery_expands_typed_environment_references(
 
     set_overlay_mode(dialog, LiveOverlayMode.MQTT)
     discovery.finish()
-    assert requested == [("camera.local", "root", "secret", "https")]
+    assert requested == [DeviceConnection("camera.local", DeviceProtocol.HTTPS, 0, "root", "secret", 10)]
 
     set_overlay_mode(dialog, LiveOverlayMode.NONE)
     dialog.accept()
@@ -194,7 +195,7 @@ def test_add_live_stream_mqtt_needs_broker_and_data_source_then_builds_spec(
     """MQTT overlays stay blocked until a broker and a discovered data source are chosen."""
     defaults: dict[str, Any] = {
         "device": {"host": "camera.local", "username": "root", "password": ""},
-        "live_stream": {"analytics-mqtt": {"device_api_protocol": "https"}, "overlay_source": "none"},
+        "live_stream": {"analytics-mqtt": {}, "overlay_source": "none"},
     }
     use_defaults(monkeypatch, defaults, defaults)
     dialog = AddLiveStreamDialog()
@@ -221,7 +222,6 @@ def test_add_live_stream_mqtt_needs_broker_and_data_source_then_builds_spec(
         broker_host="broker.local",
         broker_username="mqtt-user",
         analytics_data_source_key="analytics/source",
-        device_api_protocol="https",
     )
 
 
@@ -246,7 +246,9 @@ def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
         analytics_data_source_key="saved/source",
         websocket_topic="saved/topic",
         websocket_channel_id=2**40,
-        device_api_protocol="http",
+        device_api_protocol=DeviceProtocol.HTTP,
+        device_port=8080,
+        rtsp_port=8554,
     )
     dialog = AddLiveStreamDialog(existing=item)
     qtbot.addWidget(dialog)
