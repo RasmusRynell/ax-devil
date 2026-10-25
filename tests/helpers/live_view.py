@@ -130,6 +130,8 @@ class Live:
     resolutions: HeldResolver
     controller: LiveViewController
     checker: Checker
+    add_stream_requests: list[None]
+    """One entry for each time the Add stream button asked to add a camera."""
 
     def wait_for_scan(self) -> None:
         """Wait until the scan under way has finished and the view shows its outcome."""
@@ -152,7 +154,12 @@ class Live:
         press(self.view.tree, title)
 
     def button(self, text: str) -> QPushButton:
-        [button] = [button for button in self.view.findChildren(QPushButton) if button.text() == text]
+        """Return the button labelled *text*, leaving out one the tree replaced and hid but has not deleted yet."""
+        [button] = [
+            button
+            for button in self.view.findChildren(QPushButton)
+            if button.text() == text and button.isVisibleTo(self.view)
+        ]
         return button
 
     def ip_range(self) -> QLineEdit:

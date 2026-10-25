@@ -20,7 +20,8 @@ from ax_devil.modules.workspace.ui.browser_rows import (
 )
 from ax_devil.modules.workspace.ui.row_menu import show_row_menu
 from ax_devil.modules.workspace.ui.row_queries import RowPredicate, count_shown, holds_open_row, sections_updatable
-from ax_devil.modules.workspace.ui.source_row import SourceRow, row_look, section_accessible_text, section_caption
+from ax_devil.modules.workspace.ui.section_heading import SectionHeading, heading_look, section_accessible_text
+from ax_devil.modules.workspace.ui.source_row import SourceRow, row_accessible_text, row_look
 
 ROW_ROLE = Qt.ItemDataRole.UserRole
 """The data role holding the ``WorkspaceBrowserRow`` of a row's tree item; section items hold none."""
@@ -42,9 +43,10 @@ class SectionTree(QTreeWidget):
 
     A click on a section's caption folds or unfolds it, and the fold survives ``set_sections``. A folded section opens
     for a search with matches in it, and for a row of it that turns open, until that row closes or the user folds it
-    again; neither changes the fold the user chose. A section with no row shown is hidden, unless it has no rows at all
-    and its kind has an empty text to say instead, or the filter leaves out rows the search would show; the caption
-    counts the rows the filter leaves out. Rows expand and collapse with Qt's branch arrows, and keep that state across
+    again; neither changes the fold the user chose. A section with no row shown is hidden, unless it is always shown
+    (it has an action, or has no rows and its kind has an empty text to say instead) or the filter leaves out rows the
+    search would show; the caption counts the rows the filter leaves out. Rows expand and collapse with Qt's branch
+    arrows, and keep that state across
     ``set_sections`` by row id; a row that starts expanded, such as a playlist, expands when it first appears. A row
     that turns open is revealed. ``set_sections`` keeps the items and widgets of rows whose id and drawn values are
     unchanged, so a row's id must be stable; it builds them again only when the sections or the order of the rows
@@ -166,7 +168,7 @@ class SectionTree(QTreeWidget):
                 parent.insertChild(position, self._tree_item(row))
                 continue
             child.setData(0, ROW_ROLE, row)
-            child.setData(0, Qt.ItemDataRole.AccessibleTextRole, _accessible_text(row))
+            child.setData(0, Qt.ItemDataRole.AccessibleTextRole, row_accessible_text(row))
             if isinstance(widget := self.itemWidget(child, 0), SourceRow):
                 if row_look(widget.row) == row_look(row):
                     widget.row = row
@@ -204,7 +206,7 @@ class SectionTree(QTreeWidget):
         item = QTreeWidgetItem()
         item.setData(0, ROW_ROLE, row)
         # The detail is the row widget's second line; screen readers get it from here.
-        item.setData(0, Qt.ItemDataRole.AccessibleTextRole, _accessible_text(row))
+        item.setData(0, Qt.ItemDataRole.AccessibleTextRole, row_accessible_text(row))
         item.addChildren([self._tree_item(child) for child in row.children])
         return item
 
@@ -258,12 +260,15 @@ class SectionTree(QTreeWidget):
         section = self._section_of(heading)
         hidden = int(heading.data(0, _HIDDEN_ROLE) or 0)
         folded = not heading.isExpanded() if section.rows else None
-        # The empty text starts where the rows a section would hold start, at their side margin.
-        caption = section_caption(section, self.indentation() + Space.M, hidden=hidden, folded=folded)
-        if (replaced := self.itemWidget(heading, 0)) is not None:
-            # The tree deletes a replaced widget later and leaves it on screen until then.
-            replaced.hide()
-        self.setItemWidget(heading, 0, caption)
+        shown = self.itemWidget(heading, 0)
+        if not (isinstance(shown, SectionHeading) and shown.look == heading_look(section, hidden, folded)):
+            if shown is not None:
+                # The tree deletes a replaced widget later and leaves it on screen until then.
+                shown.hide()
+            # The empty text starts where the rows a section would hold start, at their side margin.
+            self.setItemWidget(
+                heading, 0, SectionHeading(section, self.indentation() + Space.M, hidden=hidden, folded=folded)
+            )
         heading.setData(0, Qt.ItemDataRole.AccessibleTextRole, section_accessible_text(section, hidden))
 
     @contextmanager
@@ -295,8 +300,8 @@ class SectionTree(QTreeWidget):
         self._show_caption(item)
 
     def _apply_filter(self) -> None:
-        """Show or hide every row by the filter; show each section that has a row shown, has no rows and says so, or
-        has rows the filter leaves out; and fold or unfold each section as the user, a search, and open rows ask."""
+        """Show or hide every row by the filter; show each section that has a row shown, is always shown, or has rows
+        the filter leaves out; and fold or unfold each section as the user, a search, and open rows ask."""
         with self._folding_sections():
             for index, section in enumerate(self._sections):
                 heading = self.topLevelItem(index)
@@ -310,9 +315,8 @@ class SectionTree(QTreeWidget):
                 hidden = count_shown(section.rows, lambda _row: True, self._matches) - count_shown(
                     section.rows, self._allowed, self._matches
                 )
-                says_empty = not section.rows and bool(section.kind.empty_text)
                 # A search matching only rows the filter leaves out keeps the section, so its count points to them.
-                heading.setHidden(not (shown or hidden or says_empty))
+                heading.setHidden(not (shown or hidden or section.always_shown))
                 kind = section.kind
                 searched = shown and self._matches is not None
                 expanded = searched or kind not in self._folded or kind in self._revealed
@@ -369,8 +373,3 @@ class SectionTree(QTreeWidget):
 def _row_of(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
     """Return the row a row item shows."""
     return cast(WorkspaceBrowserRow, item.data(0, ROW_ROLE))
-
-
-def _accessible_text(row: WorkspaceBrowserRow) -> str:
-    """Return what a screen reader says for *row*: its label, then its detail line."""
-    return f"{row.label}, {row.detail}" if row.detail else row.label

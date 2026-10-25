@@ -1,5 +1,5 @@
 """The frame every workspace view shares: a header with a summary, a toolbar with Search, Sort and Filter, one section
-tree, a row of footer buttons, and an optional footer panel."""
+tree, and an optional footer panel."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import muted_label
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
-from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.chrome.view_panel import ViewPanel
@@ -28,11 +27,10 @@ from ax_devil.modules.workspace.ui.section_tree import SectionTree
 
 class SectionsView(ViewPanel):
     """A sidebar view of the workspace titled *title*, laid out the same for every view: a summary at the right of its
-    header, a toolbar with Search, Sort and Filter, ``tree``, a row of footer buttons directly under it, and a footer
-    panel below that.
+    header, a toolbar with Search, Sort and Filter, ``tree``, and a footer panel under it.
 
     The view decides only which rows its search, Sort and Filter show: its controller gives it sections, a summary,
-    the orders, the footer buttons and the footer panel, and hands ``tree`` to ``WorkspaceController.connect_tree``.
+    the orders and the footer panel, and hands ``tree`` to ``WorkspaceController.connect_tree``.
     The search matches each row's search text. Sort appears with two or more orders and arranges the top-level rows of
     each section; the chosen order is kept while the sections change. The Filter appears when the rows listed have
     facets to choose from: it offers them, grouped, in each group that has a choice to make, and hides the rows with
@@ -91,13 +89,6 @@ class SectionsView(ViewPanel):
         if empty_page is not None:
             self.add(empty_page, 1)
         self._empty = False
-        buttons = QWidget(self)
-        self._footer_buttons = QHBoxLayout(buttons)
-        self._footer_buttons.setContentsMargins(0, 0, 0, 0)
-        self._footer_buttons.setSpacing(Space.S)
-        self._footer_buttons.addStretch(1)
-        self._footer_button_row = self.add_padded(buttons, top=Space.S, bottom=Space.S)
-        self._footer_button_row.hide()
         self._footer_panel = QWidget(self)
         self._footer_panel.setStyleSheet(
             SEE_THROUGH
@@ -130,15 +121,8 @@ class SectionsView(ViewPanel):
         self._sort.setVisible(len(orders) > 1)
         self._list()
 
-    def add_footer_button(self, text: str, icon: Icon) -> SmallButton:
-        """Add a button to the row directly under the tree, after the ones added before it, and return it."""
-        button = SmallButton(text, icon)
-        self._footer_buttons.insertWidget(self._footer_buttons.count() - 1, button)
-        self._show_footer()
-        return button
-
     def set_footer_panel(self, widget: QWidget) -> None:
-        """Show *widget* below the footer buttons."""
+        """Show *widget* below the tree."""
         self._footer_panel_layout.addWidget(widget)
         self._show_footer()
 
@@ -218,9 +202,7 @@ class SectionsView(ViewPanel):
         self._show_footer()
 
     def _show_footer(self) -> None:
-        """Show the footer buttons and the footer panel, each only if it holds something and the empty page is not
-        showing."""
-        self._footer_button_row.setVisible(self._footer_buttons.count() > 1 and not self._empty)
+        """Show the footer panel, only if it holds something and the empty page is not showing."""
         self._footer_panel.setVisible(self._footer_panel_layout.count() > 0 and not self._empty)
 
 

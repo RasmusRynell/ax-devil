@@ -55,8 +55,18 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
     qtbot.addWidget(center)
     scanner = Scanner()
     checker = Checker()
-    controller = LiveViewController(view, workspace, store, jobs, scan=scanner, parent=workspace, check=checker)
+    add_stream_requests: list[None] = []
+    controller = LiveViewController(
+        view,
+        workspace,
+        store,
+        jobs,
+        lambda: add_stream_requests.append(None),
+        scan=scanner,
+        parent=workspace,
+        check=checker,
+    )
     with patch(LIVE_VIEWER, DummyViewer):
-        yield Live(qtbot, view, store, center, scanner, jobs, resolutions, controller, checker)
+        yield Live(qtbot, view, store, center, scanner, jobs, resolutions, controller, checker, add_stream_requests)
     scanner.gate.set()
     checker.gate.set()

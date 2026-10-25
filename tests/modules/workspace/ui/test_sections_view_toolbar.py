@@ -1,4 +1,4 @@
-"""A sections view's Filter and Sort choose which rows it lists, and its footer sits under the tree."""
+"""A sections view's Filter and Sort choose which rows it lists, and its footer panel sits under the tree."""
 
 from __future__ import annotations
 
@@ -104,22 +104,23 @@ def test_an_order_sorts_the_rows_of_each_section_but_not_the_rows_under_them(qtb
     assert titles(view.tree) == ["Day", "Night", "z.mp4", "y.mp4"]
 
 
-def test_the_footer_sits_under_the_tree_and_goes_with_the_toolbar_while_the_empty_page_shows(qtbot: QtBot) -> None:
+def test_the_footer_panel_sits_under_the_tree_and_goes_with_the_toolbar_while_the_empty_page_is_up(
+    qtbot: QtBot,
+) -> None:
     empty = QLabel("Nothing yet")
     view = SectionsView("test", "Test", Icon.WORKSPACE, empty_page=empty)
     qtbot.addWidget(view)
-    add = view.add_footer_button("Add thing", Icon.ADD)
     panel = QLabel("Panel")
     view.set_footer_panel(panel)
     view.resize(300, 500)
     view.show()
-    assert empty.isVisibleTo(view) and not add.isVisibleTo(view) and not panel.isVisibleTo(view)
+    assert empty.isVisibleTo(view) and not panel.isVisibleTo(view)
 
     set_rows(view, (_video_row("a.mp4"),))
 
-    assert not empty.isVisibleTo(view) and add.isVisibleTo(view) and panel.isVisibleTo(view)
+    assert not empty.isVisibleTo(view) and panel.isVisibleTo(view)
     tree_bottom = view.tree.mapTo(view, view.tree.rect().bottomLeft()).y()
-    assert tree_bottom <= add.mapTo(view, add.rect().topLeft()).y() < panel.mapTo(view, panel.rect().topLeft()).y()
+    assert tree_bottom <= panel.mapTo(view, panel.rect().topLeft()).y()
 
 
 def _camera(name: str, product_type: str) -> WorkspaceBrowserRow:

@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, QTimer
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.device_discovery.network_scan import (
     DeviceOrder,
     DiscoveredCamera,
@@ -34,6 +35,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
     RowAction,
     RowOrder,
+    SectionAction,
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
@@ -130,9 +132,10 @@ class LiveViewController(QObject):
     network when empty, signing in when the view asks to; *scan* runs as one of *jobs*, and what it finds is dropped
     once the view is gone or `cleanup` ran. A camera the workspace holds shows what the scan learned about it as a
     found camera does; the view's Sort orders both by what is known of each camera. A found camera's Add puts it in
-    *store* with the user's stream defaults, and with the credentials that signed in to it; it only adds, the stream
-    starts when the user starts it. It can be added only once signed in, so Add never puts in a camera that refuses
-    its login.
+    *store* with the user's stream defaults, and with the credentials that signed in to it, and starts its stream
+    once it has resolved. It can be added only once signed in, so Add never puts in a camera that refuses its login.
+    The Live section is always listed, with an Add stream button that calls *add_stream*, which asks for a camera
+    and adds it.
 
     The workspace's cameras are *check*ed once with their own login as they resolve, unless Settings turn signing in
     off; one that refuses it shows a warning and can not start a stream. Until a check answers, or when it can not
@@ -145,13 +148,16 @@ class LiveViewController(QObject):
         workspace: WorkspaceController,
         store: WorkspaceStore,
         jobs: BackgroundJobs,
+        add_stream: Callable[[], None],
         scan: Scan = _scan_network,
         parent: QObject | None = None,
         check: Check = check_device,
     ) -> None:
         super().__init__(parent)
         self._view: LiveView | None = view
+        self._workspace = workspace
         self._store = store
+        self._add_action = SectionAction("Add stream", Icon.ADD, add_stream, "Add a camera and start its stream")
         self._jobs = jobs.scope(view)
         self._scan = scan
         self._check = check
@@ -318,10 +324,11 @@ class LiveViewController(QObject):
             self._refresh()
 
     def _add(self, camera: DiscoveredCamera) -> None:
-        """Add *camera* without starting its stream; signing in to it has just shown the access works."""
+        """Add *camera* and start its stream once it has resolved; signing in to it has just shown the access works."""
         item = _camera_item(camera)
         self._checked[item.id] = camera
         self._store.add_items([item], open_first=False)
+        self._workspace.start_when_added(item.id)
 
     def _with_found(self, held: Sections) -> Sections:
         """Return *held* with what its cameras' own sign-ins and the scan learned about them, then the cameras found
@@ -329,14 +336,14 @@ class LiveViewController(QObject):
         by_host = {camera.host: camera for camera in self._found or ()}
         self._cameras = {}
         listed: list[WorkspaceBrowserSection] = []
-        for section in held:
+        for section in held or (WorkspaceBrowserSection(BrowserSection.LIVE, ()),):
             rows = []
             for row in section.rows:
                 camera = scan_camera(row, by_host, self._checked)
                 if camera is not None:
                     self._cameras[row.row_id] = camera
                 rows.append(with_scan(row, camera, self._checked))
-            listed.append(replace(section, rows=tuple(rows)))
+            listed.append(replace(section, rows=tuple(rows), action=self._add_action))
         if self._found is None:
             return tuple(listed)
         hosts = _workspace_hosts(self._store.workspace.items)

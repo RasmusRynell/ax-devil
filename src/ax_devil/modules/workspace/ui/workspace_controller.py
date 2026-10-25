@@ -57,6 +57,8 @@ class WorkspaceController(QObject):
         self._center_area = center_area
         self._logger = get_logger(__name__)
         self._edited_items: set[str] = set()
+        self._starting: set[str] = set()
+        """The items to start streaming once they have resolved."""
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
         self._viewers = OpenViewers(
             center_area,
@@ -95,6 +97,11 @@ class WorkspaceController(QObject):
         """
         place = self._center_area.open_to_side if to_side else self._center_area.replace_or_open
         self._viewers.open(content, start_index=start_index, place=place)
+
+    def start_when_added(self, item_id: str) -> None:
+        """Start the camera *item_id* once it has resolved, or now if it has; it opens beside the open viewers."""
+        self._starting.add(item_id)
+        self._start_waiting()
 
     def show_frame(self, content: Content, entry_index: int, frame: int) -> None:
         """Show *frame* of entry *entry_index* of *content* paused; a viewer already showing that entry seeks there
@@ -213,10 +220,23 @@ class WorkspaceController(QObject):
         self._open_row(row)
 
     def _start_stream(self, row: WorkspaceBrowserRow) -> None:
-        """Open the camera beside the open viewers, never in place of one, so one stream never stops another."""
         if (item := self._held_item(row)) is not None:
-            for content in self._workspace_store.resolution(item.id).contents:
-                self.open_content(content, to_side=True)
+            self._start(item.id)
+
+    def _start(self, item_id: str) -> None:
+        """Open the camera beside the open viewers, never in place of one, so one stream never stops another; one that
+        failed to resolve has no Content to open."""
+        for content in self._workspace_store.resolution(item_id).contents:
+            self.open_content(content, to_side=True)
+
+    def _start_waiting(self) -> None:
+        """Start the items asked to start that have resolved, and forget those that are gone."""
+        for item_id in tuple(self._starting):
+            if not self._workspace_store.workspace.has_item(item_id):
+                self._starting.discard(item_id)
+            elif not self._workspace_store.resolution(item_id).is_pending:
+                self._starting.discard(item_id)
+                self._start(item_id)
 
     def _stop_stream(self, row: WorkspaceBrowserRow) -> None:
         """Close every viewer of the camera."""
@@ -285,6 +305,7 @@ class WorkspaceController(QObject):
                 self._edited_items.discard(resolution.item.id)
                 self._viewers.replace_item(resolution)
         self._publish_sections()
+        self._start_waiting()
         if not open_first:
             return
         failures = [
@@ -305,6 +326,7 @@ class WorkspaceController(QObject):
     def _close_all_viewers(self) -> None:
         """Close all viewers and pending edits when another Workspace becomes current."""
         self._edited_items.clear()
+        self._starting.clear()
         self._viewers.close_all()
         self._publish_sections()
 

@@ -16,6 +16,7 @@ from ax_devil.modules.workspace.core import ItemResolution, LiveStreamItem, Work
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.browser_rows import RowAction
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.workspace import DummyViewer
@@ -55,20 +56,44 @@ def test_editing_an_items_name_updates_its_row_and_open_viewer(
     assert row_of(required_item_row(workspace_session)).label == "lot.mp4"
 
 
-def test_adding_a_live_stream_adds_the_camera_without_starting_it(
+def test_adding_the_same_camera_twice_starts_two_streams_whose_rows_differ_by_detail_and_status(
     workspace_session: WorkspaceSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    camera = ItemResolution.of(
-        LiveStreamItem(host="192.0.2.10", label="Entrance"), default_resolution_context(), CancelToken()
-    )
     monkeypatch.setattr(AddLiveStreamDialog, "exec", lambda dialog: AddLiveStreamDialog.DialogCode.Accepted)
-    monkeypatch.setattr(AddLiveStreamDialog, "get_result", lambda dialog: camera)
+    monkeypatch.setattr(
+        AddLiveStreamDialog,
+        "get_result",
+        lambda dialog: ItemResolution.of(
+            LiveStreamItem(host="192.0.2.10"), default_resolution_context(), CancelToken()
+        ),
+    )
 
     with patch(LIVE_VIEWER, DummyViewer):
         workspace_session.add_live_stream()
+        workspace_session.add_live_stream()
 
-    assert [item.display_name for item in store_of(workspace_session).workspace.items] == ["Entrance"]
-    assert workspace_session.focused_widget() is None
+    first, second = store_of(workspace_session).workspace.items
+    assert (first.label, second.label) == ("", ""), "no generated name is stored"
+    viewers = {
+        shown.content_id: viewer
+        for viewer in center_of(workspace_session).findChildren(DummyViewer)
+        if (shown := viewer.current_on_screen_item()) is not None
+    }
+    assert len(viewers) == 2, "the second stream did not replace the first"
+    assert len({row_of(item).detail for item in item_rows(workspace_session)}) == 2
+
+    viewers[store_of(workspace_session).resolution(second.id).contents[0].content_id].set_stream(
+        LiveStreamStatus(LiveStreamState.RECONNECTING, attempts=2)
+    )
+
+    details = [row_of(item).detail for item in item_rows(workspace_session)]
+    assert details[0] != details[1] and "Reconnecting" not in details[0]
+    assert details[1].endswith("Reconnecting (2)")
+
+    with patch(LIVE_VIEWER, DummyViewer):  # The edit replaces the open viewer.
+        store_of(workspace_session).edit_item(LiveStreamItem(host="192.0.2.20", id=second.id))
+
+    assert [row_of(item).label for item in item_rows(workspace_session)] == ["192.0.2.10", "192.0.2.20"]
 
 
 def test_export_waits_for_the_row_to_be_open(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
