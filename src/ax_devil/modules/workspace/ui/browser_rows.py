@@ -269,7 +269,7 @@ class WorkspaceBrowserSection:
         """Return the color of the caption's mark: its kind's, muted when the section is addable or lit by a live
         stream and none of its rows has one."""
         kind = self.kind
-        unlit = kind.lit_by_live_stream and not any(row.stream is not None and row.stream.is_live for row in self.rows)
+        unlit = kind.lit_by_live_stream and not any(row.stream is not None and row.stream.any_live for row in self.rows)
         return KindColor.MUTED if kind.addable or unlit else KIND_MARKS[kind.icon_kind][1]
 
 

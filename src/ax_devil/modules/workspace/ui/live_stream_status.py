@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 from ax_devil.modules.chrome.icons import Icon
@@ -35,11 +35,16 @@ _URGENCY = {state: rank for rank, state in enumerate(LiveStreamState)}
 
 @dataclass(frozen=True, slots=True)
 class LiveStreamStatus:
-    """The state of one viewer's stream with the *reason* it failed or stalled and the reconnect *attempts*."""
+    """The state of one viewer's stream with the *reason* it failed or stalled and the reconnect *attempts*.
+
+    *any_live* says, of the status that sums up a camera's viewers, whether any of them is live, however urgent the
+    state shown.
+    """
 
     state: LiveStreamState
     reason: str = ""
     attempts: int = 0
+    any_live: bool = False
 
     @property
     def text(self) -> str:
@@ -51,12 +56,9 @@ class LiveStreamStatus:
         """Return the icon and color role that mark the state."""
         return self.state.icon, self.state.color
 
-    @property
-    def is_live(self) -> bool:
-        """Return whether frames are arriving."""
-        return self.state is LiveStreamState.LIVE
-
     @classmethod
     def of_viewers(cls, statuses: Iterable[LiveStreamStatus]) -> LiveStreamStatus:
         """Return the most urgent of the *statuses* of the viewers showing one camera; idle when there is none."""
-        return min(statuses, key=lambda status: _URGENCY[status.state], default=cls(LiveStreamState.IDLE))
+        viewers = tuple(statuses)
+        urgent = min(viewers, key=lambda status: _URGENCY[status.state], default=cls(LiveStreamState.IDLE))
+        return replace(urgent, any_live=any(status.state is LiveStreamState.LIVE for status in viewers))

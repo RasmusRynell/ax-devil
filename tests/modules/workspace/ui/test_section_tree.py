@@ -7,7 +7,10 @@ from dataclasses import replace
 from PySide6.QtWidgets import QApplication, QLabel
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera
+from ax_devil.modules.workspace.core import LiveStreamItem
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
+from ax_devil.modules.workspace.ui.live_view_rows import with_scan
 from tests.helpers.section_tree import caption, click_caption, is_folded, texts, titles
 from tests.helpers.section_tree_rows import item_at, playlist_row, row_widget, show_tree
 
@@ -198,8 +201,17 @@ def test_a_section_without_rows_says_so_and_does_not_fold(qtbot: QtBot) -> None:
 
 
 def test_a_wrapped_detail_shows_every_line_at_any_width(qtbot: QtBot) -> None:
-    detail = "192.0.2.25 · Failed: RTSP Error: Unauthorized for the login saved with the camera"
-    row = WorkspaceBrowserRow(row_id="cam", label="Camera", icon_kind="live_video", detail=detail, wrap_detail=True)
+    status = "Failed: RTSP Error: Unauthorized for the login saved with the camera"
+    held = WorkspaceBrowserRow(
+        row_id="cam",
+        label="Camera",
+        icon_kind="live_video",
+        item=LiveStreamItem(host="192.0.2.25"),
+        detail=f"192.0.2.25 · {status}",
+        wrap_detail=True,
+    )
+    row = with_scan(held, DiscoveredCamera("192.0.2.25", "AXIS Q1656", "ACCC8E123456"), {})
+    assert status in row.detail, "the status keeps ordinary spaces, which are all it can wrap at"
     tree = show_tree(qtbot, row, kind=BrowserSection.LIVE)
     [label] = [label for label in row_widget(tree, item_at(tree, 0)).findChildren(QLabel) if label.wordWrap()]
 

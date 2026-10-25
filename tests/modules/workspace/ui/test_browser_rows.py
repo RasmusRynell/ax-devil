@@ -206,6 +206,8 @@ def test_a_live_rows_detail_and_mark_follow_its_stream_and_its_name_is_not_repea
 
     assert failing.detail == "camera.local · Failed: Unauthorized", "the most urgent viewer wins"
     assert failing.mark == (Icon.WARNING, StatusColor.WARNING)
+    (failing_section,) = browser_sections(store, opened, {named.content_id: statuses[named.content_id]})
+    assert failing_section.mark_color is KindColor.LIVE, "a stream is live though the row shows the failed one"
     assert (streaming.detail, streaming.mark) == ("Live", (Icon.STREAMING, KindColor.LIVE))
     assert section.mark_color is KindColor.LIVE
 
