@@ -127,7 +127,7 @@ class _Delegate(QStyledItemDelegate):
         elif pinned is not None and self._pins is not None:
             text = "Unpin field" if pinned in self._pins else "Pin field"
         elif row is not None:
-            text = row.cut_text(_row_area(option.rect), self.fonts, self.label_width)
+            text = row.cut_text(_row_area(option.rect, self.pin_px(index)), self.fonts, self.label_width)
         if text is None:
             QToolTip.hideText()
         else:
