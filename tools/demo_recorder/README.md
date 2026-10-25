@@ -110,7 +110,7 @@ for Workspace readiness and synchronous Quick readback. Changing those internals
 There is no recording code in the installed application. This rebuild intentionally omits the old experimental
 cursor animations, camera zooms, captions, GIFs and ten-style batch generator.
 
-Run `make check` and `QT_QPA_PLATFORM=offscreen make test`. For a native smoke check, generate small input and
+Run `make check` and `make test`. For a native smoke check, generate small input and
 record it (the command creates its own isolated display):
 
 ```bash

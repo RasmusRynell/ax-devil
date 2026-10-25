@@ -53,8 +53,8 @@ that task. `.claude/skills` links to the same folder for Claude Code.
 uv sync       # Create/update .venv with runtime + dev deps
 make check    # ruff format --check + ruff check + scripts/check_logging.py + mypy
 make format   # ruff check --fix + ruff format
-QT_QPA_PLATFORM=offscreen make test  # Regular offline pytest suite
-QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smoke test (may download packages)
+make test     # Regular offline pytest suite, on a private Xvfb display (docs/runbooks/testing.md)
+make test-integration  # Run the real installation smoke test (may download packages)
 ```
 
 ### Code Rules
@@ -80,8 +80,7 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 
 ### Done
 
-- For changes to code, tests, dependencies, or runtime/build configuration, run `make check` and
-  `QT_QPA_PLATFORM=offscreen make test`.
+- For changes to code, tests, dependencies, or runtime/build configuration, run `make check` and `make test`.
 - For prose-only documentation or agent-instruction changes, validate affected links, examples, and consistency,
   instead of running the application checks.
 - Tests: delete the tests of code you remove, merge or change before writing new ones. Add a test only for a deep
@@ -108,7 +107,7 @@ uv run ax-devil --help  # Every command; each has its own --help
 
 - Keep device credentials out of the repo — use `AX_DEVIL_TARGET_*` env vars or config overrides.
 - Tests must never read or write the user's real files. The suite runs in its own home folder and fails if the user's own configs, render catalogs or plugins under `~/.ax_devil`, or `ax-devil` under the XDG data home, change; a test that needs files uses `tmp_path` (see `docs/runbooks/testing.md`).
-- Agent verification runs offscreen or on a private display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
+- Agent verification runs on a private Xvfb display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
 - When changing names, structure, or shared terminology, carry the change through code, tests and comments. Update a doc only where it states a rule the change affects.
 - Documentation follows the placement rule below. The default for a feature or fix is no documentation change.
 
