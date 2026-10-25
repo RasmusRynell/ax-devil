@@ -12,10 +12,11 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.chrome.copy_cell import CopiedMark
+from ax_devil.modules.chrome.copy_cell import CopiedMark, copy_column_px
 from ax_devil.modules.object_inspection import fields_model
 from ax_devil.modules.object_inspection.fields_model import FieldsModel, Section
 from ax_devil.modules.object_inspection.fields_view import FieldsView
+from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
 from ax_devil.modules.object_inspection.rows import FieldRow, RowFonts, id_row
 from ax_devil.modules.scene.inspection import InspectionField
 from ax_devil.modules.scene.model import (
@@ -30,6 +31,7 @@ from ax_devil.modules.scene.model import (
 )
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 
+_BOX = BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2, allow_outside=True)
 _ID = "9f1c2a7e-3b4d-4e5f-8a6b-0c1d2e3f4a5b"
 
 
@@ -53,12 +55,12 @@ def test_copy_icons_copy_the_full_id_and_the_raw_section_as_json(qtbot: QtBot, m
         return to_json(items)
 
     monkeypatch.setattr(fields_model, "_json_of", counting_json)
-    page = ObjectPage(_ID, {"Raw": False})
+    page = ObjectPage(_ID, {"Raw": False}, PinnedFields())
     qtbot.addWidget(page)
     page.resize(200, 400)  # Too narrow for the whole id
     page.show()
     page.update_scene(scene, 0)
-    fields = page.findChild(FieldsView)
+    fields = page.findChild(FieldsView, "objectFields")
     assert fields is not None
     model = fields.model()
     fields.grab()
@@ -93,6 +95,67 @@ def test_copy_icons_copy_the_full_id_and_the_raw_section_as_json(qtbot: QtBot, m
     monkeypatch.setattr(FieldRow, "label_px", counting)
     page.update_scene(scene, 1)  # A frame that only brings new values measures no label again
     assert measured == []
+
+
+def _page_of(qtbot: QtBot, pins: PinnedFields, entity_id: str, debug: dict[str, Any]) -> tuple[ObjectPage, Scene]:
+    entity = Entity(EntityId(entity_id))
+    entity.add_observation(Observation(frame_number=0, geometry=_BOX, debug=debug))
+    scene = Scene(time_slice=TimeSlice(start=0, end=0))
+    scene.add_entity(entity)
+    page = ObjectPage(entity_id, {"Debug": False}, pins)
+    qtbot.addWidget(page)
+    page.resize(300, 500)
+    page.show()
+    page.update_scene(scene, 0)
+    return page, scene
+
+
+def _click_pin(view: FieldsView, label: str) -> None:
+    """Click the pin icon of the row labelled *label*."""
+    model = cast(FieldsModel, view.model())
+    for top in range(model.rowCount()):
+        for row in range(model.rowCount(model.index(top, 0))):
+            index = model.index(row, 0, model.index(top, 0))
+            if (found := model.row_at(index)) is not None and found.label == label:
+                x = view.viewport().width() - copy_column_px() - copy_column_px() // 2
+                y = view.visualRect(index).center().y()
+                QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(x, y))
+                return
+    raise AssertionError(f"no row {label}")
+
+
+def _pinned(page: ObjectPage) -> dict[str, str]:
+    view = page.findChild(FieldsView, "pinnedFields")
+    assert view is not None
+    model = cast(FieldsModel, view.model())
+    return {row.label: row.copy_text() for row in model.rows()} if view.isVisible() else {}
+
+
+def test_a_pinned_field_shows_the_same_field_of_whichever_object_is_shown(qtbot: QtBot) -> None:
+    pins = PinnedFields()
+    first, scene = _page_of(qtbot, pins, "a", {"moving": True, "idle_s": 3.5})
+    fields = first.findChild(FieldsView, "objectFields")
+    assert fields is not None
+    assert _pinned(first) == {}
+    _click_pin(fields, "moving")
+    assert _pinned(first) == {"debug.moving": "true"}
+
+    second, _ = _page_of(qtbot, pins, "b", {"moving": False})
+    assert _pinned(second) == {"debug.moving": "false"}
+    third, _ = _page_of(qtbot, pins, "c", {"idle_s": 1.0})
+    assert _pinned(third) == {"debug.moving": "unavailable"}  # Not the last value, and not false
+
+    entity = scene.entities[EntityId("a")]
+    entity.add_observation(Observation(frame_number=1, geometry=_BOX, debug={"moving": False}))
+    first.update_scene(scene, 1)
+    assert _pinned(first) == {"debug.moving": "false"}
+    first.update_scene(Scene(time_slice=TimeSlice(start=1, end=1)), 2)  # The object left the frame
+    assert _pinned(first) == {"debug.moving": "unavailable"}
+
+    pinned = first.findChild(FieldsView, "pinnedFields")
+    assert pinned is not None
+    _click_pin(pinned, "debug.moving")
+    assert _pinned(first) == {} and not pinned.isVisible()
 
 
 def test_fields_view_minimum_width_does_not_depend_on_its_rows(qtbot: QtBot) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Hashable, Sequence
+from copy import copy
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,11 +17,13 @@ from PySide6.QtCore import (
 )
 
 from ax_devil.modules.data_sources.scene_history import FrameEvent
-from ax_devil.modules.object_inspection.rows import EventRow, Row, field_row
+from ax_devil.modules.object_inspection.pinned_fields import FieldId, PinnedFields
+from ax_devil.modules.object_inspection.rows import EventRow, Row, field_row, unavailable_row
 from ax_devil.modules.scene.inspection import FieldGroup, InspectionField, entity_fields
 from ax_devil.modules.scene.model import Entity
 
 EVENTS_SECTION = "Events"
+PINNED_SECTION = "Pinned"
 
 _ITEM_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
@@ -43,12 +46,37 @@ def field_sections(entity: Entity) -> tuple[Section, ...]:
     return tuple(
         Section(
             group.title,
-            tuple(field_row(item) for item in items),
+            tuple(field_row(item, group.title) for item in items),
             group.folded_by_default,
             (lambda items=items: _json_of(items)) if group is FieldGroup.RAW else None,
         )
         for group, items in entity_fields(entity)
     )
+
+
+def pinned_section(sections: Sequence[Section], pins: PinnedFields) -> Section | None:
+    """Return the pinned fields as a section, in the order they were pinned, or ``None`` if nothing is pinned.
+
+    Each takes its value from the first row of *sections* with that field id, named by its full ``group.path``; a
+    field the object does not have shows as unavailable, which is every field when the object is not in the frame.
+    """
+    if not len(pins):
+        return None
+    found: dict[FieldId, Row] = {}
+    for section in sections:
+        for row in section.rows:
+            if row.field_id is not None:
+                found.setdefault(row.field_id, row)
+    rows: list[Row] = []
+    for field_id in pins:
+        found_row = found.get(field_id)
+        if found_row is None:
+            rows.append(unavailable_row(field_id))
+        else:
+            pinned = copy(found_row)
+            pinned.label = field_id.label
+            rows.append(pinned)
+    return Section(PINNED_SECTION, tuple(rows))
 
 
 def _json_of(items: Sequence[InspectionField]) -> str:
@@ -142,13 +170,14 @@ class FieldsModel(QAbstractItemModel):
     def has_copy_at(self, index: QModelIndex | QPersistentModelIndex) -> bool:
         """Return whether the row or caption at *index* has a copy icon, without making the text it would copy."""
         section = self.section_at(index)
-        return self.row_at(index) is not None or (section is not None and section.copy is not None)
+        row = self.row_at(index)
+        return (row is not None and row.copyable) or (section is not None and section.copy is not None)
 
     def copy_text_at(self, index: QModelIndex | QPersistentModelIndex) -> str | None:
         """Return what copying the row or caption at *index* puts on the clipboard, or ``None`` if it has no copy."""
         row, section = self.row_at(index), self.section_at(index)
         if row is not None:
-            return row.copy_text()
+            return row.copy_text() if row.copyable else None
         return section.copy() if section is not None and section.copy is not None else None
 
     def copy_key_at(self, index: QModelIndex | QPersistentModelIndex) -> Hashable:

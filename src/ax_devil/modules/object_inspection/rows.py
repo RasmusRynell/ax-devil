@@ -23,6 +23,7 @@ from ax_devil.modules.chrome.theme import category_color
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
+from ax_devil.modules.object_inspection.pinned_fields import FieldId
 from ax_devil.modules.scene.inspection import InspectionField
 
 _EVENT_TEXT_CHARS = (
@@ -65,11 +66,14 @@ def _draw_text(
 class Row(ABC):
     """One line under a section: it has a *key* that identifies it across updates, paints itself and says what
     copying it puts on the clipboard. A row that is an event carries it in *event*; a row with a *label* has it
-    drawn in the view's label column.
+    drawn in the view's label column; a row with a *field_id* can be pinned, and one that is not *copyable* has
+    nothing to copy.
     """
 
     event: FrameEvent | None = None
     label: str = ""
+    field_id: FieldId | None = None
+    copyable: bool = True
 
     @property
     @abstractmethod
@@ -110,7 +114,8 @@ class FieldRow(Row):
     """A *label* in muted text and its *text* in monospace, with a thin bar for a score, or after a colored *tag*.
 
     Copying gives *copy*, the value in full (the text itself if not given); a long value is cut in the way *elide*
-    says.
+    says. An *unavailable* row stands for a pinned field the object does not have: its text is muted and there is
+    nothing to copy.
     """
 
     def __init__(
@@ -122,8 +127,13 @@ class FieldRow(Row):
         fraction: float | None = None,
         tag: str | None = None,
         elide: Qt.TextElideMode = Qt.TextElideMode.ElideRight,
+        field_id: FieldId | None = None,
+        unavailable: bool = False,
     ) -> None:
         self.label = label
+        self.field_id = field_id
+        self.copyable = not unavailable
+        self._unavailable = unavailable
         self._text = text
         self._copy = text if copy is None else copy
         self._fraction = fraction
@@ -178,6 +188,11 @@ class FieldRow(Row):
             value.setLeft(
                 value.left() + paint_tag(painter, value, self._tag, category_color(self._tag, palette)) + Space.M
             )
+        if self._unavailable:
+            font = QFont(fonts.body)
+            font.setItalic(True)
+            _draw_text(painter, value, font, muted, self._text)
+            return
         _draw_text(painter, value, fonts.mono, palette.color(QPalette.ColorRole.Text), self._text, self._elide)
 
     def cut_text(self, rect: QRect, fonts: RowFonts, label_width: int) -> str | None:
@@ -195,11 +210,22 @@ class FieldRow(Row):
         return self._copy
 
 
-def field_row(field: InspectionField) -> FieldRow:
-    """Return *field* as a row; a float copies with all its digits."""
+def field_row(field: InspectionField, group: str) -> FieldRow:
+    """Return *field* of the group titled *group* as a row; a float copies with all its digits."""
     value = field.value
     copy = str(value) if isinstance(value, float) else format_field_value(value)
-    return FieldRow(".".join(field.path), format_field_value(value), copy=copy, fraction=field.fraction)
+    return FieldRow(
+        ".".join(field.path),
+        format_field_value(value),
+        copy=copy,
+        fraction=field.fraction,
+        field_id=FieldId(group, field.path),
+    )
+
+
+def unavailable_row(field_id: FieldId) -> FieldRow:
+    """Return the row that says the object has no *field_id*, in place of a value that would be stale or look empty."""
+    return FieldRow(field_id.label, "unavailable", field_id=field_id, unavailable=True)
 
 
 def id_row(entity_id: str) -> FieldRow:

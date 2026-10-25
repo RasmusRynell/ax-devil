@@ -25,7 +25,7 @@ import shutil
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
@@ -44,9 +44,11 @@ from ax_devil.app import Application
 from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
+from ax_devil.modules.object_inspection.pinned_fields import FieldId
 from ax_devil.modules.plugin_system import (
     RuntimePluginRegistry,
 )
+from ax_devil.modules.scene.model import EntityId
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.video_player.engine.data_types import HoverHit
@@ -363,6 +365,33 @@ def test_media_tools_screenshots(
     panel._stack.show_root(objects)
     panel.show_object("7")
     shoot("panel-object")
+    # Pin three fields on object 7, which has them, then follow object 1, which lacks one of them.
+    scene = panel._last_scene
+    assert scene is not None and panel._last_frame_id is not None
+    debug_values: dict[str, dict[str, Any]] = {
+        "7": {"movement": {"moving": True, "stationary_s": 0.0}},
+        "1": {"movement": {"moving": False}},
+    }
+    for entity_id, debug in debug_values.items():
+        observation = scene.entities[EntityId(entity_id)].latest_observation
+        assert observation is not None
+        observation.debug = debug
+    for field_id in (
+        FieldId("Debug", ("movement", "moving")),
+        FieldId("Debug", ("movement", "stationary_s")),
+        FieldId("Classification", ("conf",)),
+    ):
+        panel._pinned_fields.toggle(field_id)
+    assert panel._followed is not None
+    panel._followed.update_scene(scene, panel._last_frame_id.sequence_id)
+    shoot("panel-object-pinned")
+    panel.show_object("1")
+    shoot("panel-object-pinned-unavailable")
+    panel.show_object("7")
+    panel._pinned_fields.toggle(FieldId("Debug", ("movement", "stationary_s")))
+    panel._pinned_fields.toggle(FieldId("Debug", ("movement", "moving")))
+    panel._pinned_fields.toggle(FieldId("Classification", ("conf",)))
+    panel._followed.update_scene(scene, panel._last_frame_id.sequence_id)
     panel.show_object("6")
     shoot("panel-object-absent")
     panel._stack.show_root(objects)

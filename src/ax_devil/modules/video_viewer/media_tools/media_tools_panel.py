@@ -18,6 +18,7 @@ from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.data_sources.scene_history import FrameEvent, SceneHistory
 from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
@@ -99,6 +100,7 @@ class MediaToolsPanel(QWidget):
             EventPageKey: self._resolve_event_key,
         }
         self._fold_state: dict[str, bool] = {}
+        self._pinned_fields = PinnedFields()
         self.filter_model = filter_model
         self._filter_widget = EntityFilterWidget(filter_model=self.filter_model, show_title=False)
         self._overlay_controls = OverlayPersistenceControls(initial_settings=overlay_settings, show_title=False)
@@ -361,7 +363,7 @@ class MediaToolsPanel(QWidget):
         return page
 
     def _build_object_page(self, key: ObjectPageKey) -> ObjectPage:
-        page = ObjectPage(key.entity_id, self._fold_state)
+        page = ObjectPage(key.entity_id, self._fold_state, self._pinned_fields)
         page.eventActivated.connect(self._open_event)
         return page
 
