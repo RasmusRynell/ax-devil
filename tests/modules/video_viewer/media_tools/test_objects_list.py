@@ -12,6 +12,7 @@ from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.session_filter import SessionFilter
+from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
 from ax_devil.modules.scene.inspection import EntitySummary, entity_summary
 from ax_devil.modules.scene.model import (
     Entity,
@@ -333,7 +334,7 @@ def test_hidden_object_page_collects_its_events_only_when_shown(qtbot: QtBot, mo
         return ()
 
     monkeypatch.setattr(SceneHistory, "events_involving", events_involving)
-    page = ObjectPage("a", {})
+    page = ObjectPage("a", {}, PinnedFields())
     qtbot.addWidget(page)
 
     page.set_history(make_history(("a", "human", ((0, 3),))))

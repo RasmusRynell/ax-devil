@@ -21,6 +21,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import (
+    QContextMenuEvent,
     QGuiApplication,
     QHelpEvent,
     QKeyEvent,
@@ -32,6 +33,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QMenu,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
@@ -41,12 +43,20 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.copy_cell import COPY_TOOLTIP, CopiedMark, copy_column_px, paint_copy_icon
+from ax_devil.modules.chrome.copy_cell import (
+    COPY_TOOLTIP,
+    CopiedMark,
+    copy_column_px,
+    copy_icon_px,
+    paint_copy_icon,
+)
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import paint_row_background
 from ax_devil.modules.chrome.section_caption import paint_section_caption
 from ax_devil.modules.chrome.theme import FLUSH_VIEW, category_color
 from ax_devil.modules.chrome.tokens import Height, Space
 from ax_devil.modules.object_inspection.fields_model import FieldsModel, Section
+from ax_devil.modules.object_inspection.pinned_fields import FieldId, PinnedFields
 from ax_devil.modules.object_inspection.rows import Row, RowFonts
 
 _ARROW_PX = Space.M  # Rows and captions start here, so their text lines up with other content at Space.M plus this.
@@ -55,18 +65,20 @@ _ID_CHARS = 20  # The characters of a long value, such as an id, that the label 
 _LABEL_CHARS = 14  # The characters of a label that stay visible; a longer label is cut in the middle at the narrowest.
 
 
-def _row_area(rect: QRect) -> QRect:
-    """Return the part of a row's *rect* its content gets: after the fold arrow's indent and before the copy column."""
-    return rect.adjusted(_ARROW_PX, 0, -(copy_column_px() + Space.S), 0)
+def _row_area(rect: QRect, pin_px: int = 0) -> QRect:
+    """Return the part of a row's *rect* its content gets: after the fold arrow's indent and before the copy column,
+    and before the pin column of *pin_px* if the row has one."""
+    return rect.adjusted(_ARROW_PX, 0, -(copy_column_px() + pin_px + Space.S), 0)
 
 
 class _Delegate(QStyledItemDelegate):
-    """Paints section captions and asks each row to paint itself, then adds the copy column."""
+    """Paints section captions and asks each row to paint itself, then adds the pin and copy columns."""
 
-    def __init__(self, view: QTreeView, model: FieldsModel) -> None:
+    def __init__(self, view: QTreeView, model: FieldsModel, pins: PinnedFields | None) -> None:
         super().__init__(view)
         self._view = view
         self._fields = model
+        self._pins = pins
         # What the view tells about the pointer, the last copy and the label column.
         self.hover = QPersistentModelIndex()
         self.copied: CopiedMark | None = None
@@ -84,6 +96,19 @@ class _Delegate(QStyledItemDelegate):
         """Return the uniform row height."""
         return QSize(option.rect.width(), self._height)
 
+    def pin_px(self, index: QModelIndex | QPersistentModelIndex) -> int:
+        """Return the width of the pin column of the row at *index*, 0 if it cannot be pinned."""
+        row = self._fields.row_at(index)
+        return copy_column_px() if self._pins is not None and row is not None and row.field_id is not None else 0
+
+    def pin_column_at(self, index: QModelIndex | QPersistentModelIndex, x: int, width: int) -> FieldId | None:
+        """Return the field of the row at *index* if *x*, in a row *width* wide, is over its pin column."""
+        row, pin_px = self._fields.row_at(index), self.pin_px(index)
+        if row is None or not pin_px:
+            return None
+        right = width - copy_column_px()
+        return row.field_id if right - pin_px <= x < right else None
+
     def helpEvent(  # noqa: N802
         self,
         event: QHelpEvent,
@@ -96,10 +121,13 @@ class _Delegate(QStyledItemDelegate):
             return super().helpEvent(event, view, option, index)
         text = None
         row = self._fields.row_at(index)
+        pinned = self.pin_column_at(index, event.pos().x(), option.rect.right() + 1)
         if self._fields.has_copy_at(index) and event.pos().x() > option.rect.right() - copy_column_px():
             text = COPY_TOOLTIP
+        elif pinned is not None and self._pins is not None:
+            text = "Unpin field" if pinned in self._pins else "Pin field"
         elif row is not None:
-            text = row.cut_text(_row_area(option.rect), self.fonts, self.label_width)
+            text = row.cut_text(_row_area(option.rect, self.pin_px(index)), self.fonts, self.label_width)
         if text is None:
             QToolTip.hideText()
         else:
@@ -120,7 +148,8 @@ class _Delegate(QStyledItemDelegate):
         painter.setClipRect(option.rect)
         body = option.rect.adjusted(0, 0, -copy_px if has_copy else 0, 0)
         if row is not None:
-            row.paint(painter, _row_area(option.rect), palette, self.fonts, self.label_width)
+            row.paint(painter, _row_area(option.rect, self.pin_px(index)), palette, self.fonts, self.label_width)
+            self._paint_pin(painter, option, index, row, palette)
         elif section is not None:
             self._paint_section(painter, option, body, palette, section, self._view.isExpanded(index))
         if has_copy:
@@ -128,6 +157,26 @@ class _Delegate(QStyledItemDelegate):
             copy_rect = QRect(option.rect.right() - copy_px + 1, option.rect.top(), copy_px, option.rect.height())
             paint_copy_icon(painter, copy_rect, palette, bright=index == self.hover, copied=copied)
         painter.restore()
+
+    def _paint_pin(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+        row: Row,
+        palette: QPalette,
+    ) -> None:
+        """Draw the pin of a row that can be pinned: always for a pinned one, else only while the row is hovered."""
+        pinned = self._pins is not None and row.field_id in self._pins
+        if not self.pin_px(index) or not (pinned or index == self.hover):
+            return
+        color = palette.color(QPalette.ColorRole.Highlight if pinned else QPalette.ColorRole.PlaceholderText)
+        size = copy_icon_px()
+        column = copy_column_px()
+        left = option.rect.right() + 1 - 2 * column + (column - size) // 2
+        (Icon.PINNED if pinned else Icon.PIN).icon(color).paint(
+            painter, QRect(left, option.rect.top() + (option.rect.height() - size) // 2, size, size)
+        )
 
     def _paint_section(
         self,
@@ -162,17 +211,31 @@ class FieldsView(QTreeView):
     Which sections are folded is kept by section name in the dictionary the owner passes in, so pages for different
     objects fold alike. Sections start as their ``folded_by_default`` says until the user folds one. A click on a row's
     copy icon, or Ctrl+C on the current row, copies it, and a click on an event row emits ``eventActivated``.
+
+    With *pins*, a row that has a field id also gets a pin: its icon, or a right-click on the row, emits
+    ``pinToggled`` with the field for the owner to pin or unpin. With *max_rows* the view is only as tall as its rows,
+    up to that many including captions, so it can sit above another view.
     """
 
     eventActivated = Signal(object)  # FrameEvent
+    pinToggled = Signal(object)  # FieldId
 
-    def __init__(self, fold_state: dict[str, bool], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        fold_state: dict[str, bool],
+        parent: QWidget | None = None,
+        *,
+        pins: PinnedFields | None = None,
+        max_rows: int | None = None,
+    ) -> None:
         super().__init__(parent)
         self._fold_state = fold_state
+        self._pins = pins
+        self._max_rows = max_rows
         self._syncing = False
         self._hover = QPersistentModelIndex()
         self._fields_model = FieldsModel(self)
-        self._delegate = _Delegate(self, self._fields_model)
+        self._delegate = _Delegate(self, self._fields_model, pins)
         self._longest_label = 0
         self._widest_value = 0
         self._widest_event = 0
@@ -202,6 +265,8 @@ class FieldsView(QTreeView):
         self.clicked.connect(self._on_clicked)
         self.expanded.connect(lambda index: self._remember_fold(index, folded=False))
         self.collapsed.connect(lambda index: self._remember_fold(index, folded=True))
+        self.expanded.connect(self._fit_height)
+        self.collapsed.connect(self._fit_height)
         follow_appearance(self, self._apply_metrics)
 
     def set_sections(self, sections: Sequence[Section], lead: Sequence[Row] = ()) -> None:
@@ -211,6 +276,7 @@ class FieldsView(QTreeView):
         self._values_measured = False
         self._fit_labels()
         self._sync_folds()
+        self._fit_height()
         if was_reset:
             self.doItemsLayout()
             self.verticalScrollBar().setValue(scroll)
@@ -246,9 +312,14 @@ class FieldsView(QTreeView):
         super().keyPressEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        """Copy on a press in the copy column, before it selects or folds anything."""
+        """Pin on a press in the pin column and copy on one in the copy column, before it selects or folds anything."""
         position = event.position().toPoint()
         index = self.indexAt(position)
+        field_id = self._delegate.pin_column_at(index, position.x(), self.viewport().width())
+        if event.button() == Qt.MouseButton.LeftButton and field_id is not None:
+            self.pinToggled.emit(field_id)
+            event.accept()
+            return
         if (
             event.button() == Qt.MouseButton.LeftButton
             and position.x() >= self.viewport().width() - copy_column_px()
@@ -258,6 +329,19 @@ class FieldsView(QTreeView):
             event.accept()
             return
         super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """Offer to pin or unpin the field of the row under the pointer."""
+        row = self._fields_model.row_at(self.indexAt(event.pos()))
+        if self._pins is None or row is None or row.field_id is None:
+            super().contextMenuEvent(event)
+            return
+        field_id = row.field_id
+        menu = QMenu(self)
+        action = menu.addAction("Unpin field" if field_id in self._pins else "Pin field")
+        action.triggered.connect(lambda: self.pinToggled.emit(field_id))
+        menu.exec(event.globalPos())
+        event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Follow the row under the pointer."""
@@ -328,13 +412,27 @@ class FieldsView(QTreeView):
             self._values_measured = True
         return self._longest_label, self._widest_value
 
+    def _pin_px(self) -> int:
+        """Return the width of the pin column, 0 when the view has no pins."""
+        return copy_column_px() if self._pins is not None else 0
+
+    def _fit_height(self) -> None:
+        """Make a view with *max_rows* as tall as the rows it shows now."""
+        if self._max_rows is None:
+            return
+        rows = sum(
+            1 + (len(section.rows) if self.isExpanded(self._fields_model.section_index(position)) else 0)
+            for position, section in enumerate(self._fields_model.sections())
+        )
+        self.setFixedHeight(min(rows, self._max_rows) * Height.ROW.px + 2 * self.frameWidth())
+
     def _fit_labels(self) -> None:
         """Make the label column as wide as the longest label, but leave a long value such as an id its room where
         it can, and the label at least a third of the row; a cut label is cut in the middle.
         """
         fonts = self._delegate.fonts
         longest, widest = self._measure()
-        inner = _row_area(QRect(0, 0, self.viewport().width(), 1)).width()
+        inner = _row_area(QRect(0, 0, self.viewport().width(), 1), self._pin_px()).width()
         value_room = min(widest, _ID_CHARS * fonts.mono_metrics.averageCharWidth())
         width = min(longest, max(inner // 3, inner - Space.M - value_room))
         if width != self._delegate.label_width:
@@ -346,7 +444,8 @@ class FieldsView(QTreeView):
         bar if there may be one, so the panel does not change width from one object to the next.
         """
         fonts = self._delegate.fonts
-        around = -_row_area(QRect(0, 0, 0, 1)).width()  # What a row spends on the arrow and the copy column.
+        # What a row spends on the arrow and the columns.
+        around = -_row_area(QRect(0, 0, 0, 1), self._pin_px()).width()
         bar = (
             0
             if self.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
@@ -366,6 +465,7 @@ class FieldsView(QTreeView):
         self._values_measured = False
         self._delegate.load_metrics()
         self._fit_labels()
+        self._fit_height()
         self.updateGeometry()
         self.doItemsLayout()
         self.viewport().update()

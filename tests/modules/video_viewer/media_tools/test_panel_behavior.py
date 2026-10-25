@@ -120,7 +120,7 @@ def test_panel_keeps_its_width_whatever_it_shows(
     tabs.setCurrentIndex(0)
     panel.show_object(uuid)
     unchanged()
-    fields = panel.findChild(FieldsView)
+    fields = panel.findChild(FieldsView, "objectFields")
     assert fields is not None
     fields.collapseAll()
     unchanged()
