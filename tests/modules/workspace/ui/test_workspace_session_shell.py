@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QPoint, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QSplitter
 from pytestqt.qtbot import QtBot
 
@@ -73,17 +74,31 @@ def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspac
     QCoreApplication.processEvents()
     assert window.is_sidebar_shown() and splitter.sizes()[0] == width
 
-    # Dragged wider, it remembers the width; dragged closed, it stays closed until toggled back.
-    splitter.moveSplitter(width + 60, 1)
-    assert splitter.sizes()[0] == width + 60
-    splitter.moveSplitter(0, 1)
+    # Dragged wider, it remembers the width; dragged closed and back out within one held drag, it reopens;
+    # released closed, it stays closed until toggled back.
+    handle = splitter.handle(1)
+    grab = handle.rect().center()
+    origin = handle.mapToGlobal(grab)
+
+    def drag_to(dx: int) -> int:
+        """Move the held mouse *dx* pixels from where it grabbed the handle; return the sidebar width."""
+        QTest.mouseMove(handle, handle.mapFromGlobal(origin + QPoint(dx, 0)))
+        return int(splitter.sizes()[0])
+
+    QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=grab)
+    assert drag_to(60) > width
+    assert drag_to(-2000) == 0
+    reopened = drag_to(-30)
+    assert 0 < reopened < width
+    assert drag_to(-2000) == 0
+    QTest.mouseRelease(handle, Qt.MouseButton.LeftButton)
     assert not window.is_sidebar_shown()
     with patch(OFFLINE_VIEWER, DummyViewer):
         workspace_session.add_items([content_item(video_content("c"))])
     QCoreApplication.processEvents()
     assert not window.is_sidebar_shown()
     window.toggle_sidebar()
-    assert window.is_sidebar_shown() and splitter.sizes()[0] == width + 60
+    assert window.is_sidebar_shown() and splitter.sizes()[0] == reopened
 
 
 def test_activity_bar_buttons_trigger_render_catalogs_and_settings(workspace_session: WorkspaceSession) -> None:
