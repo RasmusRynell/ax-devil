@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QPoint, QTimer
-from PySide6.QtWidgets import QApplication, QLineEdit, QMenu, QScrollArea, QWidget
+from PySide6.QtCore import QCoreApplication, QTimer
+from PySide6.QtWidgets import QLineEdit, QMenu, QScrollArea
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
@@ -14,7 +14,7 @@ from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import LiveStreamItem
 from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from tests.helpers.live_view import Live, scan
-from tests.helpers.section_tree import captions, row
+from tests.helpers.section_tree import captions, is_folded, row
 from tests.helpers.widgets import button
 
 
@@ -66,18 +66,18 @@ def test_the_chosen_order_stays_while_cameras_are_found(live: Live) -> None:
     assert list(live.rows()) == ["192.0.2.13", "192.0.2.12"]
 
 
-def test_add_manually_and_the_scan_settings_sit_under_the_tree(live: Live) -> None:
-    live.view.resize(360, 700)
-    live.view.show()
-    QApplication.processEvents()
+def test_the_add_stream_button_heads_the_live_section_while_it_is_empty_and_while_streams_run(live: Live) -> None:
+    assert live.button("Add stream").isVisibleTo(live.view)
+    assert captions(live.view.tree) == ["Live, 0"]
 
-    def top(widget: QWidget) -> int:
-        return widget.mapTo(live.view, QPoint(0, 0)).y()
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
+    live.press("Entrance")
+    assert live.rows() == {"Entrance": "Stop stream"}
 
-    add_manually, rescan = live.button("Add manually"), live.button("Rescan")
-    assert top(live.view.tree) < top(add_manually) < top(rescan)
-    with live.qtbot.waitSignal(live.view.add_manually_requested, timeout=1000):
-        add_manually.click()
+    live.button("Add stream").click()
+
+    assert live.add_stream_requests == [None]
+    assert not is_folded(live.view.tree, "Live"), "the button does not fold the section"
 
 
 def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live: Live) -> None:
@@ -90,7 +90,7 @@ def test_the_filter_hides_found_cameras_by_type_and_the_caption_counts_them(live
     live.choose("Filter", "Network Speaker")
 
     assert list(live.rows()) == ["192.0.2.12"]
-    assert captions(live.view.tree) == ["On the network, 2, 1 filtered out"]
+    assert captions(live.view.tree) == ["Live, 0", "On the network, 2, 1 filtered out"]
 
     live.choose("Filter", "Network Speaker")
     assert list(live.rows()) == ["192.0.2.12", "192.0.2.13"]

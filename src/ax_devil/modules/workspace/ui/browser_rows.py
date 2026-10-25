@@ -258,11 +258,31 @@ class WorkspaceBrowserRow:
 
 
 @dataclass(frozen=True, slots=True)
+class SectionAction:
+    """A button beside a section's caption: *text* and *icon*, *tooltip* on hover, and *run* when it is pressed."""
+
+    text: str
+    icon: Icon
+    run: Callable[[], None]
+    tooltip: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class WorkspaceBrowserSection:
-    """One browser heading and the item rows it groups; the count comes from those rows."""
+    """One browser heading and the item rows it groups; the count comes from those rows.
+
+    A section with an *action* shows it beside its caption.
+    """
 
     kind: BrowserSection
     rows: tuple[WorkspaceBrowserRow, ...]
+    action: SectionAction | None = None
+
+    @property
+    def always_shown(self) -> bool:
+        """Return whether the section's caption stays listed without a row shown: it has an action, or has no rows
+        and its kind says an empty text instead."""
+        return self.action is not None or (not self.rows and bool(self.kind.empty_text))
 
     @property
     def mark_color(self) -> KindColor | StatusColor:

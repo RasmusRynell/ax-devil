@@ -30,6 +30,12 @@ def _distinguishing_hints(rows: Sequence[WorkspaceBrowserRow], file_paths: dict[
     return hints
 
 
+def _hinted(row: WorkspaceBrowserRow, hint: str) -> str:
+    """Return *hint* as the detail of *row*, followed by the state of its stream when it has one."""
+    state = row.stream.text if row.stream is not None else ""
+    return f"{hint} · {state}" if hint and state else hint or state
+
+
 def _shortest_distinct_tails(locations: Sequence[str]) -> list[str]:
     """Return the shortest trailing folder path, or else source path, that tells distinct locations apart."""
     if len(locations) == 1:
@@ -49,7 +55,8 @@ def with_details(
 ) -> tuple[WorkspaceBrowserRow, ...]:
     """Add location hints to sibling rows that share a label, recursing into children.
 
-    Rows without a location, or with the same location, are told apart by occurrence number.
+    Rows without a location, or with the same location, are told apart by occurrence number. A camera's stream state
+    stays at the end of its detail.
     """
     same_label: defaultdict[str, list[int]] = defaultdict(list)
     for index, row in enumerate(rows):
@@ -61,6 +68,10 @@ def with_details(
         if len(indexes) > 1:
             hints.update(zip(indexes, _distinguishing_hints([rows[index] for index in indexes], file_paths)))
     return tuple(
-        replace(row, detail=hints.get(index, row.detail), children=with_details(row.children, file_paths))
+        replace(
+            row,
+            detail=_hinted(row, hints[index]) if index in hints else row.detail,
+            children=with_details(row.children, file_paths),
+        )
         for index, row in enumerate(rows)
     )

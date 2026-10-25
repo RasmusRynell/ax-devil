@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QLineEdit, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.menu_button import MenuButton
@@ -24,8 +24,6 @@ from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.clipping import clipped_text_widgets
 from tests.helpers.workspace import FakePrompts, FakeResolutionContext
-
-_FIRST_FOOTER_BUTTON = {"live": "Add manually", "offline": None, "workspace": None}
 
 
 def _row(name: str, kind: str) -> WorkspaceBrowserRow:
@@ -63,16 +61,6 @@ def _y(widget: QWidget, view: QWidget) -> int:
     return widget.mapTo(view, QPoint(0, 0)).y()
 
 
-def _footer_buttons(view: SectionsView) -> list[QPushButton]:
-    """Return the shown buttons outside the tree, from top to bottom."""
-    buttons = [
-        button
-        for button in view.findChildren(QPushButton)
-        if button.isVisibleTo(view) and not view.tree.isAncestorOf(button)
-    ]
-    return sorted(buttons, key=lambda button: _y(button, view))
-
-
 @pytest.mark.parametrize("view_id", ["workspace", "live", "offline"])
 def test_every_view_has_search_sort_and_filter_in_that_order_over_the_tree(
     session: WorkspaceSession, view_id: str
@@ -86,22 +74,6 @@ def test_every_view_has_search_sort_and_filter_in_that_order_over_the_tree(
     assert all(widget.isVisibleTo(view) for widget in (search, sort, filter_))
     assert _x(search, view) < _x(sort, view) < _x(filter_, view)
     assert _y(search, view) < _y(view.tree, view)
-
-
-@pytest.mark.parametrize("view_id", ["workspace", "live", "offline"])
-def test_the_footer_buttons_sit_directly_under_the_tree(session: WorkspaceSession, view_id: str) -> None:
-    view = _show(session, view_id)
-
-    buttons = _footer_buttons(view)
-
-    expected = _FIRST_FOOTER_BUTTON[view_id]
-    if expected is None:
-        assert buttons == []
-        return
-    first = buttons[0]
-    assert first.text() == expected
-    gap = _y(first, view) - (_y(view.tree, view) + view.tree.height())
-    assert 0 <= gap < first.height(), "nothing sits between the tree and the footer buttons"
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

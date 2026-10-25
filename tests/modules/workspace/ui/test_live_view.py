@@ -286,9 +286,9 @@ def test_nothing_scans_until_rescan_is_pressed(qtbot: QtBot, live: Live) -> None
     live.view.window().show()
     qtbot.waitExposed(live.view)
     assert live.scanner.calls == 0
-    assert captions(live.view.tree) == []
+    assert captions(live.view.tree) == ["Live, 0"]
 
     scan(live)
 
     assert live.scanner.calls == 1
-    assert captions(live.view.tree) == ["On the network, 0"]
+    assert captions(live.view.tree) == ["Live, 0", "On the network, 0"]

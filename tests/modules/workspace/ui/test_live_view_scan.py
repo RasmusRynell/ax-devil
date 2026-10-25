@@ -81,7 +81,7 @@ def test_a_held_camera_the_scan_found_shows_and_is_found_by_what_the_scan_learne
     assert list(live.rows()) == ["Entrance"]
 
 
-def test_add_puts_the_camera_in_the_workspace_without_starting_its_stream(
+def test_add_puts_the_camera_in_the_workspace_and_starts_its_stream(
     live: Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(ConfigManager, "_instance", None)
@@ -112,8 +112,8 @@ def test_add_puts_the_camera_in_the_workspace_without_starting_its_stream(
         "$CAMERA_PASS",
     )
     assert (item.camera_head, item.resolution, item.overlay_mode) == (2, "640x480", LiveOverlayMode.RTSP)
-    assert live.rows()["192.0.2.34"] == "Start stream"
-    assert live.center.get_widget_count() == 0, "adding is not starting the stream"
+    assert live.rows()["192.0.2.34"] == "Stop stream"
+    assert live.center.get_widget_count() == 1
     assert live.checker.calls == [], "the scan has just shown the login works"
     assert captions(live.view.tree) == ["Live, 1", "On the network, 0"]
     assert "No new cameras" in live.texts()

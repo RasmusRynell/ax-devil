@@ -110,10 +110,14 @@ class WorkspaceSession(QObject):
         )
         self._live_view = LiveView()
         self._live_view_controller = LiveViewController(
-            self._live_view, self._workspace_controller, self._workspace_store, jobs or background_jobs(), parent=self
+            self._live_view,
+            self._workspace_controller,
+            self._workspace_store,
+            jobs or background_jobs(),
+            self.add_live_stream,
+            parent=self,
         )
         self._window.add_view(self._live_view.sidebar_view())
-        self._live_view.add_manually_requested.connect(self.add_live_stream)
         self._offline_view = OfflineView()
         self._window.add_view(self._offline_view.sidebar_view())
         self._offline_controller = OfflineViewController(self._offline_view, self._workspace_controller, parent=self)
@@ -231,12 +235,13 @@ class WorkspaceSession(QObject):
             self.add_items([item])
 
     def add_live_stream(self) -> None:
-        """Ask for a camera's details and add it without starting its stream; Start stream does that."""
+        """Ask for a camera's details, add it as a new item, and start its stream beside the open viewers."""
         with AddLiveStreamDialog(self._window) as dialog:
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
                     self.add_resolved([result], open_first=False)
+                    self._workspace_controller.start_when_added(result.item.id)
                     self._logger.info(f"Added live stream: {result.item.display_name}")
 
     def add_playlist(self, resolver_id: str | None = None) -> None:
