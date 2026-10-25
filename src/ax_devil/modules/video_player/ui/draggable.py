@@ -6,8 +6,18 @@ Allows adding any widget to a side panel that can be expanded/collapsed via drag
 
 from typing import Protocol
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QPropertyAnimation, QSize, Qt, Signal
-from PySide6.QtGui import QContextMenuEvent, QCursor, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPalette
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QPropertyAnimation, QSize, Qt, Signal
+from PySide6.QtGui import (
+    QContextMenuEvent,
+    QCursor,
+    QEnterEvent,
+    QFontMetrics,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPalette,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance, on_text_size_applied
@@ -26,6 +36,8 @@ from ..constants import (
     PANEL_COLLAPSE_SHARE,
     PANEL_COLLAPSED_WIDTH,
     PANEL_DEFAULT_CHARS,
+    PANEL_DIVIDER_GRAB_PX,
+    PANEL_DIVIDER_LINE_PX,
     PANEL_MAX_PANE_SHARE,
     VIDEO_MIN_WIDTH,
 )
@@ -58,12 +70,48 @@ class DraggableTarget(Protocol):
     def collapse(self) -> None: ...
 
 
+class _WidthDrag:
+    """Turns a horizontal drag on a widget at the panel's left edge into the panel's width."""
+
+    def __init__(self) -> None:
+        self.active = False
+        self._start_x = 0.0
+        self._start_width = 0
+
+    def press(self, event: QMouseEvent, target: DraggableTarget | None) -> bool:
+        """Remember where a left-button press starts; the drag begins once the pointer has moved."""
+        if event.button() != Qt.MouseButton.LeftButton or target is None:
+            return False
+        self._start_x = float(event.globalPosition().x())
+        self._start_width = target.width()
+        event.accept()
+        return True
+
+    def move(self, event: QMouseEvent, target: DraggableTarget | None) -> bool:
+        """Resize *target* live once the pointer has moved past the threshold."""
+        if target is None:
+            return False
+        x = float(event.globalPosition().x())
+        if not self.active and abs(x - self._start_x) > DRAG_THRESHOLD_PIXELS:
+            self.active = True
+        if not self.active:
+            return False
+        target.drag_to(int(self._start_width - (x - self._start_x)))
+        event.accept()
+        return True
+
+    def release(self, event: QMouseEvent, target: DraggableTarget | None) -> bool:
+        """End a drag in progress and let *target* settle on its width."""
+        if not self.active or target is None:
+            return False
+        self.active = False
+        target.end_drag()
+        event.accept()
+        return True
+
+
 class DraggableHandle(FadingWidget):
     """A draggable handle widget for resizing panels."""
-
-    dragStarted = Signal(float)
-    dragMoved = Signal(float)
-    dragEnded = Signal(float)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
@@ -75,9 +123,7 @@ class DraggableHandle(FadingWidget):
         )
 
         self._logger = logger
-        self.is_dragging = False
-        self.drag_start_x = 0.0
-        self.drag_start_width = 0
+        self._drag = _WidthDrag()
         self.target_object: DraggableTarget | None = None
         self._setup_ui()
 
@@ -102,55 +148,24 @@ class DraggableHandle(FadingWidget):
         self._logger.debug(f"Target object set to: {type(target).__name__}")
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse press to start dragging."""
-        if event.button() == Qt.MouseButton.LeftButton and self.target_object:
-            # Don't immediately start dragging - wait for mouseMoveEvent
-            # This allows double-click to work properly
-            self.drag_start_x = float(event.globalPosition().x())
-            self.drag_start_width = self.target_object.width()
-            self._logger.debug(f"Mouse press at position: {self.drag_start_x:f}")
-            event.accept()
-            return
-        super().mousePressEvent(event)
+        """Handle mouse press; the drag starts on the first move, so a double-click still toggles."""
+        if not self._drag.press(event, self.target_object):
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse move during dragging."""
-        if self.target_object:
-            x = float(event.globalPosition().x())
-
-            # Start dragging only when mouse actually moves
-            if not self.is_dragging and abs(x - self.drag_start_x) > DRAG_THRESHOLD_PIXELS:
-                self.is_dragging = True
-                self.dragStarted.emit(self.drag_start_x)
-                self._logger.debug(f"Drag started at position: {self.drag_start_x:f}")
-
-            # Continue dragging if already started
-            if self.is_dragging:
-                delta_x = x - self.drag_start_x
-                self.target_object.drag_to(int(self.drag_start_width - delta_x))
-                self.dragMoved.emit(x)
-                self._logger.debug(f"Dragging to position: {x:f}, width: {self.target_object.width()}")
-                event.accept()
-                return
-        super().mouseMoveEvent(event)
+        """Resize the panel while dragging."""
+        if not self._drag.move(event, self.target_object):
+            super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse release to end dragging."""
-        if self.is_dragging and self.target_object:
-            self.is_dragging = False
-            self.target_object.end_drag()
-            x = float(event.globalPosition().x())
-            self.dragEnded.emit(x)
-            self._logger.debug(f"Drag ended at position: {x:f}")
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
+        """End a drag."""
+        if not self._drag.release(event, self.target_object):
+            super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         """Handle double-click to toggle panel expand/collapse instantly."""
         if event.button() == Qt.MouseButton.LeftButton and self.target_object:
-            # Reset any drag state that might have been triggered
-            self.is_dragging = False
+            self._drag.active = False
             # Toggle instantly without animation
             if self.target_object.is_collapsed:
                 self.target_object.expand()
@@ -160,6 +175,48 @@ class DraggableHandle(FadingWidget):
             event.accept()
             return
         super().mouseDoubleClickEvent(event)
+
+
+class PanelDivider(QWidget):
+    """The left edge of a DraggablePanel: drag it to resize the panel; it shows an accent line while in use."""
+
+    def __init__(self, panel: "DraggablePanel") -> None:
+        super().__init__(panel)
+        self._panel = panel
+        self._drag = _WidthDrag()
+        self.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Start a drag on a left-button press."""
+        if not self._drag.press(event, self._panel):
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Resize the panel while dragging."""
+        if not self._drag.move(event, self._panel):
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """End a drag."""
+        if not self._drag.release(event, self._panel):
+            super().mouseReleaseEvent(event)
+
+    def enterEvent(self, event: QEnterEvent) -> None:  # noqa: N802
+        """Show the accent line."""
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event: QEvent) -> None:  # noqa: N802
+        """Hide the accent line unless the panel is being resized."""
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Draw the accent line over the panel's neutral edge while hovered or while the panel is being resized."""
+        if self.underMouse() or self._panel.is_resizing:
+            painter = QPainter(self)
+            painter.fillRect(0, 0, PANEL_DIVIDER_LINE_PX, self.height(), self.palette().color(QPalette.ColorRole.Link))
+            painter.end()
 
 
 class DraggablePanel(FadingWidget):
@@ -184,6 +241,7 @@ class DraggablePanel(FadingWidget):
         self._user_width: int | None = None  # The width the user last dragged to; kept for the session.
         self._dragged_width = 0  # Where the handle is, which may be narrower than the panel can get.
         self._pane_width: int | None = None
+        self.is_resizing = False  # True while a drag, from the handle or the divider, sets the width.
 
         # Animation components (will be initialized in _setup_animations)
         self.animation: QPropertyAnimation
@@ -205,6 +263,7 @@ class DraggablePanel(FadingWidget):
 
         self._setup_animations()
         self._setup_ui()
+        self._divider = PanelDivider(self)
         # Refit only when the pane or the appearance changes, never on content changes: the width stays put.
         follow_appearance(self, self._refit)
         on_text_size_applied(self._refit)  # The new text size has reached the content, so its minimum is final.
@@ -242,17 +301,28 @@ class DraggablePanel(FadingWidget):
         self.animation.stop()
         self.min_animation.stop()
         self._dragged_width = width
+        self._set_resizing(True)
         if self._content_widget is not None:
             self._content_widget.show()
         self.setFixedWidth(self._open_width(width))
 
     def end_drag(self) -> None:
         """Finish a drag: close the panel when dragged to well below its content minimum, else keep the width."""
+        self._set_resizing(False)
         if self._dragged_width < self._content_minimum_width() * PANEL_COLLAPSE_SHARE:
             self.collapse()
             return
         self._user_width = self.width()
         self.expand()
+
+    def _set_resizing(self, resizing: bool) -> None:
+        self.is_resizing = resizing
+        self._divider.update()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Keep the divider on the left edge."""
+        super().resizeEvent(event)
+        self._divider.setGeometry(0, 0, min(PANEL_DIVIDER_GRAB_PX, self.width()), self.height())
 
     def _refit(self) -> None:
         """Give an open panel the open width for the current pane and content; a closed panel stays closed."""
