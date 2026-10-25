@@ -90,7 +90,8 @@ def test_adding_the_same_camera_twice_starts_two_streams_whose_rows_differ_by_de
     assert details[0] != details[1] and "Reconnecting" not in details[0]
     assert details[1].endswith("Reconnecting (2)")
 
-    store_of(workspace_session).edit_item(LiveStreamItem(host="192.0.2.20", id=second.id))
+    with patch(LIVE_VIEWER, DummyViewer):  # The edit replaces the open viewer.
+        store_of(workspace_session).edit_item(LiveStreamItem(host="192.0.2.20", id=second.id))
 
     assert [row_of(item).label for item in item_rows(workspace_session)] == ["192.0.2.10", "192.0.2.20"]
 
