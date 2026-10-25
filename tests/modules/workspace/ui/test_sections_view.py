@@ -285,7 +285,7 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
             label="Video",
             icon_kind="video",
             item=VideoItem(video=Path("/tmp/video.mp4")),
-            actions=(OfferedAction(RowAction.RENAME), OfferedAction(RowAction.REMOVE)),
+            actions=(OfferedAction(RowAction.EDIT), OfferedAction(RowAction.REMOVE)),
         ),
     )
     view.show()
@@ -306,7 +306,7 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
         tree.customContextMenuRequested.emit(position)
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
-    assert destroyed.call_count == 9  # Each time: the menu, Rename, and Remove.
+    assert destroyed.call_count == 9  # Each time: the menu, Edit, and Remove.
     assert view.tree.findChildren(QMenu) == []
 
 

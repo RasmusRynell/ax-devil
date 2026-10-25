@@ -110,16 +110,17 @@ view (`connect_tree`).
 
 `WorkspaceController` coordinates the sidebar views, `WorkspaceStore`, `SplitView` and open `ViewerWidget`s. It owns the
 rows: Workspace mutations publish the rows projected by `build_browser_sections` through `sections_changed`, and row
-intents are routed back to Workspace state or viewer behavior. It also tracks which item each open viewer's Content
-came from, closes every widget of a removed item, and tells the user which newly added items could not resolve.
+intents are routed back to Workspace state or viewer behavior. Through `OpenViewers` it also tracks which item each
+open viewer's Content came from, closes every widget of a removed item, and tells the user which newly added items
+could not resolve.
 
 A row can be older than the Workspace, such as when a menu was open as its item was removed, so every action handler
-does nothing for an item that is gone. **Rename** and **Remove** act on the whole item.
+does nothing for an item that is gone. **Edit** and **Remove** act on the whole item.
 
 ## Center Area
 
 `SplitView` owns the nested splitter structure, drag/drop splitting, focused widget tracking and removal/collapse
-behavior; `WorkspaceController` owns viewer selection and registration. Each `LeafContainer` hosts at most one
+behavior; `OpenViewers` owns viewer selection and registration. Each `LeafContainer` hosts at most one
 `ViewerWidget`; dropping onto an occupied leaf splits it.
 
 Unpinned panes are previews: `replace_or_open` replaces the active pane if unpinned, otherwise opens beside it.
@@ -156,7 +157,8 @@ respectively.
 - `WorkspaceSession` owns Workspace composition, adding content, focused-viewer lookup and teardown.
 - `WorkspaceLifecycle` owns the workspace file lifecycle; it builds no widgets.
 - `ApplicationWindow` owns the static central layout.
-- `WorkspaceController` owns browser synchronization, viewer-to-item tracking and lifecycle side effects.
+- `WorkspaceController` owns browser synchronization and lifecycle side effects.
+- `OpenViewers` owns opening, placing and tracking viewers per item.
 - `SplitView` owns pane layout, focus tracking, drag/drop splitting and widget removal.
 - Video Viewer workflows own media orchestration, playlist navigation, comparison layout, filtering tools and workflow
   actions.

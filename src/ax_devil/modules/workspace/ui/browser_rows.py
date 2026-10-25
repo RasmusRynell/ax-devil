@@ -105,7 +105,6 @@ class RowAction(Enum):
     HIDE = ("Hide", "", None, "Skip it in playback", False, RowActionGroup.VISIBILITY)
     UNHIDE = ("Unhide", "", None, "Play it again", False, RowActionGroup.VISIBILITY)
     EDIT = ("Edit", "", None, "", False, RowActionGroup.EDIT)
-    RENAME = ("Rename", "", None, "", False, RowActionGroup.EDIT)
     REMOVE = ("Remove", "", None, "", False, RowActionGroup.EDIT)
 
     def __init__(
@@ -156,7 +155,7 @@ class WorkspaceBrowserRow:
     activation_target: BrowserOpenTarget | None = None
     consideration_ref: ConsiderationItemRef | None = None
     item: WorkspaceItem | None = None
-    """The item a top-level row stands for, which the row can remove or rename; None for nested rows."""
+    """The item a top-level row stands for, which the row can edit or remove; None for nested rows."""
     unavailable_reason: str | None = None
     """Why the row's item could not open; such a row shows the reason instead of opening."""
     warning: str | None = None

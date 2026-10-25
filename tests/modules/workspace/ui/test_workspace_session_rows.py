@@ -1,7 +1,8 @@
-"""What the sidebar rows do for an item in the workspace session: rename, add, export, information, and connect."""
+"""What the sidebar rows do for an item in the workspace session: name edits, add, export, information, and connect."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -33,24 +34,22 @@ from tests.helpers.workspace_session import (
     video_file_item,
 )
 
-_ENTERED_NAME = "ax_devil.modules.workspace.ui.workspace_controller.ask_new_name"
 
-
-def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: WorkspaceSession, tmp_path: Path) -> None:
+def test_editing_an_items_name_updates_its_row_and_open_viewer(
+    workspace_session: WorkspaceSession, tmp_path: Path
+) -> None:
     clip = video_file_item(tmp_path, "lot.mp4")
     with patch(OFFLINE_VIEWER, DummyViewer):
         workspace_session.add_items([clip])
     viewer = focused_viewer(workspace_session)
 
-    with patch(_ENTERED_NAME, return_value="North gate"):
-        ask_row_action(workspace_session, clip.id, RowAction.RENAME)
+    store_of(workspace_session).edit_item(replace(clip, label="North gate"))
 
     assert viewer._title_label.text() == "North gate"
     assert row_of(required_item_row(workspace_session)).label == "North gate"
     assert store_of(workspace_session).is_modified
 
-    with patch(_ENTERED_NAME, return_value=""):
-        ask_row_action(workspace_session, clip.id, RowAction.RENAME)
+    store_of(workspace_session).edit_item(replace(clip, label=""))
 
     assert viewer._title_label.text() == "lot.mp4"
     assert row_of(required_item_row(workspace_session)).label == "lot.mp4"
