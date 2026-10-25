@@ -28,6 +28,8 @@ PANEL_COLLAPSED_WIDTH = 0
 PANEL_DEFAULT_CHARS = 48  # Width of a panel the user has not dragged, in average characters of body text
 PANEL_MAX_PANE_SHARE = 0.5  # An undragged panel takes at most this share of its pane, unless its content needs more
 PANEL_COLLAPSE_SHARE = 0.5  # Releasing a drag below this share of the content minimum closes the panel
+PANEL_DIVIDER_GRAB_PX = 5  # Width of the strip at the panel's left edge that resizes it
+PANEL_DIVIDER_LINE_PX = 2  # Width of the accent line shown while hovering or resizing
 VIDEO_MIN_WIDTH = 160  # Width the video keeps while the panel is dragged or sized; only the content minimum beats it
 
 # ===== UI STYLING =====

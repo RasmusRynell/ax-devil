@@ -11,7 +11,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.appearance import notify_text_size_applied
 from ax_devil.modules.video_player.constants import VIDEO_MIN_WIDTH
-from ax_devil.modules.video_player.ui.draggable import DraggableHandle, DraggablePanel, panel_width
+from ax_devil.modules.video_player.ui.draggable import DraggableHandle, DraggablePanel, PanelDivider, panel_width
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
 
@@ -163,6 +163,25 @@ def test_dragging_side_panel_open_to_a_width_and_closed_updates_content_visibili
     finally:
         handle.cleanup()
         panel.cleanup()
+
+
+def test_dragging_the_panel_edge_resizes_the_open_panel_and_keeps_the_width(qtbot: QtBot) -> None:
+    _window, display, panel, _content = _display_in_window(qtbot, 1000)
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    divider = panel.findChild(PanelDivider)
+    assert divider is not None
+    start = divider.rect().center()
+    before = panel.width()
+
+    QTest.mousePress(divider, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(divider, QPoint(start.x() - 60, start.y()))
+    assert panel.is_resizing
+    QTest.mouseRelease(divider, Qt.MouseButton.LeftButton, pos=QPoint(start.x() - 60, start.y()))
+
+    qtbot.waitUntil(lambda: panel.width() == before + 60)
+    assert not panel.is_resizing
+    assert panel.expanded_width == before + 60
 
 
 def _display_in_window(qtbot: QtBot, width: int) -> tuple[QWidget, FrameDisplay, DraggablePanel, QLabel]:
