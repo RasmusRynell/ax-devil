@@ -86,7 +86,7 @@ arrive over RTSP, MQTT, or Axis DataHub WebSocket.
 - **Export** — save video with overlays drawn in.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/docs/media/demo-compare.webp" alt="Two comparison lanes on the same highway recording: a simulated detector run (DET) beside ground truth (GT)" width="100%" />
+  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/docs/media/demo-compare.webp" alt="Two comparison lanes on the same highway recording: a simulated detector run (DET (simulated)) beside ground truth (GT), drawn with the Tracking render catalog" width="100%" />
 </p>
 
 ## Change how overlays look
@@ -140,5 +140,5 @@ make test
 [MIT](https://github.com/RasmusRynell/ax-devil/blob/main/LICENSE)
 
 Demo footage and ground truth: HighwayDrive from [UVG-VCM](https://tie-ultravideo.rd.tuni.fi/UVG-VCM/index.html),
-Ultra Video Group, Tampere University, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The DET lane is
+Ultra Video Group, Tampere University, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The DET (simulated) lane is
 simulated from that ground truth.
