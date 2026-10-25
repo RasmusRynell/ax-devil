@@ -6,8 +6,8 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import cast
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QGuiApplication, QKeyEvent
+from PySide6.QtCore import QPoint, QSize, Qt, Signal
+from PySide6.QtGui import QGuiApplication, QKeyEvent, QResizeEvent
 from PySide6.QtWidgets import QFrame, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -217,6 +217,20 @@ class SectionTree(QTreeWidget):
             widget = SourceRow(_row_of(child))
             widget.action_requested.connect(self.row_action_requested)
             self.setItemWidget(child, 0, widget)
+            self._fit_height(child, widget)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Fit the wrapped rows to the new width."""
+        super().resizeEvent(event)
+        for item, _row in self._row_items():
+            if item.parent() is not None and isinstance(widget := self.itemWidget(item, 0), SourceRow):
+                self._fit_height(item, widget)
+
+    def _fit_height(self, item: QTreeWidgetItem, widget: SourceRow) -> None:
+        """Give a row that wraps its detail the height it needs at the width the tree gives it; the tree sizes a row
+        widget from its hint alone, which wraps at a guessed width and cuts off the last lines."""
+        if widget.row.wrap_detail:
+            item.setSizeHint(0, QSize(0, widget.height_for_width(self.viewport().width() - self.indentation())))
 
     def _row_items(self) -> Iterator[tuple[QTreeWidgetItem, WorkspaceBrowserRow]]:
         """Iterate over every row item with its row, hidden and collapsed ones included, depth first."""

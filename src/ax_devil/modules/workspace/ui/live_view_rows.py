@@ -69,7 +69,7 @@ def with_scan(
     details = _camera_details(camera, show_sign_in_problem=False)
     row = replace(
         row,
-        detail=_joined((row.detail, *details)),
+        detail=" · ".join(part for part in (row.detail, _joined(details)) if part),
         facts=(*row.facts, *details),
         search_terms=_camera_search_terms(camera),
         facets=row.facets | frozenset(Facet(group, value) for group, value in camera.facets),
@@ -78,6 +78,7 @@ def with_scan(
         return replace(
             row,
             icon_kind="unavailable",
+            stream=None,
             warning=_REFUSED,
             actions=tuple(offered for offered in row.actions if offered.action is not RowAction.START_STREAM),
         )

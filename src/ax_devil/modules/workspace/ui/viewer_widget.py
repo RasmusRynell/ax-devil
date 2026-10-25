@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
     from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition, BookmarkTarget
     from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
+    from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamStatus
 
 
 class ViewerWidget(QFrame):
@@ -41,6 +42,7 @@ class ViewerWidget(QFrame):
     on_screen_item_changed = Signal(object)
     context_menu_requested = Signal(QPoint)  # Global position of a right click on the pane outside its video lanes
     consideration_change_requested = Signal(object, bool)  # ConsiderationItemRef, considered: asked for from the pane
+    stream_status_changed = Signal()  # ``stream_status()`` is a different value now
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -283,6 +285,10 @@ class ViewerWidget(QFrame):
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
         """Return the workspace item currently visible in the widget."""
+        return None
+
+    def stream_status(self) -> LiveStreamStatus | None:
+        """Return how the live stream shown is doing, or None for a viewer that shows no live stream."""
         return None
 
     def _set_banner(self, banner: QWidget | None) -> None:

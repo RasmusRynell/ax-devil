@@ -95,6 +95,7 @@ class ListRow(QFrame):
             line.setStyleSheet(_MUTED)
             column.addWidget(line)
         layout.addLayout(column, 1)
+        self._column = column
         if detail:
             layout.addWidget(muted_label(detail))
         for widget in trailing:
@@ -111,6 +112,23 @@ class ListRow(QFrame):
             """
         )
         follow_appearance(self, self.updateGeometry)
+
+    def height_for_width(self, width: int) -> int:
+        """Return the height the row needs when it is *width* wide, a wrapped subtitle in as many lines as it takes.
+
+        The row's own layout answers this too wide: it shares the width out by the labels' preferred widths.
+        """
+        layout = self.layout()
+        assert layout is not None
+        frame = self.contentsMargins()  # The edge and the theme's border, which the layout sits inside.
+        margins = layout.contentsMargins()
+        others = sum(
+            item.sizeHint().width() + layout.spacing()
+            for item in map(layout.itemAt, range(layout.count()))
+            if item is not None and item.layout() is not self._column
+        )
+        room = width - frame.left() - frame.right() - margins.left() - margins.right() - others
+        return self._column.heightForWidth(room) + frame.top() + frame.bottom() + margins.top() + margins.bottom()
 
     def sizeHint(self) -> QSize:  # noqa: N802
         """Return the size the content needs, at least a row high."""

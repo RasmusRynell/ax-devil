@@ -139,7 +139,7 @@ class StreamMediaController:
         silent_s = time.monotonic() - self._last_video_data_at
         if silent_s < VIDEO_STALL_TIMEOUT_S:
             return
-        self._update_feed(LiveFeed.VIDEO, lambda status: status.stalled(silent_s))
+        self._update_feed(LiveFeed.VIDEO, lambda status: status.stalled(VIDEO_STALL_TIMEOUT_S))
 
     def _add_frame(self, frame_data: FrameData) -> None:
         if self._paused:

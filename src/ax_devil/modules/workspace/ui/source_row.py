@@ -8,27 +8,16 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import ListRow, muted_label
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.small_button import SmallButton
-from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
+from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.ui.browser_rows import (
     RowAction,
-    WorkspaceBrowserIconKind,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
-
-# Each kind keeps one icon and color, so live streams, videos, and playlists read apart in a mixed workspace.
-_KIND_MARKS: dict[WorkspaceBrowserIconKind, tuple[Icon, KindColor | StatusColor]] = {
-    "live_video": (Icon.LIVE_VIDEO, KindColor.LIVE),
-    "video": (Icon.VIDEO, KindColor.VIDEO),
-    "playlist": (Icon.PLAYLIST, KindColor.PLAYLIST),
-    "overlay": (Icon.OVERLAY, KindColor.OVERLAY),
-    "unavailable": (Icon.WARNING, StatusColor.WARNING),
-}
 
 
 def _hidden_note(hidden: int) -> str:
@@ -52,8 +41,8 @@ def section_caption(
     A section without rows has no count, and says its kind's empty text under the caption, *text_indent* in.
     """
     kind = section.kind
-    mark = KindColor.MUTED if kind.addable else _KIND_MARKS[kind.icon_kind][1]
     hidden_note = _hidden_note(hidden)
+    mark = section.mark_color
     caption = SectionCaption(kind.title, len(section.rows) or None, mark.color, note=hidden_note, folded=folded)
     if section.rows or not kind.empty_text:
         return caption
@@ -83,8 +72,7 @@ def row_look(row: WorkspaceBrowserRow) -> tuple[object, ...]:
         row.label,
         row.detail,
         row.wrap_detail,
-        row.icon_kind,
-        row.is_mark_muted,
+        row.mark,
         row.is_dimmed,
         row.is_open,
         row.inline_action,
@@ -113,11 +101,10 @@ class SourceRow(ListRow):
             button = _action_button(action)
             button.clicked.connect(lambda _checked=False: self.action_requested.emit(self.row, action))
             trailing.append(button)
-        icon, color = _KIND_MARKS[row.icon_kind]
-        mark = KindColor.MUTED if row.is_mark_muted else color
+        icon, color = row.mark
         super().__init__(
             row.label,
-            icon=icon.icon(mark.color(QGuiApplication.palette())),
+            icon=icon.icon(color.color(QGuiApplication.palette())),
             subtitle=row.detail,
             wrap=row.wrap_detail,
             trailing=trailing,
