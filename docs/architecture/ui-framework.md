@@ -111,7 +111,8 @@ view (`connect_tree`).
 `WorkspaceController` coordinates the sidebar views, `WorkspaceStore`, `SplitView` and open `ViewerWidget`s. It owns the
 rows: Workspace mutations publish the rows projected by `build_browser_sections` through `sections_changed`, and row
 intents are routed back to Workspace state or viewer behavior. Through `OpenViewers` it also tracks which item each
-open viewer's Content came from, closes every widget of a removed item, and tells the user which newly added items could not resolve.
+open viewer's Content came from, closes every widget of a removed item, and tells the user which newly added items
+could not resolve.
 
 A row can be older than the Workspace, such as when a menu was open as its item was removed, so every action handler
 does nothing for an item that is gone. **Edit** and **Remove** act on the whole item.
