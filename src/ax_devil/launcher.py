@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -83,7 +82,7 @@ def main() -> None:
                 _PLUGIN_ROOT: str(installation_root(host)),
             }
             os.execve(str(interpreter), [str(interpreter), "-I", "-m", "ax_devil.cli", *arguments], environment)
-    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         sys.stderr.write(
             f"Plugin installation unavailable: {exc}. Starting the base application.\n"
             f"Repair with: {command} plugins update\n"
