@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QPoint, QRect, Qt
+from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 from pytestqt.qtbot import QtBot
@@ -276,3 +277,19 @@ def test_side_panel_enabled_on_a_shown_display_takes_half_its_width(qtbot: QtBot
     assert panel is not None
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
     assert 0 < panel.width() <= display.width() // 2
+
+
+def test_context_menu_in_the_side_panel_does_not_open_the_video_menu(qtbot: QtBot) -> None:
+    _window, display, _panel, content = _display_in_window(qtbot, 800)
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: content.isVisible() and content.width() > 0)
+    requested: list[QPoint] = []
+    display.contextMenuRequested.connect(requested.append)
+
+    for target in (content, display.viewport):
+        point = target.rect().center()
+        QCoreApplication.sendEvent(
+            target, QContextMenuEvent(QContextMenuEvent.Reason.Mouse, point, target.mapToGlobal(point))
+        )
+
+    assert len(requested) == 1  # Only the video's.
