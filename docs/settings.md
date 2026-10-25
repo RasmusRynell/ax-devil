@@ -37,9 +37,9 @@ with `~` for the home folder.
 
 ## Quick Setup
 
-On first start, **Quick Setup** asks for the theme, text size and camera protocol. Choices apply as they are clicked
-and are saved when the dialog closes. **Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to
-`true`; set it to `false` to show it on the next start.
+On first start, **Quick Setup** opens. Choices apply as they are clicked and are saved when the dialog closes.
+**Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to `true`; set it to `false` to show it on
+the next start.
 
 ## Text size
 
