@@ -7,7 +7,7 @@ Allows adding any widget to a side panel that can be expanded/collapsed via drag
 from typing import Protocol
 
 from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QPropertyAnimation, QSize, Qt, Signal
-from PySide6.QtGui import QCursor, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPalette
+from PySide6.QtGui import QContextMenuEvent, QCursor, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPalette
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance, on_text_size_applied
@@ -357,6 +357,10 @@ class DraggablePanel(FadingWidget):
         """Hide the content once a collapse finishes; a zero-width panel still counts as visible to Qt."""
         if self.is_collapsed and self._content_widget is not None:
             self._content_widget.hide()
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """Stop a right-click that no sidebar widget handled from reaching the video's context menu."""
+        event.accept()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         """Paint the panel background with a neutral divider against the video."""
