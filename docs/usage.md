@@ -64,10 +64,10 @@ By default, credentials come from environment variables, which keeps them out of
 **Stream defaults** or **Analytics** text field accepts a `$VARIABLE` reference in place of a value. Command-line
 options override both.
 
-DataHub defaults to HTTPS/WSS with certificate verification disabled: traffic is encrypted, but the device
-identity is not authenticated. Use it only on trusted camera networks. HTTP/WS is selectable with no automatic
-fallback, and redirects are rejected, so connect directly to the device host. This applies to DataHub only,
-not RTSP or MQTT.
+DataHub, and RTSP video on the web API route, use the device's web API protocol: HTTPS/WSS by default, with
+certificate verification disabled. Traffic is encrypted, but the device identity is not authenticated. Use them only
+on trusted camera networks. HTTP/WS is selectable with no automatic fallback, and redirects are rejected, so connect
+directly to the device host. Direct RTSP and MQTT are not affected.
 
 ## Playlists
 

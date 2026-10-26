@@ -23,12 +23,14 @@ from ax_devil.modules.chrome.tokens import reserve_line
 from ax_devil.modules.settings.config_manager import (
     ConfigManager,
     default_protocol,
+    default_rtsp_route,
     device_timeout_s,
     expand_environment_reference,
     integer_default,
 )
 from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem
 from ax_devil.modules.workspace.ui.add_content.live_transport_pages import TransportPages, apply_env_hint
+from ax_devil.modules.workspace.ui.add_content.rtsp_route_field import RtspRouteField
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 
 
@@ -79,7 +81,7 @@ class AddLiveStreamDialog(BaseDialog):
         self._transports.mqtt_port_edit.setText(str(item.mqtt_port))
         self._transports.websocket_channel_id_edit.setText(str(item.websocket_channel_id))
         self._device_port_edit.setText(str(item.device_port or ""))
-        self._rtsp_port_edit.setText(str(item.rtsp_port))
+        self._rtsp.port_edit.setText(str(item.rtsp_port))
         self._set_overlay_mode(item.overlay_mode)
         if item.handler_type is not None and self._handler_combo.findData(item.handler_type) < 0:
             self._handler_combo.addItem(f"{item.handler_type} (unavailable)", item.handler_type)
@@ -116,7 +118,6 @@ class AddLiveStreamDialog(BaseDialog):
         rtsp_defaults = live_defaults.get("rtsp", {}) or {}
         mqtt_defaults = live_defaults.get("analytics-mqtt", {}) or {}
         websocket_defaults = live_defaults.get("analytics-websocket", {}) or {}
-        self._rtsp_port_default = integer_default(self._defaults["device"].get("rtsp_port"), 554)
 
         connection_layout = FormLayout()
 
@@ -161,11 +162,10 @@ class AddLiveStreamDialog(BaseDialog):
         self._camera_head_edit = QLineEdit()
         self._camera_head_edit.setText(str(integer_default(rtsp_defaults.get("camera_head"), 1)))
         self._camera_head_edit.setValidator(QIntValidator(1, 9999, self))
-        self._rtsp_port_edit = QLineEdit()
-        self._rtsp_port_edit.setPlaceholderText(str(self._rtsp_port_default))
-        self._rtsp_port_edit.setValidator(QIntValidator(1, 65535, self))
+        route = self._existing.rtsp_route if self._existing else default_rtsp_route(self._config)
+        self._rtsp = RtspRouteField(route, integer_default(self._defaults["device"].get("rtsp_port"), 554), self)
         connection_layout.addRow("Camera Head", self._camera_head_edit)
-        connection_layout.addRow("RTSP Port", self._rtsp_port_edit)
+        connection_layout.addRow("RTSP", self._rtsp)
 
         self._resolution_edit = QLineEdit()
         self._resolution_edit.setText(rtsp_defaults.get("resolution", "1280x720"))
@@ -390,7 +390,8 @@ class AddLiveStreamDialog(BaseDialog):
             websocket_topic=websocket_topic,
             websocket_channel_id=self._transports.websocket_channel_id(),
             device_port=int(self._device_port_edit.text() or 0),
-            rtsp_port=int(self._rtsp_port_edit.text() or 0) or self._rtsp_port_default,
+            rtsp_port=self._rtsp.port(),
+            rtsp_route=self._rtsp.route(),
         )
         if self._existing is not None:
             item = replace(item, id=self._existing.id)

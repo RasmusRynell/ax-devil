@@ -37,8 +37,11 @@ RETRY_MAX_DELAY_S = 2.0
 
 
 def rtsp_stream_config(*, metadata: bool, timeout_s: float) -> StreamConfig:
-    """Return the session configuration for live video, with embedded scene metadata when requested."""
-    return StreamConfig(video=VideoOutput.RGBA, metadata=metadata, timeout=timeout_s)
+    """Return the session configuration for live video, with embedded scene metadata when requested.
+
+    Like DataHub, an HTTPS tunnel encrypts without verifying the device certificate.
+    """
+    return StreamConfig(video=VideoOutput.RGBA, metadata=metadata, timeout=timeout_s, verify_tls=False)
 
 
 class _RTSPWorker(Worker):
@@ -85,6 +88,8 @@ class RTSPSource(FrameSource, OverlaySource):
         super().__init__(parent=parent)
 
         logger.info(f"Initializing RTSP source {source_id}")
+        if rtsp_url.lower().startswith("https://"):
+            logger.warning("RTSP HTTPS certificate verification is disabled; use this tool only on trusted networks.")
 
         self.source_id = source_id
         self._rtsp_url = rtsp_url

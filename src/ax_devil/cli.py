@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import click
 
-from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol, RtspRoute
 from ax_devil.modules.catalog_viewer.cli import catalog
 from ax_devil.modules.plugin_installation.cli import plugins
 from ax_devil.modules.plugin_system import (
@@ -424,6 +424,12 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
     default=None,
     help="Device API protocol (default: config)",
 )
+@click.option(
+    "--rtsp-route",
+    type=click.Choice(RtspRoute, case_sensitive=False),
+    default=None,
+    help="Reach RTSP directly or tunneled through the web API (default: config)",
+)
 @click.option("--topic", "websocket_topic", default=None, help="DataHub WebSocket topic (default: config)")
 @click.option(
     "--channel-id", "websocket_channel_id", type=int, default=None, help="DataHub topic instance ID (default: config)"
@@ -444,6 +450,7 @@ def live(
     mqtt_password: str | None,
     analytics_data_source_key: str | None,
     device_api_protocol: DeviceProtocol | None,
+    rtsp_route: RtspRoute | None,
     websocket_topic: str | None,
     websocket_channel_id: int | None,
 ) -> None:
@@ -480,6 +487,7 @@ def live(
             mqtt_password=mqtt_password,
             analytics_data_source_key=analytics_data_source_key,
             device_api_protocol=device_api_protocol,
+            rtsp_route=rtsp_route,
             websocket_topic=websocket_topic,
             websocket_channel_id=websocket_channel_id,
         )

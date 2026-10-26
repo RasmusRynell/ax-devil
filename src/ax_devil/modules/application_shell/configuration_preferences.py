@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol, RtspRoute
 from ax_devil.modules.device_discovery.network_scan import Login, parse_scan_targets
 from ax_devil.modules.settings.config_manager import ConfigManager, is_environment_reference
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
@@ -105,6 +105,9 @@ STREAM_SECTIONS = (
             ConfigField("defaults.device.username", "Username"),
             ConfigField("defaults.device.password", "Password", secret=True),
             ConfigField("defaults.device.rtsp_port", "RTSP port", minimum=1, maximum=65535),
+            ConfigField(
+                "defaults.device.rtsp_route", "RTSP route", choices=tuple((r.label, r.value) for r in RtspRoute)
+            ),
             ConfigField("defaults.device.connection_timeout_s", "Connection timeout (seconds)", minimum=1, maximum=600),
         ),
     ),

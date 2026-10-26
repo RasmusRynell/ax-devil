@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ax_devil.core.atomic_file import write_atomically
-from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol, RtspRoute
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.paths import (
@@ -54,6 +54,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "password": "$AX_DEVIL_TARGET_PASS",
             "protocol": DeviceProtocol.HTTPS.value,
             "rtsp_port": 554,
+            "rtsp_route": RtspRoute.DIRECT.value,
             "connection_timeout_s": 10,
         },
         "live_stream": {
@@ -158,6 +159,16 @@ def default_protocol(config: ConfigManager) -> DeviceProtocol:
     except ValueError:
         logger.warning(f"Invalid default device protocol {value!r}; using https.")
         return DeviceProtocol.HTTPS
+
+
+def default_rtsp_route(config: ConfigManager) -> RtspRoute:
+    """Return the configured default RTSP route, or direct if the saved value is invalid."""
+    value = config.get("defaults", {})["device"]["rtsp_route"]
+    try:
+        return RtspRoute(value)
+    except ValueError:
+        logger.warning(f"Invalid default RTSP route {value!r}; using direct.")
+        return RtspRoute.DIRECT
 
 
 def _merge_defaults(config: dict[str, Any], defaults: Mapping[str, Any], *, key_path: str = "config") -> dict[str, Any]:

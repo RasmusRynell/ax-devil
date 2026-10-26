@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from ax_devil.core.cancellation import CancelToken
-from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol, RtspRoute
 from ax_devil.modules.settings.config_manager import (
     ConfigManager,
     default_protocol,
+    default_rtsp_route,
     expand_environment_reference,
     integer_default,
 )
@@ -32,7 +33,7 @@ _LIVE_STR_FIELDS = (
     "websocket_topic",
 )
 _LIVE_INT_FIELDS = ("camera_head", "mqtt_port", "websocket_channel_id", "device_port", "rtsp_port")
-_LIVE_ENUM_FIELDS = ("overlay_mode", "device_api_protocol")
+_LIVE_ENUM_FIELDS = ("overlay_mode", "device_api_protocol", "rtsp_route")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -64,6 +65,7 @@ class LiveStreamItem(WorkspaceItem):
     websocket_channel_id: int = 1
     device_port: int = 0
     rtsp_port: int = 554
+    rtsp_route: RtspRoute = RtspRoute.DIRECT
 
     def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         """Return every field as stored; references stay references and the enums are their value strings."""
@@ -87,6 +89,7 @@ class LiveStreamItem(WorkspaceItem):
             "device_api_protocol": DeviceProtocol(
                 read_field(data, "device_api_protocol", str, defaults.device_api_protocol.value)
             ),
+            "rtsp_route": RtspRoute(read_field(data, "rtsp_route", str, defaults.rtsp_route.value)),
         }
 
     @property
@@ -135,6 +138,7 @@ class LiveStreamItem(WorkspaceItem):
                 websocket_channel_id=values.websocket_channel_id,
                 device_port=values.device_port,
                 rtsp_port=values.rtsp_port,
+                rtsp_route=values.rtsp_route,
             ),
         )
 
@@ -155,13 +159,14 @@ def live_stream_item_from_defaults(
     mqtt_password: str | None = None,
     analytics_data_source_key: str | None = None,
     device_api_protocol: DeviceProtocol | None = None,
+    rtsp_route: RtspRoute | None = None,
     websocket_topic: str | None = None,
     websocket_channel_id: int | None = None,
 ) -> LiveStreamItem:
     """Build a ``LiveStreamItem`` named *label* from the config's stream defaults, with optional overrides.
 
     Device and MQTT broker connection defaults are taken as written in the config, so a ``$VARIABLE`` reference stays
-    a reference in the item. The protocol and RTSP port come from the config unless given.
+    a reference in the item. The protocol, RTSP port and RTSP route come from the config unless given.
     """
     cfg = ConfigManager()
     defaults = cfg.get("defaults", {}) or {}
@@ -204,4 +209,5 @@ def live_stream_item_from_defaults(
             else integer_default(websocket.get("channel_id", 1), 1)
         ),
         rtsp_port=integer_default(defaults.get("device", {}).get("rtsp_port"), 554),
+        rtsp_route=rtsp_route or default_rtsp_route(cfg),
     )

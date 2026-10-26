@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ax_devil.core.device_connection import RtspRoute
 from ax_devil.modules.data_sources.base import OverlaySource
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder, rtsp_stream_config
 from ax_devil.modules.plugin_system import get_payload_decoder, get_payload_filter_factory
@@ -59,19 +60,24 @@ def open_overlay_transport(
 
 
 def build_rtsp_url(source_spec: LiveRTSPStreamSpec, *, metadata: bool, timeout_s: float) -> str:
-    """Return the stream URL of *source_spec*, built for the device unless the spec names one."""
+    """Return the stream URL of *source_spec*, built for the device unless the spec names one.
+
+    The web API route tunnels RTSP through the device's web API protocol and port instead of the RTSP port.
+    """
     from ax_devil_rtsp import build_axis_rtsp_url
 
     if source_spec.stream_url:
         return source_spec.stream_url
+    tunnel = source_spec.rtsp_route is RtspRoute.WEB_API
     return str(
         build_axis_rtsp_url(
             source_spec.host,
             rtsp_stream_config(metadata=metadata, timeout_s=timeout_s),
             username=source_spec.username,
             password=source_spec.password,
-            port=source_spec.rtsp_port,
+            port=(source_spec.device_port or None) if tunnel else source_spec.rtsp_port,
             camera=source_spec.camera_head,
             resolution=source_spec.resolution,
+            tunnel=source_spec.device_api_protocol.value if tunnel else None,
         )
     )
