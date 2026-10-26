@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from functools import partial
@@ -38,14 +39,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
-from ax_devil.modules.workspace.ui.live_view_rows import (
-    Access,
-    access_request,
-    network_row,
-    network_row_id,
-    scan_camera,
-    with_scan,
-)
+from ax_devil.modules.workspace.ui.live_view_rows import network_row, network_row_id, scan_camera, with_scan
 from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -79,6 +73,20 @@ def _run_check(
     check: Check, connection: DeviceConnection, login: Login, job: JobContext[None]
 ) -> DiscoveredCamera | None:
     return check(connection, login, job.token)
+
+
+def _access_request(item: WorkspaceItem) -> tuple[DeviceConnection, Login] | None:
+    """Return the connection, as the item reaches the device, and the login to check *item*'s access with, or None
+    when it has no IPv4 address or no username to try."""
+    if not isinstance(item, LiveStreamItem):
+        return None
+    values = item.expanded()
+    try:
+        ipaddress.IPv4Address(values.host)
+    except ValueError:
+        return None
+    connection = DeviceConnection(values.host, item.device_api_protocol, item.device_port)
+    return (connection, Login(item.username, item.password)) if values.username else None
 
 
 def _defaults() -> tuple[str, tuple[Login, ...]]:
@@ -129,9 +137,9 @@ class LiveViewController(QObject):
     The Live section is always listed, with an Add stream button that calls *add_stream*, which asks for a camera
     and adds it.
 
-    Each host and login among the workspace's cameras is *check*ed once as they resolve, unless Settings turn signing
-    in off; a camera that refuses it shows a warning and can not start a stream. Until a check answers, or when it can
-    not run or fails otherwise, a camera can start.
+    The workspace's cameras are *check*ed once with their own login as they resolve, unless Settings turn signing in
+    off; one that refuses it shows a warning and can not start a stream. Until a check answers, or when it can not
+    run or fails otherwise, a camera can start.
     """
 
     def __init__(
@@ -153,8 +161,8 @@ class LiveViewController(QObject):
         self._jobs = jobs.scope(view)
         self._scan = scan
         self._check = check
-        self._checked: dict[Access, DiscoveredCamera] = {}  # What signing in found, by host and login.
-        self._checks: dict[Access, LatestRequest] = {}  # The check of each host and login, running or done.
+        self._checked: dict[str, DiscoveredCamera] = {}  # By item id, what signing in with the item's login found.
+        self._checks: dict[str, LatestRequest] = {}
         self._given_range, self._logins = _defaults()  # The range is what the view's field was last given by default.
         view.set_scan_range(self._given_range)
         view.set_logins(self._logins)
@@ -171,8 +179,8 @@ class LiveViewController(QObject):
         view.logins_edited.connect(self._save_logins)
         view.destroyed.connect(self._forget_view)
         store.workspace_replaced.connect(self._clear_access)
-        store.item_edited.connect(self._forget_unused_access)
-        store.item_removed.connect(self._forget_unused_access)
+        store.item_edited.connect(self._invalidate_access)
+        store.item_removed.connect(self._invalidate_access)
         store.items_resolved.connect(self._check_access_of)
         orders = [self._device_order(order) for order in DeviceOrder]
         orders.insert(1, BY_NAME)  # After the address, which the device orders start from.
@@ -269,53 +277,56 @@ class LiveViewController(QObject):
         self._check_access(self._store.workspace.items)
         self.scan(ip_range)
 
-    def _forget_unused_access(self, _item: WorkspaceItem) -> None:
-        """Cancel the checks of, and forget what they found for, a host and login no item of the workspace has any
-        more."""
-        used = {request for item in self._store.workspace.items if (request := access_request(item)) is not None}
-        for request in [request for request in self._checks if request not in used]:
-            self._checks.pop(request).close()
-        self._checked = {request: camera for request, camera in self._checked.items() if request in used}
+    def _invalidate_access(self, item: WorkspaceItem) -> None:
+        self._checked.pop(item.id, None)
+        check = self._checks.pop(item.id, None)
+        if check is not None:
+            check.close()
         self._refresh()
 
     def _clear_access(self) -> None:
-        """Cancel every check and forget what they found."""
+        self._checked.clear()
         for check in self._checks.values():
             check.close()
         self._checks.clear()
-        self._checked.clear()
 
     def _check_access_of(self, resolutions: list[ItemResolution], _open_first: bool) -> None:
         self._check_access([resolution.item for resolution in resolutions])
 
     def _check_access(self, items: Sequence[WorkspaceItem]) -> None:
-        """Sign in once to each host and login of *items* not yet checked, when signing in is wanted."""
+        """Sign in to each of *items* not yet checked, with its own login, when signing in is wanted."""
         if not GlobalSettings().scan_sign_in:
             return
         for item in items:
-            request = access_request(item)
-            if request is None or request in self._checks or request in self._checked:
+            request = _access_request(item)
+            if request is None or item.id in self._checked:
                 continue
-            check = self._checks[request] = LatestRequest(self)
+            check = self._checks.get(item.id)
+            if check is None:
+                check = self._checks[item.id] = LatestRequest(self)
+            if check.pending:
+                continue
             check.submit(
                 self._jobs,
                 "camera access check",
                 partial(_run_check, self._check, *request),
-                on_result=partial(self._on_checked, request),
+                on_result=partial(self._on_checked, item.id, request),
                 on_error=lambda error: logger.debug(f"Camera access check failed: {error}"),
             )
 
-    def _on_checked(self, request: Access, camera: DiscoveredCamera | None) -> None:
-        """Keep what a check found for every item with the same host and login."""
-        if camera is not None:
-            self._checked[request] = camera
+    def _on_checked(
+        self, item_id: str, request: tuple[DeviceConnection, Login], camera: DiscoveredCamera | None
+    ) -> None:
+        """Keep what a check found, unless the item was removed or replaced with another address or login meanwhile."""
+        item = self._store.workspace.item(item_id) if self._store.workspace.has_item(item_id) else None
+        if camera is not None and item is not None and _access_request(item) == request:
+            self._checked[item_id] = camera
             self._refresh()
 
     def _add(self, camera: DiscoveredCamera) -> None:
         """Add *camera* and start its stream once it has resolved; signing in to it has just shown the access works."""
         item = _camera_item(camera)
-        if (request := access_request(item)) is not None:
-            self._checked[request] = camera
+        self._checked[item.id] = camera
         self._store.add_items([item], open_first=False)
         self._workspace.start_when_added(item.id)
 

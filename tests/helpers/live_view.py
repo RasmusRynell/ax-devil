@@ -104,7 +104,7 @@ class Scanner:
 @dataclass
 class Checker:
     """Signing in to a workspace camera with its own login, answering from *cameras* by host, and recording the calls;
-    a host not listed does not answer; a call waits while the *gate* it found is clear."""
+    a host not listed does not answer; it waits while *gate* is clear."""
 
     cameras: dict[str, DiscoveredCamera] = field(default_factory=dict)
     calls: list[tuple[DeviceConnection, Login]] = field(default_factory=list)
@@ -115,9 +115,8 @@ class Checker:
 
     def __call__(self, connection: DeviceConnection, login: Login, token: CancelToken) -> DiscoveredCamera | None:
         self.calls.append((connection, login))
-        answer, gate = self.cameras.get(connection.host), self.gate  # As the camera is when asked, not when it answers.
-        assert gate.wait(5)
-        return answer
+        assert self.gate.wait(5)
+        return self.cameras.get(connection.host)
 
 
 @dataclass

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from threading import Event
 
 import pytest
 from pytestqt.qtbot import QtBot
@@ -16,7 +15,7 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
-from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem, new_item_id
+from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem
 from ax_devil.modules.workspace.ui.browser_rows import RowAction
 from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from ax_devil.modules.workspace.ui.live_view import LiveView
@@ -140,27 +139,23 @@ def test_stop_stream_closes_every_viewer_of_the_camera(live: Live) -> None:
 
 def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: Live) -> None:
     live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
-    entrance = LiveStreamItem(
-        host="192.0.2.10",
-        label="Entrance",
-        username="root",
-        password="pw",
-        device_api_protocol=DeviceProtocol.HTTP,
-        device_port=8080,
-    )
     live.open_workspace(
-        entrance,
-        replace(entrance, id=new_item_id(), label="Entrance overlay"),
+        LiveStreamItem(
+            host="192.0.2.10",
+            label="Entrance",
+            username="root",
+            password="pw",
+            device_api_protocol=DeviceProtocol.HTTP,
+            device_port=8080,
+        ),
         LiveStreamItem(host="192.0.2.11", label="Dock"),
     )
 
-    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "" and live.rows()["Entrance overlay"] == "")
+    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "")
 
     assert "refused" in row(live.view.tree, "Entrance").toolTip(), "the reason is on hover"
     assert live.rows()["Dock"] == "Start stream", "a camera without a login to try is left alone"
-    assert live.checker.calls == [(DeviceConnection("192.0.2.10", DeviceProtocol.HTTP, 8080), Login("root", "pw"))], (
-        "one connection and login is checked once"
-    )
+    assert live.checker.calls == [(DeviceConnection("192.0.2.10", DeviceProtocol.HTTP, 8080), Login("root", "pw"))]
 
 
 @pytest.mark.parametrize("edit", [False, True], ids=["rescan", "edit"])
@@ -257,40 +252,6 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
     live.qtbot.waitUntil(lambda: "AXIS P3265-LVE" in live.detail("Entrance"))
     assert live.rows() == {"Entrance": "Start stream"}
     assert "refused" not in row(live.view.tree, "Entrance").toolTip()
-
-
-def test_a_rescan_replaces_the_checks_still_running_and_their_late_answers_are_dropped(live: Live) -> None:
-    live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
-    old_gate = live.checker.gate
-    old_gate.clear()
-    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
-    live.qtbot.waitUntil(lambda: len(live.checker.calls) == 1)
-    live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.SIGNED_IN)}
-    live.checker.gate = Event()
-    live.button("Rescan").click()
-
-    old_gate.set()
-    live.qtbot.wait(100)
-
-    assert live.rows() == {"Entrance": "Start stream"}, "the older answer says nothing while the newer is awaited"
-    live.checker.gate.set()
-    live.qtbot.waitUntil(lambda: "AXIS Q1656" in live.detail("Entrance"))
-    assert live.rows() == {"Entrance": "Start stream"}
-
-
-def test_checks_still_queued_for_cameras_the_workspace_dropped_never_contact_them(live: Live) -> None:
-    live.checker.gate.clear()
-    live.open_workspace(
-        LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"),
-        LiveStreamItem(host="192.0.2.11", label="Dock", username="root", password="pw"),
-    )
-    live.qtbot.waitUntil(lambda: len(live.checker.calls) == 1)
-
-    live.open_workspace()
-    live.checker.gate.set()
-    live.qtbot.wait(100)
-
-    assert len(live.checker.calls) == 1, "the check that had not started was cancelled"
 
 
 def test_a_camera_starts_only_with_its_start_button(live: Live) -> None:

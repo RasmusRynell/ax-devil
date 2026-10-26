@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import ipaddress
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 
-from ax_devil.core.device_connection import DeviceConnection
-from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
-from ax_devil.modules.workspace.core import LiveStreamItem, WorkspaceItem
+from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
 from ax_devil.modules.workspace.ui.browser_rows import Facet, OfferedAction, RowAction, WorkspaceBrowserRow
 
 _REFUSED = "The camera refused the login saved with it."
@@ -16,23 +13,6 @@ _REFUSED = "The camera refused the login saved with it."
 _NOT_SIGNED_IN = "Not signed in: add a login under Try to sign in."
 """What a found camera's row says on hover when it has no Add."""
 _SIGN_IN_PROBLEMS = (SignIn.REFUSED, SignIn.FAILED)
-
-Access = tuple[DeviceConnection, Login]
-"""A connection, as an item reaches the device, and the login to check access to it with."""
-
-
-def access_request(item: WorkspaceItem) -> Access | None:
-    """Return the connection, as the item reaches the device, and the login to check *item*'s access with, or None
-    when it has no IPv4 address or no username to try."""
-    if not isinstance(item, LiveStreamItem):
-        return None
-    values = item.expanded()
-    try:
-        ipaddress.IPv4Address(values.host)
-    except ValueError:
-        return None
-    connection = DeviceConnection(values.host, item.device_api_protocol, item.device_port)
-    return (connection, Login(item.username, item.password)) if values.username else None
 
 
 def network_row_id(camera: DiscoveredCamera) -> str:
@@ -67,26 +47,25 @@ def network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceB
 
 
 def scan_camera(
-    row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[Access, DiscoveredCamera]
+    row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[str, DiscoveredCamera]
 ) -> DiscoveredCamera | None:
     """Return what *checked*, the row's own sign-in, or else a scan in *found* learned about the camera of a row the
     workspace holds, or None when nothing did."""
     item = row.item
     if item is None:
         return None
-    own = checked.get(request) if (request := access_request(item)) is not None else None
-    return own or next((found[host] for host in item.hosts if host in found), None)
+    return checked.get(item.id) or next((found[host] for host in item.hosts if host in found), None)
 
 
 def with_scan(
-    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[Access, DiscoveredCamera]
+    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[str, DiscoveredCamera]
 ) -> WorkspaceBrowserRow:
     """Return the row of a camera the workspace holds with what *camera*, which signing in or a scan learned about it,
     shows as a found camera does; one that refuses its own login warns and can not start a stream."""
     item = row.item
     if item is None or camera is None:
         return row
-    own = checked.get(request) if (request := access_request(item)) is not None else None
+    own = checked.get(item.id)
     details = _camera_details(camera, show_sign_in_problem=False)
     row = replace(
         row,
