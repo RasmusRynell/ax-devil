@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from threading import Event
 
 import pytest
 from pytestqt.qtbot import QtBot
@@ -256,6 +257,40 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
     live.qtbot.waitUntil(lambda: "AXIS P3265-LVE" in live.detail("Entrance"))
     assert live.rows() == {"Entrance": "Start stream"}
     assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+
+
+def test_a_rescan_replaces_the_checks_still_running_and_their_late_answers_are_dropped(live: Live) -> None:
+    live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
+    old_gate = live.checker.gate
+    old_gate.clear()
+    live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
+    live.qtbot.waitUntil(lambda: len(live.checker.calls) == 1)
+    live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.SIGNED_IN)}
+    live.checker.gate = Event()
+    live.button("Rescan").click()
+
+    old_gate.set()
+    live.qtbot.wait(100)
+
+    assert live.rows() == {"Entrance": "Start stream"}, "the older answer says nothing while the newer is awaited"
+    live.checker.gate.set()
+    live.qtbot.waitUntil(lambda: "AXIS Q1656" in live.detail("Entrance"))
+    assert live.rows() == {"Entrance": "Start stream"}
+
+
+def test_checks_still_queued_for_cameras_the_workspace_dropped_never_contact_them(live: Live) -> None:
+    live.checker.gate.clear()
+    live.open_workspace(
+        LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"),
+        LiveStreamItem(host="192.0.2.11", label="Dock", username="root", password="pw"),
+    )
+    live.qtbot.waitUntil(lambda: len(live.checker.calls) == 1)
+
+    live.open_workspace()
+    live.checker.gate.set()
+    live.qtbot.wait(100)
+
+    assert len(live.checker.calls) == 1, "the check that had not started was cancelled"
 
 
 def test_a_camera_starts_only_with_its_start_button(live: Live) -> None:

@@ -67,7 +67,7 @@ def network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceB
 
 
 def scan_camera(
-    row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[Access, DiscoveredCamera | None]
+    row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[Access, DiscoveredCamera]
 ) -> DiscoveredCamera | None:
     """Return what *checked*, the row's own sign-in, or else a scan in *found* learned about the camera of a row the
     workspace holds, or None when nothing did."""
@@ -79,7 +79,7 @@ def scan_camera(
 
 
 def with_scan(
-    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[Access, DiscoveredCamera | None]
+    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[Access, DiscoveredCamera]
 ) -> WorkspaceBrowserRow:
     """Return the row of a camera the workspace holds with what *camera*, which signing in or a scan learned about it,
     shows as a found camera does; one that refuses its own login warns and can not start a stream."""

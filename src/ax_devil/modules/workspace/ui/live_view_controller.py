@@ -153,8 +153,8 @@ class LiveViewController(QObject):
         self._jobs = jobs.scope(view)
         self._scan = scan
         self._check = check
-        # What signing in found, by host and login; None while the check runs or when it found nothing.
-        self._checked: dict[Access, DiscoveredCamera | None] = {}
+        self._checked: dict[Access, DiscoveredCamera] = {}  # What signing in found, by host and login.
+        self._checks: dict[Access, LatestRequest] = {}  # The check of each host and login, running or done.
         self._given_range, self._logins = _defaults()  # The range is what the view's field was last given by default.
         view.set_scan_range(self._given_range)
         view.set_logins(self._logins)
@@ -270,12 +270,19 @@ class LiveViewController(QObject):
         self.scan(ip_range)
 
     def _forget_unused_access(self, _item: WorkspaceItem) -> None:
-        """Forget what checks found for a host and login no item of the workspace has any more."""
+        """Cancel the checks of, and forget what they found for, a host and login no item of the workspace has any
+        more."""
         used = {request for item in self._store.workspace.items if (request := access_request(item)) is not None}
+        for request in [request for request in self._checks if request not in used]:
+            self._checks.pop(request).close()
         self._checked = {request: camera for request, camera in self._checked.items() if request in used}
         self._refresh()
 
     def _clear_access(self) -> None:
+        """Cancel every check and forget what they found."""
+        for check in self._checks.values():
+            check.close()
+        self._checks.clear()
         self._checked.clear()
 
     def _check_access_of(self, resolutions: list[ItemResolution], _open_first: bool) -> None:
@@ -287,10 +294,11 @@ class LiveViewController(QObject):
             return
         for item in items:
             request = access_request(item)
-            if request is None or request in self._checked:
+            if request is None or request in self._checks or request in self._checked:
                 continue
-            self._checked[request] = None
-            self._jobs.submit(
+            check = self._checks[request] = LatestRequest(self)
+            check.submit(
+                self._jobs,
                 "camera access check",
                 partial(_run_check, self._check, *request),
                 on_result=partial(self._on_checked, request),
@@ -298,8 +306,8 @@ class LiveViewController(QObject):
             )
 
     def _on_checked(self, request: Access, camera: DiscoveredCamera | None) -> None:
-        """Keep what a check found for every item with the same host and login, unless none has them any more."""
-        if camera is not None and request in self._checked:
+        """Keep what a check found for every item with the same host and login."""
+        if camera is not None:
             self._checked[request] = camera
             self._refresh()
 
