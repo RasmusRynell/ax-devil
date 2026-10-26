@@ -23,13 +23,11 @@ _ALLOWED: dict[str, dict[str, str]] = {
         f"{_DECODER}/frame_worker.py": "stop, pause and wake signals of a thread",
         f"{_DECODER}/video_frame_reader.py": "completion handshake of one read",
         "modules/data_sources/file_frame_delivery.py": "completion handshake of one synchronous read",
-        "modules/diagnostics/trace_recorder.py": "stop signal of the recorder's own thread",
     },
     # Asking an event whether it is set.
     "is_set": {
         "core/cancellation.py": "the token's own poll",
         f"{_DECODER}/frame_worker.py": "the decoder thread's own loop",
-        "modules/diagnostics/trace_recorder.py": "the recorder thread's own loop",
     },
     # `except BaseException` that does not end in `raise` swallows `Cancelled`.
     "swallow": {

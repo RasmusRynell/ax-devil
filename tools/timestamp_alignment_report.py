@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ax_devil.core.cancellation import NEVER
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import TimestampTimeline
@@ -262,7 +263,7 @@ def _build_row(
     return "\t".join(
         [
             str(timestamp_us),
-            f"{timestamp_us / 1_000_000:.6f}",
+            f"{us_to_seconds(timestamp_us):.6f}",
             row_type,
             str(video_timeline.index_by_timestamp[timestamp_us]) if in_video else "",
             str(overlay_timeline.index_by_timestamp[timestamp_us]) if in_overlay else "",

@@ -1,4 +1,4 @@
-.PHONY: sync lock check format test test-integration run run-dev
+.PHONY: sync lock check format shaders test test-integration run run-dev
 
 TEST_WORKERS ?= auto
 
@@ -17,6 +17,13 @@ check:
 format:
 	uv run ruff check --fix .
 	uv run ruff format .
+
+SHADER_DIR := src/ax_devil/modules/video_player/engine/quick/shaders
+
+shaders:
+	for stage in vert frag; do \
+		uv run pyside6-qsb --glsl "100 es,120,150,330" --hlsl 50 --msl 12 -b -o $(SHADER_DIR)/overlay.$$stage.qsb $(SHADER_DIR)/overlay.$$stage; \
+	done
 
 test:
 	uv run pytest -n $(TEST_WORKERS) --maxprocesses=8 --dist=loadfile

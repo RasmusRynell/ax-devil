@@ -24,6 +24,7 @@ def test_config_manager_resolved_reads_and_save_preserve_raw_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Where Windows looks for "~".
     monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "10.20.30.40")
 
     raw = json.loads(json.dumps(DEFAULT_CONFIG))
@@ -129,6 +130,7 @@ def test_load_config_preserves_scalar_type_mismatches_for_known_fields(tmp_path:
 
 def test_config_manager_expands_home_only_in_storage_folders(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("AX_TEST_LOGS_DIR", "~/env-logs")
 
     absolute_entry = str((tmp_path / "absolute").resolve())
@@ -162,6 +164,7 @@ def test_config_manager_expands_home_only_in_storage_folders(monkeypatch: pytest
 def test_literal_credentials_are_never_expanded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, literal: str) -> None:
     """A password or username that happens to start with ``~`` or ``$`` is used exactly as typed."""
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
 
     config = json.loads(json.dumps(DEFAULT_CONFIG))
     config["defaults"]["device"]["password"] = literal

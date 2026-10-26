@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtCore import QEvent, QMimeData, QObject, Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QSplitter, QWidget
 
@@ -102,14 +102,24 @@ class ApplicationWindow(QWidget):
             self._set_sidebar_width(min(self._sidebar_width or _default_sidebar_width(), cap))
 
     def _on_splitter_moved(self, _position: int, _index: int) -> None:
-        """Remember the width the user drags the sidebar to; dragging it closed hides it until toggled back."""
+        """Remember the width the user drags the sidebar to."""
         width = self._splitter.sizes()[0]
         if width > 0:
             self._sidebar_width = width
-        else:
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        """Hide a sidebar dragged closed when the button is released, until toggled back.
+
+        Hiding it earlier would hide the splitter handle too, and the held drag could no longer reopen it.
+        """
+        if (
+            watched is self._splitter.handle(1)
+            and event.type() == QEvent.Type.MouseButtonRelease
+            and self._splitter.sizes()[0] == 0
+        ):
             self._sidebar_wanted = False
-            self._sidebar.hide()
-            self._show_current_view()
+            self._apply_sidebar()
+        return False
 
     def _apply_sidebar(self) -> None:
         """Show the sidebar when the user wants it, at its remembered width.
@@ -186,6 +196,7 @@ class ApplicationWindow(QWidget):
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setChildrenCollapsible(True)
         self._splitter.setCollapsible(1, False)
+        self._splitter.handle(1).installEventFilter(self)
 
         main_layout.addWidget(self._splitter, 1)
 

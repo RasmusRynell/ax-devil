@@ -7,11 +7,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from ax_devil.core.atomic_file import open_replaceable_text
+from ax_devil.modules.data_sources.file_data_provider.scene_catalog import SceneBuildResult
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
     StorageMode,
 )
-from ax_devil.modules.data_sources.file_data_provider.stores import SceneBuildResult
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.scene.model import Scene
 
@@ -68,7 +69,7 @@ class MOTChallengeSceneDataProvider(SceneDecoderFileProvider):
 
     def _iter_payloads(self) -> Iterable[str]:
         """Yield every row, blank ones included, so that row numbers are the file's line numbers."""
-        with self.file_path.open("r", encoding="utf-8") as file_obj:
+        with open_replaceable_text(self.file_path) as file_obj:
             yield from file_obj
 
     def _build_scene_maps(

@@ -13,9 +13,12 @@ from ax_devil.modules.video_player.engine.drawing import DrawingTarget
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 
 from . import executable
-from .definitions import PRIMITIVES, ValueType, has_constraints, validate_value
+from .definitions import PRIMITIVES, ValueType
+from .emission import emit
 from .expressions import CompiledExpression, TemplateInputs, instruction
-from .kernels import RowState, emit
+from .kernels import RowState
+from .plan import Node, Program, Step
+from .validation import has_constraints, validate_value
 from .values import TemplateRuntimeError
 
 
@@ -30,9 +33,9 @@ class RenderStep:
     primitive: str = ""
     target: RenderProgram | None = None
 
-    def lower(self) -> executable.Step:
+    def lower(self) -> Step:
         """Discard expression metadata once the guarded step has been resolved."""
-        return executable.Step(
+        return Step(
             self.enabled.code,
             self.fields.code if self.target is not None else _primitive_fields(self.fields, self.primitive),
             self.style.code if self.style is not None else None,
@@ -42,7 +45,7 @@ class RenderStep:
         )
 
 
-def _primitive_fields(expression: CompiledExpression, kind: str) -> executable.Node:
+def _primitive_fields(expression: CompiledExpression, kind: str) -> Node:
     names = tuple(name for name, _ in PRIMITIVES[kind].fields)
     if expression.members is not None and not has_constraints(expression.value_type):
         members = dict(expression.members)
@@ -67,7 +70,7 @@ class RenderProgram:
     draws: bool = True
     """Whether any output is reachable: false when its own condition or every step is constantly off."""
 
-    code: executable.Program = field(init=False, repr=False, compare=False)
+    code: Program = field(init=False, repr=False, compare=False)
     _run: Callable[..., object] | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(
@@ -77,7 +80,7 @@ class RenderProgram:
         object.__setattr__(
             self,
             "code",
-            executable.Program(
+            Program(
                 enabled.code,
                 tuple(value.code for value in values),
                 tuple(step.lower() for step in steps if step.enabled.constant is not False),
@@ -89,7 +92,7 @@ class RenderProgram:
         names: set[str] = set()
         visited: set[int] = set()
 
-        def visit(node: executable.Node) -> None:
+        def visit(node: Node) -> None:
             if node.kind == "input" and node.operand[0] == "parameters":
                 names.add(node.operand[1])
             if node.kind == "slot" and node.operand not in visited:

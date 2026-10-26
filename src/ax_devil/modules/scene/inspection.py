@@ -102,6 +102,13 @@ def entity_fields(entity: Entity) -> tuple[tuple[FieldGroup, tuple[InspectionFie
     return tuple((group, tuple(items)) for group, items in grouped.items() if items)
 
 
+def entity_confidence(entity: Entity) -> float | None:
+    """Return an entity's confidence using the same fallback as its inspection summary."""
+    observation = entity.latest_observation
+    score = _confidence(observation) if observation is not None else None
+    return score.value if score is not None else None
+
+
 def entity_summary(entity: Entity) -> EntitySummary:
     """Summarize an entity for lists and hover chips; speed is only what the decoder reported."""
     observation = entity.latest_observation

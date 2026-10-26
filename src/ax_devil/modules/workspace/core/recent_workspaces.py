@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
@@ -16,11 +18,12 @@ from ax_devil.modules.workspace.core.file_format import write_json_file
 logger = get_logger(__name__)
 
 RECENT_WORKSPACES_LIMIT = 8
+LOCK_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
 class RecentWorkspace:
-    """A remembered workspace file and the local time it was last opened or saved."""
+    """A remembered workspace file and the UTC time it was last opened or saved."""
 
     path: Path
     used: datetime
@@ -30,9 +33,8 @@ class RecentWorkspaces:
     """Persist the most recently opened or saved workspace files.
 
     The file is a JSON list of ``{"path": <absolute path>, "used": <ISO date-time>}``. The time of use is kept here
-    so showing a recent never has to read the remembered file, which may be on a slow or disconnected mount. Where the
-    platform has file locks, a change holds one on a file beside the list, so instances changing it at once do not
-    drop each other's entries.
+    so showing a recent never has to read the remembered file, which may be on a slow or disconnected mount. A change
+    holds a lock on a file beside the list, so instances changing it at once do not drop each other's entries.
     """
 
     def __init__(self, path_provider: Callable[[], Path], limit: int = RECENT_WORKSPACES_LIMIT) -> None:
@@ -49,7 +51,7 @@ class RecentWorkspaces:
         The path is kept as the user chose it, made absolute and normalized lexically; symlinks are not followed.
         """
         workspace_path = Path(os.path.normpath(workspace_path.absolute()))
-        used = RecentWorkspace(workspace_path, datetime.now())
+        used = RecentWorkspace(workspace_path, datetime.now(timezone.utc))
         return self._update(lambda entries: [used, *(entry for entry in entries if entry.path != workspace_path)])
 
     def forget(self, workspace_path: Path) -> bool:
@@ -90,16 +92,30 @@ class RecentWorkspaces:
         entries = []
         for item in document:
             try:
-                entries.append(RecentWorkspace(Path(item["path"]), datetime.fromisoformat(item["used"])))
+                entries.append(
+                    RecentWorkspace(Path(item["path"]), datetime.fromisoformat(item["used"]).astimezone(timezone.utc))
+                )
             except (TypeError, KeyError, ValueError):
                 continue
         return entries
 
 
 def _lock_exclusively(file: IO[str]) -> None:
-    """Block until *file* is locked by this process alone, until it is closed; do nothing without file locks."""
-    try:
-        import fcntl
-    except ImportError:
-        return
+    """Block until *file* is locked by this process alone, until it is closed."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        # Windows locks a byte range and offers no blocking wait that outlasts ten seconds, so wait here.
+        deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+        file.seek(0)
+        while True:
+            try:
+                msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.005)
+    import fcntl
+
     fcntl.flock(file, fcntl.LOCK_EX)

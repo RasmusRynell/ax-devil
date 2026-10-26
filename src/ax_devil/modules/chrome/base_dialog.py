@@ -200,6 +200,13 @@ class BaseDialog(QDialog):
         if self._title_bar is not None:
             self._title_bar.sync_buttons()
 
+    def hasHeightForWidth(self) -> bool:
+        """A dialog's content scrolls, so any height above its minimum is acceptable.
+
+        This stops Windows from growing the dialog to its content.
+        """
+        return False
+
     def changeEvent(self, event: QEvent) -> None:  # noqa: D401 - Qt override
         """Propagate window-state changes to custom chrome."""
         super().changeEvent(event)

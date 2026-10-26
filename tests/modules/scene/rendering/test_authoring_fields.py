@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalogLoader
+from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader
 from ax_devil.modules.scene.rendering.template_runtime.compiler import RenderProgramCompiler
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from tests.catalog_helpers import CLASSIC_CATALOG_PATH

@@ -7,14 +7,12 @@ and emit Qt signals on change so consumers can react without polling.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, replace
 from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget, detect_available_memory_bytes
@@ -30,7 +28,6 @@ class SettingsState:
 
     video_cache_budget: VideoCacheBudget = VideoCacheBudget()
     enabled_overlays: frozenset[OverlayPreference] = frozenset(OverlayPreference)
-    graphics_acceleration: GraphicsAcceleration = GraphicsAcceleration.AUTO
     theme: ThemeMode = ThemeMode.AUTO
     text_size: TextSize = TextSize.SYSTEM
     custom_frame: bool = True
@@ -71,8 +68,6 @@ class GlobalSettings(QObject):
         self._initialized = True
         self.available_memory_bytes = detect_available_memory_bytes()
         self._state = SettingsState()
-        # Capture the inherited override before startup applies our own presentation default.
-        self.graphics_acceleration_override = os.environ.get("QT_WIDGETS_RHI")
 
     # ------------------------------------------------------------------
     # Properties
@@ -181,18 +176,6 @@ class GlobalSettings(QObject):
         self._state = replace(self._state, quick_setup_done=value)
         self.setting_changed.emit("quick_setup_done", value)
 
-    @property
-    def graphics_acceleration(self) -> GraphicsAcceleration:
-        """Return the saved presentation preference, applied on the next startup."""
-        return self._state.graphics_acceleration
-
-    @graphics_acceleration.setter
-    def graphics_acceleration(self, value: GraphicsAcceleration) -> None:
-        if value == self._state.graphics_acceleration:
-            return
-        self._state = replace(self._state, graphics_acceleration=value)
-        self.setting_changed.emit("appearance.graphics_acceleration", value.value)
-
     # ------------------------------------------------------------------
     # Config round-trip
     # ------------------------------------------------------------------
@@ -203,7 +186,6 @@ class GlobalSettings(QObject):
         ui = config_manager.get("ui", {}) or {}
         playback = settings.get("playback", {}) or {}
         overlay = settings.get("overlay_interaction", {}) or {}
-        appearance = settings.get("appearance", {}) or {}
         network_scan = settings.get("network_scan", {}) or {}
         self._state = SettingsState(
             theme=ThemeMode.from_config(ui.get("theme", "auto")),
@@ -214,7 +196,6 @@ class GlobalSettings(QObject):
             scan_sign_in=bool(network_scan.get("sign_in", True)),
             video_cache_budget=VideoCacheBudget.from_config(playback.get("video_cache_total_mib")),
             enabled_overlays=OverlayPreference.from_config(overlay),
-            graphics_acceleration=GraphicsAcceleration.from_config(appearance.get("graphics_acceleration", "auto")),
         )
         logger.debug(f"GlobalSettings loaded: overlays={self._state.enabled_overlays}")
 
@@ -233,9 +214,6 @@ class GlobalSettings(QObject):
         overlay = settings.get("overlay_interaction", {}) or {}
         overlay.update(OverlayPreference.config_value(values.enabled_overlays))
         settings["overlay_interaction"] = overlay
-        appearance = settings.get("appearance", {}) or {}
-        appearance["graphics_acceleration"] = values.graphics_acceleration.value
-        settings["appearance"] = appearance
         playback = settings.get("playback", {}) or {}
         playback["video_cache_total_mib"] = values.video_cache_budget.config_value
         settings["playback"] = playback
@@ -257,7 +235,6 @@ class GlobalSettings(QObject):
         self.theme = snapshot.theme
         self.text_size = snapshot.text_size
         self.custom_frame = snapshot.custom_frame
-        self.graphics_acceleration = snapshot.graphics_acceleration
         self.quick_setup_done = snapshot.quick_setup_done
         self.scan_on_startup = snapshot.scan_on_startup
         self.scan_sign_in = snapshot.scan_sign_in

@@ -10,6 +10,7 @@ from ax_devil.modules.filtering.predicate_utils import (
     make_classification_predicate,
     make_other_classification_predicate,
 )
+from ax_devil.modules.scene.decoding import UNMAPPED_CLASS
 from ax_devil.modules.scene.filtering import filter_scene
 from ax_devil.modules.scene.model import Entity, EntityId, MotionState, Scene, TimeSlice
 from ax_devil.plugins.decoders.adf_beta.common import build_adf_beta_filter_config
@@ -28,7 +29,7 @@ def test_default_history_filter_handles_multiple_types_unclassified_and_uncovere
     assert not history_type_filter_keeps(("unknown",), config, state)
     assert history_type_filter_keeps(("car", "human"), config, state)
     assert history_type_filter_keeps(("custom_decoder_type",), config, state)
-    assert history_type_filter_keeps(("unknown_vehicle",), config, state)
+    assert not history_type_filter_keeps(("?3",), config, state)
 
     for option_id in config.option_ids():
         state.set_enabled(option_id, False)
@@ -36,20 +37,22 @@ def test_default_history_filter_handles_multiple_types_unclassified_and_uncovere
     assert not history_type_filter_keeps(("human",), config, state)
 
 
-def test_unknown_prefix_and_other_policies_share_history_semantics() -> None:
+def test_unmapped_and_other_policies_share_history_semantics() -> None:
     config = FilterConfig(
         options=(
-            make_classification_predicate(("unknown",), include_empty=True).build_option(id="unknown", label="Unknown"),
-            make_other_classification_predicate(("unknown", "car"), ignore_unknown_prefix=True).build_option(
+            make_classification_predicate(("unknown", UNMAPPED_CLASS), include_empty=True).build_option(
+                id="unknown", label="Unknown"
+            ),
+            make_other_classification_predicate(("unknown", "car", UNMAPPED_CLASS)).build_option(
                 id="other", label="Other"
             ),
         )
     )
     state = FilterState(config, initial={"unknown": False})
 
-    assert not history_type_filter_keeps(("unknown_vehicle",), config, state)
+    assert not history_type_filter_keeps(("?7",), config, state)
     assert not history_type_filter_keeps((), config, state)
-    assert history_type_filter_keeps(("unknown_vehicle", "custom_type"), config, state)
+    assert history_type_filter_keeps(("?7", "custom_type"), config, state)
     state.set_enabled("other", False)
     state.set_enabled("unknown", True)
     assert not history_type_filter_keeps(("custom_type",), config, state)

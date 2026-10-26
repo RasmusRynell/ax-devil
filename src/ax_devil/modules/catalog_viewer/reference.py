@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ax_devil.modules.scene.rendering.catalog import BINDING_TYPES
+from ax_devil.modules.scene.rendering.catalog_loader import BINDING_TYPES
 from ax_devil.modules.scene.rendering.template_runtime.definitions import TYPES, ValueType, authoring_definitions
 from ax_devil.modules.scene.rendering.visibility import OverlayFeature
 

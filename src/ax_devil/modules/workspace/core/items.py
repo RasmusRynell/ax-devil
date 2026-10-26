@@ -2,178 +2,28 @@
 
 from __future__ import annotations
 
-import os
-from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, ClassVar, TypeVar
-from uuid import uuid4
+from typing import Any, ClassVar
 
 from ax_devil.core.cancellation import CancelToken
-from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference, integer_default
+from ax_devil.core.source_paths import MAX_FOLDERS, SourcePaths, SourceSnapshot
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.workspace.core.content import Content, LiveOverlayMode, numbered_when_shared
+from ax_devil.modules.workspace.core.content import Content, numbered_when_shared
 from ax_devil.modules.workspace.core.intake import OverlayFile, WorkspaceIntake, is_video_file
+from ax_devil.modules.workspace.core.item_base import (
+    WorkspaceItem,
+    new_item_id,
+    path_from_json,
+    path_to_json,
+    read_field,
+)
+from ax_devil.modules.workspace.core.live_stream_item import LiveStreamItem
 from ax_devil.modules.workspace.core.resolution import ItemResolutionError, PlaylistSettings, ResolutionContext
 
 logger = get_logger(__name__)
-
-_ItemT = TypeVar("_ItemT", bound="WorkspaceItem")
-_ValueT = TypeVar("_ValueT")
-_REQUIRED: Any = object()
-
-
-def _read(data: Mapping[str, Any], key: str, expected: type[_ValueT], default: _ValueT = _REQUIRED) -> _ValueT:
-    """Return ``data[key]`` as an *expected* JSON value, or *default* when absent; raise ``ValueError`` otherwise."""
-    if key not in data:
-        if default is _REQUIRED:
-            raise ValueError(f"missing '{key}'")
-        return default
-    value = data[key]
-    if not isinstance(value, expected) or (expected is int and isinstance(value, bool)):
-        raise ValueError(f"'{key}' must be a {expected.__name__}")
-    return value
-
-
-def _read_optional_str(data: Mapping[str, Any], key: str) -> str | None:
-    """Return ``data[key]`` as a string or None when absent or null; raise ``ValueError`` for anything else."""
-    return None if data.get(key) is None else _read(data, key, str)
-
-
-def _path_to_json(path: Path, base_dir: Path | None) -> str:
-    """Return *path* relative to *base_dir* with POSIX separators when inside it, absolute otherwise or without one.
-
-    Both are normalized lexically first, so ``..`` segments cannot escape the folder; symlinks are not resolved.
-    """
-    absolute = Path(os.path.normpath(path.absolute()))
-    if base_dir is None:
-        return str(absolute)
-    folder = Path(os.path.normpath(base_dir.absolute()))
-    try:
-        return absolute.relative_to(folder).as_posix()
-    except ValueError:
-        return str(absolute)
-
-
-def _path_from_json(data: Mapping[str, Any], key: str, base_dir: Path | None) -> Path:
-    """Return the path in ``data[key]``; a relative one is read against *base_dir* when given.
-
-    The path is normalized lexically, as ``_path_to_json`` writes it, so reading what was written compares equal.
-    """
-    path = Path(_read(data, key, str))
-    return Path(os.path.normpath(path if base_dir is None else base_dir / path))
-
-
-def new_item_id() -> str:
-    """Return a fresh item id; an item keeps its id for as long as it exists."""
-    return uuid4().hex
-
-
-@dataclass(frozen=True, kw_only=True)
-class WorkspaceItem(ABC):
-    """A recipe for one thing to work with: enough to rebuild its Content, never the rebuilt result.
-
-    A kind is one subclass with a unique ``kind`` registered in ``ITEM_KINDS``; it implements ``_build_contents`` and
-    the JSON hooks ``_fields_to_json`` and ``_fields_from_json`` for its own fields, and ``default_name``. Callers use
-    ``resolve``, which also gives every Content its identity, and ``to_json`` / ``from_json``, which add the common
-    fields.
-
-    An empty ``label`` means the item is shown by its ``default_name``, which is derived when displayed and never saved.
-    """
-
-    kind: ClassVar[str]
-    renamable: ClassVar[bool] = True
-    """Whether a new label survives saving; an item written back unchanged cannot be renamed."""
-    bookmarkable: ClassVar[bool] = False
-    """Whether new bookmarks and review marks may be made on the item's videos; live streams never take them."""
-    label: str = ""
-    id: str = field(default_factory=new_item_id)
-
-    @property
-    @abstractmethod
-    def default_name(self) -> str:
-        """Return the name shown when the item has no label, such as the file name or the expanded host."""
-
-    @property
-    def display_name(self) -> str:
-        """Return the label, or the default name when the label is empty."""
-        return self.label or self.default_name
-
-    @property
-    def hosts(self) -> tuple[str, ...]:
-        """Return the network hosts the item connects to, as entered and expanded; none for items that do not."""
-        return ()
-
-    def with_label(self: _ItemT, label: str) -> _ItemT:
-        """Return this item renamed to *label*, keeping its id.
-
-        An empty label, or the default name itself, returns the item to its default name, so the item never stores a
-        derived value such as an expanded host.
-        """
-        return replace(self, label="" if label == self.default_name else label)
-
-    def resolve(self, context: ResolutionContext, token: CancelToken) -> tuple[Content, ...]:
-        """Rebuild this item's Content named after the item, or raise ``ItemResolutionError`` with a reason."""
-        return self.name_contents(self._resolve_by_default_name(context, token))
-
-    def _resolve_by_default_name(self, context: ResolutionContext, token: CancelToken) -> tuple[Content, ...]:
-        """Rebuild this item's Content as named without a label, or raise ``ItemResolutionError``.
-
-        Content ids derive from the item id and the Content's position, so they are the same on every resolution.
-        """
-        try:
-            token.raise_if_cancelled()
-            contents = self._build_contents(context, token)
-            token.raise_if_cancelled()
-        except (ValueError, OSError) as exc:
-            raise ItemResolutionError(str(exc)) from exc
-        if not contents:
-            raise ItemResolutionError(f"{self.display_name} has nothing to open.")
-        return tuple(
-            replace(content, content_id=f"{self.id}/{index}", item_id=self.id) for index, content in enumerate(contents)
-        )
-
-    def name_contents(self, contents: Sequence[Content]) -> tuple[Content, ...]:
-        """Return *contents*, as named without a label, renamed after this item's label when it has one."""
-        if not self.label:
-            return tuple(contents)
-        return tuple(replace(content, display_name=self.label) for content in contents)
-
-    @abstractmethod
-    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
-        """Return this item's Content as named without a label; raise ``ItemResolutionError``, ``ValueError``, or
-        ``OSError`` when it cannot."""
-
-    def to_json(self, base_dir: Path | None) -> Any:
-        """Return this item as a JSON object; paths inside *base_dir* are written relative to it, others absolute.
-
-        Typed ``Any`` because an unreadable item returns whatever JSON value the file held.
-        """
-        return {"kind": self.kind, "id": self.id, "label": self.label, **self._fields_to_json(base_dir)}
-
-    @classmethod
-    def from_json(cls: type[_ItemT], data: Mapping[str, Any], base_dir: Path | None) -> _ItemT:
-        """Return the item *data* describes; raise ``ValueError`` saying what is malformed.
-
-        Relative paths are read against *base_dir* when given.
-        """
-        try:
-            return cls(
-                id=_read(data, "id", str), label=_read(data, "label", str), **cls._fields_from_json(data, base_dir)
-            )
-        except ValueError as exc:
-            raise ValueError(f"Malformed {cls.kind} item: {exc}") from exc
-
-    @abstractmethod
-    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
-        """Return this kind's own JSON fields."""
-
-    @classmethod
-    @abstractmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
-        """Return the constructor arguments for this kind's own fields; raise ``ValueError`` when malformed."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -181,6 +31,7 @@ class VideoItem(WorkspaceItem):
     """A video file with optional overlay files, each read by a file decoder."""
 
     kind: ClassVar[str] = "video"
+    editable: ClassVar[bool] = True
     bookmarkable: ClassVar[bool] = True
     video: Path
     overlays: tuple[OverlayFile, ...] = ()
@@ -193,22 +44,26 @@ class VideoItem(WorkspaceItem):
     def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
         """Return the video path and the overlay files with their decoders."""
         return {
-            "video": _path_to_json(self.video, base_dir),
+            "video": path_to_json(self.video, base_dir),
             "overlays": [
-                {"path": _path_to_json(overlay.path, base_dir), "decoder": overlay.decoder} for overlay in self.overlays
+                {"path": path_to_json(overlay.path, base_dir), "decoder": overlay.decoder} for overlay in self.overlays
             ],
         }
 
     @classmethod
     def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         """Read the video path and the overlay files."""
-        entries = _read(data, "overlays", list, [])
+        entries = read_field(data, "overlays", list, [])
         if not all(isinstance(entry, dict) for entry in entries):
             raise ValueError("'overlays' must be a list of objects")
         overlays = tuple(
-            OverlayFile(_path_from_json(entry, "path", base_dir), _read(entry, "decoder", str)) for entry in entries
+            OverlayFile(path_from_json(entry, "path", base_dir), read_field(entry, "decoder", str)) for entry in entries
         )
-        return {"video": _path_from_json(data, "video", base_dir), "overlays": overlays}
+        return {"video": path_from_json(data, "video", base_dir), "overlays": overlays}
+
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
+        """Return the overlay files; changes to the video file do not matter."""
+        return SourcePaths(files=frozenset(overlay.path for overlay in self.overlays))
 
     def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Return the seekable video, after checking that its files exist."""
@@ -222,190 +77,12 @@ class VideoItem(WorkspaceItem):
         )
 
 
-_LIVE_STR_FIELDS = (
-    "host",
-    "username",
-    "password",
-    "resolution",
-    "mqtt_host",
-    "mqtt_username",
-    "mqtt_password",
-    "analytics_data_source_key",
-    "device_api_protocol",
-    "websocket_topic",
-)
-_LIVE_INT_FIELDS = ("camera_head", "mqtt_port", "websocket_channel_id")
-
-
-@dataclass(frozen=True, kw_only=True)
-class LiveStreamItem(WorkspaceItem):
-    """A camera stream with optional live overlay settings.
-
-    The device and MQTT broker hosts, usernames, and passwords are stored as entered: a ``$VARIABLE`` reference stays a
-    reference and is expanded only when the item resolves, using the config's rule.
-    """
-
-    kind: ClassVar[str] = "live_stream"
-    host: str
-    username: str = field(default="", repr=False)
-    password: str = field(default="", repr=False)
-    camera_head: int = 1
-    resolution: str = "1280x720"
-    stream_url: str | None = field(default=None, repr=False)
-    overlay_mode: LiveOverlayMode = LiveOverlayMode.NONE
-    handler_type: str | None = None
-    mqtt_host: str = ""
-    mqtt_port: int = 1883
-    mqtt_username: str = field(default="", repr=False)
-    mqtt_password: str = field(default="", repr=False)
-    analytics_data_source_key: str = ""
-    device_api_protocol: str = "https"
-    websocket_topic: str = ""
-    websocket_channel_id: int = 1
-
-    def _fields_to_json(self, base_dir: Path | None) -> dict[str, Any]:
-        """Return every field as stored; references stay references and the overlay mode is its value string."""
-        return {
-            name: getattr(self, name).value if name == "overlay_mode" else getattr(self, name)
-            for name in (*_LIVE_STR_FIELDS, *_LIVE_INT_FIELDS, "stream_url", "overlay_mode", "handler_type")
-        }
-
-    @classmethod
-    def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
-        """Read every field, using the defaults for absent ones."""
-        defaults = cls(host="")
-        return {
-            **{name: _read(data, name, str, getattr(defaults, name)) for name in _LIVE_STR_FIELDS},
-            **{name: _read(data, name, int, getattr(defaults, name)) for name in _LIVE_INT_FIELDS},
-            "stream_url": _read_optional_str(data, "stream_url"),
-            "handler_type": _read_optional_str(data, "handler_type"),
-            "overlay_mode": LiveOverlayMode.from_value(_read(data, "overlay_mode", str, defaults.overlay_mode.value)),
-        }
-
-    @property
-    def default_name(self) -> str:
-        """Return the device host, with an environment reference expanded for display only."""
-        return expand_environment_reference(self.host) or "Live stream"
-
-    @property
-    def hosts(self) -> tuple[str, ...]:
-        """Return the camera host as entered and, when it is a ``$VARIABLE`` reference, as expanded."""
-        return tuple(dict.fromkeys((self.host, self.expanded().host)))
-
-    def expanded(self) -> LiveStreamItem:
-        """Return this item with its environment references replaced by their current values."""
-        return replace(
-            self,
-            host=expand_environment_reference(self.host),
-            username=expand_environment_reference(self.username),
-            password=expand_environment_reference(self.password),
-            mqtt_host=expand_environment_reference(self.mqtt_host),
-            mqtt_username=expand_environment_reference(self.mqtt_username),
-            mqtt_password=expand_environment_reference(self.mqtt_password),
-        )
-
-    def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
-        """Return the live stream, built from the expanded connection values."""
-        values = self.expanded()
-        return (
-            context.intake.create_live_stream(
-                display_name=self.default_name,
-                host=values.host,
-                username=values.username,
-                password=values.password,
-                camera_head=values.camera_head,
-                resolution=values.resolution,
-                stream_url=values.stream_url,
-                overlay_mode=values.overlay_mode,
-                handler_type=values.handler_type,
-                mqtt_host=values.mqtt_host,
-                mqtt_port=values.mqtt_port,
-                mqtt_username=values.mqtt_username,
-                mqtt_password=values.mqtt_password,
-                analytics_data_source_key=values.analytics_data_source_key,
-                device_api_protocol=values.device_api_protocol,
-                websocket_topic=values.websocket_topic,
-                websocket_channel_id=values.websocket_channel_id,
-            ),
-        )
-
-
-def live_stream_item_from_defaults(
-    *,
-    label: str = "",
-    host: str | None = None,
-    username: str | None = None,
-    password: str | None = None,
-    camera_head: int | None = None,
-    resolution: str | None = None,
-    overlay: str | None = None,
-    handler_type: str | None = None,
-    mqtt_host: str | None = None,
-    mqtt_port: int | None = None,
-    mqtt_username: str | None = None,
-    mqtt_password: str | None = None,
-    analytics_data_source_key: str | None = None,
-    device_api_protocol: str | None = None,
-    websocket_topic: str | None = None,
-    websocket_channel_id: int | None = None,
-) -> LiveStreamItem:
-    """Build a ``LiveStreamItem`` named *label* from the config's stream defaults, with optional overrides.
-
-    Device and MQTT broker connection defaults are taken as written in the config, so a ``$VARIABLE`` reference stays
-    a reference in the item.
-    """
-    cfg = ConfigManager()
-    defaults = cfg.get("defaults", {}) or {}
-    live = defaults.get("live_stream", {}) or {}
-    rtsp = live.get("rtsp", {}) or {}
-    mqtt = live.get("analytics-mqtt", {}) or {}
-    websocket = live.get("analytics-websocket", {}) or {}
-    raw_defaults = cfg.get_raw("defaults", {}) or {}
-    device = raw_defaults.get("device", {}) or {}
-    raw_mqtt = (raw_defaults.get("live_stream", {}) or {}).get("analytics-mqtt", {}) or {}
-
-    resolved_overlay = LiveOverlayMode.from_value(overlay or str(live.get("overlay_source", "none")))
-    resolved_handler = handler_type
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.RTSP:
-        resolved_handler = rtsp.get("data_stream_handler")
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.MQTT:
-        resolved_handler = mqtt.get("data_stream_handler")
-    if resolved_handler is None and resolved_overlay is LiveOverlayMode.WEBSOCKET:
-        resolved_handler = websocket.get("data_stream_handler")
-
-    configured_protocol = mqtt.get("device_api_protocol", "https")
-    if resolved_overlay is LiveOverlayMode.WEBSOCKET:
-        configured_protocol = websocket.get("device_api_protocol", "https")
-
-    return LiveStreamItem(
-        label=label,
-        host=host or str(device.get("host") or ""),
-        username=username or str(device.get("username") or ""),
-        password=password or str(device.get("password") or ""),
-        camera_head=camera_head if camera_head is not None else integer_default(rtsp.get("camera_head", 1), 1),
-        resolution=resolution or rtsp.get("resolution", "1280x720"),
-        overlay_mode=resolved_overlay,
-        handler_type=resolved_handler,
-        mqtt_host=mqtt_host or str(raw_mqtt.get("broker_host") or ""),
-        mqtt_port=mqtt_port if mqtt_port is not None else integer_default(mqtt.get("broker_port", 1883), 1883),
-        mqtt_username=mqtt_username or str(raw_mqtt.get("broker_username") or ""),
-        mqtt_password=mqtt_password or str(raw_mqtt.get("broker_password") or ""),
-        analytics_data_source_key=analytics_data_source_key or mqtt.get("data_source_key", ""),
-        device_api_protocol=device_api_protocol or configured_protocol,
-        websocket_topic=websocket_topic or websocket.get("topic", ""),
-        websocket_channel_id=(
-            websocket_channel_id
-            if websocket_channel_id is not None
-            else integer_default(websocket.get("channel_id", 1), 1)
-        ),
-    )
-
-
 @dataclass(frozen=True, kw_only=True)
 class PlaylistItem(WorkspaceItem):
     """A playlist resolver id plus that resolver's JSON-serializable settings."""
 
     kind: ClassVar[str] = "playlist"
+    editable: ClassVar[bool] = True
     bookmarkable: ClassVar[bool] = True
     resolver: str
     settings: PlaylistSettings = field(default_factory=dict)
@@ -421,22 +98,37 @@ class PlaylistItem(WorkspaceItem):
     @classmethod
     def _fields_from_json(cls, data: Mapping[str, Any], base_dir: Path | None) -> dict[str, Any]:
         """Read the resolver id and its settings as they were written."""
-        return {"resolver": _read(data, "resolver", str), "settings": _read(data, "settings", dict, {})}
+        return {"resolver": read_field(data, "resolver", str), "settings": read_field(data, "settings", dict, {})}
 
     @property
     def default_name(self) -> str:
         """Return the resolver id; resolved playlists keep the names their resolver gives them."""
         return self.resolver
 
+    def source_paths(self, context: ResolutionContext, token: CancelToken) -> SourcePaths:
+        """Return the paths the resolver reads from, or none when it is missing or names none."""
+        try:
+            return context.playlist_resolver(self.resolver).source_paths(deepcopy(self.settings), token)
+        except ItemResolutionError:
+            return SourcePaths()  # Resolving reports the missing resolver.
+        except Exception as exc:  # A plugin may fail in any way; resolving reports its failure.
+            logger.warning(f"Playlist resolver '{self.resolver}' could not name its source paths: {exc}")
+            return SourcePaths()
+
     def _build_contents(self, context: ResolutionContext, token: CancelToken) -> Sequence[Content]:
         """Run the resolver with a copy of the settings, so a plugin cannot change the item's settings.
 
-        Playlists that share a name get it numbered " (2)", " (3)", so their entries' Bookmark Target keys differ.
+        Playlists that share a name get it numbered " (2)", " (3)", so their entries' Bookmark Target keys differ. A
+        playlist's ``content_id`` derives from that name, so it names the same playlist when the resolver returns a
+        different set.
         """
         try:
             playlists = context.playlist_resolver(self.resolver).resolve(deepcopy(self.settings), token)
             names = numbered_when_shared(playlist.source_name for playlist in playlists)
-            return [replace(playlist, source_name=name) for playlist, name in zip(playlists, names, strict=True)]
+            return [
+                replace(playlist, source_name=name, content_id=f"{self.id}/{name}")
+                for playlist, name in zip(playlists, names, strict=True)
+            ]
         except ItemResolutionError:
             raise
         except Exception as exc:  # A plugin may fail in any way; the item stays, with the reason.
@@ -469,7 +161,6 @@ class UnreadableItem(WorkspaceItem):
     """
 
     kind: ClassVar[str] = "unreadable"
-    renamable: ClassVar[bool] = False
     id: str = field(default_factory=new_item_id, compare=False)
     raw: Any
     reason: str
@@ -515,11 +206,14 @@ class ItemResolution:
 
     The result keeps the Content as named without a label and derives ``contents`` from the item's label, so a renamed
     item is named again by ``renamed`` and never resolved twice. Build results with ``of`` or ``pending``.
+
+    *sources* is what the item and its Content were read from, as it was on disk before it was read.
     """
 
     item: WorkspaceItem
     error: ItemResolutionError | None = None
     by_default_name: tuple[Content, ...] = field(default=(), repr=False)
+    sources: SourceSnapshot = field(default_factory=lambda: SourceSnapshot(SourcePaths()), repr=False)
     contents: tuple[Content, ...] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -528,11 +222,22 @@ class ItemResolution:
 
     @classmethod
     def of(cls, item: WorkspaceItem, context: ResolutionContext, token: CancelToken) -> ItemResolution:
-        """Resolve *item*; a failure is recorded as the result's error instead of raised."""
+        """Resolve *item*; a failure is recorded as the result's error instead of raised.
+
+        The item's source paths are fingerprinted before anything is read, so a change made while resolving is
+        reported once the result is watched. A path the Content names too keeps that fingerprint.
+        """
+        sources = item.source_paths(context, token).snapshot(token)
+        contents: tuple[Content, ...] = ()
+        error: ItemResolutionError | None = None
         try:
-            return cls(item, by_default_name=item._resolve_by_default_name(context, token))
+            contents = item._resolve_by_default_name(context, token)
         except ItemResolutionError as exc:
-            return cls(item, error=exc)
+            error = exc
+        sources |= SourcePaths.merged(content.source_paths for content in contents).snapshot(token)
+        if sources.truncated:
+            logger.warning(f"{item.display_name} spans over {MAX_FOLDERS} folders; changes in the rest go unnoticed")
+        return cls(item, error=error, by_default_name=contents, sources=sources)
 
     @classmethod
     def pending(cls, item: WorkspaceItem) -> ItemResolution:

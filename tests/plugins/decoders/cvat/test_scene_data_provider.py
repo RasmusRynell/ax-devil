@@ -11,9 +11,11 @@ from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.cache import IndexedFrameCache
 from ax_devil.modules.data_sources.file_data_provider.base import FrameIdentifierDataProvider
 from ax_devil.modules.plugin_system import get_file_decoder_factory
-from ax_devil.plugins.decoders.cvat.decoder import decode_cvat_frame, parse_cvat_document
+from ax_devil.modules.scene.model import EntityId
+from ax_devil.plugins.decoders.cvat.decoder import decode_cvat_frame
 from ax_devil.plugins.decoders.cvat.plugin import CVAT
 from ax_devil.plugins.decoders.cvat.provider import CVATSceneDataProvider
+from ax_devil.plugins.decoders.cvat.xml_reader import parse_cvat_document
 
 from .sample_data import write_sample_cvat_xml
 
@@ -35,9 +37,12 @@ def _assert_serves_sample(provider: FrameIdentifierDataProvider) -> None:
     filter_config = provider.get_filter_config()
     assert filter_config is not None
     assert {option.id for option in filter_config.options} == {"show_car", "show_person"}
-    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_monotime_us=1.0))
+    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_us=1))
     assert scene is not None
     assert set(scene.entities) == {"cvat_track_10", "cvat_track_11"}
+    observation = scene.entities[EntityId("cvat_track_10")].observations[0]
+    assert observation.debug["cvat"]["track"]["@attributes"]["id"] == "10"
+    assert observation.debug["cvat"]["shape"]["@attributes"]["occluded"] == "1"
 
 
 def test_registered_cvat_handler_serves_frames_and_label_filters(tmp_path: Path) -> None:

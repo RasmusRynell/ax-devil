@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -195,3 +196,21 @@ def test_bookmark_and_review_edits_make_a_workspace_modified_until_reverted() ->
     assert noted.edit_bookmark(bookmark.id, note="") == bookmarked
     assert saved.set_reviewed(target, True) != saved
     assert saved.set_reviewed(target, True).set_reviewed(target, False) == saved
+
+
+def test_replacing_an_item_keeps_its_place_and_review_data() -> None:
+    first, second = _video("a.mp4"), _video("b.mp4")
+    target = BookmarkTarget(item_id=first.id)
+    bookmark = Bookmark(target=target, frame=7, time_s=0.3)
+    original = Workspace(items=(first, second), bookmarks=(bookmark,), reviewed=frozenset({target}))
+    edited = replace(first, video=Path("/moved/a.mp4"), label="Moved")
+
+    changed = original.replace_item(edited)
+
+    assert changed.items == (edited, second)
+    assert changed.bookmarks == (bookmark,) and changed.reviewed == {target}
+    assert original.items == (first, second)
+    with pytest.raises(KeyError):
+        original.replace_item(_video("missing.mp4"))
+    with pytest.raises(ValueError):
+        original.replace_item(LiveStreamItem(id=first.id, host="camera.local"))

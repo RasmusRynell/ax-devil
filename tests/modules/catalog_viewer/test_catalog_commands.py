@@ -13,7 +13,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.catalog_viewer.cli import catalog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogLoader, SceneRenderCatalogStore
-from ax_devil.modules.scene.rendering.catalog import CatalogJsonDocument
+from ax_devil.modules.scene.rendering.catalog_loader import CatalogJsonDocument
 
 
 @pytest.fixture
