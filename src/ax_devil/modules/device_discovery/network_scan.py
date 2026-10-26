@@ -245,7 +245,7 @@ def scan_network(
     # Daemon threads, unlike a ThreadPoolExecutor's workers, are not joined at exit, so a slow device cannot hold it.
     workers = [
         threading.Thread(target=work, name="network-scan", daemon=True)
-        for _ in range(_IDENTIFY_WORKERS // concurrency_divisor)
+        for _ in range(min(_IDENTIFY_WORKERS // concurrency_divisor, len(hosts)))
     ]
     for worker in workers:
         worker.start()

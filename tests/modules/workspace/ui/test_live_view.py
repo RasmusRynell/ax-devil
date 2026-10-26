@@ -343,14 +343,15 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: _
     live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
     live.open_workspace(
         LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"),
+        LiveStreamItem(host="192.0.2.10", label="Entrance overlay", username="root", password="pw"),
         LiveStreamItem(host="192.0.2.11", label="Dock"),
     )
 
-    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "")
+    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "" and live.rows()["Entrance overlay"] == "")
 
     assert "refused" in row(live.view.tree, "Entrance").toolTip(), "the reason is on hover"
     assert live.rows()["Dock"] == "Start stream", "a camera without a login to try is left alone"
-    assert live.checker.calls == [("192.0.2.10", Login("root", "pw"))]
+    assert live.checker.calls == [("192.0.2.10", Login("root", "pw"))], "one host and login is checked once"
 
 
 def test_rescan_checks_a_refused_camera_again_so_a_fixed_login_is_noticed(live: _Live) -> None:

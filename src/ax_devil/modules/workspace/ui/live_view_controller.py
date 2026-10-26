@@ -82,7 +82,11 @@ def _run_check(check: Check, host: str, login: Login, job: JobContext[None]) -> 
     return check(host, login, job.token)
 
 
-def _access_request(item: WorkspaceItem) -> tuple[str, Login] | None:
+Access = tuple[str, Login]
+"""A host and the login to check access to it with."""
+
+
+def _access_request(item: WorkspaceItem) -> Access | None:
     """Return the address and the login to check *item*'s access with, or None when it has no IPv4 address or no
     username to try."""
     if not isinstance(item, LiveStreamItem):
@@ -137,25 +141,26 @@ def _network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> Workspace
 
 
 def _scan_camera(
-    row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[str, DiscoveredCamera]
+    row: WorkspaceBrowserRow, found: Mapping[str, DiscoveredCamera], checked: Mapping[Access, DiscoveredCamera | None]
 ) -> DiscoveredCamera | None:
     """Return what *checked*, the row's own sign-in, or else a scan in *found* learned about the camera of a row the
     workspace holds, or None when nothing did."""
     item = row.item
     if item is None:
         return None
-    return checked.get(item.id) or next((found[host] for host in item.hosts if host in found), None)
+    own = checked.get(request) if (request := _access_request(item)) is not None else None
+    return own or next((found[host] for host in item.hosts if host in found), None)
 
 
 def _with_scan(
-    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[str, DiscoveredCamera]
+    row: WorkspaceBrowserRow, camera: DiscoveredCamera | None, checked: Mapping[Access, DiscoveredCamera | None]
 ) -> WorkspaceBrowserRow:
     """Return the row of a camera the workspace holds with what *camera*, which signing in or a scan learned about it,
     shows as a found camera does; one that refuses its own login warns and can not start a stream."""
     item = row.item
     if item is None or camera is None:
         return row
-    own = checked.get(item.id)
+    own = checked.get(request) if (request := _access_request(item)) is not None else None
     details = _camera_details(camera, show_sign_in_problem=False)
     row = replace(
         row,
@@ -234,9 +239,9 @@ class LiveViewController(QObject):
     starts when the user starts it. It can be added only once signed in, so Add never puts in a camera that refuses
     its login.
 
-    The workspace's cameras are *check*ed once with their own login as they resolve, unless Settings turn signing in
-    off; one that refuses it shows a warning and can not start a stream. Until a check answers, or when it can not
-    run or fails otherwise, a camera can start.
+    Each host and login among the workspace's cameras is *check*ed once as they resolve, unless Settings turn signing
+    in off; a camera that refuses it shows a warning and can not start a stream. Until a check answers, or when it can
+    not run or fails otherwise, a camera can start.
     """
 
     def __init__(
@@ -255,7 +260,8 @@ class LiveViewController(QObject):
         self._jobs = jobs.scope(view)
         self._scan = scan
         self._check = check
-        self._checked: dict[str, DiscoveredCamera] = {}  # By item id, what signing in with the item's login found.
+        # What signing in found, by host and login; None while the check runs or when it found nothing.
+        self._checked: dict[Access, DiscoveredCamera | None] = {}
         self._given_range, self._logins = _defaults()  # The range is what the view's field was last given by default.
         view.set_scan_range(self._given_range)
         view.set_logins(self._logins)
@@ -376,26 +382,27 @@ class LiveViewController(QObject):
             return
         for item in items:
             request = _access_request(item)
-            if request is None or item.id in self._checked:
+            if request is None or request in self._checked:
                 continue
+            self._checked[request] = None
             self._jobs.submit(
                 "camera access check",
                 partial(_run_check, self._check, *request),
-                on_result=partial(self._on_checked, item.id, request),
+                on_result=partial(self._on_checked, request),
                 on_error=lambda error: logger.debug(f"Camera access check failed: {error}"),
             )
 
-    def _on_checked(self, item_id: str, request: tuple[str, Login], camera: DiscoveredCamera | None) -> None:
-        """Keep what a check found, unless the item was removed or replaced with another address or login meanwhile."""
-        item = self._store.workspace.item(item_id) if self._store.workspace.has_item(item_id) else None
-        if camera is not None and item is not None and _access_request(item) == request:
-            self._checked[item_id] = camera
+    def _on_checked(self, request: Access, camera: DiscoveredCamera | None) -> None:
+        """Keep what a check found for every item with the same host and login."""
+        if camera is not None:
+            self._checked[request] = camera
             self._refresh()
 
     def _add(self, camera: DiscoveredCamera) -> None:
         """Add *camera* without starting its stream; signing in to it has just shown the access works."""
         item = _camera_item(camera)
-        self._checked[item.id] = camera
+        if (request := _access_request(item)) is not None:
+            self._checked[request] = camera
         self._store.add_items([item], open_first=False)
 
     def _with_found(self, held: Sections) -> Sections:
