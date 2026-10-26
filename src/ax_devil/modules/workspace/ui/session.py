@@ -18,6 +18,8 @@ from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.workspace.core import (
     ItemResolution,
+    LiveStreamItem,
+    PlaylistItem,
     RecentWorkspaces,
     VideoFileSelection,
     VideoItem,
@@ -102,15 +104,20 @@ class WorkspaceSession(QObject):
             render_catalog_manager=self._render_catalog_manager,
             parent=self._window,
         )
+        self._workspace_controller.edit_requested.connect(self.edit_item)
         self._workspace_listing = SectionsViewController(
             self._workspace_view, self._workspace_controller, HELD_SECTIONS
         )
         self._live_view = LiveView()
         self._live_view_controller = LiveViewController(
-            self._live_view, self._workspace_controller, self._workspace_store, jobs or background_jobs(), parent=self
+            self._live_view,
+            self._workspace_controller,
+            self._workspace_store,
+            jobs or background_jobs(),
+            self.add_live_stream,
+            parent=self,
         )
         self._window.add_view(self._live_view.sidebar_view())
-        self._live_view.add_manually_requested.connect(self.add_live_stream)
         self._offline_view = OfflineView()
         self._window.add_view(self._offline_view.sidebar_view())
         self._offline_controller = OfflineViewController(self._offline_view, self._workspace_controller, parent=self)
@@ -228,12 +235,13 @@ class WorkspaceSession(QObject):
             self.add_items([item])
 
     def add_live_stream(self) -> None:
-        """Ask for a camera's details and add it without starting its stream; Start stream does that."""
+        """Ask for a camera's details, add it as a new item, and start its stream beside the open viewers."""
         with AddLiveStreamDialog(self._window) as dialog:
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:
                     self.add_resolved([result], open_first=False)
+                    self._workspace_controller.start_when_added(result.item.id)
                     self._logger.info(f"Added live stream: {result.item.display_name}")
 
     def add_playlist(self, resolver_id: str | None = None) -> None:
@@ -244,6 +252,30 @@ class WorkspaceSession(QObject):
                 if result is not None:
                     self.add_resolved([result])
                     self._logger.info(f"Added playlist: {result.item.display_name}")
+
+    def edit_item(self, item_id: str) -> None:
+        """Edit a saved recipe with its Add form, committing only an accepted result."""
+        if not self._workspace_store.workspace.has_item(item_id):
+            return
+        item = self._workspace_store.workspace.item(item_id)
+        if isinstance(item, VideoItem):
+            with AddVideoDialog(self._window, existing=item) as video_dialog:
+                if video_dialog.exec() == video_dialog.DialogCode.Accepted:
+                    video = video_dialog.get_result()
+                    if video is not None:
+                        self._workspace_store.edit_item(video)
+        elif isinstance(item, LiveStreamItem):
+            with AddLiveStreamDialog(self._window, existing=item) as live_dialog:
+                if live_dialog.exec() == live_dialog.DialogCode.Accepted:
+                    live = live_dialog.get_result()
+                    if live is not None:
+                        self._workspace_store.edit_item(live.item, live)
+        elif isinstance(item, PlaylistItem):
+            with AddPlaylistDialog(self._resolver, self._window, existing=item) as playlist_dialog:
+                if playlist_dialog.exec() == playlist_dialog.DialogCode.Accepted:
+                    playlist = playlist_dialog.get_result()
+                    if playlist is not None:
+                        self._workspace_store.edit_item(playlist.item, playlist)
 
     def open_files(self, paths: Sequence[Path]) -> None:
         """Add dropped files as one batch, asking for an overlay's data handler when several decoders may read it."""

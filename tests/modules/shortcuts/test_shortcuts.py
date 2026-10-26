@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 from PySide6.QtCore import QCoreApplication, QRect, Qt
 from PySide6.QtGui import QKeySequence
@@ -12,6 +14,10 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.chrome.key_chips import CHORD_BREAK, key_chip_parts
 from ax_devil.modules.shortcuts.shortcuts import ShortcutDefinition, ShortcutManager
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog, _ShortcutRow
+
+# The platform's own key names: macOS draws modifiers as symbols, with Shift before Command.
+CTRL, SHIFT = ("\u2318", "\u21e7") if sys.platform == "darwin" else ("Ctrl", "Shift")
+CTRL_SHIFT = [SHIFT, CTRL] if sys.platform == "darwin" else [CTRL, SHIFT]
 
 
 @pytest.fixture()
@@ -242,7 +248,7 @@ def test_shortcut_rows_show_keys_as_chips_and_edit_on_click(qtbot: QtBot, window
     qtbot.addWidget(dialog)
     dialog.show()
     row = _shortcut_dialog_row(dialog, "action.a")
-    assert row.chips.parts() == ["Ctrl", "Shift", "A"]
+    assert row.chips.parts() == [*CTRL_SHIFT, "A"]
     assert row.editor.isHidden()
 
     row.chips.clicked.emit()
@@ -251,7 +257,7 @@ def test_shortcut_rows_show_keys_as_chips_and_edit_on_click(qtbot: QtBot, window
     row.editor.setKeySequence(QKeySequence("Ctrl++"))
     row.editor.editingFinished.emit()
     assert row.editor.isHidden() and not row.chips.isHidden()
-    assert row.chips.parts() == ["Ctrl", "+"]
+    assert row.chips.parts() == [CTRL, "+"]
 
 
 def test_shortcut_rows_are_editable_from_the_keyboard(qtbot: QtBot, window: QWidget) -> None:
@@ -276,7 +282,7 @@ def test_shortcut_rows_are_editable_from_the_keyboard(qtbot: QtBot, window: QWid
 
 
 def test_key_chips_split_chords_and_name_keys_like_the_platform() -> None:
-    assert key_chip_parts(QKeySequence("Ctrl+K, Ctrl+Shift+S")) == ["Ctrl", "K", CHORD_BREAK, "Ctrl", "Shift", "S"]
-    assert key_chip_parts(QKeySequence("Ctrl++")) == ["Ctrl", "+"]
-    assert key_chip_parts(QKeySequence("Ctrl+,")) == ["Ctrl", ","]
+    assert key_chip_parts(QKeySequence("Ctrl+K, Ctrl+Shift+S")) == [CTRL, "K", CHORD_BREAK, *CTRL_SHIFT, "S"]
+    assert key_chip_parts(QKeySequence("Ctrl++")) == [CTRL, "+"]
+    assert key_chip_parts(QKeySequence("Ctrl+,")) == [CTRL, ","]
     assert key_chip_parts(QKeySequence()) == []

@@ -1,4 +1,3 @@
-exclude: ^tools/trace-viewer/
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.7
@@ -14,6 +13,10 @@ repos:
         entry: uv run python scripts/check_logging.py
         language: system
         pass_filenames: false
+      - id: file-token-limit
+        name: file token limit
+        entry: uv run python scripts/check_file_tokens.py
+        language: system
       - id: mypy
         name: mypy
         entry: uv run mypy src/ax_devil tests tools

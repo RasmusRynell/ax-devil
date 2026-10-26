@@ -22,20 +22,20 @@ class QtStreamSync(QObject):
     # Signal emitted when synchronized frame is ready
     syncReady = Signal(object)  # SyncResult[FrameType, OverlayType]
 
-    def __init__(self, object_name: str, parent: QObject | None = None, **sync_config: Any):
+    def __init__(self, parent: QObject | None = None, **sync_config: Any):
         super().__init__(parent)
 
         # Create the pure Python sync core
-        self._sync_core: StreamSync[Any, Any] = StreamSync(object_name=object_name, **sync_config)
+        self._sync_core: StreamSync[Any, Any] = StreamSync(**sync_config)
         self._sync_core.set_output_callback(self._on_sync_result)
 
-    def push_frame(self, frame_data: Any, capture_time: float) -> None:
+    def push_frame(self, frame_data: Any, capture_time_us: int) -> None:
         """Push frame data to sync core."""
-        self._sync_core.push_frame(frame_data, capture_time)
+        self._sync_core.push_frame(frame_data, capture_time_us)
 
-    def push_overlay(self, overlay_data: Any, capture_time: float) -> None:
+    def push_overlay(self, overlay_data: Any, capture_time_us: int) -> None:
         """Push overlay data to sync core."""
-        self._sync_core.push_overlay(overlay_data, capture_time)
+        self._sync_core.push_overlay(overlay_data, capture_time_us)
 
     def reset(self) -> None:
         """Clear all buffered data in the sync core."""
@@ -46,8 +46,7 @@ class QtStreamSync(QObject):
         self.syncReady.emit(result)
 
     def cleanup(self) -> None:
-        """Detach from the sync core, release its diagnostics, and schedule deletion."""
+        """Detach from the sync core and schedule deletion."""
         # Break the bound-method reference from the core back to this Qt object.
         self._sync_core.set_output_callback(lambda _result: None)
-        self._sync_core.cleanup()
         self.deleteLater()

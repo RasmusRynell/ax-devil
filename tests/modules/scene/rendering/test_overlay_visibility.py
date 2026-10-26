@@ -17,7 +17,8 @@ from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogRevision,
     SceneRenderCatalogStore,
 )
-from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS, MAX_VISIBILITY_VARIANTS
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
+from ax_devil.modules.scene.rendering.catalog_loader import MAX_VISIBILITY_VARIANTS
 from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic, TemplateRuntimeError
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from tests.catalog_helpers import catalog_document, create_catalog, create_ready_catalog_manager, wait_for_catalogs

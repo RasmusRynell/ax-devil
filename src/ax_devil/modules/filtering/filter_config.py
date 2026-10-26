@@ -117,11 +117,13 @@ def iter_enabled_options(config: FilterConfig, state: FilterState) -> Iterator[F
 
 def build_default_filter_config() -> FilterConfig:
     """Return a FilterConfig mirroring today's static DrawFilter setup."""
+    from ax_devil.modules.scene.decoding import UNMAPPED_CLASS
+
     from .predicate_utils import make_classification_predicate
 
     options = (
         make_classification_predicate(
-            (KnownClassificationType.Unknown.value,), include_empty=True, include_unknown_prefix=False
+            (KnownClassificationType.Unknown.value, UNMAPPED_CLASS), include_empty=True
         ).build_option(id="show_unknown", label="Unknown", sort_key=0),
         make_classification_predicate((KnownClassificationType.Human.value,)).build_option(
             id="show_humans", label="Humans", sort_key=1

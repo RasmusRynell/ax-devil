@@ -7,22 +7,27 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameSpan, ObjectHistory, SceneHistory
-from ax_devil.modules.object_inspection.fields_view import FieldsView, Section, event_section, field_sections
+from ax_devil.modules.object_inspection.fields_model import Section, event_section, field_sections, pinned_section
+from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
+from ax_devil.modules.object_inspection.pinned_fields import FieldId, PinnedFields
+from ax_devil.modules.object_inspection.rows import id_row
 from ax_devil.modules.object_inspection.title_row import TitleRow
 from ax_devil.modules.scene.inspection import entity_summary
 from ax_devil.modules.scene.model import EntityId, Scene
 from ax_devil.modules.video_viewer.media_tools.presence import Presence, PresenceStrip
 
-_US_PER_SECOND = 1_000_000
 _ATTRIBUTES_NOTE = "Attributes are only available while an object is in the frame."
 _MESSAGE_STYLE = "color: palette(placeholder-text); border: none;"
+_RULE_STYLE = "background: palette(mid); border: none;"
+_PINNED_MAX_ROWS = 7  # Captions count: a caption and six pinned fields.
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,17 +49,21 @@ class ObjectPage(QWidget):
     there is no presence strip and no events. The content is built when the page is first shown, and a page that is
     not shown keeps only the latest frame and catches up when it is.
 
-    *fold_state* maps section names to whether they are folded; pages share it so a fold carries over to the next
-    object.
+    *fold_state* maps section names to whether they are folded, and *pins* holds the fields the user pinned; pages
+    share both so a fold or a pin carries over to the next object. The pinned fields stay above the scrolling
+    fields and show the same field of whichever object the page is for, or that it is unavailable.
     """
 
     frameRequested = Signal(int)  # video frame index
     eventActivated = Signal(object)  # FrameEvent
 
-    def __init__(self, entity_id: str, fold_state: dict[str, bool], parent: QWidget | None = None) -> None:
+    def __init__(
+        self, entity_id: str, fold_state: dict[str, bool], pins: PinnedFields, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._entity_id = entity_id
         self._fold_state = fold_state
+        self._pins = pins
         self._history: SceneHistory | None = None
         self._events_section: Section | None = None
         self._events_loaded = False
@@ -82,10 +91,17 @@ class ObjectPage(QWidget):
         self._events_loaded = False
         self._request_refresh()
 
-    def update_scene(self, scene: Scene | None, frame_index: int) -> None:
+    def update_scene(self, scene: Scene | None, frame_index: int, *, defer: bool = False) -> None:
         """Follow the displayed *frame_index* and its *scene*, which has the object while it is in the frame."""
         self._scene, self._frame = scene, frame_index
-        self._request_refresh()
+        self._dirty = True
+        if not defer:
+            self.refresh()
+
+    def refresh(self) -> None:
+        """Apply the latest snapshot only while this page is visible."""
+        if self.isVisible() and self._dirty:
+            self._refresh()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """Build the content on first showing, and catch up with the latest frame."""
@@ -104,7 +120,7 @@ class ObjectPage(QWidget):
         self._built = True
         layout = self.layout()
         assert isinstance(layout, QVBoxLayout)
-        self._title = TitleRow(self._entity_id, self)
+        self._title = TitleRow(self)
         layout.addWidget(self._title)
 
         self._strip = PresenceStrip(self)
@@ -133,12 +149,23 @@ class ObjectPage(QWidget):
         absence_layout.addLayout(buttons)
         layout.addWidget(self._absence_box)
 
-        self._fields = FieldsView(self._fold_state, self)
+        self._pinned = FieldsView(self._fold_state, self, pins=self._pins, max_rows=_PINNED_MAX_ROWS)
+        self._pinned.setObjectName("pinnedFields")
+        self._pinned.pinToggled.connect(self._toggle_pin)
+        layout.addWidget(self._pinned)
+        self._pinned_rule = QFrame(self)  # Sets the pinned fields apart from the id row that starts the fields below.
+        self._pinned_rule.setFixedHeight(1)
+        self._pinned_rule.setStyleSheet(_RULE_STYLE)
+        layout.addWidget(self._pinned_rule)
+        self._pinned.hide()
+        self._pinned_rule.hide()
+
+        self._fields = FieldsView(self._fold_state, self, pins=self._pins)
+        self._fields.setObjectName("objectFields")
         self._fields.eventActivated.connect(self.eventActivated)
+        self._fields.pinToggled.connect(self._toggle_pin)
         self.setFocusProxy(self._fields)  # The page gets focus as its fields view, so Ctrl+C copies without a click.
         layout.addWidget(self._fields, 1)
-        layout.addStretch(0)
-        self._fill_layout = layout.count() - 1
 
     def _boxed(self, widget: QWidget, layout: QVBoxLayout) -> QWidget:
         box = QWidget(self)
@@ -147,6 +174,10 @@ class ObjectPage(QWidget):
         box_layout.addWidget(widget)
         layout.addWidget(box)
         return box
+
+    def _toggle_pin(self, field_id: FieldId) -> None:
+        self._pins.toggle(field_id)
+        self._refresh()
 
     def _request_frame(self, frame: int | None) -> None:
         if frame is not None:
@@ -182,13 +213,11 @@ class ObjectPage(QWidget):
             self._title.set_content(self._last_class, absence.pill, None, dimmed=True)
         if self._events_section is not None:
             sections.append(self._events_section)
-        self._fields.set_sections(sections)
-        has_sections = bool(sections)
-        self._fields.setVisible(has_sections)
-        layout = self.layout()
-        assert isinstance(layout, QVBoxLayout)
-        layout.setStretch(layout.indexOf(self._fields), 1 if has_sections else 0)
-        layout.setStretch(self._fill_layout, 0 if has_sections else 1)
+        self._fields.set_sections(sections, (id_row(self._entity_id),))
+        pinned = pinned_section(sections, self._pins)
+        self._pinned.set_sections([] if pinned is None else [pinned])
+        self._pinned.setVisible(pinned is not None)
+        self._pinned_rule.setVisible(pinned is not None)
 
         self._strip_box.setVisible(history is not None)
         if history is not None and self._history is not None:
@@ -226,11 +255,10 @@ class ObjectPage(QWidget):
         last = spans[started - 1][1] if started else None
         upcoming = spans[started][0] if started < len(spans) else None
         if last is not None:
-            when = f"Last seen at {format_frame_time(times[last])} ({(now - times[last]) / _US_PER_SECOND:.1f} s ago)"
+            when = f"Last seen at {format_frame_time(times[last])} ({us_to_seconds(now - times[last]):.1f} s ago)"
         elif upcoming is not None:
             when = (
-                f"First seen at {format_frame_time(times[upcoming])} "
-                f"(in {(times[upcoming] - now) / _US_PER_SECOND:.1f} s)"
+                f"First seen at {format_frame_time(times[upcoming])} (in {us_to_seconds(times[upcoming] - now):.1f} s)"
             )
         else:
             when = "Not seen"

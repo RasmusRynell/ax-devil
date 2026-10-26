@@ -6,9 +6,17 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QHideEvent, QKeyEvent, QMouseEvent, QPalette, QShowEvent
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QStackedLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QHideEvent, QKeyEvent, QMouseEvent, QPalette, QResizeEvent, QShowEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QPushButton,
+    QSizePolicy,
+    QStackedLayout,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.elided_label import ElidedLabel
@@ -17,6 +25,10 @@ from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent
+
+_TITLE_CHARS = 14  # The characters of the title that stay visible.
+_BACK_MIN_CHARS = 10  # The characters of the previous page's title the back button keeps at the narrowest.
+_BACK_MAX_CHARS = 18  # ... and the most it asks for, so a long id does not crowd the title.
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +79,64 @@ class _Entry:
     origin: RowSource | None
 
 
+class _BackButton(SmallButton):
+    """The button back to the previous page, named after it; the name is cut in the middle to the room the button gets.
+
+    Its width never depends on the name: it asks for room for a few characters more than it needs at the narrowest.
+    """
+
+    _full_text = "Back"  # Set before the base class builds the button, which already reports a font change.
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(self._full_text, Icon.STEP_BACK, parent)
+        # A button that cannot shrink is laid out no narrower than its size hint, which follows the name.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+    def set_previous(self, title: str) -> None:
+        """Name *title* as the page the button goes back to; the tooltip has it whole."""
+        self._full_text = title
+        self.setToolTip(f"Back (Esc) to {title}")
+        self._elide()
+
+    def _text_width(self, text: str) -> int:
+        """Return the width of *text* as the button's size hint counts it, which can differ from its advance."""
+        return self.fontMetrics().size(int(Qt.TextFlag.TextShowMnemonic), text).width()
+
+    def _padding(self) -> int:
+        """Return the width the button spends on anything but its text: the icon, its gap and the padding."""
+        return QPushButton.sizeHint(self).width() - self._text_width(self.text())
+
+    def _width_for(self, chars: int) -> int:
+        metrics = self.fontMetrics()
+        return self._padding() + chars * metrics.averageCharWidth()
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        """Return the room for the name, up to a few more characters than the narrowest."""
+        natural = self._padding() + self._text_width(self._full_text)
+        return QSize(min(natural, self._width_for(_BACK_MAX_CHARS)), super().sizeHint().height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Return the room for the icon and the start of the name."""
+        return QSize(self._width_for(_BACK_MIN_CHARS), super().sizeHint().height())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Cut the name again for the new width."""
+        super().resizeEvent(event)
+        self._elide()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        """Cut the name again when the font changes."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.FontChange:
+            self._elide()
+
+    def _elide(self) -> None:
+        room = max(0, self.width() - self._padding())
+        text = self.fontMetrics().elidedText(self._full_text, Qt.TextElideMode.ElideMiddle, room)
+        if text != self.text():
+            self.setText(text)
+
+
 class PageStack(QWidget):
     """Shows one root page, or the drilled page on top of it, under a breadcrumb header.
 
@@ -106,10 +176,9 @@ class PageStack(QWidget):
         header_layout = QHBoxLayout(self._header)
         header_layout.setContentsMargins(Space.M, 0, Space.M, 0)
         header_layout.setSpacing(Space.S)
-        self._back_button = SmallButton("", parent=self._header)
-        self._back_button.setToolTip("Back (Esc)")
+        self._back_button = _BackButton(self._header)
         self._back_button.clicked.connect(self.back)
-        self._title = ElidedLabel("", Qt.TextElideMode.ElideRight, self._header)
+        self._title = ElidedLabel("", Qt.TextElideMode.ElideMiddle, self._header)  # Titles end in ids
         TextRole.STRONG.apply(self._title)
         self._previous_button = SmallButton("", Icon.CHEVRON_UP, parent=self._header)
         self._previous_button.setToolTip("Previous in list")
@@ -130,6 +199,12 @@ class PageStack(QWidget):
         self._pages.setCurrentWidget(self._root)
         layout.addLayout(self._pages, 1)
         follow_appearance(self, self._apply_appearance)
+
+    def narrowest_width(self) -> int:
+        """Return the narrowest width the breadcrumb header and every root page fit, whichever page shows."""
+        widths = [self._header.minimumSizeHint().width()]
+        widths.extend(root.minimumSizeHint().width() for root in self._root_titles)
+        return max(widths)
 
     def depth(self) -> int:
         """Return how many drilled pages are stacked on the root; 0 while a root is showing."""
@@ -357,7 +432,7 @@ class PageStack(QWidget):
     def _update_header(self) -> None:
         entry = self._entries[-1]
         previous = self._entries[-2].key.title if len(self._entries) > 1 else self._root_titles[self._root]
-        self._back_button.setText(f"‹ {previous}")
+        self._back_button.set_previous(previous)
         self._title.set_full_text(entry.key.title)
         origin = entry.origin
         self._previous_button.setEnabled(origin is not None and origin.neighbor(entry.key, -1) is not None)
@@ -365,6 +440,8 @@ class PageStack(QWidget):
 
     def _apply_appearance(self) -> None:
         self._header.setFixedHeight(Height.PANE_HEADER.px)
+        # The title keeps enough of an id to tell it, however narrow the panel is.
+        self._title.setMinimumWidth(_TITLE_CHARS * QFontMetrics(TextRole.STRONG.font()).averageCharWidth())
         border = palette_color_css(self.palette(), QPalette.ColorRole.Mid, alpha=0.5)
         self._header.setStyleSheet(
             f"#AxDevilPageHeader {{ border-bottom: 1px solid {border}; background: transparent; }}"

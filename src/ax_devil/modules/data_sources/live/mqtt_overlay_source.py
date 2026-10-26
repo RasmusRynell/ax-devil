@@ -12,6 +12,7 @@ from ax_devil_mqtt import AxisAnalyticsMqttClient, MqttMessage
 from PySide6.QtCore import QObject
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.filtering import FilterConfig, FilterFactory, build_default_filter_config
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.settings.logging_config import get_logger
@@ -35,10 +36,7 @@ class MQTTWorker(Worker):
         broker_port: int,
         broker_username: str,
         broker_password: str,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         analytics_data_source_key: str,
         decoder: PayloadToSceneDecoder,
         source_id: str = "mqtt_overlay",
@@ -49,10 +47,7 @@ class MQTTWorker(Worker):
         self.broker_port = broker_port
         self.broker_username = broker_username
         self.broker_password = broker_password
-        self.device_host = device_host
-        self.device_username = device_username
-        self.device_password = device_password
-        self.device_api_protocol = device_api_protocol
+        self.device = device
         self.analytics_data_source_key = analytics_data_source_key
         self.decoder = decoder
 
@@ -94,16 +89,12 @@ class MQTTWorker(Worker):
                               things might not work correctly! be careful"
                     )
 
-                if isinstance(scene.time_slice.start, int):
+                capture_time_us = scene.time_slice.start_timestamp_us
+                if capture_time_us is None:
                     raise ValueError("Streamed data with ints as timestamps is not supported at this moment")
 
-                capture_timestamp = scene.time_slice.start.timestamp()
-
                 # Create FrameIdentifier using device-provided timestamp from MQTT
-                frame_id = FrameIdentifier(
-                    sequence_id=self.message_count,
-                    timestamp_monotime_us=capture_timestamp * 1000000.0,  # Convert seconds to microseconds
-                )
+                frame_id = FrameIdentifier(sequence_id=self.message_count, timestamp_us=capture_time_us)
 
                 overlay_data = OverlayData(
                     content=scene,
@@ -128,20 +119,8 @@ class MQTTWorker(Worker):
     def _connect(self) -> None:
         """Establish connection to device and MQTT broker."""
         try:
-            logger.info(f"Connecting to device at {self.device_host}")
-
-            if self.device_api_protocol == "https":
-                self.device_config = DeviceConfig.https(
-                    host=self.device_host,
-                    username=self.device_username,
-                    password=self.device_password,
-                )
-            else:
-                self.device_config = DeviceConfig.http(
-                    host=self.device_host,
-                    username=self.device_username,
-                    password=self.device_password,
-                )
+            logger.info(f"Connecting to device at {self.device.host}")
+            self.device_config = self.device.device_config()
 
             self._validate_analytics_data_source()
 
@@ -190,7 +169,7 @@ class MQTTWorker(Worker):
 
         raise UnsupportedAnalyticsDataSourceError(
             f"Analytics data source '{self.analytics_data_source_key}' is not available on device "
-            f"{self.device_host}. Available sources: {available_text}. Choose a source in Add Live Stream, or pass "
+            f"{self.device.host}. Available sources: {available_text}. Choose a source in Add Live Stream, or pass "
             "--data-source with a matching --handler-type."
         )
 
@@ -227,10 +206,7 @@ class MQTTOverlaySource(OverlaySource):
         broker_port: int,
         broker_username: str,
         broker_password: str,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         analytics_data_source_key: str,
         decoder: PayloadToSceneDecoder,
         handler_type: str,
@@ -250,10 +226,7 @@ class MQTTOverlaySource(OverlaySource):
             broker_port=broker_port,
             broker_username=broker_username,
             broker_password=broker_password,
-            device_host=device_host,
-            device_username=device_username,
-            device_password=device_password,
-            device_api_protocol=device_api_protocol,
+            device=device,
             analytics_data_source_key=analytics_data_source_key,
             decoder=self.decoder,
             source_id=source_id,
@@ -292,9 +265,9 @@ class MQTTOverlaySource(OverlaySource):
         self.worker.stop()
         self.cleanup_posted_events()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for overlay production to complete."""
-        return bool(self.worker.wait(timeout))
+        return bool(self.worker.wait(timeout_ms))
 
     def get_filter_config(self) -> FilterConfig:
         """Return the filter configuration for this overlay source."""

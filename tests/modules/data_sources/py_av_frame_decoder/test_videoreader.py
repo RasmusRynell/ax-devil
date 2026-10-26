@@ -12,10 +12,8 @@ import numpy as np
 import pytest
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import (
-    FrameReaderWorker,
-    VideoFrameReader,
-)
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_reader_worker import FrameReaderWorker
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import VideoFrameReader
 from tests.helpers.video import drain_prefetch
 
 
@@ -151,7 +149,7 @@ def test_concurrent_sync_requests_each_receive_their_frame(reader: VideoFrameRea
     reader.open()
     indices = [24, 3, 26, 10, 28]
     with ThreadPoolExecutor(max_workers=len(indices)) as executor:
-        frames = list(executor.map(lambda index: reader.get_frame_sync(index, timeout=3.0), indices))
+        frames = list(executor.map(lambda index: reader.get_frame_sync(index, timeout_s=3.0), indices))
     assert [frame.frame_index if frame is not None else None for frame in frames] == indices
 
 
@@ -208,7 +206,7 @@ def test_frames_match_ffmpeg(video_and_references: tuple[Path, Path], indices: t
             assert decoded.frame_index == index
             reference = cv2.imread(str(references / f"frame_{index + 1:04d}.png"))
             assert reference is not None, f"Failed to load reference frame {index}"
-            np.testing.assert_array_equal(decoded.pixels, cv2.cvtColor(reference, cv2.COLOR_BGR2RGB))
+            np.testing.assert_array_equal(decoded.pixels[..., :3], cv2.cvtColor(reference, cv2.COLOR_BGR2RGB))
             # Fill the prefetch window between reads, as playback does, so later reads hit prefetched frames.
             drain_prefetch(worker, limit=20)
     finally:

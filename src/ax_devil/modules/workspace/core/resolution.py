@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.workspace.core.content import PlaylistContent
 from ax_devil.modules.workspace.core.intake import WorkspaceIntake
 
@@ -22,6 +23,11 @@ class PlaylistResolver(Protocol):
 
     def resolve(self, settings: PlaylistSettings, token: CancelToken) -> list[PlaylistContent]:
         """Return the playlists *settings* describe; raise ``ValueError`` or ``OSError`` naming what is wrong."""
+        ...
+
+    def source_paths(self, settings: PlaylistSettings, token: CancelToken) -> SourcePaths:
+        """Return the files and folders the playlists *settings* describe are read from, so a change to them resolves
+        the item again."""
         ...
 
 

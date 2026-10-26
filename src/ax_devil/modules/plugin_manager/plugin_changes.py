@@ -101,15 +101,12 @@ def _without_url_secrets(text: str) -> str:
 
 
 def failure_reason(output: str) -> str:
-    """Return the line of a failed ``plugins`` command's *output* that says why it failed, or an empty string.
+    """Return the failed ``plugins`` command's *output* summary, or an empty string.
 
-    That is the last line, unless it only repeats that a step such as ``uv sync`` failed; then it is the step's own
-    last line above it.
+    The command's last line is its summary, so that line, without its ``Error: `` prefix, is the reason.
     """
-    lines = [line.strip().removeprefix("Error: ") for line in output.splitlines() if line.strip()]
-    while len(lines) > 1 and lines[-1].startswith("Command ") and "returned non-zero exit status" in lines[-1]:
-        lines.pop()
-    return lines[-1].lstrip("×╰─▶ ") if lines else ""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return lines[-1].removeprefix("Error: ") if lines else ""
 
 
 class _Run(QObject):

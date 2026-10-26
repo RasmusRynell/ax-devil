@@ -46,7 +46,6 @@ from tests.helpers.contents import make_video
 from tests.helpers.section_tree import (
     captions,
     double_click,
-    press,
     row,
     row_action,
     row_texts,
@@ -54,12 +53,12 @@ from tests.helpers.section_tree import (
     titles,
 )
 from tests.helpers.shortcuts import make_shortcut_manager
-from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext
+from tests.helpers.workspace import DummyViewer, FakePrompts, FakeResolutionContext, FakeResolver
 
 _OFFLINE_VIEWER = "ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget"
 
 
-class _Folder:
+class _Folder(FakeResolver):
     """A playlist resolver over a folder the test fills: one playlist with an entry per clip, two lanes in the first."""
 
     def __init__(self, count: int) -> None:
@@ -225,26 +224,7 @@ def test_double_clicking_an_entry_opens_its_playlist_at_that_entry(
     assert viewer.start_index == 2
 
 
-def test_rescan_picks_up_new_entries_without_opening_or_changing_a_viewer(
-    qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
-) -> None:
-    folder = _Folder(2)
-    session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=folder)
-    view = _view(session)
-    with patch(_OFFLINE_VIEWER, DummyViewer):
-        session.add_items([PlaylistItem(label="Night shift", resolver="folder_pair")])
-        viewer = session.focused_widget()
-        assert isinstance(viewer, DummyViewer)
-        shown = viewer.payload
-        folder.count = 4
-        assert row_action(row(view.tree, "Night shift")) == "Rescan"
-        press(view.tree, "Night shift")
-
-    assert "4 entries" in row(view.tree, "Night shift").toolTip()
-    assert session.focused_widget() is viewer and viewer.payload is shown
-
-
-def test_a_playlist_that_failed_says_why_on_hover_and_can_only_be_rescanned(
+def test_a_playlist_that_failed_says_why_on_hover_and_offers_no_action(
     qtbot: QtBot, tmp_path: Path, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager)
@@ -255,10 +235,10 @@ def test_a_playlist_that_failed_says_why_on_hover_and_can_only_be_rescanned(
     failed = row(view.tree, "Archive")
     assert row_texts(failed) == ["Archive"]
     assert "is not installed" in failed.toolTip()
-    assert row_action(failed) == "Rescan"
+    assert row_action(failed) == ""
 
 
-class _Blocking:
+class _Blocking(FakeResolver):
     """A resolver that answers once the test releases it."""
 
     def __init__(self) -> None:
@@ -288,7 +268,7 @@ def test_a_playlist_still_resolving_shows_loading_and_no_actions(
     assert row_action(row(view.tree, "Night shift")) == ""
     with patch(_OFFLINE_VIEWER, DummyViewer):
         blocking.release.set()
-        qtbot.waitUntil(lambda: row_action(row(view.tree, "Night shift")) == "Rescan")
+        qtbot.waitUntil(lambda: "1 entry" in row(view.tree, "Night shift").toolTip())
 
 
 def _external_resolver() -> PluginRecord:

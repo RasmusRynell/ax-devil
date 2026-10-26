@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     LiveOverlayMode,
@@ -98,14 +99,13 @@ def test_intake_creates_websocket_overlay_spec() -> None:
         handler_type="LIVE",
         websocket_topic="com.axis.scene.frame.v1",
         websocket_channel_id=3,
-        device_api_protocol="http",
+        device_api_protocol=DeviceProtocol.HTTP,
+        device_port=8080,
     )
 
+    assert (content.source_spec.device_api_protocol, content.source_spec.device_port) == (DeviceProtocol.HTTP, 8080)
     assert content.overlays[0].source_spec == LiveWebSocketOverlaySourceSpec(
-        handler_type="LIVE",
-        topic="com.axis.scene.frame.v1",
-        channel_id=3,
-        device_api_protocol="http",
+        handler_type="LIVE", topic="com.axis.scene.frame.v1", channel_id=3
     )
 
 
@@ -114,10 +114,13 @@ def test_intake_creates_websocket_overlay_spec() -> None:
     [
         ({"websocket_topic": ""}, "Topic is required for WebSocket overlay mode"),
         ({"websocket_channel_id": 0}, "Channel ID must be a positive integer"),
-        ({"device_api_protocol": "ftp"}, "Device API protocol must be http or https"),
+        ({"device_port": 99999}, "Port must be between 0 and 65535"),
+        ({"rtsp_port": 0}, "RTSP Port must be between 1 and 65535"),
+        ({"device_api_protocol": DeviceProtocol.HTTP, "device_port": 443}, "HTTP cannot use port 443"),
+        ({"device_api_protocol": DeviceProtocol.HTTPS, "device_port": 80}, "HTTPS cannot use port 80"),
     ],
 )
-def test_intake_rejects_invalid_websocket_connection_settings(overrides: dict[str, Any], message: str) -> None:
+def test_intake_rejects_invalid_live_connection_settings(overrides: dict[str, Any], message: str) -> None:
     intake = WorkspaceIntake(_OptionProvider())
     arguments: dict[str, Any] = {
         "host": "camera.local",
@@ -142,7 +145,6 @@ def test_intake_rejects_invalid_websocket_connection_settings(overrides: dict[st
         ({"analytics_data_source_key": ""}, "Data Source is required for MQTT overlay mode"),
         ({"mqtt_port": 0}, "MQTT Port must be between 1 and 65535"),
         ({"mqtt_port": 65536}, "MQTT Port must be between 1 and 65535"),
-        ({"device_api_protocol": "ftp"}, "Device API protocol must be http or https"),
     ],
 )
 def test_intake_rejects_invalid_mqtt_connection_settings(overrides: dict[str, Any], message: str) -> None:

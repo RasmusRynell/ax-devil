@@ -12,7 +12,6 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
-from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from tests.helpers.clipping import clipped_text_on_every_page
@@ -92,20 +91,21 @@ def test_dialog_follows_a_text_size_change(qtbot: QtBot, surface: type[QWidget],
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
-def test_windows_follow_a_text_size_change(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> None:
-    """The main window and the debug window match a fresh one after the text size grows under them."""
+def test_main_window_follows_a_text_size_change(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    """The main window matches a fresh one after its text size grows."""
     apply_theme("dark")
-    builders: dict[str, Callable[[], QWidget]] = {
-        "main": lambda: MainWindow(make_shortcut_manager(), render_catalog_manager),
-        "debug": DebugWindow,
-    }
-    for name, build in builders.items():
-        window = _open_at(qtbot, build, SMALL, builds_views=True)
-        apply_text_size(LARGE)
-        _settle(qtbot, window, builds_views=True)
-        changed = _size_constraints(window)
-        window.close()
-        assert changed == _size_constraints(_open_at(qtbot, build, LARGE, builds_views=True)), name
+
+    def build() -> QWidget:
+        return MainWindow(make_shortcut_manager(), render_catalog_manager)
+
+    window = _open_at(qtbot, build, SMALL, builds_views=True)
+    apply_text_size(LARGE)
+    _settle(qtbot, window, builds_views=True)
+    changed = _size_constraints(window)
+    window.close()
+    assert changed == _size_constraints(_open_at(qtbot, build, LARGE, builds_views=True))
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

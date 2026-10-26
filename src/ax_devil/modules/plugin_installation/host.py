@@ -9,7 +9,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
@@ -32,7 +33,7 @@ class Host:
         """Keep released apps pinned even when plugin dependencies are upgraded."""
         if self.editable:
             return "ax-devil"
-        if self.source.startswith("file:") and Path(unquote(urlparse(self.source).path)).is_dir():
+        if self.source.startswith("file:") and Path(url2pathname(urlparse(self.source).path)).is_dir():
             # A directory can change under an unchanged version, so plugins could run different app code.
             raise ValueError("Plugins need ax-devil installed editable, from a wheel, a Git URL, or a package index")
         return f"ax-devil @ {self.source}" if self.source else f"ax-devil=={self.version}"

@@ -22,7 +22,7 @@ def renderer(qtbot: QtBot) -> VideoFrameRenderer:
 
     image = QImage(1920, 1080, QImage.Format.Format_RGB32)
     image.fill(0)
-    frame = VideoFrame(image=image, timestamp=0.0, frame_id=0)
+    frame = VideoFrame(image=image, timestamp_us=0, frame_id=0)
     renderer.display_frame(
         VideoFrameWithOverlays(
             frame=frame,
@@ -96,7 +96,9 @@ def test_resize_round_trip_restores_view_after_temporary_pan_clamp(renderer: Vid
     before = _normalized_view(renderer)
     assert before.pan_y != 0.0
 
-    renderer.resize(640, 1200)
+    # Zoomed 2.5 times, the 16:9 image is 450 pixels tall at this width: the view is then taller than the image.
+    # A window taller than the screen would be cut down by a native desktop, so shrink the width instead.
+    renderer.resize(320, 500)
     QCoreApplication.processEvents()
     assert renderer.viewport_state.pan_offset.y() == 0.0
 

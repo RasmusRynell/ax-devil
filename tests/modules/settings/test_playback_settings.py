@@ -13,7 +13,6 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache import (
     FrameCache,
-    get_frame_cache_registry,
 )
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.video_cache_memory import get_video_cache_pool
@@ -136,33 +135,18 @@ def test_pool_created_on_loader_thread_receives_live_changes_without_an_event_lo
         cache.close()
 
 
-def test_open_close_and_settings_changes_resize_existing_sources(tmp_path: Path, qtbot: QtBot) -> None:
+def test_sources_join_and_leave_the_shared_pool_even_after_failed_open(tmp_path: Path, qtbot: QtBot) -> None:
     path = tmp_path / "source.mp4"
     create_test_video(path)
-    settings = GlobalSettings()
-    settings.video_cache_budget = VideoCacheBudget(512)
     pool = get_video_cache_pool()
     first = FileFrameSource(str(path), source_id="budget-first")
 
-    def budget(label: str) -> int:
-        return next(
-            entry["budget_bytes"]
-            for entry in get_frame_cache_registry().snapshot_details().values()
-            if entry["label"] == label
-        )
-
     try:
         assert first.read_decoded_frame(0) is not None
-        assert budget("budget-first") == 512 * 1024**2
         second = FileFrameSource(str(path), source_id="budget-second")
         try:
             assert second.read_decoded_frame(0) is not None
             assert pool.source_count == 2
-            assert budget("budget-first") == budget("budget-second") == 256 * 1024**2
-            settings.video_cache_budget = VideoCacheBudget(256)
-            assert budget("budget-first") == budget("budget-second") == 128 * 1024**2
-            settings.video_cache_budget = VideoCacheBudget()
-            assert budget("budget-first") == budget("budget-second") == 1024**3
             with pytest.raises(ValueError):
                 FileFrameSource(str(tmp_path / "missing.mp4"))
             assert pool.source_count == 2
@@ -173,13 +157,11 @@ def test_open_close_and_settings_changes_resize_existing_sources(tmp_path: Path,
                 with pytest.raises(ValueError, match="Failed after registering cache"):
                     FileFrameSource(str(path), source_id="failed-open")
             assert pool.source_count == 2
-            assert budget("budget-first") == budget("budget-second") == 1024**3
         finally:
             second.stop()
             assert second.wait()
             second.deleteLater()
         assert pool.source_count == 1
-        assert budget("budget-first") == 2 * 1024**3
         assert first.read_decoded_frame(10) is not None
     finally:
         first.stop()

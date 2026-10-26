@@ -7,21 +7,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ax_devil.modules.workspace.core.content import (
+from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.modules.workspace.core.content import LiveVideoContent, OverlayContent, SeekableVideoContent
+from ax_devil.modules.workspace.core.source_specs import (
     FileOverlaySourceSpec,
     FileVideoSourceSpec,
     LiveMQTTOverlaySourceSpec,
     LiveOverlayMode,
     LiveRTSPOverlaySourceSpec,
     LiveRTSPStreamSpec,
-    LiveVideoContent,
     LiveWebSocketOverlaySourceSpec,
-    OverlayContent,
     OverlaySourceKind,
-    SeekableVideoContent,
 )
 
 VIDEO_FILE_SUFFIXES = (".mp4", ".avi", ".mkv", ".mov")
+_UNADDRESSABLE_DEVICE_PORTS = {(DeviceProtocol.HTTP, 443), (DeviceProtocol.HTTPS, 80)}
+"""Combinations the device API library cannot reach: it drops ports 80 and 443 from its URLs whatever the protocol."""
 
 
 def is_video_file(path: Path) -> bool:
@@ -118,15 +119,23 @@ class WorkspaceIntake:
         mqtt_username: str = "",
         mqtt_password: str = "",
         analytics_data_source_key: str = "",
-        device_api_protocol: str = "https",
         websocket_topic: str = "",
         websocket_channel_id: int = 1,
+        device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS,
+        device_port: int = 0,
+        rtsp_port: int = 554,
     ) -> LiveVideoContent:
         """Create live Workspace video content after validating overlay selection."""
         if not host:
             raise ValueError("Enter the device host.")
         if camera_head < 1:
             raise ValueError("Camera Head must be a positive integer.")
+        if not 0 <= device_port <= 65535:
+            raise ValueError("Port must be between 0 and 65535.")
+        if not 1 <= rtsp_port <= 65535:
+            raise ValueError("RTSP Port must be between 1 and 65535.")
+        if (device_api_protocol, device_port) in _UNADDRESSABLE_DEVICE_PORTS:
+            raise ValueError(f"{device_api_protocol.name} cannot use port {device_port}; use the standard port.")
         if overlay_mode is LiveOverlayMode.MQTT:
             if not mqtt_host:
                 raise ValueError("MQTT Host is required for MQTT overlay mode.")
@@ -134,15 +143,11 @@ class WorkspaceIntake:
                 raise ValueError("Data Source is required for MQTT overlay mode.")
             if not 1 <= mqtt_port <= 65535:
                 raise ValueError("MQTT Port must be between 1 and 65535.")
-            if device_api_protocol not in {"https", "http"}:
-                raise ValueError("Device API protocol must be http or https.")
         if overlay_mode is LiveOverlayMode.WEBSOCKET:
             if not websocket_topic:
                 raise ValueError("Topic is required for WebSocket overlay mode.")
             if websocket_channel_id < 1:
                 raise ValueError("Channel ID must be a positive integer.")
-            if device_api_protocol not in {"https", "http"}:
-                raise ValueError("Device API protocol must be http or https.")
         if overlay_mode.requires_handler:
             self._require_known_handler(handler_type, self.live_overlay_decoder_options(), "live overlay")
         elif handler_type is not None:
@@ -155,6 +160,9 @@ class WorkspaceIntake:
             camera_head=camera_head,
             resolution=resolution,
             stream_url=stream_url,
+            device_api_protocol=device_api_protocol,
+            device_port=device_port,
+            rtsp_port=rtsp_port,
         )
         overlays: tuple[OverlayContent, ...] = ()
 
@@ -176,7 +184,6 @@ class WorkspaceIntake:
                 broker_username=mqtt_username,
                 broker_password=mqtt_password,
                 analytics_data_source_key=analytics_data_source_key,
-                device_api_protocol=device_api_protocol,
             )
             overlays = (
                 OverlayContent(
@@ -190,7 +197,6 @@ class WorkspaceIntake:
                 handler_type=handler_type,
                 topic=websocket_topic,
                 channel_id=websocket_channel_id,
-                device_api_protocol=device_api_protocol,
             )
             overlays = (
                 OverlayContent(

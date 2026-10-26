@@ -7,8 +7,8 @@ import inspect
 
 from ax_devil.modules.scene import model
 
-# Snapshot for SCENE_MODEL_VERSION (1, 1). Update together with the version.
-EXPECTED_VERSION = (1, 1)
+# Snapshot for SCENE_MODEL_VERSION (2, 0). Update together with the version.
+EXPECTED_VERSION = (2, 0)
 EXPECTED_FIELDS = {
     "Attribute": ("name", "value"),
     "BoundingBox": ("top_left", "bottom_right"),
@@ -54,7 +54,7 @@ def test_scene_model_fields_match_version_snapshot() -> None:
     actual = {
         name: tuple(f.name for f in dataclasses.fields(cls))
         for name, cls in vars(model).items()
-        if inspect.isclass(cls) and cls.__module__ == model.__name__ and dataclasses.is_dataclass(cls)
+        if inspect.isclass(cls) and cls.__module__.startswith(model.__name__) and dataclasses.is_dataclass(cls)
     }
     assert (model.SCENE_MODEL_VERSION, actual) == (EXPECTED_VERSION, EXPECTED_FIELDS), (
         "Scene model changed: bump SCENE_MODEL_VERSION (major if breaking, minor if additive), "

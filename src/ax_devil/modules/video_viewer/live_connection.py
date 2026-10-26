@@ -75,7 +75,7 @@ class LiveFeedStatus:
         """Return the status after a live feed delivered nothing for ``seconds``."""
         if self.state is not LiveConnectionState.LIVE:
             return self
-        reason = f"No {self.feed.label.lower()} received for {seconds:.0f} s."
+        reason = f"No frames for {seconds:.0f} s"
         return replace(self, state=LiveConnectionState.STALLED, reason=reason)
 
 

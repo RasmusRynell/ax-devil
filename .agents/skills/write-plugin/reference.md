@@ -63,7 +63,7 @@ class ExamplePlugin(DecoderPlugin):
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
         """Declare the Scene model version this decoder builds Scenes for."""
-        return (1, 0)
+        return (2, 0)
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -106,8 +106,8 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   earlier version is rejected at load; there is no compatibility path, so rebuild it against the current version.
 - Decoder plugins must declare `scene_model_version()` as `(major, minor)`. ax-devil exposes its own as
   `ax_devil.modules.scene.model.SCENE_MODEL_VERSION`. A plugin loads when the major matches and its minor is not
-  newer. ax-devil bumps the major when Scene fields are removed, renamed, or change meaning, and the minor when fields
-  are added. Plugins that fail to load are listed in a dialog at startup. Derived caches rebuild automatically when
+  newer. Breaking changes, including stricter requirements on Scene values, bump the major; additive fields bump the
+  minor. Scene datetimes must be timezone-aware. Plugins that fail to load are listed in the Plugins view. Derived caches rebuild automatically when
   the Scene model version changes; bump the `artifact_version` argument to `SceneDecoderFileProvider` (see `decoders/mot/provider.py`) only when your
   own decoded output changes.
 - Keep plugin IDs and handler types unique. Duplicate or incompatible registrations fail installation.
@@ -121,7 +121,11 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
     user when settings are missing, invalid, or point at nothing. It runs on a background thread, so keep it in a
     module without Qt imports and free of shared mutable state. Poll the required `CancelToken` between filesystem
     operations and pass it through to helpers; callers without cancellation pass `NEVER` from
-    `ax_devil.core.cancellation`. Let `Cancelled` escape so removed items and superseded rescans stop quietly.
+    `ax_devil.core.cancellation`. Let `Cancelled` escape so removed items and superseded resolutions stop quietly.
+  - `source_paths(settings, token)` is optional and returns the `SourcePaths` (files and folders, from
+    `ax_devil.core.source_paths`) the resolver reads, so a change to them resolves the playlist again; default empty.
+    It receives the same cancel token as `resolve` and runs on the same background thread. The overlay files the
+    returned `PlaylistContent` names are watched anyway.
   - `create_settings_widget()` is required: a `PlaylistResolverWidget` that edits settings and calls
     `submit_settings(settings)` when the user is ready. Slow work in the form, such as scanning a folder, goes through
     `self.jobs.submit(name, work, on_result=..., on_error=...)`: `work(job: JobContext)` runs on a worker thread and
@@ -129,6 +133,8 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
     closes, `work` stops at its next poll of `job.token` (`for path in job.token.polled(paths):`), which raises
     `Cancelled`, a `BaseException` that `except Exception` does not catch. Import `JobContext` (and `Cancelled`, to
     clean up) from `ax_devil.modules.plugin_system`.
+    For saved-item editing, override the optional `restore_settings(settings) -> bool` hook described on
+    [`PlaylistResolverWidget`](../../../src/ax_devil/modules/plugin_system/playlist_resolvers.py); the default supports adding only.
   - `create_cli_command()` is optional: it builds the same settings from CLI arguments and passes
     `[PlaylistItem(resolver=cls.plugin_id(), settings=settings)]` to
     `ctx.obj["run_with_items"]`.
@@ -143,7 +149,8 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
 classification policy using `make_classification_predicate(...).build_option(id=..., label=...)` or
 `make_other_classification_predicate(...).build_option(...)` from `ax_devil.modules.filtering.predicate_utils`.
 These policies match both real observations and the classification types recorded in object histories, including
-unclassified objects via `include_empty=True`. `ClassFilterSpec.build_option()` declares the same capability.
+unclassified objects via `include_empty=True`. List `UNMAPPED_CLASS` in a policy's types to match every `?<id>`
+class. `ClassFilterSpec.build_option()` declares the same capability.
 
 A config containing an Entity-only predicate supports frame filtering; its whole-file scope is disabled because
 history does not contain geometry, confidence or other observation data needed to evaluate an arbitrary predicate.

@@ -182,18 +182,36 @@ def _sync_and_validate(project: Path, upgrade: bool, upgrade_packages: tuple[str
         command.append("--upgrade")
     for package in upgrade_packages:
         command.extend(["--upgrade-package", package])
-    subprocess.run(command, env=environment, check=True)
-    subprocess.run(
-        [
-            str(project / ".venv/bin/python"),
-            "-I",
-            "-m",
-            "ax_devil.modules.plugin_installation.validate",
-            str(project),
-        ],
-        env={**environment, "QT_QPA_PLATFORM": "offscreen"},
-        check=True,
-    )
+    resolved = subprocess.run(command, env=environment)
+    if resolved.returncode:
+        names = ", ".join(selected_plugins(project))
+        raise ValueError(
+            f"uv could not resolve or build {names} (exit status {resolved.returncode}); "
+            "the plugin selection is unchanged"
+        )
+    with tempfile.TemporaryDirectory() as scratch:
+        # A file, not stdout: plugin output and exit hooks cannot hide or replace the reason.
+        result = Path(scratch) / "reason.txt"
+        returncode = subprocess.run(
+            [
+                str(project / ".venv/bin/python"),
+                "-I",
+                "-m",
+                "ax_devil.modules.plugin_installation.validate",
+                str(project),
+                str(result),
+            ],
+            env={**environment, "QT_QPA_PLATFORM": "offscreen"},
+        ).returncode
+        if returncode:
+            try:
+                reason = " ".join(result.read_text(encoding="utf-8").split())
+            except OSError:
+                reason = ""
+            raise ValueError(
+                f"{reason or f'plugin validation stopped with exit status {returncode}'}; "
+                "the plugin selection is unchanged"
+            )
 
 
 def change_plugins(
@@ -286,6 +304,6 @@ def refresh_plugins(host: Host) -> None:
         raise ValueError("The automatic plugin update for this app version failed earlier")
     try:
         change_plugins(host, refresh=True)
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError):
         failed.write_text(host.fingerprint)
         raise
