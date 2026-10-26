@@ -92,13 +92,17 @@ def test_the_sidebar_narrows_to_each_views_minimum_and_leaves_the_viewers_half(s
     """Each view can be dragged to its own minimum with its text in full; dragged wide, the viewers keep half."""
     splitter = session.widget().findChild(QSplitter, "WorkspaceSidebarSplitter")
     assert splitter is not None
+    sidebar = splitter.widget(0)
+    assert sidebar is not None
     widths = {}
     for view_id in ("workspace", "live", "offline"):
         view = _show(session, view_id)
         splitter.moveSplitter(view.minimumSizeHint().width(), 1)
         QApplication.processEvents()
         widths[view_id] = splitter.sizes()[0]
+        assert widths[view_id] == view.minimumSizeHint().width() + sidebar.contentsMargins().left() + (
+            sidebar.contentsMargins().right()
+        )
         assert clipped_text_widgets(view) == []
-    assert widths["workspace"] < widths["live"]
     splitter.moveSplitter(splitter.width(), 1)
-    assert splitter.sizes()[1] >= splitter.sizes()[0] > widths["live"]
+    assert splitter.sizes()[1] >= splitter.sizes()[0] > max(widths.values())
