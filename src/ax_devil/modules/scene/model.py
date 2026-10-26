@@ -1,69 +1,79 @@
-"""Scene aggregate and scene-domain value objects."""
+"""Scene API for decoder plugins: the Scene aggregate and its entities, observations and events.
+
+The value types it is built from (``EntityId``, ``Geometry``, ``RGB`` ...) are defined in ``model_values`` and are
+imported from here.
+"""
 
 from __future__ import annotations
 
-import base64
 import builtins
 import enum
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, ClassVar, TypeVar
 
+from ax_devil.core.time_units import datetime_to_us
+from ax_devil.modules.scene.model_values import (
+    RGB,
+    Attribute,
+    BoundingBox,
+    ClassificationType,
+    ColorClassification,
+    ColorType,
+    EntityId,
+    GeographicCoordinates,
+    Geometry,
+    Image,
+    ImageVelocity,
+    KnownClassificationType,
+    MotionState,
+    NormalizedPoint,
+    Polygon,
+    Score,
+    SphericalCoordinates,
+    WorldVelocity,
+)
+
+__all__ = [
+    "Attribute",
+    "BoundingBox",
+    "Classification",
+    "ClassificationType",
+    "ColorClassification",
+    "ColorType",
+    "Delete",
+    "Entity",
+    "EntityId",
+    "EntityRelation",
+    "Event",
+    "GeographicCoordinates",
+    "Geometry",
+    "Image",
+    "ImageVelocity",
+    "KnownClassificationType",
+    "Merge",
+    "MotionState",
+    "NormalizedPoint",
+    "Observation",
+    "Operation",
+    "OperationType",
+    "Polygon",
+    "RGB",
+    "Rename",
+    "SCENE_MODEL_VERSION",
+    "Scene",
+    "Score",
+    "SphericalCoordinates",
+    "Split",
+    "TimeSlice",
+    "WorldVelocity",
+]
+
 _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (1, 1)
-
-
-# ---------------------------------------------------------------------------#
-# Definitions                                                                #
-# ---------------------------------------------------------------------------#
-class EntityId(str):
-    """A unique identifier for an entity in the world model."""
-
-    def __new__(cls, value: str) -> EntityId:
-        if not value:
-            raise ValueError("EntityId cannot be empty")
-        return super().__new__(cls, value)
-
-
-# ---------------------------------------------------------------------------#
-# Enumerations                                                               #
-# ---------------------------------------------------------------------------#
-# Dynamic classification type
-ClassificationType = str
-
-
-class KnownClassificationType(enum.Enum):
-    """Known classification types for convenience."""
-
-    Human = "human"
-    Vehicle = "vehicle"
-    VehicleOther = "vehicle_other"
-    Car = "car"
-    Bus = "bus"
-    Truck = "truck"
-    Bike = "bike"
-    Bicycle = "bicycle"
-    Animal = "animal"
-    Head = "head"
-    LicensePlate = "license_plate"
-    Face = "face"
-    Bag = "bag"
-    Unknown = "unknown"
-
-
-# Dynamic color type
-ColorType = str
-
-
-class MotionState(enum.Enum):
-    """Motion state reported for an entity."""
-
-    Moving = "moving"
-    Stationary = "stationary"
-    Unknown = "unknown"
+SCENE_MODEL_VERSION: tuple[int, int] = (2, 0)
 
 
 class OperationType(enum.Enum):
@@ -78,238 +88,6 @@ class OperationType(enum.Enum):
     def title(self) -> str:
         """Return the operation's name for event lists and filters."""
         return self.name
-
-
-# ---------------------------------------------------------------------------#
-# Primitive value objects                                                    #
-# ---------------------------------------------------------------------------#
-@dataclass(slots=True, frozen=True)
-class Score:
-    """A score of a classification, is not standardized to any specific range."""
-
-    value: float
-
-    def __setstate__(self, state: list[object]) -> None:
-        """Restore the dataclass cache format without per-instance field introspection."""
-        object.__setattr__(self, "value", state[0])
-
-
-@dataclass(slots=True, frozen=True)
-class NormalizedPoint:
-    """A point normalized to the range [0, 1]."""
-
-    x: float
-    y: float
-    allow_outside: bool = False  # Allow values outside [0, 1]
-
-    def __setstate__(self, state: list[object]) -> None:
-        """Restore the dataclass cache format without per-instance field introspection."""
-        object.__setattr__(self, "x", state[0])
-        object.__setattr__(self, "y", state[1])
-        object.__setattr__(self, "allow_outside", state[2])
-
-    def __post_init__(self) -> None:
-        if self.allow_outside:
-            return
-
-        # Ensure x and y are in the range [0, 1]
-        if not (0.0 <= self.x <= 1.0 and 0.0 <= self.y <= 1.0):
-            raise ValueError(f"NormalizedPoint must have x and y in [0, 1], got ({self.x}, {self.y})")
-
-
-@dataclass(slots=True, frozen=True)
-class RGB:
-    """RGB color values with validation."""
-
-    r: int
-    g: int
-    b: int
-
-    def __setstate__(self, state: list[object]) -> None:
-        """Restore the dataclass cache format without per-instance field introspection."""
-        object.__setattr__(self, "r", state[0])
-        object.__setattr__(self, "g", state[1])
-        object.__setattr__(self, "b", state[2])
-
-    def __post_init__(self) -> None:
-        if not 0 <= self.r <= 255:
-            raise ValueError(f"Red values must be 0-255, got {self.r}")
-        if not 0 <= self.g <= 255:
-            raise ValueError(f"Green values must be 0-255, got {self.g}")
-        if not 0 <= self.b <= 255:
-            raise ValueError(f"Blue values must be 0-255, got {self.b}")
-
-
-@dataclass(slots=True, frozen=True)
-class ColorClassification:
-    """Color with dynamic name, RGB values, and confidence score."""
-
-    name: ColorType
-    rgb: RGB
-    score: Score
-
-    def __setstate__(self, state: list[object]) -> None:
-        """Restore the dataclass cache format without per-instance field introspection."""
-        object.__setattr__(self, "name", state[0])
-        object.__setattr__(self, "rgb", state[1])
-        object.__setattr__(self, "score", state[2])
-
-    def __post_init__(self) -> None:
-        if not self.name:
-            raise ValueError("Color name cannot be empty")
-        if not isinstance(self.rgb, RGB):
-            raise TypeError("RGB must be an instance of RGB")
-        if not isinstance(self.score, Score):
-            if isinstance(self.score, (int, float)):
-                self.score = Score(float(self.score))
-            else:
-                raise TypeError("Score must be an instance of Score")
-
-
-@dataclass(slots=True, frozen=True)
-class Attribute:
-    """Generic attribute for any entity classification."""
-
-    name: str
-    value: Any
-
-    def __setstate__(self, state: list[object]) -> None:
-        """Restore the dataclass cache format without per-instance field introspection."""
-        object.__setattr__(self, "name", state[0])
-        object.__setattr__(self, "value", state[1])
-
-
-# ---------------------------------------------------------------------------#
-# Geometry                                                                   #
-# ---------------------------------------------------------------------------#
-@dataclass(slots=True, frozen=True)
-class Geometry:
-    """Base for geometric primitives in normalized image space."""
-
-    def as_xywh(self) -> tuple[float, float, float, float]:
-        """Return ``(x, y, width, height)`` bounds in normalized image coordinates."""
-        raise NotImplementedError
-
-    def polygon_points(self) -> list["NormalizedPoint"] | None:
-        """Return polygon points when this geometry has an explicit polygon shape."""
-        return None
-
-
-@dataclass(slots=True, frozen=True)
-class BoundingBox(Geometry):
-    """Axis-aligned bounding box in normalized image space."""
-
-    top_left: NormalizedPoint
-    bottom_right: NormalizedPoint
-
-    def __setstate__(self, state: list[object]) -> None:
-        """Restore the dataclass cache format without per-instance field introspection."""
-        object.__setattr__(self, "top_left", state[0])
-        object.__setattr__(self, "bottom_right", state[1])
-
-    # Convenience ------------------------------------------------------------------
-    @property
-    def width(self) -> float:
-        return self.bottom_right.x - self.top_left.x
-
-    @property
-    def height(self) -> float:
-        return self.bottom_right.y - self.top_left.y
-
-    @property
-    def area(self) -> float:
-        return self.width * self.height
-
-    # Constructors -----------------------------------------------------------------
-    @classmethod
-    def from_xywh(cls, x: float, y: float, w: float, h: float, allow_outside: bool = False) -> "BoundingBox":
-        return cls(
-            top_left=NormalizedPoint(x, y, allow_outside=allow_outside),
-            bottom_right=NormalizedPoint(x + w, y + h, allow_outside=allow_outside),
-        )
-
-    # Helpers ----------------------------------------------------------------------
-    def as_xywh(self) -> tuple[float, float, float, float]:
-        """Return (x, y, width, height)."""
-        return self.top_left.x, self.top_left.y, self.width, self.height
-
-
-@dataclass(slots=True, frozen=True)
-class Polygon(Geometry):
-    """Polygon in normalized image space."""
-
-    points: list[NormalizedPoint]
-
-    def __post_init__(self) -> None:
-        if len(self.points) < 3:
-            raise ValueError("Polygon must contain at least 3 points.")
-
-    def as_xywh(self) -> tuple[float, float, float, float]:
-        """Return ``(x, y, width, height)`` bounds in normalized image coordinates."""
-        xs = [point.x for point in self.points]
-        ys = [point.y for point in self.points]
-        min_x = min(xs)
-        min_y = min(ys)
-        max_x = max(xs)
-        max_y = max(ys)
-        return min_x, min_y, max_x - min_x, max_y - min_y
-
-    def polygon_points(self) -> list[NormalizedPoint]:
-        """Return this polygon's normalized points."""
-        return self.points
-
-
-# ---------------------------------------------------------------------------#
-# Image & motion                                                             #
-# ---------------------------------------------------------------------------#
-@dataclass(slots=True)
-class Image:
-    timestamp: datetime
-    bounding_box: BoundingBox
-    data: bytes
-
-    @classmethod
-    def from_base64(
-        cls,
-        timestamp: datetime,
-        bounding_box: BoundingBox,
-        base64_data: str,
-    ) -> "Image":
-        return cls(
-            timestamp=timestamp,
-            bounding_box=bounding_box,
-            data=base64.b64decode(base64_data),
-        )
-
-
-@dataclass(slots=True)
-class ImageVelocity:
-    vx: float
-    vy: float
-
-
-# ---------------------------------------------------------------------------#
-# Coordinate frames                                                          #
-# ---------------------------------------------------------------------------#
-@dataclass(slots=True)
-class GeographicCoordinates:
-    latitude: float
-    longitude: float
-    elevation: float | None = None  # metres
-
-
-@dataclass(slots=True)
-class SphericalCoordinates:
-    distance: float
-    azimuth: float
-    elevation: float
-
-
-@dataclass(slots=True)
-class WorldVelocity:
-    pitch: float
-    speed: float
-    yaw: float
 
 
 # ---------------------------------------------------------------------------#
@@ -486,6 +264,13 @@ class TimeSlice:
             return float(self.end - self.start)
         # Mixed types are not comparable
         return 0.0
+
+    @property
+    def start_timestamp_us(self) -> int | None:
+        """Start on the media clock in microseconds, or None for a frame-numbered slice."""
+        if isinstance(self.start, datetime):
+            return datetime_to_us(self.start)
+        return None
 
     @classmethod
     def from_start_end(cls, start: datetime, end: datetime) -> "TimeSlice":

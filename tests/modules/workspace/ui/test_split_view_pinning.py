@@ -1,13 +1,17 @@
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QKeySequence
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractButton
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
-from ax_devil.modules.workspace.ui.split_view import SplitDirection, SplitView
+from ax_devil.modules.video_player.engine.quick.surface import QuickSurface
+from ax_devil.modules.workspace.ui.split_panes import SplitDirection
+from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 from ax_devil.modules.workspace.ui.welcome_widget import WelcomeItem
+from tests.drawing_helpers import PolylineCall, prepare_calls
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import PlainViewerWidget
 
@@ -89,21 +93,22 @@ def test_all_pinned_creates_new_split(qtbot: QtBot) -> None:
     assert _panes(sv) == [*pinned, newcomer]
 
 
-def test_mixed_panes_replace_only_the_unpinned_widget(qtbot: QtBot) -> None:
-    """A pinned first pane survives replacement and only the displaced pane is cleaned."""
+def test_open_replaces_the_active_unpinned_widget(qtbot: QtBot) -> None:
+    """An earlier preview survives when the user activates another preview to replace."""
     sv = _make_split_view(qtbot)
-    pinned, unpinned, replacement = (_LifecycleWidget(sv) for _ in range(3))
-    for widget in (pinned, unpinned, replacement):
+    earlier, active, replacement = (_LifecycleWidget(sv) for _ in range(3))
+    for widget in (earlier, active, replacement):
         qtbot.addWidget(widget)
-    sv.add_viewer_widget(pinned)
-    sv.add_viewer_widget(unpinned)
-    pinned.set_pinned(True)
+    sv.add_viewer_widget(earlier)
+    sv.add_viewer_widget(active)
+    QTest.mouseClick(earlier.get_header_widget(), Qt.MouseButton.LeftButton)
+    QTest.mouseClick(active.get_header_widget(), Qt.MouseButton.LeftButton)
 
     sv.replace_or_open(replacement)
 
     assert sv.get_focused_widget() is replacement
-    assert _panes(sv) == [pinned, replacement]
-    assert (pinned.cleanup_count, unpinned.cleanup_count, replacement.cleanup_count) == (0, 1, 0)
+    assert _panes(sv) == [earlier, replacement]
+    assert (earlier.cleanup_count, active.cleanup_count, replacement.cleanup_count) == (0, 1, 0)
     assert replacement.attach_count == 1
 
 
@@ -201,10 +206,10 @@ def test_moving_widget_between_leaves_does_not_restart_or_clean_it(qtbot: QtBot)
     split_view.add_viewer_widget(second)
     target_leaf = split_view._leaf_for_widget(second)
     assert target_leaf is not None
-    first_id = split_view._id_for_widget(first)
+    first_id = split_view.id_for_widget(first)
     assert first_id is not None
 
-    split_view._handle_drop(target_leaf, first_id, SplitDirection.LEFT)
+    split_view.handle_drop(target_leaf, first_id, SplitDirection.LEFT)
 
     assert first.attach_count == 1
     assert first.cleanup_count == 0
@@ -265,21 +270,27 @@ def test_welcome_rows_follow_shortcut_manager_bindings(qtbot: QtBot) -> None:
 
 
 def test_open_to_side_splits_beside_focused_pane_and_keeps_both(qtbot: QtBot) -> None:
-    """open_to_side adds a pinned pane next to the focused one; the next open replaces only the preview."""
+    """Opening while the side pane is active preserves the earlier preview and opens beside the pinned pane."""
     sv = _make_split_view(qtbot)
     preview = _make_dummy(qtbot)
     sv.replace_or_open(preview)
+    sv.activateWindow()
+    assert QTest.qWaitForWindowActive(sv)
+    preview.findChildren(QAbstractButton)[0].setFocus()
 
     side = _make_dummy(qtbot)
     sv.open_to_side(side)
 
     assert side.is_pinned() and not preview.is_pinned()
     assert _panes(sv) == [preview, side]
+    assert sv.get_focused_widget() is side
+    assert side.hasFocus()
 
     replacement = _make_dummy(qtbot)
     sv.replace_or_open(replacement)
 
-    assert _panes(sv) == [replacement, side]
+    assert _panes(sv) == [preview, side, replacement]
+    assert not replacement.is_pinned()
 
 
 def test_open_to_side_on_empty_view_adds_widget(qtbot: QtBot) -> None:
@@ -291,6 +302,55 @@ def test_open_to_side_on_empty_view_adds_widget(qtbot: QtBot) -> None:
 
     assert sv.get_widget_count() == 1
     assert sv.get_focused_widget() is widget
+
+
+def test_removing_active_pane_selects_a_survivor_and_ignores_removed_activation(qtbot: QtBot) -> None:
+    """Closing the active pane leaves a usable target; late events cannot reactivate the removed viewer."""
+    sv = _make_split_view(qtbot)
+    first, second, replacement = (_make_dummy(qtbot) for _ in range(3))
+    sv.add_viewer_widget(first)
+    sv.add_viewer_widget(second)
+    sv.remove_viewer_widget(second)
+    sv.focus_widget(second)
+    sv.replace_or_open(replacement)
+    assert _panes(sv) == [replacement]
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_reloading_an_inactive_pane_preserves_keyboard_target(qtbot: QtBot, fail: bool) -> None:
+    """Refreshing another pane must keep keyboard input and ordinary Open on the user's active pane."""
+    sv = _make_split_view(qtbot)
+    old, active = (_make_dummy(qtbot) for _ in range(2))
+    sv.add_viewer_widget(old)
+    sv.add_viewer_widget(active)
+    sv.activateWindow()
+    assert QTest.qWaitForWindowActive(sv)
+    button = active.findChildren(QAbstractButton)[0]
+    button.setFocus()
+    QCoreApplication.processEvents()
+    assert button.hasFocus()
+    assert sv.get_focused_widget() is active
+    candidate = _LifecycleWidget(fail_attach=fail)
+
+    if fail:
+        with pytest.raises(RuntimeError, match="attach failed"):
+            sv.replace_viewer_widget(old, candidate)
+        assert not candidate.isWindow(), "A failed pane must not become a separate application window."
+    else:
+        sv.replace_viewer_widget(old, candidate)
+    QCoreApplication.processEvents()
+    assert button.hasFocus()
+    assert sv.get_focused_widget() is active
+
+
+def test_no_active_pane_opens_without_replacing_any_existing_viewer(qtbot: QtBot) -> None:
+    """A missing active target must never select an unrelated preview for replacement."""
+    sv = _make_split_view(qtbot)
+    existing, newcomer = (_make_dummy(qtbot) for _ in range(2))
+    sv.add_viewer_widget(existing)
+    sv._set_focused_widget(None)
+    sv.replace_or_open(newcomer)
+    assert _panes(sv) == [existing, newcomer]
 
 
 def test_pin_button_and_pinned_state_stay_in_sync(qtbot: QtBot) -> None:
@@ -307,3 +367,42 @@ def test_pin_button_and_pinned_state_stay_in_sync(qtbot: QtBot) -> None:
 
     pin_button.click()
     assert widget.is_pinned()
+
+
+class _SurfaceWidget(PlainViewerWidget):
+    """Viewer widget hosting a video surface, as a playing viewer does."""
+
+    def _setup_widget_ui(self) -> None:
+        self.surface = QuickSurface()
+        self.get_content_layout().addWidget(self.surface)
+
+
+def _present_polyline(surface: QuickSurface) -> None:
+    target = QRectF(0, 0, 200, 100)
+    drawing = prepare_calls([PolylineCall(((0.1, 0.1), (0.9, 0.5), (0.3, 0.9)))], surface.drawing_buffer(target, 100))
+    surface.set_overlays(drawing, 1, target, 100, None)
+    QCoreApplication.processEvents()
+
+
+def test_collapsing_a_split_keeps_the_moved_pane_overlays_usable(qtbot: QtBot) -> None:
+    """Dragging a pane so its split collapses must not break overlay drawing in the pane that moved up."""
+    sv = _make_split_view(qtbot)
+    sv.resize(900, 600)
+    left = _make_dummy(qtbot)
+    hosting = _SurfaceWidget()
+    dragged = _make_dummy(qtbot)
+    qtbot.addWidget(hosting)
+    for widget in (left, hosting, dragged):
+        sv.add_viewer_widget(widget)
+    QCoreApplication.processEvents()  # Let the layout give the surface a size.
+    _present_polyline(hosting.surface)
+    assert hosting.surface._overlay._drawing.vertices.size
+    left_leaf = sv._leaf_for_widget(left)
+    dragged_id = sv.id_for_widget(dragged)
+    assert left_leaf is not None and dragged_id is not None
+
+    sv.handle_drop(left_leaf, dragged_id, SplitDirection.TOP)
+
+    _present_polyline(hosting.surface)
+    assert isValid(hosting.surface._overlay)
+    assert hosting.surface._overlay._drawing.vertices.size

@@ -42,6 +42,14 @@ def entry_opening_scope(owner: QObject) -> JobScope:
 
 
 @dataclass(slots=True)
+class LaneOverlay:
+    """An opened overlay and the selection policy used for presentation, analysis and export."""
+
+    source: FileOverlaySource
+    policy: OverlayPersistencePolicy
+
+
+@dataclass(slots=True)
 class OpenedLane:
     """One considered entry lane with its opened overlay source and the file-derived data it shows first."""
 
@@ -49,8 +57,7 @@ class OpenedLane:
     lane_index: int
     video: SeekableVideoContent
     source_index: int
-    overlay_source: FileOverlaySource | None = None
-    overlay_policy: OverlayPersistencePolicy | None = None
+    overlay: LaneOverlay | None = None
     scene_history: SceneHistory | None = None
     alignment_report: OverlayAlignmentReport | None = None
 
@@ -69,7 +76,7 @@ class EntryMedia:
 
     def overlay_sources(self) -> list[FileOverlaySource]:
         """Return the overlay sources of all lanes."""
-        return [lane.overlay_source for lane in self.lanes if lane.overlay_source is not None]
+        return [lane.overlay.source for lane in self.lanes if lane.overlay is not None]
 
     def close(self) -> None:
         """Request shutdown of every source. Blocks for bounded decoder joins; run on a worker.
@@ -108,7 +115,7 @@ def create_overlay_source(
     overlay: OverlayContent,
     *,
     frame_timeline: FrameTimeline,
-) -> tuple[FileOverlaySource, OverlayPersistencePolicy]:
+) -> LaneOverlay:
     """Open the file overlay source for *overlay*. Blocks while the decoder reads the file."""
     if not isinstance(overlay.source_spec, FileOverlaySourceSpec):
         raise RuntimeError(f"Offline overlay '{overlay.display_name}' requires a file overlay source spec.")
@@ -128,20 +135,19 @@ def create_overlay_source(
     except Exception as exc:
         raise RuntimeError(f"Failed to create overlay source for {overlay.display_name}: {exc}") from exc
 
-    return overlay_source, OverlayPersistencePolicy(OverlayPersistenceSettings.default_enabled())
+    return LaneOverlay(overlay_source, OverlayPersistencePolicy(OverlayPersistenceSettings.default_enabled()))
 
 
 def place_scene_history(
-    overlay_source: FileOverlaySource | None,
-    overlay_policy: OverlayPersistencePolicy | None,
+    overlay: LaneOverlay | None,
     frame_timeline: FrameTimeline,
     token: CancelToken,
 ) -> SceneHistory | None:
     """Place an overlay's history on the video as the lane's lookup and sticky selection show it; polls *token*."""
-    if overlay_source is None or overlay_policy is None:
+    if overlay is None:
         return None
-    allow_previous, max_sample_age_us = overlay_policy.sample_selection()
-    return overlay_source.scene_history(
+    allow_previous, max_sample_age_us = overlay.policy.sample_selection()
+    return overlay.source.scene_history(
         frame_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us, token=token
     )
 
@@ -189,13 +195,11 @@ def _open_lanes(
         else:
             report(f"Parsing overlay data ({position + 1}/{len(lane_indices)}): {lane.overlay.display_name}")
         frame_timeline = media.video_sources[source_index].get_frame_timeline()
-        opened.overlay_source, opened.overlay_policy = create_overlay_source(
-            lane.overlay, frame_timeline=frame_timeline
-        )
+        opened.overlay = create_overlay_source(lane.overlay, frame_timeline=frame_timeline)
         token.raise_if_cancelled()
-        opened.scene_history = place_scene_history(opened.overlay_source, opened.overlay_policy, frame_timeline, token)
+        opened.scene_history = place_scene_history(opened.overlay, frame_timeline, token)
         token.raise_if_cancelled()
-        opened.alignment_report = opened.overlay_source.analyze_alignment(frame_timeline, token)
+        opened.alignment_report = opened.overlay.source.analyze_alignment(frame_timeline, token)
 
 
 def open_entry_media(

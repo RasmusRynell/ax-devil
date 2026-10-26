@@ -3,18 +3,21 @@
 from typing import Any
 
 import av
+import numpy as np
 from numpy.typing import NDArray
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
 from ax_devil.modules.settings.logging_config import get_logger
 
+_SWSCALE_RGBA_ROW_MULTIPLE = 8
+
 
 class CachedFrame:
     """Wrapper for decoded frames that performs lazy pixel conversion.
 
-    Stores source timing facts with the frame and converts to RGB pixels only on
-    first access. This avoids unnecessary conversion work for frames that are
-    cached but never used while keeping decoded-frame metadata intact.
+    Stores source timing facts with the source frame and converts to RGBA pixels
+    on each delivery. Frames that are cached but never delivered are never
+    converted, and converted pixels are not retained by the cache.
 
     Note: Assumes input VideoFrame is valid and has to_ndarray method.
     """
@@ -24,7 +27,7 @@ class CachedFrame:
         *,
         frame_index: int,
         video_frame: av.VideoFrame,
-        timestamp_us: float,
+        timestamp_us: int,
         period_after_s: float | None,
         source_timing_metadata: dict[str, Any],
     ) -> None:
@@ -47,23 +50,18 @@ class CachedFrame:
             else None
         )
         self.source_timing_metadata = source_timing_metadata
-        # Reserve for the larger retained representation, including source-plane padding.
-        # RGB conversion can then happen without mutating cache accounting.
-        self._reserved_bytes = max(
-            sum(plane.buffer_size for plane in video_frame.planes), video_frame.width * video_frame.height * 3
-        )
-        self._video_frame: av.VideoFrame | None = video_frame
-        self._numpy_array: NDArray[Any] | None = None
-        self._is_converted = False
+        # Only the source frame is retained; each delivery converts into a fresh array.
+        self._reserved_bytes = sum(plane.buffer_size for plane in video_frame.planes)
+        self._video_frame = video_frame
         self.logger.debug(
             f"CachedFrame created: id={id(self)}, frame_index={frame_index}, has_frame={video_frame is not None}"
         )
 
     def to_decoded_frame(self) -> DecodedFrame:
-        """Return the complete decoded frame payload, converting pixels on first access.
+        """Return the complete decoded frame payload, converting pixels.
 
         Returns:
-            DecodedFrame: RGB24 pixels plus source timing facts.
+            DecodedFrame: RGBA pixels (alpha 255) plus source timing facts.
         """
         return DecodedFrame(
             frame_index=self.frame_index,
@@ -75,31 +73,23 @@ class CachedFrame:
         )
 
     def _to_numpy(self) -> NDArray[Any]:
-        if self._is_converted:
-            assert self._numpy_array is not None, "Converted frame should have numpy array"
-            return self._numpy_array
-        # Perform the conversion
-        assert self._video_frame is not None, "Video frame should be available for conversion"
         self.logger.debug("Converting VideoFrame to numpy array")
-        self._numpy_array = self._video_frame.to_ndarray(format="rgb24")
-        self._is_converted = True
-
-        # Clear reference to VideoFrame to free memory
-        self._video_frame = None
-
-        return self._numpy_array
+        frame = self._video_frame
+        # threads=1 skips swscale's thread pool, which costs more CPU than the conversion itself at video sizes.
+        # The array views the converted frame's plane and keeps it alive, so it outlives this cache entry.
+        if frame.width % _SWSCALE_RGBA_ROW_MULTIPLE == 0:
+            return frame.to_ndarray(format="rgba", threads=1)
+        # swscale leaves the last 2 or 4 pixels of each row unwritten in 32-bit RGB output for some other widths.
+        rgb = frame.to_ndarray(format="rgb24", threads=1)
+        rgba = np.full((*rgb.shape[:2], 4), 255, dtype=np.uint8)
+        rgba[..., :3] = rgb
+        return rgba
 
     @property
     def reserved_bytes(self) -> int:
-        """Reserve the larger of source planes and RGB pixels for this entry's lifetime."""
+        """Source plane bytes retained for this entry's lifetime."""
         return self._reserved_bytes
-
-    @property
-    def is_converted(self) -> bool:
-        """Check if frame has been converted to numpy array."""
-        return self._is_converted
 
     def __repr__(self) -> str:
         """String representation for debugging."""
-        status = "converted" if self._is_converted else "raw"
-        return f"CachedFrame(frame_index={self.frame_index}, {status})"
+        return f"CachedFrame(frame_index={self.frame_index})"

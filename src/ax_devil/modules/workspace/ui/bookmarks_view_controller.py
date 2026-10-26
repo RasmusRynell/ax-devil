@@ -21,8 +21,9 @@ logger = get_logger(__name__)
 class BookmarksViewController(QObject):
     """Keep *view* showing the store's bookmarks as the workspace changes, filtered as the user asks.
 
-    Opening a bookmark opens its target as a double click does, through *workspace_controller*, at the bookmark's
-    frame; the bookmark opened last is marked until the bookmarks change.
+    Opening a bookmark shows its frame, paused, through *workspace_controller*: a viewer already showing the target
+    seeks there, and otherwise the target opens as a double click does; the bookmark opened last is marked until the
+    bookmarks change.
     """
 
     def __init__(
@@ -64,7 +65,7 @@ class BookmarksViewController(QObject):
                 if row.bookmark.id == bookmark_id and group.found is not None:
                     content, entry_index = group.found
                     self._active_id = bookmark_id
-                    self._workspace_controller.open_content(content, entry_index, start_frame=row.bookmark.frame)
+                    self._workspace_controller.show_frame(content, entry_index, row.bookmark.frame)
                     self._show()
                     return
 

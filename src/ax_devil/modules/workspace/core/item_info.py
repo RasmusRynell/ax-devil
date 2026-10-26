@@ -7,13 +7,12 @@ from typing import Any
 
 from ax_devil.modules.workspace.core.content import (
     EntryLane,
-    InfoFields,
     LiveVideoContent,
-    OverlaySourceKind,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
 )
+from ax_devil.modules.workspace.core.source_specs import InfoFields, OverlaySourceKind
 
 
 @dataclass(frozen=True, slots=True)

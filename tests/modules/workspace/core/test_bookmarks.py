@@ -17,14 +17,13 @@ from ax_devil.modules.workspace.core import (
     find_entry,
 )
 from ax_devil.modules.workspace.core.content import (
-    FileVideoSourceSpec,
-    LiveRTSPStreamSpec,
     LiveVideoContent,
     PlaylistContent,
     PlaylistEntry,
     SeekableVideoContent,
     numbered_when_shared,
 )
+from ax_devil.modules.workspace.core.source_specs import FileVideoSourceSpec, LiveRTSPStreamSpec
 
 
 def _video(name: str) -> SeekableVideoContent:

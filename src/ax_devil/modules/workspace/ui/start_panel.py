@@ -137,7 +137,7 @@ class StartPanel(QWidget):
                 workspace_file_stem(recent.path),
                 icon=Icon.BROWSE.icon(),
                 subtitle=_home_relative(recent.path.parent),
-                detail=recent_date(recent.used.date(), today),
+                detail=recent_date(recent.used.astimezone().date(), today),
                 parent=self,
             )
             row.setToolTip(str(recent.path))

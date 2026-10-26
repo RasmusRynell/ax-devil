@@ -35,7 +35,8 @@ def test_recorder_isolates_inherited_desktop_and_app_settings(tmp_path: Path, mo
     assert env["TMPDIR"] == str(tmp_path / "tmp")
     assert env["QT_QPA_PLATFORM"] == "xcb"
     assert not any(value == "must-not-reach-worker" for value in env.values())
-    assert (tmp_path / "runtime").stat().st_mode & 0o777 == 0o700
+    if os.name == "posix":  # Windows reports every folder as 0o777.
+        assert (tmp_path / "runtime").stat().st_mode & 0o777 == 0o700
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="The recorder uses Linux private displays and process groups")

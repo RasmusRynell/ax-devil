@@ -8,7 +8,8 @@ from typing import Any
 import pytest
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.catalog_viewer.sheets import Caption, SheetDrawing, drawing_errors, sheets
+from ax_devil.modules.catalog_viewer.sheet_drawing import Caption, SheetDrawing, drawing_errors
+from ax_devil.modules.catalog_viewer.sheets import sheets
 from ax_devil.modules.scene.model import Attribute, Entity, Scene, TimeSlice
 from ax_devil.modules.scene.rendering import SceneRenderCatalogLoader, get_built_in_scene_render_catalog
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH
@@ -86,7 +87,7 @@ def test_caption_plates_skip_empty_lines_at_small_sizes(qtbot: QtBot, width: int
     context = RenderContext.create(width, max(1, width // 2))
     drawing = SheetDrawing(sheet, get_built_in_scene_render_catalog())
     result = drawing.prepare(context, DrawingBuffer(DrawingSettings.for_context(context)))
-    assert len(result.paths) == len(result.texts) == visible
+    assert len(result) == 2 * visible
     assert drawing.diagnostics == ()
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Protocol
 
 from PySide6.QtGui import QImage
@@ -23,10 +22,9 @@ class VideoFrame:
     """
 
     image: QImage
-    timestamp: float  # Frame timestamp for synchronization
+    timestamp_us: int  # Frame time on the media clock, in microseconds
     frame_id: int | None = None
     metadata: dict[str, Any] | None = None
-    timestamp_monotime_us: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,36 +48,6 @@ class HoverInteractionProvider(Protocol):
         """Return hover hit metadata for an existing target id, or None if it no longer exists."""
 
 
-class DrawingBuildReason(str, Enum):
-    """Inputs that require rebuilding the cached prepared drawing."""
-
-    INITIAL = "First build"
-    FILTER = "Filter changed"
-    TARGET = "Drawing target changed"
-    CATALOG = "Catalog changed"
-
-
-@dataclass(frozen=True, slots=True)
-class DrawingPreparationMetrics:
-    """Catalog and final-backend preparation metrics for one overlay."""
-
-    filter_time_ms: float | None = None
-    generation_time_ms: float | None = None
-    filter_cache_hit: bool = False
-    drawing_cache_hit: bool = False
-    build_reasons: tuple[DrawingBuildReason, ...] = ()
-    input_entity_count: int = 0
-    filtered_entity_count: int = 0
-    primitive_counts: tuple[tuple[str, int], ...] = ()
-
-
-class DrawingPreparationMetricsProvider(Protocol):
-    """Provider for the latest drawing preparation metrics."""
-
-    def latest_drawing_preparation_metrics(self) -> DrawingPreparationMetrics:
-        """Return metrics from the most recent drawing preparation."""
-
-
 @dataclass(frozen=True, slots=True)
 class VideoOverlayData:
     """Video overlay data for rendering on top of video frames.
@@ -88,12 +56,10 @@ class VideoOverlayData:
     """
 
     drawing_generator: DrawingGenerator
-    timestamp: float  # Overlay timestamp for synchronization
+    timestamp_us: int  # Overlay time on the media clock, in microseconds
     overlay_id: int | None = None
     metadata: dict[str, Any] | None = None
     interaction_provider: HoverInteractionProvider | None = None
-    metrics_provider: DrawingPreparationMetricsProvider | None = None
-    timestamp_monotime_us: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

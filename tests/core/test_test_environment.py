@@ -1,4 +1,4 @@
-"""Regression coverage for offscreen setup and nested test-home ownership."""
+"""Regression coverage for private-display setup and nested test-home ownership."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import pytest
     "nested,worker", [(False, None), (True, None), (True, "gw0")], ids=["owned-home", "parent-home", "worker-home"]
 )
 def test_subprocess_only_removes_its_own_home(tmp_path: Path, nested: bool, worker: str | None) -> None:
-    """Collection clears desktop themes and preserves a home supplied by its parent."""
+    """Collection joins the suite's display, clears desktop themes and preserves a home supplied by its parent."""
     shared_home = tmp_path / "parent-home"
     shared_home.mkdir()
     marker = shared_home / "parent-data"
@@ -40,8 +40,12 @@ def test_subprocess_only_removes_its_own_home(tmp_path: Path, nested: bool, work
 
         import tests
 
-        assert os.environ["QT_QPA_PLATFORM"] == "offscreen"
-        assert "QT_QPA_PLATFORMTHEME" not in os.environ
+        if sys.platform == "linux":
+            assert os.environ["QT_QPA_PLATFORM"] == "xcb"
+            assert os.environ["DISPLAY"] == os.environ["AX_DEVIL_TESTS_DISPLAY"]
+            assert "QT_QPA_PLATFORMTHEME" not in os.environ
+        else:
+            assert "QT_QPA_PLATFORM" not in os.environ
         Path(sys.argv[1]).write_text(str(tests.TEST_HOME), encoding="utf-8")
         import subprocess
 

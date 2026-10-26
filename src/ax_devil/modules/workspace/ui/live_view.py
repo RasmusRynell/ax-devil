@@ -1,5 +1,4 @@
-"""The Live view: the cameras in the workspace and on the network, with a button to add one manually and the settings
-of the network scan under them."""
+"""The Live view: the cameras in the workspace and on the network, with the settings of the network scan under them."""
 
 from __future__ import annotations
 
@@ -121,20 +120,17 @@ class ScanSettingsPanel(FooterPanel):
 
 
 class LiveView(SectionsView):
-    """The sections it is given, with an Add manually button under them and the scan settings below it; it decides
-    nothing itself.
+    """The sections it is given, with the scan settings under them; it decides nothing itself.
 
-    ``scan_requested`` carries the IP range as typed, ``add_manually_requested`` that the user wants to enter a
-    camera's details, and ``logins_edited`` the logins a scan tries once the user edited them.
+    ``scan_requested`` carries the IP range as typed, and ``logins_edited`` the logins a scan tries once the user
+    edited them.
     """
 
     scan_requested = Signal(str)
-    add_manually_requested = Signal()
     logins_edited = Signal(object)  # tuple[Login, ...]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(LIVE_VIEW_ID, "Live", Icon.LIVE_VIDEO, search_placeholder="Search cameras", parent=parent)
-        self.add_footer_button("Add manually", Icon.ADD).clicked.connect(self.add_manually_requested)
         self._scan = ScanSettingsPanel(self)
         self._scan.scan_requested.connect(self.scan_requested)
         self._scan.logins_edited.connect(self.logins_edited)

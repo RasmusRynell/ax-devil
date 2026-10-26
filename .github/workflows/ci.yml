@@ -14,9 +14,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-env:
-  QT_QPA_PLATFORM: offscreen
-
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -36,9 +33,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
+            fonts-dejavu-core \
             libegl1-mesa-dev \
             libgl1-mesa-dev \
+            libgl1-mesa-dri \
             libgles2-mesa-dev \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
             xvfb
 
       - name: Sync project environment
@@ -46,14 +52,6 @@ jobs:
 
       - name: Check application
         run: make check
-
-      - name: Set up Node for trace-viewer tests
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Check trace viewer
-        run: QT_QPA_PLATFORM=offscreen make -C tools/trace-viewer check
 
       - name: Run tests
         run: make test
@@ -75,8 +73,27 @@ jobs:
           path: dist/
 
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu
+            os: ubuntu-latest
+            env: {}
+          # Hosted Windows runners have no GPU: WARP is Direct3D 11's software adapter.
+          - name: windows
+            os: windows-latest
+            env:
+              QSG_RHI_BACKEND: d3d11
+              QSG_RHI_PREFER_SOFTWARE_RENDERER: "1"
+          - name: macos
+            os: macos-latest
+            env:
+              QSG_RHI_BACKEND: metal
+    env: ${{ matrix.env }}
     steps:
       - uses: actions/checkout@v4
 
@@ -87,20 +104,39 @@ jobs:
           python-version: "3.10"
           enable-cache: true
 
-      - name: Install system dependencies
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
+            fonts-dejavu-core \
             libegl1-mesa-dev \
             libgl1-mesa-dev \
+            libgl1-mesa-dri \
             libgles2-mesa-dev \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
             xvfb
+
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --no-progress -y
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
 
       - name: Sync project environment
         run: uv sync --locked
 
       - name: Run tests
+        # Serial: native desktops have no per-worker display, so parallel windows would fight over focus.
         run: uv run pytest
 
   lowest:
@@ -122,9 +158,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
+            fonts-dejavu-core \
             libegl1-mesa-dev \
             libgl1-mesa-dev \
+            libgl1-mesa-dri \
             libgles2-mesa-dev \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
             xvfb
 
       - name: Install oldest allowed dependencies

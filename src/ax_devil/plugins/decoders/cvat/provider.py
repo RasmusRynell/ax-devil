@@ -7,25 +7,19 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from ax_devil.modules.data_sources.file_data_provider.scene_catalog import SceneBuildResult
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
     StorageMode,
 )
-from ax_devil.modules.data_sources.file_data_provider.stores import SceneBuildResult
 from ax_devil.modules.filtering.filter_config import FilterConfig
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.settings.logging_config import get_logger
 
-from .decoder import (
-    CVATFileMetadata as CVATMetadata,
-)
-from .decoder import (
-    CVATParseResult,
-    build_cvat_filter_config,
-    decode_cvat_frame,
-    parse_cvat_document,
-)
+from .decoder import build_cvat_filter_config, decode_cvat_frame
+from .xml_reader import CVATFileMetadata as CVATMetadata
+from .xml_reader import CVATParseResult, parse_cvat_document
 
 logger = get_logger(__name__)
 
@@ -86,7 +80,7 @@ class CVATSceneDataProvider(SceneDecoderFileProvider):
             file_path=xml_file,
             decoder_factory=CVATDecoder,
             decoder_name="cvat_xml",
-            artifact_version=2,
+            artifact_version=3,
             supports_sequence_lookup=True,
             filter_config_factory=self._build_filter_config,
             storage_mode=StorageMode.DERIVED_CACHE,
@@ -138,22 +132,6 @@ class CVATSceneDataProvider(SceneDecoderFileProvider):
     def get_metadata(self) -> CVATMetadata:  # type: ignore[override]
         """Return CVAT-specific metadata captured during parsing."""
         return self._require_cvat_metadata()
-
-    def get_metadata_value(self, path: str) -> Any:
-        """Resolve a metadata value by dot-separated path."""
-        metadata = self._require_cvat_metadata().all_metadata
-        current: Any = metadata
-        for part in path.split("."):
-            if isinstance(current, dict) and part in current:
-                current = current[part]
-            elif isinstance(current, list) and part.isdigit():
-                index = int(part)
-                if index >= len(current):
-                    return None
-                current = current[index]
-            else:
-                return None
-        return current
 
     def list_metadata_paths(self) -> list[str]:
         """List available metadata paths for discovery."""

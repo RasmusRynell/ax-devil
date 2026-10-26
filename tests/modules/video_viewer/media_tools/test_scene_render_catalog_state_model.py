@@ -10,9 +10,10 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QComboBox, QLabel
+from PySide6.QtWidgets import QComboBox
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogLoader,
     SceneRenderCatalogManager,
@@ -319,7 +320,7 @@ def _assert_matches_model(
             assert not status.startswith(ERROR_STATUSES), f"{trace}: {status}"
         assert _combo(selector).currentData() == str(view.path), trace
         assert _combo(selector).currentText() == _expected_label(model, view.path), trace
-        assert _status(selector).text() == status, trace
+        assert _status(selector).full_text() == status, trace
         assert _action(selector, "applyRenderCatalogToAllAction").isEnabled() == usable, trace
         assert _action(selector, "useRenderCatalogAsDefaultAction").isEnabled() == (
             usable and view.path != model.choice
@@ -371,8 +372,8 @@ def _combo(selector: SceneRenderCatalogSelector) -> QComboBox:
     return combo
 
 
-def _status(selector: SceneRenderCatalogSelector) -> QLabel:
-    status = selector.findChild(QLabel, "renderCatalogStatus")
+def _status(selector: SceneRenderCatalogSelector) -> ElidedLabel:
+    status = selector.findChild(ElidedLabel, "renderCatalogStatus")
     assert status is not None
     return status
 

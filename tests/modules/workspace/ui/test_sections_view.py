@@ -1,4 +1,4 @@
-"""A sections view lists its rows, searches and filters them, and reports what the user does with them."""
+"""A sections view lists its rows, searches them, and reports what the user does with them."""
 
 from __future__ import annotations
 
@@ -9,26 +9,16 @@ from unittest.mock import Mock
 
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QLineEdit, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QAbstractButton, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.menu_button import MenuButton
-from ax_devil.modules.workspace.core import (
-    ConsiderationItemRef,
-    FileVideoSourceSpec,
-    SeekableVideoContent,
-    VideoItem,
-)
+from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent, VideoItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import (
-    BY_NAME,
-    WORKSPACE_ORDER,
+    BrowserOpenTarget,
     BrowserSection,
-    Facet,
     OfferedAction,
     RowAction,
-    RowOrder,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
@@ -36,68 +26,13 @@ from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDial
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.source_row import SourceRow
-from tests.helpers.section_tree import caption, captions, titles
+from tests.helpers.section_tree import titles
+from tests.helpers.sections_view import new_view, search_box, set_rows, view_tree, view_with
 from tests.helpers.widgets import required_child
-
-
-def _video_row(name: str) -> WorkspaceBrowserRow:
-    return WorkspaceBrowserRow(row_id=name, label=name, icon_kind="video")
 
 
 def _make_video(name: str = "test.mp4") -> SeekableVideoContent:
     return SeekableVideoContent(display_name=name, source_spec=FileVideoSourceSpec(path=Path(f"/tmp/{name}")))
-
-
-def _new_view() -> SectionsView:
-    return SectionsView("test", "Test", Icon.WORKSPACE)
-
-
-def _view_with(qtbot: QtBot, *rows: WorkspaceBrowserRow) -> SectionsView:
-    view = _new_view()
-    qtbot.addWidget(view)
-    _set_rows(view, rows)
-    return view
-
-
-def _set_rows(view: SectionsView, rows: tuple[WorkspaceBrowserRow, ...]) -> None:
-    view.set_sections((WorkspaceBrowserSection(BrowserSection.VIDEOS, rows),))
-
-
-def _tree(view: SectionsView) -> QTreeWidget:
-    tree: QTreeWidget | None = view.findChild(QTreeWidget)
-    assert tree is not None
-    return tree
-
-
-def _search(view: SectionsView) -> QLineEdit:
-    search: QLineEdit | None = view.findChild(QLineEdit)
-    assert search is not None
-    return search
-
-
-def _menu_button(view: SectionsView, text: str) -> MenuButton | None:
-    """Return the toolbar button *text* if the view shows it, else None."""
-    [button] = [button for button in view.findChildren(MenuButton) if button.text() == text]
-    return button if button.isVisibleTo(view) else None
-
-
-def _filter_entries(view: SectionsView) -> dict[str, bool]:
-    """Return what the Filter offers, each entry with whether its rows are shown; empty while it is absent."""
-    [button] = [button for button in view.findChildren(MenuButton) if button.text() == "Filter"]
-    menu = button.menu()
-    assert menu is not None
-    if not button.isVisibleTo(view):
-        return {}
-    return {action.text(): action.isChecked() for action in menu.actions() if not action.isSeparator()}
-
-
-def _choose_in_filter(view: SectionsView, entry: str) -> None:
-    """Check or uncheck *entry* in the Filter, as the user does."""
-    [button] = [button for button in view.findChildren(MenuButton) if button.text() == "Filter"]
-    menu = button.menu()
-    assert menu is not None
-    [action] = [action for action in menu.actions() if action.text() == entry]
-    action.trigger()
 
 
 def _row(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
@@ -105,19 +40,19 @@ def _row(item: QTreeWidgetItem) -> WorkspaceBrowserRow:
 
 
 def _row_widget(view: SectionsView, item: QTreeWidgetItem) -> SourceRow:
-    widget = _tree(view).itemWidget(item, 0)
+    widget = view_tree(view).itemWidget(item, 0)
     assert isinstance(widget, SourceRow)
     return widget
 
 
 def _required_item_row(view: SectionsView, index: int = 0) -> QTreeWidgetItem:
-    section = _tree(view).topLevelItem(0)
+    section = view_tree(view).topLevelItem(0)
     assert section is not None
     return required_child(section, index)
 
 
 def test_renders_explicit_rows(qtbot: QtBot) -> None:
-    view = _view_with(
+    view = view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-0",
@@ -144,18 +79,18 @@ def test_refresh_preserves_expansion_by_identity_after_reordering(qtbot: QtBot) 
     second = WorkspaceBrowserRow(
         row_id="second", label="Same name", icon_kind="playlist", children=(replace(child, row_id="other-child"),)
     )
-    view = _view_with(qtbot, first, second)
+    view = view_with(qtbot, first, second)
     _required_item_row(view, 0).setExpanded(False)
     _required_item_row(view, 1).setExpanded(True)
 
-    _set_rows(view, (second, replace(first, label="Renamed")))
+    set_rows(view, (second, replace(first, label="Renamed")))
 
     assert _required_item_row(view, 0).isExpanded()
     assert not _required_item_row(view, 1).isExpanded()
 
 
 def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
-    view = _view_with(
+    view = view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-11",
@@ -173,8 +108,8 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
 
 
 def test_a_section_row_is_not_selectable_or_openable_and_is_not_searchable(qtbot: QtBot) -> None:
-    view = _view_with(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"))
-    section = _tree(view).topLevelItem(0)
+    view = view_with(qtbot, WorkspaceBrowserRow(row_id="clip", label="clip.mp4", icon_kind="video"))
+    section = view_tree(view).topLevelItem(0)
     assert section is not None
 
     assert section.isExpanded()
@@ -182,23 +117,23 @@ def test_a_section_row_is_not_selectable_or_openable_and_is_not_searchable(qtbot
     assert section.toolTip(0) == ""
     activated = Mock()
     view.tree.row_action_requested.connect(activated)
-    _tree(view).itemDoubleClicked.emit(section, 0)
+    view_tree(view).itemDoubleClicked.emit(section, 0)
     activated.assert_not_called()
     assert _row(required_child(section, 0)).label == "clip.mp4"
 
-    _search(view).setText("videos")
+    search_box(view).setText("videos")
 
     assert section.isHidden()
     assert required_child(section, 0).isHidden()
 
-    _search(view).setText("clip")
+    search_box(view).setText("clip")
 
     assert not section.isHidden()
     assert not required_child(section, 0).isHidden()
 
 
 def test_tree_items_expose_their_detail_as_accessible_text(qtbot: QtBot) -> None:
-    view = _new_view()
+    view = new_view()
     qtbot.addWidget(view)
     view.set_sections(
         (
@@ -211,7 +146,7 @@ def test_tree_items_expose_their_detail_as_accessible_text(qtbot: QtBot) -> None
             ),
         )
     )
-    section = _tree(view).topLevelItem(0)
+    section = view_tree(view).topLevelItem(0)
     assert section is not None
 
     def accessible_text(item: QTreeWidgetItem) -> object:
@@ -231,33 +166,42 @@ def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
             children=(WorkspaceBrowserRow(row_id="entry", label="Match", icon_kind="video"),),
         ),
     )
-    view = _view_with(qtbot, *rows)
-    _search(view).setText("Match")
+    view = view_with(qtbot, *rows)
+    search_box(view).setText("Match")
     _required_item_row(view).setExpanded(False)
 
-    _set_rows(view, rows)
+    set_rows(view, rows)
 
     assert _required_item_row(view).isExpanded()
 
 
-def test_a_hidden_row_stays_listed_and_dimmed_also_in_a_search(qtbot: QtBot) -> None:
+def test_hidden_rows_are_revealed_without_unhiding_and_stay_filtered_in_search(qtbot: QtBot) -> None:
     hidden = _hidden("Warehouse door")
-    view = _view_with(qtbot, hidden)
+    view = view_with(qtbot, hidden)
+    assert titles(view.tree) == []
+    [toggle] = [button for button in view.findChildren(QAbstractButton) if button.toolTip() == "Show hidden items"]
+    assert toggle.isVisibleTo(view)
+
+    search_box(view).setText("warehouse")
+    assert titles(view.tree) == []
+
+    toggle.click()
     assert titles(view.tree) == ["Warehouse door"]
     assert _row(_required_item_row(view)).is_dimmed
-    assert _filter_entries(view) == {}, "hiding a row is not a Filter choice"
 
-    _search(view).setText("warehouse")
+    set_rows(view, (hidden,))
+    assert titles(view.tree) == ["Warehouse door"]
+    toggle.click()
+    assert titles(view.tree) == []
+
+    set_rows(view, (replace(hidden, is_considered=True),))
 
     assert titles(view.tree) == ["Warehouse door"]
-
-    _set_rows(view, (replace(hidden, is_considered=True),))
-
     assert not _row(_required_item_row(view)).is_dimmed
 
 
 def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> None:
-    view = _view_with(
+    view = view_with(
         qtbot,
         WorkspaceBrowserRow(row_id="row-5", label="Parking lot north", icon_kind="video"),
         WorkspaceBrowserRow(
@@ -268,7 +212,7 @@ def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> Non
             detail="site_a",
         ),
     )
-    search = _search(view)
+    search = search_box(view)
     location_row = _required_item_row(view, 1)
     assert _row(location_row).label == "cam.mp4"
     assert "/data/site_a/cam.mp4" in _row_widget(view, location_row).toolTip()
@@ -287,7 +231,7 @@ def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> Non
 
 
 def test_search_keeps_matching_playlist_children_reachable(qtbot: QtBot) -> None:
-    view = _view_with(
+    view = view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-7",
@@ -300,7 +244,7 @@ def test_search_keeps_matching_playlist_children_reachable(qtbot: QtBot) -> None
         ),
     )
 
-    _search(view).setText("warehouse")
+    search_box(view).setText("warehouse")
 
     top_item = _required_item_row(view)
     assert not top_item.isHidden()
@@ -321,13 +265,13 @@ def _double_click(
 def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
     """Double-clicking a collapsed row asks to open it and leaves its children visible instead of toggling them."""
     video = _make_video()
-    view = _view_with(
+    view = view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="row-13",
             label="Video",
             icon_kind="video",
-            activation_target=(video, 0),
+            activation_target=BrowserOpenTarget(video, 0),
             children=(WorkspaceBrowserRow(row_id="row-14", label="Overlay", icon_kind="overlay"),),
         ),
     )
@@ -343,18 +287,18 @@ def test_double_click_asks_to_open_the_row_and_expands_it(qtbot: QtBot) -> None:
 
 
 def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> None:
-    view = _view_with(
+    view = view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id="video",
             label="Video",
             icon_kind="video",
             item=VideoItem(video=Path("/tmp/video.mp4")),
-            actions=(OfferedAction(RowAction.RENAME), OfferedAction(RowAction.REMOVE)),
+            actions=(OfferedAction(RowAction.EDIT), OfferedAction(RowAction.REMOVE)),
         ),
     )
     view.show()
-    tree = _tree(view)
+    tree = view_tree(view)
     position = tree.visualItemRect(_required_item_row(view)).center()
     destroyed = Mock()
 
@@ -371,7 +315,7 @@ def test_context_menus_and_actions_are_disposed_after_closing(qtbot: QtBot) -> N
         tree.customContextMenuRequested.emit(position)
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
-    assert destroyed.call_count == 9  # Each time: the menu, Rename, and Remove.
+    assert destroyed.call_count == 9  # Each time: the menu, Edit, and Remove.
     assert view.tree.findChildren(QMenu) == []
 
 
@@ -402,7 +346,7 @@ def test_workspace_item_info_dialog_fits_screen_and_is_resizable(qtbot: QtBot) -
 
 def test_an_unavailable_row_shows_its_reason(qtbot: QtBot) -> None:
     item = VideoItem(video=Path("/missing/lot.mp4"))
-    view = _view_with(
+    view = view_with(
         qtbot,
         WorkspaceBrowserRow(
             row_id=item.id,
@@ -418,161 +362,5 @@ def test_an_unavailable_row_shows_its_reason(qtbot: QtBot) -> None:
 
 def _hidden(label: str) -> WorkspaceBrowserRow:
     """Return a playlist entry row the user hid from playback."""
-    ref = ConsiderationItemRef.playlist_entry("playlist-id", 0)
+    ref = ConsiderationItemRef("item-id", "Suite/a.mp4")
     return WorkspaceBrowserRow(row_id=label, label=label, icon_kind="video", consideration_ref=ref, is_considered=False)
-
-
-def test_the_filter_is_absent_without_a_choice_and_appears_with_one(qtbot: QtBot) -> None:
-    view = _view_with(qtbot, _camera("Q1656", "Box Camera"))
-    assert _menu_button(view, "Filter") is None
-
-    _set_rows(view, (_camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker")))
-    assert _menu_button(view, "Filter") is not None
-
-    _set_rows(view, (_camera("Q1656", "Box Camera"),))
-    assert _menu_button(view, "Filter") is None
-
-
-def _choose_order(view: SectionsView, label: str) -> None:
-    """Pick the order *label* in the Sort, as the user does."""
-    sort = _menu_button(view, "Sort")
-    assert sort is not None
-    menu = sort.menu()
-    assert menu is not None
-    [action] = [action for action in menu.actions() if action.text() == label]
-    action.trigger()
-
-
-def _ordered_view(qtbot: QtBot, *orders: RowOrder) -> SectionsView:
-    view = _view_with(
-        qtbot,
-        *(WorkspaceBrowserRow(row_id=name, label=name, icon_kind="video") for name in ("b.mp4", "C.mp4", "a.mp4")),
-    )
-    view.set_orders(orders)
-    return view
-
-
-def test_sort_is_absent_with_one_order_and_lists_rows_as_given(qtbot: QtBot) -> None:
-    view = _ordered_view(qtbot, WORKSPACE_ORDER)
-
-    assert _menu_button(view, "Sort") is None
-    assert titles(view.tree) == ["b.mp4", "C.mp4", "a.mp4"]
-
-
-def test_choosing_an_order_lists_the_rows_again_and_the_order_survives_new_sections(qtbot: QtBot) -> None:
-    view = _ordered_view(qtbot, WORKSPACE_ORDER, BY_NAME)
-
-    _choose_order(view, "Name")
-    assert titles(view.tree) == ["a.mp4", "b.mp4", "C.mp4"]
-
-    _set_rows(view, tuple(_video_row(name) for name in ("b.mp4", "C.mp4", "0.mp4", "a.mp4")))
-    assert titles(view.tree) == ["0.mp4", "a.mp4", "b.mp4", "C.mp4"]
-
-
-def test_an_order_sorts_the_rows_of_each_section_but_not_the_rows_under_them(qtbot: QtBot) -> None:
-    view = _ordered_view(qtbot, WORKSPACE_ORDER, BY_NAME)
-    entries = (_video_row("z.mp4"), _video_row("y.mp4"))
-    view.set_sections(
-        (
-            WorkspaceBrowserSection(
-                BrowserSection.PLAYLISTS,
-                (
-                    replace(_video_row("Night"), icon_kind="playlist", children=entries),
-                    replace(_video_row("Day"), icon_kind="playlist"),
-                ),
-            ),
-        )
-    )
-    _tree(view).expandAll()
-
-    _choose_order(view, "Name")
-
-    assert titles(view.tree) == ["Day", "Night", "z.mp4", "y.mp4"]
-
-
-def test_the_footer_sits_under_the_tree_and_goes_with_the_toolbar_while_the_empty_page_shows(qtbot: QtBot) -> None:
-    empty = QLabel("Nothing yet")
-    view = SectionsView("test", "Test", Icon.WORKSPACE, empty_page=empty)
-    qtbot.addWidget(view)
-    add = view.add_footer_button("Add thing", Icon.ADD)
-    panel = QLabel("Panel")
-    view.set_footer_panel(panel)
-    view.resize(300, 500)
-    view.show()
-    assert empty.isVisibleTo(view) and not add.isVisibleTo(view) and not panel.isVisibleTo(view)
-
-    _set_rows(view, (_video_row("a.mp4"),))
-
-    assert not empty.isVisibleTo(view) and add.isVisibleTo(view) and panel.isVisibleTo(view)
-    tree_bottom = view.tree.mapTo(view, view.tree.rect().bottomLeft()).y()
-    assert tree_bottom <= add.mapTo(view, add.rect().topLeft()).y() < panel.mapTo(view, panel.rect().topLeft()).y()
-
-
-def _camera(name: str, product_type: str) -> WorkspaceBrowserRow:
-    return WorkspaceBrowserRow(
-        row_id=name, label=name, icon_kind="live_video", facets=frozenset({Facet("Type", product_type)})
-    )
-
-
-def _filtered_view(qtbot: QtBot, *rows: WorkspaceBrowserRow) -> SectionsView:
-    """Return a view of *rows* whose Filter hides Network Speaker."""
-    view = _view_with(qtbot, *rows)
-    _choose_in_filter(view, "Network Speaker")
-    return view
-
-
-def test_a_search_matching_only_filtered_out_rows_keeps_the_section_listed(qtbot: QtBot) -> None:
-    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker"))
-
-    _search(view).setText("c1310")
-
-    assert captions(view.tree) == ["Videos, 2, 1 filtered out"]
-    assert titles(view.tree) == []
-
-
-def test_a_section_counts_the_rows_the_filter_hides(qtbot: QtBot) -> None:
-    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker"))
-
-    assert caption(view.tree, "Videos").text() == "Videos  2  · 1 filtered out"
-    assert captions(view.tree) == ["Videos, 2, 1 filtered out"]
-
-    _choose_in_filter(view, "Network Speaker")
-
-    assert caption(view.tree, "Videos").text() == "Videos  2"
-    assert captions(view.tree) == ["Videos, 2"]
-
-
-def test_a_section_counts_only_filtered_out_rows_the_search_would_otherwise_show(qtbot: QtBot) -> None:
-    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker"))
-
-    _search(view).setText("q1656")
-
-    assert captions(view.tree) == ["Videos, 2"]
-
-    _search(view).setText("c1310")
-
-    assert captions(view.tree) == ["Videos, 2, 1 filtered out"]
-
-
-def test_a_section_counts_a_filtered_out_entry_with_the_lane_under_it_matching_a_search(qtbot: QtBot) -> None:
-    lane = WorkspaceBrowserRow(row_id="lane", label="Overlay lane", icon_kind="overlay")
-    speaker = replace(_camera("C1310", "Network Speaker"), children=(lane,))
-    view = _filtered_view(qtbot, _camera("Q1656", "Box Camera"), speaker)
-
-    _search(view).setText("lane")
-
-    assert captions(view.tree) == ["Videos, 2, 2 filtered out"]
-
-
-def test_the_filter_offers_a_group_once_it_has_a_choice_and_hides_rows_by_it(qtbot: QtBot) -> None:
-    view = _view_with(qtbot, _camera("Q1656", "Box Camera"))
-    assert _filter_entries(view) == {}, "one type is no choice"
-
-    _set_rows(view, (_camera("Q1656", "Box Camera"), _camera("C1310", "Network Speaker")))
-    assert _filter_entries(view) == {"Box Camera": True, "Network Speaker": True}
-
-    _choose_in_filter(view, "Network Speaker")
-    assert titles(view.tree) == ["Q1656"]
-
-    _set_rows(view, (_camera("C1310", "Network Speaker"),))
-    assert _filter_entries(view) == {"Network Speaker": False}, "a hidden type stays offered, to show it again"

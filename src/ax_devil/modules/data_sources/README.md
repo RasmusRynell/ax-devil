@@ -16,7 +16,7 @@ allowance equally across open sources (lanes sharing a source count once) and re
 preference change. Rebalancing shrinks before growing, so the sum of shares never exceeds the allowance. The
 allowance itself is the user's [setting](../../../../docs/settings.md#video-cache-memory); neither mode preallocates.
 
-- A cached frame reserves the larger of its source planes and full RGB24; conversion does not change the reservation.
+- A cached frame reserves its source plane bytes; RGBA pixels are converted per delivery and not cached.
 - Prefetch may evict older history, but never a frame between the playhead, the gap it is filling, and the frame it
   admits. Its window follows the read direction, and it jumps back to a keyframe only when the frames from it to the
   playhead fit the budget, so a keyframe group is never decoded repeatedly to keep one more frame.

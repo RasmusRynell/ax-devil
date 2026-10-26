@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ax_devil.modules.workspace.core.bookmarks import Bookmark, BookmarkKind, BookmarkTarget
-from ax_devil.modules.workspace.core.items import WorkspaceItem
+from ax_devil.modules.workspace.core.item_base import WorkspaceItem
 
 UNTITLED_NAME = "Untitled"
 WORKSPACE_FILE_SUFFIX = ".ax-devil.workspace"
@@ -87,6 +87,16 @@ class Workspace:
     def add_items(self, items: Sequence[WorkspaceItem]) -> Workspace:
         """Return this workspace with *items* appended."""
         return replace(self, items=(*self.items, *items))
+
+    def replace_item(self, item: WorkspaceItem) -> Workspace:
+        """Replace a same-kind item in place, retaining its bookmarks and reviewed targets.
+
+        Raise ``KeyError`` for an absent id and ``ValueError`` for a different kind.
+        """
+        current = self.item(item.id)
+        if current.kind != item.kind:
+            raise ValueError("An edited item must keep its kind.")
+        return replace(self, items=tuple(item if old.id == item.id else old for old in self.items))
 
     def remove_item(self, item_id: str) -> Workspace:
         """Return this workspace without the item with *item_id* and its bookmarks and reviewed targets.

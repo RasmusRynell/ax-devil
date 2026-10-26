@@ -9,6 +9,7 @@ from typing import Any
 from PySide6.QtCore import QObject
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.filtering import FilterConfig, FilterFactory, build_default_filter_config
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.settings.logging_config import get_logger
@@ -27,10 +28,7 @@ class WebSocketWorker(Worker):
         *,
         topic: str,
         channel_id: int,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         decoder: PayloadToSceneDecoder,
         source_id: str = "websocket_overlay",
         client_factory: Callable[..., DataHubWebSocketClient] | None = None,
@@ -38,10 +36,7 @@ class WebSocketWorker(Worker):
         super().__init__(source_id)
         self.topic = topic
         self.channel_id = channel_id
-        self.device_host = device_host
-        self.device_username = device_username
-        self.device_password = device_password
-        self.device_api_protocol = device_api_protocol
+        self.device = device
         self.decoder = decoder
         self.client_factory = client_factory or DataHubWebSocketClient
         self.client: DataHubWebSocketClient | None = None
@@ -85,10 +80,7 @@ class WebSocketWorker(Worker):
             if not self._is_running():
                 return
             self.client = self.client_factory(
-                host=self.device_host,
-                username=self.device_username,
-                password=self.device_password,
-                protocol=self.device_api_protocol,
+                device=self.device,
                 topic=self.topic,
                 channel_id=self.channel_id,
             )
@@ -143,14 +135,11 @@ class WebSocketWorker(Worker):
                     "things might not work correctly! be careful"
                 )
 
-            if isinstance(scene.time_slice.start, int):
+            capture_time_us = scene.time_slice.start_timestamp_us
+            if capture_time_us is None:
                 raise ValueError("Streamed data with ints as timestamps is not supported at this moment")
 
-            capture_timestamp = scene.time_slice.start.timestamp()
-            frame_id = FrameIdentifier(
-                sequence_id=self.message_count,
-                timestamp_monotime_us=capture_timestamp * 1000000.0,
-            )
+            frame_id = FrameIdentifier(sequence_id=self.message_count, timestamp_us=capture_time_us)
             overlay_data = OverlayData(
                 content=scene,
                 frame_id=frame_id,
@@ -189,10 +178,7 @@ class WebSocketOverlaySource(OverlaySource):
         *,
         topic: str,
         channel_id: int,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         decoder: PayloadToSceneDecoder,
         handler_type: str,
         source_id: str = "websocket_overlay",
@@ -207,10 +193,7 @@ class WebSocketOverlaySource(OverlaySource):
         self.worker = WebSocketWorker(
             topic=topic,
             channel_id=channel_id,
-            device_host=device_host,
-            device_username=device_username,
-            device_password=device_password,
-            device_api_protocol=device_api_protocol,
+            device=device,
             decoder=decoder,
             source_id=source_id,
             client_factory=client_factory,
@@ -245,9 +228,9 @@ class WebSocketOverlaySource(OverlaySource):
             logger.warning(f"[{self.source_id}] WebSocket worker did not stop within 2000 ms")
         self.cleanup_posted_events()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for overlay production to complete."""
-        return bool(self.worker.wait(timeout))
+        return bool(self.worker.wait(timeout_ms))
 
     def get_filter_config(self) -> FilterConfig:
         """Return the filter configuration for this overlay source."""

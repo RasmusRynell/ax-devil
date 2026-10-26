@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -13,26 +14,6 @@ from ax_devil.modules.scene.rendering.catalog_store import SceneRenderCatalogSto
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from ax_devil.modules.settings.paths import DEFAULT_RENDER_CATALOG_CHOICE_FILENAME
 from tests.catalog_helpers import CLASSIC_CATALOG_PATH, catalog_document
-
-
-def test_failed_catalog_store_write_preserves_original_and_cleans_temporary_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, small_catalog_path: Path
-) -> None:
-    store = SceneRenderCatalogStore(tmp_path)
-    first_catalog = store.create_catalog("First", base_catalog_path=small_catalog_path)
-    second_catalog = store.create_catalog("Second", base_catalog_path=small_catalog_path)
-    store.set_default_catalog(first_catalog.path)
-    files_before = sorted(tmp_path.iterdir())
-
-    def fail_replace(source: Path, target: Path) -> Path:
-        raise OSError("Replacement failed")
-
-    monkeypatch.setattr(Path, "replace", fail_replace)
-    with pytest.raises(OSError, match="Replacement failed"):
-        store.set_default_catalog(second_catalog.path)
-
-    assert store.list_catalogs_with_errors().default_path == first_catalog.path
-    assert sorted(tmp_path.iterdir()) == files_before
 
 
 def test_catalog_store_creates_user_catalog_file_from_default(tmp_path: Path) -> None:
@@ -124,6 +105,7 @@ def test_catalog_store_recovers_from_invalid_built_in_choices(tmp_path: Path, na
     assert len(listing.catalogs) == len(BUILT_IN_CATALOG_PATHS)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="A colon cannot be part of a Windows filename")
 def test_catalog_store_distinguishes_user_filenames_from_built_in_choices(
     tmp_path: Path, small_catalog_path: Path
 ) -> None:

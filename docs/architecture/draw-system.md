@@ -9,14 +9,14 @@ rules are in its README.
 `Classification`, filters, draw recipes, catalog JSON, template compilation, and hover target indexing. See the
 [rendering README](../../src/ax_devil/modules/scene/rendering/README.md).
 
-`ax_devil.modules.video_player` owns generic drawing. It knows about video frames, prepared geometry, paths and
-glyphs, Qt Quick display and image export, viewport math, hover chip placement and selection highlight, and metrics collection. It must not
+`ax_devil.modules.video_player` owns generic drawing. It knows about video frames, prepared quads and
+glyphs, Qt Quick display and image export, viewport math, hover chip placement and selection highlight. It must not
 become Scene-aware. See the [video player README](../../src/ax_devil/modules/video_player/README.md).
 
-The boundary object is `VideoOverlayData`. Scene code supplies a `drawing_generator`, `interaction_provider`, and
-`metrics_provider`; the video player calls those protocols without knowing what domain object produced them. The
+The boundary object is `VideoOverlayData`. Scene code supplies a `drawing_generator` and `interaction_provider`;
+the video player calls those protocols without knowing what domain object produced them. The
 `DrawingTarget` (`video_player/engine/drawing.py`) accepts batches of catalog-resolved Drawing Instructions. Catalog
-instructions resolve normalized coordinates straight into final backend data; there is no intermediate list.
+instructions resolve normalized coordinates straight into prepared quads; there is no intermediate list.
 
 ## Runtime Flow
 
@@ -32,19 +32,15 @@ FrameData + OverlayData(Scene)
        -> optional filter -> SceneRenderCatalog.render_scene(...)
        -> one generated update function per recipe evaluates all its rows at once
        -> batches of Drawing Instructions for rows that completed without failures
-  -> DrawingBuffer prepares each queued instruction kind once at finish() (labels as they arrive)
-  -> PreparedDrawing (vertex bytes, resolved paths, shaped glyphs, label sprites)
-  -> QuickOverlay binds changed items to the retained Qt Quick scene graph
+  -> DrawingBuffer prepares each queued instruction kind once at finish() (text and labels are laid out together)
+  -> PreparedDrawing (one quad stream: shapes, then text, then labels, plus one glyph atlas page)
+  -> OverlayItem uploads a changed drawing to the Qt Quick scene graph
 ```
 
 Live and offline viewers differ only in how they obtain `FrameData` and `OverlayData`; both converge on
 `SceneFramePresenter`. The presenter attaches the active catalog through a provider callback as well as a value, so an
 already-created overlay sees a newly selected catalog before the next frame is built. `FrameImageRenderer` runs the
 same path on a non-visible surface for export, at native source resolution.
-
-Rendering diagnostics flow the other way: `CachedSceneOverlay` reports preparation metrics through the overlay
-protocol and `VideoFrameRenderer` records one paint sample per preparation; the
-[diagnostics README](../../src/ax_devil/modules/diagnostics/README.md#measurement-definitions) defines the boundaries.
 
 ## Catalogs And Their Users
 
@@ -59,7 +55,7 @@ built-ins, the default catalog, per-view visibility, failed loads) are in
 ## Extension Points
 
 - Change a shipped look: edit the built-in catalog JSON; touch the schema only if the shape changes.
-- Expose more Scene data to recipes: add typed inputs in `scene/rendering/catalog.py`, then schema and compiler tests.
+- Expose more Scene data to recipes: add typed inputs in `scene/rendering/catalog_tables.py`, then schema and compiler tests.
 - Add a Drawing Instruction: extend `DrawingTarget` and `DrawingBuffer` in `video_player/engine`, declare its
   `primitive` fields in `PRIMITIVES` (`template_runtime/definitions.py`), emit it in `template_runtime/executable.py`,
   regenerate the schema.

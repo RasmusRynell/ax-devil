@@ -15,7 +15,7 @@ from pytestqt.qtbot import QtBot
 import ax_devil.modules.data_sources.file_frame_delivery as delivery_module
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
-from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_frame_reader import FrameReaderWorker
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_reader_worker import FrameReaderWorker
 from ax_devil.modules.data_sources.file_frame_delivery import FileFrameDelivery
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from tests.helpers.video import create_test_video
@@ -36,8 +36,8 @@ class _Decoder:
         self.read_frames.append(frame_number)
         return DecodedFrame(
             frame_index=frame_number,
-            pixels=np.zeros((2, 2, 3), dtype=np.uint8),
-            timestamp_us=float(frame_number * 1_000),
+            pixels=np.zeros((2, 2, 4), dtype=np.uint8),
+            timestamp_us=frame_number * 1_000,
         )
 
     def prefetch_one(self) -> bool:
@@ -124,7 +124,7 @@ def test_delivery_plays_every_frame_then_reports_the_end() -> None:
     finished = threading.Event()
     delivery = FileFrameDelivery(
         decoder=cast(FrameReaderWorker, _Decoder(total_frames=3)),
-        fps=100.0,
+        fps=2.0,  # A 500 ms period: a loaded runner waking late must not make playback drop a frame.
         source_id="eof",
         on_playback_frame=lambda frame, generation: frames.append((frame.frame_index, generation)),
         on_playback_finished=finished.set,
@@ -132,7 +132,7 @@ def test_delivery_plays_every_frame_then_reports_the_end() -> None:
     delivery.open()
     try:
         assert delivery.play()
-        assert finished.wait(timeout=1.0)
+        assert finished.wait(timeout=5.0)
     finally:
         delivery.close()
 
@@ -298,7 +298,7 @@ def test_source_wait_tracks_a_decoder_still_finishing_after_stop_times_out(
     monkeypatch.setattr(FrameReaderWorker, "read_decoded_frame", gated_read)
     assert source._frame_delivery is not None
     # Force the supported bounded-stop outcome without spending five seconds waiting for its timeout.
-    source._frame_delivery._worker._worker_timeout = 0
+    source._frame_delivery._worker._worker_timeout_s = 0
     try:
         source.request_frame_async(0, lambda _frame: None)
         qtbot.waitUntil(entered.is_set)

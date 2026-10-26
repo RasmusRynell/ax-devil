@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-
 import click
 
 from .host import current_host
@@ -17,7 +15,7 @@ class PluginCommands(click.Group):
         """Keep recovery commands usable without loading the application."""
         try:
             return super().invoke(ctx)
-        except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
+        except (OSError, ValueError, KeyError, TypeError) as exc:
             raise click.ClickException(f"{exc}") from exc
 
 

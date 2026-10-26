@@ -1,4 +1,4 @@
-"""Small dialog asking for a Workspace Item's new name."""
+"""Small dialog asking for a new name, such as a bookmark's."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from ax_devil.modules.chrome.base_dialog import BaseDialog
 
 
 class RenameDialog(BaseDialog):
-    """Edit one name; an empty name returns the item to its default name."""
+    """Edit one name; an empty name returns it to its default name."""
 
     def __init__(self, name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent, title="Rename", scroll_content=False)

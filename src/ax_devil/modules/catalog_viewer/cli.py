@@ -7,6 +7,7 @@ and draws every example sheet, and ``render`` writes the sheets the catalog view
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,8 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalog, SceneRenderCata
 from ax_devil.modules.settings.config_manager import ConfigManager
 
 _APPLICATION: list[object] = []
-"""Keeps the off-screen Qt application of a command alive until the process ends."""
+"""Keeps the Qt application of a command alive until the process ends."""
+_NEEDS_DISPLAY = "Rendering needs a display with OpenGL; on a headless machine run it under xvfb-run -a"
 PATH_ARGUMENT = click.argument("path", required=False, type=click.Path(path_type=Path, dir_okay=False))
 
 
@@ -55,7 +57,8 @@ def check(path: Path | None, config: Path | None) -> None:
 
     Errors name their place in the file, such as $.templates.object_label.parameters.id_font_size.
     """
-    from ax_devil.modules.catalog_viewer.sheets import drawing_errors, sheets
+    from ax_devil.modules.catalog_viewer.sheet_drawing import drawing_errors
+    from ax_devil.modules.catalog_viewer.sheets import sheets
 
     catalog_path, loaded, document = _load(path, config)
     _application()
@@ -95,11 +98,12 @@ def render(path: Path | None, out_dir: Path, sheet_key: str | None, config: Path
     """Draw the example sheets of PATH (default: the default catalog) as PNG images, as the viewer shows them."""
     from shiboken6 import delete
 
-    from ax_devil.modules.catalog_viewer.sheets import drawing_errors, sheet_frame, sheets
-    from ax_devil.modules.video_player.engine.quick.image_renderer import FrameImageRenderer
+    from ax_devil.modules.catalog_viewer.sheet_drawing import drawing_errors, sheet_frame
+    from ax_devil.modules.catalog_viewer.sheets import sheets
+    from ax_devil.modules.video_player.engine.quick.image_renderer import FrameImageRenderer, NoGraphicsApiError
 
     _catalog_path, loaded, document = _load(path, config)
-    _application()
+    _application(rendering=True)
     chosen = [sheet for sheet in sheets(document) if sheet_key in (None, sheet.key)]
     if not chosen:
         keys = ", ".join(sheet.key for sheet in sheets(document))
@@ -109,7 +113,11 @@ def render(path: Path | None, out_dir: Path, sheet_key: str | None, config: Path
     try:
         for sheet in chosen:
             target = out_dir / f"{sheet.key}.png"
-            if not renderer.render_frame(sheet_frame(sheet, loaded)).save(str(target)):
+            try:
+                image = renderer.render_frame(sheet_frame(sheet, loaded))
+            except NoGraphicsApiError as exc:
+                raise click.ClickException(f"{exc}. {_NEEDS_DISPLAY}") from exc
+            if not image.save(str(target)):
                 raise click.ClickException(f"Could not write PNG image: {target}")
             click.echo(f"{target}  {sheet.description}")
             for diagnostic in drawing_errors(sheet, loaded):
@@ -180,9 +188,14 @@ def _load(path: Path | None, config: Path | None) -> tuple[Path, SceneRenderCata
     return catalog_path, revision.catalog, revision.document
 
 
-def _application() -> None:
-    """Start an off-screen Qt application, which text layout and image rendering need."""
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+def _application(*, rendering: bool = False) -> None:
+    """Start a Qt application; off-screen unless *rendering*, which needs a display with a graphics context."""
+    if not rendering:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    elif sys.platform.startswith("linux") and not any(
+        os.environ.get(name) for name in ("DISPLAY", "WAYLAND_DISPLAY", "QT_QPA_PLATFORM")
+    ):
+        raise click.ClickException(f"{_NEEDS_DISPLAY} (no display found)")
     from PySide6.QtWidgets import QApplication
 
     if QApplication.instance() is None:

@@ -12,6 +12,7 @@ import pytest
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import OverlayData
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.data_sources.live.datahub_client import (
     DataHubTopicSample,
     DataHubWebSocketClient,
@@ -67,10 +68,7 @@ def _source(client: _FakeClient) -> WebSocketOverlaySource:
     return WebSocketOverlaySource(
         topic="topic",
         channel_id=4,
-        device_host="camera.local",
-        device_username="root",
-        device_password="pass",
-        device_api_protocol="https",
+        device=DeviceConnection("camera.local", DeviceProtocol.HTTPS, 0, "root", "pass"),
         decoder=_Decoder(),
         handler_type="test",
         client_factory=cast(Callable[..., DataHubWebSocketClient], client),
@@ -101,7 +99,7 @@ def test_samples_become_overlays_keyed_by_scene_time(qtbot: QtBot) -> None:
         source.deleteLater()
 
     assert [overlay.frame_id.sequence_id for overlay in overlays] == [1, 2]
-    assert [overlay.frame_id.timestamp_monotime_us for overlay in overlays] == [12_500_000, 13_000_000]
+    assert [overlay.frame_id.timestamp_us for overlay in overlays] == [12_500_000, 13_000_000]
     assert set(overlays[0].content.entities) == {EntityId("a")}
     assert overlays[0].metadata == {
         "websocket_topic": "topic",

@@ -2,7 +2,7 @@
 
 A scan identifies devices from what they give without login: the unrestricted ``basicdeviceinfo.cgi`` properties and
 ``systemready.cgi``. Only when given logins does it send credentials, and only to devices that already answered as
-Axis devices, through the endpoint that identified them, as an HTTP Digest answer and never as a plain password.
+Axis devices, over the protocol that identified them, as an HTTP Digest answer and never as a plain password.
 """
 
 from __future__ import annotations
@@ -20,22 +20,21 @@ import time
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
-from functools import partial
 from typing import Any
 
-from ax_devil_device_api import Client, DeviceConfig
+from ax_devil_device_api import Client
 from ax_devil_device_api.core.config import AuthMethod
 from ax_devil_device_api.utils.errors import AuthenticationError
 
 from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.settings.config_manager import ConfigManager, expand_environment_reference
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 MAX_SCAN_TARGETS = 4096
-# Tried in this order on a device with both open; plain HTTP answers faster and needs no credentials here.
-_PORT_CONFIGS: dict[int, Callable[[str, str, str], Any]] = {80: DeviceConfig.http, 443: DeviceConfig.https}
+_SCAN_PORTS = {443: DeviceProtocol.HTTPS, 80: DeviceProtocol.HTTP}  # The standard ports the probe looks for.
 _AXIS_BRAND = "AXIS"
 _CONNECT_TIMEOUT_SECONDS = 0.5
 _MAX_OPEN_SOCKETS = 256
@@ -104,7 +103,7 @@ class SignIn(Enum):
 @dataclass(frozen=True)
 class DiscoveredCamera:
     """An Axis device that answered the network scan; architecture and SoC are known only once signed in, and *login*
-    is the one the device accepted."""
+    is the one the device accepted. *protocol* is the one its web API identified itself as Axis over."""
 
     host: str
     model: str
@@ -116,6 +115,7 @@ class DiscoveredCamera:
     soc: str = ""
     sign_in: SignIn = SignIn.NOT_TRIED
     login: Login | None = None
+    protocol: DeviceProtocol = DeviceProtocol.HTTPS
 
     @property
     def uptime(self) -> str:
@@ -206,6 +206,7 @@ def scan_network(
     found: Callable[[DiscoveredCamera], None] = lambda _camera: None,
     token: CancelToken = NEVER,
     low_impact: bool = False,
+    prefer: DeviceProtocol = DeviceProtocol.HTTPS,
 ) -> list[DiscoveredCamera]:
     """Return the Axis devices at *targets*, or on this computer's /24 network if there are none, sorted by address.
 
@@ -213,6 +214,8 @@ def scan_network(
     returns. With *logins*, the scan also tries them in order on each device until one signs in, for what only a
     signed-in user may read. Once *token* is cancelled the scan asks devices nothing new, calls *found* no more and
     raises `Cancelled` instead of returning.
+
+    A device is asked over *prefer* first, and over the other protocol only when it does not answer there.
 
     With *low_impact*, use one-quarter the probe sockets and identification workers, with four times the completion
     window for queued requests. Request timeouts stay unchanged.
@@ -233,7 +236,7 @@ def scan_network(
         try:
             while (job := pending.get()) is not None:
                 sealed.raise_if_cancelled()
-                camera = _identify(*job, logins, sealed)
+                camera = _identify(*job, logins, prefer, sealed)
                 with lock:
                     sealed.raise_if_cancelled()
                     if camera is not None:
@@ -251,7 +254,7 @@ def scan_network(
         worker.start()
     try:
         try:
-            per_batch = _MAX_OPEN_SOCKETS // concurrency_divisor // len(_PORT_CONFIGS)
+            per_batch = _MAX_OPEN_SOCKETS // concurrency_divisor // len(_SCAN_PORTS)
             for start in token.polled(range(0, len(hosts), per_batch)):
                 open_ports = _open_ports(hosts[start : start + per_batch])
                 token.raise_if_cancelled()  # The probe blocks; cancelled meanwhile, no device is asked anything.
@@ -283,7 +286,7 @@ def _open_ports(hosts: Sequence[str]) -> dict[str, set[int]]:
     with selectors.DefaultSelector() as selector:
         try:
             for host in hosts:
-                for port in _PORT_CONFIGS:
+                for port in _SCAN_PORTS:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.setblocking(False)
                     result = sock.connect_ex((host, port))
@@ -308,42 +311,53 @@ def _open_ports(hosts: Sequence[str]) -> dict[str, set[int]]:
 
 
 def _identify(
-    host: str, ports: Collection[int], logins: Sequence[Login], token: CancelToken
+    host: str, ports: Collection[int], logins: Sequence[Login], prefer: DeviceProtocol, token: CancelToken
 ) -> DiscoveredCamera | None:
-    """Return the Axis device at *host* from what it gives without login, signed in to with the first of *logins* it
-    accepts, or ``None`` if no Axis device answers."""
-    for port, make in _PORT_CONFIGS.items():
-        if port not in ports:
-            continue
-        config = make(host, "", "")
-        config.timeout = _REQUEST_TIMEOUT_SECONDS
-        try:
-            with Client(config) as client:
-                info: Mapping[str, Any] = client.device.get_info_no_auth()
-                if _text(info, "Brand").upper() != _AXIS_BRAND:
-                    logger.debug(f"Network scan: {host} over {config.protocol.value} does not say it is an Axis device")
-                    continue
-                camera = DiscoveredCamera(
-                    host=host,
-                    model=_text(info, "ProdShortName") or _text(info, "ProdFullName") or _text(info, "ProdNbr"),
-                    serial=_text(info, "SerialNumber"),
-                    firmware=_text(info, "Version"),
-                    product_type=_text(info, "ProdType"),
-                    uptime_seconds=_uptime_seconds(client),
-                )
-        except Exception as exc:  # Anything on the range can answer, in any shape; none of that is an Axis device.
-            logger.debug(f"Network scan could not identify {host} over {config.protocol.value}: {exc}")
-            continue
-        if not logins:
-            return camera
-        return _signed_in(camera, partial(make, host), logins, token)
+    """Return the Axis device at *host* from what it gives without login, asked over *prefer* first and then the other
+    protocol if its port is open, signed in to with the first of *logins* it accepts, or ``None`` if none answers."""
+    for port, protocol in sorted(_SCAN_PORTS.items(), key=lambda entry: entry[1] is not prefer):
+        connection = DeviceConnection(host, protocol, port)
+        if port in ports and (camera := _described(connection)) is not None:
+            return _signed_in(camera, connection, logins, token) if logins else camera
     return None
 
 
+def check_device(connection: DeviceConnection, login: Login, token: CancelToken = NEVER) -> DiscoveredCamera | None:
+    """Return the Axis device at *connection* signed in to with *login*, or ``None`` if no Axis device answers there.
+
+    Nothing is scanned: only *connection* is asked, so a device on a nonstandard port or protocol is reached as it is.
+    """
+    camera = _described(connection)
+    return None if camera is None else _signed_in(camera, connection, (login,), token)
+
+
+def _described(connection: DeviceConnection) -> DiscoveredCamera | None:
+    """Return what the device at *connection* gives without login if it says it is an Axis device, else ``None``."""
+    try:
+        with Client(replace(connection, timeout_s=_REQUEST_TIMEOUT_SECONDS).device_config()) as client:
+            client._core._session.max_redirects = 0  # An answer from elsewhere (HTTP to HTTPS) is not this protocol's.
+            info: Mapping[str, Any] = client.device.get_info_no_auth()
+            if _text(info, "Brand").upper() != _AXIS_BRAND:
+                logger.debug(f"Network scan: {connection.host} over {connection.protocol.value} is not an Axis device")
+                return None
+            return DiscoveredCamera(
+                host=connection.host,
+                model=_text(info, "ProdShortName") or _text(info, "ProdFullName") or _text(info, "ProdNbr"),
+                serial=_text(info, "SerialNumber"),
+                firmware=_text(info, "Version"),
+                product_type=_text(info, "ProdType"),
+                uptime_seconds=_uptime_seconds(client),
+                protocol=connection.protocol,
+            )
+    except Exception as exc:  # Anything on the range can answer, in any shape; none of that is an Axis device.
+        logger.debug(f"Network scan could not identify {connection.host} over {connection.protocol.value}: {exc}")
+        return None
+
+
 def _signed_in(
-    camera: DiscoveredCamera, make: Callable[[str, str], Any], logins: Sequence[Login], token: CancelToken
+    camera: DiscoveredCamera, connection: DeviceConnection, logins: Sequence[Login], token: CancelToken
 ) -> DiscoveredCamera:
-    """Return *camera* with what signing in through configs from *make* tells, with the first of *logins* it accepts.
+    """Return *camera* with what signing in at *connection* tells, with the first of *logins* it accepts.
 
     A login whose username expands to nothing is skipped, and no login is sent once *token* is cancelled.
 
@@ -359,8 +373,12 @@ def _signed_in(
         tried = True
         for wait in (*_RATE_LIMIT_RETRY_SECONDS, None):
             token.raise_if_cancelled()
-            config = make(username, expand_environment_reference(login.password))
-            config.timeout = _REQUEST_TIMEOUT_SECONDS
+            config = replace(
+                connection,
+                username=username,
+                password=expand_environment_reference(login.password),
+                timeout_s=_REQUEST_TIMEOUT_SECONDS,
+            ).device_config()
             config.auth_method = AuthMethod.DIGEST
             try:
                 with Client(config) as client:
