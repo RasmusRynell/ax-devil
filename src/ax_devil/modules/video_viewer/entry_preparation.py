@@ -13,6 +13,7 @@ import pickle
 import signal
 import subprocess
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +33,6 @@ logger = get_logger(__name__)
 _MODULE = "ax_devil.modules.video_viewer.entry_preparation"
 _CHILD_NICE = 10
 _CHILD_DECODER_THREADS = 2
-_MAX_REQUEST_BYTES = 32 * 1024  # Well under a pipe's capacity, so writing the request can never block the GUI thread.
 
 
 @dataclass(frozen=True)
@@ -48,47 +48,78 @@ class EntryPreparation:
     storage: dict[str, Any]
 
 
-def entry_preparation(entry: PlaylistEntry, lane_indices: tuple[int, ...]) -> EntryPreparation | None:
-    """Describe the caches opening *entry*'s lanes at *lane_indices* would build, or None when there are no lanes."""
+def overlay_specs(entry: PlaylistEntry, lane_indices: tuple[int, ...]) -> tuple[FileOverlaySourceSpec, ...]:
+    """Return the distinct file overlay sources of *entry*'s lanes at *lane_indices*."""
+    specs: list[FileOverlaySourceSpec] = []
+    for lane_index in lane_indices:
+        overlay = entry.lanes[lane_index].overlay
+        spec = overlay.source_spec if overlay is not None else None
+        if isinstance(spec, FileOverlaySourceSpec) and not any(_same_overlay(known, spec) for known in specs):
+            specs.append(spec)
+    return tuple(specs)
+
+
+def _same_overlay(first: FileOverlaySourceSpec, second: FileOverlaySourceSpec) -> bool:
+    """Return whether both specs open the same file the same way; spec equality ignores the decoder options."""
+    return first == second and first.decoder_kwargs == second.decoder_kwargs
+
+
+def entry_preparation(
+    entry: PlaylistEntry, lane_indices: tuple[int, ...], playing: tuple[FileOverlaySourceSpec, ...]
+) -> EntryPreparation | None:
+    """Describe the caches opening *entry*'s lanes at *lane_indices* would build, or None when there are no lanes.
+
+    An overlay cache is named after its file alone, so one that the *playing* overlays also read, but with other decoder
+    options, is left out: replacing it would change what the playing provider reads from it.
+    """
     # Lanes showing the same video share one source, exactly as `open_entry_media` shares them.
     videos: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], tuple[str, ImageSequenceConfig | None]] = {}
-    overlays: list[FileOverlaySourceSpec] = []
     for lane_index in lane_indices:
-        lane = entry.lanes[lane_index]
-        video = require_seekable_video(lane.video)
+        video = require_seekable_video(entry.lanes[lane_index].video)
         image_sequence_config = video.source_spec.image_sequence_config
         videos.setdefault((video, image_sequence_config), (str(video.source_spec.path), image_sequence_config))
-        spec = lane.overlay.source_spec if lane.overlay is not None else None
-        # Equality ignores decoder options, which still decide what the provider caches.
-        if isinstance(spec, FileOverlaySourceSpec) and not any(
-            known == spec and known.decoder_kwargs == spec.decoder_kwargs for known in overlays
-        ):
-            overlays.append(spec)
     if not videos:
         return None
+    overlays = tuple(
+        spec
+        for spec in overlay_specs(entry, lane_indices)
+        if all(_same_overlay(spec, shown) for shown in playing if shown.path == spec.path)
+    )
     config_manager = ConfigManager()
     return EntryPreparation(
         videos=tuple(videos.values()),
-        overlays=tuple(overlays),
+        overlays=overlays,
         config_path=config_manager.config_path,
         storage=config_manager.get("storage", {}),
     )
 
 
-# The one process warming caches for the next entry, and processes that were terminated but not yet reaped.
-_current: tuple[EntryPreparation, subprocess.Popen[bytes]] | None = None
-_terminated: list[subprocess.Popen[bytes]] = []
+# The one process warming caches for the next entry, with the pickled request that identifies what it was started for.
+_current: tuple[bytes, subprocess.Popen[bytes]] | None = None
 
 
 def _terminate(process: subprocess.Popen[bytes]) -> None:
-    """Ask *process* to stop; it is reaped by a later `prepare_entry`, never waited for."""
-    if process.poll() is None:
+    """Ask *process* to stop and forget it, so the same request starts a new one; its waiter thread reaps it."""
+    global _current
+    if _current is not None and _current[1] is process:
+        _current = None
+    try:
         process.terminate()
-        _terminated.append(process)
+    except OSError as exc:
+        logger.debug(f"Entry preparation process {process.pid} could not be terminated: {exc}")
 
 
-def _reap_terminated() -> None:
-    _terminated[:] = [process for process in _terminated if process.poll() is None]
+def _deliver_and_reap(process: subprocess.Popen[bytes], payload: bytes) -> None:
+    """Send *payload* to *process* and reap it when it exits. Runs on a daemon thread and never touches Qt."""
+    try:
+        if process.stdin is not None:
+            with process.stdin:
+                process.stdin.write(payload)
+    except OSError as exc:  # The process was terminated or failed before reading its request.
+        logger.debug(f"Entry preparation process {process.pid} did not take its request: {exc}")
+    returncode = process.wait()
+    if returncode != 0:
+        logger.debug(f"Entry preparation process {process.pid} exited with code {returncode}")
 
 
 def prepare_entry(request: EntryPreparation) -> Callable[[], None]:
@@ -98,41 +129,32 @@ def prepare_entry(request: EntryPreparation) -> Callable[[], None]:
     The returned function terminates this preparation if it is still running.
     """
     global _current
-    _reap_terminated()
-    if _current is not None:
-        running_request, running = _current
-        returncode = running.poll()
-        if running_request == request and returncode in (None, 0):
-            return lambda: _terminate(running)
-        if returncode not in (None, 0):
-            logger.debug(f"Entry preparation exited with code {returncode}")
-        _terminate(running)
-        _current = None
     try:
         payload = pickle.dumps(request)
-        if len(payload) > _MAX_REQUEST_BYTES:
-            logger.debug(f"Entry preparation skipped: request is {len(payload)} bytes")
-            return lambda: None
+    except Exception as exc:
+        logger.debug(f"Entry preparation could not describe its request: {exc}")
+        return lambda: None
+    if _current is not None:
+        running_payload, running = _current
+        if running_payload == payload and running.poll() in (None, 0):
+            return lambda: _terminate(running)
+        _terminate(running)
+    try:
         process = subprocess.Popen(
             [sys.executable, "-I", "-m", _MODULE],
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    except Exception as exc:
+    except OSError as exc:
         logger.debug(f"Entry preparation could not start: {exc}")
         return lambda: None
-    _current = (request, process)
+    _current = (payload, process)
     logger.debug(
         f"Preparing next entry in process {process.pid}: "
         f"{len(request.videos)} video(s), {len(request.overlays)} overlay(s)"
     )
-    try:
-        if process.stdin is not None:
-            with process.stdin:
-                process.stdin.write(payload)
-    except OSError as exc:
-        logger.debug(f"Entry preparation process {process.pid} did not take its request: {exc}")
+    threading.Thread(target=_deliver_and_reap, args=(process, payload), name="entry-preparation", daemon=True).start()
     return lambda: _terminate(process)
 
 

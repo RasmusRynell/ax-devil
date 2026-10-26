@@ -32,7 +32,7 @@ from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
-from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, prepare_entry
+from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, overlay_specs, prepare_entry
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import (
     EntryMedia,
@@ -228,7 +228,11 @@ class OfflineVideoViewerWidget(ViewerWidget):
         """Let a background process warm the caches of the entry that playback steps to next."""
         next_index = self._find_next_considered_index()
         request = (
-            entry_preparation(self._get_entries()[next_index], self._considered_lanes(next_index))
+            entry_preparation(
+                self._get_entries()[next_index],
+                self._considered_lanes(next_index),
+                overlay_specs(self._get_entries()[self._current_index], self._considered_lanes(self._current_index)),
+            )
             if next_index is not None
             else None
         )
