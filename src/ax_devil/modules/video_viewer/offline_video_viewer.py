@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 
 from PySide6.QtCore import QPoint, Qt, QThread, Signal
@@ -31,6 +32,7 @@ from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
+from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, prepare_entry
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import (
     EntryMedia,
@@ -121,6 +123,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._playback_speed = DEFAULT_PLAYBACK_SPEED
         self._initial_entry_loaded = False
         self._lane_visibility: dict[int, OverlayVisibility] = {}
+        self._cancel_preparation: Callable[[], None] | None = None
         super().__init__(parent)
         self._opening = LatestRequest(self)
         self._opening_jobs = entry_opening_scope(self)
@@ -193,6 +196,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
             return
         self._initial_entry_loaded = True
         self._opening.cancel()
+        self._stop_preparation()
         self._teardown_runtime()
         self._current_index = index
         self._update_nav_state()
@@ -200,9 +204,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self.on_screen_item_changed.emit(self.current_on_screen_item())
 
         entry = self._get_entries()[index]
-        lane_indices = tuple(
-            lane_index for lane_index in range(len(entry.lanes)) if self._is_lane_considered(index, lane_index)
-        )
+        lane_indices = self._considered_lanes(index)
         indicator = self._show_loading_indicator()
         self._opening.submit(
             self._opening_jobs,
@@ -213,6 +215,32 @@ class OfflineVideoViewerWidget(ViewerWidget):
             on_progress=indicator.set_message,
             on_discard=release_media,
         )
+
+    def _considered_lanes(self, index: int) -> tuple[int, ...]:
+        """Return the lanes of entry *index* that take part in its layout."""
+        return tuple(
+            lane_index
+            for lane_index in range(len(self._get_entries()[index].lanes))
+            if self._is_lane_considered(index, lane_index)
+        )
+
+    def _prepare_next(self) -> None:
+        """Let a background process warm the caches of the entry that playback steps to next."""
+        next_index = self._find_next_considered_index()
+        request = (
+            entry_preparation(self._get_entries()[next_index], self._considered_lanes(next_index))
+            if next_index is not None
+            else None
+        )
+        if request is None:
+            self._stop_preparation()
+        else:
+            self._cancel_preparation = prepare_entry(request)
+
+    def _stop_preparation(self) -> None:
+        if self._cancel_preparation is not None:
+            self._cancel_preparation()
+            self._cancel_preparation = None
 
     def _on_entry_opened(self, index: int, start_frame: int | None, media: EntryMedia) -> None:
         self._hide_loading_indicator()
@@ -296,6 +324,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._jump_to_frame(start_frame or 0)
         if start_frame is None:
             self._start_playback()
+        self._prepare_next()
 
     def _has_active_global_controls(self) -> bool:
         return self._use_global_controls and self._global_controls is not None
@@ -552,6 +581,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._is_cleaned_up = True
         self._opening.close()
         self._opening_jobs.close()
+        self._stop_preparation()
         self._hide_loading_indicator()
         self._teardown_runtime()
         self._nav_label = None
@@ -590,3 +620,5 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._update_nav_state()
         if item_ref.kind == "playlist_lane" and item_ref.entry_index == self._current_index:
             self._open_entry(self._current_index)
+        elif self._runtime is not None:
+            self._prepare_next()

@@ -13,6 +13,7 @@ from PySide6.QtCore import QObject, QThread, QTimer
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.modules.background_jobs import JobContext, JobScope, background_jobs
+from ax_devil.modules.data_sources.file_data_provider.base import FileDataProviderFactory
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
@@ -104,6 +105,12 @@ def create_frame_source(video: SeekableVideoContent) -> FileFrameSource:
     )
 
 
+def overlay_provider_factory(spec: FileOverlaySourceSpec) -> FileDataProviderFactory:
+    """Return the provider factory that opens *spec*'s overlay file; calling it builds the overlay cache."""
+    factory = get_file_decoder_factory(spec.handler_type)
+    return partial(factory, **spec.decoder_kwargs) if spec.decoder_kwargs else factory
+
+
 def create_overlay_source(
     overlay: OverlayContent,
     *,
@@ -115,12 +122,9 @@ def create_overlay_source(
 
     try:
         source_spec = overlay.source_spec
-        decoder_factory = get_file_decoder_factory(source_spec.handler_type)
-        if source_spec.decoder_kwargs:
-            decoder_factory = partial(decoder_factory, **source_spec.decoder_kwargs)
         overlay_source = FileOverlaySource(
             source_spec.path,
-            decoder_factory,
+            overlay_provider_factory(source_spec),
             source_spec.handler_type,
             timestamp_fallback_policy=source_spec.timestamp_fallback_policy,
             frame_timeline=frame_timeline,
@@ -146,7 +150,8 @@ def place_scene_history(
     )
 
 
-def _require_seekable_video(video: SeekableVideoContent | LiveVideoContent) -> SeekableVideoContent:
+def require_seekable_video(video: SeekableVideoContent | LiveVideoContent) -> SeekableVideoContent:
+    """Return *video* if it is seekable; offline entries cannot hold anything else."""
     if isinstance(video, SeekableVideoContent):
         return video
     raise TypeError("Offline viewer requires seekable video content.")
@@ -168,7 +173,7 @@ def _open_lanes(
     source_index_by_video: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], int] = {}
     for position, lane_index in token.polled(enumerate(lane_indices)):
         lane = entry.lanes[lane_index]
-        video = _require_seekable_video(lane.video)
+        video = require_seekable_video(lane.video)
         video_key = (video, video.source_spec.image_sequence_config)
         source_index = source_index_by_video.get(video_key)
         if source_index is None:

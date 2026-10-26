@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -496,7 +497,12 @@ class SourceIndexedSceneStore:
             "line_locations": {str(key): [offset, length] for key, (offset, length) in line_locations.items()},
         }
         self._index_path.parent.mkdir(parents=True, exist_ok=True)
-        self._index_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        temporary_path = self._index_path.with_name(f"{self._index_path.name}.{os.getpid()}.tmp")
+        try:
+            temporary_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+            os.replace(temporary_path, self._index_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
         return SceneCatalog(
             total_lines=total_lines,
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,

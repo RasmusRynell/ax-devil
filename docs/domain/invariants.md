@@ -141,8 +141,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
   outside the app, or streams, keeps its own runner; a result that owns resources comes with `on_discard`, and slow or
   ordered work asks for its own pool; see the
   [background_jobs README](../../src/ax_devil/modules/background_jobs/README.md).
-- Cancellable work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled`; there is no other
-  cancellation mechanism: no flag, callback or per-feature cancellation exception. The contract is in the
+- Cancellable in-process work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled`; there is no
+  other in-process cancellation mechanism: no flag, callback or per-feature cancellation exception. The contract is in the
   [background_jobs README](../../src/ax_devil/modules/background_jobs/README.md#cancellation).
 - The GUI thread never waits for offline file work and never spins the event loop to wait. `open_entry_media` opens an
   entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; whoever holds the media owns every
@@ -196,6 +196,9 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - Whole-file entity filtering judges each distinct set of recorded classification types through the same
   classification policy as Scene entities; it is unavailable unless every filter option declares one, and history
   never fabricates Entity data.
+- Cache files are written to a temporary sibling and then replaced, so a killed writer never leaves a loadable file.
+  Preparing the next playlist entry relies on this: a child process warms its caches and is terminated, not
+  token-cancelled, when the entry is reached or replaced.
 - One process pool shares the Playback cache allowance across open offline sources. Cache pressure must not change
   frame identity or timing; a frame larger than the budget is delivered without caching.
 

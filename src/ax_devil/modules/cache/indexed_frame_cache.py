@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import mmap
+import os
 import pickle
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -163,10 +164,15 @@ class IndexedFrameCache:
         }
         header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
 
-        with self.cache_file.open("wb") as fh:
-            fh.write(header_bytes + b"\n")
-            for enc in encoded_frames:
-                fh.write(enc)
+        temporary_path = self.cache_file.with_name(f"{self.cache_file.name}.{os.getpid()}.tmp")
+        try:
+            with temporary_path.open("wb") as fh:
+                fh.write(header_bytes + b"\n")
+                for enc in encoded_frames:
+                    fh.write(enc)
+            os.replace(temporary_path, self.cache_file)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
         logger.debug(f"Cached {len(items)} frames ({self.cache_file.stat().st_size} bytes) → {self.cache_file.name}")
 

@@ -1,0 +1,165 @@
+"""Warm the next playlist entry's on-disk caches in a short-lived child process.
+
+The child never opens a `FileFrameSource`: that would take a share of the frame cache pool away from the video that is
+playing. It only writes the frame index, video metadata and overlay caches that opening the entry reads. Caches are
+written to a temporary file and then replaced, so terminating the child at any moment leaves nothing loadable but
+complete files.
+"""
+
+from __future__ import annotations
+
+import os
+import pickle
+import signal
+import subprocess
+import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from types import FrameType
+from typing import Any
+
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
+from ax_devil.modules.data_sources.file_frame_source import warm_file_caches
+from ax_devil.modules.plugin_system import ApplicationPluginLoader
+from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.video_viewer.offline_entry_media import overlay_provider_factory, require_seekable_video
+from ax_devil.modules.workspace.core import FileOverlaySourceSpec, PlaylistEntry, SeekableVideoContent
+
+logger = get_logger(__name__)
+
+_MODULE = "ax_devil.modules.video_viewer.entry_preparation"
+_CHILD_NICE = 10
+_CHILD_DECODER_THREADS = 2
+_MAX_REQUEST_BYTES = 32 * 1024  # Well under a pipe's capacity, so writing the request can never block the GUI thread.
+
+
+@dataclass(frozen=True)
+class EntryPreparation:
+    """What the child process needs to warm one entry's caches, as plain picklable data.
+
+    *config_path* and *storage* are the parent's, so the child writes caches where the parent will look for them.
+    """
+
+    videos: tuple[tuple[str, ImageSequenceConfig | None], ...]
+    overlays: tuple[FileOverlaySourceSpec, ...]
+    config_path: Path
+    storage: dict[str, Any]
+
+
+def entry_preparation(entry: PlaylistEntry, lane_indices: tuple[int, ...]) -> EntryPreparation | None:
+    """Describe the caches opening *entry*'s lanes at *lane_indices* would build, or None when there are no lanes."""
+    # Lanes showing the same video share one source, exactly as `open_entry_media` shares them.
+    videos: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], tuple[str, ImageSequenceConfig | None]] = {}
+    overlays: list[FileOverlaySourceSpec] = []
+    for lane_index in lane_indices:
+        lane = entry.lanes[lane_index]
+        video = require_seekable_video(lane.video)
+        image_sequence_config = video.source_spec.image_sequence_config
+        videos.setdefault((video, image_sequence_config), (str(video.source_spec.path), image_sequence_config))
+        spec = lane.overlay.source_spec if lane.overlay is not None else None
+        # Equality ignores decoder options, which still decide what the provider caches.
+        if isinstance(spec, FileOverlaySourceSpec) and not any(
+            known == spec and known.decoder_kwargs == spec.decoder_kwargs for known in overlays
+        ):
+            overlays.append(spec)
+    if not videos:
+        return None
+    config_manager = ConfigManager()
+    return EntryPreparation(
+        videos=tuple(videos.values()),
+        overlays=tuple(overlays),
+        config_path=config_manager.config_path,
+        storage=config_manager.get("storage", {}),
+    )
+
+
+# The one process warming caches for the next entry, and processes that were terminated but not yet reaped.
+_current: tuple[EntryPreparation, subprocess.Popen[bytes]] | None = None
+_terminated: list[subprocess.Popen[bytes]] = []
+
+
+def _terminate(process: subprocess.Popen[bytes]) -> None:
+    """Ask *process* to stop; it is reaped by a later `prepare_entry`, never waited for."""
+    if process.poll() is None:
+        process.terminate()
+        _terminated.append(process)
+
+
+def _reap_terminated() -> None:
+    _terminated[:] = [process for process in _terminated if process.poll() is None]
+
+
+def prepare_entry(request: EntryPreparation) -> Callable[[], None]:
+    """Start warming *request*'s caches in a child process, replacing any other preparation; GUI thread only.
+
+    Never waits and never fails: problems are logged at debug level and the entry simply opens without a head start.
+    The returned function terminates this preparation if it is still running.
+    """
+    global _current
+    _reap_terminated()
+    if _current is not None:
+        running_request, running = _current
+        returncode = running.poll()
+        if running_request == request and returncode in (None, 0):
+            return lambda: _terminate(running)
+        if returncode not in (None, 0):
+            logger.debug(f"Entry preparation exited with code {returncode}")
+        _terminate(running)
+        _current = None
+    try:
+        payload = pickle.dumps(request)
+        if len(payload) > _MAX_REQUEST_BYTES:
+            logger.debug(f"Entry preparation skipped: request is {len(payload)} bytes")
+            return lambda: None
+        process = subprocess.Popen(
+            [sys.executable, "-I", "-m", _MODULE],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        logger.debug(f"Entry preparation could not start: {exc}")
+        return lambda: None
+    _current = (request, process)
+    logger.debug(
+        f"Preparing next entry in process {process.pid}: "
+        f"{len(request.videos)} video(s), {len(request.overlays)} overlay(s)"
+    )
+    try:
+        if process.stdin is not None:
+            with process.stdin:
+                process.stdin.write(payload)
+    except OSError as exc:
+        logger.debug(f"Entry preparation process {process.pid} did not take its request: {exc}")
+    return lambda: _terminate(process)
+
+
+def _exit_on_sigterm(_signal_number: int, _frame: FrameType | None) -> None:
+    """Unwind as an exit, so `finally` blocks remove temporary cache files."""
+    raise SystemExit(1)
+
+
+def main() -> None:
+    """Child entry point: read an `EntryPreparation` from stdin and warm its caches; the exit code is the result."""
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    os.nice(_CHILD_NICE)
+    try:
+        request: EntryPreparation = pickle.load(sys.stdin.buffer)
+        config_manager = ConfigManager()
+        config_manager.set_config_path(request.config_path, create_if_missing=False)
+        config_manager.use_storage(request.storage)
+        for path, image_sequence_config in request.videos:
+            warm_file_caches(path, image_sequence_config, thread_count=_CHILD_DECODER_THREADS)
+        if request.overlays:
+            ApplicationPluginLoader.load_all()
+            for spec in request.overlays:
+                overlay_provider_factory(spec)(spec.path).close()
+    except Exception:
+        logger.exception("Entry preparation failed")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -330,6 +330,13 @@ class ConfigManager:
         self._active_storage = None
         self._active_storage = self.get("storage", {})
 
+    def use_storage(self, storage: dict[str, Any]) -> None:
+        """Adopt *storage* as the active storage locations, as another process's `get("storage")` returned them.
+
+        A child process calls this so its cache and data folders match the parent's, whatever its own config says.
+        """
+        self._active_storage = copy.deepcopy(storage)
+
     def reset(self) -> None:
         self._load_if_needed()
         logger.info(f"ConfigManager Resetting config to defaults at {self._config_path}")

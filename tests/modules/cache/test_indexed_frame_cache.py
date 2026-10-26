@@ -55,3 +55,17 @@ def test_open_cache_reads_survive_path_removal(tmp_path: Path, use_mmap: bool) -
             assert cache.load_frame(3041) is None
         finally:
             cache.close()
+
+
+def test_failed_save_keeps_previous_cache_and_leaves_no_temp_file(tmp_path: Path) -> None:
+    """A save that dies before finishing never replaces or truncates the cache a reader would load."""
+    cache_path = tmp_path / "test.frames"
+    with patch.object(CacheManager, "get_cache_path", return_value=cache_path):
+        cache = IndexedFrameCache(tmp_path / "source")
+        cache.save({0: "old"})
+        with patch("ax_devil.modules.cache.indexed_frame_cache.os.replace", side_effect=OSError("killed")):
+            with pytest.raises(OSError):
+                cache.save({0: "new"})
+        assert cache.load_frame(0) == "old"
+        cache.close()
+    assert list(tmp_path.iterdir()) == [cache_path]

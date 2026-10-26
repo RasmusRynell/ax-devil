@@ -11,6 +11,7 @@ from ax_devil.core.data_types import FrameData, FrameIdentifier
 from ax_devil.core.playback_speed import clamp_playback_speed
 from ax_devil.modules.cache import CacheManager
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_index import FrameIndex
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, VideoTimingProfile
 from ax_devil.modules.data_sources.video_analyzer import VideoAnalyzer
@@ -29,6 +30,32 @@ FFMPEG_PATH = "ffmpeg"
 VIDEO_DEEP_SCAN_ARGS = ("-probesize", "500M", "-analyzeduration", "500M")
 
 logger = get_logger(__name__)
+
+
+def frame_index_cache_path(file_path: str) -> Path:
+    """Return the on-disk frame index cache path for *file_path*."""
+    return CacheManager().get_cache_path(cache_type="frame_index", source_path=Path(file_path), suffix=".ptsidx")
+
+
+def create_video_analyzer() -> VideoAnalyzer:
+    """Create the analyzer that reads and caches a regular video file's metadata."""
+    return VideoAnalyzer(
+        ffprobe=FFPROBE_PATH,
+        ffmpeg=FFMPEG_PATH,
+        cache_suffix=VIDEO_CACHE_SUFFIX,
+        deep_args=VIDEO_DEEP_SCAN_ARGS,
+    )
+
+
+def warm_file_caches(file_path: str, image_sequence_config: ImageSequenceConfig | None, *, thread_count: int) -> None:
+    """Write the frame index and metadata caches a later open of *file_path* reads, without opening a source.
+
+    *thread_count* caps the decoder threads used to build the frame index.
+    """
+    open_config = image_sequence_config.to_video_open_config() if image_sequence_config is not None else None
+    FrameIndex(Path(file_path), frame_index_cache_path(file_path), open_config).load_or_build(thread_count)
+    if image_sequence_config is None:
+        create_video_analyzer().analyze(Path(file_path))
 
 
 class FileFrameSource(SeekableFrameSource):
@@ -86,17 +113,13 @@ class FileFrameSource(SeekableFrameSource):
             )
 
         try:
-            cache_manager = CacheManager()
-            cache_path = cache_manager.get_cache_path(
-                cache_type="frame_index", source_path=Path(self.file_path), suffix=".ptsidx"
-            )
             self._frame_delivery = FileFrameDelivery.create(
                 video_path=self.file_path,
                 fps=1.0,
                 source_id=self.source_id,
                 cache_pool=get_video_cache_pool(),
                 prefetch_count=50,
-                cache_path=cache_path,
+                cache_path=frame_index_cache_path(self.file_path),
                 open_config=open_config,
                 on_playback_frame=self.emit_decoded_frame,
                 on_playback_finished=self._on_delivery_finished,
@@ -141,12 +164,7 @@ class FileFrameSource(SeekableFrameSource):
     def _probe_video_metadata(self) -> None:
         """Extract metadata from a regular video file via ``VideoAnalyzer``."""
         if self._video_analyzer is None:
-            self._video_analyzer = VideoAnalyzer(
-                ffprobe=FFPROBE_PATH,
-                ffmpeg=FFMPEG_PATH,
-                cache_suffix=VIDEO_CACHE_SUFFIX,
-                deep_args=VIDEO_DEEP_SCAN_ARGS,
-            )
+            self._video_analyzer = create_video_analyzer()
 
         metadata = self._video_analyzer.analyze(Path(self.file_path))
         width_raw = metadata.get("width")

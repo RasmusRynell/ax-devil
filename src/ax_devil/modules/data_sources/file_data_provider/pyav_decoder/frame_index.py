@@ -106,12 +106,14 @@ class FrameIndex:
         if not (0 <= frame_index < len(self.pts_list)):
             raise IndexError(f"Frame index {frame_index} out of bounds (0-{len(self.pts_list) - 1})")
 
-    def build(self) -> None:
+    def build(self, thread_count: int = 0) -> None:
         """Build frame index in decoded presentation order.
 
         Packet order can differ from display order for videos with B-frames or
         reordered timestamps. Frame numbers in the app must follow decoded
         presentation order because that is what users see during playback.
+
+        *thread_count* caps the decoder threads; 0 lets PyAV choose.
         """
         logger.debug(f"Building frame index by decoded frame scan → {self.video_path.name}")
 
@@ -124,6 +126,7 @@ class FrameIndex:
         with av.open(str(self.video_path), mode="r", format=fmt, options=opts) as container:
             stream = container.streams.video[0]
             stream.thread_type = "AUTO"
+            stream.thread_count = thread_count
             self.time_base = Fraction(stream.time_base) if stream.time_base is not None else None
             for frame in container.decode(stream):
                 if frame.pts is None:
@@ -134,6 +137,14 @@ class FrameIndex:
         self.pts_to_index = {pts: i for i, pts in enumerate(self.pts_list)}
         self._keyframe_indices = None  # Reset cache
         logger.debug(f"Built frame index via decoded frame scan: {len(self.pts_list)} frames")
+
+    def load_or_build(self, thread_count: int = 0) -> None:
+        """Load the cached index, or build it and save it to the cache when none is usable."""
+        if self.load_from_file():
+            return
+        logger.debug(f"Building frame index for {self.video_path.name} (this may take a moment...)")
+        self.build(thread_count)
+        self.save_to_file()
 
     def save_to_file(self) -> None:
         """Save frame index to cache file (if cache_path provided)."""
