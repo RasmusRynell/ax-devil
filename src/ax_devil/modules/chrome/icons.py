@@ -52,6 +52,7 @@ class Icon(Enum):
     ADD = ("plus", False)
     CHECK = ("check", False)
     SEARCH = ("search", False)
+    EYE = ("eye", False)
     REMOVE = ("trash-2", False)
     INFO = ("info", False)
     SCAN = ("wifi", False)

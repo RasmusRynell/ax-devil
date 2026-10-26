@@ -12,6 +12,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import muted_label
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.theme import SEE_THROUGH
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.chrome.view_panel import ViewPanel
@@ -74,6 +75,11 @@ class SectionsView(ViewPanel):
         self._sort = MenuButton("Sort", self._order_menu)
         self._sort.setToolTip("The order of the rows")
         self._sort.hide()
+        self._show_hidden = SmallButton("", Icon.EYE, self)
+        self._show_hidden.setCheckable(True)
+        self._show_hidden.setToolTip("Show hidden items")
+        self._show_hidden.setAccessibleName("Show hidden items")
+        self._show_hidden.toggled.connect(self._apply_filter)
         toolbar = QWidget(self)
         tools = QHBoxLayout(toolbar)
         tools.setContentsMargins(0, 0, 0, 0)
@@ -81,6 +87,7 @@ class SectionsView(ViewPanel):
         tools.addWidget(self._search, 1)
         tools.addWidget(self._sort)
         tools.addWidget(self._filter)
+        tools.addWidget(self._show_hidden)
         self._toolbar = self.add_padded(toolbar, top=Space.S, bottom=Space.XS)
 
         self.tree = SectionTree(self)
@@ -186,8 +193,9 @@ class SectionsView(ViewPanel):
 
     def _apply_filter(self) -> None:
         query = self._query
+        show_hidden = self._show_hidden.isChecked()
         self.tree.set_filter(
-            lambda row: not any(self._is_hidden(facet) for facet in row.facets),
+            lambda row: (show_hidden or row.is_considered) and not any(self._is_hidden(facet) for facet in row.facets),
             (lambda row: query in row.search_text.casefold()) if query else None,
         )
 

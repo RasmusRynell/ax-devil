@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QMenu, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QAbstractButton, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent, VideoItem
@@ -27,7 +27,7 @@ from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE
 from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.source_row import SourceRow
 from tests.helpers.section_tree import titles
-from tests.helpers.sections_view import filter_entries, new_view, search_box, set_rows, view_tree, view_with
+from tests.helpers.sections_view import new_view, search_box, set_rows, view_tree, view_with
 from tests.helpers.widgets import required_child
 
 
@@ -175,19 +175,28 @@ def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
     assert _required_item_row(view).isExpanded()
 
 
-def test_a_hidden_row_stays_listed_and_dimmed_also_in_a_search(qtbot: QtBot) -> None:
+def test_hidden_rows_are_revealed_without_unhiding_and_stay_filtered_in_search(qtbot: QtBot) -> None:
     hidden = _hidden("Warehouse door")
     view = view_with(qtbot, hidden)
-    assert titles(view.tree) == ["Warehouse door"]
-    assert _row(_required_item_row(view)).is_dimmed
-    assert filter_entries(view) == {}, "hiding a row is not a Filter choice"
+    assert titles(view.tree) == []
+    [toggle] = [button for button in view.findChildren(QAbstractButton) if button.toolTip() == "Show hidden items"]
+    assert toggle.isVisibleTo(view)
 
     search_box(view).setText("warehouse")
+    assert titles(view.tree) == []
 
+    toggle.click()
     assert titles(view.tree) == ["Warehouse door"]
+    assert _row(_required_item_row(view)).is_dimmed
+
+    set_rows(view, (hidden,))
+    assert titles(view.tree) == ["Warehouse door"]
+    toggle.click()
+    assert titles(view.tree) == []
 
     set_rows(view, (replace(hidden, is_considered=True),))
 
+    assert titles(view.tree) == ["Warehouse door"]
     assert not _row(_required_item_row(view)).is_dimmed
 
 

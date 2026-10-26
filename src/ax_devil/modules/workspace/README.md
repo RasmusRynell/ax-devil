@@ -6,7 +6,7 @@ package split is described in [Workspace](../../../../docs/architecture/workspac
 ## Sidebar view shell
 
 `SectionsView` is the one shell for the Workspace, Live and Offline views, with a fixed layout: a toolbar (Search, Sort,
-Filter, in that order), the tree, then an optional footer panel. A view never adds toolbar widgets or lays out its own
+Filter, Show hidden items, in that order), the tree, then an optional footer panel. A view never adds toolbar widgets or lays out its own
 footer; it fills these slots.
 
 - Sort offers the `RowOrder`s the `SectionsViewController` is given (declared in `browser_rows.py`, default
