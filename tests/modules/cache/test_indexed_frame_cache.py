@@ -79,7 +79,7 @@ def test_failed_save_keeps_previous_cache_and_leaves_no_temp_file(tmp_path: Path
     with patch.object(CacheManager, "get_cache_path", return_value=cache_path):
         cache = IndexedFrameCache(tmp_path / "source")
         cache.save({0: "old"})
-        with patch("ax_devil.modules.cache.indexed_frame_cache.os.replace", side_effect=OSError("killed")):
+        with patch("ax_devil.core.atomic_file.replace_file", side_effect=OSError("killed")):
             with pytest.raises(OSError):
                 cache.save({0: "new"})
         assert cache.load_frame(0) == "old"

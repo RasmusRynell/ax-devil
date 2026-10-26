@@ -166,7 +166,8 @@ def _exit_on_sigterm(_signal_number: int, _frame: FrameType | None) -> None:
 def main() -> None:
     """Child entry point: read an `EntryPreparation` from stdin and warm its caches; the exit code is the result."""
     signal.signal(signal.SIGTERM, _exit_on_sigterm)
-    os.nice(_CHILD_NICE)
+    if hasattr(os, "nice"):  # Windows has no nice; there the child keeps its normal priority.
+        os.nice(_CHILD_NICE)
     try:
         request: EntryPreparation = pickle.load(sys.stdin.buffer)
         config_manager = ConfigManager()
