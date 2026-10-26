@@ -125,43 +125,6 @@ def test_side_panel_hides_its_content_while_collapsed(qtbot: QtBot) -> None:
     assert panel.width() == panel.expanded_width
 
 
-def test_dragging_side_panel_fully_open_and_closed_updates_content_visibility(qtbot: QtBot) -> None:
-    host = QWidget()
-    qtbot.addWidget(host)
-    host.resize(800, 400)
-    layout = QHBoxLayout(host)
-    handle = DraggableHandle(host)
-    panel = DraggablePanel(host, animation_duration=1)
-    layout.addWidget(handle)
-    layout.addStretch()
-    layout.addWidget(panel)
-    handle.setTarget(panel)
-    content = QLabel("Panel content")
-    panel.set_content_widget(content)
-    host.show()
-    QCoreApplication.processEvents()
-
-    try:
-        for _ in range(2):
-            start = handle.rect().center()
-            opened = QPoint(start.x() - panel.expanded_width, start.y())
-            QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
-            QTest.mouseMove(handle, opened)
-            QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=opened)
-            qtbot.waitUntil(content.isVisible)
-            assert panel.width() == panel.expanded_width
-
-            closed = QPoint(start.x() + panel.expanded_width, start.y())
-            QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
-            QTest.mouseMove(handle, closed)
-            QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=closed)
-            qtbot.waitUntil(content.isHidden)
-            assert panel.width() == panel.collapsed_width
-    finally:
-        handle.cleanup()
-        panel.cleanup()
-
-
 def _display_in_window(qtbot: QtBot, width: int) -> tuple[QWidget, FrameDisplay, DraggablePanel, QLabel]:
     window = QWidget()
     qtbot.addWidget(window)
@@ -178,16 +141,17 @@ def _display_in_window(qtbot: QtBot, width: int) -> tuple[QWidget, FrameDisplay,
     return window, display, panel, content
 
 
-def test_side_panel_takes_at_most_half_the_pane_and_stays_open_when_it_narrows(qtbot: QtBot) -> None:
-    """An open panel never closes on its own; it takes at most half its pane unless its content needs more."""
+def test_side_panel_leaves_the_video_a_third_of_the_pane_and_stays_open_when_it_narrows(qtbot: QtBot) -> None:
+    """An open panel never closes on its own; it leaves the video a third of its pane unless its content needs more."""
     window, display, panel, content = _display_in_window(qtbot, 1200)
     display.set_side_panel_open(True)
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
     open_width = panel.width()
-    assert 0 < open_width <= display.width() // 2
+    assert 0 < open_width
+    assert display.viewport.width() >= display.width() // 3
 
     window.resize(open_width, 400)
-    qtbot.waitUntil(lambda: 0 < panel.width() <= display.width() // 2)
+    qtbot.waitUntil(lambda: 0 < panel.width() and display.viewport.width() >= display.width() // 3)
     assert display.is_side_panel_open()
     assert content.isVisible()
 
@@ -231,11 +195,11 @@ def test_side_panel_widens_when_its_content_grows(qtbot: QtBot) -> None:
     assert display.is_side_panel_open()
 
 
-def test_side_panel_enabled_on_a_shown_display_takes_half_its_width(qtbot: QtBot) -> None:
-    """A panel added after the display has its size still takes at most half of it when opened."""
+def test_side_panel_enabled_on_a_shown_display_leaves_the_video_a_third(qtbot: QtBot) -> None:
+    """A panel added after the display has its size still leaves the video a third of it when opened."""
     display = FrameDisplay()
     qtbot.addWidget(display)
-    display.resize(640, 400)
+    display.resize(480, 400)
     display.show()
     QCoreApplication.processEvents()
 
@@ -244,4 +208,38 @@ def test_side_panel_enabled_on_a_shown_display_takes_half_its_width(qtbot: QtBot
     panel = display.findChild(DraggablePanel)
     assert panel is not None
     qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
-    assert 0 < panel.width() <= display.width() // 2
+    assert 0 < panel.width()
+    assert display.viewport.width() >= display.width() // 3
+
+
+def _drag(handle: DraggableHandle, dx: int) -> None:
+    start = handle.rect().center()
+    end = QPoint(start.x() + dx, start.y())
+    QTest.mousePress(handle, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(handle, end)
+    QTest.mouseRelease(handle, Qt.MouseButton.LeftButton, pos=end)
+
+
+def test_side_panel_keeps_the_width_it_is_dragged_to(qtbot: QtBot) -> None:
+    """The handle opens the panel at the width it is dragged to, within the pane, and closes it when dragged shut."""
+    window, display, panel, content = _display_in_window(qtbot, 1200)
+    handle = display.viewport.findChild(DraggableHandle)
+    assert handle is not None
+    display.set_side_panel_open(True)
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    opened = panel.width()
+    _drag(handle, -display.width())
+    qtbot.waitUntil(lambda: panel.width() == panel.expanded_width)
+    wide = panel.width()
+    assert wide > opened
+    assert display.viewport.width() >= display.width() // 3
+    _drag(handle, display.width())
+    qtbot.waitUntil(content.isHidden)
+    assert not display.is_side_panel_open()
+    _drag(handle, -wide // 2)
+    qtbot.waitUntil(content.isVisible)
+    assert display.is_side_panel_open() and panel.width() == wide // 2
+    window.resize(600, 400)
+    qtbot.waitUntil(lambda: display.viewport.width() >= display.width() // 3)
+    window.resize(1200, 400)
+    qtbot.waitUntil(lambda: panel.width() == wide // 2)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSplitter, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.menu_button import MenuButton
@@ -114,3 +114,19 @@ def test_the_view_shows_its_text_in_full_at_small_and_large_text(
     view = _show(session, view_id)
 
     assert clipped_text_widgets(view) == []
+
+
+def test_the_sidebar_narrows_to_each_views_minimum_and_leaves_the_viewers_half(session: WorkspaceSession) -> None:
+    """Each view can be dragged to its own minimum with its text in full; dragged wide, the viewers keep half."""
+    splitter = session.widget().findChild(QSplitter, "WorkspaceSidebarSplitter")
+    assert splitter is not None
+    widths = {}
+    for view_id in ("workspace", "live", "offline"):
+        view = _show(session, view_id)
+        splitter.moveSplitter(view.minimumSizeHint().width(), 1)
+        QApplication.processEvents()
+        widths[view_id] = splitter.sizes()[0]
+        assert clipped_text_widgets(view) == []
+    assert widths["workspace"] < widths["live"]
+    splitter.moveSplitter(splitter.width(), 1)
+    assert splitter.sizes()[1] >= splitter.sizes()[0] > widths["live"]

@@ -24,7 +24,7 @@ from ..constants import (
     HANDLE_WIDTH,
     PANEL_ANIMATION_DURATION,
     PANEL_COLLAPSED_WIDTH,
-    PANEL_EXPANDED_WIDTH,
+    PANEL_DEFAULT_WIDTH,
     PANEL_MAX_PANE_SHARE,
 )
 from .fading import FadingWidget
@@ -38,12 +38,13 @@ class DraggableTarget(Protocol):
     is_collapsed: bool
 
     @property
-    def expanded_width(self) -> int: ...
+    def max_width(self) -> int: ...
 
     def width(self) -> int: ...
     def setFixedWidth(self, width: int, /) -> None: ...
     def expand(self) -> None: ...
     def collapse(self) -> None: ...
+    def finish_drag(self) -> None: ...
 
 
 class DraggableHandle(FadingWidget):
@@ -115,7 +116,7 @@ class DraggableHandle(FadingWidget):
             # Continue dragging if already started
             if self.is_dragging:
                 delta_x = x - self.drag_start_x
-                new_width = max(0, min(self.target_object.expanded_width, self.drag_start_width - delta_x))
+                new_width = max(0, min(self.target_object.max_width, self.drag_start_width - delta_x))
                 self.target_object.setFixedWidth(int(new_width))
                 self.dragMoved.emit(x)
                 self._logger.debug(f"Dragging to position: {x:f}, width: {int(new_width)}")
@@ -127,13 +128,7 @@ class DraggableHandle(FadingWidget):
         """Handle mouse release to end dragging."""
         if self.is_dragging and self.target_object:
             self.is_dragging = False
-            # Snap to expanded or collapsed based on current width
-            action = (
-                self.target_object.collapse
-                if self.target_object.width() < self.target_object.expanded_width * 0.5
-                else self.target_object.expand
-            )
-            action()
+            self.target_object.finish_drag()
             x = float(event.globalPosition().x())
             self.dragEnded.emit(x)
             self._logger.debug(f"Drag ended at position: {x:f}")
@@ -171,12 +166,12 @@ class DraggablePanel(FadingWidget):
         parent: QWidget | None = None,
         animation_duration: int = PANEL_ANIMATION_DURATION,
         collapsed_width: int = PANEL_COLLAPSED_WIDTH,
-        expanded_width: int = PANEL_EXPANDED_WIDTH,
+        default_width: int = PANEL_DEFAULT_WIDTH,
     ) -> None:
         # Set panel configuration BEFORE calling super().__init__
         self.animation_duration: int = animation_duration
         self.collapsed_width: int = collapsed_width
-        self._expanded_width = expanded_width
+        self._open_width = default_width  # The width the user last dragged the open panel to.
         self.is_collapsed: bool = True
         self._pane_width: int | None = None
         self._fitted_width = 0  # The open width the panel was last fitted for.
@@ -206,12 +201,23 @@ class DraggablePanel(FadingWidget):
         self.setFixedWidth(self.collapsed_width)
 
     @property
+    def max_width(self) -> int:
+        """Return the widest the panel opens: its share of the pane, or its content's minimum when that is wider."""
+        widest = self._open_width if self._pane_width is None else int(self._pane_width * PANEL_MAX_PANE_SHARE)
+        return max(widest, self._content_minimum_width())
+
+    @property
     def expanded_width(self) -> int:
-        """Return the open width: the configured width, at most half the pane, widened when the content needs more."""
-        preferred = self._expanded_width
-        if self._pane_width is not None:
-            preferred = min(preferred, int(self._pane_width * PANEL_MAX_PANE_SHARE))
-        return max(preferred, self._content_minimum_width())
+        """Return the open width: the width the user chose, kept between the content's minimum and ``max_width``."""
+        return max(self._content_minimum_width(), min(self._open_width, self.max_width))
+
+    def finish_drag(self) -> None:
+        """Open at the width a drag left the panel at; one left at or below half the content's minimum closes."""
+        if self.width() <= self._content_minimum_width() // 2:
+            self.collapse()
+            return
+        self._open_width = self.width()
+        self.expand()
 
     def fit_to_pane(self, pane_width: int) -> None:
         """Follow a pane resize: an open panel takes its width for the new pane."""
@@ -238,10 +244,7 @@ class DraggablePanel(FadingWidget):
         return content.minimumSizeHint().expandedTo(content.minimumSize()).width() + margins.left() + margins.right()
 
     def event(self, event: QEvent) -> bool:
-        """Refit an open panel when its content's size changes, as after a live text-size change.
-
-        A width the user dragged to stays until the content size changes.
-        """
+        """Refit an open panel when its content's size changes, as after a live text-size change."""
         if event.type() == QEvent.Type.LayoutRequest and self.expanded_width != self._fitted_width:
             self._refit()
         return super().event(event)

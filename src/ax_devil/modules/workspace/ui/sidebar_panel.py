@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QStackedWidget, QWidget
 
 from ax_devil.modules.chrome.sidebar_view import SidebarView
@@ -23,6 +23,12 @@ class SidebarPanel(QStackedWidget):
             raise ValueError(f"Duplicate sidebar view id: {view.view_id}")
         self._views[view.view_id] = view
         self.addWidget(view.widget)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Return the minimum of the view on screen, so a narrow view is not held to the widest view's minimum."""
+        current = self.currentWidget()
+        hint = current.minimumSizeHint() if current is not None else QSize(0, 0)
+        return hint.grownBy(self.contentsMargins())
 
     def show_view(self, view_id: str) -> None:
         """Show the view with *view_id*."""

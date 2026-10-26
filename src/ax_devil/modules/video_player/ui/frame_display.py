@@ -151,7 +151,7 @@ class FrameDisplay(QWidget):
             self._viewport.setFocus()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        """Keep an open side panel at its share of the pane."""
+        """Keep an open side panel within its share of the pane."""
         super().resizeEvent(event)
         self._side_panel_controller.fit_to_pane(event.size().width())
 
