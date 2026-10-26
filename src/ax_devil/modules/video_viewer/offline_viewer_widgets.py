@@ -17,7 +17,7 @@ class ViewerOverlayHost(QWidget):
     """Fill available space with viewer content and anchor one overlay at the bottom."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__()
+        super().__init__(parent)
         self.content_layout = QGridLayout(self)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(0)
