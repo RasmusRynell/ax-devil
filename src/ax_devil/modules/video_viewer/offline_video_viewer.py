@@ -112,7 +112,6 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._nav_label: QLabel | None = None
         self._prev_button: QPushButton | None = None
         self._next_button: QPushButton | None = None
-        self._navigation_controls: QWidget | None = None
         self._global_controls: SeekableVideoControlPanel | None = None
         self._global_control_visibility: ControlVisibilityController | None = None
         self._use_global_controls = False
@@ -144,9 +143,6 @@ class OfflineVideoViewerWidget(ViewerWidget):
             layout.addWidget(QLabel("No local content selected"))
             return
 
-        if len(entries) > 1:
-            self._navigation_controls = self._build_navigation_controls()
-
         self._viewer_host = _ViewerOverlayHost(self)
         self._viewer_host_layout = self._viewer_host.content_layout
         layout.addWidget(self._viewer_host, 1)
@@ -158,7 +154,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._open_entry(self._current_index, self._start_frame)
 
     def _build_navigation_controls(self) -> QWidget:
-        navigation = QWidget(self)
+        """Build the entry stepping strip; it has no parent, so it shows only where the transport panel places it."""
+        navigation = QWidget()
         navigation.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         nav_layout = QHBoxLayout(navigation)
         nav_layout.setContentsMargins(Space.M, 0, Space.M, 0)
@@ -310,7 +307,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 controls.jumpToRequested.connect(self._jump_to_frame)
                 controls.frameStepRequested.connect(self._step_frames)
                 controls.playbackSpeedChanged.connect(self.set_playback_speed)
-                controls.set_context_widget(self._navigation_controls)
+                controls.set_context_widget(self._build_navigation_controls() if self._entry_count() > 1 else None)
+                self._update_nav_state()
                 self._global_controls = controls
                 self._global_control_visibility = ControlVisibilityController(
                     timer_parent=self,
@@ -557,7 +555,6 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._nav_label = None
         self._prev_button = None
         self._next_button = None
-        self._navigation_controls = None
         if self._global_control_visibility is not None:
             self._global_control_visibility.cleanup()
         self._global_control_visibility = None
