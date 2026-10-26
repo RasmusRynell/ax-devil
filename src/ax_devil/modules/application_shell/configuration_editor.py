@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QW
 
 from ax_devil.modules.application_shell.configuration_preferences import ConfigField
 from ax_devil.modules.chrome.browse_button import BrowseButton
+from ax_devil.modules.chrome.choice_toggle import ChoiceToggle
 from ax_devil.modules.settings.config_manager import is_environment_reference
 from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
@@ -20,7 +21,13 @@ class ConfigurationEditor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self._choices: QComboBox | None = None
         self._text: QLineEdit | None = None
-        if field.choices or field.decoder:
+        self._toggle: ChoiceToggle | None = None
+        if field.toggle:
+            self._toggle = ChoiceToggle([(stored, label) for label, stored in field.choices], value.lower(), self)
+            layout.addWidget(self._toggle)
+            layout.addStretch(1)
+            self.setFocusProxy(self._toggle)
+        elif field.choices or field.decoder:
             combo = QComboBox(self)
             combo.setEditable(True)
             combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -57,6 +64,8 @@ class ConfigurationEditor(QWidget):
 
     def text(self) -> str:
         """Return the raw preference represented by the editor."""
+        if self._toggle is not None:
+            return self._toggle.value()
         if self._choices is not None:
             combo = self._choices
             index = combo.currentIndex()

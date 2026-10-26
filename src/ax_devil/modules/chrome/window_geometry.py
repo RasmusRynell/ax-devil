@@ -5,6 +5,12 @@ from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import QWidget
 
 
+def _decorations(window: QWidget) -> QSize:
+    """Return the size of the desktop's title bar and borders around *window*, known once its native window exists."""
+    window.create()
+    return (window.frameGeometry().size() - window.size()).expandedTo(QSize(0, 0))
+
+
 def bounded_window_size(
     window: QWidget,
     preferred_size: QSize,
@@ -20,12 +26,13 @@ def bounded_window_size(
         return size
     margin = window.fontMetrics().height() if screen_margin is None else screen_margin
     bounds = screen.availableGeometry().adjusted(margin, margin, -margin, -margin)
-    decorations = (window.frameGeometry().size() - window.size()).expandedTo(QSize(0, 0))
+    decorations = _decorations(window)
     limit = bounds.size() - decorations
     if maximum_size is not None:
         limit = limit.boundedTo(maximum_size)
     width = min(size.width(), limit.width())
-    if window.hasHeightForWidth():
+    layout = window.layout()
+    if layout is not None and layout.hasHeightForWidth():
         size.setHeight(max(size.height(), window.heightForWidth(width)))
     return size.boundedTo(limit)
 
@@ -53,7 +60,7 @@ def fit_window(
     available = screen.availableGeometry()
     margin = window.fontMetrics().height() if screen_margin is None else screen_margin
     bounds = available.adjusted(margin, margin, -margin, -margin)
-    decorations = (window.frameGeometry().size() - window.size()).expandedTo(QSize(0, 0))
+    decorations = _decorations(window)
     size = bounded_window_size(window, preferred_size, screen=screen, maximum_size=maximum_size, screen_margin=margin)
     window.resize(size)
     if parent is None:

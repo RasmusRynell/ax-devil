@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,15 +41,30 @@ def test_binary_frames_support_direct_access(tmp_path: Path, use_mmap: bool, com
 
 
 @pytest.mark.parametrize("use_mmap", [False, True])
-def test_open_cache_reads_survive_path_removal(tmp_path: Path, use_mmap: bool) -> None:
-    """An open reader owns its handle until close, independently of the file path."""
+def test_open_cache_reads_survive_path_removal(tmp_path: Path, use_mmap: bool, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An open reader owns its handle until close, independently of the file path or a replacing save."""
     cache_path = tmp_path / "test.frames"
     with patch.object(CacheManager, "get_cache_path", return_value=cache_path):
         cache = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap)
         try:
             assert cache.load_frame(0) is None
-            cache.save({0: "first", 3041: "later"})
+            # Another process publishing right after our file is in place must not change what this cache serves.
+            replace = os.replace
+
+            def replace_then_publish_another(source: str, target: Path) -> None:
+                replace(source, target)
+                (tmp_path / "other.frames").write_bytes(b'{"frame_count":0}\n')
+                replace(tmp_path / "other.frames", target)
+
+            with monkeypatch.context() as patcher:
+                patcher.setattr(os, "replace", replace_then_publish_another)
+                cache.save({0: "first", 3041: "later"})
             assert cache.load_frame(0) == "first"
+            writer = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap)
+            writer.save({0: "replaced"})
+            assert cache.load_frame(0) == "first"
+            assert writer.load_frame(0) == "replaced"
+            writer.close()
             cache_path.unlink()
             assert cache.load_frame(3041) == "later"
             cache.close()

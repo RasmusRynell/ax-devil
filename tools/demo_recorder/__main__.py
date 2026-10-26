@@ -97,6 +97,7 @@ def parser() -> argparse.ArgumentParser:
     capture.add_argument(
         "--inspector-at", type=float, default=1, help="Open media tools at this output second; -1 disables"
     )
+    capture.add_argument("--select-object", help="Entity id to open in the inspector (default: the first listed)")
     capture.add_argument("--raw-only", action="store_true")
     capture.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     render = commands.add_parser("render", help="Restyle an existing raw capture without launching the app")

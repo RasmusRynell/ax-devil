@@ -51,19 +51,22 @@ def test_menu_button_puts_the_chevron_after_the_text_and_keeps_the_menu_left_to_
     menu = QMenu(window)
     button = MenuButton("Filter", menu, window)
     button.resize(button.sizeHint())
+    # The same button with the text blanked out by spaces as wide as the word, with and without its icon: what differs
+    # is the chevron, whatever frame or background the platform style draws.
+    space = button.fontMetrics().horizontalAdvance("\u00a0")
+    blank_text = "\u00a0" * round(button.fontMetrics().horizontalAdvance("Filter") / space)
+    with_icon, without_icon = MenuButton(blank_text, menu, window), MenuButton(blank_text, menu, window)
+    without_icon.setIcon(QIcon())
+    with_icon.resize(button.size())
+    without_icon.resize(button.size())
 
-    image = button.grab().toImage()
-    background = image.pixelColor(0, 0)
+    first, second = with_icon.grab().toImage(), without_icon.grab().toImage()
     inked = [
-        x for x in range(image.width()) if any(image.pixelColor(x, y) != background for y in range(image.height()))
+        x
+        for x in range(first.width())
+        if any(first.pixelColor(x, y) != second.pixelColor(x, y) for y in range(first.height()))
     ]
-    runs: list[list[int]] = [[inked[0]]]
-    for x in inked[1:]:
-        if x - runs[-1][-1] > 4:  # a gap wider than letter spacing separates the text from the chevron
-            runs.append([])
-        runs[-1].append(x)
 
-    assert len(runs) == 2
-    text, chevron = runs
-    assert len(chevron) < len(text), "the small chevron sits to the right of the word"
+    assert inked, "the chevron is drawn"
+    assert min(inked) > first.width() // 2, "the small chevron sits to the right of the word"
     assert menu.layoutDirection() == Qt.LayoutDirection.LeftToRight

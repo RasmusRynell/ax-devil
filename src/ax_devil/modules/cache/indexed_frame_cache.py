@@ -8,6 +8,7 @@ import pickle
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from ax_devil.core.atomic_file import open_replaceable, write_atomically
 from ax_devil.modules.settings.logging_config import get_logger
 
 from .cache_manager import CacheManager
@@ -55,7 +56,8 @@ class IndexedFrameCache:
             cache_type=self._cache_type, source_path=self.source_path, suffix=cache_suffix
         )
 
-        self._use_mmap_cfg = bool(use_mmap)
+        # A mapped file cannot be replaced on Windows, and another provider may rebuild this cache while it is open.
+        self._use_mmap_cfg = bool(use_mmap) and os.name != "nt"
         self._compress_cfg = bool(compress)
 
         # populated lazily on first read
@@ -91,9 +93,12 @@ class IndexedFrameCache:
             return
         if not self.exists():
             raise FileNotFoundError(self.cache_file)
+        self._open(open_replaceable(self.cache_file))
 
+    def _open(self, handle: BinaryIO) -> None:
+        """Parse the header of the cache file *handle* is open on, and keep it for reading."""
         if self._use_mmap_cfg:
-            self._mmap_fh = self.cache_file.open("rb")
+            self._mmap_fh = handle
             self._mm = mmap.mmap(self._mmap_fh.fileno(), 0, access=mmap.ACCESS_READ)
             newline = self._mm.find(b"\n")
             if newline == -1:
@@ -101,7 +106,7 @@ class IndexedFrameCache:
             header_bytes = self._mm[:newline]
             self._payload0 = newline + 1
         else:
-            self._fh = self.cache_file.open("rb")
+            self._fh = handle
             header_bytes = self._fh.readline().rstrip(b"\n")
             self._payload0 = self._fh.tell()
 
@@ -164,19 +169,27 @@ class IndexedFrameCache:
         }
         header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
 
-        temporary_path = self.cache_file.with_name(f"{self.cache_file.name}.{os.getpid()}.tmp")
-        try:
-            with temporary_path.open("wb") as fh:
-                fh.write(header_bytes + b"\n")
-                for enc in encoded_frames:
-                    fh.write(enc)
-            os.replace(temporary_path, self.cache_file)
-        finally:
-            temporary_path.unlink(missing_ok=True)
+        # Replace atomically: a reader may still have the old file open or mapped. Our own reader is a duplicate of
+        # the written file's descriptor, so a rebuild by another process landing later cannot pair this provider's
+        # catalog with a different file. Windows has no duplicate of a file that survives its rename, so there the
+        # reader is a second handle on the temporary file, opened to share deletion.
+        self.close()  # Windows cannot replace the file while this cache still has it open.
+        reader: BinaryIO | None = None
+        with write_atomically(self.cache_file, "wb") as fh:
+            fh.write(header_bytes + b"\n")
+            for enc in encoded_frames:
+                fh.write(enc)
+            fh.flush()
+            if os.name == "nt":
+                reader = open_replaceable(Path(fh.name))
+            else:
+                reader = os.fdopen(os.dup(fh.fileno()), "rb")
+                reader.seek(0)
+        assert reader is not None
 
-        logger.debug(f"Cached {len(items)} frames ({self.cache_file.stat().st_size} bytes) → {self.cache_file.name}")
+        logger.debug(f"Cached {len(items)} frames ({len(header_bytes) + 1 + offset} bytes) → {self.cache_file.name}")
 
-        self.close()  # purge any stale handles/header
+        self._open(reader)
 
     # -- read ------------------------------------------------------------
 

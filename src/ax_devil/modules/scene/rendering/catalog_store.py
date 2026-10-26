@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import re
-import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
 
+from ax_devil.core.atomic_file import open_replaceable_text, write_atomically
 from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH, BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
@@ -237,27 +237,24 @@ def _write_catalog_document(destination: Path, document: Mapping[str, Any]) -> N
 
 def _write_text(destination: Path, text: str) -> None:
     """Replace *destination* atomically, keeping the previous file if writing fails."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent, delete=False) as output:
-            temporary_path = Path(output.name)
-            output.write(text)
-        temporary_path.replace(destination)
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
+    with write_atomically(destination) as output:
+        output.write(text)
+
+
+def _read_text(path: Path) -> str:
+    with open_replaceable_text(path) as stream:
+        return stream.read()
 
 
 def _read_catalog_document(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(_read_text(path))
     if not isinstance(value, dict):
         raise TemplateRuntimeError(f"Scene render catalog file '{path}' must contain an object.")
     return cast(dict[str, Any], value)
 
 
 def _validate_catalog_document(document: Mapping[str, Any]) -> None:
-    from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalogLoader
+    from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader
 
     SceneRenderCatalogLoader().validate_document(document)
 

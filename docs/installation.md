@@ -9,7 +9,8 @@ Install the native dependencies for running the desktop app:
 ```bash
 sudo apt-get update
 sudo apt-get install -y git pipx python3-venv ffmpeg libegl1-mesa-dev libgl1-mesa-dev \
-  libgles2-mesa-dev libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1
+  libgles2-mesa-dev libgl1-mesa-dri libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+  libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0
 pipx install uv
 pipx ensurepath
 ```
@@ -43,15 +44,10 @@ installed plugins follow on the next launch. See [plugin upgrades and recovery](
 
 ## Graphics startup problems
 
-If graphics initialization fails, launch with software rendering:
-
-```bash
-QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software ax-devil         # standalone installation
-QT_WIDGETS_RHI=0 QT_QUICK_BACKEND=software uv run ax-devil  # source checkout
-```
-
-Then set **Settings → General → Appearance → Graphics acceleration** to **Off** to keep software rendering
-on later launches. See [graphics acceleration](settings.md#graphics-acceleration).
+Video and overlays are drawn on the GPU. Without a working GPU driver, Qt falls back to a mode that cannot draw
+overlays and the log says so. On Linux, launch with `LIBGL_ALWAYS_SOFTWARE=1` to render with Mesa on the CPU; this
+needs the Mesa DRI driver (`libgl1-mesa-dri`, installed by the prerequisites above). On Windows, set
+`QSG_RHI_PREFER_SOFTWARE_RENDERER=1`.
 
 ## Developing
 

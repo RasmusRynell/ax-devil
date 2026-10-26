@@ -38,7 +38,7 @@ def _write(path: Path, frames: dict[str, object], version: str = "1.0") -> Path:
 
 
 def _load(provider: UVGVCMSceneDataProvider, frame: int) -> Scene:
-    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=frame, timestamp_monotime_us=frame * 40_000))
+    scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=frame, timestamp_us=frame * 40_000))
     assert scene is not None
     return scene
 
@@ -61,7 +61,6 @@ def test_frame_alignment_tracking_and_empty_frames_survive_cache_and_source_chan
                 )
             provider = UVGVCMSceneDataProvider(path)
             try:
-                assert provider.get_available_sequences() == {0, 1, 2}
                 first = _load(provider, 0).entities[EntityId("7")].observations[0]
                 assert first.frame_number == 0
                 assert first.timestamp is None
@@ -84,7 +83,6 @@ def test_frame_alignment_tracking_and_empty_frames_survive_cache_and_source_chan
     _write(path, {"1": [_detection(class_id=33)]})
     provider = UVGVCMSceneDataProvider(path)
     try:
-        assert provider.get_available_sequences() == {0}
         classification = _load(provider, 0).entities[EntityId("7")].observations[0].primary_classification
         assert classification is not None and classification.type == "sports ball"
         assert provider.get_filter_config().option_ids() == ("show_sports_ball",)
@@ -117,7 +115,7 @@ def test_polygons_and_category_ids_decode_through_a_folder_pair_playlist(tmp_pat
     factory = get_file_decoder_factory(overlay.source_spec.handler_type)
     provider = factory(annotation_path)
     try:
-        scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=0, timestamp_monotime_us=0))
+        scene = provider.load_by_frame_id(FrameIdentifier(sequence_id=0, timestamp_us=0))
         assert scene is not None
         observation = scene.entities[EntityId("3")].observations[0]
         points = observation.geometry.polygon_points()

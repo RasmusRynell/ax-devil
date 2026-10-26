@@ -17,5 +17,5 @@ def id_order(text: str) -> tuple[tuple[int, str], ...]:
 
 def seen_range(history: ObjectHistory) -> str:
     """Return when the object is first and last shown, such as ``0:03–1:12``."""
-    start = format_short_frame_time(history.first_seen.timestamp_monotime_us)
-    return f"{start}–{format_short_frame_time(history.last_seen.timestamp_monotime_us)}"
+    start = format_short_frame_time(history.first_seen.timestamp_us)
+    return f"{start}–{format_short_frame_time(history.last_seen.timestamp_us)}"

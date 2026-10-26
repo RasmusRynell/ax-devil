@@ -18,7 +18,6 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.app import _collect_due_generation
 from ax_devil.modules.cache.cache_manager import CacheManager
-from ax_devil.modules.diagnostics.metrics_store import metrics_enabled, set_metrics_enabled
 from ax_devil.modules.plugin_system import ApplicationPluginLoader, RuntimePluginRegistry
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogManager,
@@ -161,14 +160,6 @@ def _restore_test_config(_load_plugins: Path) -> Generator[None, None, None]:
     ConfigManager().set_config_path(_load_plugins, create_if_missing=False)
     # Remembered window sizes and panel states would otherwise carry over into the next test.
     (Path(ConfigManager().get("storage")["base_dir"]) / "window-state.ini").unlink(missing_ok=True)
-
-
-@pytest.fixture(autouse=True)
-def _restore_metrics_enabled() -> Generator[None, None, None]:
-    """Put the global debug-metrics switch back after each test, so one test cannot affect later ones."""
-    was_enabled = metrics_enabled()
-    yield
-    set_metrics_enabled(was_enabled)
 
 
 @pytest.fixture(autouse=True)

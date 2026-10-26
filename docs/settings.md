@@ -2,7 +2,7 @@
 
 **Settings** edits the active configuration file, which is selected at launch with `--config`:
 
-- **General:** theme, text size, window title bar, graphics acceleration, video cache memory, overlay interaction, and
+- **General:** theme, text size, window title bar, video cache memory, overlay interaction, and
   keyboard shortcuts.
 - **Stream defaults:** device credentials and RTSP defaults for new live streams.
 - **Analytics:** defaults for MQTT and DataHub overlay connections.
@@ -37,9 +37,9 @@ with `~` for the home folder.
 
 ## Quick Setup
 
-On first start, **Quick Setup** asks for the theme and text size. Choices apply as they are clicked and are saved
-when the dialog closes. **Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to `true`; set it
-to `false` to show it on the next start.
+On first start, **Quick Setup** opens. Choices apply as they are clicked and are saved when the dialog closes.
+**Help → Quick Setup** opens it again. Closing it sets `ui.quick_setup_done` to `true`; set it to `false` to show it on
+the next start.
 
 ## Text size
 
@@ -47,20 +47,6 @@ to `false` to show it on the next start.
 captions, list rows, and title bars scale with it, while margins stay fixed. **System** (the default) uses the
 operating system's interface font size; **Small**, **Medium**, **Large**, and **Larger** are 13, 15, 18, and 21 px.
 The typeface always follows the operating system. Changes apply to open windows immediately.
-
-## Graphics acceleration
-
-**General → Appearance → Graphics acceleration** (`settings.appearance.graphics_acceleration`):
-
-- **Auto** (default): acceleration where needed; Qt chooses the graphics backend. Ordinary dialogs and menus use
-  Qt's normal widget presentation.
-- **Off**: software rendering, for troubleshooting graphics problems.
-
-It affects video and overlay rendering and window presentation, not video decoding. An explicit `QT_WIDGETS_RHI`
-environment variable overrides Qt's widget presentation policy, and the dialog shows when that is set. Setting it
-to `1` forces acceleration even for ordinary dialogs and menus.
-Auto does not detect incompatible drivers or fall back automatically; if startup fails, follow the
-[software-rendering recovery steps](installation.md#graphics-startup-problems).
 
 ## Video cache memory
 
@@ -80,8 +66,7 @@ default to folders under `~/.ax_devil/`.
 Keep these private:
 
 - Configuration can store manually entered credentials as plain JSON.
-- Logs may contain credentials or authenticated URLs, and performance traces contain local paths.
-  Redact diagnostics before sharing.
+- Logs may contain credentials or authenticated URLs. Redact them before sharing.
 - Keep cache and config folders user-owned. Do not load third-party caches or distribute your own.
 
 ## Video overlays

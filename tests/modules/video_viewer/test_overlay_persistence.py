@@ -10,13 +10,13 @@ from ax_devil.modules.video_viewer.overlay_persistence import (
 )
 
 
-def _frame_id(sequence_id: int, timestamp_us: float | None = None) -> FrameIdentifier:
+def _frame_id(sequence_id: int, timestamp_us: int | None = None) -> FrameIdentifier:
     """Build a FrameIdentifier; timestamp defaults to sequence_id * 33_333 µs (≈30 fps)."""
-    ts = timestamp_us if timestamp_us is not None else float(sequence_id) * 33_333.0
-    return FrameIdentifier(sequence_id=sequence_id, timestamp_monotime_us=ts)
+    ts = timestamp_us if timestamp_us is not None else sequence_id * 33_333
+    return FrameIdentifier(sequence_id=sequence_id, timestamp_us=ts)
 
 
-def _make_overlay(sequence_id: int, timestamp_us: float | None = None) -> OverlayData:
+def _make_overlay(sequence_id: int, timestamp_us: int | None = None) -> OverlayData:
     """Create a minimal OverlayData for testing."""
     scene = Scene(time_slice=TimeSlice(sequence_id, sequence_id))
     return OverlayData(content=scene, frame_id=_frame_id(sequence_id, timestamp_us), source_id="test")
@@ -62,12 +62,12 @@ def test_policy_timeout_clears_cache() -> None:
     """After video-time timeout the cached overlay should expire."""
     settings = OverlayPersistenceSettings(enabled=True, timeout_ms=1000, opacity=0.7)
     policy = OverlayPersistencePolicy(settings)
-    overlay = _make_overlay(0, timestamp_us=0.0)
+    overlay = _make_overlay(0, timestamp_us=0)
 
     policy.select_overlay(overlay.frame_id, overlay)
 
     # Advance by 2 seconds of video time
-    later = _frame_id(60, timestamp_us=2_000_000.0)
+    later = _frame_id(60, timestamp_us=2_000_000)
     expired = policy.select_overlay(later, None)
     assert expired.overlay is None
     assert expired.reused is False

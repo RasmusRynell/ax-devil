@@ -9,7 +9,9 @@ from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QContextMenuEvent, QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
@@ -23,8 +25,9 @@ SHARED_ACTION_IDS = ("view.toggle_media_tools", "view.toggle_lane_fullscreen", "
 
 if TYPE_CHECKING:
     from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-    from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition
-    from ax_devil.modules.workspace.core.content import ConsiderationItemRef, OnScreenWorkspaceItem
+    from ax_devil.modules.workspace.core.bookmarks import BookmarkPosition, BookmarkTarget
+    from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
+    from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamStatus
 
 
 class ViewerWidget(QFrame):
@@ -39,6 +42,7 @@ class ViewerWidget(QFrame):
     on_screen_item_changed = Signal(object)
     context_menu_requested = Signal(QPoint)  # Global position of a right click on the pane outside its video lanes
     consideration_change_requested = Signal(object, bool)  # ConsiderationItemRef, considered: asked for from the pane
+    stream_status_changed = Signal()  # ``stream_status()`` is a different value now
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -46,6 +50,8 @@ class ViewerWidget(QFrame):
         self._logger = logger
         self._pinned: bool = False
         self._shared_actions: Mapping[str, QAction] = {}
+        self._banner: QWidget | None = None
+        self._reload_offer: Banner | None = None
 
         # Set up the base widget structure
         self._setup_base_ui()
@@ -106,6 +112,14 @@ class ViewerWidget(QFrame):
 
         # Add header widget to main layout
         self._main_layout.addWidget(self._header_widget)
+
+        # Room for one banner between the header and the content; takes no space while empty
+        self._banner_host = QWidget()
+        self._banner_layout = QVBoxLayout(self._banner_host)
+        self._banner_layout.setContentsMargins(Space.S, Space.S, Space.S, Space.S)
+        self._banner_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self._banner_host.hide()
+        self._main_layout.addWidget(self._banner_host)
 
         # Content area for subclass widgets
         self._content_layout = QVBoxLayout()
@@ -218,6 +232,11 @@ class ViewerWidget(QFrame):
         """Expose the header widget used for dragging in split view."""
         return self._header_widget
 
+    def set_active(self, active: bool) -> None:
+        """Mark the pane whose content ordinary Open targets, even while the sidebar has keyboard focus."""
+        color = "palette(highlight)" if active else "transparent"
+        self._header_widget.setStyleSheet(f"#ViewerWidgetHeader {{ border-bottom: {Space.XS}px solid {color}; }}")
+
     def on_workspace_attached(self) -> None:
         """Run after this widget has been attached to the workspace split view."""
 
@@ -258,7 +277,7 @@ class ViewerWidget(QFrame):
         else:
             self._pin_button.setIcon(Icon.PIN.icon())
             self._pin_button.setToolTip("Pin: keep this pane open when other content is opened")
-            self._title_label.setToolTip("Preview (italic): the next opened content replaces this pane")
+            self._title_label.setToolTip("Preview (italic): opened content replaces this pane while it is active")
         title_font = (TextRole.STRONG if self._pinned else TextRole.BODY).font()
         title_font.setItalic(not self._pinned)
         self._title_label.setFont(title_font)
@@ -268,9 +287,84 @@ class ViewerWidget(QFrame):
         """Return the workspace item currently visible in the widget."""
         return None
 
+    def stream_status(self) -> LiveStreamStatus | None:
+        """Return how the live stream shown is doing, or None for a viewer that shows no live stream."""
+        return None
+
+    def _set_banner(self, banner: QWidget | None) -> None:
+        """Show *banner* between the header and the content in place of the one shown; None clears it."""
+        previous, self._banner = self._banner, banner
+        if previous is not None:
+            self._banner_layout.removeWidget(previous)
+            previous.hide()
+            previous.deleteLater()
+        if banner is not None:
+            self._banner_layout.addWidget(banner)
+            banner.show()
+        self._banner_host.setVisible(banner is not None)
+
+    def show_warning(self, message: str) -> None:
+        """Show *message* in a banner the user can dismiss, in place of any banner shown."""
+        warning = Banner(message, "Dismiss")
+        warning.action.clicked.connect(lambda: self._set_banner(None))
+        self._set_banner(warning)
+
+    def source_paths(self) -> SourcePaths:
+        """Return the files and folders the content on screen was read from, which changing makes it out of date.
+
+        Empty for a viewer that reads no files, such as a live stream.
+        """
+        return SourcePaths()
+
+    def offer_reload(self) -> None:
+        """Ask in a banner whether to ``reload``, unless that offer is already shown.
+
+        Changes arriving one after another never stack offers; ``reload`` runs only when the user clicks Reload, so it
+        reads the newest data then. Dismiss removes the offer until the next change.
+        """
+        if self._reload_offered():
+            return
+        offer = Banner("Source changed, reload current viewer?", "Reload", dismiss_text="Dismiss")
+        self._reload_offer = offer
+        offer.action.clicked.connect(self._accept_reload_offer)
+        if offer.dismiss is not None:
+            offer.dismiss.clicked.connect(lambda: self._set_banner(None))
+        self._set_banner(offer)
+
+    def _reload_offered(self) -> bool:
+        """Return whether the reload offer is the banner on screen."""
+        return self._reload_offer is not None and self._reload_offer is self._banner
+
+    def _accept_reload_offer(self) -> None:
+        """Take the offer down and reload."""
+        self._set_banner(None)
+        self.reload()
+
+    def reload(self) -> None:
+        """Read the content on screen again from its files, keeping the playhead.
+
+        Does nothing in viewers that read no files. A viewer that cannot show the new data keeps what it shows and says
+        so.
+        """
+
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the frame on screen as a bookmark would mark it, or None when nothing on screen can be bookmarked."""
         return None
+
+    def playhead_frame(self) -> int | None:
+        """Return the shown or requested frame to restore when reopening, or None for a nonseekable viewer."""
+        position = self.bookmark_position()
+        return position.frame if position is not None else None
+
+    def bookmark_target(self) -> BookmarkTarget | None:
+        """Return the target of the entry shown, or None when nothing shown can be bookmarked."""
+        return None
+
+    def focus_lane(self, lane_index: int) -> None:
+        """Focus the lane with its original entry index, once ready, without changing playback."""
+
+    def show_frame(self, frame: int) -> None:
+        """Show *frame* of the entry shown, paused, when supported by the hosted tool."""
 
     def refresh_item_consideration(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Refresh viewer state after an item consideration change.

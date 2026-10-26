@@ -5,33 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import partial
 
-from PySide6.QtCore import QPoint, Qt, QThread, Signal
-from PySide6.QtGui import QAction
-from PySide6.QtWidgets import (
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QMenu,
-    QMessageBox,
-    QPushButton,
-    QSizePolicy,
-    QWidget,
-)
+from PySide6.QtCore import QPoint, QThread, Signal
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
-from ax_devil.core.playback_speed import (
-    DEFAULT_PLAYBACK_SPEED,
-    clamp_playback_speed,
-    step_playback_speed,
-)
+from ax_devil.core.playback_speed import step_playback_speed
+from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import LatestRequest
-from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.video_player.constants import MOUSE_IDLE_HIDE_DELAY
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-from ax_devil.modules.video_player.orchestration.control_visibility import ControlVisibilityController
-from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, overlay_specs, prepare_entry
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import (
@@ -40,49 +22,31 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
     open_entry_media,
     release_media,
 )
+from ax_devil.modules.video_viewer.offline_lane import OfflineLane, video_details
+from ax_devil.modules.video_viewer.offline_transport import OfflineTransport, TransportCommands
 from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
-from ax_devil.modules.video_viewer.offline_viewer_runtime import (
-    OfflineLane,
-    OfflineSession,
-    show_video_on_controls,
-    video_details,
-)
+from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
+from ax_devil.modules.video_viewer.offline_viewer_widgets import EntryNavigationBar, ViewerOverlayHost, exec_lane_menu
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
+    BookmarkTarget,
     ConsiderationItemRef,
     ConsiderationQuery,
     PlaylistContent,
-    PlaylistEntry,
     SeekableVideoContent,
+    entry_target,
 )
-from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.viewer_widget import SHARED_ACTION_IDS, ViewerWidget
 
 logger = get_logger(__name__)
 
 
-class _ViewerOverlayHost(QWidget):
-    """Fill available space with viewer content and anchor one overlay at the bottom."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.content_layout = QGridLayout(self)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(0)
-
-    def set_content(self, content: QWidget) -> None:
-        self.content_layout.addWidget(content, 0, 0)
-
-    def set_bottom_overlay(self, overlay: QWidget) -> None:
-        self.content_layout.addWidget(overlay, 0, 0, Qt.AlignmentFlag.AlignBottom)
-        overlay.raise_()
-
-
 class OfflineVideoViewerWidget(ViewerWidget):
     """Offline video viewer for local playback with multi-lane support.
 
-    It opens at entry *start_index* and plays it, or shows its frame *start_frame* paused when given; later entries
-    start at their first frame.
+    An explicit *start_index* opens that entry even when hidden; otherwise the first considered entry opens.
+    It plays the entry, or shows *start_frame* paused when given; later entries start at their first frame.
     """
 
     current_entry_changed = Signal(int)
@@ -91,7 +55,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self,
         content: SeekableVideoContent | PlaylistContent,
         render_catalog_manager: SceneRenderCatalogManager,
-        start_index: int = 0,
+        start_index: int | None = None,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
         start_frame: int | None = None,
@@ -100,119 +64,89 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._display_name = content.display_name
         self._render_catalog_manager = render_catalog_manager
         self._navigation = OfflineViewerNavigation(content, consideration_query)
-        # A start frame belongs to the requested entry, which opens even when the workspace excludes it, so the frame
-        # is never moved to another video. Without one, an excluded entry gives way to the next considered one.
         self._current_index = (
-            self._navigation.normalize_entry_index(start_index)
-            if start_frame is None
+            self._navigation.normalize_entry_index(0)
+            if start_index is None
             else self._navigation.bound_entry_index(start_index)
         )
         self._start_frame = start_frame
+        self._pending_lane_focus: tuple[int, int] | None = None
         self._runtime: OfflineSession | None = None
-        self._viewer_host: _ViewerOverlayHost | None = None
-        self._viewer_host_layout: QGridLayout | None = None
-        self._nav_label: QLabel | None = None
-        self._prev_button: QPushButton | None = None
-        self._next_button: QPushButton | None = None
-        self._navigation_controls: QWidget | None = None
-        self._global_controls: SeekableVideoControlPanel | None = None
-        self._global_control_visibility: ControlVisibilityController | None = None
-        self._use_global_controls = False
+        self._viewer_host: ViewerOverlayHost | None = None
+        self._entry_bar: EntryNavigationBar | None = None
         self._is_cleaned_up = False
         self._loading_indicator: LoadingIndicator | None = None
-        self._playback_speed = DEFAULT_PLAYBACK_SPEED
         self._initial_entry_loaded = False
         self._lane_visibility: dict[int, OverlayVisibility] = {}
         self._cancel_preparation: Callable[[], None] | None = None
         super().__init__(parent)
+        self._transport = OfflineTransport(
+            self,
+            TransportCommands(
+                self._start_playback,
+                self._pause_playback,
+                self._jump_to_frame,
+                self._step_frames,
+                self.set_playback_speed,
+            ),
+            context=self._entry_bar,
+            host=self._viewer_host,
+        )
         self._opening = LatestRequest(self)
         self._opening_jobs = entry_opening_scope(self)
 
-    def _get_entries(self) -> tuple[PlaylistEntry, ...]:
-        """Return the playlist entries for the current content."""
-        return self._navigation.get_entries()
-
-    def _is_entry_considered(self, entry_index: int) -> bool:
-        """Return whether a playlist entry should participate in stepping."""
-        return self._navigation.is_entry_considered(entry_index)
-
-    def _is_lane_considered(self, entry_index: int, lane_index: int) -> bool:
-        """Return whether a lane should participate in active entry layout."""
-        return self._navigation.is_lane_considered(entry_index, lane_index)
-
     def _setup_widget_ui(self) -> None:
         layout = self.get_content_layout()
-        entries = self._get_entries()
+        entries = self._navigation.get_entries()
         if not entries:
             layout.addWidget(QLabel("No local content selected"))
             return
 
         if len(entries) > 1:
-            self._navigation_controls = self._build_navigation_controls()
+            self._entry_bar = EntryNavigationBar(self, on_previous=self._step_prev, on_next=self._step_next)
 
-        self._viewer_host = _ViewerOverlayHost(self)
-        self._viewer_host_layout = self._viewer_host.content_layout
+        self._viewer_host = ViewerOverlayHost(self)
         layout.addWidget(self._viewer_host, 1)
 
     def on_workspace_attached(self) -> None:
         """Start the initial entry load once the viewer is visible in the workspace."""
-        if self._initial_entry_loaded or not self._get_entries():
+        if self._initial_entry_loaded or not self._navigation.get_entries():
             return
         self._open_entry(self._current_index, self._start_frame)
 
-    def _build_navigation_controls(self) -> QWidget:
-        navigation = QWidget(self)
-        navigation.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        nav_layout = QHBoxLayout(navigation)
-        nav_layout.setContentsMargins(Space.M, 0, Space.M, 0)
-        nav_layout.setSpacing(Space.S)
-        nav_layout.addStretch(1)
-
-        self._prev_button = QPushButton(Icon.STEP_BACK.icon(), "")
-        self._prev_button.setToolTip("Previous entry")
-        self._prev_button.setAccessibleName("Previous entry")
-        self._prev_button.clicked.connect(self._step_prev)
-        nav_layout.addWidget(self._prev_button)
-
-        self._nav_label = QLabel()
-        nav_layout.addWidget(self._nav_label)
-
-        self._next_button = QPushButton(Icon.STEP_FORWARD.icon(), "")
-        self._next_button.setToolTip("Next entry")
-        self._next_button.setAccessibleName("Next entry")
-        self._next_button.clicked.connect(self._step_next)
-        nav_layout.addWidget(self._next_button)
-        nav_layout.addStretch(1)
-
-        return navigation
-
-    def _open_entry(self, index: int, start_frame: int | None = None) -> None:
-        """Show entry *index*: drop any entry still opening, release the shown one, and open *index* in the background.
+    def _open_entry(self, index: int, start_frame: int | None = None, *, keep_shown: bool = False) -> None:
+        """Show entry *index*: drop any entry still opening and open *index* in the background.
 
         The only way an entry is shown. The viewer stays responsive while sources open, and a newer request simply
-        replaces an older one. The entry plays from its first frame, or shows *start_frame* paused.
+        replaces an older one. The entry plays from its first frame, or shows *start_frame* paused. Unless *keep_shown*,
+        the shown entry is released first and a loading indicator stands in; with it, the shown entry keeps playing
+        until the new media is ready, and stays if that cannot be shown.
         """
         if self._is_cleaned_up:
             return
         self._initial_entry_loaded = True
+        if self._pending_lane_focus is not None and self._pending_lane_focus[0] != index:
+            self._pending_lane_focus = None
         self._opening.cancel()
         self._stop_preparation()
-        self._teardown_runtime()
-        self._current_index = index
-        self._update_nav_state()
-        self.current_entry_changed.emit(index)
-        self.on_screen_item_changed.emit(self.current_on_screen_item())
+        if not keep_shown:
+            self._teardown_runtime()
+            self._current_index = index
+            self._start_frame = start_frame
+            self._update_nav_state()
+            self.current_entry_changed.emit(index)
+            self.on_screen_item_changed.emit(self.current_on_screen_item())
 
-        entry = self._get_entries()[index]
+        entry = self._navigation.get_entries()[index]
         lane_indices = self._considered_lanes(index)
-        indicator = self._show_loading_indicator()
+        indicator = self._show_loading_indicator() if self._runtime is None else None
         self._opening.submit(
             self._opening_jobs,
             "open offline entry",
             partial(open_entry_media, entry, lane_indices, QThread.currentThread()),
-            on_result=partial(self._on_entry_opened, index, start_frame),
-            on_error=lambda error: self._on_entry_opened(index, start_frame, EntryMedia(error=str(error))),
-            on_progress=indicator.set_message,
+            on_result=partial(self._on_entry_opened, index, start_frame, keep_shown),
+            on_error=lambda error: self._on_entry_opened(index, start_frame, keep_shown, EntryMedia(error=str(error))),
+            on_progress=indicator.set_message if indicator is not None else None,
             on_discard=release_media,
         )
 
@@ -220,18 +154,19 @@ class OfflineVideoViewerWidget(ViewerWidget):
         """Return the lanes of entry *index* that take part in its layout."""
         return tuple(
             lane_index
-            for lane_index in range(len(self._get_entries()[index].lanes))
-            if self._is_lane_considered(index, lane_index)
+            for lane_index in range(len(self._navigation.get_entries()[index].lanes))
+            if self._navigation.is_lane_considered(index, lane_index)
         )
 
     def _prepare_next(self) -> None:
         """Let a background process warm the caches of the entry that playback steps to next."""
-        next_index = self._find_next_considered_index()
+        entries = self._navigation.get_entries()
+        next_index = self._navigation.find_next_considered_index(self._current_index)
         request = (
             entry_preparation(
-                self._get_entries()[next_index],
+                entries[next_index],
                 self._considered_lanes(next_index),
-                overlay_specs(self._get_entries()[self._current_index], self._considered_lanes(self._current_index)),
+                overlay_specs(entries[self._current_index], self._considered_lanes(self._current_index)),
             )
             if next_index is not None
             else None
@@ -246,7 +181,9 @@ class OfflineVideoViewerWidget(ViewerWidget):
             self._cancel_preparation()
             self._cancel_preparation = None
 
-    def _on_entry_opened(self, index: int, start_frame: int | None, media: EntryMedia) -> None:
+    def _on_entry_opened(self, index: int, start_frame: int | None, keep_shown: bool, media: EntryMedia) -> None:
+        focus = QApplication.focusWidget()
+        keep_focus = focus is self or (focus is not None and self.isAncestorOf(focus))
         self._hide_loading_indicator()
         error = media.error
         runtime: OfflineSession | None = None
@@ -256,7 +193,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
                     self,
                     media,
                     render_catalog_manager=self._render_catalog_manager,
-                    use_lane_controls=self._entry_count() == 1,
+                    use_lane_controls=len(self._navigation.get_entries()) == 1,
                     lane_visibility=self._lane_visibility,
                     pane_title=self.get_display_name(),
                 )
@@ -264,20 +201,43 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 logger.exception(f"Failed to build displays for entry {index + 1}")
                 error = str(exc)
         if runtime is None:
+            self._pending_lane_focus = None
             release_media(media)
-            QMessageBox.warning(self, "Offline Viewer", f"Failed to load entry {index + 1}: {error}")
+            message = f"Could not {'reload' if keep_shown else 'load'} entry {index + 1}: {error}"
+            if keep_shown and self._reload_offered():
+                logger.warning(message)  # The source changed again meanwhile: keep the offer to reload that data.
+            else:
+                self.show_warning(message)
             return
+        playing = False
+        previous = self._runtime
+        if previous is not None:
+            # Only a reload finds an entry still shown: the new one takes over where it is.
+            start_frame, playing = previous.playback.current_frame, previous.playback.is_playing
+            self._teardown_runtime()
         self._install_entry(runtime, start_frame)
+        if playing:
+            self._start_playback()
+        if self._pending_lane_focus is not None:
+            _, lane_index = self._pending_lane_focus
+            self.focus_lane(lane_index)
+        elif keep_focus and runtime.lanes:
+            runtime.focus_lane(runtime.lanes[0].lane_index)
+
+    def source_paths(self) -> SourcePaths:
+        """Return overlay paths of the considered lanes on screen."""
+        return self._navigation.overlay_paths(self._current_index)
+
+    def reload(self) -> None:
+        """Reload in the background, retaining the shown frame and playback on success or the old entry on failure.
+
+        Zoom and media tools reset as for any entry change.
+        """
+        self._open_entry(self._current_index, keep_shown=True)
 
     def _show_loading_indicator(self) -> LoadingIndicator:
         if self._loading_indicator is None:
-            overlay_parent = self._viewer_host or self
-            indicator = LoadingIndicator(overlay_parent)
-            indicator.setGeometry(overlay_parent.rect())
-            indicator.raise_()
-            indicator.show()
-            indicator.start()
-            self._loading_indicator = indicator
+            self._loading_indicator = LoadingIndicator.cover(self._viewer_host or self)
         self._loading_indicator.set_message("")
         return self._loading_indicator
 
@@ -286,40 +246,18 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if indicator is None:
             return
         self._loading_indicator = None
-        indicator.stop()
-        indicator.deleteLater()
+        indicator.dismiss()
 
     def _install_entry(self, runtime: OfflineSession, start_frame: int | None) -> None:
         self._runtime = runtime
-        runtime.currentFrameChanged.connect(self._sync_global_current_frame)
-        runtime.playbackStateChanged.connect(self._sync_global_playback_state)
-        runtime.playbackFinished.connect(lambda: self._sync_global_playback_state(False))
-
-        runtime.set_playback_speed(self._playback_speed)
         for lane in runtime.lanes:
             lane.display.contextMenuRequested.connect(partial(self._show_lane_menu, lane))
 
         if self._viewer_host is not None:
             self._viewer_host.set_content(runtime.container)
-        self._set_global_controls_enabled(runtime.has_multiple_lanes or self._entry_count() > 1)
-        self._connect_global_control_visibility(runtime)
-
-        primary_controls = runtime.primary_controls
-        if primary_controls is not None and not self._has_active_global_controls():
-            primary_controls.playRequested.connect(self._start_playback)
-            primary_controls.pauseRequested.connect(self._pause_playback)
-            primary_controls.jumpToRequested.connect(self._jump_to_frame)
-            primary_controls.frameStepRequested.connect(self._step_frames)
-            primary_controls.playbackSpeedChanged.connect(self.set_playback_speed)
-            primary_controls.set_playback_speed(self._playback_speed)
-
-        primary_source = runtime.get_primary_video_source()
-        if self._has_active_global_controls() and self._global_controls is not None:
-            if primary_source is not None:
-                show_video_on_controls(self._global_controls, primary_source)
-            else:
-                # An entry without considered lanes has nothing to play; keep only the playlist navigation.
-                self._global_controls.show_video(total_frames=0, frame_rate=0.0)
+            runtime.container.show()
+        entries = self._navigation.get_entries()
+        self._transport.install(runtime, shared=runtime.has_multiple_lanes or len(entries) > 1)
         # Lanes of different videos have no single size or length to show.
         sources = runtime.iter_video_sources()
         self.set_header_details(video_details(sources[0]) if len(sources) == 1 else "")
@@ -330,119 +268,41 @@ class OfflineVideoViewerWidget(ViewerWidget):
             self._start_playback()
         self._prepare_next()
 
-    def _has_active_global_controls(self) -> bool:
-        return self._use_global_controls and self._global_controls is not None
-
-    def _set_global_controls_enabled(self, enabled: bool) -> None:
-        self._use_global_controls = enabled
-        if enabled:
-            if self._global_controls is None:
-                controls = SeekableVideoControlPanel(self)
-                controls.playRequested.connect(self._start_playback)
-                controls.pauseRequested.connect(self._pause_playback)
-                controls.jumpToRequested.connect(self._jump_to_frame)
-                controls.frameStepRequested.connect(self._step_frames)
-                controls.playbackSpeedChanged.connect(self.set_playback_speed)
-                controls.set_context_widget(self._navigation_controls)
-                self._global_controls = controls
-                self._global_control_visibility = ControlVisibilityController(
-                    timer_parent=self,
-                    idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY,
-                    request_show=controls.fade_in,
-                    request_hide=controls.start_auto_hide_timer,
-                )
-                if self._viewer_host is not None:
-                    self._viewer_host.set_bottom_overlay(controls)
-            self._global_controls.show()
-            self._global_controls.raise_()
-            self._global_controls.fade_in()
-            self._global_controls.sync_playback_state(False)
-            self._global_controls.set_playback_speed(self._playback_speed, emit_signals=False)
-            return
-
-        if self._global_controls is not None:
-            self._global_controls.sync_playback_state(False)
-            self._global_controls.hide()
-
-    def _connect_global_control_visibility(self, runtime: OfflineSession) -> None:
-        """Let pointer activity in any lane control the shared transport overlay."""
-        if (
-            not self._has_active_global_controls()
-            or self._global_controls is None
-            or self._global_control_visibility is None
-        ):
-            return
-        self._global_controls.set_hover_sink(self._global_control_visibility)
-        for lane in runtime.lanes:
-            lane.display.controlsRequested.connect(self._global_control_visibility.on_mouse_move)
-            lane.display.controlsHideRequested.connect(self._global_control_visibility.on_mouse_leave)
-
     def _show_lane_menu(self, lane: OfflineLane, global_pos: QPoint) -> None:
         """Show what can be done with *lane* at *global_pos*, after a right click on it has focused it.
 
-        Export is the lane's own action, the same one its media tools button triggers; the rest are the window's
-        actions, which act on the focused lane. Hide asks for the same change the sidebar's Hide does.
+        The rest of the menu is the window's actions, which act on the focused lane. Hide asks for the same change
+        the sidebar's Hide does.
         """
-        menu = QMenu(self.window())
-        menu.setToolTipsVisible(True)
-        menu.addAction(lane.export_action)
-        for action_id in SHARED_ACTION_IDS:
-            if (action := self._shared_actions.get(action_id)) is not None:
-                menu.addAction(action)
+        actions = [
+            action for action_id in SHARED_ACTION_IDS if (action := self._shared_actions.get(action_id)) is not None
+        ]
         ref = self._content.lane_consideration_ref(self._current_index, lane.lane_index)
-        if ref in {item.ref for item in self._content.consideration_items()}:
-            menu.addSeparator()
-            hide = QAction("Hide", menu)
-            hide.setToolTip("Skip this lane in playback. Bring it back with Unhide in the sidebar.")
-            hide.triggered.connect(lambda _checked=False: self.consideration_change_requested.emit(ref, False))
-            menu.addAction(hide)
-        try:
-            menu.exec(global_pos)
-        finally:
-            menu.deleteLater()
-
-    def _sync_global_current_frame(self, frame: int) -> None:
-        if self._has_active_global_controls() and self._global_controls is not None:
-            presented = self._runtime.presented_frame if self._runtime is not None else None
-            self._global_controls.set_current_frame(frame, presented.seconds if presented is not None else None)
-
-    def _sync_global_playback_state(self, playing: bool) -> None:
-        if self._has_active_global_controls() and self._global_controls is not None:
-            self._global_controls.sync_playback_state(playing)
+        hideable = ref in {item.ref for item in self._content.consideration_items()}
+        hide = partial(self.consideration_change_requested.emit, ref, False) if hideable else None
+        exec_lane_menu(self.window(), lane, actions, hide, global_pos)
 
     def _start_playback(self) -> None:
-        runtime = self._runtime
-        if runtime is None:
-            return
-        runtime.start_playback()
+        if self._runtime is not None:
+            self._runtime.playback.play()
 
     def _pause_playback(self) -> None:
-        runtime = self._runtime
-        if runtime is None:
-            return
-        runtime.pause_playback()
+        if self._runtime is not None:
+            self._runtime.playback.pause()
 
     def _jump_to_frame(self, frame_num: int) -> None:
-        runtime = self._runtime
-        if runtime is None:
-            return
-        runtime.jump_to_frame(frame_num)
+        if self._runtime is not None:
+            self._runtime.playback.seek(frame_num)
 
     def _step_frames(self, delta: int) -> None:
-        runtime = self._runtime
-        if runtime is None:
-            return
-        runtime.step_frames(delta)
-
-    # ------------------------------------------------------------------
-    # Public API for shortcut routing
-    # ------------------------------------------------------------------
+        if self._runtime is not None:
+            self._runtime.playback.step(delta)
 
     def pause_playback(self) -> None:
-        """Pause playback if currently playing. No-op if already paused."""
+        """Pause playback if currently playing."""
         runtime = self._runtime
-        if runtime is not None and runtime.is_playing:
-            runtime.pause_playback()
+        if runtime is not None and runtime.playback.is_playing:
+            runtime.playback.pause()
 
     def export_video(self) -> None:
         """Export the shown entry, letting the user choose which lanes to include."""
@@ -454,10 +314,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         runtime = self._runtime
         if runtime is None:
             return
-        if runtime.is_playing:
-            runtime.pause_playback()
-        else:
-            runtime.start_playback()
+        runtime.playback.toggle()
 
     def step_frames(self, delta: int) -> None:
         """Step playback by *delta* frames (positive=forward, negative=backward)."""
@@ -493,54 +350,33 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
     def set_playback_speed(self, speed: float) -> None:
         """Set playback speed for the active offline runtime."""
-        clamped = clamp_playback_speed(speed)
-        self._playback_speed = clamped
-
-        runtime = self._runtime
-        if runtime is not None:
-            runtime.set_playback_speed(clamped)
-
-        if self._global_controls is not None:
-            self._global_controls.set_playback_speed(clamped, emit_signals=False)
-
-        if runtime is not None and not self._has_active_global_controls() and runtime.primary_controls is not None:
-            runtime.primary_controls.set_playback_speed(clamped, emit_signals=False)
+        self._transport.set_speed(speed, self._runtime)
 
     def increase_playback_speed(self) -> None:
         """Increase playback speed by one step for shortcut routing."""
-        self.set_playback_speed(step_playback_speed(self._playback_speed, 1, floor=0.1))
+        self.set_playback_speed(step_playback_speed(self._transport.speed, 1, floor=0.1))
 
     def decrease_playback_speed(self) -> None:
         """Decrease playback speed by one step for shortcut routing."""
-        self.set_playback_speed(step_playback_speed(self._playback_speed, -1, floor=0.1))
-
-    def _entry_count(self) -> int:
-        return len(self._get_entries())
-
-    def _find_prev_considered_index(self) -> int | None:
-        return self._navigation.find_prev_considered_index(self._current_index)
-
-    def _find_next_considered_index(self) -> int | None:
-        return self._navigation.find_next_considered_index(self._current_index)
-
-    def _replacement_index_for_current_entry(self) -> int | None:
-        return self._navigation.replacement_index_for_current_entry(self._current_index)
+        self.set_playback_speed(step_playback_speed(self._transport.speed, -1, floor=0.1))
 
     def _update_nav_state(self) -> None:
-        if self._nav_label is not None:
-            self._nav_label.setText(f"Entry {self._current_index + 1} / {self._entry_count()}")
-        if self._prev_button is not None:
-            self._prev_button.setEnabled(self._find_prev_considered_index() is not None)
-        if self._next_button is not None:
-            self._next_button.setEnabled(self._find_next_considered_index() is not None)
+        if self._entry_bar is not None:
+            navigation = self._navigation
+            self._entry_bar.show_position(
+                self._current_index,
+                len(navigation.get_entries()),
+                can_previous=navigation.find_prev_considered_index(self._current_index) is not None,
+                can_next=navigation.find_next_considered_index(self._current_index) is not None,
+            )
 
     def _step_prev(self) -> None:
-        previous_index = self._find_prev_considered_index()
+        previous_index = self._navigation.find_prev_considered_index(self._current_index)
         if previous_index is not None:
             self._open_entry(previous_index)
 
     def _step_next(self) -> None:
-        next_index = self._find_next_considered_index()
+        next_index = self._navigation.find_next_considered_index(self._current_index)
         if next_index is not None:
             self._open_entry(next_index)
 
@@ -558,26 +394,51 @@ class OfflineVideoViewerWidget(ViewerWidget):
     def set_display_name(self, name: str) -> None:
         """Show *name* in the header and on the next pane title, after the item is renamed."""
         self._display_name = name
-        if self._runtime is not None:
-            self._runtime.set_display_name(name)
         super().set_display_name(name)
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem:
         """Return the workspace item shown by this viewer."""
         return self._content.on_screen_item(self._current_index)
 
+    def bookmark_target(self) -> BookmarkTarget:
+        """Return the target of the entry shown."""
+        return entry_target(self._content, self._current_index)
+
+    def set_active(self, active: bool) -> None:
+        """Cancel deferred lane focus when another pane becomes active."""
+        super().set_active(active)
+        if not active:
+            self._pending_lane_focus = None
+
+    def focus_lane(self, lane_index: int) -> None:
+        """Focus a visible lane now, or when the current entry finishes opening; never seek or restart it."""
+        if self._is_cleaned_up:
+            return
+        self._pending_lane_focus = (self._current_index, lane_index)
+        if self._runtime is not None and self._runtime.focus_lane(lane_index):
+            self._pending_lane_focus = None
+
+    def show_frame(self, frame: int) -> None:
+        """Show *frame* of the entry shown, paused; an entry still opening opens at it instead."""
+        if self._runtime is None:
+            self._open_entry(self._current_index, frame)
+            return
+        self.pause_playback()
+        self._jump_to_frame(frame)
+
     def bookmark_position(self) -> BookmarkPosition | None:
         """Return the entry and frame on screen, or None before the entry shows its first frame."""
-        presented = self._runtime.presented_frame if self._runtime is not None else None
+        presented = self._runtime.playback.presented_frame if self._runtime is not None else None
         if presented is None:
             return None
         return BookmarkPosition(self._content, self._current_index, presented.frame, presented.seconds)
 
+    def playhead_frame(self) -> int:
+        """Return the runtime playhead or the frame requested while this entry is still opening."""
+        return self._runtime.playback.current_frame if self._runtime is not None else (self._start_frame or 0)
+
     def get_contents(self) -> list[SeekableVideoContent]:
-        entries = self._get_entries()
-        if not entries or self._current_index >= len(entries):
-            return []
-        return list(dict.fromkeys(lane.video for lane in entries[self._current_index].lanes))
+        return self._navigation.videos(self._current_index)
 
     def cleanup(self) -> None:
         if self._is_cleaned_up:
@@ -588,33 +449,23 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._stop_preparation()
         self._hide_loading_indicator()
         self._teardown_runtime()
-        self._nav_label = None
-        self._prev_button = None
-        self._next_button = None
-        self._navigation_controls = None
-        if self._global_control_visibility is not None:
-            self._global_control_visibility.cleanup()
-        self._global_control_visibility = None
-        if self._global_controls is not None:
-            self._global_controls.cleanup()
-        self._global_controls = None
+        self._entry_bar = None
+        self._transport.cleanup()
 
     def refresh_item_consideration(self, item_ref: ConsiderationItemRef, _considered: bool) -> None:
         """Refresh viewer state after an item consideration change."""
         if self._is_cleaned_up:
             return
-        if self._content.content_id != item_ref.content_id:
+        content = self._content
+        if item_ref.item_id != content.item_id or item_ref.entry not in content.bookmark_entries:
             return
 
-        if item_ref.kind == "video_lane":
-            self._open_entry(self._current_index)
-            return
-
-        if item_ref.kind == "playlist_entry" and item_ref.entry_index == self._current_index:
-            if self._is_entry_considered(self._current_index):
+        is_current = item_ref.entry == content.bookmark_entries[self._current_index]
+        if is_current and item_ref.lane_index is None:
+            if self._navigation.is_entry_considered(self._current_index):
                 self._update_nav_state()
                 return
-            replacement_index = self._replacement_index_for_current_entry()
+            replacement_index = self._navigation.replacement_index_for_current_entry(self._current_index)
             if replacement_index is not None:
                 self._open_entry(replacement_index)
             else:
@@ -622,7 +473,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
             return
 
         self._update_nav_state()
-        if item_ref.kind == "playlist_lane" and item_ref.entry_index == self._current_index:
+        if is_current:
             self._open_entry(self._current_index)
         elif self._runtime is not None:
             self._prepare_next()

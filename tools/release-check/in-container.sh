@@ -6,16 +6,20 @@ scenario=$1
 if [ "$(id -u)" = 0 ]; then
     # A desktop machine has a sudo user; everything after this follows the documentation as that user.
     apt-get update -qq && apt-get install -y -qq sudo >/dev/null
+    # The app renders on a GPU backend, so a headless machine runs it under xvfb-run with Mesa's software OpenGL.
+    apt-get install -y -qq xvfb xauth libgl1-mesa-dri >/dev/null
     useradd -m -s /bin/bash tester
     echo "tester ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/tester
     exec sudo -u tester -H bash "$0" "$@"
 fi
 
-export DEBIAN_FRONTEND=noninteractive QT_QPA_PLATFORM=offscreen
+export DEBIAN_FRONTEND=noninteractive
 # ~/index stands in for PyPI for ax-devil itself, at every step including plugin refreshes. It holds the candidate;
 # the later release is published to it just before the upgrade check. Every dependency still comes from PyPI.
 mkdir -p "$HOME/index" && cp /release/dist/* "$HOME/index/"
 export UV_FIND_LINKS=$HOME/index PIP_FIND_LINKS=$HOME/index
+# A GPU backend needs a display; 24-bit colour gives Mesa a usable GLX visual.
+headless() { xvfb-run -a -s "-screen 0 1920x1080x24" "$@"; }
 step() { echo "--- $*"; }
 fail() { echo "FAILED: $*" >&2; exit 1; }
 
@@ -26,7 +30,7 @@ documented() {
         inside && /^```$/ {exit} inside {print}' "$1" >"$HOME/step.sh"
     [ -s "$HOME/step.sh" ] || fail "no bash block after $2 in $1"
     # A documented launch would run until closed; check that it starts, then stop it.
-    sed -i 's/^uv run ax-devil$/timeout 60 uv run ax-devil || test $? = 124/' "$HOME/step.sh"
+    sed -i 's/^uv run ax-devil$/timeout 60 xvfb-run -a -s \"-screen 0 1920x1080x24\" uv run ax-devil || test $? = 124/' "$HOME/step.sh"
     cat "$HOME/step.sh"
     bash -euxo pipefail "$HOME/step.sh"
 }
@@ -53,7 +57,7 @@ check_app() {
     $app --help >/dev/null
     $app list-handlers | grep -q CVAT || fail "built-in handlers missing"
     $app catalog check
-    $app catalog render --out "$HOME/sheets" --sheet overview
+    headless $app catalog render --out "$HOME/sheets" --sheet overview
     ls "$HOME"/sheets/*.png >/dev/null || fail "catalog render wrote no images"
 
     step "Install the documented plugin"
@@ -69,7 +73,7 @@ assert get_payload_decoder('EXAMPLE_FRAME').decode({'frame': 42}).time_slice.sta
 "
     step "Play a local video with plugins loaded"
     status=0
-    timeout 20 $app local --video "$HOME/sample.mp4" >"$HOME/play.log" 2>&1 || status=$?
+    headless timeout 20 $app local --video "$HOME/sample.mp4" >"$HOME/play.log" 2>&1 || status=$?
     cat "$HOME/play.log"
     [ $status = 124 ] || fail "app exited with $status instead of playing until the timeout"
     ! grep -qE "Traceback|Plugin installation unavailable|\| ERROR" "$HOME/play.log" || fail "errors while playing"

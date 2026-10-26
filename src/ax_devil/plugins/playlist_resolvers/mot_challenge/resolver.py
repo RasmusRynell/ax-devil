@@ -108,6 +108,16 @@ def discover_sequences(root: Path, token: CancelToken) -> list[SequenceInfo]:
     return sequences
 
 
+def seqinfo_files(root: Path, token: CancelToken) -> frozenset[Path]:
+    """Return the ``seqinfo.ini`` files that sequence discovery reads under *root*; none when *root* cannot be read."""
+    try:
+        return frozenset(
+            ini for child in _sequence_candidate_dirs(root, token) if (ini := child / "seqinfo.ini").is_file()
+        )
+    except OSError:
+        return frozenset()
+
+
 def _sequence_candidate_dirs(root: Path, token: CancelToken) -> list[Path]:
     candidates = list(token.polled(root.iterdir()))
     for split_name in token.polled(("train", "test")):

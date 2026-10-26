@@ -14,6 +14,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.theme import StatusColor, apply_text_size, apply_theme
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
+from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
@@ -24,7 +25,7 @@ from ax_devil.modules.scene.model import (
     Score,
     TimeSlice,
 )
-from ax_devil.modules.video_player.ui.controls import video_control_icon
+from ax_devil.modules.video_player.ui.control_panel import video_control_icon
 from ax_devil.modules.video_viewer.media_tools.events_page import EventsPage
 from ax_devil.modules.video_viewer.media_tools.object_page import ObjectPage
 from ax_devil.modules.video_viewer.media_tools.objects_page import ObjectsPage
@@ -76,7 +77,7 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
     entities.resize(400, 300)
     events = EventsPage(history)
     events.resize(500, 150)
-    card = ObjectPage("person-1", {})
+    card = ObjectPage("person-1", {}, PinnedFields())
     card.resize(400, 300)
     browser = SectionsView("test", "Test", Icon.WORKSPACE)
     browser.resize(300, 150)

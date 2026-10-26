@@ -14,6 +14,8 @@ import numpy as np
 from numpy.typing import NDArray
 from PySide6.QtGui import QImage
 
+from ax_devil.core.time_units import seconds_to_us
+
 
 @dataclass(frozen=True, slots=True)
 class CompressionPreset:
@@ -72,11 +74,11 @@ class VideoEncoder:
 
         if not isfinite(fps) or fps <= 0:
             raise ValueError("Export requires a positive finite frame rate")
-        self._time_base = Fraction(1, 1_000_000)
-        self._first_timestamp_us: float | None = None
+        self._time_base = Fraction(1, seconds_to_us(1))  # Presentation times count microseconds.
+        self._first_timestamp_us: int | None = None
         self._last_pts: int | None = None
         self._frame_durations: dict[int, int] = {}
-        self._default_duration_us = round(1_000_000 / fps)
+        self._default_duration_us = seconds_to_us(1 / fps)
         preset = compression or CompressionPreset.default()
 
         self._container = av.open(str(output_path), mode="w", format="mp4")
@@ -95,20 +97,18 @@ class VideoEncoder:
             self._container.close()
             raise
 
-    def write_frame(self, image: QImage, *, timestamp_us: float, duration_s: float | None = None) -> None:
+    def write_frame(self, image: QImage, *, timestamp_us: int, duration_s: float | None = None) -> None:
         """Encode one frame at its source time, relative to the first exported frame."""
-        if not isfinite(timestamp_us):
-            raise ValueError("Cannot export a frame with an invalid timestamp")
         if self._first_timestamp_us is None:
             self._first_timestamp_us = timestamp_us
-        pts = round(timestamp_us - self._first_timestamp_us)
+        pts = timestamp_us - self._first_timestamp_us
         if self._last_pts is not None and pts <= self._last_pts:
             raise ValueError("Export frame timestamps must increase")
         duration_us = self._default_duration_us
         if duration_s is not None:
             if not isfinite(duration_s) or duration_s <= 0:
                 raise ValueError("Cannot export a frame with an invalid duration")
-            duration_us = round(duration_s * 1_000_000)
+            duration_us = seconds_to_us(duration_s)
         arr = self._qimage_to_rgb(image)
         frame = av.VideoFrame.from_ndarray(arr, format="rgb24")
         frame.pts = pts

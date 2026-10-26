@@ -214,7 +214,7 @@ class PyAvAbstraction:
         """Return the nearest keyframe at or before *frame_index*, where decoding toward it must start."""
         return self.frame_index.get_nearest_keyframe_before(frame_index)
 
-    def get_frame_time_us(self, frame_index: int) -> float:
+    def get_frame_time_us(self, frame_index: int) -> int:
         """Get frame presentation time in microseconds since the first indexed frame."""
         return self.frame_index.get_frame_time_us(frame_index)
 

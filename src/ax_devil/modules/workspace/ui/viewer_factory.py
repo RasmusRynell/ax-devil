@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QWidget
 
-from ax_devil.modules.workspace.core.content import ConsiderationQuery, Content, LiveVideoContent
+from ax_devil.modules.workspace.core.consideration import ConsiderationQuery
+from ax_devil.modules.workspace.core.content import Content, LiveVideoContent
 
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -32,7 +33,7 @@ class WorkspaceViewerFactory:
         self,
         content: Content,
         *,
-        start_index: int = 0,
+        start_index: int | None = None,
         parent: QWidget | None = None,
         consideration_query: ConsiderationQuery | None = None,
         start_frame: int | None = None,
@@ -48,7 +49,7 @@ class WorkspaceViewerFactory:
             widget = OfflineVideoViewerWidget(
                 content,
                 self._render_catalog_manager,
-                start_index if 0 <= start_index < len(content.entries) else 0,
+                start_index,
                 parent,
                 consideration_query=consideration_query,
                 start_frame=start_frame,

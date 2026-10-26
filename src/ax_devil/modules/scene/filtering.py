@@ -41,6 +41,9 @@ def filter_scene(scene: Scene, config: FilterConfig, state: FilterState) -> Scen
     enabled_options = _enabled_options(config, state)
     if not enabled_options:
         return replace(scene, entities={})
+    if len(enabled_options) == len(config.options):
+        # Every entity matches an enabled option or no option at all; either way it is kept.
+        return scene
 
     filtered_entities: dict[EntityId, Entity] = {
         entity_id: entity

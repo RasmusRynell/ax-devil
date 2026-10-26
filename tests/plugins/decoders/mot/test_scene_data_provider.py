@@ -38,10 +38,10 @@ def test_registered_mot_handler_reads_frames_from_csv(tmp_path: Path) -> None:
     try:
         assert provider.get_total_frames() == 2
         assert provider.get_available_frames() == {0, 1}
-        frame0 = provider.load_by_frame_id(FrameIdentifier(sequence_id=0, timestamp_monotime_us=0.0))
+        frame0 = provider.load_by_frame_id(FrameIdentifier(sequence_id=0, timestamp_us=0))
         assert frame0 is not None
         assert set(frame0.entities) == {"1", "2"}
-        frame1 = provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_monotime_us=1.0))
+        frame1 = provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_us=1))
         assert frame1 is not None
         assert set(frame1.entities) == {"3"}
     finally:
@@ -70,7 +70,7 @@ def test_mot_provider_reopens_from_warm_cache_without_parsing(tmp_path: Path) ->
         try:
             assert warm_provider.get_total_frames() == 2
             assert_skipped_row_is_warned(warm_provider)
-            scene = warm_provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_monotime_us=1.0))
+            scene = warm_provider.load_by_frame_id(FrameIdentifier(sequence_id=1, timestamp_us=1))
             assert scene is not None
             assert set(scene.entities) == {"3"}
         finally:
@@ -81,7 +81,7 @@ def test_mot_provider_rebuilds_cached_scenes_when_dimensions_change(tmp_path: Pa
     """A cache built for one frame size must not place boxes for another."""
     csv_path = tmp_path / "mot.csv"
     _write_csv(csv_path)
-    frame_id = FrameIdentifier(sequence_id=0, timestamp_monotime_us=0.0)
+    frame_id = FrameIdentifier(sequence_id=0, timestamp_us=0)
 
     for width in (640, 1280):
         provider = MOTChallengeSceneDataProvider(csv_path, width=width, height=480)

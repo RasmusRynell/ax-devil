@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QScrollArea
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
+from ax_devil.modules.catalog_viewer.new_catalog_dialog import NewCatalogDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog

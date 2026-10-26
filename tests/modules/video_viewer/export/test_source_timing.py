@@ -7,6 +7,7 @@ import pytest
 from PySide6.QtGui import QImage
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
@@ -42,7 +43,7 @@ def test_export_preserves_source_duration_after_cached_reads(
         assert source.read_decoded_frame(0) is not None
         with av.open(str(output)) as container:
             frames = list(container.decode(video=0))
-            assert [round(frame.time * 1_000_000) for frame in frames] == [0, 40_000, 240_000]
+            assert [seconds_to_us(frame.time) for frame in frames] == [0, 40_000, 240_000]
             last_frame = frames[-1]
             assert last_frame.time_base is not None
             assert float(last_frame.duration * last_frame.time_base) == pytest.approx(0.08)
