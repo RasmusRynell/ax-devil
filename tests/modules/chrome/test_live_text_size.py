@@ -20,6 +20,7 @@ from tests.modules.chrome.test_surface_fit import SURFACES
 
 SMALL, LARGE = 13, 21
 QWIDGETSIZE_MAX = 16777215
+WINDOW_SIZE = (1600, 900)
 STABLE_POLLS = 20  # Consecutive unchanged readings, about 200 ms, before a window that builds views is settled.
 
 Constraint = tuple[str, int, int, int, int]
@@ -103,9 +104,14 @@ def test_main_window_follows_a_text_size_change(
     window = _open_at(qtbot, build, SMALL, builds_views=True)
     apply_text_size(LARGE)
     _settle(qtbot, window, builds_views=True)
+    window.resize(*WINDOW_SIZE)  # The sidebar's maximum width follows the window width, so compare at one size.
+    _settle(qtbot, window, builds_views=True)
     changed = _size_constraints(window)
     window.close()
-    assert changed == _size_constraints(_open_at(qtbot, build, LARGE, builds_views=True))
+    fresh = _open_at(qtbot, build, LARGE, builds_views=True)
+    fresh.resize(*WINDOW_SIZE)
+    _settle(qtbot, fresh, builds_views=True)
+    assert changed == _size_constraints(fresh)
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

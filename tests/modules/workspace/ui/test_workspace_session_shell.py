@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QSplitter
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.banner import Banner
+from ax_devil.modules.chrome.theme import apply_theme
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
@@ -39,6 +40,29 @@ def _sidebar_splitter(workspace_session: WorkspaceSession) -> QSplitter:
     splitter: QSplitter | None = workspace_session.widget().findChild(QSplitter, "WorkspaceSidebarSplitter")
     assert splitter is not None
     return splitter
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+def test_a_new_window_opens_with_the_viewers_beside_the_sidebar(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, tmp_path: Path
+) -> None:
+    """Built under a theme, as the app builds it, a new window gives the viewers the space the sidebar leaves."""
+    apply_theme("light")
+    session = new_session(render_catalog_manager, tmp_path)
+    window = session.widget()
+    qtbot.addWidget(window)
+    window.show()
+    window.resize(1200, 700)
+    QCoreApplication.processEvents()
+    splitter = _sidebar_splitter(session)
+    sidebar, viewers = splitter.sizes()
+    assert 0 < sidebar < viewers
+
+    window.resize(500, 700)
+    QCoreApplication.processEvents()
+    sidebar_widget = splitter.widget(0)
+    assert sidebar_widget is not None
+    assert splitter.sizes()[0] == sidebar_widget.width() <= splitter.sizes()[1]
 
 
 def test_sidebar_swaps_start_panel_for_content_and_toggles_at_its_width(workspace_session: WorkspaceSession) -> None:
