@@ -158,6 +158,39 @@ def test_mqtt_delivery_recovers_after_malformed_payload(qtbot: QtBot, broker: _B
     assert broker.events[-1] == "stop"
 
 
+def test_mqtt_delivers_message_arriving_during_decode(
+    qtbot: QtBot, broker: _Broker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finishing one decode must not erase a newer arrival or attach its metadata to the wrong scene."""
+    decoder = ADFFrameV1Decoder()
+    decode = decoder.decode
+    first = MqttMessage(topic="analytics", payload='{"frame":{"timestamp":"1970-01-01T00:00:12Z"}}')
+    second = MqttMessage(topic="analytics", payload='{"frame":{"timestamp":"1970-01-01T00:00:13Z"}}')
+
+    def decode_with_arrival(payload: Any) -> Scene | None:
+        if payload == first.payload:
+            assert broker.message_callback is not None
+            broker.message_callback(second)
+        return decode(payload)
+
+    monkeypatch.setattr(decoder, "decode", decode_with_arrival)
+    source = _source(decoder=decoder)
+    overlays: list[OverlayData] = []
+    source.overlayReady.connect(overlays.append)
+    try:
+        assert source.play()
+        qtbot.waitUntil(lambda: broker.message_callback is not None)
+        assert broker.message_callback is not None
+        broker.message_callback(first)
+        qtbot.waitUntil(lambda: len(overlays) == 2)
+    finally:
+        source.stop()
+        source.deleteLater()
+
+    assert [overlay.frame_id.timestamp_us for overlay in overlays] == [12_000_000, 13_000_000]
+    assert [overlay.metadata for overlay in overlays] == [{"mqtt_message": first}, {"mqtt_message": second}]
+
+
 def test_mqtt_source_reports_unavailable_data_source_and_stops_retrying(qtbot: QtBot, broker: _Broker) -> None:
     """An unknown data source is a terminal, actionable error listing the same channel's sources."""
     source = _source("com.axis.analytics_scene_description.v0.beta#1")

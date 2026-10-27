@@ -33,10 +33,14 @@ class ViewerOverlayHost(QWidget):
 
 
 class EntryNavigationBar(QWidget):
-    """Previous and next buttons around an "Entry n / total" label for stepping through a playlist."""
+    """Previous and next buttons around an "Entry n / total" label for stepping through a playlist.
 
-    def __init__(self, parent: QWidget, *, on_previous: Callable[[], None], on_next: Callable[[], None]) -> None:
-        super().__init__(parent)
+    It has no parent, so it shows only where the transport bar places it; a child of the viewer would be laid out
+    over the pane heading while the first entry loads.
+    """
+
+    def __init__(self, *, on_previous: Callable[[], None], on_next: Callable[[], None]) -> None:
+        super().__init__()
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(Space.M, 0, Space.M, 0)

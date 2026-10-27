@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QMimeData, QObject, Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QSplitter, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -17,6 +17,8 @@ from ax_devil.modules.workspace.ui.sidebar_panel import SidebarPanel
 from ax_devil.modules.workspace.ui.split_view import SplitView
 
 _SIDEBAR_CHARS = 34  # Default sidebar width in average characters of body text.
+# The sidebar takes at most this share of the space beside the activity bar; the viewers keep the rest.
+_SIDEBAR_MAX_SHARE = 0.5
 
 
 class ApplicationWindow(QWidget):
@@ -90,6 +92,14 @@ class ApplicationWindow(QWidget):
     def _show_current_view(self) -> None:
         """Check the button of the view on screen, or none while the sidebar is hidden."""
         self._activity_bar.set_current_view(self._sidebar.current_view_id() if self.is_sidebar_shown() else None)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Keep a shown sidebar at its remembered width, within its share of the space beside the activity bar."""
+        super().resizeEvent(event)
+        cap = int(self._splitter.width() * _SIDEBAR_MAX_SHARE)
+        self._sidebar.setMaximumWidth(cap)
+        if self.is_sidebar_shown():
+            self._set_sidebar_width(min(self._sidebar_width or _default_sidebar_width(), cap))
 
     def _on_splitter_moved(self, _position: int, _index: int) -> None:
         """Remember the width the user drags the sidebar to."""
@@ -185,6 +195,7 @@ class ApplicationWindow(QWidget):
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
         self._splitter.setChildrenCollapsible(True)
+        self._splitter.setCollapsible(1, False)
         self._splitter.handle(1).installEventFilter(self)
 
         main_layout.addWidget(self._splitter, 1)

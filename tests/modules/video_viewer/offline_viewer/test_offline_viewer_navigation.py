@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QPoint
+from PySide6.QtWidgets import QLabel, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
@@ -34,6 +35,7 @@ from tests.helpers.offline_viewer import (
     nav_label,
     playlist_content,
     shown_entry_index,
+    transports,
     warning_text,
 )
 from tests.helpers.workspace import store_with
@@ -128,14 +130,19 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
     def test_navigation_controls_position_stays_stable_while_loading(
         self, qtbot: QtBot, deferred_background: DeferredBackground
     ) -> None:
-        """Playlist navigation controls should not shift while an entry opens."""
+        """Playlist navigation controls stay out of the pane header until the transport bar shows them, and then
+        do not shift while an entry opens."""
         widget = self._open(qtbot, playlist_content("A", "B"))
         widget.resize(800, 600)
         widget.show()
+        labels: list[QLabel] = widget.findChildren(QLabel)
+        assert not [label for label in labels if label.text().startswith("Entry ") and label.isVisible()]
         deferred_background.finish_next()
         QCoreApplication.processEvents()
         nav_bar = nav_label(widget).parentWidget()
         assert nav_bar is not None and nav_bar.isVisible()
+        (transport,) = transports(widget)
+        assert nav_bar in transport.findChildren(QWidget)
         baseline = nav_bar.mapTo(widget, QPoint(0, 0))
 
         widget.step_next_entry()

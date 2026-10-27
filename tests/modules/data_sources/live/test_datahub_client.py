@@ -273,6 +273,35 @@ def test_client_subscribes_and_keeps_samples_that_arrive_before_the_response(
     assert websocket.closed is True
 
 
+def test_subscription_overflow_reports_lost_samples(caplog: pytest.LogCaptureFixture) -> None:
+    """Subscription overflow is reported, and surviving samples retain their arrival order."""
+    messages: list[dict[str, object] | Exception] = [
+        {
+            "method": "data-hub_v1:topicSample",
+            "params": {
+                "topic": "topic",
+                "instance": {"channel_id": 1},
+                "data": {"value": index},
+                "timestamp": f"sample-{index}",
+                "isHistorical": False,
+            },
+        }
+        for index in range(65)
+    ]
+    messages.append({"id": "ax-devil-1", "result": {"subscriptionId": "1"}})
+    client = _client(_FakeSession(_FakeWebSocket(messages)), topic="topic")
+
+    async def exercise() -> list[DataHubTopicSample]:
+        await client.connect()
+        try:
+            return [await asyncio.wait_for(client.receive_sample(), timeout=1) for _ in range(64)]
+        finally:
+            await client.close()
+
+    assert [sample.data["value"] for sample in asyncio.run(exercise())] == list(range(1, 65))
+    assert any(record.levelname in {"WARNING", "ERROR", "CRITICAL"} for record in caplog.records)
+
+
 def test_client_uses_basic_when_device_advertises_basic() -> None:
     """Basic credentials are sent only after a camera requests Basic authentication."""
     websocket = _FakeWebSocket([])
