@@ -139,6 +139,11 @@ class RTSPSource(FrameSource, OverlaySource):
     def _on_metadata(self, document: SceneMetadata) -> None:
         """Keep the newest metadata documents; runs on the session's receive thread."""
         with self.buffer_lock:
+            if len(self.overlay_buffer) == self.overlay_buffer.maxlen:
+                logger.warning(
+                    f"Dropping oldest undecoded RTSP metadata document: buffer full; "
+                    f"source={self.source_id!r}. Sparse decoder state may be incomplete."
+                )
             self.overlay_buffer.append(document)
 
     def _on_failure(self, failure: BaseException) -> None:
@@ -198,6 +203,11 @@ class RTSPSource(FrameSource, OverlaySource):
 
         with self.buffer_lock:
             self.frame_buffer.clear()
+            if self.overlay_buffer:
+                logger.warning(
+                    f"Dropping {len(self.overlay_buffer)} undecoded RTSP metadata documents on stop: "
+                    f"source={self.source_id!r}"
+                )
             self.overlay_buffer.clear()
         self.frame_count = 0
         self.overlay_count = 0
@@ -295,6 +305,11 @@ class RTSPSource(FrameSource, OverlaySource):
             self._stop_token.raise_if_cancelled()
         with self.buffer_lock:
             self.frame_buffer.clear()
+            if self.overlay_buffer:
+                logger.warning(
+                    f"Dropping {len(self.overlay_buffer)} undecoded RTSP metadata documents on reconnect: "
+                    f"source={self.source_id!r}. Sparse decoder state may be incomplete."
+                )
             self.overlay_buffer.clear()
 
         self._stop_token.wait(self._retry_delay_s)
@@ -341,17 +356,20 @@ class RTSPSource(FrameSource, OverlaySource):
             document = self.overlay_buffer.popleft()
 
         if self._overlay is None:
-            logger.debug("No overlay decoder configured; skipping overlay data.")
+            logger.warning(f"Dropping RTSP metadata before decoding: no decoder configured; source={self.source_id!r}")
             return False
 
         try:
             scene = self._overlay.decoder.decode(document.xml)
             if scene is None:
-                logger.debug("Decoder did not return a scene; skipping overlay emission.")
+                logger.warning(f"No scene emitted for RTSP metadata: decoder returned None; source={self.source_id!r}")
                 return False
 
             if not scene.entities:
-                logger.debug("No entities found in parsed scene; skipping overlay emission.")
+                logger.warning(
+                    f"Dropping decoded empty RTSP scene instead of emitting it: source={self.source_id!r}. "
+                    "Previously displayed objects may remain visible."
+                )
                 return False
 
             self.overlay_count += 1
@@ -376,7 +394,11 @@ class RTSPSource(FrameSource, OverlaySource):
             return True
 
         except Exception as e:
-            logger.error(f"Error processing scene metadata: {e}", exc_info=True)
+            logger.error(
+                f"Dropping RTSP metadata after processing failed: source={self.source_id!r}, "
+                f"error={type(e).__name__}. Sparse decoder state may be incomplete.",
+                exc_info=True,
+            )
             return False
 
     @property

@@ -95,6 +95,11 @@ class WebSocketWorker(Worker):
                 sample = await self.client.receive_sample()
                 first_sample_warning.cancel()
                 if self._is_paused():
+                    logger.warning(
+                        f"Dropping DataHub sample before decoding while paused: topic={sample.topic!r}, "
+                        f"channel={sample.channel_id}, timestamp={sample.timestamp!r}. "
+                        "Sparse decoder state may be incomplete after resume."
+                    )
                     continue
                 self._decode_sample(sample)
         except asyncio.CancelledError:
@@ -120,13 +125,20 @@ class WebSocketWorker(Worker):
 
     def _decode_sample(self, sample: DataHubTopicSample) -> None:
         if self.overlay_ready_signal is None:
+            logger.warning(
+                f"Dropping DataHub sample before decoding because no output signal is configured: "
+                f"topic={sample.topic!r}, channel={sample.channel_id}, timestamp={sample.timestamp!r}"
+            )
             return
 
         try:
             self.message_count += 1
             scene = self.decoder.decode(sample.data)
             if scene is None:
-                logger.debug("Decoder returned no scene for DataHub WebSocket payload.")
+                logger.warning(
+                    f"No scene emitted for DataHub sample: decoder returned None; topic={sample.topic!r}, "
+                    f"channel={sample.channel_id}, timestamp={sample.timestamp!r}"
+                )
                 return
 
             if not scene.time_slice.is_instant:
@@ -153,7 +165,12 @@ class WebSocketWorker(Worker):
             )
             self.overlay_ready_signal.emit(overlay_data)
         except Exception as exc:
-            logger.error(f"Error decoding DataHub WebSocket message: {type(exc).__name__}")
+            logger.error(
+                f"Dropping DataHub sample after processing failed: topic={sample.topic!r}, "
+                f"channel={sample.channel_id}, timestamp={sample.timestamp!r}, error={type(exc).__name__}. "
+                "Sparse decoder state may be incomplete.",
+                exc_info=True,
+            )
 
     def _is_running(self) -> bool:
         self._mutex.lock()

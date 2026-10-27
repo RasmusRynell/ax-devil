@@ -5,6 +5,7 @@ lifecycle management.
 """
 
 import time
+from threading import Lock
 from typing import Any
 
 from ax_devil_device_api import DeviceConfig
@@ -54,6 +55,7 @@ class MQTTWorker(Worker):
         self.analytics_manager: AxisAnalyticsMqttClient | None = None
         self.device_config: DeviceConfig | None = None
         self.latest_message: MqttMessage | None = None
+        self._message_lock = Lock()
         self.message_count = 0
         self._connected = False
 
@@ -73,14 +75,20 @@ class MQTTWorker(Worker):
             time.sleep(0.1)  # Wait before retry
             return True
 
-        # Process latest MQTT message if available
-        if self.latest_message and self.overlay_ready_signal:
+        overlay_ready_signal = self.overlay_ready_signal
+        with self._message_lock:
+            message = self.latest_message if overlay_ready_signal else None
+            if message is not None:
+                self.latest_message = None
+        if message is not None and overlay_ready_signal is not None:
             try:
                 self.message_count += 1
-                scene = self.decoder.decode(self.latest_message.payload)
+                scene = self.decoder.decode(message.payload)
                 if scene is None:
-                    logger.debug("Decoder returned no scene for latest MQTT payload.")
-                    self.latest_message = None
+                    logger.warning(
+                        f"No scene emitted for MQTT message: decoder returned None; "
+                        f"source={self.source_id!r}, topic={message.topic!r}"
+                    )
                     return True
 
                 if not scene.time_slice.is_instant:
@@ -100,17 +108,17 @@ class MQTTWorker(Worker):
                     content=scene,
                     frame_id=frame_id,
                     source_id=self.source_id,
-                    metadata={"mqtt_message": self.latest_message},
+                    metadata={"mqtt_message": message},
                 )
 
-                self.overlay_ready_signal.emit(overlay_data)
-                self.latest_message = None  # Clear processed message
+                overlay_ready_signal.emit(overlay_data)
 
             except Exception as e:
-                import traceback
-
-                logger.debug(traceback.format_exc())
-                logger.error(f"Error decoding MQTT message: {e}")
+                logger.error(
+                    f"Dropping MQTT message after processing failed: source={self.source_id!r}, "
+                    f"topic={message.topic!r}, error={type(e).__name__}. Sparse decoder state may be incomplete.",
+                    exc_info=True,
+                )
 
         # Small sleep to prevent busy waiting
         time.sleep(0.01)  # 10ms poll rate
@@ -175,8 +183,14 @@ class MQTTWorker(Worker):
 
     def _on_message_received(self, message: MqttMessage) -> None:
         """Callback for new MQTT messages."""
-        # Store latest message for processing in thread
-        self.latest_message = message
+        with self._message_lock:
+            dropped = self.latest_message
+            self.latest_message = message
+        if dropped is not None:
+            logger.warning(
+                f"Dropping undecoded MQTT message: replaced by newer message; "
+                f"source={self.source_id!r}, topic={dropped.topic!r}. Sparse decoder state may be incomplete."
+            )
 
     def request_stop(self) -> None:
         """Request worker-thread termination without racing connection setup cleanup."""
@@ -195,6 +209,12 @@ class MQTTWorker(Worker):
                 self.analytics_manager = None
                 self.device_config = None
                 self._connected = False
+        with self._message_lock:
+            dropped, self.latest_message = self.latest_message, None
+        if dropped is not None:
+            logger.warning(
+                f"Dropping undecoded MQTT message on stop: source={self.source_id!r}, topic={dropped.topic!r}"
+            )
 
 
 class MQTTOverlaySource(OverlaySource):

@@ -271,6 +271,11 @@ class DataHubWebSocketClient:
             except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
                 logger.debug(f"DataHub HTTP session close failed: {type(exc).__name__}")
 
+        if self._pending_samples:
+            logger.warning(
+                f"Dropping {len(self._pending_samples)} undecoded DataHub samples on close: "
+                f"topic={self._topic!r}, channel={self._channel_id}"
+            )
         self._pending_samples.clear()
 
     async def _request(self, *, method: str, params: JsonObject) -> JsonObject:
@@ -287,7 +292,15 @@ class DataHubWebSocketClient:
             while True:
                 message = await self._receive_json()
                 if message.get("method") == self._topic_sample_method:
-                    self._pending_samples.append(parse_topic_sample(message))
+                    sample = parse_topic_sample(message)
+                    if len(self._pending_samples) == self._pending_samples.maxlen:
+                        dropped = self._pending_samples[0]
+                        logger.warning(
+                            f"Dropping oldest undecoded DataHub sample: subscription buffer full; "
+                            f"topic={dropped.topic!r}, channel={dropped.channel_id}, "
+                            f"timestamp={dropped.timestamp!r}. Sparse decoder state may be incomplete."
+                        )
+                    self._pending_samples.append(sample)
                     continue
                 if message.get("id") != request_id:
                     if "method" in message:
