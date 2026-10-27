@@ -55,6 +55,8 @@ class TestGlobalSettingsConfigRoundTrip:
         assert settings.scan_on_startup and settings.scan_sign_in
         settings.scan_on_startup = False
         settings.scan_sign_in = False
+        assert not settings.prepare_next_video
+        settings.prepare_next_video = True
         settings.video_cache_budget = VideoCacheBudget(512)
         for preference in OverlayPreference:
             settings.set_overlay_enabled(preference, False)

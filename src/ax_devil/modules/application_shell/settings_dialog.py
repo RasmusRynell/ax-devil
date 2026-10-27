@@ -120,6 +120,8 @@ class SettingsDialog(BaseDialog):
         description = QLabel(VideoCacheBudget.DESCRIPTION)
         description.setWordWrap(True)
         playback_layout.addRow(description)
+        self._prepare_next_video = QCheckBox("Prepare the next video in the background")
+        playback_layout.addRow(self._prepare_next_video)
         self._video_cache_mode.currentIndexChanged.connect(self._update_video_cache_controls)
         layout.addWidget(playback_group)
 
@@ -233,6 +235,7 @@ class SettingsDialog(BaseDialog):
         self._video_cache_mode.setCurrentIndex(0 if budget.mib is None else 1)
         self._video_cache_spin.setValue((budget.mib or VideoCacheBudget.FALLBACK_MIB) / 1024)
         self._update_video_cache_controls()
+        self._prepare_next_video.setChecked(self._settings.prepare_next_video)
         self._custom_frame.setChecked(self._settings.custom_frame)
         self._scan_on_startup.setChecked(self._settings.scan_on_startup)
         self._scan_sign_in.setChecked(self._settings.scan_sign_in)
@@ -257,6 +260,7 @@ class SettingsDialog(BaseDialog):
         return replace(
             self._settings.snapshot(),
             video_cache_budget=self._selected_cache_budget(),
+            prepare_next_video=self._prepare_next_video.isChecked(),
             theme=ThemeMode(self._theme_combo.currentData()),
             text_size=TextSize(self._text_size_combo.currentData()),
             custom_frame=self._custom_frame.isChecked(),

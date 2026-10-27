@@ -58,6 +58,10 @@ application memory come on top, so this is not a total RAM limit: with 1 GiB of 
 in total, and seeking in long-GOP 4K video can raise process memory by several GiB, which may stay resident. Auto does
 not watch other applications or prevent swapping.
 
+**General → Playback → Prepare the next video in the background** (`settings.playback.prepare_next_video`) is off by
+default. While a playlist entry plays, it starts a separate process that warms the caches of the entry
+playback steps to next, so that entry opens sooner. Turning it off stops a running process.
+
 ## Configuration and local data
 
 Configuration is stored under `~/.ax_devil/configs/` by default; caches, logs, and render catalogs also

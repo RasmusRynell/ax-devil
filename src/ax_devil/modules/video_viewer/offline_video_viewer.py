@@ -13,6 +13,7 @@ from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
 from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, overlay_specs, prepare_entry
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
@@ -94,6 +95,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         )
         self._opening = LatestRequest(self)
         self._opening_jobs = entry_opening_scope(self)
+        GlobalSettings().prepare_next_video_changed.connect(self._prepare_next_if_open)
 
     def _setup_widget_ui(self) -> None:
         layout = self.get_content_layout()
@@ -159,7 +161,10 @@ class OfflineVideoViewerWidget(ViewerWidget):
         )
 
     def _prepare_next(self) -> None:
-        """Let a background process warm the caches of the entry that playback steps to next."""
+        """Let a background process warm the caches of the entry that playback steps to next, if the user allows it."""
+        if not GlobalSettings().prepare_next_video:
+            self._stop_preparation()
+            return
         entries = self._navigation.get_entries()
         next_index = self._navigation.find_next_considered_index(self._current_index)
         request = (
@@ -175,6 +180,11 @@ class OfflineVideoViewerWidget(ViewerWidget):
             self._stop_preparation()
         else:
             self._cancel_preparation = prepare_entry(request)
+
+    def _prepare_next_if_open(self) -> None:
+        """Start or stop preparing when the setting changes while an entry is open."""
+        if self._runtime is not None:
+            self._prepare_next()
 
     def _stop_preparation(self) -> None:
         if self._cancel_preparation is not None:

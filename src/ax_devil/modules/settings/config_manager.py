@@ -44,7 +44,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "shortcuts": {},
     "settings": {
         "network_scan": {"on_startup": True, "sign_in": True},
-        "playback": {"video_cache_total_mib": VideoCacheBudget().config_value},
+        "playback": {"video_cache_total_mib": VideoCacheBudget().config_value, "prepare_next_video": False},
         "overlay_interaction": OverlayPreference.config_value(OverlayPreference.from_config(None)),
     },
     "defaults": {
