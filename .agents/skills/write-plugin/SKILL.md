@@ -23,7 +23,7 @@ supported format only needs a resolver; a new format with a folder layout may ne
 
 1. **Look at real data.** Ask for a sample file or folder if the user has not given one, and read it. Find: how
    frames are identified (frame number, timestamp), how geometry is expressed (pixels or normalized, xywh or corners,
-   polygons), object ids, classes, scores, and any extra fields worth keeping as attributes. Ask about anything you
+   polygons), object ids, classes, scores or confidences, and any extra fields worth keeping as attributes. Ask about anything you
    cannot infer, such as the frame size for pixel coordinates.
 2. **Read the contract.** [reference.md](reference.md) has a minimal package and the packaging rules. Read the
    built-in model from the table above end to end, and `src/ax_devil/modules/scene/model.py` (and `model_values.py`,
@@ -36,7 +36,9 @@ supported format only needs a resolver; a new format with a folder layout may ne
    history and ID-colored catalogs work. Put extra fields in `Attribute`s on the classification so the inspector
    shows them and render catalogs can use them. For numeric class ids, build the classification with
    `classification_for_id` from `ax_devil.modules.scene.decoding`; an id missing from the name table shows as
-   `?<id>`, and the raw id stays in the `class_id` attribute. Set `file_extensions` on file handlers.
+   `?<id>`, and the raw id stays in the `class_id` attribute. Pass the source's number as `score` (any finite range) and a
+   0..1 certainty as `confidence`, each only when the source has it: leave the other `None`, and never invent a value or
+   drop the object because one is missing. Set `file_extensions` on file handlers.
 5. **Prove it on their data before installing.** Run a short script with `uv run python` from this repository, with
    the package directory on `PYTHONPATH`, that decodes the user's sample and prints the frame count, objects on a
    few frames and one decoded object with its attributes. Compare against the raw file. A resolver calls

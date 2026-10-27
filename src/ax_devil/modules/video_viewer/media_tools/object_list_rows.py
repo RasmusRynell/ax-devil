@@ -6,8 +6,14 @@ from functools import cached_property
 from typing import Any
 
 from ax_devil.modules.data_sources.scene_history import ObjectHistory
-from ax_devil.modules.scene.inspection import EntitySummary, entity_confidence, entity_record, entity_summary
-from ax_devil.modules.scene.model import Entity
+from ax_devil.modules.filtering.measure_range import Measure
+from ax_devil.modules.scene.inspection import (
+    EntitySummary,
+    entity_record,
+    entity_summary,
+    latest_primary_classification,
+)
+from ax_devil.modules.scene.model import Classification, Entity
 from ax_devil.modules.scene.query import Query, QueryRecord
 from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
 from ax_devil.modules.video_viewer.media_tools.page_stack import ObjectPageKey
@@ -52,9 +58,9 @@ class FrameRow:
         return entity_summary(self.entity)
 
     @cached_property
-    def confidence(self) -> float | None:
-        """Read the field needed for confidence ordering without formatting a row."""
-        return entity_confidence(self.entity)
+    def primary(self) -> Classification | None:
+        """Read what score and confidence ordering needs without formatting a row."""
+        return latest_primary_classification(self.entity)
 
     def record(self, *, full: bool) -> QueryRecord:
         """Return what a query searches: id, class and state, plus every field of the entity when *full*."""
@@ -95,10 +101,10 @@ class FileRow:
         return seen_range(self.history)
 
 
-def _confidence_text(conf: float | None) -> str:
-    if conf is None:
-        return ""
-    return f"{conf:.0%}" if 0.0 <= conf <= 1.0 else f"{conf:g}"
+def _order(measure: Measure, row: FrameRow) -> tuple[bool, float]:
+    """Sort a missing value lowest."""
+    value = measure.of(row.primary) if row.primary is not None else None
+    return (value is not None, value or 0.0)
 
 
 def frame_columns() -> tuple[Column, ...]:
@@ -117,10 +123,16 @@ def frame_columns() -> tuple[Column, ...]:
             stretch=True,
         ),
         Column(
+            "Score",
+            CellKind.NUMBER,
+            lambda row: row.summary.score.text if row.summary.score is not None else "",
+            lambda row: _order(Measure.SCORE, row),
+        ),
+        Column(
             "Conf",
             CellKind.NUMBER,
-            lambda row: _confidence_text(row.summary.conf),
-            lambda row: (row.confidence is not None, row.confidence or 0.0),
+            lambda row: row.summary.confidence.text if row.summary.confidence is not None else "",
+            lambda row: _order(Measure.CONFIDENCE, row),
         ),
         Column(
             "Motion",

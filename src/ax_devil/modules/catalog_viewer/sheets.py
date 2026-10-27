@@ -41,6 +41,7 @@ from ax_devil.modules.scene.model import (
     Attribute,
     BoundingBox,
     Classification,
+    Confidence,
     Entity,
     EntityId,
     EntityRelation,
@@ -68,12 +69,13 @@ class _Example:
     """One example object: where it is, how it looks to detection, and any id or attributes it must have."""
 
     box: tuple[float, float, float, float]
-    score: float = 0.85
+    score: float | None = 0.85
     velocity: tuple[float, float] | None = (0.06, -0.03)
     motion_state: MotionState | None = MotionState.Moving
     outline: bool = False
     id: str = ""
     attributes: Mapping[str, Any] = field(default_factory=dict)
+    confidence: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,9 +109,9 @@ _SITUATIONS: tuple[tuple[str, str, tuple[_Example, ...]], ...] = (
     ("Small", "", (_Example((0.105, 0.09, 0.04, 0.08)),)),
     ("Medium", "", (_Example((0.09, 0.08, 0.07, 0.13)),)),
     ("Large", "", (_Example((0.07, 0.065, 0.11, 0.165)),)),
-    ("Confidence 15%", "", (_Example(_MEDIUM, score=0.15),)),
-    ("Confidence 50%", "", (_Example(_MEDIUM, score=0.5),)),
-    ("Confidence 98%", "", (_Example(_MEDIUM, score=0.98),)),
+    ("Score 0.15", "", (_Example(_MEDIUM, score=0.15),)),
+    ("Confidence 98%", "", (_Example(_MEDIUM, score=None, confidence=0.98),)),
+    ("No score", "", (_Example(_MEDIUM, score=None),)),
     ("Long id", "36-character UUID", (_Example(_MEDIUM, score=0.72, id=_LONG_ID),)),
     ("Still", "", (_Example(_MEDIUM, velocity=None, motion_state=MotionState.Stationary),)),
     ("Moving slowly", "", (_Example(_MEDIUM, velocity=(0.03, -0.01)),)),
@@ -315,7 +317,14 @@ class _Builder:
         entity = Entity(id=self._new_id(example.id), motion_state=example.motion_state)
         velocity = ImageVelocity(*example.velocity) if example.velocity is not None else None
         classification = (
-            [Classification(type=name, score=Score(example.score), attributes=self._attributes(recipe, example))]
+            [
+                Classification(
+                    type=name,
+                    score=None if example.score is None else Score(example.score),
+                    attributes=self._attributes(recipe, example),
+                    confidence=None if example.confidence is None else Confidence(example.confidence),
+                )
+            ]
             if name is not None
             else []
         )

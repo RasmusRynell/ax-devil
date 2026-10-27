@@ -19,7 +19,6 @@ def entity_with_classes(*classification_types: str, entity_id: str = "entity-1")
         Observation(
             frame_number=0,
             geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2, allow_outside=True),
-            confidence=Score(1.0),
             classification=[Classification(c_type, Score(0.9)) for c_type in classification_types],
         )
     )

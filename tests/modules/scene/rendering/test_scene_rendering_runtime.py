@@ -13,6 +13,7 @@ from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
     ColorClassification,
+    Confidence,
     Entity,
     EntityId,
     EntityRelation,
@@ -171,7 +172,7 @@ def test_routing_uses_primary_classification_and_catalog_selectors(types: tuple[
         Classification(
             type=kind,
             score=Score((index + 1) / len(types)),
-            confidence=Score((len(types) - index) / len(types)),
+            confidence=Confidence((len(types) - index) / len(types)),
         )
         for index, kind in enumerate(types)
     ]

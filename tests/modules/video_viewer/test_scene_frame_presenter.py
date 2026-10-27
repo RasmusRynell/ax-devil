@@ -304,7 +304,7 @@ def test_visibility_change_reuses_filtered_scene_and_hover_cards(
     initial = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
     hit = overlay.interaction_provider.get_hit_by_id("entity-1")
     assert hit is not None
-    selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
+    selection.set_feature_enabled(OverlayFeature.SCORE, False)
     hidden = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))
     current_hit = overlay.interaction_provider.get_hit_by_id("entity-1")
     assert current_hit is hit

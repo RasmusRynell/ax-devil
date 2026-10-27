@@ -13,7 +13,7 @@ MAX_TEMPLATE_DEPTH = 32
 MAX_EXPANDED_STEPS = 10000
 MAX_COLLECTION = 4096
 MAX_DOCUMENT_BYTES = 2_000_000
-COMPILER_REVISION = 10
+COMPILER_REVISION = 11
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +154,9 @@ ENTITY = ValueType("entity", (("id", STRING), ("motion_state", STRING.optional()
 OBSERVATION = ValueType(
     "observation", (("geometry", BOX), ("polygon_points", POINTS.optional()), ("velocity", VECTOR.optional()))
 )
-CLASSIFICATION = ValueType("classification", (("type", STRING), ("score", NUMBER)))
+CLASSIFICATION = ValueType(
+    "classification", (("type", STRING), ("score", NUMBER.optional()), ("confidence", NUMBER.optional()))
+)
 SCENE = ValueType(
     "scene", (("entity", ENTITY), ("observation", OBSERVATION), ("classification", CLASSIFICATION.optional()))
 )
@@ -274,6 +276,7 @@ OPERATIONS = MappingProxyType(
                 elide=ELISION.optional(),
             ),
             _operation("number_text", STRING.optional(), value=NUMBER.optional(), precision=INTEGER, hide_zero=BOOL),
+            _operation("percent_text", STRING.optional(), value=NUMBER.optional(), precision=INTEGER),
             _operation("lookup_text", STRING.optional(), text=STRING.optional(), mapping=TEXT_MAPPING, default=STRING),
             _operation("color_ramp", RGB, value=NUMBER, stops=COLOR_STOPS),
             _operation("pick_color", RGB, text=STRING, colors=PALETTE),

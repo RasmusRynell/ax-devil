@@ -34,16 +34,15 @@ def test_det_and_gt_rows_are_grouped_into_frames_and_unsupported_rows_skipped() 
 
 
 def test_gt_row_decodes_normalized_box_class_and_visibility() -> None:
-    """The ground-truth mark column is a flag, never a display confidence."""
+    """The ground-truth mark column is a flag: ground truth has neither score nor confidence."""
     [scene] = _decode(["1,1,0,0,64,48,1,1,0.8", "1,2,32,24,64,48,0,7,0.25"], width=640, height=480)
 
     observation = scene.entities[EntityId("2")].observations[0]
     assert observation.frame_number == 0
     assert observation.geometry.as_xywh() == pytest.approx((32 / 640, 24 / 480, 64 / 640, 48 / 480))
-    assert observation.confidence is None
     classification = observation.classification[0]
     assert classification.type == "static_person"
-    assert classification.score.value == pytest.approx(1.0)
+    assert (classification.score, classification.confidence) == (None, None)
     assert classification.attribute_value("gt_mark") == 0
     assert classification.attribute_value("visibility_ratio") == pytest.approx(0.25)
 
@@ -56,25 +55,12 @@ def test_untracked_det_rows_keep_every_detection() -> None:
     assert len(scene.entities) == 3
 
 
-def test_det_scores_outside_unit_range_are_not_display_confidence() -> None:
+def test_det_score_is_kept_at_any_range_and_is_never_a_confidence() -> None:
     [scene] = _decode(["1,-1,992.1,463.1,68.6,184.1,2.3092,-1,-1,-1", "1,-1,767.4,462.1,45.4,125.1,-0.5,-1,-1,-1"])
 
-    observations = [entity.observations[0] for entity in scene.entities.values()]
-    assert [observation.confidence for observation in observations] == [None, None]
-    assert [observation.classification[0].attribute_value("raw_score") for observation in observations] == [
-        pytest.approx(2.3092),
-        pytest.approx(-0.5),
-    ]
-    assert [observation.classification[0].score.value for observation in observations] == [0.0, 0.0]
-
-
-def test_det_unit_scores_are_display_confidence() -> None:
-    [scene] = _decode(["1,-1,992.1,463.1,68.6,184.1,0.75"])
-
-    observation = next(iter(scene.entities.values())).observations[0]
-    assert observation.confidence is not None
-    assert observation.confidence.value == pytest.approx(0.75)
-    assert observation.classification[0].attribute_value("raw_score") == pytest.approx(0.75)
+    classifications = [entity.observations[0].classification[0] for entity in scene.entities.values()]
+    assert [c.score.value for c in classifications if c.score] == [pytest.approx(2.3092), pytest.approx(-0.5)]
+    assert [c.confidence for c in classifications] == [None, None]
 
 
 def test_decode_mot_frame_rejects_invalid_payload() -> None:

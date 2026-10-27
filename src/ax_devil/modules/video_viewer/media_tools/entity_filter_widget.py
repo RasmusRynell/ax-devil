@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -10,19 +11,33 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from ax_devil.modules.chrome.tokens import Space
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.filtering import FilterOption
+from ax_devil.modules.filtering.measure_range import Measure, MeasureRange
 from ax_devil.modules.filtering.session_filter import SessionFilter
 
 
+def _number_text(value: float | None) -> str:
+    return "" if value is None else f"{value:g}"
+
+
+def _number_of(edit: QLineEdit) -> float | None:
+    """Return the number typed in *edit*, or None when it is empty or unfinished (an open end)."""
+    try:
+        return float(edit.text().replace(",", "."))
+    except ValueError:
+        return None
+
+
 class EntityFilterWidget(QWidget):
-    """Filter widget that renders checkboxes from a decoder-supplied config."""
+    """Filter widget that renders checkboxes from a decoder-supplied config, and a min and max per measure."""
 
     def __init__(
         self,
@@ -37,6 +52,7 @@ class EntityFilterWidget(QWidget):
         self._show_title = show_title
         self._checkboxes: dict[str, QCheckBox] = {}
         self._options: tuple[FilterOption, ...] = ()
+        self._range_edits: dict[Measure, tuple[QLineEdit, QLineEdit]] = {}
 
         self._setup_ui()
         self._build_controls()
@@ -88,9 +104,48 @@ class EntityFilterWidget(QWidget):
         self._grid_layout.setVerticalSpacing(Space.S)
 
         filter_layout.addLayout(self._grid_layout)
+        filter_layout.addLayout(self._build_range_rows())
         filter_layout.addStretch()
 
         layout.addWidget(filter_group)
+
+    def _build_range_rows(self) -> QGridLayout:
+        """Return a row per measure: its name, then the smallest and largest value kept (empty keeps all)."""
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(Space.S)
+        grid.setVerticalSpacing(Space.S)
+        for row, measure in enumerate(Measure):
+            grid.addWidget(QLabel(measure.value), row, 0)
+            edits = (self._range_edit("min"), self._range_edit("max"))
+            for column, edit in enumerate(edits, start=1):
+                grid.addWidget(edit, row, column)
+                edit.textChanged.connect(lambda _text, measure=measure: self._on_range_edited(measure))
+            self._range_edits[measure] = edits
+        grid.setColumnStretch(3, 1)
+        self._refresh_ranges()
+        return grid
+
+    def _range_edit(self, placeholder: str) -> QLineEdit:
+        edit = QLineEdit()
+        edit.setPlaceholderText(placeholder)
+        edit.setValidator(QDoubleValidator(edit))
+        edit.setClearButtonEnabled(True)
+        edit.setFixedWidth(TextRole.BODY.px * 6)
+        return edit
+
+    def _on_range_edited(self, measure: Measure) -> None:
+        low, high = self._range_edits[measure]
+        self._filter_model.set_range(measure, MeasureRange(_number_of(low), _number_of(high)))
+
+    def _refresh_ranges(self) -> None:
+        for measure, edits in self._range_edits.items():
+            kept = self._filter_model.range(measure)
+            for edit, value in zip(edits, (kept.minimum, kept.maximum), strict=True):
+                if _number_of(edit) != value:
+                    blocked = edit.blockSignals(True)
+                    edit.setText(_number_text(value))
+                    edit.blockSignals(blocked)
 
     def _connect_signals(self) -> None:
         """Connect UI signals to handlers."""
@@ -112,6 +167,7 @@ class EntityFilterWidget(QWidget):
         self._filter_model.toggle_all()
 
     def _refresh_controls(self) -> None:
+        self._refresh_ranges()
         for option_id, checkbox in self._checkboxes.items():
             previous_block = checkbox.blockSignals(True)
             checkbox.setChecked(self._filter_model.is_enabled(option_id))

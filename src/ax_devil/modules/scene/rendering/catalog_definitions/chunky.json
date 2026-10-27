@@ -411,7 +411,7 @@
     },
     "score_tab": {
       "label": "Score tab",
-      "feature": "confidence",
+      "feature": "score",
       "description": "The detection score, such as 0.87, on a tab flush with the box's bottom-left corner.",
       "parameters": {
         "geometry": {
@@ -629,6 +629,276 @@
                     },
                     "precision": 2,
                     "hide_zero": false
+                  }
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "ink"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "alpha": 255
+              },
+              "padding_x": {
+                "value": 6,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 2,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "confidence_tab": {
+      "label": "Confidence tab",
+      "feature": "confidence",
+      "description": "The detection confidence, such as 87%, on a tab flush with the box's bottom-right corner.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Tab color",
+          "required": true
+        },
+        "ink": {
+          "type": "rgb",
+          "label": "Text color",
+          "description": "Black or white, whichever contrasts.",
+          "required": true
+        },
+        "confidence": {
+          "type": "number",
+          "label": "Confidence",
+          "required": true
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 14,
+            "unit": "px"
+          }
+        },
+        "shift": {
+          "type": "length",
+          "label": "Shift",
+          "description": "Moves the tab right to line up with the outside of the box line.",
+          "default": {
+            "value": 1.5,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "room": {
+          "call": "gt",
+          "args": {
+            "left": {
+              "call": "sub",
+              "args": {
+                "left": 1,
+                "right": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "y"
+                        ]
+                      },
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "h"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "right": {
+              "call": "div",
+              "args": {
+                "numerator": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "value": 20,
+                        "unit": "px"
+                      },
+                      {
+                        "value": -1.5,
+                        "unit": "px"
+                      }
+                    ]
+                  }
+                },
+                "denominator": {
+                  "value": 1,
+                  "unit": "image_height"
+                }
+              }
+            }
+          }
+        },
+        "position": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "value": -1.5,
+                  "unit": "px"
+                }
+              }
+            },
+            "else": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "value": -1.5,
+                        "unit": "px"
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "anchor": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": "top-right",
+            "else": "bottom-right"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "ref": [
+                "values",
+                "position"
+              ]
+            },
+            "anchor": {
+              "ref": [
+                "values",
+                "anchor"
+              ]
+            },
+            "runs": [
+              {
+                "text": {
+                  "call": "percent_text",
+                  "args": {
+                    "value": {
+                      "ref": [
+                        "parameters",
+                        "confidence"
+                      ]
+                    },
+                    "precision": 0
                   }
                 },
                 "color": {
@@ -1274,6 +1544,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1297,6 +1579,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -1442,6 +1766,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1465,6 +1801,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -1614,6 +1992,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1637,6 +2027,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "ink": [
+                17,
+                17,
+                17
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -1775,6 +2207,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1798,6 +2242,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }

@@ -109,10 +109,10 @@ def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range(
     }
     assert items[("type",)].value == "bus"
     assert items[("attributes", "make")].value == "volvo"
-    assert items[("candidates", "car")].fraction == 0.69
-    assert items[("candidates", "bus")].fraction is None
+    assert items[("candidates", "car", "score")].fraction == 0.69
+    assert items[("candidates", "bus", "score")].fraction is None
     assert ("candidates", "bus", "attributes", "make") not in items
-    assert [path[1] for path in items if path[0] == "candidates" and len(path) == 2] == ["bus", "car", "truck"]
+    assert [path[1] for path in items if path[0] == "candidates" and path[2:] == ("score",)] == ["bus", "car", "truck"]
 
 
 def test_colors_are_one_field_each_and_stay_searchable_by_channel() -> None:
@@ -134,16 +134,6 @@ def test_colors_are_one_field_each_and_stay_searchable_by_channel() -> None:
     ]
     assert compile_query("rgb.b>=100").matches(entity_record(entity))
     assert not compile_query("rgb.g>0").matches(entity_record(entity))
-
-
-def test_conf_falls_back_to_primary_score_unless_observation_reports_confidence() -> None:
-    entity = _inspection_entity()
-    assert entity_summary(entity).conf == 7.5
-    observation = entity.latest_observation
-    assert observation is not None
-    observation.confidence = Score(0.97)
-    assert entity_summary(entity).conf == 0.97
-    assert entity_record(entity).fields["classification.conf"] == (0.97,)
 
 
 def test_entity_record_exposes_debug_paths_and_never_derives_speed() -> None:

@@ -84,7 +84,7 @@ and may have `"feature": "confidence"` (the view's Details control gates this co
 `"enabled": <bool expression>` (draw only when true) and `"visible": false` (kept but not drawn).
 
 **User visibility.** Schema v3 templates and steps may declare `feature`: `outlines`, `ids`, `class_names`,
-`confidence`, `speed`, `movement`, `attributes`, or `relations`. Tag shared semantic templates once; tag individual
+`score`, `confidence`, `speed`, `movement`, `attributes`, or `relations`. Tag shared semantic templates once; tag individual
 steps for generic helpers. Both gates apply on an invocation, and untagged components remain permitted. Give all
 parts of one presentation the same feature, including backgrounds and arrowheads. Split mixed components into
 separate tagged steps when independent visibility is needed. Details preferences belong to the view, not the JSON;
@@ -120,6 +120,13 @@ right; a run whose text is null or empty is left out. A run with `"bar": <number
 meter, such as a confidence bar, filled that much in its color over a faint track of the same color. The style is
 `{"label": {"size", "family", "background": {"color", "alpha"} | null, "padding_x", "padding_y", "radius", "gap"}}`.
 A colored dot is a run with the text `●`.
+
+**Score and confidence** are two separate inputs, `scene.classification.score` (any number, shown as `0.87` with
+`number_text`) and `scene.classification.confidence` (0 to 1, shown as `87%` with `percent_text`). A decoder may give
+either, both or neither, and neither is ever invented, so each is null when missing: guard every step that uses one
+with `enabled` and `is_present`, gate numbers with the `score` and `confidence` features, and never format a
+confidence with `number_text` or a score with `percent_text`. A `bar` takes either value;
+`coalesce` of the confidence, then the score, gives one bar for both.
 
 **Long ids**: `trim_text` with `"elide": "middle"` keeps both ends of text longer than `max_length`, so
 `3f2a9c1e-7b4d-…-1a2b3c4d5e6f` shows as `3f2a9…d5e6f` and `track-000412` as `track…00412`.

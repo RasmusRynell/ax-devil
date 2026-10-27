@@ -245,7 +245,7 @@ def field_row(field: InspectionField, group: str) -> FieldRow:
         copy = f"{copy} {QColor(rgb.r, rgb.g, rgb.b).name()}"
     return FieldRow(
         field.path[-1] if rgb is not None else ".".join(field.path),
-        format_field_value(value),
+        field.text or format_field_value(value),
         copy=copy,
         fraction=field.fraction,
         field_id=FieldId(group, field.path),

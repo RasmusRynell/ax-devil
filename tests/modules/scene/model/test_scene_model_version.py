@@ -7,13 +7,14 @@ import inspect
 
 from ax_devil.modules.scene import model
 
-# Snapshot for SCENE_MODEL_VERSION (2, 0). Update together with the version.
-EXPECTED_VERSION = (2, 0)
+# Snapshot for SCENE_MODEL_VERSION (3, 0). Update together with the version.
+EXPECTED_VERSION = (3, 0)
 EXPECTED_FIELDS = {
     "Attribute": ("name", "value"),
     "BoundingBox": ("top_left", "bottom_right"),
     "Classification": ("type", "score", "attributes", "confidence"),
     "ColorClassification": ("name", "rgb", "score"),
+    "Confidence": ("value",),
     "Delete": ("timestamp", "entity_id"),
     "Entity": ("id", "observations", "images", "end_reason", "motion_state"),
     "EntityRelation": ("type", "source_entity_id", "target_entity_id"),
@@ -29,7 +30,6 @@ EXPECTED_FIELDS = {
         "classification",
         "timestamp",
         "frame_number",
-        "confidence",
         "velocity_in_image_space",
         "velocity_in_world_space",
         "geographical_coordinates",

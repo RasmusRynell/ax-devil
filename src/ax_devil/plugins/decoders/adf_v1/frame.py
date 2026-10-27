@@ -78,11 +78,9 @@ def _create_classification(class_data: dict[str, Any]) -> list[Classification]:
     if class_type_raw is None:
         raise ValueError("Classification missing type")
     score_raw = class_data.get("score")
-    if score_raw is None:
-        raise ValueError("Classification missing score")
 
     class_type = str(class_type_raw).lower()
-    score = Score(float(score_raw))
+    score = Score(float(score_raw)) if score_raw is not None else None
 
     type_mapping = {
         "human": KnownClassificationType.Human.value,
