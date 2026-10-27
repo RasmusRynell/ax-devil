@@ -28,18 +28,29 @@ from ax_devil.modules.settings.config_manager import (
     integer_default,
 )
 from ax_devil.modules.workspace.core import ItemResolution, LiveOverlayMode, LiveStreamItem
-from ax_devil.modules.workspace.ui.add_content.live_transport_pages import TransportPages, apply_env_hint
+from ax_devil.modules.workspace.ui.add_content.live_transport_pages import (
+    TransportPages,
+    apply_env_hint,
+    configured_overlay,
+)
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 
 
 class AddLiveStreamDialog(BaseDialog):
-    """Dialog for adding a live RTSP stream with optional overlay metadata.
+    """Dialog for adding a live RTSP stream with optional overlay metadata, or editing the *existing* one.
 
     Empty connection fields take the configured default as written, so a ``$VARIABLE`` default stays a reference in the
-    resulting Live Stream Item.
+    resulting Live Stream Item. Adding a stream from a *camera* starts with the connection fields of its stream as
+    entered; the result is a new item.
     """
 
-    def __init__(self, parent: QWidget | None = None, *, existing: LiveStreamItem | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        existing: LiveStreamItem | None = None,
+        camera: LiveStreamItem | None = None,
+    ) -> None:
         self._existing = existing
         self._restoring = existing is not None
         super().__init__(parent, title="Edit Live Stream" if existing is not None else "Add Live Stream")
@@ -53,6 +64,8 @@ class AddLiveStreamDialog(BaseDialog):
         if existing is not None:
             self._restore(existing)
             self._ok_button.setText("Save")
+        elif camera is not None:
+            self._copy_connection(camera)
         self._restoring = False
         self._connect_validation()
         self._update_validation()
@@ -88,6 +101,18 @@ class AddLiveStreamDialog(BaseDialog):
         self._transports.data_source_choice.restore_selection(item.analytics_data_source_key)
         self._transports.websocket_topic_choice.restore_selection(item.websocket_topic)
         self._on_overlay_mode_changed(self._overlay_mode_combo.currentIndex())
+
+    def _copy_connection(self, camera: LiveStreamItem) -> None:
+        """Start from the connection fields of *camera*'s stream, as entered."""
+        for edit, value in (
+            (self._host_edit, camera.host),
+            (self._username_edit, camera.username),
+            (self._password_edit, camera.password),
+            (self._device_port_edit, str(camera.device_port or "")),
+            (self._rtsp_port_edit, str(camera.rtsp_port)),
+        ):
+            edit.setText(value)
+        self._protocol_combo.setCurrentIndex(self._protocol_combo.findData(camera.device_api_protocol.value))
 
     def _load_defaults(self) -> tuple[dict[str, Any], dict[str, Any]]:
         """Return raw and resolved defaults from config."""
@@ -195,10 +220,8 @@ class AddLiveStreamDialog(BaseDialog):
         overlay_layout.addRow(self._transports)
         align_label_columns(overlay_layout, *self._transports.forms)
 
-        self._host_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
-        self._username_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
-        self._password_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
-        self._device_port_edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
+        for edit in (self._host_edit, self._username_edit, self._password_edit, self._device_port_edit):
+            edit.textChanged.connect(self._invalidate_discovery_for_connection_change)
         self._protocol_combo.currentIndexChanged.connect(self._invalidate_discovery_for_connection_change)
 
         layout.addWidget(overlay_group)
@@ -214,31 +237,14 @@ class AddLiveStreamDialog(BaseDialog):
         self.add_content_widget(form)
 
         if self._existing is None:
-            self._apply_configured_defaults(rtsp_defaults, mqtt_defaults, websocket_defaults, live_defaults)
+            self._apply_configured_defaults(live_defaults)
         self._on_host_changed(self._host_edit.text())
 
-    def _apply_configured_defaults(
-        self,
-        rtsp_defaults: dict[str, Any],
-        mqtt_defaults: dict[str, Any],
-        websocket_defaults: dict[str, Any],
-        live_defaults: dict[str, Any],
-    ) -> None:
-        try:
-            configured_mode = LiveOverlayMode.from_value(str(live_defaults.get("overlay_source", "none")))
-        except ValueError:
-            configured_mode = LiveOverlayMode.NONE
-        configured_handler = None
-        if configured_mode is LiveOverlayMode.RTSP:
-            configured_handler = rtsp_defaults.get("data_stream_handler")
-        elif configured_mode is LiveOverlayMode.MQTT:
-            configured_handler = mqtt_defaults.get("data_stream_handler")
-        elif configured_mode is LiveOverlayMode.WEBSOCKET:
-            configured_handler = websocket_defaults.get("data_stream_handler")
-
-        if configured_handler is not None and self._handler_combo.findData(str(configured_handler)) >= 0:
-            self._set_overlay_mode(configured_mode)
-            self._set_handler_selection(str(configured_handler))
+    def _apply_configured_defaults(self, live_defaults: dict[str, Any]) -> None:
+        mode, handler = configured_overlay(live_defaults)
+        if handler is not None and self._handler_combo.findData(handler) >= 0:
+            self._set_overlay_mode(mode)
+            self._set_handler_selection(handler)
         else:
             self._set_overlay_mode(LiveOverlayMode.NONE)
             self._handler_combo.setCurrentIndex(0)

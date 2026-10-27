@@ -171,35 +171,46 @@ def test_choosing_hide_in_the_menu_asks_for_that_action(qtbot: QtBot) -> None:
 
 @pytest.mark.usefixtures("restore_app_appearance")
 @pytest.mark.parametrize("text_size", [13, 21])
-def test_two_line_rows_keep_both_lines_and_their_action_inside_a_narrow_tree(qtbot: QtBot, text_size: int) -> None:
+def test_rows_keep_their_text_and_buttons_inside_a_narrow_tree(qtbot: QtBot, text_size: int) -> None:
     apply_text_size(text_size)
+    stream = WorkspaceBrowserRow(
+        row_id="camera/stream",
+        label="Loading dock entrance, north side",
+        icon_kind="live_video",
+        tag="RTSP",
+        aside="192.0.2.10 · head 2 (1)",
+        detail="Unauthorized for the login saved with the camera",
+        detail_is_warning=True,
+        actions=(OfferedAction(RowAction.START_STREAM),),
+    )
     camera = WorkspaceBrowserRow(
         row_id="camera",
         label="Loading dock entrance, north side",
         icon_kind="live_video",
-        detail="192.0.2.10 · head 2 (1)",
-        actions=(OfferedAction(RowAction.STOP_STREAM),),
+        aside="192.0.2.10",
+        info=("Serial ACCC8E123456", "Model AXIS Q1656"),
+        actions=(OfferedAction(RowAction.STOP_STREAM), OfferedAction(RowAction.ADD_STREAM)),
         is_open=True,
+        expanded_at_first=True,
+        children=(stream,),
     )
-    tree = show_tree(
-        qtbot,
-        camera,
-        replace(camera, row_id="other", actions=(OfferedAction(RowAction.START_STREAM),)),
-        kind=BrowserSection.LIVE,
-    )
-    tree.resize(220, 400)
-    qtbot.waitUntil(lambda: all(row_widget(tree, item_at(tree, i)).width() <= 220 for i in range(2)), timeout=2000)
+    tree = show_tree(qtbot, camera, kind=BrowserSection.LIVE)
+    tree.resize(253, 400)
+    qtbot.waitUntil(lambda: row_widget(tree, item_at(tree, 0)).width() <= 253, timeout=2000)
+    QTest.mouseClick(row_widget(tree, item_at(tree, 0)), Qt.MouseButton.LeftButton)  # Opens the info lines.
+    qtbot.waitUntil(lambda: len(row_widget(tree, item_at(tree, 0)).findChildren(ElidedLabel)) == 4, timeout=2000)
 
-    for index in range(2):
-        item = item_at(tree, index)
+    for item in (item_at(tree, 0), item_at(tree, 0, 0)):
         widget = row_widget(tree, item)
         assert tree.visualItemRect(item).height() >= widget.sizeHint().height()
-        name, detail = widget.findChildren(ElidedLabel)
-        [button] = widget.findChildren(SmallButton)
-        assert all(label.height() >= label.sizeHint().height() for label in (name, detail))
-        assert detail.geometry().top() >= name.geometry().bottom(), "the detail is the second line"
-        assert widget.rect().contains(button.geometry()), "the action stays inside the row"
-        assert button.width() >= button.sizeHint().width()
+        for label in widget.findChildren(QLabel):
+            assert label.height() >= label.sizeHint().height()
+            assert not label.wordWrap()
+        buttons = widget.findChildren(SmallButton)
+        assert buttons
+        for button in buttons:
+            assert widget.rect().contains(button.geometry()), "the action stays inside the row"
+            assert button.width() == button.sizeHint().width()
 
 
 def test_hovering_any_text_of_a_row_shows_the_rows_tooltip(qtbot: QtBot) -> None:
@@ -239,22 +250,6 @@ def _network(*cameras: WorkspaceBrowserRow) -> tuple[WorkspaceBrowserSection, ..
 
 def _hosts(*hosts: str) -> tuple[WorkspaceBrowserSection, ...]:
     return _network(*(_camera(host) for host in hosts))
-
-
-def test_camera_add_buttons_keep_their_width_when_rows_are_narrow(qtbot: QtBot) -> None:
-    cameras = (
-        _camera("10.0.0.1", label="Gate"),
-        _camera("10.0.0.2", label="North warehouse loading dock camera", detail="192.0.2.2 · signed in"),
-    )
-    tree = show_tree(qtbot, *cameras, kind=BrowserSection.NETWORK)
-    tree.resize(220, 400)
-    qtbot.waitUntil(lambda: row(tree, cameras[0].label).width() <= 220, timeout=2000)
-
-    buttons = [row(tree, camera.label).findChild(SmallButton) for camera in cameras]
-
-    assert all(button is not None for button in buttons)
-    assert len({button.width() for button in buttons if button is not None}) == 1
-    assert all(button.width() == button.sizeHint().width() for button in buttons if button is not None)
 
 
 def test_keyboard_focus_stays_on_a_rows_action_when_cameras_are_found_around_it(qtbot: QtBot) -> None:

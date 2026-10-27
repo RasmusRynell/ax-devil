@@ -219,7 +219,6 @@ class _RowProjection:
                 children=self._video_lane_rows(content),
                 location=content.source_location,
                 detail=" · ".join(part for part in (host_part, stream.text if stream else "") if part),
-                wrap_detail=content.is_live,  # A failure reason is read whole, not elided.
                 facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
                 idle=content.is_live and not is_open,
                 stream=stream,

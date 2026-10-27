@@ -75,6 +75,7 @@ class WorkspaceController(QObject):
             RowAction.START_STREAM: self._start_stream,
             RowAction.STOP_STREAM: self._stop_stream,
             RowAction.ADD: self._add,
+            RowAction.ADD_STREAM: self._add,
             RowAction.INFORMATION: self._show_information,
             RowAction.EXPORT_VIDEO: self._export_video,
             RowAction.HIDE: partial(self._set_considered, considered=False),

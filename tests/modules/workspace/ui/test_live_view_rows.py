@@ -14,7 +14,7 @@ from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import LiveStreamItem
 from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from tests.helpers.live_view import Live, scan
-from tests.helpers.section_tree import captions, is_folded, row
+from tests.helpers.section_tree import captions, is_folded
 from tests.helpers.widgets import button
 
 
@@ -33,10 +33,13 @@ def test_search_finds_workspace_and_found_cameras_by_what_they_show_and_their_de
     assert list(live.rows()) == ["192.0.2.12"]
 
     live.search("entrance")
-    assert list(live.rows()) == ["Entrance"]
+    assert list(live.rows()) == ["Entrance", "Entrance/Video only"], "a camera that matches shows its streams"
+
+    live.search("192.0.2.10")
+    assert list(live.rows()) == ["Entrance", "Entrance/Video only"]
 
     live.search("")
-    assert list(live.rows()) == ["Entrance", "192.0.2.12", "192.0.2.13"]
+    assert list(live.rows()) == ["Entrance", "Entrance/Video only", "192.0.2.12", "192.0.2.13"]
 
 
 def test_held_and_found_cameras_follow_the_chosen_order(live: Live) -> None:
@@ -48,13 +51,14 @@ def test_held_and_found_cameras_follow_the_chosen_order(live: Live) -> None:
         DiscoveredCamera("192.0.2.12", "AXIS Q1656", "", "12.10.1", uptime_seconds=60.0),
         DiscoveredCamera("192.0.2.13", "AXIS M3086-V", "", "12.9.4", uptime_seconds=600.0),
     )
-    assert list(live.rows()) == ["Entrance", "192.0.2.11", "192.0.2.12", "192.0.2.13"]
+    assert live.cameras() == ["Entrance", "192.0.2.11", "192.0.2.12", "192.0.2.13"]
 
     live.choose("Sort", "Model")
-    assert list(live.rows()) == ["192.0.2.11", "Entrance", "192.0.2.13", "192.0.2.12"]
+    assert live.cameras() == ["192.0.2.11", "Entrance", "192.0.2.13", "192.0.2.12"]
+    assert list(live.rows())[:2] == ["192.0.2.11", "192.0.2.11/Video only"], "streams move with their camera"
 
     live.choose("Sort", "Uptime")
-    assert list(live.rows()) == ["Entrance", "192.0.2.11", "192.0.2.12", "192.0.2.13"]
+    assert live.cameras() == ["Entrance", "192.0.2.11", "192.0.2.12", "192.0.2.13"]
 
 
 def test_the_chosen_order_stays_while_cameras_are_found(live: Live) -> None:
@@ -71,8 +75,8 @@ def test_the_add_stream_button_heads_the_live_section_while_it_is_empty_and_whil
     assert captions(live.view.tree) == ["Live, 0"]
 
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
-    live.press("Entrance")
-    assert live.rows() == {"Entrance": "Stop stream"}
+    live.press("Entrance/Video only")
+    assert live.streams() == {"Entrance/Video only": "Stop stream"}
 
     live.button("Add stream").click()
 
@@ -106,7 +110,7 @@ def test_the_filter_hides_held_cameras_by_what_the_scan_learned_too(live: Live) 
     )
     live.choose("Filter", "Network Speaker")
 
-    assert list(live.rows()) == ["Entrance"]
+    assert list(live.rows()) == ["Entrance", "Entrance/Video only"]
 
 
 def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that_worked(
@@ -125,17 +129,17 @@ def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that
 
     assert live.scanner.logins == (guest, operator)
     assert "Signed in" not in live.detail("192.0.2.12")
-    assert "Credentials refused" in live.detail("192.0.2.13")
+    assert "Credentials refused" in live.row("192.0.2.13").toolTip()
     assert live.rows()["192.0.2.13"] == "", "a camera that did not accept a login cannot be added"
-    assert "Not signed in" in row(live.view.tree, "192.0.2.14").toolTip(), "a camera never tried says why"
-    assert "Not signed in" not in row(live.view.tree, "192.0.2.12").toolTip()
+    assert "Not signed in" in live.row("192.0.2.14").toolTip(), "a camera never tried says why"
+    assert "Not signed in" not in live.row("192.0.2.12").toolTip()
     live.press("192.0.2.12")
     [signed_in] = live.store.workspace.items
     assert isinstance(signed_in, LiveStreamItem)
     assert (signed_in.username, signed_in.password) == ("operator", "$OPERATOR_PASS"), "a reference stays one"
 
 
-def test_found_camera_row_shows_all_non_secret_information(live: Live) -> None:
+def test_a_found_camera_opens_its_information_and_hides_its_password(live: Live) -> None:
     scan(
         live,
         DiscoveredCamera(
@@ -152,21 +156,15 @@ def test_found_camera_row_shows_all_non_secret_information(live: Live) -> None:
         ),
     )
 
-    detail = live.detail("192.0.2.12")
-    assert all(
-        text in detail
-        for text in (
-            "AXIS P3265-LVE",
-            "ACCC8E000002",
-            "12.6.85",
-            "Dome Camera",
-            "1d 2h",
-            "aarch64",
-            "Ambarella CV25",
-        )
+    assert live.detail("192.0.2.12") == "AXIS P3265-LVE"
+    live.click("192.0.2.12")
+
+    assert live.detail("192.0.2.12") == (
+        "AXIS P3265-LVE · 192.0.2.12 · Dome Camera · Firmware 12.6.85 · Serial ACCC8E000002 · Up 1d 2h"
     )
-    assert "never-display-this" not in detail
-    assert "Signed in" not in detail
+    hover = live.row("192.0.2.12").toolTip()
+    assert "aarch64" in hover and "Ambarella CV25" in hover
+    assert "never-display-this" not in hover and "Signed in" not in hover
 
 
 def test_a_scan_without_sign_in_sends_no_credentials(
@@ -226,22 +224,31 @@ def test_an_empty_login_list_takes_no_room(qtbot: QtBot) -> None:
 
 def test_right_click_remove_takes_a_camera_out_of_the_workspace(live: Live) -> None:
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
-    live.press("Entrance")
+    live.press("Entrance/Video only")
     tree = live.view.tree
     tree.window().show()
-    widget = row(tree, "Entrance")
     entries: list[str] = []
 
-    def remove() -> None:
-        menu = tree.findChildren(QMenu)[-1]
-        entries.extend(action.text() for action in menu.actions() if not action.isSeparator())
-        menu.close()
-        next(action for action in menu.actions() if action.text() == "Remove").trigger()
+    def right_click(name: str, choose: str = "") -> None:
+        widget = live.row(name)
 
-    QTimer.singleShot(0, remove)
-    tree.customContextMenuRequested.emit(tree.viewport().mapFromGlobal(widget.mapToGlobal(widget.rect().center())))
+        def pick() -> None:
+            menu = tree.findChildren(QMenu)[-1]
+            entries[:] = [action.text() for action in menu.actions() if not action.isSeparator()]
+            menu.close()
+            for action in menu.actions():
+                if action.text() == choose:
+                    action.trigger()
+
+        QTimer.singleShot(0, pick)
+        tree.customContextMenuRequested.emit(tree.viewport().mapFromGlobal(widget.mapToGlobal(widget.rect().center())))
+
+    right_click("Entrance")
+    assert entries == ["Add stream"], "a camera row offers only to add a stream"
+
+    right_click("Entrance/Video only", "Remove")
 
     assert entries[0] == "Stop stream"
     assert "Edit" in entries and "Remove" in entries
-    assert live.rows() == {"192.0.2.11": "Start stream"}
-    assert live.center.get_widget_count() == 0, "removing a camera stops its stream"
+    assert live.streams() == {"192.0.2.11/Video only": "Start stream"}
+    assert live.center.get_widget_count() == 0, "removing a stream stops it"

@@ -69,8 +69,9 @@ def _rows(view: PluginsView) -> list[tuple[str, str]]:
     """Return each row's title and subtitle, top to bottom."""
     rows = []
     for row in view.findChildren(ListRow):
-        texts = [label.text() for label in row.findChildren(QLabel) if label.text()]
-        rows.append((texts[0], texts[1] if len(texts) > 1 else ""))
+        title = row.findChildren(ElidedLabel)[0].full_text()
+        subtitles = [label.text() for label in row.findChildren(QLabel) if label.wordWrap() and label.text()]
+        rows.append((title, subtitles[0] if subtitles else ""))
     return rows
 
 

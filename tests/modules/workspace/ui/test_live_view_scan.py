@@ -17,7 +17,7 @@ from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Sig
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem
 from tests.helpers.live_view import Live, scan
-from tests.helpers.section_tree import captions, row
+from tests.helpers.section_tree import captions
 
 
 def _scan_caption(live: Live) -> SectionCaption:
@@ -57,15 +57,15 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: Live, monke
     )
 
     assert captions(live.view.tree) == ["Live, 2", "On the network, 1"]
-    assert list(live.rows())[2:] == ["192.0.2.12"]
+    assert live.cameras()[2:] == ["192.0.2.12"]
     assert live.rows()["192.0.2.12"] == "Add"
     assert "AXIS P3265-LVE" in live.detail("192.0.2.12")
-    assert "ACCC8E000002" in row(live.view.tree, "192.0.2.12").toolTip()
-    assert "12.6.85" in row(live.view.tree, "192.0.2.12").toolTip()
+    assert "ACCC8E000002" in live.row("192.0.2.12").toolTip()
+    assert "12.6.85" in live.row("192.0.2.12").toolTip()
 
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", ""))
 
-    assert list(live.rows())[2:] == []
+    assert live.cameras()[2:] == []
     assert "No new cameras" in live.texts()
 
 
@@ -74,11 +74,11 @@ def test_a_held_camera_the_scan_found_shows_and_is_found_by_what_the_scan_learne
 
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "ACCC8E000001", "11.11.73"))
 
-    hover = row(live.view.tree, "Entrance").toolTip()
+    hover = live.row("Entrance").toolTip()
     assert all(fact in hover for fact in ("AXIS Q1656", "ACCC8E000001", "11.11.73"))
-    assert "AXIS Q1656" not in row(live.view.tree, "192.0.2.11").toolTip()
+    assert "AXIS Q1656" not in live.row("192.0.2.11").toolTip()
     live.search("q1656")
-    assert list(live.rows()) == ["Entrance"]
+    assert list(live.rows()) == ["Entrance", "Entrance/Video only"]
 
 
 def test_add_puts_the_camera_in_the_workspace_and_starts_its_stream(
@@ -112,7 +112,7 @@ def test_add_puts_the_camera_in_the_workspace_and_starts_its_stream(
         "$CAMERA_PASS",
     )
     assert (item.camera_head, item.resolution, item.overlay_mode) == (2, "640x480", LiveOverlayMode.RTSP)
-    assert live.rows()["192.0.2.34"] == "Stop stream"
+    assert live.streams() == {"192.0.2.34/ONVIF_XML": "Stop stream"}
     assert live.center.get_widget_count() == 1
     assert live.checker.calls == [], "the scan has just shown the login works"
     assert captions(live.view.tree) == ["Live, 1", "On the network, 0"]

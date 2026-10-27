@@ -14,10 +14,12 @@ from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrows
 
 
 def _action_button(action: RowAction) -> SmallButton:
-    """Return the button that offers *action*."""
+    """Return the button that offers *action*; one without text is named by its hover text."""
     button = SmallButton(action.button_text, action.icon)
     button.setFixedWidth(button.sizeHint().width())
-    button.setToolTip(action.tooltip)
+    name = action.tooltip or action.menu_text
+    button.setToolTip(name)
+    button.setAccessibleName(name)
     return button
 
 
@@ -26,22 +28,26 @@ def row_accessible_text(row: WorkspaceBrowserRow) -> str:
     return f"{row.label}, {row.detail}" if row.detail else row.label
 
 
-def row_look(row: WorkspaceBrowserRow) -> tuple[object, ...]:
+def row_look(row: WorkspaceBrowserRow, *, info_shown: bool = False) -> tuple[object, ...]:
     """Return the values ``SourceRow`` draws or binds for *row*; a widget can be kept while they stay equal."""
     return (
         row.label,
+        row.tag,
+        row.aside,
         row.detail,
-        row.wrap_detail,
+        row.detail_is_warning,
+        row.info if info_shown else (),
         row.mark,
         row.is_dimmed,
         row.is_open,
-        row.inline_action,
+        row.inline_actions,
         row.tooltip,
     )
 
 
 class SourceRow(ListRow):
-    """*row* as a list row: its kind's mark, its name over its detail, and its inline action.
+    """*row* as a one-line list row: its kind's mark, tag, name, aside and inline action buttons, with its detail
+    and, while *info_shown*, its info lines under it.
 
     The mark is muted and the name dimmed as the row says; a row open in a viewer is the list row's active one.
     Hovering shows the full name over the row's tooltip. ``action_requested`` carries the row and the inline action
@@ -54,19 +60,23 @@ class SourceRow(ListRow):
     row: WorkspaceBrowserRow
     """The row the widget shows; the tree sets it to the current row while its look is unchanged."""
 
-    def __init__(self, row: WorkspaceBrowserRow, parent: QWidget | None = None) -> None:
+    def __init__(self, row: WorkspaceBrowserRow, *, info_shown: bool = False, parent: QWidget | None = None) -> None:
         trailing: list[QWidget] = []
-        if (inline := row.inline_action) is not None:
-            action = inline.action
-            button = _action_button(action)
-            button.clicked.connect(lambda _checked=False: self.action_requested.emit(self.row, action))
+        for inline in row.inline_actions:
+            button = _action_button(inline.action)
+            button.clicked.connect(
+                lambda _checked=False, action=inline.action: self.action_requested.emit(self.row, action)
+            )
             trailing.append(button)
         icon, color = row.mark
         super().__init__(
             row.label,
             icon=icon.icon(color.color(QGuiApplication.palette())),
+            tag=row.tag,
+            detail=row.aside,
             subtitle=row.detail,
-            wrap=row.wrap_detail,
+            subtitle_warning=row.detail_is_warning,
+            lines=row.info if info_shown else (),
             trailing=trailing,
             active=row.is_open,
             dim=row.is_dimmed,
