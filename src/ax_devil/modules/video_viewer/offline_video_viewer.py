@@ -100,7 +100,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
             return
 
         if len(entries) > 1:
-            self._entry_bar = EntryNavigationBar(self, on_previous=self._step_prev, on_next=self._step_next)
+            self._entry_bar = EntryNavigationBar(on_previous=self._step_prev, on_next=self._step_next)
 
         self._viewer_host = ViewerOverlayHost(self)
         layout.addWidget(self._viewer_host, 1)
