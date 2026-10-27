@@ -14,14 +14,17 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.copy_cell import CopiedMark, copy_column_px
 from ax_devil.modules.object_inspection import fields_model
-from ax_devil.modules.object_inspection.fields_model import FieldsModel, Section
+from ax_devil.modules.object_inspection.fields_model import FieldsModel, Section, field_sections
 from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
 from ax_devil.modules.object_inspection.rows import FieldRow, RowFonts, id_row
 from ax_devil.modules.scene.inspection import InspectionField
 from ax_devil.modules.scene.model import (
+    RGB,
+    Attribute,
     BoundingBox,
     Classification,
+    ColorClassification,
     Entity,
     EntityId,
     Observation,
@@ -129,6 +132,25 @@ def _pinned(page: ObjectPage) -> dict[str, str]:
     assert view is not None
     model = cast(FieldsModel, view.model())
     return {row.label: row.copy_text() for row in model.rows()} if view.isVisible() else {}
+
+
+def test_clothing_colors_are_listed_under_a_heading_per_attribute() -> None:
+    def color(name: str, rgb: RGB, score: float) -> ColorClassification:
+        return ColorClassification(name, rgb, Score(score))
+
+    blue, white = RGB(0, 0, 255), RGB(255, 255, 255)
+    attributes = [
+        Attribute("upper_clothing_colors", [color("blue", blue, 0.62), color("white", white, 0.21)]),
+        Attribute("lower_clothing_colors", [color("blue", blue, 0.71)]),
+    ]
+    human = Classification("human", Score(0.9), attributes=attributes)
+    entity = Entity(EntityId("a"))
+    entity.add_observation(Observation(frame_number=0, geometry=_BOX, classification=[human]))
+    rows = field_sections(entity)[0].rows
+    labels = "type, conf, upper clothing colors, blue, white, lower clothing colors, blue, candidates.human"
+    assert [row.label for row in rows] == labels.split(", ")
+    assert rows[3].copy_text() == "0.62 #0000ff"
+    assert rows[3].field_id != rows[6].field_id
 
 
 def test_a_pinned_field_shows_the_same_field_of_whichever_object_is_shown(qtbot: QtBot) -> None:

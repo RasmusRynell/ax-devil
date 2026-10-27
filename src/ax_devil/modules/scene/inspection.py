@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any
 
 from ax_devil.modules.scene.model import (
+    RGB,
     Attribute,
     Classification,
     ColorClassification,
@@ -47,12 +48,22 @@ class FieldGroup(Enum):
 class InspectionField:
     """One leaf value of an entity, addressed by its path inside a ``FieldGroup``.
 
-    ``fraction`` is set for scores in [0, 1] so a view can draw them as a bar.
+    ``fraction`` is set for scores in [0, 1] so a view can draw them as a bar. ``rgb`` is set on a color entry,
+    whose path ends in its name and whose value is its score.
     """
 
     path: tuple[str, ...]
     value: FieldValue
     fraction: float | None = None
+    rgb: RGB | None = None
+
+    def record_items(self) -> Iterator[tuple[tuple[str, ...], FieldValue]]:
+        """Yield the (path, value) pairs a query searches: the field itself and, for a color, its r, g and b."""
+        yield self.path, self.value
+        if self.rgb is not None:
+            yield (*self.path, "rgb", "r"), self.rgb.r
+            yield (*self.path, "rgb", "g"), self.rgb.g
+            yield (*self.path, "rgb", "b"), self.rgb.b
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +140,8 @@ def entity_record(entity: Entity) -> QueryRecord:
     values: dict[str, list[FieldValue]] = {}
     for group, items in entity_fields(entity):
         for item in items:
-            values.setdefault(".".join((group.name.lower(), *item.path)), []).append(item.value)
+            for path, value in item.record_items():
+                values.setdefault(".".join((group.name.lower(), *path)), []).append(value)
     summary = entity_summary(entity)
     text = (summary.entity_id, summary.class_name, *(() if summary.state is None else (summary.state,)))
     return QueryRecord(fields={key: tuple(items) for key, items in values.items()}, text=text)
@@ -156,7 +168,12 @@ def _classification_fields(observation: Observation) -> Iterator[InspectionField
     if primary is not None:
         yield from _flatten(primary.attributes, ("attributes",))
     candidates = sorted(observation.classification, key=lambda item: item.score.value, reverse=True)
-    yield from _flatten(candidates, ("candidates",))
+    for candidate in candidates:
+        if candidate is primary:  # Its attributes are already listed under ``attributes``.
+            yield from _flatten(candidate.score, ("candidates", candidate.type))
+            yield from _flatten(candidate.confidence, ("candidates", candidate.type, "confidence"))
+        else:
+            yield from _flatten(candidate, ("candidates",))
 
 
 def _flatten_items(items: Iterable[tuple[str, Any]]) -> Iterator[InspectionField]:
@@ -204,8 +221,7 @@ def _flatten(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
         yield from _flatten(value.confidence, (*path, value.type, "confidence"))
         yield from _flatten(value.attributes, (*path, value.type, "attributes"))
     elif isinstance(value, ColorClassification):
-        yield from _flatten(value.score, (*path, value.name))
-        yield from _flatten(value.rgb, (*path, value.name, "rgb"))
+        yield InspectionField((*path, value.name), value.score.value, _fraction(value.score), value.rgb)
     elif isinstance(value, Geometry):
         x, y, width, height = value.as_xywh()
         for name, number in (("x", x), ("y", y), ("width", width), ("height", height)):

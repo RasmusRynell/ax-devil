@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass
 
 from PySide6.QtCore import (
@@ -25,6 +25,7 @@ from ax_devil.modules.data_sources.scene_history import FrameEvent
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
 from ax_devil.modules.object_inspection.pinned_fields import FieldId
 from ax_devil.modules.scene.inspection import InspectionField
+from ax_devil.modules.scene.model import RGB
 
 _EVENT_TEXT_CHARS = (
     4  # An event's text is left out when it has less room than this, rather than shown as a lone ellipsis.
@@ -112,6 +113,7 @@ def format_field_value(value: str | int | float | bool) -> str:
 
 class FieldRow(Row):
     """A *label* in muted text and its *text* in monospace, with a thin bar for a score, or after a colored *tag*.
+    A *swatch* is drawn in that color before the label.
 
     Copying gives *copy*, the value in full (the text itself if not given); a long value is cut in the way *elide*
     says. An *unavailable* row stands for a pinned field the object does not have: its text is muted and there is
@@ -129,6 +131,7 @@ class FieldRow(Row):
         elide: Qt.TextElideMode = Qt.TextElideMode.ElideRight,
         field_id: FieldId | None = None,
         unavailable: bool = False,
+        swatch: RGB | None = None,
     ) -> None:
         self.label = label
         self.field_id = field_id
@@ -139,11 +142,33 @@ class FieldRow(Row):
         self._fraction = fraction
         self._tag = tag
         self._elide = elide
+        self._swatch = swatch
 
     @property
     def key(self) -> Hashable:
-        """Return the label."""
-        return self.label
+        """Return the field id, else the label: a color name repeats under each attribute."""
+        return self.field_id if self.field_id is not None else self.label
+
+    def _swatch_px(self, fonts: RowFonts) -> int:
+        """Return the indent under the heading, the swatch and the gap after it, or 0 without a swatch."""
+        return 0 if self._swatch is None else Space.M + fonts.small_metrics.ascent() + Space.S
+
+    def _paint_label(self, painter: QPainter, rect: QRect, palette: QPalette, fonts: RowFonts) -> None:
+        """Draw the swatch, if any, then the label in what room is left; with no room only the swatch shows."""
+        muted = palette.color(QPalette.ColorRole.PlaceholderText)
+        if self._swatch is not None:
+            side = fonts.small_metrics.ascent()
+            box = QRect(rect.left() + Space.M, rect.top() + (rect.height() - side) // 2, side, side)
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(palette.color(QPalette.ColorRole.Mid))
+            painter.setBrush(QColor(self._swatch.r, self._swatch.g, self._swatch.b))
+            painter.drawRoundedRect(box.adjusted(0, 0, -1, -1), Space.XS, Space.XS)
+            painter.restore()
+            rect = rect.adjusted(self._swatch_px(fonts), 0, 0, 0)
+            if rect.width() < fonts.body_metrics.averageCharWidth():
+                return
+        _draw_text(painter, rect, fonts.body, muted, self.label, Qt.TextElideMode.ElideMiddle)
 
     def _areas(self, rect: QRect, fonts: RowFonts, label_width: int) -> tuple[QRect, QRect, QRect | None]:
         """Return the label's area, the value's, and the score bar's groove if the value leaves room for one."""
@@ -158,8 +183,8 @@ class FieldRow(Row):
         return label, value, groove
 
     def label_px(self, fonts: RowFonts) -> int:
-        """Return the width of the label."""
-        return fonts.body_metrics.horizontalAdvance(self.label) + 1
+        """Return the width of the swatch and the label."""
+        return self._swatch_px(fonts) + fonts.body_metrics.horizontalAdvance(self.label) + 1
 
     def value_px(self, fonts: RowFonts) -> int:
         """Return the width of the tag and the text."""
@@ -175,7 +200,7 @@ class FieldRow(Row):
         """Draw the label, then the value with its bar at the right edge when it has one."""
         label, value, groove = self._areas(rect, fonts, label_width)
         muted = palette.color(QPalette.ColorRole.PlaceholderText)
-        _draw_text(painter, label, fonts.body, muted, self.label, Qt.TextElideMode.ElideMiddle)
+        self._paint_label(painter, label, palette, fonts)
         if groove is not None and self._fraction is not None:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(Qt.PenStyle.NoPen)
@@ -196,10 +221,11 @@ class FieldRow(Row):
         _draw_text(painter, value, fonts.mono, palette.color(QPalette.ColorRole.Text), self._text, self._elide)
 
     def cut_text(self, rect: QRect, fonts: RowFonts, label_width: int) -> str | None:
-        """Return ``label: value`` in full if the label or the value is cut off."""
+        """Return ``label: value`` in full if the label or the value is cut off; a swatch row always, for its color."""
         label, value, _ = self._areas(rect, fonts, label_width)
         if (
-            fonts.body_metrics.horizontalAdvance(self.label) > label.width()
+            self._swatch is not None
+            or self._swatch_px(fonts) + fonts.body_metrics.horizontalAdvance(self.label) > label.width()
             or fonts.mono_metrics.horizontalAdvance(self._text) + self._tag_width(fonts) > value.width()
         ):
             return f"{self.label}: {self._copy}"
@@ -214,13 +240,55 @@ def field_row(field: InspectionField, group: str) -> FieldRow:
     """Return *field* of the group titled *group* as a row; a float copies with all its digits."""
     value = field.value
     copy = str(value) if isinstance(value, float) else format_field_value(value)
+    rgb = field.rgb
+    if rgb is not None:
+        copy = f"{copy} {QColor(rgb.r, rgb.g, rgb.b).name()}"
     return FieldRow(
-        ".".join(field.path),
+        field.path[-1] if rgb is not None else ".".join(field.path),
         format_field_value(value),
         copy=copy,
         fraction=field.fraction,
         field_id=FieldId(group, field.path),
+        swatch=rgb,
     )
+
+
+class HeadingRow(Row):
+    """The name of the attribute whose colors follow, across the whole row; it has nothing to copy or pin."""
+
+    copyable = False
+
+    def __init__(self, path: tuple[str, ...]) -> None:
+        self._path = path
+        self.label = path[-1].replace("_", " ")
+
+    @property
+    def key(self) -> Hashable:
+        """Return the attribute's path."""
+        return self._path
+
+    def paint(self, painter: QPainter, rect: QRect, palette: QPalette, fonts: RowFonts, label_width: int) -> None:
+        """Draw the name in muted text, cut at the right."""
+        _draw_text(painter, rect, fonts.body, palette.color(QPalette.ColorRole.PlaceholderText), self.label)
+
+    def cut_text(self, rect: QRect, fonts: RowFonts, label_width: int) -> str | None:
+        """Return the attribute's full path, which the name leaves out."""
+        return ".".join(self._path)
+
+    def copy_text(self) -> str:
+        """Return nothing."""
+        return ""
+
+
+def field_rows(fields: Sequence[InspectionField], group: str) -> Iterator[Row]:
+    """Return *fields* of the group titled *group* as rows, each run of colors of one attribute under a heading."""
+    previous: tuple[str, ...] | None = None
+    for field in fields:
+        parent = field.path[:-1] if field.rgb is not None else None
+        if parent is not None and parent != previous:
+            yield HeadingRow(parent)
+        previous = parent
+        yield field_row(field, group)
 
 
 def unavailable_row(field_id: FieldId) -> FieldRow:
