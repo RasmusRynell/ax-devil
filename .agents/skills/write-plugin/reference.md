@@ -63,7 +63,7 @@ class ExamplePlugin(DecoderPlugin):
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
         """Declare the Scene model version this decoder builds Scenes for."""
-        return (2, 0)
+        return (3, 0)
 
     @classmethod
     def plugin_id(cls) -> str:

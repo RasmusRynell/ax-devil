@@ -17,11 +17,11 @@ def _record(text: tuple[str, ...] = (), **fields: FieldValue | tuple[FieldValue,
     )
 
 
-_CAR = _record(("17", "Car", "moving"), classification__type="Car", classification__conf=0.97, motion__speed=1.5)
+_CAR = _record(("17", "Car", "moving"), classification__type="Car", classification__score=0.97, motion__speed=1.5)
 _PERSON = _record(
     ("4", "Person", "idle"),
     classification__type=("Person", "Pedestrian"),
-    classification__conf=0.6,
+    classification__score=0.6,
     debug__latency=12,
     debug__lost=True,
     **{"debug__track-id": 9, "debug__trk/id": 3},
@@ -46,28 +46,28 @@ def _selected(query: str) -> list[str]:
         ("type:pedestrian", ["Person"]),
         ("type:ped", []),
         ('type:"Car"', ["Car"]),
-        ("conf>0.9", ["Car"]),
-        ("conf<0.9", ["Person"]),
-        ("conf>=0.97", ["Car"]),
-        ("conf<=0.6", ["Person"]),
-        ("conf=0.6", ["Person"]),
-        ("conf:0.97", ["Car"]),
+        ("score>0.9", ["Car"]),
+        ("score<0.9", ["Person"]),
+        ("score>=0.97", ["Car"]),
+        ("score<=0.6", ["Person"]),
+        ("score=0.6", ["Person"]),
+        ("score:0.97", ["Car"]),
         ("latency>10", ["Person"]),
         ("lost:true", ["Person"]),
         ("lost>0", []),
         ("type>1", []),
         ("-car", ["Person"]),
         ("-type:car", ["Person"]),
-        ("-conf>0.9", ["Person"]),
+        ("-score>0.9", ["Person"]),
         ("-nothing:here", ["Car", "Person"]),
         ("debug.track-id:9", ["Person"]),
         ("track-id>8", ["Person"]),
         ("-track-id>8", ["Car"]),
         ("trk/id=3", ["Person"]),
         ("car OR person", ["Car", "Person"]),
-        ("type:car OR conf<0.7 speed>1", ["Car"]),
+        ("type:car OR score<0.7 speed>1", ["Car"]),
         ("car person", []),
-        ("speed:1.5 conf>0.5", ["Car"]),
+        ("speed:1.5 score>0.5", ["Car"]),
     ],
 )
 def test_query_selects_records(query: str, expected: list[str]) -> None:
@@ -75,11 +75,11 @@ def test_query_selects_records(query: str, expected: list[str]) -> None:
 
 
 def test_path_matches_whole_trailing_segments_only() -> None:
-    assert compile_query("classification.conf>0.9").matches(_CAR)
-    assert compile_query("conf>0.9").matches(_CAR)
+    assert compile_query("classification.score>0.9").matches(_CAR)
+    assert compile_query("score>0.9").matches(_CAR)
     assert not compile_query("onf>0.9").matches(_CAR)
-    assert not compile_query("CONF>0.99").matches(_CAR)  # case is ignored, value is too high
-    assert compile_query("CONF>0.9").matches(_CAR)
+    assert not compile_query("SCORE>0.99").matches(_CAR)  # case is ignored, value is too high
+    assert compile_query("SCORE>0.9").matches(_CAR)
 
 
 def test_any_value_of_a_multi_valued_field_may_match() -> None:
@@ -89,7 +89,7 @@ def test_any_value_of_a_multi_valued_field_may_match() -> None:
 
 
 @pytest.mark.parametrize(
-    "text", ["", "conf:", "conf>", "-", '"', "OR", "OR OR", "a OR", "OR a", "conf>abc", "((", ":x", "a:b:c", '"open']
+    "text", ["", "score:", "score>", "-", '"', "OR", "OR OR", "a OR", "OR a", "score>abc", "((", ":x", "a:b:c", '"open']
 )
 def test_malformed_input_never_raises(text: str) -> None:
     query = compile_query(text)
@@ -99,7 +99,7 @@ def test_malformed_input_never_raises(text: str) -> None:
 
 
 def test_incomplete_terms_are_ignored_while_typing() -> None:
-    for text in ("conf:", "conf>", "-", "OR"):
+    for text in ("score:", "score>", "-", "OR"):
         assert compile_query(text).is_empty
     assert not compile_query("car OR").matches(_PERSON)
     assert compile_query("car OR").matches(_CAR)
@@ -115,9 +115,9 @@ def test_quoted_empty_value_selects_fields_reported_empty() -> None:
 
 
 def test_comparison_with_non_number_searches_as_text() -> None:
-    record = _record(("conf>abc",))
-    assert compile_query("conf>abc").matches(record)
-    assert not compile_query("conf>abc").matches(_CAR)
+    record = _record(("score>abc",))
+    assert compile_query("score>abc").matches(record)
+    assert not compile_query("score>abc").matches(_CAR)
 
 
 def test_integers_compare_exactly_beyond_float_precision() -> None:
@@ -139,19 +139,19 @@ def test_escaped_quote_matches_a_literal_quote_in_a_value() -> None:
 
 
 def test_missing_paths_names_fields_no_record_has() -> None:
-    query = compile_query("speed>1 -zoom:2 conf>0.5 zoom>3 car")
+    query = compile_query("speed>1 -zoom:2 score>0.5 zoom>3 car")
     assert query.missing_paths([_CAR, _PERSON]) == ("zoom",)
     assert query.missing_paths([]) == ()
-    assert query.missing_paths([_record(("empty",))]) == ("speed", "zoom", "conf")
+    assert query.missing_paths([_record(("empty",))]) == ("speed", "zoom", "score")
     assert compile_query("debug.latency>1").missing_paths([_CAR]) == ("debug.latency",)
     assert compile_query("car").missing_paths([_CAR]) == ()
 
 
 def test_file_scope_records_without_attributes_yield_a_note() -> None:
     record = _record(("17", "Car"), id="17", event="merged")
-    query = compile_query("conf>0.5")
+    query = compile_query("score>0.5")
     assert not query.matches(record)
-    assert query.missing_paths([record]) == ("conf",)
+    assert query.missing_paths([record]) == ("score",)
 
 
 def _kinds(text: str) -> list[tuple[str, TokenKind]]:
@@ -160,10 +160,10 @@ def _kinds(text: str) -> list[tuple[str, TokenKind]]:
 
 def test_tokenize_classifies_each_piece_for_highlighting() -> None:
     kinds = TokenKind
-    assert _kinds('-car conf>=0.9 OR type:"a b"') == [
+    assert _kinds('-car score>=0.9 OR type:"a b"') == [
         ("-", kinds.NOT),
         ("car", kinds.TEXT),
-        ("conf", kinds.FIELD),
+        ("score", kinds.FIELD),
         (">=", kinds.OPERATOR),
         ("0.9", kinds.VALUE),
         ("OR", kinds.OR),
@@ -171,9 +171,9 @@ def test_tokenize_classifies_each_piece_for_highlighting() -> None:
         (":", kinds.OPERATOR),
         ('"a b"', kinds.VALUE),
     ]
-    assert _kinds("conf>abc conf: OR car") == [
-        ("conf>abc", kinds.INVALID),
-        ("conf:", kinds.INVALID),
+    assert _kinds("score>abc score: OR car") == [
+        ("score>abc", kinds.INVALID),
+        ("score:", kinds.INVALID),
         ("OR", kinds.INVALID),
         ("car", kinds.TEXT),
     ]

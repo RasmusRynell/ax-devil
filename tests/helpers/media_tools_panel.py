@@ -36,13 +36,11 @@ def make_frame(index: int) -> FrameIdentifier:
     return FrameIdentifier(sequence_id=index, timestamp_us=seconds_to_us(index))
 
 
-def make_entity(entity_id: str, kind: str = "human", conf: float = 0.9) -> Entity:
+def make_entity(entity_id: str, kind: str = "human", score: float = 0.9) -> Entity:
     entity = Entity(EntityId(entity_id))
     geometry = BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2, allow_outside=True)
-    classification = [Classification(kind, Score(conf))]
-    entity.add_observation(
-        Observation(frame_number=0, geometry=geometry, confidence=Score(conf), classification=classification)
-    )
+    classification = [Classification(kind, Score(score))]
+    entity.add_observation(Observation(frame_number=0, geometry=geometry, classification=classification))
     return entity
 
 

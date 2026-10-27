@@ -3,7 +3,7 @@
 A sheet is one example frame: a Scene drawn by the catalog over footage-like background, with captions naming each
 example. The **Overview** shows one object of every type and one pair of every relation. **Street** is a camera view of
 a sunny street with people near and far, their heads, and traffic. Each object type then gets a sheet of the situations
-real overlays produce (sizes, confidence levels, a long id, movement, outlines, overlaps and the frame edge) over
+real overlays produce (sizes, scores, a long id, movement, outlines, overlaps and the frame edge) over
 bright, busy, grey and dark ground, each relation a sheet of pairs at three sizes, and **Crowd** many objects at night.
 
 Examples look like what decoders report: track ids in the usual formats, from small numbers to UUIDs and unique in
@@ -107,9 +107,9 @@ _SITUATIONS: tuple[tuple[str, str, tuple[_Example, ...]], ...] = (
     ("Small", "", (_Example((0.105, 0.09, 0.04, 0.08)),)),
     ("Medium", "", (_Example((0.09, 0.08, 0.07, 0.13)),)),
     ("Large", "", (_Example((0.07, 0.065, 0.11, 0.165)),)),
-    ("Confidence 15%", "", (_Example(_MEDIUM, score=0.15),)),
-    ("Confidence 50%", "", (_Example(_MEDIUM, score=0.5),)),
-    ("Confidence 98%", "", (_Example(_MEDIUM, score=0.98),)),
+    ("Score 0.15", "", (_Example(_MEDIUM, score=0.15),)),
+    ("Score 0.5", "", (_Example(_MEDIUM, score=0.5),)),
+    ("Score 0.98", "", (_Example(_MEDIUM, score=0.98),)),
     ("Long id", "36-character UUID", (_Example(_MEDIUM, score=0.72, id=_LONG_ID),)),
     ("Still", "", (_Example(_MEDIUM, velocity=None, motion_state=MotionState.Stationary),)),
     ("Moving slowly", "", (_Example(_MEDIUM, velocity=(0.03, -0.01)),)),
@@ -188,7 +188,7 @@ def _situations(document: Mapping[str, Any], recipe: _Recipe) -> Sheet:
     return Sheet(
         recipe.key,
         recipe.title,
-        f"{recipe.title} ({recipe.subtitle}) at different sizes, confidence levels and movement, with a long id and "
+        f"{recipe.title} ({recipe.subtitle}) at different sizes, scores and movement, with a long id and "
         "in hard cases, over bright, busy, grey and dark ground",
         builder.scene,
         tuple(captions),

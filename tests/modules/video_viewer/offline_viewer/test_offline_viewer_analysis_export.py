@@ -161,25 +161,25 @@ class TestOfflineViewerAnalysisExport(OfflineViewerTest):
 
         def details(lane: OfflineLane) -> tuple[QCheckBox, QPushButton]:
             assert lane.tools_panel is not None
-            confidence = lane.tools_panel.findChild(QCheckBox, "overlayFeature_confidence")
+            score_toggle = lane.tools_panel.findChild(QCheckBox, "overlayFeature_score")
             reset = lane.tools_panel.findChild(QPushButton, "overlayVisibilityReset")
-            assert confidence is not None and reset is not None
-            return confidence, reset
+            assert score_toggle is not None and reset is not None
+            return score_toggle, reset
 
         lane = shown_session(widget).lanes[0]
         assert lane.presenter is not None
         full = lane.presenter.scene_render_catalog
-        confidence, _reset = details(lane)
+        score_toggle, _reset = details(lane)
         widget.pause_playback()
         with patch.object(lane.display, "refresh_overlays", wraps=lane.display.refresh_overlays) as refresh:
-            confidence.setChecked(False)
+            score_toggle.setChecked(False)
             refresh.assert_called_once()
         assert not shown_session(widget).playback.is_playing
         assert lane.presenter.scene_render_catalog is not full
         widget.step_next_entry()
         lane = shown_session(widget).lanes[0]
-        confidence, reset = details(lane)
-        assert not confidence.isChecked()
+        score_toggle, reset = details(lane)
+        assert not score_toggle.isChecked()
         assert lane.presenter is not None
         frozen = lane.presenter.scene_render_catalog
         with patch("ax_devil.modules.video_viewer.export.ExportDialog") as dialog_type:
@@ -189,8 +189,8 @@ class TestOfflineViewerAnalysisExport(OfflineViewerTest):
         assert export_lanes[0].presenter.scene_render_catalog is frozen
         assert lane.presenter.scene_render_catalog is not frozen
         widget.step_prev_entry()
-        confidence, _reset = details(shown_session(widget).lanes[0])
-        assert confidence.isChecked()
+        score_toggle, _reset = details(shown_session(widget).lanes[0])
+        assert score_toggle.isChecked()
 
     def test_export_waits_for_the_first_render_catalog_and_then_freezes_it(
         self, qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

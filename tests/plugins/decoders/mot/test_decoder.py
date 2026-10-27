@@ -34,7 +34,7 @@ def test_det_and_gt_rows_are_grouped_into_frames_and_unsupported_rows_skipped() 
 
 
 def test_gt_row_decodes_normalized_box_class_and_visibility() -> None:
-    """The ground-truth mark column is a flag, never a display confidence."""
+    """The ground-truth mark column is a flag, not a score."""
     [scene] = _decode(["1,1,0,0,64,48,1,1,0.8", "1,2,32,24,64,48,0,7,0.25"], width=640, height=480)
 
     observation = scene.entities[EntityId("2")].observations[0]
@@ -56,25 +56,13 @@ def test_untracked_det_rows_keep_every_detection() -> None:
     assert len(scene.entities) == 3
 
 
-def test_det_scores_outside_unit_range_are_not_display_confidence() -> None:
-    [scene] = _decode(["1,-1,992.1,463.1,68.6,184.1,2.3092,-1,-1,-1", "1,-1,767.4,462.1,45.4,125.1,-0.5,-1,-1,-1"])
+def test_det_scores_are_kept_as_reported_and_are_no_confidence() -> None:
+    rows = ["1,-1,992.1,463.1,68.6,184.1,2.3092,-1,-1,-1", "1,-1,767.4,462.1,45.4,125.1,-0.5,-1,-1,-1"]
+    [scene] = _decode([*rows, "1,-1,100,100,50,50,0.75"])
 
     observations = [entity.observations[0] for entity in scene.entities.values()]
-    assert [observation.confidence for observation in observations] == [None, None]
-    assert [observation.classification[0].attribute_value("raw_score") for observation in observations] == [
-        pytest.approx(2.3092),
-        pytest.approx(-0.5),
-    ]
-    assert [observation.classification[0].score.value for observation in observations] == [0.0, 0.0]
-
-
-def test_det_unit_scores_are_display_confidence() -> None:
-    [scene] = _decode(["1,-1,992.1,463.1,68.6,184.1,0.75"])
-
-    observation = next(iter(scene.entities.values())).observations[0]
-    assert observation.confidence is not None
-    assert observation.confidence.value == pytest.approx(0.75)
-    assert observation.classification[0].attribute_value("raw_score") == pytest.approx(0.75)
+    assert [observation.classification[0].score.value for observation in observations] == [2.3092, -0.5, 0.75]
+    assert [observation.confidence for observation in observations] == [None, None, None]
 
 
 def test_decode_mot_frame_rejects_invalid_payload() -> None:

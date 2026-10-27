@@ -411,7 +411,7 @@
     },
     "score_tab": {
       "label": "Score tab",
-      "feature": "confidence",
+      "feature": "score",
       "description": "The detection score, such as 0.87, on a tab flush with the box's bottom-left corner.",
       "parameters": {
         "geometry": {

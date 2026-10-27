@@ -640,7 +640,7 @@
     },
     "score_label": {
       "label": "Score label",
-      "feature": "confidence",
+      "feature": "score",
       "description": "The detection score as a meter and a number on a dark pill under the box; the meter is in the class color, red below the low score.",
       "parameters": {
         "geometry": {

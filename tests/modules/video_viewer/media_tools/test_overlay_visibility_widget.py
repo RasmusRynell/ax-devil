@@ -17,33 +17,33 @@ def _visibility_widget(
     selection = render_catalog_manager.create_selection()
     widget = OverlayVisibilityWidget(selection)
     qtbot.addWidget(widget)
-    confidence = widget.findChild(QCheckBox, "overlayFeature_confidence")
+    score_toggle = widget.findChild(QCheckBox, "overlayFeature_score")
     reset = widget.findChild(QPushButton, "overlayVisibilityReset")
-    assert confidence is not None and reset is not None
-    return widget, selection, confidence, reset
+    assert score_toggle is not None and reset is not None
+    return widget, selection, score_toggle, reset
 
 
 def test_controls_retain_unsupported_choices_and_reset(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
-    _, selection, confidence, reset = _visibility_widget(qtbot, render_catalog_manager)
-    confidence.setChecked(False)
-    assert OverlayFeature.CONFIDENCE in selection.visibility.disabled
+    _, selection, score_toggle, reset = _visibility_widget(qtbot, render_catalog_manager)
+    score_toggle.setChecked(False)
+    assert OverlayFeature.SCORE in selection.visibility.disabled
     minimal: Path = next(path for path in BUILT_IN_CATALOG_PATHS if path.stem == "minimal")
     selection.select_catalog(minimal)
     wait_for_catalogs(qtbot, render_catalog_manager)
-    assert not confidence.isEnabled() and not confidence.isChecked()
+    assert not score_toggle.isEnabled() and not score_toggle.isChecked()
     selection.select_catalog(render_catalog_manager.built_in_catalog_path())
     wait_for_catalogs(qtbot, render_catalog_manager)
-    assert confidence.isEnabled() and not confidence.isChecked()
+    assert score_toggle.isEnabled() and not score_toggle.isChecked()
     reset.click()
-    assert confidence.isChecked() and not reset.isEnabled()
+    assert score_toggle.isChecked() and not reset.isEnabled()
 
 
 def test_cleaned_up_controls_stop_observing_the_selection(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
-    widget, selection, confidence, _ = _visibility_widget(qtbot, render_catalog_manager)
+    widget, selection, score_toggle, _ = _visibility_widget(qtbot, render_catalog_manager)
     widget.cleanup()
-    selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
-    assert confidence.isChecked()
+    selection.set_feature_enabled(OverlayFeature.SCORE, False)
+    assert score_toggle.isChecked()

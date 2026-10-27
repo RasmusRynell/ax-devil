@@ -1,6 +1,6 @@
 ---
 name: render-catalog
-description: Change how ax-devil draws overlays on video — boxes, labels, ids, class names, font sizes, colors, line styles, confidence bars, speed arrows, badges, swatches, relation lines — by editing a render catalog JSON file. Use whenever the user asks to change, add, hide or restyle anything drawn over the video, for all objects or one type (people, vehicles, heads...), or asks why an overlay looks the way it does.
+description: Change how ax-devil draws overlays on video — boxes, labels, ids, class names, font sizes, colors, line styles, score bars, speed arrows, badges, swatches, relation lines — by editing a render catalog JSON file. Use whenever the user asks to change, add, hide or restyle anything drawn over the video, for all objects or one type (people, vehicles, heads...), or asks why an overlay looks the way it does.
 ---
 
 # Changing how overlays look: render catalogs
@@ -80,11 +80,11 @@ background in a label. A step is either
 - a component: `{"label": "Label", "template": "id_tab", "inputs": {"geometry": ..., "object_id": ...}}`, or
 - a primitive: `{"label": "Outline", "primitive": "box", "fields": {"geometry": ...}, "style": {...}}`,
 
-and may have `"feature": "confidence"` (the view's Details control gates this component),
+and may have `"feature": "score"` (the view's Details control gates this component),
 `"enabled": <bool expression>` (draw only when true) and `"visible": false` (kept but not drawn).
 
 **User visibility.** Schema v3 templates and steps may declare `feature`: `outlines`, `ids`, `class_names`,
-`confidence`, `speed`, `movement`, `attributes`, or `relations`. Tag shared semantic templates once; tag individual
+`score`, `speed`, `movement`, `attributes`, or `relations`. Tag shared semantic templates once; tag individual
 steps for generic helpers. Both gates apply on an invocation, and untagged components remain permitted. Give all
 parts of one presentation the same feature, including backgrounds and arrowheads. Split mixed components into
 separate tagged steps when independent visibility is needed. Details preferences belong to the view, not the JSON;
@@ -117,7 +117,7 @@ line widths long. A text style is `{"text": {"color", "size", "family"?}}`.
 text, so there is nothing to measure. Fields are `position`, `anchor` (which point of the background sits on
 `position`) and `runs`, a list of `{"text", "color", "weight": "regular"|"medium"|"semibold"|"bold"}` laid out left to
 right; a run whose text is null or empty is left out. A run with `"bar": <number 0–1>` instead of `text` is a small
-meter, such as a confidence bar, filled that much in its color over a faint track of the same color. The style is
+meter, such as a score bar, filled that much in its color over a faint track of the same color. The style is
 `{"label": {"size", "family", "background": {"color", "alpha"} | null, "padding_x", "padding_y", "radius", "gap"}}`.
 A colored dot is a run with the text `●`.
 

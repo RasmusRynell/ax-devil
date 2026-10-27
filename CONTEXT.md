@@ -32,6 +32,8 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Timestamp Matching | Synchronization policy for choosing the overlay timestamp that corresponds to a video frame timestamp. | Provider lookup, sync result |
 | Overlay Lookup | File overlay provider behavior that loads a Scene for a FrameIdentifier and records whether timestamp, sequence, tolerance, or miss was used. | Timestamp matching, offline sync |
 | Scene | The world-model exchange format produced by decoders and consumed by filtering, inspection, and rendering. | Raw overlay payload |
+| Score | A raw model output, any range. | Confidence, probability |
+| Confidence | Only a confidence the source reports. | Score |
 | Scene Render Catalog | A compiled catalog of reusable templates and recipes for Scene entities and relations; a view's choice of one is a Selection. | Template file, renderer config |
 | Built-in Catalog | The packaged, app-owned, read-only Scene Render Catalog. | Default catalog, packaged default |
 | Default Catalog | The Scene Render Catalog new views start from; the Built-in Catalog until the user picks another. | Active catalog, remembered selection |

@@ -36,7 +36,7 @@ claude
 - *"Connect to my camera at 192.168.1.50 with MQTT analytics, credentials from environment variables."*
 - *"Write a decoder plugin for the JSON files in ~/runs/model_v3."*
 - *"Make a playlist that pairs ~/data/videos with ~/data/labels and compares the two model runs."*
-- *"Make people orange and vehicles blue, and hide confidence labels."*
+- *"Make people orange and vehicles blue, and hide score labels."*
 
 The repository ships [agent instructions](https://github.com/RasmusRynell/ax-devil/blob/main/AGENTS.md) and
 [skills](https://github.com/RasmusRynell/ax-devil/tree/main/.agents/skills) that teach the agent how ax-devil works.
@@ -101,7 +101,7 @@ attributes. Built-in catalogs:
 | **Chunky** | Thick outlines and large labels for small previews |
 | **Glass** | Rounded boxes, dark labels, score meters, and attribute tags |
 | **Tracking** | High-contrast boxes colored per object ID, for spotting ID switches |
-| **Classic** | IDs above boxes, class names below, confidence bars, and movement symbols |
+| **Classic** | IDs above boxes, class names below, score bars, and movement symbols |
 
 To make your own, open **View → Render Catalogs** (`Ctrl+R`) or run `ax-devil catalog`, pick a catalog, and choose
 **New copy**. Edit the JSON yourself or ask a coding agent. Changes show up when you save. [Catalog format →](https://github.com/RasmusRynell/ax-devil/blob/main/.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built)

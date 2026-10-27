@@ -81,15 +81,15 @@ def _make_observation(obs: dict[str, Any]) -> tuple[Observation, Image | None]:
     cls: list[Classification] = []
     if c_raw is not None:
         c_type = c_raw["type"]
-        c_score: Score | None = c_raw.get("score")
-        if c_score is None:
+        score_raw = c_raw.get("score")
+        if score_raw is None:
             raise ValueError(f"Classification score missing for type {c_type} in observation")
         attrs = _parse_class_attributes(c_type, c_raw, obs)
         if c_type:
             cls.append(
                 Classification(
                     type=ADF_CLASSIFICATION_MAP.get(c_type, c_type.lower()),
-                    score=c_score,
+                    score=Score(float(score_raw)),
                     attributes=attrs,
                 )
             )

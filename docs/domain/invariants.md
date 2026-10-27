@@ -85,6 +85,8 @@ README), Qt workarounds and measurements (a comment at the line, or the testing 
 - `Entity.observations` stays time-sorted; decoders add through `Entity.add_observation()`.
 - `Classification.type` is a dynamic string; `KnownClassificationType` is only a convenience for recognized values.
   Recipe routing is catalog policy: UI code never switches on classification strings.
+- No code assumes a score range. A bar for a value in [0, 1] is display only. Inspection never shows a score as a
+  confidence.
 - `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
   not rendered.
 - `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows and queries

@@ -67,7 +67,22 @@ class MotionState(enum.Enum):
 # ---------------------------------------------------------------------------#
 @dataclass(slots=True, frozen=True)
 class Score:
-    """A score of a classification, is not standardized to any specific range."""
+    """A raw model output for a classification or color, in the source's own units.
+
+    Nothing may assume a range for it, and it is never a confidence. Annotation decoders, whose labels come from no
+    model, report 1.
+    """
+
+    value: float
+
+    def __setstate__(self, state: list[object]) -> None:
+        """Restore the dataclass cache format without per-instance field introspection."""
+        object.__setattr__(self, "value", state[0])
+
+
+@dataclass(slots=True, frozen=True)
+class Confidence:
+    """A confidence the source reports as a confidence, kept as reported. Never derived from a score."""
 
     value: float
 
@@ -124,7 +139,7 @@ class RGB:
 
 @dataclass(slots=True, frozen=True)
 class ColorClassification:
-    """Color with dynamic name, RGB values, and confidence score."""
+    """Color with dynamic name, RGB values, and its score."""
 
     name: ColorType
     rgb: RGB

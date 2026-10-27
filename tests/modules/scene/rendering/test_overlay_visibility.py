@@ -35,7 +35,7 @@ def _scene() -> Scene:
 
 def _document() -> dict[str, Any]:
     document = catalog_document()
-    document["templates"]["marker"]["feature"] = "confidence"
+    document["templates"]["marker"]["feature"] = "score"
     document["templates"]["wrapper"] = {
         "parameters": {"x": {"type": "number", "required": True}},
         "steps": [{"template": "marker", "inputs": {"x": {"ref": ["parameters", "x"]}}}],
@@ -64,7 +64,7 @@ def test_hidden_nested_invocation_never_evaluates_its_failing_inputs() -> None:
     diagnostics: list[CatalogDiagnostic] = []
     assert record_scene(revision.catalog, scene, context, diagnostics=diagnostics) == []
     assert diagnostics
-    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.CONFIDENCE})))
+    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.SCORE})))
     diagnostics.clear()
     output = record_scene(variant, scene, context, diagnostics=diagnostics)
     assert diagnostics == []
@@ -75,11 +75,11 @@ def test_partially_hidden_template_drops_inputs_used_only_by_hidden_steps() -> N
     document = _document()
     marker = document["templates"]["marker"]
     del marker["feature"]
-    marker["steps"][0]["feature"] = "confidence"
+    marker["steps"][0]["feature"] = "score"
     revision = SceneRenderCatalogLoader().validate_revision(document)
     diagnostics: list[CatalogDiagnostic] = []
     output = record_scene(
-        revision.specialize(OverlayVisibility(frozenset({OverlayFeature.CONFIDENCE}))),
+        revision.specialize(OverlayVisibility(frozenset({OverlayFeature.SCORE}))),
         _scene(),
         RenderContext.create(640, 480),
         diagnostics=diagnostics,
@@ -108,7 +108,7 @@ def test_fully_hidden_recipe_does_not_evaluate_its_guard() -> None:
     assert record_scene(revision.catalog, _scene(), context, diagnostics=diagnostics) == []
     assert diagnostics
     diagnostics.clear()
-    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.CONFIDENCE})))
+    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.SCORE})))
     assert record_scene(variant, _scene(), context, diagnostics=diagnostics) == []
     assert diagnostics == []
 
@@ -124,7 +124,7 @@ def test_hidden_component_with_unknown_feature_is_rejected() -> None:
 
 def test_unused_and_permanently_hidden_templates_do_not_enable_controls() -> None:
     document = catalog_document()
-    document["templates"]["unused"] = {"feature": "confidence", "steps": [{"template": "marker"}]}
+    document["templates"]["unused"] = {"feature": "score", "steps": [{"template": "marker"}]}
     document["templates"]["hidden"] = {
         "feature": "movement",
         "steps": [{"template": "marker", "visible": False}],
@@ -138,7 +138,7 @@ def test_unused_and_permanently_hidden_templates_do_not_enable_controls() -> Non
             {"template": "unused", "visible": False},
             {"template": "marker", "feature": "attributes", "enabled": False},
             {"template": "marker", "feature": "relations", "enabled": {"literal": False}},
-            {"template": "switched_off", "feature": "confidence"},
+            {"template": "switched_off", "feature": "score"},
             {"template": "calls_switched_off", "feature": "speed"},
         ]
     )
@@ -164,7 +164,7 @@ def test_selection_choices_survive_catalog_changes_and_failed_reload(qtbot: QtBo
     other = manager.create_selection()
     selection.select_catalog(path)
     wait_for_catalogs(qtbot, manager)
-    selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
+    selection.set_feature_enabled(OverlayFeature.SCORE, False)
     hidden = selection.active_catalog()
     assert hidden is not None and other.active_catalog() is not hidden
     path.write_text("broken", encoding="utf-8")
@@ -172,22 +172,22 @@ def test_selection_choices_survive_catalog_changes_and_failed_reload(qtbot: QtBo
     wait_for_catalogs(qtbot, manager)
     assert not selection.active_catalog_loaded()
     assert selection.active_catalog() is hidden
-    selection.set_feature_enabled(OverlayFeature.CONFIDENCE, True)
+    selection.set_feature_enabled(OverlayFeature.SCORE, True)
     restored = selection.active_catalog()
     assert restored is not None and restored.rendering_identity != hidden.rendering_identity
     assert not selection.active_catalog_loaded()
-    selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
+    selection.set_feature_enabled(OverlayFeature.SCORE, False)
     assert selection.active_catalog() is hidden
     minimal = next(path for path in BUILT_IN_CATALOG_PATHS if path.stem == "minimal")
     manager.apply_to_all(minimal, on_failed=failures.append)
     wait_for_catalogs(qtbot, manager)
-    assert OverlayFeature.CONFIDENCE in selection.visibility.disabled
-    assert OverlayFeature.CONFIDENCE not in selection.available_features()
+    assert OverlayFeature.SCORE in selection.visibility.disabled
+    assert OverlayFeature.SCORE not in selection.available_features()
     assert other.visibility == OverlayVisibility()
     manager.apply_to_all(manager.built_in_catalog_path(), on_failed=failures.append)
     wait_for_catalogs(qtbot, manager)
     assert selection.active_catalog() is not other.active_catalog()
-    other.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
+    other.set_feature_enabled(OverlayFeature.SCORE, False)
     assert selection.active_catalog() is other.active_catalog()
     selection.reset_visibility()
     assert selection.active_catalog() is _cached_catalog(manager, manager.built_in_catalog_path())
@@ -200,14 +200,14 @@ def test_valid_reload_reapplies_choices_and_can_toggle_without_files(qtbot: QtBo
     selection = manager.create_selection()
     selection.select_catalog(path)
     wait_for_catalogs(qtbot, manager)
-    selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
+    selection.set_feature_enabled(OverlayFeature.SCORE, False)
     document = SceneRenderCatalogLoader.read_document(path)
     document["templates"]["id_tab"]["parameters"]["font_size"]["default"]["value"] = 15
     path.write_text(json.dumps(document), encoding="utf-8")
     selection.reload_active_catalog()
     wait_for_catalogs(qtbot, manager)
     assert selection.active_catalog_loaded()
-    assert OverlayFeature.CONFIDENCE in selection.visibility.disabled
+    assert OverlayFeature.SCORE in selection.visibility.disabled
     path.unlink()
     selection.reset_visibility()
     assert selection.active_catalog_loaded()  # No file load occurs on a toggle.
@@ -226,14 +226,14 @@ def test_packaged_catalogs_hide_all_tagged_output(path: Path) -> None:
         assert diagnostics == []
 
 
-def test_class_name_does_not_extract_hidden_confidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Classification text must not extract the score column when only confidence needed it."""
+def test_class_name_does_not_extract_hidden_score(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Classification text must not extract the score value when only the hidden score display needs it."""
     from ax_devil.modules.scene.model import Classification, Score
     from tests.catalog_helpers import CLASSIC_CATALOG_PATH
     from tests.drawing_helpers import RecordingTarget, TextCall
 
     revision = SceneRenderCatalogLoader().load_revision(CLASSIC_CATALOG_PATH)
-    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.CONFIDENCE, OverlayFeature.OUTLINES})))
+    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.SCORE, OverlayFeature.OUTLINES})))
     entity = Entity(id=EntityId("object"))
     classification = Classification("custom", Score(0.8))
     observation = Observation(geometry=BoundingBox.from_xywh(0.1, 0.1, 0.3, 0.5), frame_number=0)

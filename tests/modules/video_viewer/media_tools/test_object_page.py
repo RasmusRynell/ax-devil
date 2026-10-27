@@ -44,7 +44,6 @@ def test_copy_icons_copy_the_full_id_and_the_raw_section_as_json(qtbot: QtBot, m
         Observation(
             frame_number=3,
             geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2, allow_outside=True),
-            confidence=Score(0.9),
             classification=[Classification("human", Score(0.9))],
         )
     )
@@ -147,7 +146,7 @@ def test_clothing_colors_are_listed_under_a_heading_per_attribute() -> None:
     entity = Entity(EntityId("a"))
     entity.add_observation(Observation(frame_number=0, geometry=_BOX, classification=[human]))
     rows = field_sections(entity)[0].rows
-    labels = "type, conf, upper clothing colors, blue, white, lower clothing colors, blue, candidates.human"
+    labels = "type, score, upper clothing colors, blue, white, lower clothing colors, blue, candidates.human"
     assert [row.label for row in rows] == labels.split(", ")
     assert rows[3].copy_text() == "0.62 #0000ff"
     assert rows[3].field_id != rows[6].field_id

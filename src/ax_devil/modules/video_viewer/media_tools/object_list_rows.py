@@ -6,7 +6,7 @@ from functools import cached_property
 from typing import Any
 
 from ax_devil.modules.data_sources.scene_history import ObjectHistory
-from ax_devil.modules.scene.inspection import EntitySummary, entity_confidence, entity_record, entity_summary
+from ax_devil.modules.scene.inspection import EntitySummary, entity_record, entity_score, entity_summary
 from ax_devil.modules.scene.model import Entity
 from ax_devil.modules.scene.query import Query, QueryRecord
 from ax_devil.modules.video_viewer.media_tools.object_rows import id_order, seen_range
@@ -52,9 +52,9 @@ class FrameRow:
         return entity_summary(self.entity)
 
     @cached_property
-    def confidence(self) -> float | None:
-        """Read the field needed for confidence ordering without formatting a row."""
-        return entity_confidence(self.entity)
+    def score(self) -> float | None:
+        """Read the field needed for score ordering without formatting a row."""
+        return entity_score(self.entity)
 
     def record(self, *, full: bool) -> QueryRecord:
         """Return what a query searches: id, class and state, plus every field of the entity when *full*."""
@@ -95,10 +95,8 @@ class FileRow:
         return seen_range(self.history)
 
 
-def _confidence_text(conf: float | None) -> str:
-    if conf is None:
-        return ""
-    return f"{conf:.0%}" if 0.0 <= conf <= 1.0 else f"{conf:g}"
+def _score_text(score: float | None) -> str:
+    return "" if score is None else f"{score:.2f}"
 
 
 def frame_columns() -> tuple[Column, ...]:
@@ -117,10 +115,10 @@ def frame_columns() -> tuple[Column, ...]:
             stretch=True,
         ),
         Column(
-            "Conf",
+            "Score",
             CellKind.NUMBER,
-            lambda row: _confidence_text(row.summary.conf),
-            lambda row: (row.confidence is not None, row.confidence or 0.0),
+            lambda row: _score_text(row.summary.score),
+            lambda row: (row.score is not None, row.score or 0.0),
         ),
         Column(
             "Motion",

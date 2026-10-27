@@ -183,6 +183,7 @@ def _classifications_from_obj(obj: ET.Element) -> list[Classification]:
         subtype = (s := _text(veh)) and s.lower()
         if subtype:
             mapping = {"bus": "bus", "car": "car", "truck": "truck", "bike": "bike", "bicycle": "bicycle"}
+            # The VehicleInfo subtype becomes the type, so its Likelihood is the score for that type.
             out[0].type = mapping.get(subtype, subtype)
             veh_lik_str = veh.get("Likelihood")
             if veh_lik_str is None:

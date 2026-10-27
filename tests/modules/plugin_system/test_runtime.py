@@ -26,6 +26,7 @@ from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
 DECODER_GROUP = "ax_devil.decoder_plugins"
 RESOLVER_GROUP = "ax_devil.playlist_resolver_plugins"
 PLUGIN_ID = "external-plugin"
+_HOST_SCENE_MODEL = f"{SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1]}"
 
 pytestmark = pytest.mark.usefixtures("unloaded_plugins")
 
@@ -215,7 +216,7 @@ def test_a_distribution_with_unreadable_metadata_is_listed_as_failed_and_the_res
         pytest.param(UndeclaredSceneModel, "does not implement scene_model_version", id="no-scene-model"),
         pytest.param(
             PreviousSceneMajor,
-            "built for Scene model 1.0, this ax-devil uses Scene model 2.0; update the plugin",
+            f"built for Scene model 1.0, this ax-devil uses Scene model {_HOST_SCENE_MODEL}; update the plugin",
             id="previous-scene-major",
         ),
         pytest.param(NewerSceneMajor, f"built for Scene model {SCENE_MODEL_VERSION[0] + 1}.0", id="scene-major"),

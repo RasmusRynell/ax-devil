@@ -171,7 +171,6 @@ def test_routing_uses_primary_classification_and_catalog_selectors(types: tuple[
         Classification(
             type=kind,
             score=Score((index + 1) / len(types)),
-            confidence=Score((len(types) - index) / len(types)),
         )
         for index, kind in enumerate(types)
     ]

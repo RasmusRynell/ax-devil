@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
+    Confidence,
     Observation,
     Score,
 )
@@ -15,11 +16,12 @@ from ax_devil.modules.scene.model import (
 _TS = datetime(2024, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
-def test_observation_pickle_preserves_debug_and_classification_confidence() -> None:
+def test_observation_pickle_preserves_debug_and_confidence() -> None:
     """Native pickle restoration preserves current observation fields."""
     observation = Observation(
         geometry=BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2),
-        classification=[Classification("car", Score(0.69), confidence=Score(0.8516))],
+        classification=[Classification("car", Score(0.69))],
+        confidence=Confidence(0.8516),
         timestamp=_TS,
         debug={"motion_debug": {"normalized_speed": 0.42}},
     )

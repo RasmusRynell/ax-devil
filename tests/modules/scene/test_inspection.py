@@ -18,6 +18,7 @@ from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
     ColorClassification,
+    Confidence,
     Entity,
     EntityId,
     Image,
@@ -136,14 +137,16 @@ def test_colors_are_one_field_each_and_stay_searchable_by_channel() -> None:
     assert not compile_query("rgb.g>0").matches(entity_record(entity))
 
 
-def test_conf_falls_back_to_primary_score_unless_observation_reports_confidence() -> None:
+def test_score_is_never_shown_as_confidence_unless_observation_reports_one() -> None:
     entity = _inspection_entity()
-    assert entity_summary(entity).conf == 7.5
+    assert (entity_summary(entity).score, entity_summary(entity).confidence) == (7.5, None)
+    assert "classification.confidence" not in entity_record(entity).fields
     observation = entity.latest_observation
     assert observation is not None
-    observation.confidence = Score(0.97)
-    assert entity_summary(entity).conf == 0.97
-    assert entity_record(entity).fields["classification.conf"] == (0.97,)
+    observation.confidence = Confidence(0.97)
+    assert (entity_summary(entity).score, entity_summary(entity).confidence) == (7.5, 0.97)
+    assert entity_record(entity).fields["classification.score"] == (7.5,)
+    assert entity_record(entity).fields["classification.confidence"] == (0.97,)
 
 
 def test_entity_record_exposes_debug_paths_and_never_derives_speed() -> None:

@@ -48,8 +48,8 @@ class FieldGroup(Enum):
 class InspectionField:
     """One leaf value of an entity, addressed by its path inside a ``FieldGroup``.
 
-    ``fraction`` is set for scores in [0, 1] so a view can draw them as a bar. ``rgb`` is set on a color entry,
-    whose path ends in its name and whose value is its score.
+    ``fraction`` is set for a score or confidence whose value lies in [0, 1], only so a view can draw a bar. ``rgb``
+    is set on a color entry, whose path ends in its name and whose value is its score.
     """
 
     path: tuple[str, ...]
@@ -72,7 +72,8 @@ class EntitySummary:
 
     entity_id: str
     class_name: str
-    conf: float | None
+    score: float | None  # The primary classification's score.
+    confidence: float | None  # Only what the observation reports as a confidence.
     speed: float | None
     state: str | None
 
@@ -113,11 +114,11 @@ def entity_fields(entity: Entity) -> tuple[tuple[FieldGroup, tuple[InspectionFie
     return tuple((group, tuple(items)) for group, items in grouped.items() if items)
 
 
-def entity_confidence(entity: Entity) -> float | None:
-    """Return an entity's confidence using the same fallback as its inspection summary."""
+def entity_score(entity: Entity) -> float | None:
+    """Return the score of an entity's primary classification, as its summary shows it."""
     observation = entity.latest_observation
-    score = _confidence(observation) if observation is not None else None
-    return score.value if score is not None else None
+    primary = observation.primary_classification if observation is not None else None
+    return primary.score.value if primary is not None else None
 
 
 def entity_summary(entity: Entity) -> EntitySummary:
@@ -125,11 +126,12 @@ def entity_summary(entity: Entity) -> EntitySummary:
     observation = entity.latest_observation
     primary = observation.primary_classification if observation is not None else None
     velocity = observation.velocity_in_world_space if observation is not None else None
-    conf = _confidence(observation) if observation is not None else None
+    confidence = observation.confidence if observation is not None else None
     return EntitySummary(
         entity_id=str(entity.id),
         class_name=primary.type if primary is not None else _UNKNOWN_CLASS,
-        conf=conf.value if conf is not None else None,
+        score=primary.score.value if primary is not None else None,
+        confidence=confidence.value if confidence is not None else None,
         speed=velocity.speed if velocity is not None else None,
         state=entity.motion_state.value if entity.motion_state is not None else None,
     )
@@ -147,31 +149,23 @@ def entity_record(entity: Entity) -> QueryRecord:
     return QueryRecord(fields={key: tuple(items) for key, items in values.items()}, text=text)
 
 
-def _confidence(observation: Observation) -> Score | None:
-    if observation.confidence is not None:
-        return observation.confidence
-    primary = observation.primary_classification
-    return primary.score if primary is not None else None
-
-
-def _fraction(score: Score) -> float | None:
-    return score.value if 0.0 <= score.value <= 1.0 else None
+def _fraction(value: float) -> float | None:
+    return value if 0.0 <= value <= 1.0 else None
 
 
 def _classification_fields(observation: Observation) -> Iterator[InspectionField]:
     primary = observation.primary_classification
     if primary is not None:
         yield InspectionField(("type",), primary.type)
-    conf = _confidence(observation)
-    if conf is not None:
-        yield InspectionField(("conf",), conf.value, _fraction(conf))
+        yield InspectionField(("score",), primary.score.value, _fraction(primary.score.value))
+    if observation.confidence is not None:
+        yield InspectionField(("confidence",), observation.confidence.value, _fraction(observation.confidence.value))
     if primary is not None:
         yield from _flatten(primary.attributes, ("attributes",))
     candidates = sorted(observation.classification, key=lambda item: item.score.value, reverse=True)
     for candidate in candidates:
         if candidate is primary:  # Its attributes are already listed under ``attributes``.
             yield from _flatten(candidate.score, ("candidates", candidate.type))
-            yield from _flatten(candidate.confidence, ("candidates", candidate.type, "confidence"))
         else:
             yield from _flatten(candidate, ("candidates",))
 
@@ -213,15 +207,14 @@ def _flatten(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
     elif isinstance(value, bool | int | float | str):
         yield InspectionField(path, value)
     elif isinstance(value, Score):
-        yield InspectionField(path, value.value, _fraction(value))
+        yield InspectionField(path, value.value, _fraction(value.value))
     elif isinstance(value, Attribute):
         yield from _flatten(value.value, (*path, value.name))
     elif isinstance(value, Classification):
         yield from _flatten(value.score, (*path, value.type))
-        yield from _flatten(value.confidence, (*path, value.type, "confidence"))
         yield from _flatten(value.attributes, (*path, value.type, "attributes"))
     elif isinstance(value, ColorClassification):
-        yield InspectionField((*path, value.name), value.score.value, _fraction(value.score), value.rgb)
+        yield InspectionField((*path, value.name), value.score.value, _fraction(value.score.value), value.rgb)
     elif isinstance(value, Geometry):
         x, y, width, height = value.as_xywh()
         for name, number in (("x", x), ("y", y), ("width", width), ("height", height)):

@@ -98,7 +98,6 @@ def decode_cvat_frame(payload: CVATDecoderPayload) -> Scene:
             frame_number=frame_index,
             geometry=geometry,
             classification=[Classification(label.lower(), Score(1.0), attributes)],
-            confidence=Score(1.0),
             debug=shape_payload.get("debug", {}),
         )
 

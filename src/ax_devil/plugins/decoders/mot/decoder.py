@@ -40,7 +40,6 @@ class MOTBoundingBoxPayload(TypedDict):
 class MOTDetectionPayload(TypedDict):
     track_id: int
     class_id: int
-    confidence: float | None
     raw_score: float
     visibility: float
     source: str
@@ -121,8 +120,6 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
             track_id = int(raw_detection["track_id"])
             class_id = int(raw_detection.get("class_id", -1))
             raw_score = float(raw_detection.get("raw_score", 0.0))
-            confidence_payload = raw_detection.get("confidence")
-            confidence = float(confidence_payload) if confidence_payload is not None else None
             visibility = float(raw_detection.get("visibility", 0.0))
             source = str(raw_detection.get("source", "unknown"))
             bbox_payload = raw_detection["bbox"]
@@ -153,21 +150,17 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
 
         attributes = [
             Attribute("source", source),
-            Attribute("raw_score", raw_score),
             Attribute("visibility_ratio", visibility),
         ]
         if source == "gt":
             attributes.append(Attribute("gt_mark", int(raw_score)))
-        if confidence is not None:
-            attributes.append(Attribute("confidence", confidence))
 
-        class_score = Score(_classification_score_for_source(source, confidence))
-        observation_confidence = Score(confidence) if confidence is not None else None
+        # A DET row's last column is the detector's score, kept as reported; GT rows come from no model.
+        class_score = Score(1.0 if source == "gt" else raw_score)
 
         observation = Observation(
             frame_number=frame_index,
             geometry=normalized_bbox,
-            confidence=observation_confidence,
             classification=[classification_for_id(class_id, MOT_CLASSES, class_score, attributes)],
         )
 
@@ -185,14 +178,6 @@ def _entity_id_for_detection(track_id: int, frame_index: int, detection_index: i
     if track_id >= 0:
         return EntityId(str(track_id))
     return EntityId(f"untracked:{frame_index}:{detection_index}")
-
-
-def _classification_score_for_source(source: str, confidence: float | None) -> float:
-    if confidence is not None:
-        return confidence
-    if source == "gt":
-        return 1.0
-    return 0.0
 
 
 def prepare_mot_frame_payloads(
@@ -233,18 +218,16 @@ def prepare_mot_frame_payloads(
 
             if num_parts in (7, 10):
                 # DET format variants:
-                # - 7 columns: frame, id, x, y, w, h, confidence
-                # - 10 columns: frame, id, x, y, w, h, confidence, -1, -1, -1
+                # - 7 columns: frame, id, x, y, w, h, score
+                # - 10 columns: frame, id, x, y, w, h, score, -1, -1, -1
                 class_id = 1  # Default to pedestrian
                 visibility_ratio = 1.0
                 source = "det"
-                confidence = raw_score if 0.0 <= raw_score <= 1.0 else None
             else:
                 # GT format: frame, id, x, y, w, h, mark, class_id, visibility.
                 class_id = int(parts[7])
                 visibility_ratio = float(parts[8])
                 source = "gt"
-                confidence = None
         except (ValueError, TypeError) as exc:
             skipped.add(f"line {line_number}: {exc}")
             continue
@@ -266,7 +249,6 @@ def prepare_mot_frame_payloads(
         detection: MOTDetectionPayload = {
             "track_id": track_id,
             "class_id": class_id,
-            "confidence": confidence,
             "raw_score": raw_score,
             "visibility": visibility_ratio,
             "source": source,

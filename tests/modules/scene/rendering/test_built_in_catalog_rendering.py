@@ -145,7 +145,7 @@ def test_built_in_indicators_remain_visible_on_small_boxes(classification: str |
     assert any((box.w * 512, box.h * 512) == pytest.approx(size) for box in boxes)
     if classification is not None:
         assert classification in texts
-        assert len(boxes) >= 2  # The outer box and its confidence fill.
+        assert len(boxes) >= 2  # The outer box and its score fill.
 
 
 @pytest.mark.parametrize("width,height", [(16, 20), (100, 200)])
@@ -184,7 +184,7 @@ def test_built_in_explicit_indicator_sizes_stay_exact() -> None:
         {
             "Upper clothing color": {"size": {"value": 3, "unit": "px"}},
             "Movement badge": {"font_size": {"value": 30, "unit": "px"}},
-            "Confidence bar": {"inset": {"value": 7, "unit": "px"}, "top_inset": {"value": 9, "unit": "px"}},
+            "Score bar": {"inset": {"value": 7, "unit": "px"}, "top_inset": {"value": 9, "unit": "px"}},
         }
     )
     scene = _human_scene((200, 200), attributes=_RED_COLORS[:1])
@@ -200,12 +200,12 @@ def test_built_in_explicit_indicator_sizes_stay_exact() -> None:
 
 
 @pytest.mark.parametrize("width,height", [(10, 8), (100, 100)])
-def test_built_in_confidence_bar_fills_proportionally_inside_short_boxes(width: int, height: int) -> None:
-    """The confidence bar stays inside the box and its height stays proportional to the confidence."""
+def test_built_in_score_bar_fills_proportionally_inside_short_boxes(width: int, height: int) -> None:
+    """The score bar stays inside the box and its height stays proportional to the score."""
 
-    def bar(confidence: float) -> BoxCall:
+    def bar(score: float) -> BoxCall:
         scene = _human_scene((width, height))
-        next(iter(scene.entities.values())).observations[0].classification[0].score = Score(confidence)
+        next(iter(scene.entities.values())).observations[0].classification[0].score = Score(score)
         calls = _record_512(scene)
         return next(item for item in calls if isinstance(item, BoxCall) and item.w == pytest.approx(1 / 512))
 
@@ -217,7 +217,7 @@ def test_built_in_confidence_bar_fills_proportionally_inside_short_boxes(width: 
 
 
 def test_built_in_tiny_face_visibility_bar_does_not_reserve_motion_space() -> None:
-    """The inner face box retains its confidence fill without reserving room for an absent badge."""
+    """The inner face box retains its score fill without reserving room for an absent badge."""
     scene = _scene(attributes=[Attribute("face_visible", 1.0)])
     observation = next(iter(scene.entities.values())).observations[0]
     observation.classification[0].type = "head"

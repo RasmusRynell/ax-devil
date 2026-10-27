@@ -20,6 +20,7 @@ from ax_devil.modules.scene.model_values import (
     ClassificationType,
     ColorClassification,
     ColorType,
+    Confidence,
     EntityId,
     GeographicCoordinates,
     Geometry,
@@ -41,6 +42,7 @@ __all__ = [
     "ClassificationType",
     "ColorClassification",
     "ColorType",
+    "Confidence",
     "Delete",
     "Entity",
     "EntityId",
@@ -73,7 +75,7 @@ _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (2, 0)
+SCENE_MODEL_VERSION: tuple[int, int] = (3, 0)
 
 
 class OperationType(enum.Enum):
@@ -95,12 +97,11 @@ class OperationType(enum.Enum):
 # ---------------------------------------------------------------------------#
 @dataclass(slots=True)
 class Classification:
-    """Classification with a raw score, optional reported confidence, and flexible attributes."""
+    """Classification with a raw score and flexible attributes."""
 
     type: ClassificationType  # str alias
     score: Score
     attributes: list[Attribute] = field(default_factory=list)
-    confidence: Score | None = None
 
     def __post_init__(self) -> None:
         if not self.type:
@@ -163,7 +164,7 @@ class Observation:
     classification: list[Classification] = field(default_factory=list)
     timestamp: datetime | None = None
     frame_number: int | None = None
-    confidence: Score | None = None
+    confidence: Confidence | None = None  # Only a confidence the source reports; never a score.
     velocity_in_image_space: ImageVelocity | None = None
     velocity_in_world_space: WorldVelocity | None = None
     geographical_coordinates: GeographicCoordinates | None = None

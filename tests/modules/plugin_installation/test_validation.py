@@ -19,6 +19,8 @@ from ax_devil.modules.plugin_installation.host import current_host
 from ax_devil.modules.plugin_system import DecoderPlugin
 from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
 
+_HOST_SCENE_MODEL = f"{SCENE_MODEL_VERSION[0]}.{SCENE_MODEL_VERSION[1]}"
+
 
 @pytest.mark.parametrize("mismatch", [None, "app-version", "copied-app", "copied-plugin", "wrong-source"])
 def test_prepared_sources_are_verified_before_plugin_imports(
@@ -135,7 +137,11 @@ def test_validate_entry_point_family_and_owner(
         with pytest.raises(ValueError, match="example-distribution cannot load: missing dependency"):
             validate.validate_plugins([distribution.name])
     elif wrong_family or other_owner or old_scene_model:
-        reason = "built for Scene model 1.0, this ax-devil uses Scene model 2.0" if old_scene_model else None
+        reason = (
+            f"built for Scene model 1.0, this ax-devil uses Scene model {_HOST_SCENE_MODEL}"
+            if old_scene_model
+            else None
+        )
         with pytest.raises(ValueError, match=reason):
             validate.validate_plugins([distribution.name])
     else:
