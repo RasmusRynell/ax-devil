@@ -16,17 +16,15 @@ def test_score_and_confidence_reject_non_finite_values(bad: float) -> None:
             kind(bad)
 
 
-@pytest.mark.parametrize("bad", [-0.01, 1.01])
-def test_confidence_is_limited_to_the_unit_range_but_score_is_not(bad: float) -> None:
-    with pytest.raises(ValueError):
-        Confidence(bad)
-    assert Score(bad).fraction is None
+@pytest.mark.parametrize("value", [-0.01, 1.01])
+def test_score_and_confidence_accept_values_outside_the_unit_range_without_a_fraction(value: float) -> None:
+    assert (Score(value).fraction, Confidence(value).fraction) == (None, None)
 
 
-def test_score_shows_a_plain_number_and_confidence_a_percentage() -> None:
+def test_score_and_confidence_show_plain_numbers() -> None:
     assert (Score(0.874).text, Score(0.874).fraction) == ("0.87", 0.874)
     assert (Score(2.5).text, Score(2.5).fraction) == ("2.50", None)
-    assert (Confidence(0.874).text, Confidence(0.874).fraction) == ("87%", 0.874)
+    assert (Confidence(0.874).text, Confidence(0.874).fraction) == ("0.87", 0.874)
 
 
 def test_score_and_confidence_survive_pickling() -> None:

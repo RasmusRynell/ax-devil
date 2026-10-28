@@ -48,7 +48,6 @@ _HELPERS = (
     colormaps.pick_color_rows,
     kernels.trim_text,
     kernels.number_text,
-    kernels.percent_text,
     kernels.lookup_rows,
     kernels.get,
 )

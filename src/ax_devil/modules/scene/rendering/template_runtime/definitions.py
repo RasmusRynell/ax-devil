@@ -276,7 +276,6 @@ OPERATIONS = MappingProxyType(
                 elide=ELISION.optional(),
             ),
             _operation("number_text", STRING.optional(), value=NUMBER.optional(), precision=INTEGER, hide_zero=BOOL),
-            _operation("percent_text", STRING.optional(), value=NUMBER.optional(), precision=INTEGER),
             _operation("lookup_text", STRING.optional(), text=STRING.optional(), mapping=TEXT_MAPPING, default=STRING),
             _operation("color_ramp", RGB, value=NUMBER, stops=COLOR_STOPS),
             _operation("pick_color", RGB, text=STRING, colors=PALETTE),

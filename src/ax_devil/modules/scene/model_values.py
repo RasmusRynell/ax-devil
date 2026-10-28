@@ -93,13 +93,13 @@ class Score:
 
 @dataclass(slots=True, frozen=True)
 class Confidence:
-    """A decoder's confidence in a classification: a probability-like fraction in 0..1."""
+    """A confidence a source reports for a classification: any finite number, in whatever range the source uses."""
 
     value: float
 
     def __post_init__(self) -> None:
-        if not (math.isfinite(self.value) and 0.0 <= self.value <= 1.0):
-            raise ValueError(f"Confidence must be a finite value in [0, 1], got {self.value}")
+        if not math.isfinite(self.value):
+            raise ValueError(f"Confidence must be finite, got {self.value}")
 
     def __setstate__(self, state: list[object]) -> None:
         """Restore the dataclass cache format without per-instance field introspection."""
@@ -107,13 +107,13 @@ class Confidence:
 
     @property
     def text(self) -> str:
-        """Return the confidence as a percentage, e.g. ``87%``."""
-        return f"{self.value:.0%}"
+        """Return the confidence as a plain number, e.g. ``0.87``."""
+        return f"{self.value:.2f}"
 
     @property
-    def fraction(self) -> float:
-        """Return the value, which is always within 0..1."""
-        return self.value
+    def fraction(self) -> float | None:
+        """Return the value when it lies within 0..1, else None."""
+        return self.value if 0.0 <= self.value <= 1.0 else None
 
 
 @dataclass(slots=True, frozen=True)

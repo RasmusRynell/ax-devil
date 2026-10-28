@@ -97,9 +97,11 @@ def parse_colors_webcolors(raw: list[dict[str, Any]] | None) -> list[ColorClassi
         raise ValueError("Color data is None")
     colors = []
     for item in raw:
-        colors.append(
-            ColorClassification(name=item["name"], rgb=rgb_from_map(item["name"]), score=Score(item["score"]))
-        )
+        name = item.get("name")
+        score = item.get("score")
+        if name is None or score is None:
+            raise ValueError("Color missing name or score")
+        colors.append(ColorClassification(name=name, rgb=rgb_from_map(name), score=Score(score)))
     return colors
 
 

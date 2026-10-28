@@ -110,7 +110,7 @@ _SITUATIONS: tuple[tuple[str, str, tuple[_Example, ...]], ...] = (
     ("Medium", "", (_Example((0.09, 0.08, 0.07, 0.13)),)),
     ("Large", "", (_Example((0.07, 0.065, 0.11, 0.165)),)),
     ("Score 0.15", "", (_Example(_MEDIUM, score=0.15),)),
-    ("Confidence 98%", "", (_Example(_MEDIUM, score=None, confidence=0.98),)),
+    ("Confidence 0.98", "", (_Example(_MEDIUM, score=None, confidence=0.98),)),
     ("No score", "", (_Example(_MEDIUM, score=None),)),
     ("Long id", "36-character UUID", (_Example(_MEDIUM, score=0.72, id=_LONG_ID),)),
     ("Still", "", (_Example(_MEDIUM, velocity=None, motion_state=MotionState.Stationary),)),
