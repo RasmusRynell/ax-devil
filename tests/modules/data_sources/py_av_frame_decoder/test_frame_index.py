@@ -204,16 +204,14 @@ class TestFrameIndex:
         """An index of the old video must not be published as the replacement's, which would index wrong frames."""
         replacement = temp_dir / "replacement.mp4"
         create_test_video(replacement, duration=1.0, fps=10)
-        real_open = av.open
+        real_build = frame_index.build
 
-        def open_then_replace(*args: object, **kwargs: object) -> av.container.InputContainer:
-            container = real_open(*args, **kwargs)  # type: ignore[call-overload]
+        def build_then_replace(thread_count: int = 0) -> None:
+            real_build(thread_count)  # Windows cannot replace a file PyAV still has open, so swap it after the scan.
             replacement.replace(frame_index.video_path)
-            return container  # type: ignore[no-any-return]
 
-        monkeypatch.setattr(av, "open", open_then_replace)
+        monkeypatch.setattr(frame_index, "build", build_then_replace)
         frame_index.load_or_build()
-        monkeypatch.undo()
 
         assert frame_index.cache_path is not None
         assert not frame_index.cache_path.exists()
