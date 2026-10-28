@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import QPoint, QThread, Signal
+from PySide6.QtCore import QPoint, Qt, QThread, Signal
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from ax_devil.core.playback_speed import step_playback_speed
@@ -69,7 +69,6 @@ class OfflineVideoViewerWidget(ViewerWidget):
         )
         self._start_frame = start_frame
         self._pending_lane_focus: tuple[int, int] | None = None
-        self._refocus_on_open = False
         self._runtime: OfflineSession | None = None
         self._viewer_host: ViewerOverlayHost | None = None
         self._entry_bar: EntryNavigationBar | None = None
@@ -127,8 +126,9 @@ class OfflineVideoViewerWidget(ViewerWidget):
             self._pending_lane_focus = None
         self._opening.cancel()
         if not keep_shown:
-            # Tearing down the displays drops the keyboard focus to another widget, such as a search field.
-            self._refocus_on_open = self._refocus_on_open or self._holds_focus()
+            if self._holds_focus():
+                # Tearing down a focused display hands the focus to another widget, such as a search field.
+                self.setFocus(Qt.FocusReason.OtherFocusReason)
             self._teardown_runtime()
             self._current_index = index
             self._start_frame = start_frame
@@ -154,8 +154,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         )
 
     def _on_entry_opened(self, index: int, start_frame: int | None, keep_shown: bool, media: EntryMedia) -> None:
-        keep_focus = self._refocus_on_open or self._holds_focus()
-        self._refocus_on_open = False
+        keep_focus = self._holds_focus()
         self._hide_loading_indicator()
         error = media.error
         runtime: OfflineSession | None = None
