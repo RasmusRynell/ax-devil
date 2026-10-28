@@ -63,7 +63,7 @@ class ExamplePlugin(DecoderPlugin):
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
         """Declare the Scene model version this decoder builds Scenes for."""
-        return (3, 0)
+        return (3, 1)
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -91,7 +91,7 @@ Installation checks that the entry point imports and registers successfully. Thi
 handler, for decoded streaming messages; it does not contribute a file handler to `list-handlers` or draw any
 objects yet. Add entities to the returned Scene to implement your format.
 
-A `Classification` carries `score` (`Score`, any finite number) and `confidence` (`Confidence`, 0..1) separately; emit
+A `Classification` carries `score` (`Score`, any finite number) and `confidence` (`Confidence`, any finite number) separately; emit
 each as the source provides it, or `None`.
 
 Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame-level) or `Observation.debug`

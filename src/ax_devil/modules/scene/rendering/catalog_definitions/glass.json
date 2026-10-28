@@ -964,7 +964,7 @@
     "confidence_label": {
       "label": "Confidence label",
       "feature": "confidence",
-      "description": "The detection confidence as a meter and a percentage on a dark pill under the right end of the box; the meter is in the class color, red below the low confidence.",
+      "description": "The detection confidence as a meter and a number on a dark pill under the right end of the box; the meter is in the class color, red below the low confidence.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -1225,7 +1225,7 @@
               },
               {
                 "text": {
-                  "call": "percent_text",
+                  "call": "number_text",
                   "args": {
                     "value": {
                       "ref": [
@@ -1233,7 +1233,8 @@
                         "confidence"
                       ]
                     },
-                    "precision": 0
+                    "precision": 2,
+                    "hide_zero": false
                   }
                 },
                 "color": [

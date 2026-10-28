@@ -123,7 +123,7 @@ def _vehicle(
 def street_actors() -> tuple[Actor, ...]:
     """Return what the **Street** camera sees, furthest first, so nearer things are painted over further ones."""
     return (
-        # Far away, near the end of the street: a few pixels tall and detected with little confidence.
+        # Far away, near the end of the street: a few pixels tall and detected with a low score.
         _person(lane(0.02, 0.395), 0.395, 0.41, (0.0, -1.2), ("black",), ("blue",)),
         _person(lane(1.05, 0.4), 0.4, 0.55, (0.0, 1.1), ("white", "gray"), ("black",)),
         _person(lane(1.1, 0.403), 0.403, 0.36, (0.0, 1.1), ("red",), ("blue",), occluded=True),

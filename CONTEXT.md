@@ -33,7 +33,7 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Overlay Lookup | File overlay provider behavior that loads a Scene for a FrameIdentifier and records whether timestamp, sequence, tolerance, or miss was used. | Timestamp matching, offline sync |
 | Scene | The world-model exchange format produced by decoders and consumed by filtering, inspection, and rendering. | Raw overlay payload |
 | Score | A decoder's own number for a classification, in any range, shown as a plain number such as `0.87`. Distinct from Confidence; either may be absent. | Confidence, probability |
-| Confidence | A decoder's 0..1 certainty for a classification, shown as a percentage such as `87%`. Distinct from Score; either may be absent. | Score, likelihood |
+| Confidence | What a source reports as its confidence in a classification, any finite number, shown plain such as `0.87`. Distinct from Score; either may be absent. | Score, likelihood |
 | Scene Render Catalog | A compiled catalog of reusable templates and recipes for Scene entities and relations; a view's choice of one is a Selection. | Template file, renderer config |
 | Built-in Catalog | The packaged, app-owned, read-only Scene Render Catalog. | Default catalog, packaged default |
 | Default Catalog | The Scene Render Catalog new views start from; the Built-in Catalog until the user picks another. | Active catalog, remembered selection |

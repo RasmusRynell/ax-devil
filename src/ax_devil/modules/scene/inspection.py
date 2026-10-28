@@ -49,8 +49,8 @@ class FieldGroup(Enum):
 class InspectionField:
     """One leaf value of an entity, addressed by its path inside a ``FieldGroup``.
 
-    ``fraction`` is set for scores in [0, 1] so a view can draw them as a bar. ``text`` is what a view shows in place
-    of the value (``87%`` for a confidence of 0.87); queries compare the value. ``rgb`` is set on a color entry, whose
+    ``fraction`` is set for scores and confidences in [0, 1] so a view can draw them as a bar. ``text`` is what a view
+    shows in place of the value (``0.87`` for 0.8712); queries compare the value. ``rgb`` is set on a color entry, whose
     path ends in its name and whose value is its score.
     """
 

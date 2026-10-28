@@ -188,7 +188,7 @@ def test_built_in_explicit_indicator_sizes_stay_exact() -> None:
         {
             "Upper clothing color": {"size": {"value": 3, "unit": "px"}},
             "Movement badge": {"font_size": {"value": 30, "unit": "px"}},
-            "Confidence bar": {"inset": {"value": 7, "unit": "px"}, "top_inset": {"value": 9, "unit": "px"}},
+            "Score bar": {"inset": {"value": 7, "unit": "px"}, "top_inset": {"value": 9, "unit": "px"}},
         }
     )
     scene = _human_scene((200, 200), attributes=_RED_COLORS[:1])
@@ -204,8 +204,8 @@ def test_built_in_explicit_indicator_sizes_stay_exact() -> None:
 
 
 @pytest.mark.parametrize("width,height", [(10, 8), (100, 100)])
-def test_built_in_confidence_bar_fills_proportionally_inside_short_boxes(width: int, height: int) -> None:
-    """The confidence bar stays inside the box and its height stays proportional to the confidence."""
+def test_built_in_score_bar_fills_proportionally_inside_short_boxes(width: int, height: int) -> None:
+    """The score bar stays inside the box and its height stays proportional to the score."""
 
     def bar(confidence: float) -> BoxCall:
         scene = _human_scene((width, height))
@@ -311,13 +311,13 @@ def test_rendering_entities_together_matches_rendering_each_alone() -> None:
 @pytest.mark.parametrize("path", BUILT_IN_CATALOG_PATHS, ids=lambda path: path.stem)
 @pytest.mark.parametrize(
     "score,confidence,shown",
-    [(0.87, None, "0.87"), (None, 0.87, "87%"), (2.5, None, "2.50"), (None, None, None)],
+    [(0.87, None, "0.87"), (None, 0.87, "0.87"), (2.5, None, "2.50"), (None, None, None)],
     ids=["score", "confidence", "score-out-of-range", "neither"],
 )
 def test_built_in_catalogs_draw_score_and_confidence_only_as_given(
     path: Path, score: float | None, confidence: float | None, shown: str | None
 ) -> None:
-    """A score reads as a plain number and a confidence as a percentage; an absent one draws nothing."""
+    """A score and a confidence both read as plain numbers; an absent one draws nothing."""
     scene = Scene(time_slice=TimeSlice(start=0, end=1))
     for index, kind in enumerate(("human", "car", "head", "custom", None)):
         entity = Entity(id=EntityId(f"entity-{index}"), motion_state=MotionState.Moving)
@@ -341,6 +341,6 @@ def test_built_in_catalogs_draw_score_and_confidence_only_as_given(
     texts = [item.text for item in calls if isinstance(item, TextCall)]
     texts += [run.text for item in calls if isinstance(item, LabelCall) for run in item.content.runs if run.text]
     assert diagnostics == []
-    assert {"0.87", "87%", "2.50"} & set(texts) <= {shown}
+    assert {"0.87", "2.50"} & set(texts) <= {shown}
     if shown and path.stem in ("standard", "chunky", "glass"):
         assert texts.count(shown) == 4  # Every classified object; the unclassified one has neither value.
