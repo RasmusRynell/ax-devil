@@ -89,8 +89,10 @@ class RowActionGroup(Enum):
 class RowAction(Enum):
     """Something the user can do with a row, in the order a row's menu lists it, grouped by *group*.
 
-    Each action has its menu text and hover text; an *inline* one is also the button at the row's right, with its own
-    button text and icon.
+    Each action has its menu text and hover text; an *inline* one is also a button at the row's right, with its own
+    button text and icon, which is the whole button when the text is empty; the hover text of such a button falls back
+    to the menu text. ``ADD_STREAM`` adds to a camera the Workspace holds, so unlike ``ADD`` it does not mark the row
+    available.
     """
 
     OPEN = (
@@ -117,9 +119,10 @@ class RowAction(Enum):
         True,
         RowActionGroup.OPEN,
     )
-    START_STREAM = ("Start stream", "Start stream", None, "", True, RowActionGroup.OPEN)
-    STOP_STREAM = ("Stop stream", "Stop stream", None, "", True, RowActionGroup.OPEN)
-    ADD = ("Add", "Add", Icon.ADD, "", True, RowActionGroup.OPEN)
+    START_STREAM = ("Start stream", "", Icon.PLAY, "", True, RowActionGroup.OPEN)
+    STOP_STREAM = ("Stop stream", "", Icon.STOP, "", True, RowActionGroup.OPEN)
+    ADD = ("Add", "", Icon.ADD, "", True, RowActionGroup.OPEN)
+    ADD_STREAM = ("Add stream", "", Icon.ADD, "Add another stream from this camera", True, RowActionGroup.OPEN)
     INFORMATION = ("Information", "", None, "", False, RowActionGroup.INSPECT)
     EXPORT_VIDEO = ("Export video", "", None, "", False, RowActionGroup.INSPECT)
     HIDE = ("Hide", "", None, "Skip it in playback", False, RowActionGroup.VISIBILITY)
@@ -188,8 +191,14 @@ class WorkspaceBrowserRow:
     location: str | None = None
     detail: str = ""
     """The final muted text shown under the label; empty for none, which keeps the row one line high."""
-    wrap_detail: bool = False
-    """Whether the detail may take multiple lines instead of being elided."""
+    tag: str = ""
+    """A short neutral chip before the label, such as the protocol of a stream."""
+    aside: str = ""
+    """Muted text on the label line after the name, right-aligned; it elides before the name does."""
+    detail_is_warning: bool = False
+    """Whether the detail is drawn in the warning color."""
+    info: tuple[str, ...] = ()
+    """Muted lines shown under the row while a click on it has it opened."""
     facts: tuple[str, ...] = ()
     """Lines that open the hover text, starting with what kind of row this is."""
     actions: tuple[OfferedAction, ...] = ()
@@ -206,15 +215,17 @@ class WorkspaceBrowserRow:
     """What the Filter can hide the row by."""
     expanded_at_first: bool = False
     """Whether the row shows the rows under it until the user collapses it."""
+    glyph: Icon | None = None
+    """The icon drawn in place of the mark's, in the mark's color; None keeps the mark's."""
 
     def offered(self, action: RowAction) -> OfferedAction | None:
         """Return *action* as the row offers it, or None when it does not."""
         return next((offered for offered in self.actions if offered.action is action), None)
 
     @property
-    def inline_action(self) -> OfferedAction | None:
-        """Return the action shown as a button on the row, if it offers one."""
-        return next((offered for offered in self.actions if offered.action.inline), None)
+    def inline_actions(self) -> tuple[OfferedAction, ...]:
+        """Return the actions shown as buttons on the row, in menu order."""
+        return tuple(offered for offered in self.actions if offered.action.inline)
 
     @property
     def is_available(self) -> bool:
@@ -228,9 +239,10 @@ class WorkspaceBrowserRow:
 
     @property
     def mark(self) -> tuple[Icon, KindColor | StatusColor]:
-        """Return the icon and color role of the row's mark: its stream's state or else its kind; muted when idle."""
+        """Return the icon and color role of the row's mark: its stream's state or else its kind, with the row's glyph
+        for the icon if it has one; muted when idle."""
         icon, color = self.stream.mark if self.stream is not None else KIND_MARKS[self.icon_kind]
-        return icon, KindColor.MUTED if self.is_mark_muted else color
+        return self.glyph or icon, KindColor.MUTED if self.is_mark_muted else color
 
     @property
     def is_dimmed(self) -> bool:
@@ -239,15 +251,16 @@ class WorkspaceBrowserRow:
 
     @property
     def search_text(self) -> str:
-        """Return the text the search field matches: the label, detail and search terms."""
-        return " ".join(part for part in (self.label, self.detail, self.search_terms) if part)
+        """Return the text the search field matches: the tag, label, aside, detail and search terms."""
+        return " ".join(part for part in (self.tag, self.label, self.aside, self.detail, self.search_terms) if part)
 
     @property
     def tooltip(self) -> str:
-        """Return the hover text below the row's name: its facts, why it is unavailable, its location, whether
-        it is hidden from playback, and whether it is open."""
+        """Return the hover text below the row's name: its facts, its stream's state, why it is unavailable, its
+        location, whether it is hidden from playback, and whether it is open."""
         lines = [
             *self.facts,
+            self.stream.text if self.stream is not None else "",
             self.unavailable_reason or "",
             self.warning or "",
             self.location or "",

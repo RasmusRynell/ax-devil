@@ -23,6 +23,24 @@ def apply_env_hint(edit: QLineEdit, raw_value: str, *, mask: bool = False) -> No
         edit.setPlaceholderText(hint)
 
 
+_HANDLER_SECTIONS = {
+    LiveOverlayMode.RTSP: "rtsp",
+    LiveOverlayMode.MQTT: "analytics-mqtt",
+    LiveOverlayMode.WEBSOCKET: "analytics-websocket",
+}
+
+
+def configured_overlay(live_defaults: dict[str, Any]) -> tuple[LiveOverlayMode, str | None]:
+    """Return the overlay mode the live stream *live_defaults* name, and the decoder they name for it, if any."""
+    try:
+        mode = LiveOverlayMode.from_value(str(live_defaults.get("overlay_source", "none")))
+    except ValueError:
+        return LiveOverlayMode.NONE, None
+    section = live_defaults.get(_HANDLER_SECTIONS.get(mode, ""), {}) or {}
+    handler = section.get("data_stream_handler")
+    return mode, None if handler is None else str(handler)
+
+
 class TransportPages(QStackedWidget):
     """One page per live overlay mode, in ``LiveOverlayMode`` order, sized for the largest page.
 

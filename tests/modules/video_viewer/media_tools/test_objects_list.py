@@ -45,7 +45,7 @@ def test_rows_follow_the_displayed_frame_and_the_query(
     panel = make_panel(qtbot, render_catalog_selection)
     panel.update_scene(make_scene(make_entity("untracked:0:0"), make_entity("untracked:0:1")), make_frame(0), {})
     panel.update_scene(
-        make_scene(make_entity("untracked:1:0", conf=0.2), make_entity("untracked:1:1", "car")), make_frame(1), {}
+        make_scene(make_entity("untracked:1:0", score=0.2), make_entity("untracked:1:1", "car")), make_frame(1), {}
     )
     assert sorted(listed_ids(panel)) == ["untracked:1:0", "untracked:1:1"]
 
@@ -54,8 +54,38 @@ def test_rows_follow_the_displayed_frame_and_the_query(
     panel.update_scene(make_scene(make_entity("untracked:2:0", "car"), make_entity("untracked:2:1")), make_frame(2), {})
     assert listed_ids(panel) == ["untracked:2:0"]  # The query stays while frames change.
 
-    search_objects(panel, "conf>0.5")
+    search_objects(panel, "score>0.5")
     assert sorted(listed_ids(panel)) == ["untracked:2:0", "untracked:2:1"]  # Any attribute is searchable in this frame.
+
+
+def test_score_and_confidence_are_separate_columns_and_query_terms(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    panel = make_panel(qtbot, render_catalog_selection)
+    panel.update_scene(
+        make_scene(
+            make_entity("scored", score=0.87),
+            make_entity("sure", score=None, confidence=0.87),
+            make_entity("neither", score=None),
+        ),
+        make_frame(0),
+        {},
+    )
+    view = objects_view(panel)
+    assert view is not None
+    model = view.rows_model
+    titles = [column.title for column in model.columns]
+
+    def cell(title: str, row: int) -> str:
+        return "".join(model.column_texts(titles.index(title), range(row, row + 1)))
+
+    cells = {key: (cell("Score", n), cell("Conf", n)) for n, key in enumerate(listed_ids(panel))}
+    assert cells == {"scored": ("0.87", ""), "sure": ("", "87%"), "neither": ("", "")}
+
+    search_objects(panel, "confidence>0.8")  # Compares the fraction although the list shows a percentage.
+    assert listed_ids(panel) == ["sure"]
+    search_objects(panel, "score>0.8")
+    assert listed_ids(panel) == ["scored"]
 
 
 def test_filter_changes_reach_the_listed_frame_while_paused(
@@ -131,7 +161,7 @@ def test_object_page_steps_follow_the_listed_order(
 ) -> None:
     panel = make_panel(qtbot, render_catalog_selection)
     panel.update_scene(
-        make_scene(make_entity("a", conf=0.3), make_entity("b", conf=0.9), make_entity("c", conf=0.6)),
+        make_scene(make_entity("a", score=0.3), make_entity("b", score=0.9), make_entity("c", score=0.6)),
         make_frame(0),
         {},
     )
@@ -154,7 +184,7 @@ def test_the_selection_on_the_video_and_the_open_object_page_follow_each_other(
     display = FrameDisplay()
     qtbot.addWidget(display)
     panel.link_selection(display)
-    panel.update_scene(make_scene(make_entity("a", conf=0.3), make_entity("b", conf=0.9)), make_frame(0), {})
+    panel.update_scene(make_scene(make_entity("a", score=0.3), make_entity("b", score=0.9)), make_frame(0), {})
     shown = record_signal(panel.objectSelected)
     clicked = record_signal(display.objectSelected)
 
@@ -192,15 +222,15 @@ def test_object_page_steps_use_the_list_as_it_is_now(
     qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
 ) -> None:
     panel = make_panel(qtbot, render_catalog_selection)
-    panel.update_scene(make_scene(make_entity("a", conf=0.9), make_entity("b", conf=0.5)), make_frame(0), {})
+    panel.update_scene(make_scene(make_entity("a", score=0.9), make_entity("b", score=0.5)), make_frame(0), {})
     selected = record_signal(panel.objectSelected)
     click_object(panel, "a")
 
-    panel.update_scene(make_scene(make_entity("a", conf=0.9), make_entity("c", conf=0.5)), make_frame(1), {})
+    panel.update_scene(make_scene(make_entity("a", score=0.9), make_entity("c", score=0.5)), make_frame(1), {})
     click_button(panel, "Next in list")
     assert selected == ["a", "c"]  # "b" has left the frame.
 
-    panel.update_scene(make_scene(make_entity("c", conf=0.5)), make_frame(2), {})
+    panel.update_scene(make_scene(make_entity("c", score=0.5)), make_frame(2), {})
     click_button(panel, "Previous in list")  # The list no longer has "a" before it.
     previous_button = find_button(panel, "Previous in list")
     assert selected == ["a", "c"] and previous_button is not None and not previous_button.isEnabled()
@@ -361,7 +391,7 @@ def test_visible_rows_are_formatted_lazily_and_the_keyboard_cursor_follows_the_o
     monkeypatch.setattr(object_list_rows, "entity_summary", summary)
     panel = make_panel(qtbot, render_catalog_selection)
     panel.update_scene(
-        make_scene(*(make_entity(str(index), conf=index / 200) for index in range(200))), make_frame(0), {}
+        make_scene(*(make_entity(str(index), score=index / 200) for index in range(200))), make_frame(0), {}
     )
     view = objects_view(panel)
     assert view is not None
@@ -371,7 +401,7 @@ def test_visible_rows_are_formatted_lazily_and_the_keyboard_cursor_follows_the_o
     view.setCurrentIndex(model.index(model.row_of(ObjectPageKey("199")), 0))
     view.setFocus()
     panel.update_scene(
-        make_scene(*(make_entity(str(index), conf=1 - index / 200) for index in range(200))), make_frame(1), {}
+        make_scene(*(make_entity(str(index), score=1 - index / 200) for index in range(200))), make_frame(1), {}
     )
     assert model.key_at(view.currentIndex().row()) == ObjectPageKey("199")
     selected = record_signal(panel.objectSelected)

@@ -64,11 +64,11 @@ def test_frame_alignment_tracking_and_empty_frames_survive_cache_and_source_chan
                 first = _load(provider, 0).entities[EntityId("7")].observations[0]
                 assert first.frame_number == 0
                 assert first.timestamp is None
-                assert first.confidence is None
                 assert first.geometry.as_xywh() == pytest.approx((0.1, 0.2, 0.3, 0.4))
                 classification = first.primary_classification
                 assert classification is not None
                 assert classification.type == "person"
+                assert (classification.score, classification.confidence) == (None, None)
                 assert classification.attribute_value("mask_color") == [155, 255, 255]
                 assert classification.attribute_value("iscrowd") == 0
                 assert not _load(provider, 1).entities

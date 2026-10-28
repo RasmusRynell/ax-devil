@@ -234,9 +234,10 @@ class WorkspaceSession(QObject):
         if item is not None:
             self.add_items([item])
 
-    def add_live_stream(self) -> None:
-        """Ask for a camera's details, add it as a new item, and start its stream beside the open viewers."""
-        with AddLiveStreamDialog(self._window) as dialog:
+    def add_live_stream(self, camera: LiveStreamItem | None = None) -> None:
+        """Ask for a stream's details, starting from those of *camera*'s stream when given, add it as a new item, and
+        start it beside the open viewers."""
+        with AddLiveStreamDialog(self._window, camera=camera) as dialog:
             if dialog.exec() == AddLiveStreamDialog.DialogCode.Accepted:
                 result = dialog.get_result()
                 if result is not None:

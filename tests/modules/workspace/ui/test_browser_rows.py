@@ -28,7 +28,7 @@ from tests.helpers.workspace import content_item, store_with
 
 def inline_action(row: WorkspaceBrowserRow) -> RowAction | None:
     """Return the action *row* shows as a button, if any."""
-    return None if row.inline_action is None else row.inline_action.action
+    return next((offered.action for offered in row.inline_actions), None)
 
 
 def test_open_items_are_inputs_to_browser_projection() -> None:
@@ -204,7 +204,7 @@ def test_a_live_rows_detail_and_mark_follow_its_stream_and_its_name_is_not_repea
     failing, streaming = item_rows(store, opened, statuses)
     (section,) = browser_sections(store, opened, statuses)
 
-    assert failing.detail == "camera.local · Failed: Unauthorized", "the most urgent viewer wins"
+    assert failing.detail == "camera.local · Unauthorized", "the most urgent viewer wins"
     assert failing.mark == (Icon.WARNING, StatusColor.WARNING)
     (failing_section,) = browser_sections(store, opened, {named.content_id: statuses[named.content_id]})
     assert failing_section.mark_color is KindColor.LIVE, "a stream is live though the row shows the failed one"

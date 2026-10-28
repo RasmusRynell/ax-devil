@@ -20,6 +20,7 @@ class Icon(Enum):
 
     PLAY = ("play", True)
     PAUSE = ("pause", True)
+    STOP = ("square", True)
     STEP_BACK = ("chevron-left", False)
     STEP_FORWARD = ("chevron-right", False)
     MINIMIZE = ("minus", False)
@@ -42,6 +43,7 @@ class Icon(Enum):
     RETRY = ("rotate-cw", False)
     PLAYLIST = ("list-video", False)
     OVERLAY = ("layers", False)
+    VIDEO_ONLY = ("circle-play", False)
     WARNING = ("triangle-alert", False)
     BROWSE = ("folder", False)
     SETTINGS = ("settings", False)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
     ColorClassification,
+    Confidence,
     Entity,
     EntityId,
     ImageVelocity,
@@ -25,8 +27,9 @@ from ax_devil.modules.scene.model import (
     Score,
     TimeSlice,
 )
-from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS, SceneRenderCatalog
 from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader
+from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic
 from ax_devil.modules.scene.rendering.visibility import OverlayFeature, OverlayVisibility
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from tests.catalog_helpers import CLASSIC_CATALOG_PATH, classic_catalog, classic_variant
@@ -35,6 +38,7 @@ from tests.drawing_helpers import (
     BoxCall,
     CircleCall,
     DrawCalls,
+    LabelCall,
     LineCall,
     TextCall,
     record_scene,
@@ -302,3 +306,41 @@ def test_rendering_entities_together_matches_rendering_each_alone() -> None:
         alone.extend(_render_built_in(single))
     assert len(together) == len(alone) > 0
     assert sorted(map(repr, together)) == sorted(map(repr, alone))
+
+
+@pytest.mark.parametrize("path", BUILT_IN_CATALOG_PATHS, ids=lambda path: path.stem)
+@pytest.mark.parametrize(
+    "score,confidence,shown",
+    [(0.87, None, "0.87"), (None, 0.87, "87%"), (2.5, None, "2.50"), (None, None, None)],
+    ids=["score", "confidence", "score-out-of-range", "neither"],
+)
+def test_built_in_catalogs_draw_score_and_confidence_only_as_given(
+    path: Path, score: float | None, confidence: float | None, shown: str | None
+) -> None:
+    """A score reads as a plain number and a confidence as a percentage; an absent one draws nothing."""
+    scene = Scene(time_slice=TimeSlice(start=0, end=1))
+    for index, kind in enumerate(("human", "car", "head", "custom", None)):
+        entity = Entity(id=EntityId(f"entity-{index}"), motion_state=MotionState.Moving)
+        classification = (
+            []
+            if kind is None
+            else [
+                Classification(
+                    kind,
+                    None if score is None else Score(score),
+                    confidence=None if confidence is None else Confidence(confidence),
+                )
+            ]
+        )
+        geometry = BoundingBox.from_xywh(0.05 + index * 0.18, 0.3, 0.15, 0.4)
+        entity.add_observation(Observation(geometry=geometry, classification=classification, frame_number=0))
+        scene.add_entity(entity)
+    diagnostics: list[CatalogDiagnostic] = []
+    catalog = SceneRenderCatalogLoader().validate_document(json.loads(path.read_text(encoding="utf-8")))
+    calls = record_scene(catalog, scene, RenderContext.create(1280, 720), diagnostics=diagnostics)
+    texts = [item.text for item in calls if isinstance(item, TextCall)]
+    texts += [run.text for item in calls if isinstance(item, LabelCall) for run in item.content.runs if run.text]
+    assert diagnostics == []
+    assert {"0.87", "87%", "2.50"} & set(texts) <= {shown}
+    if shown and path.stem in ("standard", "chunky", "glass"):
+        assert texts.count(shown) == 4  # Every classified object; the unclassified one has neither value.

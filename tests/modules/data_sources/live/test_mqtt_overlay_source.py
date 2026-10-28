@@ -16,7 +16,7 @@ from ax_devil.core.data_types import OverlayData
 from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.data_sources.live import mqtt_discovery, mqtt_overlay_source
 from ax_devil.modules.data_sources.live.mqtt_overlay_source import MQTTOverlaySource
-from ax_devil.modules.scene.model import EntityId, Scene
+from ax_devil.modules.scene.model import EntityId, Scene, Score
 from ax_devil.plugins.decoders.adf_v1.frame import ADFFrameV1Decoder
 
 
@@ -154,7 +154,7 @@ def test_mqtt_delivery_recovers_after_malformed_payload(qtbot: QtBot, broker: _B
     assert set(overlay.content.entities) == {EntityId("42")}
     classification = overlay.content.entities[EntityId("42")].observations[0].classification[0]
     assert classification.type == "human"
-    assert classification.score.value == 0.9
+    assert classification.score == Score(0.9)
     assert broker.events[-1] == "stop"
 
 

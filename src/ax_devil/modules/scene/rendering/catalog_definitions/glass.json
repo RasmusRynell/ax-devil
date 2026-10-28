@@ -640,7 +640,7 @@
     },
     "score_label": {
       "label": "Score label",
-      "feature": "confidence",
+      "feature": "score",
       "description": "The detection score as a meter and a number on a dark pill under the box; the meter is in the class color, red below the low score.",
       "parameters": {
         "geometry": {
@@ -912,6 +912,328 @@
                     },
                     "precision": 2,
                     "hide_zero": false
+                  }
+                },
+                "color": [
+                  185,
+                  192,
+                  200
+                ],
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": [
+                  14,
+                  16,
+                  20
+                ],
+                "alpha": 205
+              },
+              "padding_x": {
+                "value": 8,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 2,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 9,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 6,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "confidence_label": {
+      "label": "Confidence label",
+      "feature": "confidence",
+      "description": "The detection confidence as a meter and a percentage on a dark pill under the right end of the box; the meter is in the class color, red below the low confidence.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Meter color",
+          "description": "The class color.",
+          "required": true
+        },
+        "confidence": {
+          "type": "number",
+          "label": "Confidence",
+          "required": true
+        },
+        "low": {
+          "type": "number",
+          "label": "Low confidence",
+          "description": "Below this the meter turns red.",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
+        },
+        "low_color": {
+          "type": "rgb",
+          "label": "Low confidence color",
+          "default": [
+            255,
+            107,
+            107
+          ]
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 11,
+            "unit": "px"
+          }
+        },
+        "shift": {
+          "type": "length",
+          "label": "Shift",
+          "default": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "room": {
+          "call": "gt",
+          "args": {
+            "left": {
+              "call": "sub",
+              "args": {
+                "left": 1,
+                "right": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "y"
+                        ]
+                      },
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "h"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "right": {
+              "call": "div",
+              "args": {
+                "numerator": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "value": 18,
+                        "unit": "px"
+                      },
+                      {
+                        "value": 4,
+                        "unit": "px"
+                      }
+                    ]
+                  }
+                },
+                "denominator": {
+                  "value": 1,
+                  "unit": "image_height"
+                }
+              }
+            }
+          }
+        },
+        "position": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "value": 4,
+                  "unit": "px"
+                }
+              }
+            },
+            "else": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "value": 4,
+                        "unit": "px"
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "anchor": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": "top-right",
+            "else": "bottom-right"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "ref": [
+                "values",
+                "position"
+              ]
+            },
+            "anchor": {
+              "ref": [
+                "values",
+                "anchor"
+              ]
+            },
+            "runs": [
+              {
+                "bar": {
+                  "ref": [
+                    "parameters",
+                    "confidence"
+                  ]
+                },
+                "color": {
+                  "call": "if",
+                  "args": {
+                    "condition": {
+                      "call": "gt",
+                      "args": {
+                        "left": {
+                          "ref": [
+                            "parameters",
+                            "low"
+                          ]
+                        },
+                        "right": {
+                          "ref": [
+                            "parameters",
+                            "confidence"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "ref": [
+                        "parameters",
+                        "low_color"
+                      ]
+                    },
+                    "else": {
+                      "ref": [
+                        "parameters",
+                        "color"
+                      ]
+                    }
+                  }
+                },
+                "weight": "regular"
+              },
+              {
+                "text": {
+                  "call": "percent_text",
+                  "args": {
+                    "value": {
+                      "ref": [
+                        "parameters",
+                        "confidence"
+                      ]
+                    },
+                    "precision": 0
                   }
                 },
                 "color": [
@@ -2106,6 +2428,18 @@
           {
             "label": "Score",
             "template": "score_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2124,6 +2458,43 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                208,
+                138
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -2259,6 +2630,18 @@
           {
             "label": "Score",
             "template": "score_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2277,6 +2660,43 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                61,
+                155,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -2436,6 +2856,18 @@
           {
             "label": "Score",
             "template": "score_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2454,6 +2886,43 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                255,
+                176,
+                32
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -2630,6 +3099,18 @@
           {
             "label": "Score",
             "template": "score_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2648,6 +3129,43 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_label",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                181,
+                123,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }

@@ -1805,11 +1805,26 @@
             "call": "color_ramp",
             "args": {
               "value": {
-                "ref": [
-                  "scene",
-                  "classification",
-                  "score"
-                ]
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "confidence"
+                      ]
+                    },
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "score"
+                      ]
+                    },
+                    0.5
+                  ]
+                }
               },
               "stops": [
                 {
@@ -1850,6 +1865,27 @@
                     179,
                     255,
                     204
+                  ]
+                }
+              ]
+            }
+          },
+          "bar_value": {
+            "call": "coalesce",
+            "args": {
+              "values": [
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                },
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
                   ]
                 }
               ]
@@ -1907,6 +1943,17 @@
           {
             "label": "Confidence bar",
             "template": "confidence_bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1917,9 +1964,8 @@
               },
               "confidence": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }
@@ -2087,6 +2133,17 @@
           {
             "label": "Confidence bar",
             "template": "confidence_bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2097,9 +2154,8 @@
               },
               "confidence": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }
@@ -2214,7 +2270,30 @@
               }
             }
           }
-        ]
+        ],
+        "values": {
+          "bar_value": {
+            "call": "coalesce",
+            "args": {
+              "values": [
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                },
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              ]
+            }
+          }
+        }
       },
       {
         "id": "human",
@@ -2257,11 +2336,26 @@
             "call": "color_ramp",
             "args": {
               "value": {
-                "ref": [
-                  "scene",
-                  "classification",
-                  "score"
-                ]
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "confidence"
+                      ]
+                    },
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "score"
+                      ]
+                    },
+                    0.5
+                  ]
+                }
               },
               "stops": [
                 {
@@ -2302,6 +2396,27 @@
                     179,
                     255,
                     204
+                  ]
+                }
+              ]
+            }
+          },
+          "bar_value": {
+            "call": "coalesce",
+            "args": {
+              "values": [
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                },
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
                   ]
                 }
               ]
@@ -2359,6 +2474,17 @@
           {
             "label": "Confidence bar",
             "template": "confidence_bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2369,9 +2495,8 @@
               },
               "confidence": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }
@@ -2590,6 +2715,27 @@
               },
               "fraction": 0.2
             }
+          },
+          "bar_value": {
+            "call": "coalesce",
+            "args": {
+              "values": [
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                },
+                {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              ]
+            }
           }
         },
         "steps": [
@@ -2642,6 +2788,17 @@
           {
             "label": "Confidence bar",
             "template": "confidence_bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2652,9 +2809,8 @@
               },
               "confidence": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }

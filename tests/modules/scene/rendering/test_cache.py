@@ -10,6 +10,7 @@ from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
+    Confidence,
     Entity,
     EntityId,
     KnownClassificationType,
@@ -127,7 +128,7 @@ def _classified_scene(kind: KnownClassificationType = KnownClassificationType.Hu
         Observation(
             geometry=BoundingBox.from_xywh(0.1, 0.2, 0.3, 0.4),
             classification=[
-                Classification(type=kind.value, score=Score(0.9)),
+                Classification(type=kind.value, score=Score(0.9), confidence=Confidence(0.87)),
             ],
             frame_number=0,
         )
@@ -142,7 +143,8 @@ def test_hover_hit_summarizes_the_entity_once_and_omits_what_the_decoder_did_not
     first = overlay.get_hit_by_id("object-1")
 
     assert first is not None
-    assert (first.label, first.detail, first.color_key) == ("object-1 human", "conf 0.90", "human")  # No speed.
+    # No speed.
+    assert (first.label, first.detail, first.color_key) == ("object-1 human", "score 0.90 · confidence 87%", "human")
     assert overlay.get_hit_by_id("object-1") is first
 
 

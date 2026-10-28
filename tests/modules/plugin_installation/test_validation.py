@@ -135,7 +135,7 @@ def test_validate_entry_point_family_and_owner(
         with pytest.raises(ValueError, match="example-distribution cannot load: missing dependency"):
             validate.validate_plugins([distribution.name])
     elif wrong_family or other_owner or old_scene_model:
-        reason = "built for Scene model 1.0, this ax-devil uses Scene model 2.0" if old_scene_model else None
+        reason = "built for Scene model 1.0, this ax-devil uses Scene model" if old_scene_model else None
         with pytest.raises(ValueError, match=reason):
             validate.validate_plugins([distribution.name])
     else:

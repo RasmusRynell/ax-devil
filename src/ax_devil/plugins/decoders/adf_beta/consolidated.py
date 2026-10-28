@@ -94,7 +94,8 @@ def _classifications_from_classes(classes_raw: Any) -> list[Classification]:
     classifications: list[Classification] = []
     for cls_data in classes_raw or []:
         cls_type = cls_data["type"]
-        cls_score = float(cls_data["score"])
+        score_raw = cls_data.get("score")
+        cls_score = Score(float(score_raw)) if score_raw is not None else None
 
         mapped_type = ADF_CLASSIFICATION_MAP.get(cls_type, cls_type.lower())
 
@@ -103,7 +104,7 @@ def _classifications_from_classes(classes_raw: Any) -> list[Classification]:
         classifications.append(
             Classification(
                 type=mapped_type,
-                score=Score(cls_score),
+                score=cls_score,
                 attributes=attrs,
             )
         )
