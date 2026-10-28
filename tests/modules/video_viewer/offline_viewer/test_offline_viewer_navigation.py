@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QPoint
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
@@ -153,6 +153,45 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         deferred_background.finish_next()
         QCoreApplication.processEvents()
         assert nav_bar.mapTo(widget, QPoint(0, 0)) == baseline
+
+    def test_stepping_keeps_focus_where_the_user_has_it_while_the_entry_loads(
+        self, qtbot: QtBot, deferred_background: DeferredBackground
+    ) -> None:
+        """Focus on the video returns to it after a step; focus the user moved elsewhere meanwhile is not taken back."""
+        window = QWidget()
+        qtbot.addWidget(window)
+        layout = QVBoxLayout(window)
+        search = QLineEdit()
+        layout.addWidget(search)
+        widget = OfflineVideoViewerWidget(
+            playlist_content("A", "B", "C"), render_catalog_manager=self._render_catalog_manager
+        )
+        layout.addWidget(widget)
+        window.show()
+        window.activateWindow()
+        qtbot.waitUntil(window.isActiveWindow)
+        widget.on_workspace_attached()
+        deferred_background.finish_next()
+        display = lane_displays(widget)[0]
+        window.activateWindow()  # Focus needs an active window, and Xvfb has no window manager.
+        qtbot.waitUntil(window.isActiveWindow)
+        display.viewport.setFocus()
+        qtbot.waitUntil(display.viewport.hasFocus)
+
+        widget.step_next_entry()
+        deferred_background.finish_next()
+
+        assert shown_entry_index(widget) == 1
+        focus = QApplication.focusWidget()
+        assert focus is not None and widget.isAncestorOf(focus)
+
+        widget.step_next_entry()
+        search.setFocus()
+        qtbot.waitUntil(search.hasFocus)
+        deferred_background.finish_next()
+
+        assert shown_entry_index(widget) == 2 and len(lane_displays(widget)) == 1
+        assert QApplication.focusWidget() is search
 
     def test_playlist_navigation_skips_disabled_entries(self, qtbot: QtBot) -> None:
         playlist = playlist_content("A", "B", "C")
