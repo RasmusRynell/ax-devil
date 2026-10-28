@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from ax_devil.core.cancellation import NEVER
-from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol, RtspRoute
 from ax_devil.modules.workspace.core import (
     Bookmark,
     BookmarkKind,
@@ -70,6 +70,7 @@ def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path)
             websocket_channel_id=3,
             device_port=8080,
             rtsp_port=8554,
+            rtsp_route=RtspRoute.WEB_API,
         ),
         PlaylistItem(label="Exp 3", resolver="mot_challenge", settings={"root": "runs/exp3", "sequences": ["a", "b"]}),
     )

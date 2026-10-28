@@ -10,7 +10,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QPushButton, QScrollArea
 from pytestqt.qtbot import QtBot
 
-from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol, RtspRoute
 from ax_devil.modules.workspace.core import LiveMQTTOverlaySourceSpec, LiveOverlayMode, LiveStreamItem, LiveVideoContent
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
@@ -249,6 +249,7 @@ def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
         device_api_protocol=DeviceProtocol.HTTP,
         device_port=8080,
         rtsp_port=8554,
+        rtsp_route=RtspRoute.WEB_API,
     )
     dialog = AddLiveStreamDialog(existing=item)
     qtbot.addWidget(dialog)

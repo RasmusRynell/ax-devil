@@ -22,6 +22,20 @@ class DeviceProtocol(str, Enum):
         return "wss" if self is DeviceProtocol.HTTPS else "ws"
 
 
+class RtspRoute(str, Enum):
+    """How live video reaches the device's RTSP server."""
+
+    DIRECT = "direct"
+    """Connect to the RTSP port."""
+    WEB_API = "web_api"
+    """Tunnel RTSP through the web API's protocol and port, for networks where only web ports are open."""
+
+    @property
+    def label(self) -> str:
+        """Return the name shown for this route."""
+        return "Direct" if self is RtspRoute.DIRECT else "Via web API"
+
+
 @dataclass(frozen=True)
 class DeviceConnection:
     """The device web API to talk to and how to sign in; port 0 means the protocol's standard port.

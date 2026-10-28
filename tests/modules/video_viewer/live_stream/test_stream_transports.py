@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol, RtspRoute
 from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.workspace.core import (
@@ -87,6 +87,19 @@ def test_separate_overlay_spec_opens_its_own_transport_with_device_settings(
     )
     assert controller.overlay_source is overlay
     assert controller.get_filter_config() is overlay.filter_config
+
+
+def test_web_api_route_tunnels_video_through_the_device_web_api(
+    make_controller: MakeController, live_transports: LiveTransports
+) -> None:
+    """Where only web ports are open, video and DataHub overlays reach the device through the same web API port."""
+    content = make_live_content(LiveWebSocketOverlaySourceSpec(handler_type="LIVE", topic="com.axis.scene.frame.v1"))
+    stream = replace(content.source_spec, device_port=8443, rtsp_port=8554, rtsp_route=RtspRoute.WEB_API)
+    make_controller(replace(content, source_spec=stream))
+
+    (video,), (overlay,) = live_transports
+    assert video.url.startswith("https://root:pass@camera.local:8443/axis-media/media.amp?")
+    assert overlay.options["device"] == DeviceConnection("camera.local", DeviceProtocol.HTTPS, 8443, "root", "pass")
 
 
 @pytest.mark.parametrize("overlay_spec", [None, RTSP_OVERLAY, MQTT_OVERLAY], ids=["none", "rtsp", "mqtt"])

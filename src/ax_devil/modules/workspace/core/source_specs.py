@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
-from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol, RtspRoute
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
@@ -131,6 +131,7 @@ class LiveRTSPStreamSpec:
     device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS
     device_port: int = 0
     rtsp_port: int = 554
+    rtsp_route: RtspRoute = RtspRoute.DIRECT
 
     def connection(self, timeout_s: float) -> DeviceConnection:
         """Return how to reach and sign in to the device's web API, giving up after *timeout_s* seconds."""
@@ -154,6 +155,7 @@ class LiveRTSPStreamSpec:
             ("device API protocol", self.device_api_protocol.name),
             ("device port", self.device_port or "(standard)"),
             ("RTSP port", self.rtsp_port),
+            ("RTSP route", self.rtsp_route.label),
         )
 
 

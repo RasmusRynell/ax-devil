@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from ax_devil.core.device_connection import DeviceProtocol
+from ax_devil.core.device_connection import DeviceProtocol, RtspRoute
 from ax_devil.modules.workspace.core.content import LiveVideoContent, OverlayContent, SeekableVideoContent
 from ax_devil.modules.workspace.core.source_specs import (
     FileOverlaySourceSpec,
@@ -124,6 +124,7 @@ class WorkspaceIntake:
         device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS,
         device_port: int = 0,
         rtsp_port: int = 554,
+        rtsp_route: RtspRoute = RtspRoute.DIRECT,
     ) -> LiveVideoContent:
         """Create live Workspace video content after validating overlay selection."""
         if not host:
@@ -163,6 +164,7 @@ class WorkspaceIntake:
             device_api_protocol=device_api_protocol,
             device_port=device_port,
             rtsp_port=rtsp_port,
+            rtsp_route=rtsp_route,
         )
         overlays: tuple[OverlayContent, ...] = ()
 
