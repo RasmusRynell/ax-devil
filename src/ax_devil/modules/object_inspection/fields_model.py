@@ -18,7 +18,7 @@ from PySide6.QtCore import (
 
 from ax_devil.modules.data_sources.scene_history import FrameEvent
 from ax_devil.modules.object_inspection.pinned_fields import FieldId, PinnedFields
-from ax_devil.modules.object_inspection.rows import EventRow, Row, field_row, unavailable_row
+from ax_devil.modules.object_inspection.rows import EventRow, Row, field_rows, unavailable_row
 from ax_devil.modules.scene.inspection import FieldGroup, InspectionField, entity_fields
 from ax_devil.modules.scene.model import Entity
 
@@ -46,7 +46,7 @@ def field_sections(entity: Entity) -> tuple[Section, ...]:
     return tuple(
         Section(
             group.title,
-            tuple(field_row(item, group.title) for item in items),
+            tuple(field_rows(items, group.title)),
             group.folded_by_default,
             (lambda items=items: _json_of(items)) if group is FieldGroup.RAW else None,
         )

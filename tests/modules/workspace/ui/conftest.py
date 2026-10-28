@@ -12,6 +12,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
+from ax_devil.modules.workspace.core import LiveStreamItem
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
@@ -55,13 +56,13 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
     qtbot.addWidget(center)
     scanner = Scanner()
     checker = Checker()
-    add_stream_requests: list[None] = []
+    add_stream_requests: list[LiveStreamItem | None] = []
     controller = LiveViewController(
         view,
         workspace,
         store,
         jobs,
-        lambda: add_stream_requests.append(None),
+        add_stream_requests.append,
         scan=scanner,
         parent=workspace,
         check=checker,

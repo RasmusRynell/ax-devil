@@ -8,6 +8,8 @@ from pathlib import Path
 from threading import Event
 
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QCheckBox, QLineEdit, QPushButton
 from pytestqt.qtbot import QtBot
 
@@ -15,16 +17,18 @@ from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.background_jobs import BackgroundJobs
 from ax_devil.modules.chrome.menu_button import MenuButton
+from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.workspace.core import ItemResolution, Workspace, WorkspaceItem
+from ax_devil.modules.workspace.core import ItemResolution, LiveStreamItem, Workspace, WorkspaceItem
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.live_view_controller import LiveViewController
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
+from ax_devil.modules.workspace.ui.source_row import SourceRow
 from ax_devil.modules.workspace.ui.split_view import SplitView
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
-from tests.helpers.section_tree import press, row, row_action, row_texts, shown_rows, texts
+from tests.helpers.section_tree import row_action, row_texts, shown_rows, texts
 
 LIVE_VIEWER = "ax_devil.modules.video_viewer.live_video_viewer.LiveVideoViewerWidget"
 
@@ -130,8 +134,8 @@ class Live:
     resolutions: HeldResolver
     controller: LiveViewController
     checker: Checker
-    add_stream_requests: list[None]
-    """One entry for each time the Add stream button asked to add a camera."""
+    add_stream_requests: list[LiveStreamItem | None]
+    """What each request to add a stream came with: the stream of the camera to add from, or None from the button."""
 
     def wait_for_scan(self) -> None:
         """Wait until the scan under way has finished and the view shows its outcome."""
@@ -141,17 +145,46 @@ class Live:
         """Make *items* the workspace, opening nothing, as restoring one does."""
         self.store.replace_workspace(Workspace(items=items))
 
+    def listed(self) -> dict[str, SourceRow]:
+        """Return each listed row by its name, a stream's after its camera's and a slash, in order."""
+        listed: dict[str, SourceRow] = {}
+        camera = ""
+        for widget in shown_rows(self.view.tree):
+            name = row_texts(widget)[0]
+            if widget.row.item is None:
+                camera = name
+            listed[name if widget.row.item is None else f"{camera}/{name}"] = widget
+        return listed
+
     def rows(self) -> dict[str, str]:
-        """Return each listed row's title and its action, empty for none, in order."""
-        return {row_texts(row)[0]: row_action(row) for row in shown_rows(self.view.tree)}
+        """Return each listed row's name and its action, empty for none, in order."""
+        return {name: row_action(widget) for name, widget in self.listed().items()}
 
-    def detail(self, title: str) -> str:
-        """Return the detail shown under the row named *title*, with its unbreakable spaces plain."""
-        return row(self.view.tree, title).row.detail.replace("\u00a0", " ")
+    def streams(self) -> dict[str, str]:
+        """Return the listed rows of streams by their names, with their actions, in order."""
+        return {name: action for name, action in self.rows().items() if "/" in name}
 
-    def press(self, title: str) -> None:
-        """Press the action of the row titled *title*."""
-        press(self.view.tree, title)
+    def cameras(self) -> list[str]:
+        """Return the names of the listed rows of cameras, those in the workspace and those found, in order."""
+        return [name for name in self.rows() if "/" not in name]
+
+    def detail(self, name: str) -> str:
+        """Return the muted text the row *name* shows after its name."""
+        return " · ".join(row_texts(self.listed()[name])[1:])
+
+    def row(self, name: str) -> SourceRow:
+        """Return the listed row *name*."""
+        return self.listed()[name]
+
+    def click(self, name: str) -> None:
+        """Click the row *name* itself, which opens or closes its information."""
+        widget = self.row(name)
+        QTest.mouseClick(widget, Qt.MouseButton.LeftButton, pos=widget.rect().center())
+
+    def press(self, name: str) -> None:
+        """Press the action of the row *name*."""
+        [button] = self.row(name).findChildren(SmallButton)
+        button.click()
 
     def button(self, text: str) -> QPushButton:
         """Return the button labelled *text*, leaving out one the tree replaced and hid but has not deleted yet."""

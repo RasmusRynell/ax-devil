@@ -109,13 +109,13 @@ def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range(
     }
     assert items[("type",)].value == "bus"
     assert items[("attributes", "make")].value == "volvo"
-    assert items[("candidates", "car")].fraction == 0.69
-    assert items[("candidates", "bus")].fraction is None
-    assert items[("candidates", "bus", "attributes", "make")].value == "volvo"
-    assert [path[1] for path in items if path[0] == "candidates" and len(path) == 2] == ["bus", "car", "truck"]
+    assert items[("candidates", "car", "score")].fraction == 0.69
+    assert items[("candidates", "bus", "score")].fraction is None
+    assert ("candidates", "bus", "attributes", "make") not in items
+    assert [path[1] for path in items if path[0] == "candidates" and path[2:] == ("score",)] == ["bus", "car", "truck"]
 
 
-def test_color_candidates_with_one_name_stay_distinguishable_and_searchable() -> None:
+def test_colors_are_one_field_each_and_stay_searchable_by_channel() -> None:
     entity = _inspection_entity()
     observation = entity.latest_observation
     assert observation is not None
@@ -126,20 +126,14 @@ def test_color_candidates_with_one_name_stay_distinguishable_and_searchable() ->
     observation.classification[2].attributes = [Attribute("color", colors)]
 
     fields = entity_record(entity).fields
-    assert fields["classification.candidates.bus.attributes.color.RGB"] == (0.9, 0.1)
-    assert fields["classification.candidates.bus.attributes.color.RGB.rgb.r"] == (200, 0)
+    assert fields["classification.attributes.color.RGB"] == (0.9, 0.1)
+    assert fields["classification.attributes.color.RGB.rgb.r"] == (200, 0)
+    assert [item.rgb for item in dict(entity_fields(entity))[FieldGroup.CLASSIFICATION] if item.rgb] == [
+        RGB(200, 0, 0),
+        RGB(0, 0, 200),
+    ]
     assert compile_query("rgb.b>=100").matches(entity_record(entity))
     assert not compile_query("rgb.g>0").matches(entity_record(entity))
-
-
-def test_conf_falls_back_to_primary_score_unless_observation_reports_confidence() -> None:
-    entity = _inspection_entity()
-    assert entity_summary(entity).conf == 7.5
-    observation = entity.latest_observation
-    assert observation is not None
-    observation.confidence = Score(0.97)
-    assert entity_summary(entity).conf == 0.97
-    assert entity_record(entity).fields["classification.conf"] == (0.97,)
 
 
 def test_entity_record_exposes_debug_paths_and_never_derives_speed() -> None:

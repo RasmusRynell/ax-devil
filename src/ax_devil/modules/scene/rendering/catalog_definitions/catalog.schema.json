@@ -61,6 +61,7 @@
               "outlines",
               "ids",
               "class_names",
+              "score",
               "confidence",
               "speed",
               "movement",
@@ -462,6 +463,7 @@
         "mul",
         "number_text",
         "offset_point",
+        "percent_text",
         "pick_color",
         "place_box",
         "resize_box",
@@ -484,6 +486,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -533,6 +536,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -586,6 +590,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -635,6 +640,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -684,6 +690,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -733,6 +740,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -786,6 +794,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -843,6 +852,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -901,6 +911,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -1685,6 +1696,35 @@
                 "value",
                 "precision",
                 "hide_zero"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "call",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "const": "percent_text"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "$ref": "#/$defs/expression"
+                },
+                "precision": {
+                  "$ref": "#/$defs/expression"
+                }
+              },
+              "required": [
+                "value",
+                "precision"
               ],
               "additionalProperties": false
             }

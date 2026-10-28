@@ -6,18 +6,19 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import cast
 
-from PySide6.QtCore import QPoint, QSize, Qt, Signal
-from PySide6.QtGui import QGuiApplication, QKeyEvent, QResizeEvent
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QGuiApplication, QKeyEvent
 from PySide6.QtWidgets import QFrame, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.tokens import Space
+from ax_devil.modules.workspace.ui.branch_tree import FirstLineBranchTree
 from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
-    RowAction,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
+from ax_devil.modules.workspace.ui.row_keys import key_action, open_action
 from ax_devil.modules.workspace.ui.row_menu import show_row_menu
 from ax_devil.modules.workspace.ui.row_queries import RowPredicate, count_shown, holds_open_row, sections_updatable
 from ax_devil.modules.workspace.ui.section_heading import SectionHeading, heading_look, section_accessible_text
@@ -29,30 +30,21 @@ ROW_ROLE = Qt.ItemDataRole.UserRole
 _HIDDEN_ROLE = Qt.ItemDataRole.UserRole + 1
 """The data role holding, on a section's item, how many of its rows the filter leaves out."""
 
-_KEY_ACTIONS = {
-    Qt.Key.Key_Return: RowAction.OPEN,
-    Qt.Key.Key_Enter: RowAction.OPEN,
-    Qt.Key.Key_F2: RowAction.EDIT,
-    Qt.Key.Key_Delete: RowAction.REMOVE,
-}
-"""The action each key asks of the selected row; Ctrl opens to the side."""
 
-
-class SectionTree(QTreeWidget):
+class SectionTree(FirstLineBranchTree):
     """Show browser sections, and report what the user does with their rows.
 
     A click on a section's caption folds or unfolds it, and the fold survives ``set_sections``. A folded section opens
     for a search with matches in it, and for a row of it that turns open, until that row closes or the user folds it
     again; neither changes the fold the user chose. A section with no row shown is hidden, unless it is always shown
     (it has an action, or has no rows and its kind has an empty text to say instead) or the filter leaves out rows the
-    search would show; the caption counts the rows the filter leaves out. Rows expand and collapse with Qt's branch
-    arrows, and keep that state across
-    ``set_sections`` by row id; a row that starts expanded, such as a playlist, expands when it first appears. A row
-    that turns open is revealed. ``set_sections`` keeps the items and widgets of rows whose id and drawn values are
-    unchanged, so a row's id must be stable; it builds them again only when the sections or the order of the rows
-    they keep change. Row widgets are built for rows that can first be seen or whose look
-    changed, so a collapsed row builds the widgets of its rows only once it is expanded; filtering reads row data, never
-    widgets.
+    search would show; the caption counts the rows it leaves out. Rows expand and collapse with Qt's branch
+    arrows, and keep that state across ``set_sections`` by row id; a row that starts expanded, such as a playlist,
+    expands when it first appears. A row that turns open is revealed. A click on a row with ``info`` shows those lines
+    under it, closing the row opened before; a second click closes it. ``set_sections`` keeps the items and widgets
+    of rows whose id and drawn values are unchanged, so a row's id must be stable, and builds them again only when the
+    sections or the order of the rows they keep change. Widgets are built only for rows that can be seen or whose look
+    changed, so the rows under a collapsed row wait until it expands.
 
     ``row_action_requested`` carries a row and the ``RowAction`` the user asked of it, however they asked: the row's
     button, its right-click menu (``build_row_menu``), a double-click (Open, or Open to the Side with Ctrl), or a key on
@@ -73,6 +65,8 @@ class SectionTree(QTreeWidget):
         """The folded sections an open row keeps unfolded, until that row closes or the user folds the section."""
         self._opened: set[BrowserSection] = set()
         """The sections that held an open row at the last ``set_sections``."""
+        self._info_row: str | None = None
+        """The id of the row a click opened to show its info lines."""
         self._folding = False
         """Whether the tree itself is folding or unfolding sections, so the change is not the user's."""
         self.setColumnCount(1)
@@ -82,8 +76,7 @@ class SectionTree(QTreeWidget):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setIndentation(Space.L)
-        # Rows with a detail are two lines high.
-        self.setUniformRowHeights(False)
+        self.setUniformRowHeights(False)  # Rows differ in height.
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # Section rows sit undecorated at the root, so the rows under them indent as top-level rows; a section's
         # caption draws its own arrow, and a click on it folds the section.
@@ -112,6 +105,8 @@ class SectionTree(QTreeWidget):
             self._update()
         else:
             self._rebuild()
+        if self._info_row not in {row.row_id for _item, row in self._row_items()}:
+            self._info_row = None
 
     def set_filter(self, allowed: RowPredicate, matches: RowPredicate | None = None) -> None:
         """Show only the rows *allowed* passes, and with *matches*, only those that match, sit under a match, or hold
@@ -157,7 +152,7 @@ class SectionTree(QTreeWidget):
                 focused.setFocus()
 
     def _update_children(self, parent: QTreeWidgetItem, rows: Sequence[WorkspaceBrowserRow]) -> None:
-        """Make the items under *parent* show *rows*: drop the gone ones, add the new ones, update the kept ones."""
+        """Make the items under *parent* show *rows*: drop gone ones, add new ones, update kept ones."""
         ids = {row.row_id for row in rows}
         for index in reversed(range(parent.childCount())):
             if (child := parent.child(index)) is not None and _row_of(child).row_id not in ids:
@@ -170,7 +165,8 @@ class SectionTree(QTreeWidget):
             child.setData(0, ROW_ROLE, row)
             child.setData(0, Qt.ItemDataRole.AccessibleTextRole, row_accessible_text(row))
             if isinstance(widget := self.itemWidget(child, 0), SourceRow):
-                if row_look(widget.row) == row_look(row):
+                shown = row.row_id == self._info_row
+                if row_look(widget.row, info_shown=shown) == row_look(row, info_shown=shown):
                     widget.row = row
                 else:
                     # The tree deletes a removed widget later and leaves it on screen until then.
@@ -205,34 +201,38 @@ class SectionTree(QTreeWidget):
         """Return an item for *row* and its children, without widgets."""
         item = QTreeWidgetItem()
         item.setData(0, ROW_ROLE, row)
-        # The detail is the row widget's second line; screen readers get it from here.
+        # Screen readers get the detail from here.
         item.setData(0, Qt.ItemDataRole.AccessibleTextRole, row_accessible_text(row))
         item.addChildren([self._tree_item(child) for child in row.children])
         return item
 
     def _install_children(self, item: QTreeWidgetItem) -> None:
-        """Give the children of *item*, now expanded, the row widgets they do not have yet."""
+        """Give the children of *item*, now expanded, the widgets they lack."""
         for index in range(item.childCount()):
             child = item.child(index)
             if child is None or self.itemWidget(child, 0) is not None:
                 continue
-            widget = SourceRow(_row_of(child))
-            widget.action_requested.connect(self.row_action_requested)
-            self.setItemWidget(child, 0, widget)
-            self._fit_height(child, widget)
+            self._show_row(child)
 
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        """Fit the wrapped rows to the new width."""
-        super().resizeEvent(event)
-        for item, _row in self._row_items():
-            if item.parent() is not None and isinstance(widget := self.itemWidget(item, 0), SourceRow):
-                self._fit_height(item, widget)
+    def _show_row(self, item: QTreeWidgetItem) -> None:
+        """Give *item* a row widget in place of any it has; the opened row's shows its info lines."""
+        if (old := self.itemWidget(item, 0)) is not None:
+            old.hide()  # The tree deletes it later.
+        row = _row_of(item)
+        widget = SourceRow(row, info_shown=row.row_id == self._info_row)
+        widget.action_requested.connect(self.row_action_requested)
+        widget.activated.connect(lambda: self._toggle_info(row.row_id))
+        self.setItemWidget(item, 0, widget)
 
-    def _fit_height(self, item: QTreeWidgetItem, widget: SourceRow) -> None:
-        """Give a row that wraps its detail the height it needs at the width the tree gives it; the tree sizes a row
-        widget from its hint alone, which wraps at a guessed width and cuts off the last lines."""
-        if widget.row.wrap_detail:
-            item.setSizeHint(0, QSize(0, widget.height_for_width(self.viewport().width() - self.indentation())))
+    def _toggle_info(self, row_id: str) -> None:
+        """Open the info of the clicked row, closing the one open; a row without info does nothing."""
+        items = {row.row_id: item for item, row in self._row_items()}
+        if (item := items.get(row_id)) is None or not _row_of(item).info:
+            return
+        previous, self._info_row = self._info_row, None if self._info_row == row_id else row_id
+        for changed in (previous, self._info_row):
+            if (shown := items.get(changed or "")) is not None and self.itemWidget(shown, 0) is not None:
+                self._show_row(shown)
 
     def _row_items(self) -> Iterator[tuple[QTreeWidgetItem, WorkspaceBrowserRow]]:
         """Iterate over every row item with its row, hidden and collapsed ones included, depth first."""
@@ -341,22 +341,19 @@ class SectionTree(QTreeWidget):
         return shown
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
-        """Ask to open a double-clicked row, to the side with Ctrl, and show the rows under it and above it."""
+        """Ask to open a double-clicked row, and show the rows under it and above it."""
         if item.parent() is None:
             return
         self._reveal(item)
-        to_side = bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier)
-        self.row_action_requested.emit(_row_of(item), RowAction.OPEN_TO_SIDE if to_side else RowAction.OPEN)
+        self.row_action_requested.emit(_row_of(item), open_action(QGuiApplication.keyboardModifiers()))
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        """Ask for the action of a key (Enter, F2, Delete) on the selected row; other keys move and fold as Qt does."""
-        action = _KEY_ACTIONS.get(Qt.Key(event.key()))
+        """Ask for the action of a key on the selected row; other keys move and fold as Qt does."""
+        action = key_action(event.key(), event.modifiers())
         item = self.currentItem()
         if action is None or item is None or not item.isSelected() or item.parent() is None:
             super().keyPressEvent(event)
             return
-        if action is RowAction.OPEN and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            action = RowAction.OPEN_TO_SIDE
         self.row_action_requested.emit(_row_of(item), action)
 
     def _on_context_menu(self, position: QPoint) -> None:

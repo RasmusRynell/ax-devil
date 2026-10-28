@@ -167,16 +167,18 @@ def _geometry_from_obj(obj: ET.Element) -> Geometry | None:
     return None
 
 
+def _likelihood_score(element: ET.Element) -> Score | None:
+    """Return the element's ``Likelihood`` as a score, or None when the source omits it."""
+    likelihood = element.get("Likelihood")
+    return Score(float(likelihood)) if likelihood is not None else None
+
+
 def _classifications_from_obj(obj: ET.Element) -> list[Classification]:
     out: list[Classification] = []
 
     t = obj.find("./tt:Appearance/tt:Class/tt:Type", NS)
     if t is not None and (name := _text(t)):
-        likelihood_str = t.get("Likelihood")
-        if likelihood_str is None:
-            raise ValueError(f"Likelihood missing in classification type {name}")
-        likelihood = float(likelihood_str)
-        out.append(Classification(type=_map_class(name), score=Score(likelihood)))
+        out.append(Classification(type=_map_class(name), score=_likelihood_score(t)))
 
     veh = obj.find("./tt:Appearance/tt:VehicleInfo/tt:Type", NS)
     if veh is not None and out:
@@ -184,10 +186,7 @@ def _classifications_from_obj(obj: ET.Element) -> list[Classification]:
         if subtype:
             mapping = {"bus": "bus", "car": "car", "truck": "truck", "bike": "bike", "bicycle": "bicycle"}
             out[0].type = mapping.get(subtype, subtype)
-            veh_lik_str = veh.get("Likelihood")
-            if veh_lik_str is None:
-                raise ValueError(f"Likelihood missing in vehicle type {subtype}")
-            out[0].score = Score(float(veh_lik_str))
+            out[0].score = _likelihood_score(veh)
 
     # clothing colours
     top = _parse_colors(obj, "./tt:Appearance/tt:HumanBody/bd:Clothing/bd:Tops/bd:Color/tt:ColorCluster/tt:Color")

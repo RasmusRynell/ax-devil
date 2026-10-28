@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import partial
 
-from PySide6.QtCore import QPoint, QThread, Signal
+from PySide6.QtCore import QPoint, Qt, QThread, Signal
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from ax_devil.core.playback_speed import step_playback_speed
@@ -132,6 +132,9 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._opening.cancel()
         self._stop_preparation()
         if not keep_shown:
+            if self._holds_focus():
+                # Tearing down a focused display hands the focus to another widget, such as a search field.
+                self.setFocus(Qt.FocusReason.OtherFocusReason)
             self._teardown_runtime()
             self._current_index = index
             self._start_frame = start_frame
@@ -192,8 +195,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
             self._cancel_preparation = None
 
     def _on_entry_opened(self, index: int, start_frame: int | None, keep_shown: bool, media: EntryMedia) -> None:
-        focus = QApplication.focusWidget()
-        keep_focus = focus is self or (focus is not None and self.isAncestorOf(focus))
+        keep_focus = self._holds_focus()
         self._hide_loading_indicator()
         error = media.error
         runtime: OfflineSession | None = None
@@ -233,6 +235,10 @@ class OfflineVideoViewerWidget(ViewerWidget):
             self.focus_lane(lane_index)
         elif keep_focus and runtime.lanes:
             runtime.focus_lane(runtime.lanes[0].lane_index)
+
+    def _holds_focus(self) -> bool:
+        focus = QApplication.focusWidget()
+        return focus is self or (focus is not None and self.isAncestorOf(focus))
 
     def source_paths(self) -> SourcePaths:
         """Return overlay paths of the considered lanes on screen."""

@@ -18,7 +18,6 @@ from ax_devil.modules.scene.model import (
     Observation,
     Polygon,
     Scene,
-    Score,
     TimeSlice,
 )
 from ax_devil.modules.settings.logging_config import get_logger
@@ -97,8 +96,7 @@ def decode_cvat_frame(payload: CVATDecoderPayload) -> Scene:
         observation = Observation(
             frame_number=frame_index,
             geometry=geometry,
-            classification=[Classification(label.lower(), Score(1.0), attributes)],
-            confidence=Score(1.0),
+            classification=[Classification(label.lower(), attributes=attributes)],
             debug=shape_payload.get("debug", {}),
         )
 

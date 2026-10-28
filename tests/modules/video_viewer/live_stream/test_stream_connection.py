@@ -230,7 +230,7 @@ def test_visibility_refreshes_paused_live_overlay_without_another_frame(
     with patch.object(
         controller.frame_display, "refresh_overlays", wraps=controller.frame_display.refresh_overlays
     ) as refresh:
-        selection.set_feature_enabled(OverlayFeature.CONFIDENCE, False)
+        selection.set_feature_enabled(OverlayFeature.SCORE, False)
 
     refresh.assert_called_once()
     hidden = overlay.drawing_generator(context, DrawingBuffer(DrawingSettings.for_context(context)))

@@ -20,6 +20,7 @@ from ax_devil.modules.scene.model_values import (
     ClassificationType,
     ColorClassification,
     ColorType,
+    Confidence,
     EntityId,
     GeographicCoordinates,
     Geometry,
@@ -41,6 +42,7 @@ __all__ = [
     "ClassificationType",
     "ColorClassification",
     "ColorType",
+    "Confidence",
     "Delete",
     "Entity",
     "EntityId",
@@ -73,7 +75,7 @@ _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (2, 0)
+SCENE_MODEL_VERSION: tuple[int, int] = (3, 0)
 
 
 class OperationType(enum.Enum):
@@ -95,21 +97,20 @@ class OperationType(enum.Enum):
 # ---------------------------------------------------------------------------#
 @dataclass(slots=True)
 class Classification:
-    """Classification with a raw score, optional reported confidence, and flexible attributes."""
+    """Classification with the decoder's score and/or confidence (each None when the source lacks it) and attributes."""
 
     type: ClassificationType  # str alias
-    score: Score
+    score: Score | None = None
     attributes: list[Attribute] = field(default_factory=list)
-    confidence: Score | None = None
+    confidence: Confidence | None = None
 
     def __post_init__(self) -> None:
         if not self.type:
             raise ValueError("Classification type cannot be empty")
-        if not isinstance(self.score, Score):
-            if isinstance(self.score, (int, float)):
-                self.score = Score(float(self.score))
-            else:
-                raise TypeError("Score must be an instance of Score")
+        if self.score is not None and not isinstance(self.score, Score):
+            raise TypeError("Score must be an instance of Score or None")
+        if self.confidence is not None and not isinstance(self.confidence, Confidence):
+            raise TypeError("Confidence must be an instance of Confidence or None")
         if not isinstance(self.attributes, list):
             raise TypeError("Attributes must be a list of Attribute instances")
 
@@ -155,6 +156,16 @@ class Classification:
 # ---------------------------------------------------------------------------#
 # Observation                                                                #
 # ---------------------------------------------------------------------------#
+def _ranking_key(item: Classification) -> tuple[bool, float, bool, float]:
+    score, confidence = item.score, item.confidence
+    return (
+        score is not None,
+        score.value if score is not None else 0.0,
+        confidence is not None,
+        confidence.value if confidence is not None else 0.0,
+    )
+
+
 @dataclass(slots=True)
 class Observation:
     """Observation of an entity at a specific time."""
@@ -163,7 +174,6 @@ class Observation:
     classification: list[Classification] = field(default_factory=list)
     timestamp: datetime | None = None
     frame_number: int | None = None
-    confidence: Score | None = None
     velocity_in_image_space: ImageVelocity | None = None
     velocity_in_world_space: WorldVelocity | None = None
     geographical_coordinates: GeographicCoordinates | None = None
@@ -176,9 +186,18 @@ class Observation:
             raise ValueError("Observation must have either a timestamp or frame number.")
 
     @property
+    def ranked_classifications(self) -> list[Classification]:
+        """Return the classifications best first: scored before unscored, then by score, then by confidence.
+
+        Ties keep the decoder's order.
+        """
+        return sorted(self.classification, key=_ranking_key, reverse=True)
+
+    @property
     def primary_classification(self) -> Classification | None:
-        """Return the highest-score classification for this observation."""
-        return max(self.classification, key=lambda item: item.score.value, default=None)
+        """Return the best-ranked classification for this observation."""
+        ranked = self.ranked_classifications
+        return ranked[0] if ranked else None
 
 
 # ---------------------------------------------------------------------------#

@@ -16,7 +16,7 @@ class LiveStreamState(Enum):
     Only LIVE is drawn in the live color; every other state differs by glyph, so no state relies on color alone.
     """
 
-    FAILED = (Icon.WARNING, StatusColor.WARNING, "Failed: {reason}")
+    FAILED = (Icon.WARNING, StatusColor.WARNING, "{reason}")
     RECONNECTING = (Icon.RETRY, StatusColor.WARNING, "Reconnecting ({attempts})")
     STALLED = (Icon.CLOCK, StatusColor.WARNING, "{reason}")
     CONNECTING = (Icon.STREAM_CONNECTING, KindColor.MUTED, "Connecting…")
@@ -61,4 +61,5 @@ class LiveStreamStatus:
         """Return the most urgent of the *statuses* of the viewers showing one camera; idle when there is none."""
         viewers = tuple(statuses)
         urgent = min(viewers, key=lambda status: _URGENCY[status.state], default=cls(LiveStreamState.IDLE))
-        return replace(urgent, any_live=any(status.state is LiveStreamState.LIVE for status in viewers))
+        live = any(status.any_live or status.state is LiveStreamState.LIVE for status in viewers)
+        return replace(urgent, any_live=live)

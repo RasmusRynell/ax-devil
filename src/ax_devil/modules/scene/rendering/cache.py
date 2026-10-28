@@ -227,8 +227,10 @@ class CachedSceneOverlay:
 def _hover_detail(summary: EntitySummary) -> str:
     """Return the facts the decoder reported for the entity in one line, leaving out those it did not."""
     parts: list[str] = []
-    if summary.conf is not None:
-        parts.append(f"conf {summary.conf:.2f}")
+    if summary.score is not None:
+        parts.append(f"score {summary.score.text}")
+    if summary.confidence is not None:
+        parts.append(f"confidence {summary.confidence.text}")
     if summary.speed is not None:
         parts.append(f"speed {summary.speed:.1f}")
     return " · ".join(parts)

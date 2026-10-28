@@ -12,6 +12,7 @@ from ax_devil.modules.scene.model import (
     BoundingBox,
     Classification,
     ColorClassification,
+    Confidence,
     NormalizedPoint,
     Score,
 )
@@ -52,15 +53,16 @@ _COLOR_RGB_MAP = {
 def classification_for_id(
     class_id: int,
     names: Mapping[int, str],
-    score: Score,
+    score: Score | None,
     attributes: Iterable[Attribute] = (),
+    confidence: Confidence | None = None,
 ) -> Classification:
     """Return the named classification for ``class_id``, or ``?<id>`` if ``names`` lacks it.
 
     The raw ``class_id`` is always kept as an attribute.
     """
     name = names.get(class_id, f"{UNMAPPED_CLASS}{class_id}")
-    return Classification(name, score, [Attribute("class_id", class_id), *attributes])
+    return Classification(name, score, [Attribute("class_id", class_id), *attributes], confidence)
 
 
 def is_unmapped_class(classification_type: str) -> bool:

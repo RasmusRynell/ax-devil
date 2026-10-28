@@ -32,7 +32,7 @@ _PLACEHOLDER = "Search objects"
 _SYNTAX = (
     ("human 17", "text in id, class or state"),
     ("class:human", "field equals value"),
-    ("conf>0.7", "compare with > < >= <= ="),
+    ("score>0.7", "compare with > < >= <= ="),
     ("-state:parked", "exclude matches"),
     ("a OR b", "either term"),
     ("a b", "both terms (default)"),

@@ -63,7 +63,7 @@ class ExamplePlugin(DecoderPlugin):
     @classmethod
     def scene_model_version(cls) -> tuple[int, int]:
         """Declare the Scene model version this decoder builds Scenes for."""
-        return (2, 0)
+        return (3, 0)
 
     @classmethod
     def plugin_id(cls) -> str:
@@ -90,6 +90,9 @@ class ExamplePlugin(DecoderPlugin):
 Installation checks that the entry point imports and registers successfully. This example contributes a **payload**
 handler, for decoded streaming messages; it does not contribute a file handler to `list-handlers` or draw any
 objects yet. Add entities to the returned Scene to implement your format.
+
+A `Classification` carries `score` (`Score`, any finite number) and `confidence` (`Confidence`, 0..1) separately; emit
+each as the source provides it, or `None`.
 
 Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame-level) or `Observation.debug`
 (per object). For display behavior and ownership, see the [Scene Model invariants](../../../docs/domain/invariants.md#scene-model).

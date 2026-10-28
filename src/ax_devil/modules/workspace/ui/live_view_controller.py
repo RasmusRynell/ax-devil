@@ -39,7 +39,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
-from ax_devil.modules.workspace.ui.live_view_rows import network_row, network_row_id, scan_camera, with_scan
+from ax_devil.modules.workspace.ui.live_view_rows import camera_row, group_cameras, network_row, network_row_id
 from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -101,12 +101,13 @@ def _workspace_hosts(items: Sequence[WorkspaceItem]) -> frozenset[str]:
 
 
 def _streaming(sections: Sections) -> str:
-    """Return how many of the workspace's cameras *sections* list as streaming, or nothing for none."""
+    """Return how many of the workspace's streams *sections* list as streaming, or nothing for none."""
     count = sum(
-        row.offered(RowAction.STOP_STREAM) is not None
+        stream.offered(RowAction.STOP_STREAM) is not None
         for section in sections
         if section.kind is BrowserSection.LIVE
-        for row in section.rows
+        for camera in section.rows
+        for stream in camera.children
     )
     return f"{count} streaming" if count else ""
 
@@ -124,18 +125,20 @@ def _camera_item(camera: DiscoveredCamera) -> LiveStreamItem:
 
 
 class LiveViewController(QObject):
-    """Feed *view* the workspace's Live section and, once a scan has started, the cameras it finds that the workspace
-    does not hold yet, as they are found.
+    """Feed *view* the workspace's Live section, a row per camera with a row per stream under it, and, once a scan has
+    started, the cameras it finds that the workspace does not hold yet, as they are found.
 
     *workspace* carries out what the rows ask for, the right-click menu included. A scan uses the IP range in the
     view, which starts as the Settings' default and searches the local
     network when empty, signing in when the view asks to; *scan* runs as one of *jobs*, and what it finds is dropped
     once the view is gone or `cleanup` ran. A camera the workspace holds shows what the scan learned about it as a
-    found camera does; the view's Sort orders both by what is known of each camera. A found camera's Add puts it in
+    found camera does; the view's Sort orders both by what is known of each camera, and keeps each camera's streams in
+    workspace order. A found camera's Add puts it in
     *store* with the user's stream defaults, and with the credentials that signed in to it, and starts its stream
     once it has resolved. It can be added only once signed in, so Add never puts in a camera that refuses its login.
-    The Live section is always listed, with an Add stream button that calls *add_stream*, which asks for a camera
-    and adds it.
+    The Live section is always listed, with an Add stream button that calls *add_stream* with nothing, and each camera
+    has an Add that calls it with the camera's first stream, to add another from the same camera; *add_stream* asks
+    for the stream and adds it.
 
     The workspace's cameras are *check*ed once with their own login as they resolve, unless Settings turn signing in
     off; one that refuses it shows a warning and can not start a stream. Until a check answers, or when it can not
@@ -148,7 +151,7 @@ class LiveViewController(QObject):
         workspace: WorkspaceController,
         store: WorkspaceStore,
         jobs: BackgroundJobs,
-        add_stream: Callable[[], None],
+        add_stream: Callable[[LiveStreamItem | None], None],
         scan: Scan = _scan_network,
         parent: QObject | None = None,
         check: Check = check_device,
@@ -157,7 +160,10 @@ class LiveViewController(QObject):
         self._view: LiveView | None = view
         self._workspace = workspace
         self._store = store
-        self._add_action = SectionAction("Add stream", Icon.ADD, add_stream, "Add a camera and start its stream")
+        self._add_stream = add_stream
+        self._add_action = SectionAction(
+            "Add stream", Icon.ADD, partial(add_stream, None), "Add a camera and start its stream"
+        )
         self._jobs = jobs.scope(view)
         self._scan = scan
         self._check = check
@@ -170,7 +176,7 @@ class LiveViewController(QObject):
         view.set_sign_in(self._given_sign_in)
         self._found: tuple[DiscoveredCamera, ...] | None = None  # None until a scan starts
         self._scan_request = LatestRequest(view)
-        self._cameras: dict[str, DiscoveredCamera] = {}  # By row id, what the rows listed last show of their camera.
+        self._cameras: dict[str, DiscoveredCamera] = {}  # By camera row id, what the rows listed last show of them.
         self._found_refresh = QTimer(self)  # Finds can arrive in a burst; one refresh covers them all.
         self._found_refresh.setSingleShot(True)
         self._found_refresh.setInterval(_FOUND_REFRESH_MS)
@@ -331,19 +337,16 @@ class LiveViewController(QObject):
         self._workspace.start_when_added(item.id)
 
     def _with_found(self, held: Sections) -> Sections:
-        """Return *held* with what its cameras' own sign-ins and the scan learned about them, then the cameras found
-        that the workspace does not hold."""
+        """Return *held* with its streams grouped by camera, which show what the cameras' own sign-ins and the scan
+        learned about them, then the cameras found that the workspace does not hold."""
         by_host = {camera.host: camera for camera in self._found or ()}
         self._cameras = {}
         listed: list[WorkspaceBrowserSection] = []
         for section in held or (WorkspaceBrowserSection(BrowserSection.LIVE, ()),):
-            rows = []
-            for row in section.rows:
-                camera = scan_camera(row, by_host, self._checked)
-                if camera is not None:
-                    self._cameras[row.row_id] = camera
-                rows.append(with_scan(row, camera, self._checked))
-            listed.append(replace(section, rows=tuple(rows), action=self._add_action))
+            groups = group_cameras(section.rows, by_host, self._checked)
+            self._cameras.update((group.row_id, group.scan) for group in groups if group.scan is not None)
+            cameras = tuple(camera_row(group, self._add_stream) for group in groups)
+            listed.append(replace(section, rows=cameras, action=self._add_action))
         if self._found is None:
             return tuple(listed)
         hosts = _workspace_hosts(self._store.workspace.items)

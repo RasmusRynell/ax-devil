@@ -102,12 +102,11 @@ def _classifications_from_classes(classes_raw: Any) -> list[Classification]:
             raise ValueError("Consolidated classification missing type")
 
         score_raw = class_payload.get("score")
-        if score_raw is None:
-            raise ValueError("Consolidated classification missing score")
+        score = Score(float(score_raw)) if score_raw is not None else None
 
         mapped_type = ADF_V1_CLASSIFICATION_MAP.get(str(class_type_raw), str(class_type_raw).lower())
         attrs = _parse_class_attributes(mapped_type, class_payload)
-        classifications.append(Classification(type=mapped_type, score=Score(float(score_raw)), attributes=attrs))
+        classifications.append(Classification(type=mapped_type, score=score, attributes=attrs))
     return classifications
 
 

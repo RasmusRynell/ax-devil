@@ -93,7 +93,7 @@ theme follow the rest of the app.
 The Workspace, Live and Offline views are one `SectionsView` each, fed by one `SectionsViewController`: a view is the
 Workspace's sections of the kinds it is about, plus what its concept adds. Workspace shows every section the Workspace
 holds (`HELD_SECTIONS`) and nothing it does not hold. `LiveViewController` composes what is its own into its sections:
-cameras a scan found and what the scan learned about held cameras. Live's scan settings and Offline's Add list are
+a row per camera with its streams under it, what the scan learned about those cameras, and cameras a scan found. Live's scan settings and Offline's Add list are
 `FooterPanel`s pinned at the bottom of their view.
 
 `SectionsView` is also the one shell, with a fixed layout that views fill rather than change; see the

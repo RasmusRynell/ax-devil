@@ -10,6 +10,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.application_shell.main_window import MainWindow
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -20,7 +21,7 @@ from ax_devil.modules.workspace.ui.browser_rows import RowAction
 from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from tests.helpers.live_view import Live, Scanner, scan
-from tests.helpers.section_tree import captions, expand, row, row_texts, shown_rows
+from tests.helpers.section_tree import captions, row_texts, shown_rows
 from tests.helpers.widgets import button
 from tests.helpers.workspace import DummyViewer
 
@@ -102,39 +103,69 @@ def test_saved_sign_in_default_reaches_the_live_scan(live: Live, monkeypatch: py
     assert not live.sign_in_choice().isChecked(), "unrelated settings saves keep the manual choice"
 
 
-def test_rows_show_which_cameras_are_streaming_and_follow_their_viewers(live: Live) -> None:
+def test_rows_show_which_streams_are_running_and_follow_their_viewers(live: Live) -> None:
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"), LiveStreamItem(host="192.0.2.11"))
-    assert live.rows() == {"Entrance": "Start stream", "192.0.2.11": "Start stream"}
+    assert live.streams() == {"Entrance/Video only": "Start stream", "192.0.2.11/Video only": "Start stream"}
     assert not any(text.endswith("streaming") for text in live.texts())
+    assert live.detail("Entrance") == "Stopped"
 
-    live.press("Entrance")
+    live.press("Entrance/Video only")
     assert live.center.get_widget_count() == 1
-    assert live.rows() == {"Entrance": "Stop stream", "192.0.2.11": "Start stream"}
+    assert live.streams() == {"Entrance/Video only": "Stop stream", "192.0.2.11/Video only": "Start stream"}
     assert "1 streaming" in live.texts()
-    assert live.detail("Entrance") == "192.0.2.10"
     viewer = live.center.get_focused_widget()
     assert isinstance(viewer, DummyViewer)
     viewer.set_stream(LiveStreamStatus(LiveStreamState.RECONNECTING, attempts=2))
-    assert live.detail("Entrance") == "192.0.2.10 · Reconnecting (2)"
+    assert live.detail("Entrance/Video only") == live.detail("Entrance") == "Reconnecting (2)"
 
-    live.press("192.0.2.11")
+    live.press("192.0.2.11/Video only")
     assert live.center.get_widget_count() == 2, "starting a stream never stops another"
     assert "2 streaming" in live.texts()
 
     live.center.clear_all_widgets()
-    assert live.rows() == {"Entrance": "Start stream", "192.0.2.11": "Start stream"}
-    assert live.detail("Entrance") == "192.0.2.10"
+    assert live.streams() == {"Entrance/Video only": "Start stream", "192.0.2.11/Video only": "Start stream"}
+    assert live.detail("Entrance/Video only") == "" and live.detail("Entrance") == "Stopped"
 
 
-def test_stop_stream_closes_every_viewer_of_the_camera(live: Live) -> None:
+def test_stop_stream_closes_every_viewer_of_the_stream(live: Live) -> None:
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance"))
-    live.press("Entrance")
-    assert live.rows() == {"Entrance": "Stop stream"}
+    live.press("Entrance/Video only")
+    assert live.streams() == {"Entrance/Video only": "Stop stream"}
 
-    live.press("Entrance")
+    live.press("Entrance/Video only")
 
     assert live.center.get_widget_count() == 0
-    assert live.rows() == {"Entrance": "Start stream"}
+    assert live.streams() == {"Entrance/Video only": "Start stream"}
+
+
+def test_streams_of_one_camera_share_its_row_which_shows_the_worst_of_their_states(live: Live) -> None:
+    entrance = LiveStreamItem(host="192.0.2.10", label="Entrance")
+    people = LiveStreamItem(host="192.0.2.10", overlay_mode=LiveOverlayMode.RTSP, handler_type="ONVIF_XML")
+    side = LiveStreamItem(host="192.0.2.10", device_port=8080, label="Side")
+    live.open_workspace(entrance, people, side)
+    assert list(live.rows()) == ["Entrance", "Entrance/Video only", "Entrance/ONVIF_XML", "Side", "Side/Video only"]
+    assert captions(live.view.tree) == ["Live, 2"], "the section counts cameras"
+
+    for stream, status in (
+        ("Entrance/Video only", LiveStreamStatus(LiveStreamState.LIVE)),
+        ("Entrance/ONVIF_XML", LiveStreamStatus(LiveStreamState.FAILED, "RTSP Error: Unauthorized")),
+    ):
+        live.press(stream)
+        viewer = live.center.get_focused_widget()
+        assert isinstance(viewer, DummyViewer)
+        viewer.set_stream(status)
+
+    assert live.detail("Entrance") == "RTSP Error: Unauthorized", "the failed stream outranks the live one"
+    assert live.row("Entrance").row.mark[0] is LiveStreamState.FAILED.icon
+    assert live.row("Entrance/ONVIF_XML").row.mark[0] is Icon.OVERLAY, "a stream with an overlay shows layers"
+    assert live.row("Entrance/Video only").row.mark[0] is Icon.VIDEO_ONLY
+    assert live.detail("Entrance/ONVIF_XML") == "RTSP Error: Unauthorized"
+    assert live.detail("Entrance/Video only") == ""
+    assert live.detail("Side") == "Stopped"
+
+    live.press("Entrance")
+    live.press("Side")
+    assert live.add_stream_requests == [entrance, side], "a camera adds from its first stream"
 
 
 def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: Live) -> None:
@@ -151,10 +182,11 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: L
         LiveStreamItem(host="192.0.2.11", label="Dock"),
     )
 
-    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "")
+    live.qtbot.waitUntil(lambda: live.streams()["Entrance/Video only"] == "")
 
-    assert "refused" in row(live.view.tree, "Entrance").toolTip(), "the reason is on hover"
-    assert live.rows()["Dock"] == "Start stream", "a camera without a login to try is left alone"
+    assert "refused" in live.detail("Entrance/Video only")
+    assert "refused" in live.row("Entrance").toolTip(), "the camera row says why too"
+    assert live.streams()["Dock/Video only"] == "Start stream", "a camera without a login to try is left alone"
     assert live.checker.calls == [(DeviceConnection("192.0.2.10", DeviceProtocol.HTTP, 8080), Login("root", "pw"))]
 
 
@@ -164,7 +196,7 @@ def test_a_refused_camera_can_be_checked_again_so_a_fixed_login_is_noticed(live:
     live.checker.cameras = {"192.0.2.10": refused}
     item = LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw")
     live.open_workspace(item)
-    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "")
+    live.qtbot.waitUntil(lambda: live.streams()["Entrance/Video only"] == "")
 
     live.checker.cameras = {"192.0.2.10": replace(refused, sign_in=SignIn.SIGNED_IN)}
     if edit:
@@ -173,8 +205,8 @@ def test_a_refused_camera_can_be_checked_again_so_a_fixed_login_is_noticed(live:
         scan(live)
 
     live.qtbot.waitUntil(lambda: len(live.checker.calls) == 2)
-    live.qtbot.waitUntil(lambda: live.rows()["Entrance"] == "Start stream")
-    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+    live.qtbot.waitUntil(lambda: live.streams()["Entrance/Video only"] == "Start stream")
+    assert "refused" not in live.row("Entrance").toolTip()
 
 
 def test_a_camera_whose_check_failed_for_another_reason_can_still_start(live: Live) -> None:
@@ -183,8 +215,8 @@ def test_a_camera_whose_check_failed_for_another_reason_can_still_start(live: Li
 
     live.qtbot.waitUntil(lambda: "AXIS Q1656" in live.detail("Entrance"))
 
-    assert live.rows() == {"Entrance": "Start stream"}
-    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+    assert live.streams() == {"Entrance/Video only": "Start stream"}
+    assert "refused" not in live.row("Entrance").toolTip()
 
 
 def test_a_scan_refusal_does_not_warn_about_a_camera_that_has_its_own_login(live: Live) -> None:
@@ -192,8 +224,8 @@ def test_a_scan_refusal_does_not_warn_about_a_camera_that_has_its_own_login(live
 
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED))
 
-    assert live.rows() == {"Entrance": "Start stream"}
-    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+    assert live.streams() == {"Entrance/Video only": "Start stream"}
+    assert "refused" not in live.row("Entrance").toolTip()
 
 
 def test_cameras_are_not_signed_in_to_when_signing_in_is_turned_off(
@@ -218,7 +250,7 @@ def test_a_camera_that_accepts_its_login_shows_what_it_is_without_saying_it_sign
 
     live.qtbot.waitUntil(lambda: "AXIS Q1656" in live.detail("192.0.2.10"))
 
-    assert live.rows() == {"192.0.2.10": "Start stream"}
+    assert live.streams() == {"192.0.2.10/Video only": "Start stream"}
     assert "Signed in" not in live.detail("192.0.2.10")
 
 
@@ -226,13 +258,13 @@ def test_a_camera_can_start_before_its_login_is_checked_and_keeps_stop_when_the_
     live.checker.cameras = {"192.0.2.10": DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED)}
     live.checker.gate.clear()
     live.open_workspace(LiveStreamItem(host="192.0.2.10", label="Entrance", username="root", password="pw"))
-    assert live.rows() == {"Entrance": "Start stream"}, "the check does not hold the camera back"
+    assert live.streams() == {"Entrance/Video only": "Start stream"}, "the check does not hold the camera back"
 
-    live.press("Entrance")
+    live.press("Entrance/Video only")
     live.checker.gate.set()
 
-    live.qtbot.waitUntil(lambda: "refused" in row(live.view.tree, "Entrance").toolTip())
-    assert live.rows() == {"Entrance": "Stop stream"}
+    live.qtbot.waitUntil(lambda: "refused" in live.row("Entrance").toolTip())
+    assert live.streams() == {"Entrance/Video only": "Stop stream"}
 
 
 def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(live: Live) -> None:
@@ -250,36 +282,36 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
     live.checker.gate.set()
 
     live.qtbot.waitUntil(lambda: "AXIS P3265-LVE" in live.detail("Entrance"))
-    assert live.rows() == {"Entrance": "Start stream"}
-    assert "refused" not in row(live.view.tree, "Entrance").toolTip()
+    assert live.streams() == {"Entrance/Video only": "Start stream"}
+    assert "refused" not in live.row("Entrance").toolTip()
 
 
-def test_a_camera_starts_only_with_its_start_button(live: Live) -> None:
+def test_a_stream_starts_only_with_its_start_button(live: Live) -> None:
     live.open_workspace(
         LiveStreamItem(host="192.0.2.10", label="Entrance"),
         LiveStreamItem(host="192.0.2.11", label="Dock", overlay_mode=LiveOverlayMode.RTSP, handler_type="ONVIF_XML"),
     )
 
-    expand(live.view.tree, "Dock")
-    for title in ("Entrance", "Dock", "RTSP"):
-        live.view.tree.row_action_requested.emit(row(live.view.tree, title).row, RowAction.OPEN)
+    for name in live.rows():
+        live.view.tree.row_action_requested.emit(live.row(name).row, RowAction.OPEN)
 
-    assert live.center.get_widget_count() == 0, "neither a camera nor its overlay row starts the stream"
-    live.press("Entrance")
+    assert live.center.get_widget_count() == 0, "neither a camera nor its stream starts the stream"
+    live.press("Entrance/Video only")
     assert live.center.get_widget_count() == 1
 
 
-def test_cameras_that_cannot_open_yet_or_at_all_offer_no_action(live: Live) -> None:
+def test_streams_that_cannot_open_yet_or_at_all_offer_no_action(live: Live) -> None:
     broken = LiveStreamItem(host="192.0.2.10", label="Dock", overlay_mode=LiveOverlayMode.RTSP, handler_type="nope")
     live.open_workspace(broken)
     live.resolutions.hold = True
     live.store.add_items([LiveStreamItem(host="192.0.2.11", label="Gate")])
 
-    assert live.rows() == {"Dock": "", "Gate": ""}
-    assert "nope" in row(live.view.tree, "Dock").toolTip(), "the reason is on hover"
+    assert live.streams() == {"Dock/nope": "", "Gate/Video only": ""}
+    assert "nope" in live.detail("Dock/nope"), "the reason shows under the stream"
+    assert "nope" in live.row("Dock").toolTip(), "and on its camera"
 
     live.resolutions.finish()
-    assert live.rows()["Gate"] == "Stop stream", "an added camera opens once resolved"
+    assert live.streams()["Gate/Video only"] == "Stop stream", "an added camera opens once resolved"
 
 
 def test_nothing_scans_until_rescan_is_pressed(qtbot: QtBot, live: Live) -> None:

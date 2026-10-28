@@ -128,6 +128,38 @@ def test_add_live_stream_keeps_configured_references_for_fields_left_empty(qtbot
     assert result.item.label == "", "the default name is derived from the host, never stored"
 
 
+def test_adding_from_a_camera_starts_from_its_connection_as_entered_and_makes_a_new_stream(
+    qtbot: QtBot, live_handler: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another stream of a camera needs only its overlay chosen; it is not the stream it was started from."""
+    monkeypatch.setenv("AX_DEVIL_TEST_CAMERA_HOST", "camera.local")
+    camera = LiveStreamItem(
+        host="$AX_DEVIL_TEST_CAMERA_HOST",
+        label="Entrance",
+        username="root",
+        password="pa$$word",
+        device_api_protocol=DeviceProtocol.HTTP,
+        device_port=8080,
+        rtsp_port=8554,
+    )
+    dialog = AddLiveStreamDialog(camera=camera)
+    qtbot.addWidget(dialog)
+
+    assert dialog.windowTitle() == "Add Live Stream"
+    assert form_field(dialog, "Name", QLineEdit).text() == ""
+
+    dialog.accept()
+
+    result = dialog.get_result()
+    assert result is not None
+    item = result.item
+    assert isinstance(item, LiveStreamItem)
+    assert item.id != camera.id
+    connection = ("host", "username", "password", "device_api_protocol", "device_port", "rtsp_port")
+    assert [getattr(item, name) for name in connection] == [getattr(camera, name) for name in connection]
+    assert item.label == "", "the stream is not named after the one it was started from"
+
+
 def test_analytics_discovery_expands_typed_environment_references(
     qtbot: QtBot, discovery: Discovery, live_handler: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
