@@ -198,6 +198,27 @@ class TestFrameIndex:
         frame_index2 = FrameIndex(frame_index.video_path, frame_index.cache_path)
         assert frame_index2.load_from_file() is False
 
+    def test_source_replaced_while_indexing_is_not_cached(
+        self, frame_index: FrameIndex, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An index of the old video must not be published as the replacement's, which would index wrong frames."""
+        replacement = temp_dir / "replacement.mp4"
+        create_test_video(replacement, duration=1.0, fps=10)
+        real_open = av.open
+
+        def open_then_replace(*args: object, **kwargs: object) -> av.container.InputContainer:
+            container = real_open(*args, **kwargs)  # type: ignore[call-overload]
+            replacement.replace(frame_index.video_path)
+            return container  # type: ignore[no-any-return]
+
+        monkeypatch.setattr(av, "open", open_then_replace)
+        frame_index.load_or_build()
+        monkeypatch.undo()
+
+        assert frame_index.cache_path is not None
+        assert not frame_index.cache_path.exists()
+        assert FrameIndex(frame_index.video_path, frame_index.cache_path).load_from_file() is False
+
     def test_image_sequence_cache_tracks_its_frame_files(self, temp_dir: Path) -> None:
         """Image sequence caches fingerprint the matching files, not the printf pattern."""
         image_dir = temp_dir / "img1"

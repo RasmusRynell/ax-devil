@@ -2,8 +2,9 @@
 
 The child never opens a `FileFrameSource`: that would take a share of the frame cache pool away from the video that is
 playing. It only writes the frame index, video metadata and overlay caches that opening the entry reads. Caches are
-written to a temporary file and then replaced, so terminating the child at any moment leaves nothing loadable but
-complete files.
+written to a temporary file and then replaced, so killing the child at any moment leaves nothing loadable but complete
+files. Cancelling kills the child's whole process tree (ffprobe and ffmpeg included) and, once it has exited, deletes
+the temporary files it left; they are named with a tag unique to the preparation (`core/atomic_file.py`).
 """
 
 from __future__ import annotations
@@ -14,12 +15,13 @@ import signal
 import subprocess
 import sys
 import threading
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from types import FrameType
 from typing import Any
 
+from ax_devil.core.atomic_file import TEMPORARY_TAG_ENV
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_frame_source import warm_file_caches
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
@@ -30,7 +32,8 @@ from ax_devil.modules.workspace.core import FileOverlaySourceSpec, PlaylistEntry
 
 logger = get_logger(__name__)
 
-_MODULE = "ax_devil.modules.video_viewer.entry_preparation"
+_CHILD_COMMAND = [sys.executable, "-I", "-m", "ax_devil.modules.video_viewer.entry_preparation"]
+_KILL_TIMEOUT_S = 10
 _CHILD_NICE = 10
 _CHILD_DECODER_THREADS = 2
 
@@ -94,39 +97,75 @@ def entry_preparation(
     )
 
 
-# The one process warming caches for the next entry, with the pickled request that identifies what it was started for.
-_current: tuple[bytes, subprocess.Popen[bytes]] | None = None
+@dataclass(frozen=True)
+class _Running:
+    """The one process warming caches for the next entry, with the pickled request it was started for."""
+
+    payload: bytes
+    process: subprocess.Popen[bytes]
 
 
-def _terminate(process: subprocess.Popen[bytes]) -> None:
-    """Ask *process* to stop and forget it, so the same request starts a new one; its waiter thread reaps it."""
+_current: _Running | None = None
+
+
+def _cancel(running: _Running) -> None:
+    """Kill *running*'s whole process tree and forget it, so the same request starts a new one; never waits.
+
+    The ffprobe and ffmpeg runs of `VideoAnalyzer` are descendants of the child, so killing only the child would leave
+    them running. Its waiter thread reaps it and deletes the temporary files it left.
+    """
     global _current
-    if _current is not None and _current[1] is process:
+    if _current is running:
         _current = None
+    process = running.process
+    if process.poll() is not None:
+        return
     try:
-        process.terminate()
+        if sys.platform == "win32":
+            # taskkill takes a moment, so it runs off the GUI thread.
+            threading.Thread(target=_taskkill, args=(process.pid,), name="entry-preparation-kill", daemon=True).start()
+        else:
+            os.killpg(process.pid, signal.SIGKILL)  # The child leads its own session, see `prepare_entry`.
     except OSError as exc:
-        logger.debug(f"Entry preparation process {process.pid} could not be terminated: {exc}")
+        logger.debug(f"Entry preparation process {process.pid} could not be killed: {exc}")
 
 
-def _deliver_and_reap(process: subprocess.Popen[bytes], payload: bytes) -> None:
-    """Send *payload* to *process* and reap it when it exits. Runs on a daemon thread and never touches Qt."""
+def _taskkill(pid: int) -> None:
+    """Kill process *pid* and its descendants on Windows."""
+    try:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, timeout=_KILL_TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug(f"taskkill of entry preparation process {pid} failed: {exc}")
+
+
+def _deliver_and_reap(process: subprocess.Popen[bytes], payload: bytes, tag: str, cache_dir: Path | None) -> None:
+    """Send *payload* to *process*, reap it when it exits, and delete the temporary files it left in *cache_dir*.
+
+    Runs on a daemon thread and never touches Qt. A killed process cannot clean up after itself, and once it has
+    exited nothing writes the files named with its *tag* any more.
+    """
     try:
         if process.stdin is not None:
             with process.stdin:
                 process.stdin.write(payload)
-    except OSError as exc:  # The process was terminated or failed before reading its request.
+    except OSError as exc:  # The process was killed or failed before reading its request.
         logger.debug(f"Entry preparation process {process.pid} did not take its request: {exc}")
     returncode = process.wait()
-    if returncode != 0:
-        logger.debug(f"Entry preparation process {process.pid} exited with code {returncode}")
+    if returncode == 0 or cache_dir is None:
+        return
+    logger.debug(f"Entry preparation process {process.pid} exited with code {returncode}")
+    try:
+        for leftover in cache_dir.rglob(f"*.{tag}.tmp"):
+            leftover.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.debug(f"Entry preparation could not remove its temporary files: {exc}")
 
 
 def prepare_entry(request: EntryPreparation) -> Callable[[], None]:
     """Start warming *request*'s caches in a child process, replacing any other preparation; GUI thread only.
 
     Never waits and never fails: problems are logged at debug level and the entry simply opens without a head start.
-    The returned function terminates this preparation if it is still running.
+    The returned function kills this preparation's process tree if it is still running.
     """
     global _current
     try:
@@ -135,37 +174,40 @@ def prepare_entry(request: EntryPreparation) -> Callable[[], None]:
         logger.debug(f"Entry preparation could not describe its request: {exc}")
         return lambda: None
     if _current is not None:
-        running_payload, running = _current
-        if running_payload == payload and running.poll() in (None, 0):
-            return lambda: _terminate(running)
-        _terminate(running)
+        previous = _current
+        if previous.payload == payload and previous.process.poll() in (None, 0):
+            return lambda: _cancel(previous)
+        _cancel(previous)
+    tag = uuid.uuid4().hex[:12]
     try:
         process = subprocess.Popen(
-            [sys.executable, "-I", "-m", _MODULE],
+            _CHILD_COMMAND,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env={**os.environ, TEMPORARY_TAG_ENV: tag},
+            start_new_session=sys.platform != "win32",  # Its own process group, so `_cancel` can kill the whole tree.
         )
     except OSError as exc:
         logger.debug(f"Entry preparation could not start: {exc}")
         return lambda: None
-    _current = (payload, process)
+    running = _current = _Running(payload, process)
     logger.debug(
         f"Preparing next entry in process {process.pid}: "
         f"{len(request.videos)} video(s), {len(request.overlays)} overlay(s)"
     )
-    threading.Thread(target=_deliver_and_reap, args=(process, payload), name="entry-preparation", daemon=True).start()
-    return lambda: _terminate(process)
-
-
-def _exit_on_sigterm(_signal_number: int, _frame: FrameType | None) -> None:
-    """Unwind as an exit, so `finally` blocks remove temporary cache files."""
-    raise SystemExit(1)
+    cache_dir = request.storage.get("cache_dir")
+    threading.Thread(
+        target=_deliver_and_reap,
+        args=(process, payload, tag, Path(cache_dir).expanduser() if cache_dir else None),
+        name="entry-preparation",
+        daemon=True,
+    ).start()
+    return lambda: _cancel(running)
 
 
 def main() -> None:
     """Child entry point: read an `EntryPreparation` from stdin and warm its caches; the exit code is the result."""
-    signal.signal(signal.SIGTERM, _exit_on_sigterm)
     if hasattr(os, "nice"):  # Windows has no nice; there the child keeps its normal priority.
         os.nice(_CHILD_NICE)
     try:

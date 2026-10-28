@@ -44,6 +44,7 @@ class FrameIndex:
         self.is_key_list: list[bool] = []
         self.pts_to_index: dict[int, int] = {}
         self._keyframe_indices: list[int] | None = None
+        self._built_from: Fingerprint | None = None  # The source identity before `build` read it.
 
     def _fingerprint(self) -> Fingerprint:
         if self.video_path.exists():
@@ -121,6 +122,7 @@ class FrameIndex:
         self.pts_list.clear()
         self.is_key_list.clear()
         self.time_base = None
+        self._built_from = self._fingerprint()  # Before decoding, so a source replaced meanwhile reads as changed.
 
         fmt = self._open_config.av_format if self._open_config else None
         opts = self._open_config.av_options if self._open_config else None
@@ -162,7 +164,10 @@ class FrameIndex:
             return
 
         try:
-            fingerprint = self._fingerprint()
+            fingerprint = self._built_from or self._fingerprint()
+            if fingerprint != self._fingerprint():
+                logger.debug(f"Source changed while it was indexed, not caching → {self.video_path.name}")
+                return
             with write_atomically(self.cache_path, "wb") as fh:
                 fh.write(
                     struct.pack(

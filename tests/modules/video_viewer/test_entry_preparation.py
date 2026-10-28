@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -14,7 +17,13 @@ from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.background_jobs import JobContext
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_index import FrameIndex
 from ax_devil.modules.data_sources.file_data_provider.stores import IndexedFrameSceneStore, SourceIndexedSceneStore
-from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, overlay_specs, prepare_entry
+from ax_devil.modules.video_viewer import entry_preparation as preparation_module
+from ax_devil.modules.video_viewer.entry_preparation import (
+    EntryPreparation,
+    entry_preparation,
+    overlay_specs,
+    prepare_entry,
+)
 from ax_devil.modules.video_viewer.offline_entry_media import open_entry_media
 from ax_devil.modules.workspace.core import (
     EntryLane,
@@ -97,3 +106,61 @@ def test_preparation_leaves_out_an_overlay_the_playing_entry_reads_with_other_de
 
     assert other_options is not None and other_options.overlays == ()
     assert same_options is not None and len(same_options.overlays) == 1
+
+
+_HEARTBEAT = """
+import sys, time
+while True:
+    with open(sys.argv[1], "a") as beat:
+        beat.write(".")
+    time.sleep(0.05)
+"""
+
+_STALLED_CHILD = """
+import subprocess, sys, time
+from pathlib import Path
+from ax_devil.core.atomic_file import write_atomically
+
+heartbeat, folder = sys.argv[1], Path(sys.argv[2])
+subprocess.Popen([sys.executable, "-I", heartbeat, str(folder / "beat")])
+with write_atomically(folder / "frames" / "video.ptsidx", "wb") as file:
+    file.write(b"partial")
+    file.flush()
+    (folder / "ready").write_text("1")
+    time.sleep(600)
+"""
+
+
+def _wait_for(condition: Callable[[], bool], what: str) -> None:
+    deadline = time.monotonic() + 20
+    while not condition():
+        assert time.monotonic() < deadline, f"timed out waiting for {what}"
+        time.sleep(0.02)
+
+
+def test_cancelling_preparation_kills_its_descendants_and_removes_its_temporary_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cancelled preparation leaves no running process and no half-written cache file, wherever it was stopped."""
+    heartbeat = tmp_path / "heartbeat.py"
+    heartbeat.write_text(_HEARTBEAT, encoding="utf-8")
+    child = tmp_path / "stalled_child.py"
+    child.write_text(_STALLED_CHILD, encoding="utf-8")
+    cache_dir = tmp_path / "caches"
+    command = [sys.executable, "-I", str(child), str(heartbeat), str(cache_dir)]
+    monkeypatch.setattr(preparation_module, "_CHILD_COMMAND", command)
+    storage = {"cache_dir": str(cache_dir)}
+
+    cancel = prepare_entry(EntryPreparation(videos=(), overlays=(), config_path=tmp_path, storage=storage))
+    beat = cache_dir / "beat"
+    try:
+        _wait_for((cache_dir / "ready").exists, "the child to stall inside a cache write")
+        _wait_for(lambda: beat.exists() and beat.stat().st_size > 0, "the child's descendant to run")
+        (leftover,) = (cache_dir / "frames").glob("*.tmp")
+    finally:
+        cancel()
+
+    _wait_for(lambda: not leftover.exists(), "the temporary file to be deleted")
+    size = beat.stat().st_size
+    time.sleep(0.5)
+    assert beat.stat().st_size == size, "a descendant of the cancelled preparation is still running"

@@ -149,8 +149,8 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 - Finite work that would block the GUI thread, such as a network scan, runs through `BackgroundJobs` in a `JobScope`
   that closes when its owner cleans up or is destroyed. Work that changes something outside the app, or streams, keeps
   its own runner; see the [background_jobs README](../../src/ax_devil/modules/background_jobs/README.md).
-- Cancellable in-process work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled`; there is no
-  other in-process cancellation mechanism ([contract](../../src/ax_devil/modules/background_jobs/README.md#cancellation)).
+- Cancellable work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled`; there is no other
+  cancellation mechanism ([contract](../../src/ax_devil/modules/background_jobs/README.md#cancellation)).
 - The GUI thread never waits for offline file work and never spins the event loop to wait. `open_entry_media` opens an
   entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; whoever holds the media owns every
   source in it until `release_media`. Worker threads never hold the last reference to objects they hand to the GUI
@@ -196,11 +196,9 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 - Scene file provider artifacts invalidate unless their complete identity matches: source fingerprint, decoder name,
   explicit artifact version, Scene model version, and provider-owned decode options. Cache files can always be rebuilt.
   The source fingerprint is taken from the held handle before the source is read, so a file written during indexing
-  reads as changed on the next open; cache files are written with `write_atomically` (`core/atomic_file.py`), so a killed
-  writer never leaves a loadable file, and read through the handle that wrote them. Preparing the next playlist entry
-  relies on this: a child process warms the caches and is terminated, not token-cancelled, when the entry is reached or
-  replaced. An open source-indexed store holds its source file open, and stops serving once that file is rewritten in
-  place, since its byte offsets no longer match; a replaced file leaves it valid.
+  reads as changed on the next open; cache files are replaced atomically and read through the handle that wrote them. An
+  open source-indexed store holds its source file open, and stops serving once that file is rewritten in place, since
+  its byte offsets no longer match; a replaced file leaves it valid.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
   history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
   sequence frame, and omits events outside the video; an object is present on exactly the frames whose looked-up sample
