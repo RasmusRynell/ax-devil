@@ -33,6 +33,8 @@ def clipped_text_widgets(window: QWidget) -> list[str]:
     for widget in window.findChildren(QWidget):
         if not isinstance(widget, (QAbstractButton, QLabel)) or not widget.text() or not widget.isVisibleTo(window):
             continue
+        if widget.window() is not window.window():
+            continue  # Inside a popup of its own, which has its own coordinates; check that popup as the window.
         name = f"{type(widget).__name__} {widget.text()[:30]!r}"
         corners = (widget.rect().topLeft(), widget.rect().bottomRight())
         # A view's content may lie below or beside its viewport, but its text is still cut off when too narrow.

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QPushButton, QWidget
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.flow_layout import FlowLayout
 from ax_devil.modules.chrome.palette_css import palette_color_css
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 
 _CHECKED_TINT = 0.2
 
@@ -68,4 +68,3 @@ class ToggleChips(QWidget):
         )
         for chip in self._chips.values():
             chip.setFont(TextRole.SMALL.font())
-            chip.setFixedHeight(Height.ROW.px)
