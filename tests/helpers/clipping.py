@@ -59,3 +59,18 @@ def clipped_text_on_every_page(window: QWidget) -> list[str]:
                 clipped += clipped_text_widgets(window)
         pages.setCurrentIndex(index)
     return clipped
+
+
+def shorter_than_wrapped_content(container: QWidget) -> list[str]:
+    """Return each shown widget in *container*, itself included, that is shorter than its wrapped contents need.
+
+    A layout squeezed below the height its wrapped chips or text need clips them inside their parent, even though
+    every label is still wide enough, so a text-width check alone misses it.
+    """
+    short = []
+    for widget in [container, *container.findChildren(QWidget)]:
+        if widget.isVisibleTo(container) and widget.hasHeightForWidth():
+            needed = widget.heightForWidth(widget.width())
+            if widget.height() < needed:
+                short.append(f"{type(widget).__name__} {widget.objectName()!r}: {widget.height()} px of {needed}")
+    return short

@@ -36,7 +36,8 @@ class Popover(QFrame):
         """Show the popover under *anchor*, right-aligned to it, and focus its first focusable child.
 
         It is *width* wide, or as wide as its content prefers, but never narrower than its content allows, and sits
-        inside the screen of *anchor*. While open it follows its content's height with its top right corner fixed.
+        inside the screen of *anchor*. While open it follows its content's height with its top right corner fixed,
+        moving up only as far as growth needs to stay inside the screen.
         """
         # A hidden widget does not pass a size change up to its layout, so content changed while the popover was
         # closed, such as a text-size change, would otherwise be measured at its old size and clip.
@@ -44,12 +45,8 @@ class Popover(QFrame):
             layout.invalidate()
         area = anchor.screen().availableGeometry()
         wide = max(width if width is not None else self.sizeHint().width(), self.minimumSizeHint().width())
-        wide = min(wide, area.width())
-        high = min(self._height_for(wide), area.height())
         corner = anchor.mapToGlobal(QPoint(anchor.width(), anchor.height() + Space.XS))
-        left = max(area.left(), min(corner.x() - wide, area.right() + 1 - wide))
-        top = max(area.top(), min(corner.y(), area.bottom() + 1 - high))
-        self.setGeometry(QRect(left, top, wide, high))
+        self._place(area, wide, corner.x(), corner.y())
         self.show()
         previous = self.focusWidget()
         if previous is not None:
@@ -71,9 +68,21 @@ class Popover(QFrame):
         height = self.heightForWidth(width)
         return height if height >= 0 else self.sizeHint().height()
 
+    def _place(self, area: QRect, wide: int, right: int, top: int) -> None:
+        """Show *wide* wide and as high as the content needs, with its right edge at *right*, inside *area*."""
+        wide = min(wide, area.width())
+        high = min(self._height_for(wide), area.height())
+        left = max(area.left(), min(right - wide, area.right() + 1 - wide))
+        top = max(area.top(), min(top, area.bottom() + 1 - high))
+        self.setGeometry(QRect(left, top, wide, high))
+
     def _refit(self) -> None:
-        """Resize to the content, keeping the top right corner where it is."""
-        wide = max(self.width(), self.minimumSizeHint().width())
-        high = self._height_for(wide)
-        if (wide, high) != (self.width(), self.height()):
-            self.setGeometry(self.x() + self.width() - wide, self.y(), wide, high)
+        """Resize to the content, keeping the top right corner where it is unless the screen's edge needs it moved."""
+        screen = self.screen()
+        if screen is not None:
+            self._place(
+                screen.availableGeometry(),
+                max(self.width(), self.minimumSizeHint().width()),
+                self.x() + self.width(),
+                self.y(),
+            )

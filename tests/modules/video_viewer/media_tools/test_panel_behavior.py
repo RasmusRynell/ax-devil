@@ -38,7 +38,7 @@ from ax_devil.modules.video_viewer.media_tools.appearance_popover import Appeara
 from ax_devil.modules.video_viewer.media_tools.object_scope import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
-from tests.helpers.clipping import clipped_text_widgets
+from tests.helpers.clipping import clipped_text_widgets, shorter_than_wrapped_content
 from tests.helpers.media_tools_panel import (
     listed_ids,
     make_entity,
@@ -69,18 +69,19 @@ def test_overflow_submenu_fits_its_content_after_the_text_size_grows(
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
-@pytest.mark.parametrize("text_size", [13, 21])
+# 360 high is the panel of a 400 px high video pane.
+@pytest.mark.parametrize(("text_size", "height"), [(13, 700), (21, 700), (21, 360)])
 def test_filter_drawer_and_appearance_popover_fit_the_narrowest_panel_after_a_text_size_change(
-    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, text_size: int
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, text_size: int, height: int
 ) -> None:
-    """At the narrowest panel the chips wrap and no text is cut off, whichever size they first opened at."""
+    """At the narrowest and a short panel the chips wrap and nothing is cut off, whichever size they opened at."""
     manager = render_catalog_selection.manager
     manager.create_selection().select_catalog(next(path for path in BUILT_IN_CATALOG_PATHS if path.stem == "minimal"))
     apply_text_size(15)
     panel = make_panel(qtbot, render_catalog_selection, show=False)
     apply_text_size(text_size)  # Changed while the drawer and the popover were closed and never shown.
     narrowest = panel.minimumSizeHint().width()
-    panel.resize(narrowest, 700)
+    panel.resize(narrowest, height)
     panel.show()
     qtbot.waitExposed(panel)
     panel.update_scene(make_scene(make_entity("a"), make_entity("b", "car")), make_frame(0), {}, source_count=2)
@@ -98,6 +99,7 @@ def test_filter_drawer_and_appearance_popover_fit_the_narrowest_panel_after_a_te
     for shown, window in ((drawer, panel), (popover, popover)):
         assert shown.minimumSizeHint().width() <= shown.width()
         assert clipped_text_widgets(window) == []
+        assert shorter_than_wrapped_content(shown) == []
         squeezed = [
             type(widget).__name__
             for widget in shown.findChildren(QAbstractButton) + shown.findChildren(QLineEdit)

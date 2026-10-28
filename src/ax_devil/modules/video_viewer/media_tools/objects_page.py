@@ -11,6 +11,7 @@ from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QStackedLayout,
     QVBoxLayout,
     QWidget,
@@ -110,6 +111,11 @@ class ObjectsPage(QWidget):
         for table in self._tables.values():
             self._stack.addWidget(table.view)
         self._stack.addWidget(self._empty)
+        # The list gives way first in a short panel: the controls above it, with the open filter drawer, keep the
+        # height their wrapped contents need, which a layout does not know when it squeezes to minimum sizes.
+        for index in range(self._stack.count()):
+            if (shown := self._stack.itemAt(index)) is not None and (widget := shown.widget()) is not None:
+                widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
 
         controls = QWidget(self)
         controls_layout = QVBoxLayout(controls)
