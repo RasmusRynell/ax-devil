@@ -10,7 +10,6 @@ from PySide6.QtGui import QMouseEvent, QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
-    QMenu,
     QWidget,
 )
 from pytestqt.qtbot import QtBot
@@ -40,17 +39,19 @@ from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
 from tools.ui_shots_config import OUT
 
 
-def save_shot(window: QWidget, theme: str, name: str, menu: QMenu | None = None, anchor: QWidget | None = None) -> None:
+def save_shot(
+    window: QWidget, theme: str, name: str, popup: QWidget | None = None, anchor: QWidget | None = None
+) -> None:
     """Save *window* as ``<theme>-<name>.png``.
 
-    An open *menu* is painted in below *anchor*, right-aligned, because popups are windows of their own and the
-    private display keeps them inside its 800x800 area.
+    An open *popup* (a menu or popover) is painted in below *anchor*, right-aligned, because popups are windows of
+    their own and the private display keeps them inside its 800x800 area.
     """
     shot = window.grab()
-    if menu is not None and anchor is not None:
+    if popup is not None and anchor is not None:
         painter = QPainter(shot)
-        corner = anchor.mapTo(window, QPoint(anchor.width() - menu.width(), anchor.height()))
-        painter.drawPixmap(corner, menu.grab())
+        corner = anchor.mapTo(window, QPoint(anchor.width() - popup.width(), anchor.height()))
+        painter.drawPixmap(corner, popup.grab())
         painter.end()
     shot.save(str(OUT / f"{theme}-{name}.png"))
 

@@ -58,9 +58,11 @@ class SessionFilter(QObject):
         return (id(self._config), tuple(self._state.items()), tuple(self._ranges.values()))
 
     @property
-    def enabled_count(self) -> int:
-        """Return the number of enabled controls."""
-        return sum(enabled for _, enabled in self._state.items())
+    def changed_count(self) -> int:
+        """Return how many controls differ from the decoder's defaults, counting each measure with a range set."""
+        defaults = {option.id: option.default_enabled for option in self._config.options}
+        moved = sum(enabled != defaults[option_id] for option_id, enabled in self._state.items())
+        return moved + sum(bounds != MeasureRange() for bounds in self._ranges.values())
 
     def is_enabled(self, option_id: str) -> bool:
         """Return whether a control is enabled."""
@@ -84,12 +86,21 @@ class SessionFilter(QObject):
         if before != self.cache_identity:
             self.changed.emit()
 
-    def toggle_all(self) -> None:
-        """Disable all enabled controls, or enable all if any are disabled."""
-        enabled = self.enabled_count != len(self._config.options)
+    def set_all_enabled(self, enabled: bool) -> None:
+        """Enable or disable every control and notify once after an effective change."""
+        before = self.cache_identity
         for option in self._config.options:
             self._state.set_enabled(option.id, enabled)
-        self.changed.emit()
+        if before != self.cache_identity:
+            self.changed.emit()
+
+    def reset(self) -> None:
+        """Restore the decoder's default toggles and clear every range, notifying once after an effective change."""
+        before = self.cache_identity
+        self._state = FilterState(self._config)
+        self._ranges = {measure: MeasureRange() for measure in Measure}
+        if before != self.cache_identity:
+            self.changed.emit()
 
     def process_scene(self, scene: Scene) -> Scene:
         """Project a Scene using the decoder's predicates, then the ranges."""

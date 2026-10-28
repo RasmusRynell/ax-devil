@@ -28,7 +28,8 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
   tools panel's Overlay sync section.
 - `loading_indicator.py`: loading overlay used by offline entry changes.
 - `media_tools/`: viewer-owned side-panel pages and controls: the Objects and Events lists with their object and event
-  pages, filtering, and overlay persistence controls. `MediaToolsPanel` is the Scene inspector sink of its viewer.
+  pages, the Objects filter drawer, the Appearance popover, and overlay persistence controls. `MediaToolsPanel` is the
+  Scene inspector sink of its viewer.
 
 ## Boundaries
 

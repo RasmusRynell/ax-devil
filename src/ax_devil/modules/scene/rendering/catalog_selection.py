@@ -43,7 +43,8 @@ class SceneRenderCatalogSelection(QObject):
     command or select replaces; file changes and other views' applies never cancel it. A catalog the user selects
     here after an apply to all was requested stays, so a slow apply does not overwrite the newer choice. Until the
     first catalog loads
-    there is no active catalog. The owner calls ``cleanup()`` when it ends.
+    there is no active catalog. The owner calls ``cleanup()`` when it ends; until then the selection counts as an open
+    view in the manager's ``catalogs_in_use``.
     """
 
     activeCatalogChanged = Signal(object)
@@ -81,6 +82,7 @@ class SceneRenderCatalogSelection(QObject):
             self._manager_slots.append((manager.catalogListingChanged, self._start_when_listed))
         for signal, slot in self._manager_slots:
             signal.connect(slot)
+        self._in_use_key = manager.catalogs_in_use.add(self._active_catalog_path)
         if manager.listing_ready:
             self._start()
 
@@ -96,6 +98,7 @@ class SceneRenderCatalogSelection(QObject):
             with suppress(RuntimeError, TypeError):
                 signal.disconnect(slot)
         self._manager_slots.clear()
+        self._manager.catalogs_in_use.discard(self._in_use_key)
 
     @property
     def manager(self) -> SceneRenderCatalogManager:
@@ -213,6 +216,7 @@ class SceneRenderCatalogSelection(QObject):
         self._started = True
         if catalog_path != self._active_catalog_path:
             self._active_catalog_path = catalog_path
+            self._manager.catalogs_in_use.set_path(self._in_use_key, catalog_path)
             self._load_error = None
         if catalog_path != self._loaded_catalog_path:
             self._publish(f"Loading {catalog_path.name}…")

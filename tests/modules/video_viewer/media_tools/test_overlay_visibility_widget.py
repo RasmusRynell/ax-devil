@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QCheckBox, QPushButton
+from PySide6.QtWidgets import QPushButton
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.scene.rendering import OverlayFeature, SceneRenderCatalogManager, SceneRenderCatalogSelection
@@ -13,11 +13,11 @@ from tests.catalog_helpers import wait_for_catalogs
 
 def _visibility_widget(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
-) -> tuple[OverlayVisibilityWidget, SceneRenderCatalogSelection, QCheckBox, QPushButton]:
+) -> tuple[OverlayVisibilityWidget, SceneRenderCatalogSelection, QPushButton, QPushButton]:
     selection = render_catalog_manager.create_selection()
     widget = OverlayVisibilityWidget(selection)
     qtbot.addWidget(widget)
-    confidence = widget.findChild(QCheckBox, "overlayFeature_confidence")
+    confidence = widget.findChild(QPushButton, "overlayFeature_confidence")
     reset = widget.findChild(QPushButton, "overlayVisibilityReset")
     assert confidence is not None and reset is not None
     return widget, selection, confidence, reset

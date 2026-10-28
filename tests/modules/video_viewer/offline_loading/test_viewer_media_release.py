@@ -92,7 +92,7 @@ def test_retired_viewer_media_outlives_its_widgets_without_blocking_the_gui(
 def test_viewer_opens_a_real_video_without_waiting_and_stops_its_workers_on_close(
     qtbot: QtBot, video_file_factory: Callable[[float, int], Path], render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
-    """Attaching the viewer returns at once with a loading indicator; closing it leaves no video worker running."""
+    """Attaching the viewer returns at once with a loading indicator; closing it leaves no worker or open view."""
     path = video_file_factory(0.1, 10)
     video = SeekableVideoContent(display_name="video", source_spec=FileVideoSourceSpec(path=path))
     widget = OfflineVideoViewerWidget(video, render_catalog_manager=render_catalog_manager)
@@ -108,10 +108,12 @@ def test_viewer_opens_a_real_video_without_waiting_and_stops_its_workers_on_clos
         thread for thread in set(threading.enumerate()) - baseline if thread.name.endswith("frame-delivery")
     ]
     assert video_workers
+    assert len(render_catalog_manager.catalogs_in_use.paths()) == 1
 
     widget.cleanup()
 
     qtbot.waitUntil(lambda: not any(worker.is_alive() for worker in video_workers))
+    assert render_catalog_manager.catalogs_in_use.paths() == ()
 
 
 def test_a_viewer_opened_at_a_frame_shows_it_paused_and_reports_it_as_the_bookmark_position(

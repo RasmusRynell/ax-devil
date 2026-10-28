@@ -3,22 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
-    QMenu,
+    QPushButton,
     QSpinBox,
     QToolButton,
 )
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.filtering import build_default_filter_config
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel, OverlayPersistenceControls
+from ax_devil.modules.video_viewer.media_tools.appearance_popover import AppearancePopover
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from tests.catalog_helpers import create_catalog
 
@@ -96,70 +94,24 @@ def test_media_tools_panel_reemits_persistence_changes(
     assert emitted.enabled is True
 
 
-def test_media_tools_panel_open_catalogs_button_requests_catalog_management(
-    qtbot: QtBot,
-    render_catalog_selection: SceneRenderCatalogSelection,
+def test_appearance_popover_changes_the_catalog_and_closes_for_the_catalog_viewer(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, small_catalog_path: Path
 ) -> None:
+    catalog = create_catalog(qtbot, render_catalog_selection.manager, "Review", base_catalog_path=small_catalog_path)
     panel = MediaToolsPanel(render_catalog_selection=render_catalog_selection, filter_model=SessionFilter())
     qtbot.addWidget(panel)
-    open_button = panel.findChild(QToolButton, "openRenderCatalogsButton")
-    assert open_button is not None
+    panel.show()
+    button = panel.findChild(QToolButton, "mediaToolsAppearanceButton")
+    popover = panel.findChild(AppearancePopover)
+    assert button is not None and popover is not None
+    button.click()
+    combo = popover.findChild(QComboBox, "renderCatalogCombo")
+    open_button = popover.findChild(QPushButton, "openRenderCatalogsButton")
+    assert popover.isVisible() and combo is not None and open_button is not None
 
+    with qtbot.waitSignal(render_catalog_selection.activeCatalogChanged):
+        combo.setCurrentIndex(combo.findData(str(catalog.path)))
+    assert render_catalog_selection.active_catalog_path() == catalog.path
     with qtbot.waitSignal(panel.catalogViewerRequested):
         open_button.click()
-
-
-def _submenu(panel: MediaToolsPanel, title: str) -> QMenu:
-    """Return the submenu of the panel's overflow menu whose title starts with *title*."""
-    more_button = panel.findChild(QToolButton, "mediaToolsMoreButton")
-    assert more_button is not None and more_button.menu() is not None
-    (action,) = [action for action in more_button.menu().actions() if action.text().startswith(title)]
-    submenu = action.menu()
-    assert isinstance(submenu, QMenu)
-    return submenu
-
-
-@pytest.mark.parametrize("title", ["Overlay filter", "Catalog"])
-def test_media_tools_menu_allows_changing_filters_and_catalog(
-    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, small_catalog_path: Path, title: str
-) -> None:
-    """The overflow menu's filter and catalog submenus expose working controls."""
-    catalog = create_catalog(qtbot, render_catalog_selection.manager, "Review", base_catalog_path=small_catalog_path)
-    panel = MediaToolsPanel(
-        render_catalog_selection=render_catalog_selection, filter_model=SessionFilter(build_default_filter_config())
-    )
-    qtbot.addWidget(panel)
-    panel.show()
-    submenu = _submenu(panel, title)
-    submenu.popup(panel.mapToGlobal(QPoint(0, 0)))
-    assert submenu.isVisible()
-    if title == "Overlay filter":
-        checkbox = panel.filter_widget.findChild(QCheckBox)
-        assert checkbox is not None and checkbox.isVisible()
-        with qtbot.waitSignal(panel.filter_model.changed):
-            QTest.mouseClick(checkbox, Qt.MouseButton.LeftButton)
-    else:
-        combo = panel.catalog_selector.findChild(QComboBox, "renderCatalogCombo")
-        assert combo is not None and combo.isVisible()
-        with qtbot.waitSignal(render_catalog_selection.activeCatalogChanged):
-            combo.setCurrentIndex(combo.findData(str(catalog.path)))
-        assert render_catalog_selection.active_catalog_path() == catalog.path
-    submenu.close()
-
-
-def test_media_tools_panel_filter_menu_tracks_filter_state(
-    qtbot: QtBot,
-    render_catalog_selection: SceneRenderCatalogSelection,
-) -> None:
-    panel = MediaToolsPanel(
-        render_catalog_selection=render_catalog_selection, filter_model=SessionFilter(build_default_filter_config())
-    )
-    qtbot.addWidget(panel)
-    submenu = _submenu(panel, "Overlay filter")
-    assert submenu.title() == "Overlay filter"
-
-    total = len(panel.filter_model.options)
-    checkbox = panel.filter_widget.findChild(QCheckBox)
-    assert checkbox is not None
-    checkbox.setChecked(False)
-    assert submenu.title() == f"Overlay filter {total - 1}/{total}"
+    assert not popover.isVisible()

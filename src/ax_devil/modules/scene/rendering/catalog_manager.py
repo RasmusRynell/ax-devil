@@ -26,6 +26,7 @@ from ax_devil.modules.scene.rendering.catalog_store import (
     SceneRenderCatalogListing,
     SceneRenderCatalogStore,
 )
+from ax_devil.modules.scene.rendering.catalogs_in_use import CatalogsInUse
 from ax_devil.modules.scene.rendering.visibility import OverlayVisibility
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -61,7 +62,8 @@ class SceneRenderCatalogManager(QObject):
     catalogAppliedToAll = Signal(object)
     catalogFileChanged = Signal(object)
     catalogUsabilityChanged = Signal()
-    """Whether a catalog can be applied to all or made default may have changed without a listing change."""
+    """Whether a catalog can be applied to all or made default, or which catalogs open views use, may have changed
+    without a listing change."""
 
     def __init__(
         self,
@@ -74,6 +76,7 @@ class SceneRenderCatalogManager(QObject):
         super().__init__(parent)
         self._catalog_store = catalog_store or SceneRenderCatalogStore()
         self._jobs = (jobs or background_jobs(_POOL, max_workers=_POOL_WORKERS)).scope(self)
+        self.catalogs_in_use = CatalogsInUse(self.catalogUsabilityChanged.emit)
         self._revisions = CatalogRevisions(
             self._jobs, catalog_loader or SceneRenderCatalogLoader(), self.catalogUsabilityChanged.emit
         )

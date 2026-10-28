@@ -12,7 +12,7 @@ from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport
 from ax_devil.modules.filtering.session_filter import SessionFilter
-from ax_devil.modules.scene.rendering import SceneRenderCatalog
+from ax_devil.modules.scene.rendering import SceneRenderCatalog, SceneRenderCatalogSelection
 from ax_devil.modules.synchronization import TimestampFallbackPolicy
 from ax_devil.modules.video_player.ui.controls import format_timecode
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
@@ -70,6 +70,7 @@ class OfflineLane:
     export_action: QAction
     presenter: SceneFramePresenter
     tools_panel: MediaToolsPanel
+    catalog_selection: SceneRenderCatalogSelection
     filter_model: SessionFilter
     timing_controls: TimingDiagnosticsWidget
     alignment_indicator: OverlayAlignmentIndicator
@@ -227,4 +228,5 @@ class OfflineLane:
         self._last_frame = None
         self.presenter.clear()
         self.tools_panel.cleanup()
+        self.catalog_selection.cleanup()
         self.display.cleanup()

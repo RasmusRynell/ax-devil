@@ -30,6 +30,8 @@ choosing its own sizes and colors.
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
 | Pick one of two or three values in a form row or dialog | `ChoiceToggle(choices, current)`; `changed(value)`, `size_at(text_px)` | `modules/chrome/choice_toggle.py` |
 | Question with a few labeled answers | `ask(...)`, never `QMessageBox` | `modules/chrome/choice_dialog.py` |
+| Independent on/off options as chips that wrap onto more rows | `ToggleChips(items)`; `toggled(key, checked)`, `chip(key)`, `set_checked(key, checked)` | `modules/chrome/toggle_chip.py` |
+| Panel of controls that opens under a button, closes on Escape or an outside click | subclass `Popover`; call `open_below(button, width)`. Never `QMenu` with a `QWidgetAction` | `modules/chrome/popover.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 
