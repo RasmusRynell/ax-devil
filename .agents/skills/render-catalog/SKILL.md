@@ -1,6 +1,6 @@
 ---
 name: render-catalog
-description: Change how ax-devil draws overlays on video — boxes, labels, ids, class names, font sizes, colors, line styles, confidence bars, speed arrows, badges, swatches, relation lines — by editing a render catalog JSON file. Use whenever the user asks to change, add, hide or restyle anything drawn over the video, for all objects or one type (people, vehicles, heads...), or asks why an overlay looks the way it does.
+description: Change how ax-devil draws overlays on video — boxes, labels, ids, class names, font sizes, colors, line styles, score bars, speed arrows, badges, swatches, relation lines — by editing a render catalog JSON file. Use whenever the user asks to change, add, hide or restyle anything drawn over the video, for all objects or one type (people, vehicles, heads...), or asks why an overlay looks the way it does.
 ---
 
 # Changing how overlays look: render catalogs
@@ -117,16 +117,16 @@ line widths long. A text style is `{"text": {"color", "size", "family"?}}`.
 text, so there is nothing to measure. Fields are `position`, `anchor` (which point of the background sits on
 `position`) and `runs`, a list of `{"text", "color", "weight": "regular"|"medium"|"semibold"|"bold"}` laid out left to
 right; a run whose text is null or empty is left out. A run with `"bar": <number 0–1>` instead of `text` is a small
-meter, such as a confidence bar, filled that much in its color over a faint track of the same color. The style is
+meter, such as a score bar, filled that much in its color over a faint track of the same color. The style is
 `{"label": {"size", "family", "background": {"color", "alpha"} | null, "padding_x", "padding_y", "radius", "gap"}}`.
 A colored dot is a run with the text `●`.
 
-**Score and confidence** are two separate inputs, `scene.classification.score` (any number, shown as `0.87` with
-`number_text`) and `scene.classification.confidence` (0 to 1, shown as `87%` with `percent_text`). A decoder may give
-either, both or neither, and neither is ever invented, so each is null when missing: guard every step that uses one
-with `enabled` and `is_present`, gate numbers with the `score` and `confidence` features, and never format a
-confidence with `number_text` or a score with `percent_text`. A `bar` takes either value;
-`coalesce` of the confidence, then the score, gives one bar for both.
+**Score and confidence** are two separate inputs, `scene.classification.score` (a raw model output, any number) and
+`scene.classification.confidence` (only what a source reports as a confidence). Show either with `number_text`, such as
+`0.87`. A decoder may give either, both or neither, and neither is ever invented, so each is
+null when missing: guard every step that uses one with `enabled` and `is_present`, and gate numbers with the `score`
+and `confidence` features. A `bar` is only a display hint for a value from 0 to 1; draw each from its own input and
+do not `coalesce` a score with a confidence.
 
 **Long ids**: `trim_text` with `"elide": "middle"` keeps both ends of text longer than `max_length`, so
 `3f2a9c1e-7b4d-…-1a2b3c4d5e6f` shows as `3f2a9…d5e6f` and `track-000412` as `track…00412`.

@@ -144,7 +144,7 @@ def test_hover_hit_summarizes_the_entity_once_and_omits_what_the_decoder_did_not
 
     assert first is not None
     # No speed.
-    assert (first.label, first.detail, first.color_key) == ("object-1 human", "score 0.90 · confidence 87%", "human")
+    assert (first.label, first.detail, first.color_key) == ("object-1 human", "score 0.90 · confidence 0.87", "human")
     assert overlay.get_hit_by_id("object-1") is first
 
 

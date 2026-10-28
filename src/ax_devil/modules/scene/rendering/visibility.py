@@ -40,7 +40,7 @@ class OverlayFeature(str, Enum):
             self.IDS: "Displayed object identifiers.",
             self.CLASS_NAMES: "Classification text.",
             self.SCORE: "Score numbers and their backgrounds.",
-            self.CONFIDENCE: "Confidence percentages, bars and their backgrounds.",
+            self.CONFIDENCE: "Confidence numbers and their backgrounds.",
             self.SPEED: "Velocity arrows and their heads.",
             self.MOVEMENT: "Motion-state symbols.",
             self.ATTRIBUTES: "Attribute badges, color swatches and related indicators.",

@@ -3,7 +3,7 @@
     "id": "built-in.classic",
     "name": "Classic",
     "schema_version": 3,
-    "description": "The original ax-devil look: the id above each box and the class below it, a confidence bar, a movement symbol, color swatches and badges inside the box.",
+    "description": "The original ax-devil look: the id above each box and the class below it, a score bar, a movement symbol, color swatches and badges inside the box.",
     "design_notes": {
       "purpose": "These notes describe the language semantics of the schema version 3 runtime; they are not per-catalog runtime settings. Descriptive metadata is excluded from rendering identity; metadata.schema_version is semantic and must be included.",
       "expressions": "Strings are always literal text, including strings starting with $. A reference is exactly {\"ref\": [\"scope\", \"name\", \"field\"]}; path segments are exact record keys, never Python attributes. An operation is exactly {\"call\": \"name\", \"args\": {\"argument\": expression}}. Arrays and ordinary records recursively contain expressions. {\"literal\": any JSON value} returns its payload unchanged, including objects containing ref, call, or literal keys. Reserved expression keys in an unescaped record are rejected, never guessed. Parameter defaults are literal data, not expressions.",
@@ -113,25 +113,24 @@
         }
       ]
     },
-    "confidence_bar": {
-      "label": "Confidence bar",
-      "feature": "confidence",
-      "description": "A vertical confidence bar inside the box, with spacing that adapts to small detections.",
+    "bar": {
+      "label": "Bar",
+      "description": "A vertical bar inside the box for a value from 0 to 1, with spacing that adapts to small detections.",
       "parameters": {
         "geometry": {
           "type": "image_box",
           "label": "Object box",
           "required": true
         },
-        "confidence": {
+        "value": {
           "type": "number",
-          "label": "Confidence",
+          "label": "Value",
           "required": true
         },
         "colors": {
           "type": "color_stops",
           "label": "Colors",
-          "description": "Bar color by confidence, from 0 to 1.",
+          "description": "Bar color by value, from 0 to 1.",
           "default": [
             {
               "at": 0,
@@ -401,7 +400,7 @@
             "value": {
               "ref": [
                 "parameters",
-                "confidence"
+                "value"
               ]
             },
             "stops": {
@@ -427,7 +426,7 @@
             "progress": {
               "ref": [
                 "parameters",
-                "confidence"
+                "value"
               ]
             },
             "color": {
@@ -471,7 +470,7 @@
     "movement_badge": {
       "label": "Movement badge",
       "feature": "movement",
-      "description": "Symbol inside the top-left of the box, above the confidence bar: ▶ moving, Ⅱ stationary, ? unknown.",
+      "description": "Symbol inside the top-left of the box, above the score bar: ▶ moving, Ⅱ stationary, ? unknown.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -503,7 +502,7 @@
         "inset": {
           "type": "length",
           "label": "Inset",
-          "description": "Distance from the left edge. Null selects 10% of the shorter side, capped at 4 px, matching the confidence bar.",
+          "description": "Distance from the left edge. Null selects 10% of the shorter side, capped at 4 px, matching the score bar.",
           "default": null,
           "minimum": 0,
           "nullable": true
@@ -1812,13 +1811,6 @@
                       "ref": [
                         "scene",
                         "classification",
-                        "confidence"
-                      ]
-                    },
-                    {
-                      "ref": [
-                        "scene",
-                        "classification",
                         "score"
                       ]
                     },
@@ -1871,25 +1863,11 @@
             }
           },
           "bar_value": {
-            "call": "coalesce",
-            "args": {
-              "values": [
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "confidence"
-                  ]
-                },
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "score"
-                  ]
-                }
-              ]
-            }
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
           }
         },
         "steps": [
@@ -1941,8 +1919,9 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
             "enabled": {
               "call": "is_present",
               "args": {
@@ -1962,7 +1941,7 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
                   "values",
                   "bar_value"
@@ -2131,8 +2110,9 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
             "enabled": {
               "call": "is_present",
               "args": {
@@ -2152,7 +2132,7 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
                   "values",
                   "bar_value"
@@ -2273,25 +2253,11 @@
         ],
         "values": {
           "bar_value": {
-            "call": "coalesce",
-            "args": {
-              "values": [
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "confidence"
-                  ]
-                },
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "score"
-                  ]
-                }
-              ]
-            }
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
           }
         }
       },
@@ -2339,13 +2305,6 @@
                 "call": "coalesce",
                 "args": {
                   "values": [
-                    {
-                      "ref": [
-                        "scene",
-                        "classification",
-                        "confidence"
-                      ]
-                    },
                     {
                       "ref": [
                         "scene",
@@ -2402,25 +2361,11 @@
             }
           },
           "bar_value": {
-            "call": "coalesce",
-            "args": {
-              "values": [
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "confidence"
-                  ]
-                },
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "score"
-                  ]
-                }
-              ]
-            }
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
           }
         },
         "steps": [
@@ -2472,8 +2417,9 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
             "enabled": {
               "call": "is_present",
               "args": {
@@ -2493,7 +2439,7 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
                   "values",
                   "bar_value"
@@ -2717,25 +2663,11 @@
             }
           },
           "bar_value": {
-            "call": "coalesce",
-            "args": {
-              "values": [
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "confidence"
-                  ]
-                },
-                {
-                  "ref": [
-                    "scene",
-                    "classification",
-                    "score"
-                  ]
-                }
-              ]
-            }
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
           }
         },
         "steps": [
@@ -2786,8 +2718,9 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
             "enabled": {
               "call": "is_present",
               "args": {
@@ -2807,7 +2740,7 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
                   "values",
                   "bar_value"
@@ -2874,7 +2807,7 @@
           {
             "label": "Face visibility",
             "feature": "attributes",
-            "template": "confidence_bar",
+            "template": "bar",
             "enabled": {
               "call": "is_present",
               "args": {
@@ -2893,7 +2826,7 @@
                   "face_geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
                   "bindings",
                   "face_visible"

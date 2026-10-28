@@ -306,11 +306,6 @@ def number_text(value: Any, precision: Any, hide_zero: Any) -> tuple[Any, Any]:
     return visible, text
 
 
-def percent_text(value: Any, precision: Any) -> Any:
-    """Format fractions as percentages with fixed decimals, such as ``0.87`` as ``87%``."""
-    return per_row(lambda number, places: f"{number * 100:.{min(100, max(0, int(places)))}f}%", value, precision)
-
-
 def get(value: object, key: str) -> object:
     """Read a field of a shared record, or None for a null record."""
     return None if value is None else cast(Mapping[str, object], value).get(key)

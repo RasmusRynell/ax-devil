@@ -122,17 +122,6 @@ class OperationBuilder(ExpressionBuilder):
                 present=self.both(value.present, self.assign(f"{result}[0]")),
                 varying=varying,
             )
-        if name == "percent_text":
-            value, precision = args
-            self.require(
-                f"(0 <= {precision.code}) & ({precision.code} <= 100)",
-                precision.varying,
-                "Precision must be in [0,100].",
-                self.both(active, value.present),
-                location,
-            )
-            code = f"percent_text({value.code}, {precision.code})"
-            return Value(self.assign(code), present=value.present, varying=varying)
         if name == "color_ramp":
             value, stops = args
             if stops.const is not MISSING:

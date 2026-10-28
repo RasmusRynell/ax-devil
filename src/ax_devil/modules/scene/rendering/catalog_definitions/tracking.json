@@ -3,7 +3,7 @@
     "id": "built-in.tracking",
     "name": "Tracking",
     "schema_version": 3,
-    "description": "For debugging tracking: thin high-contrast boxes in a color picked from each object's id and a small id, so box changes and id switches between frames stand out. No class names or confidence."
+    "description": "For debugging tracking: thin high-contrast boxes in a color picked from each object's id and a small id, so box changes and id switches between frames stand out. No class names, scores or confidence."
   },
   "templates": {
     "tracked_object": {

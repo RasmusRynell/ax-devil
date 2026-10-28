@@ -80,7 +80,7 @@ def test_score_and_confidence_are_separate_columns_and_query_terms(
         return "".join(model.column_texts(titles.index(title), range(row, row + 1)))
 
     cells = {key: (cell("Score", n), cell("Conf", n)) for n, key in enumerate(listed_ids(panel))}
-    assert cells == {"scored": ("0.87", ""), "sure": ("", "87%"), "neither": ("", "")}
+    assert cells == {"scored": ("0.87", ""), "sure": ("", "0.87"), "neither": ("", "")}
 
     search_objects(panel, "confidence>0.8")  # Compares the fraction although the list shows a percentage.
     assert listed_ids(panel) == ["sure"]

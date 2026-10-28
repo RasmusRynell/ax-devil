@@ -683,7 +683,7 @@
     "confidence_tab": {
       "label": "Confidence tab",
       "feature": "confidence",
-      "description": "The detection confidence, such as 87%, on a tab flush with the box's bottom-right corner.",
+      "description": "The detection confidence, such as 0.87, on a tab flush with the box's bottom-right corner.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -890,7 +890,7 @@
             "runs": [
               {
                 "text": {
-                  "call": "percent_text",
+                  "call": "number_text",
                   "args": {
                     "value": {
                       "ref": [
@@ -898,7 +898,8 @@
                         "confidence"
                       ]
                     },
-                    "precision": 0
+                    "precision": 2,
+                    "hide_zero": false
                   }
                 },
                 "color": {

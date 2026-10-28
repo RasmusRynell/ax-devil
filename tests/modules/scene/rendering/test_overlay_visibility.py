@@ -226,14 +226,14 @@ def test_packaged_catalogs_hide_all_tagged_output(path: Path) -> None:
         assert diagnostics == []
 
 
-def test_class_name_does_not_extract_hidden_confidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Classification text must not extract the score column when only confidence needed it."""
+def test_class_name_does_not_extract_hidden_score(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Classification text must not extract the score column when only the hidden score bar needed it."""
     from ax_devil.modules.scene.model import Classification, Score
     from tests.catalog_helpers import CLASSIC_CATALOG_PATH
     from tests.drawing_helpers import RecordingTarget, TextCall
 
     revision = SceneRenderCatalogLoader().load_revision(CLASSIC_CATALOG_PATH)
-    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.CONFIDENCE, OverlayFeature.OUTLINES})))
+    variant = revision.specialize(OverlayVisibility(frozenset({OverlayFeature.SCORE, OverlayFeature.OUTLINES})))
     entity = Entity(id=EntityId("object"))
     classification = Classification("custom", Score(0.8))
     observation = Observation(geometry=BoundingBox.from_xywh(0.1, 0.1, 0.3, 0.5), frame_number=0)

@@ -87,7 +87,8 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
   Recipe routing is catalog policy: UI code never switches on classification strings.
 - `Classification.score` and `Classification.confidence` are separate: a decoder sets what its source provides and never
   derives or invents one from the other or a default; a missing value is `None` and the sample is kept. Score is any
-  finite number shown plain; confidence is 0..1 shown as a percentage. The primary classification ranks scored
+  finite number shown plain, and so is confidence, which is only what a source reports as one. A bar for a value in
+  0..1 is a display hint, not a range requirement. The primary classification ranks scored
   before unscored, then by score, then by confidence.
 - `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
   not rendered.
