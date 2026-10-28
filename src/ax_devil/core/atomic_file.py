@@ -12,6 +12,10 @@ from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import BinaryIO, Literal, TextIO, overload
 
+TEMPORARY_TAG_ENV = "AX_DEVIL_TEMPORARY_TAG"
+"""When set, temporary files are named ``<name>.<random>.<tag>.tmp``, so whoever set it can delete the ones left by a
+writer that was killed."""
+
 
 @overload
 def write_atomically(
@@ -31,10 +35,13 @@ def write_atomically(
 
     The contents go to a temporary file beside *path*, which replaces it in one step, keeping the permissions of the
     file it replaces. The parent folder is created. When the block raises, the old file stays and no temporary file is
-    left. Text is UTF-8; *newline* is passed to ``open`` (use ``""`` for ``csv``).
+    left; a process killed mid-write leaves its temporary file, named with ``TEMPORARY_TAG_ENV`` when that is set.
+    Text is UTF-8; *newline* is passed to ``open`` (use ``""`` for ``csv``).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    tag = os.environ.get(TEMPORARY_TAG_ENV)
+    suffix = f".{tag}.tmp" if tag else ".tmp"
+    descriptor, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=suffix)
     # Written through the descriptor mkstemp created, never by reopening the name, which another writer of the
     # folder could have swapped for a symlink. ``opener`` hands that descriptor to ``open`` so ``name`` stays the
     # path, which a caller needs to open its own handle on the temporary file.

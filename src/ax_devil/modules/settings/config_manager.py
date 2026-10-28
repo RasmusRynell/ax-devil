@@ -44,7 +44,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "shortcuts": {},
     "settings": {
         "network_scan": {"on_startup": True, "sign_in": True},
-        "playback": {"video_cache_total_mib": VideoCacheBudget().config_value},
+        "playback": {"video_cache_total_mib": VideoCacheBudget().config_value, "prepare_next_video": False},
         "overlay_interaction": OverlayPreference.config_value(OverlayPreference.from_config(None)),
     },
     "defaults": {
@@ -336,6 +336,13 @@ class ConfigManager:
         """Hold startup storage locations until restart while allowing saved preferences to change."""
         self._active_storage = None
         self._active_storage = self.get("storage", {})
+
+    def use_storage(self, storage: dict[str, Any]) -> None:
+        """Adopt *storage* as the active storage locations, as another process's `get("storage")` returned them.
+
+        A child process calls this so its cache and data folders match the parent's, whatever its own config says.
+        """
+        self._active_storage = copy.deepcopy(storage)
 
     def reset(self) -> None:
         self._load_if_needed()

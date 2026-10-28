@@ -34,6 +34,7 @@ class SettingsState:
     quick_setup_done: bool = False
     scan_on_startup: bool = True
     scan_sign_in: bool = True
+    prepare_next_video: bool = False
 
 
 class GlobalSettings(QObject):
@@ -50,6 +51,7 @@ class GlobalSettings(QObject):
     # Per-setting signals
     overlay_preference_changed = Signal(object, bool)  # OverlayPreference, enabled
     video_cache_budget_changed = Signal(object)
+    prepare_next_video_changed = Signal(bool)
     theme_changed = Signal(str)
     text_size_changed = Signal(object)  # TextSize
 
@@ -85,6 +87,19 @@ class GlobalSettings(QObject):
         self._state = replace(self._state, video_cache_budget=value)
         self.video_cache_budget_changed.emit(value)
         self.setting_changed.emit("playback.video_cache_total_mib", value.config_value)
+
+    @property
+    def prepare_next_video(self) -> bool:
+        """Return whether a background process warms the caches of the video playback steps to next."""
+        return self._state.prepare_next_video
+
+    @prepare_next_video.setter
+    def prepare_next_video(self, value: bool) -> None:
+        if value == self._state.prepare_next_video:
+            return
+        self._state = replace(self._state, prepare_next_video=value)
+        self.prepare_next_video_changed.emit(value)
+        self.setting_changed.emit("playback.prepare_next_video", value)
 
     def is_overlay_enabled(self, preference: OverlayPreference) -> bool:
         """Return whether viewers show *preference*."""
@@ -195,6 +210,7 @@ class GlobalSettings(QObject):
             scan_on_startup=bool(network_scan.get("on_startup", True)),
             scan_sign_in=bool(network_scan.get("sign_in", True)),
             video_cache_budget=VideoCacheBudget.from_config(playback.get("video_cache_total_mib")),
+            prepare_next_video=bool(playback.get("prepare_next_video", False)),
             enabled_overlays=OverlayPreference.from_config(overlay),
         )
         logger.debug(f"GlobalSettings loaded: overlays={self._state.enabled_overlays}")
@@ -216,6 +232,7 @@ class GlobalSettings(QObject):
         settings["overlay_interaction"] = overlay
         playback = settings.get("playback", {}) or {}
         playback["video_cache_total_mib"] = values.video_cache_budget.config_value
+        playback["prepare_next_video"] = values.prepare_next_video
         settings["playback"] = playback
         network_scan = settings.get("network_scan", {}) or {}
         network_scan.update(on_startup=values.scan_on_startup, sign_in=values.scan_sign_in)
@@ -230,6 +247,7 @@ class GlobalSettings(QObject):
     def apply_snapshot(self, snapshot: SettingsState) -> None:
         """Apply complete typed preferences, emitting signals only for changed values."""
         self.video_cache_budget = snapshot.video_cache_budget
+        self.prepare_next_video = snapshot.prepare_next_video
         for preference in OverlayPreference:
             self.set_overlay_enabled(preference, preference in snapshot.enabled_overlays)
         self.theme = snapshot.theme

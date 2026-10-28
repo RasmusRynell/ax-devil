@@ -162,6 +162,16 @@ def _restore_test_config(_load_plugins: Path) -> Generator[None, None, None]:
     (Path(ConfigManager().get("storage")["base_dir"]) / "window-state.ini").unlink(missing_ok=True)
 
 
+@pytest.fixture(autouse=True)
+def _no_entry_preparation_process() -> Generator[None, None, None]:
+    """Keep viewers from starting a child process that warms the next playlist entry.
+
+    Only the viewer's reference is replaced, so test_entry_preparation.py still runs the real one.
+    """
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.prepare_entry", lambda _request: lambda: None):
+        yield
+
+
 @pytest.fixture(scope="session")
 def small_catalog_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Share immutable source bytes; each test still creates and validates its own catalog."""

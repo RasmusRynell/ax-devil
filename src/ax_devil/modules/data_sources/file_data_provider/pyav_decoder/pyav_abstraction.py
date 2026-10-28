@@ -72,10 +72,7 @@ class PyAvAbstraction:
 
         # Initialize frame index for reliable seeking
         self.frame_index = FrameIndex(self.video_path, cache_path, open_config=open_config)
-        if not self.frame_index.load_from_file():
-            logger.debug(f"Building frame index for {self.video_path.name} (this may take a moment...)")
-            self.frame_index.build()
-            self.frame_index.save_to_file()
+        self.frame_index.load_or_build()
 
         logger.debug(f"PyAvAbstraction created: id={id(self)}, video={self.video_path.name}")
 

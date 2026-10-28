@@ -11,6 +11,9 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
   `live_transports.py` opens its RTSP and overlay transports.
 - `live_connection.py`: `LiveConnectionStatus` model; per-feed (video, overlay) state, reason, and display text.
 - `offline_entry_media.py`: `open_entry_media` opens an entry's sources on a worker thread and delivers `EntryMedia`.
+- `entry_preparation.py`: warms the next playlist entry's caches in a child process. It is cancelled by killing its
+  process tree, not by a `CancelToken`; caches are written atomically, and the owner deletes the temporary files the
+  killed child left.
 - `offline_viewer_runtime.py`: `OfflineSession`; composes `offline_playback.py` (source pooling and playback), viewport sync,
   cleanup, and player composition. `offline_lane.py` holds `OfflineLane` (direct overlay lookup, presenter use and
   background analyses), `offline_lane_builder.py` builds the lane displays, `offline_frame_pool.py` the pooled

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 
 from PySide6.QtCore import QPoint, Qt, QThread, Signal
@@ -12,7 +13,9 @@ from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
+from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, overlay_specs, prepare_entry
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import (
     EntryMedia,
@@ -76,6 +79,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._loading_indicator: LoadingIndicator | None = None
         self._initial_entry_loaded = False
         self._lane_visibility: dict[int, OverlayVisibility] = {}
+        self._cancel_preparation: Callable[[], None] | None = None
         super().__init__(parent)
         self._transport = OfflineTransport(
             self,
@@ -91,6 +95,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         )
         self._opening = LatestRequest(self)
         self._opening_jobs = entry_opening_scope(self)
+        GlobalSettings().prepare_next_video_changed.connect(self._prepare_next_if_open)
 
     def _setup_widget_ui(self) -> None:
         layout = self.get_content_layout()
@@ -125,6 +130,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if self._pending_lane_focus is not None and self._pending_lane_focus[0] != index:
             self._pending_lane_focus = None
         self._opening.cancel()
+        self._stop_preparation()
         if not keep_shown:
             if self._holds_focus():
                 # Tearing down a focused display hands the focus to another widget, such as a search field.
@@ -137,11 +143,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
             self.on_screen_item_changed.emit(self.current_on_screen_item())
 
         entry = self._navigation.get_entries()[index]
-        lane_indices = tuple(
-            lane_index
-            for lane_index in range(len(entry.lanes))
-            if self._navigation.is_lane_considered(index, lane_index)
-        )
+        lane_indices = self._considered_lanes(index)
         indicator = self._show_loading_indicator() if self._runtime is None else None
         self._opening.submit(
             self._opening_jobs,
@@ -152,6 +154,45 @@ class OfflineVideoViewerWidget(ViewerWidget):
             on_progress=indicator.set_message if indicator is not None else None,
             on_discard=release_media,
         )
+
+    def _considered_lanes(self, index: int) -> tuple[int, ...]:
+        """Return the lanes of entry *index* that take part in its layout."""
+        return tuple(
+            lane_index
+            for lane_index in range(len(self._navigation.get_entries()[index].lanes))
+            if self._navigation.is_lane_considered(index, lane_index)
+        )
+
+    def _prepare_next(self) -> None:
+        """Let a background process warm the caches of the entry that playback steps to next, if the user allows it."""
+        if not GlobalSettings().prepare_next_video:
+            self._stop_preparation()
+            return
+        entries = self._navigation.get_entries()
+        next_index = self._navigation.find_next_considered_index(self._current_index)
+        request = (
+            entry_preparation(
+                entries[next_index],
+                self._considered_lanes(next_index),
+                overlay_specs(entries[self._current_index], self._considered_lanes(self._current_index)),
+            )
+            if next_index is not None
+            else None
+        )
+        if request is None:
+            self._stop_preparation()
+        else:
+            self._cancel_preparation = prepare_entry(request)
+
+    def _prepare_next_if_open(self) -> None:
+        """Start or stop preparing when the setting changes while an entry is open."""
+        if self._runtime is not None:
+            self._prepare_next()
+
+    def _stop_preparation(self) -> None:
+        if self._cancel_preparation is not None:
+            self._cancel_preparation()
+            self._cancel_preparation = None
 
     def _on_entry_opened(self, index: int, start_frame: int | None, keep_shown: bool, media: EntryMedia) -> None:
         keep_focus = self._holds_focus()
@@ -241,6 +282,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._jump_to_frame(start_frame or 0)
         if start_frame is None:
             self._start_playback()
+        self._prepare_next()
 
     def _show_lane_menu(self, lane: OfflineLane, global_pos: QPoint) -> None:
         """Show what can be done with *lane* at *global_pos*, after a right click on it has focused it.
@@ -420,6 +462,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._is_cleaned_up = True
         self._opening.close()
         self._opening_jobs.close()
+        self._stop_preparation()
         self._hide_loading_indicator()
         self._teardown_runtime()
         self._entry_bar = None
@@ -448,3 +491,5 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._update_nav_state()
         if is_current:
             self._open_entry(self._current_index)
+        elif self._runtime is not None:
+            self._prepare_next()

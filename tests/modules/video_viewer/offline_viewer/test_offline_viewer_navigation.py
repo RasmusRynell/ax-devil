@@ -10,6 +10,7 @@ from PySide6.QtCore import QCoreApplication, QPoint
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.workspace.core import (
@@ -126,6 +127,30 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
 
         previous.click()
         assert shown_entry_index(widget) == 0
+
+    def test_next_entry_is_prepared_in_the_background_only_while_the_setting_is_on(
+        self, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        started: list[object] = []
+        stopped: list[bool] = []
+
+        def prepare_entry(request: object) -> object:
+            started.append(request)
+            return lambda: stopped.append(True)
+
+        monkeypatch.setattr("ax_devil.modules.video_viewer.offline_video_viewer.prepare_entry", prepare_entry)
+        settings = GlobalSettings()
+        widget = self._open(qtbot, playlist_content("A", "B"))
+        assert settings.prepare_next_video is False and started == []
+
+        try:
+            settings.prepare_next_video = True
+            assert len(started) == 1 and stopped == []
+            settings.prepare_next_video = False
+            assert stopped == [True]
+        finally:
+            settings.prepare_next_video = False
+        widget.cleanup()
 
     def test_navigation_controls_position_stays_stable_while_loading(
         self, qtbot: QtBot, deferred_background: DeferredBackground
