@@ -642,6 +642,17 @@
       "label": "Score label",
       "feature": "score",
       "description": "The detection score as a meter and a number on a dark pill under the box; the meter is in the class color, red below the low score.",
+      "enabled": {
+        "call": "is_present",
+        "args": {
+          "value": {
+            "ref": [
+              "parameters",
+              "score"
+            ]
+          }
+        }
+      },
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -657,7 +668,8 @@
         "score": {
           "type": "number",
           "label": "Score",
-          "required": true
+          "required": true,
+          "nullable": true
         },
         "low": {
           "type": "number",

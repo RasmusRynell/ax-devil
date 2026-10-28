@@ -154,7 +154,7 @@ ENTITY = ValueType("entity", (("id", STRING), ("motion_state", STRING.optional()
 OBSERVATION = ValueType(
     "observation", (("geometry", BOX), ("polygon_points", POINTS.optional()), ("velocity", VECTOR.optional()))
 )
-CLASSIFICATION = ValueType("classification", (("type", STRING), ("score", NUMBER)))
+CLASSIFICATION = ValueType("classification", (("type", STRING), ("score", NUMBER.optional())))
 SCENE = ValueType(
     "scene", (("entity", ENTITY), ("observation", OBSERVATION), ("classification", CLASSIFICATION.optional()))
 )

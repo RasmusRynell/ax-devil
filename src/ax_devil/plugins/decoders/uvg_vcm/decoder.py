@@ -23,7 +23,6 @@ from ax_devil.modules.scene.model import (
     Observation,
     Polygon,
     Scene,
-    Score,
     TimeSlice,
 )
 
@@ -202,7 +201,7 @@ class UVGVCMFrameDecoder(PayloadToSceneDecoder):
             observation = Observation(
                 frame_number=frame_index,
                 geometry=_geometry(detection, context),
-                classification=[Classification(class_name, Score(1.0), attributes)],
+                classification=[Classification(class_name, None, attributes)],
                 debug={"uvg_vcm": detection},
             )
             scene.add_entity(Entity(entity_id, observations=[observation]))

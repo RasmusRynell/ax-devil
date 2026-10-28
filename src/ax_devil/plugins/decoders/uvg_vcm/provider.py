@@ -31,7 +31,7 @@ class UVGVCMSceneDataProvider(SceneDecoderFileProvider):
             file_path=file_path,
             decoder_factory=UVGVCMFrameDecoder,
             decoder_name="uvg_vcm",
-            artifact_version=1,
+            artifact_version=2,
             supports_sequence_lookup=True,
             filter_config_factory=self._build_filter_config,
             storage_mode=StorageMode.DERIVED_CACHE,

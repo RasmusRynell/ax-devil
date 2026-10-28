@@ -71,7 +71,7 @@ def test_sample_frame_decodes_classifications(sample_scene: Scene) -> None:
     for entity_id, (classification_type, score) in _EXPECTED_CLASSIFICATIONS.items():
         observation = sample_scene.entities[EntityId(entity_id)].observations[0]
         classification = next(item for item in observation.classification if item.type == classification_type)
-        assert classification.score.value == score
+        assert classification.score is not None and classification.score.value == score
 
 
 def test_sample_frame_decodes_events(sample_scene: Scene) -> None:

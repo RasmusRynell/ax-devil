@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -25,8 +26,9 @@ from ax_devil.modules.scene.model import (
     Score,
     TimeSlice,
 )
-from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS, SceneRenderCatalog
 from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader
+from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic
 from ax_devil.modules.scene.rendering.visibility import OverlayFeature, OverlayVisibility
 from ax_devil.modules.video_player.engine.render_context import RenderContext
 from tests.catalog_helpers import CLASSIC_CATALOG_PATH, classic_catalog, classic_variant
@@ -99,6 +101,24 @@ def test_built_in_recipes_keep_movement_and_speed_controls_independent(
     speed = shown - render(OverlayFeature.SPEED)
     assert movement and speed and not movement & speed
     assert shown - movement - speed == render(OverlayFeature.MOVEMENT, OverlayFeature.SPEED)
+
+
+@pytest.mark.parametrize("path", BUILT_IN_CATALOG_PATHS, ids=lambda path: path.stem)
+def test_built_in_catalogs_draw_an_unscored_object_like_one_with_its_score_hidden(path: Path) -> None:
+    """An annotation has no score: its box draws without a score element and without diagnostics."""
+    unscored = _scene(motion_state=MotionState.Moving)
+    next(iter(unscored.entities.values())).observations[0].classification[0].score = None
+    context = RenderContext.create(640, 480)
+    diagnostics: list[CatalogDiagnostic] = []
+    revision = SceneRenderCatalogLoader().load_revision(path)
+
+    drawn = record_scene(revision.specialize(OverlayVisibility()), unscored, context, diagnostics=diagnostics)
+    hidden = OverlayVisibility(frozenset({OverlayFeature.SCORE}))
+    expected = record_scene(revision.specialize(hidden), _scene(motion_state=MotionState.Moving), context)
+
+    assert diagnostics == []
+    assert drawn
+    assert [type(call) for call in drawn] == [type(call) for call in expected]
 
 
 @pytest.mark.parametrize(

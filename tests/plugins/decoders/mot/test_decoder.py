@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ax_devil.modules.scene.model import EntityId, Scene
+from ax_devil.modules.scene.model import EntityId, Scene, Score
 from ax_devil.plugins.decoders.mot.decoder import decode_mot_frame, prepare_mot_frame_payloads
 
 
@@ -43,7 +43,7 @@ def test_gt_row_decodes_normalized_box_class_and_visibility() -> None:
     assert observation.confidence is None
     classification = observation.classification[0]
     assert classification.type == "static_person"
-    assert classification.score.value == pytest.approx(1.0)
+    assert classification.score is None
     assert classification.attribute_value("gt_mark") == 0
     assert classification.attribute_value("visibility_ratio") == pytest.approx(0.25)
 
@@ -61,7 +61,8 @@ def test_det_scores_are_kept_as_reported_and_are_no_confidence() -> None:
     [scene] = _decode([*rows, "1,-1,100,100,50,50,0.75"])
 
     observations = [entity.observations[0] for entity in scene.entities.values()]
-    assert [observation.classification[0].score.value for observation in observations] == [2.3092, -0.5, 0.75]
+    scores = [observation.classification[0].score for observation in observations]
+    assert scores == [Score(2.3092), Score(-0.5), Score(0.75)]
     assert [observation.confidence for observation in observations] == [None, None, None]
 
 

@@ -160,10 +160,9 @@ class EntityTable(Table):
                 types = objects_from(["" if item is None else item.type for item in self._classifications])
                 return (present, types), ()
             case ("classification", "score"):
-                present = _present(self._classifications)
-                scores = np.array(
-                    [0.0 if item is None else item.score.value for item in self._classifications], dtype=np.float64
-                )
+                scored = [None if item is None else item.score for item in self._classifications]
+                present = _present(scored)
+                scores = np.array([0.0 if score is None else score.value for score in scored], dtype=np.float64)
                 return (present, scores), _finite_rows("number must be finite.", scores)
             case ("classification",):
                 column, failures = _record(*((name, self.column((*path, name))) for name in ("type", "score")))

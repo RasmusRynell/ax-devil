@@ -60,7 +60,7 @@ class MOTChallengeSceneDataProvider(SceneDecoderFileProvider):
             file_path=file_path,
             decoder_factory=MOTChallengeDecoder,
             decoder_name="mot_csv",
-            artifact_version=3,
+            artifact_version=4,
             decode_options={"width": self._width, "height": self._height},
             supports_sequence_lookup=True,
             filter_config_factory=build_mot_filter_config,

@@ -47,7 +47,7 @@ training split, a **GT** lane. A sequence with neither file opens as plain video
 - Source frame 1 maps to video frame 0. Frames are matched by number; no timestamps are invented.
 - Boxes are placed using the frame size from `seqinfo.ini`. Boxes extending past the image are kept.
 - Public detections carry no track IDs, so detection lanes have no object history.
-- Detection scores are kept as reported, including DPM's values outside 0 to 1. MOT files report no confidence.
+- Detection scores are kept as reported, including DPM's values outside 0 to 1; ground-truth rows have no score. MOT files report no confidence.
 - Ground-truth classes use the benchmark's 1–13 list (person, person on vehicle, car, … crowd). Every row is
   shown, including static people, distractors, occluders and rows with `mark` 0, which the benchmark ignores when
   scoring; use the class filter to hide them. `mark` and visibility are kept as the `gt_mark` and `visibility_ratio`

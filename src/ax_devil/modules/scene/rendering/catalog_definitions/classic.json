@@ -117,6 +117,17 @@
       "label": "Score bar",
       "feature": "score",
       "description": "A vertical score bar inside the box, with spacing that adapts to small detections.",
+      "enabled": {
+        "call": "is_present",
+        "args": {
+          "value": {
+            "ref": [
+              "parameters",
+              "score"
+            ]
+          }
+        }
+      },
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -126,7 +137,8 @@
         "score": {
           "type": "number",
           "label": "Score",
-          "required": true
+          "required": true,
+          "nullable": true
         },
         "colors": {
           "type": "color_stops",
@@ -1805,11 +1817,19 @@
             "call": "color_ramp",
             "args": {
               "value": {
-                "ref": [
-                  "scene",
-                  "classification",
-                  "score"
-                ]
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "score"
+                      ]
+                    },
+                    1
+                  ]
+                }
               },
               "stops": [
                 {
@@ -2257,11 +2277,19 @@
             "call": "color_ramp",
             "args": {
               "value": {
-                "ref": [
-                  "scene",
-                  "classification",
-                  "score"
-                ]
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "score"
+                      ]
+                    },
+                    1
+                  ]
+                }
               },
               "stops": [
                 {

@@ -413,6 +413,17 @@
       "label": "Score tab",
       "feature": "score",
       "description": "The detection score, such as 0.87, on a tab flush with the box's bottom-left corner.",
+      "enabled": {
+        "call": "is_present",
+        "args": {
+          "value": {
+            "ref": [
+              "parameters",
+              "score"
+            ]
+          }
+        }
+      },
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -433,7 +444,8 @@
         "score": {
           "type": "number",
           "label": "Score",
-          "required": true
+          "required": true,
+          "nullable": true
         },
         "font_size": {
           "type": "length",

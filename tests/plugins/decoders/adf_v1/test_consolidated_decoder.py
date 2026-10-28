@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ax_devil.modules.scene.model import EntityId
+from ax_devil.modules.scene.model import EntityId, Score
 from ax_devil.plugins.decoders.adf_v1.consolidated import ADFFrameV1ConsolidatedDecoder, resolve_scenes
 
 
@@ -45,5 +45,5 @@ def test_consolidated_track_becomes_frames_with_distinct_observations() -> None:
         assert observation.timestamp == timestamp
         assert observation.geometry.as_xywh() == pytest.approx(expected_box)
         assert observation.classification[0].type == "human"
-        assert observation.classification[0].score.value == 0.9
+        assert observation.classification[0].score == Score(0.9)
         assert observation.classification[0].attribute_value("carries_bag") is False

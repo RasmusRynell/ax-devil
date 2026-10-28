@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import builtins
 import enum
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, ClassVar, TypeVar
@@ -75,7 +76,7 @@ _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (3, 0)
+SCENE_MODEL_VERSION: tuple[int, int] = (3, 1)
 
 
 class OperationType(enum.Enum):
@@ -97,22 +98,30 @@ class OperationType(enum.Enum):
 # ---------------------------------------------------------------------------#
 @dataclass(slots=True)
 class Classification:
-    """Classification with a raw score and flexible attributes."""
+    """Classification with an optional raw score and flexible attributes.
+
+    ``score`` is ``None`` when the source has no model output, as with annotations.
+    """
 
     type: ClassificationType  # str alias
-    score: Score
+    score: Score | None
     attributes: list[Attribute] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.type:
             raise ValueError("Classification type cannot be empty")
-        if not isinstance(self.score, Score):
+        if self.score is not None and not isinstance(self.score, Score):
             if isinstance(self.score, (int, float)):
                 self.score = Score(float(self.score))
             else:
-                raise TypeError("Score must be an instance of Score")
+                raise TypeError("Score must be an instance of Score or None")
         if not isinstance(self.attributes, list):
             raise TypeError("Attributes must be a list of Attribute instances")
+
+    @property
+    def score_rank(self) -> float:
+        """Return the value that orders classifications by score; an unscored one ranks below every scored one."""
+        return -math.inf if self.score is None else self.score.value
 
     def attribute_value(self, attr_name: str) -> Any | None:
         """Return a classification attribute value by name."""
@@ -178,8 +187,8 @@ class Observation:
 
     @property
     def primary_classification(self) -> Classification | None:
-        """Return the highest-score classification for this observation."""
-        return max(self.classification, key=lambda item: item.score.value, default=None)
+        """Return the highest-score classification; an unscored one loses to a scored one, and the first wins a tie."""
+        return max(self.classification, key=lambda item: item.score_rank, default=None)
 
 
 # ---------------------------------------------------------------------------#

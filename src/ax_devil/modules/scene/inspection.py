@@ -118,7 +118,7 @@ def entity_score(entity: Entity) -> float | None:
     """Return the score of an entity's primary classification, as its summary shows it."""
     observation = entity.latest_observation
     primary = observation.primary_classification if observation is not None else None
-    return primary.score.value if primary is not None else None
+    return primary.score.value if primary is not None and primary.score is not None else None
 
 
 def entity_summary(entity: Entity) -> EntitySummary:
@@ -130,7 +130,7 @@ def entity_summary(entity: Entity) -> EntitySummary:
     return EntitySummary(
         entity_id=str(entity.id),
         class_name=primary.type if primary is not None else _UNKNOWN_CLASS,
-        score=primary.score.value if primary is not None else None,
+        score=entity_score(entity),
         confidence=confidence.value if confidence is not None else None,
         speed=velocity.speed if velocity is not None else None,
         state=entity.motion_state.value if entity.motion_state is not None else None,
@@ -157,12 +157,13 @@ def _classification_fields(observation: Observation) -> Iterator[InspectionField
     primary = observation.primary_classification
     if primary is not None:
         yield InspectionField(("type",), primary.type)
-        yield InspectionField(("score",), primary.score.value, _fraction(primary.score.value))
+        if primary.score is not None:
+            yield InspectionField(("score",), primary.score.value, _fraction(primary.score.value))
     if observation.confidence is not None:
         yield InspectionField(("confidence",), observation.confidence.value, _fraction(observation.confidence.value))
     if primary is not None:
         yield from _flatten(primary.attributes, ("attributes",))
-    candidates = sorted(observation.classification, key=lambda item: item.score.value, reverse=True)
+    candidates = sorted(observation.classification, key=lambda item: item.score_rank, reverse=True)
     for candidate in candidates:
         if candidate is primary:  # Its attributes are already listed under ``attributes``.
             yield from _flatten(candidate.score, ("candidates", candidate.type))

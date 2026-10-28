@@ -149,6 +149,19 @@ def test_score_is_never_shown_as_confidence_unless_observation_reports_one() -> 
     assert entity_record(entity).fields["classification.confidence"] == (0.97,)
 
 
+def test_unscored_classifications_have_no_score_and_the_first_is_primary() -> None:
+    entity = _inspection_entity()
+    observation = entity.latest_observation
+    assert observation is not None
+    for classification in observation.classification:
+        classification.score = None
+
+    assert entity_summary(entity).score is None
+    assert "classification.score" not in entity_record(entity).fields
+    assert ("score",) not in _paths(entity, FieldGroup.CLASSIFICATION)
+    assert _paths(entity, FieldGroup.CLASSIFICATION)[("type",)] == "car"
+
+
 def test_entity_record_exposes_debug_paths_and_never_derives_speed() -> None:
     record = entity_record(_inspection_entity())
 

@@ -126,8 +126,8 @@ A colored dot is a run with the text `●`.
 
 **Detection data** that is not in `scene` comes through `bindings` on an object type:
 `{"source": "primary_classification_attribute", "attribute": "carries_bag", "value_shape": "bool", "picker": "value"}`.
-A binding is missing (null) when the detection lacks the attribute, so guard steps that use it with
-`"enabled": {"call": "is_present", "args": {"value": {"ref": ["bindings", "<name>"]}}}`. Attribute names come from the
+A binding, and `scene.classification.score` (annotations have none), can be missing (null), so guard steps that use it
+with `"enabled": {"call": "is_present", "args": {"value": {"ref": ["bindings", "<name>"]}}}`. Attribute names come from the
 decoders: `git grep -n 'Attribute(name=' src/ax_devil/plugins/decoders`.
 
 ## Writing it well

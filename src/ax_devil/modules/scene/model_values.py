@@ -69,8 +69,7 @@ class MotionState(enum.Enum):
 class Score:
     """A raw model output for a classification or color, in the source's own units.
 
-    Nothing may assume a range for it, and it is never a confidence. Annotation decoders, whose labels come from no
-    model, report 1.
+    Nothing may assume a range for it, and it is never a confidence.
     """
 
     value: float

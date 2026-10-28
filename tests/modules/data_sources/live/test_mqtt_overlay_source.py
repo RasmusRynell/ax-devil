@@ -154,7 +154,7 @@ def test_mqtt_delivery_recovers_after_malformed_payload(qtbot: QtBot, broker: _B
     assert set(overlay.content.entities) == {EntityId("42")}
     classification = overlay.content.entities[EntityId("42")].observations[0].classification[0]
     assert classification.type == "human"
-    assert classification.score.value == 0.9
+    assert classification.score is not None and classification.score.value == 0.9
     assert broker.events[-1] == "stop"
 
 

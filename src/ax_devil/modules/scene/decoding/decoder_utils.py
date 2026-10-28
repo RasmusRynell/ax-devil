@@ -52,7 +52,7 @@ _COLOR_RGB_MAP = {
 def classification_for_id(
     class_id: int,
     names: Mapping[int, str],
-    score: Score,
+    score: Score | None,
     attributes: Iterable[Attribute] = (),
 ) -> Classification:
     """Return the named classification for ``class_id``, or ``?<id>`` if ``names`` lacks it.

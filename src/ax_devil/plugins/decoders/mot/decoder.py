@@ -155,8 +155,8 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
         if source == "gt":
             attributes.append(Attribute("gt_mark", int(raw_score)))
 
-        # A DET row's last column is the detector's score, kept as reported; GT rows come from no model.
-        class_score = Score(1.0 if source == "gt" else raw_score)
+        # A DET row's last column is the detector's score, kept as reported; GT rows come from no model and have none.
+        class_score = None if source == "gt" else Score(raw_score)
 
         observation = Observation(
             frame_number=frame_index,
