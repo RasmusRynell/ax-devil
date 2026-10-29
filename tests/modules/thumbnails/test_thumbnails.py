@@ -34,7 +34,7 @@ class StubSource:
     fresh_s: ClassVar[float] = 60.0
 
     def open_frame(self, open_frames: OpenFrames) -> QImage | None:
-        return self.opened
+        return self.opened if self.opened is not None else open_frames(self.name)
 
     def read(self, token: CancelToken) -> QImage:
         self.reads.append(self.name)
@@ -96,3 +96,38 @@ def test_a_stream_still_connecting_shows_nothing_and_is_not_read(thumbnails: Thu
 
     assert delivered == []
     assert source.reads == []
+
+
+def test_a_camera_whose_read_was_cancelled_is_not_asked_again_within_its_cooldown(
+    qtbot: QtBot, thumbnails: Thumbnails
+) -> None:
+    camera, other = StubSource("camera"), StubSource("other")
+    delivered: list[QImage | None] = []
+
+    thumbnails.request(camera, lambda image: None)
+    qtbot.waitUntil(lambda: camera.reads == ["camera"], timeout=5000)
+    camera.release.set()
+    thumbnails.request(other, lambda image: None)  # Cancels the camera's read.
+    other.release.set()
+    qtbot.waitUntil(lambda: other.reads == ["other"], timeout=5000)
+    thumbnails.request(camera, delivered.append)
+
+    assert camera.reads == ["camera"]
+
+
+def test_a_snapshot_on_its_way_does_not_replace_a_newer_live_frame(qtbot: QtBot) -> None:
+    streams: dict[str, QImage] = {}
+    service = Thumbnails(streams.get, BackgroundJobs(max_workers=1))
+    source = StubSource("camera")
+    delivered: list[QImage | None] = []
+    try:
+        service.request(source, delivered.append)
+        qtbot.waitUntil(lambda: source.reads == ["camera"], timeout=5000)
+        streams["camera"] = _picture()
+        service.request(source, delivered.append)
+        source.release.set()
+        qtbot.wait(200)
+
+        assert len(delivered) == 1
+    finally:
+        service.cleanup()

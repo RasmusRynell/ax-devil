@@ -15,7 +15,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.chrome.hover_card import HoverCard
 from ax_devil.modules.thumbnails import OpenFrames, Thumbnails
-from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
+from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.row_hover import RowHover
 from ax_devil.modules.workspace.ui.section_tree import SectionTree
 from tests.helpers.section_tree_rows import item_at, row_widget, show_tree
@@ -99,3 +99,21 @@ def test_scrolling_hides_the_card(tree: SectionTree) -> None:
     QApplication.sendEvent(tree.viewport(), wheel)
 
     assert not card.isVisible()
+
+
+def test_a_row_whose_thumbnail_goes_away_loses_its_picture(tree: SectionTree) -> None:
+    _rest_on(tree, 0)
+    card = _card(tree)
+    assert _pictures(card)
+
+    tree.set_sections(
+        (
+            WorkspaceBrowserSection(
+                BrowserSection.PLAYLISTS, (WorkspaceBrowserRow(row_id="a", label="front_door", icon_kind="video"),)
+            ),
+        )
+    )
+    _rest_on(tree, 0)
+
+    assert card.isVisible()
+    assert not _pictures(card)

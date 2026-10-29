@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
 
 from PySide6.QtCore import QObject
@@ -30,10 +31,19 @@ def _read(source: ThumbnailSource, job: JobContext[None]) -> QImage | None:
         return None
 
 
+@dataclass(slots=True)
+class _Memory:
+    """What is known of a source: when it was last asked for, and the last picture it gave."""
+
+    attempted_at: float
+    image: QImage | None = None
+
+
 class Thumbnails(QObject):
     """Pictures for hover cards: an open stream's newest frame, else a read remembered in memory for a while.
 
-    Reads run one at a time in the background; asking for another source cancels the one in progress. Everything
+    Reads run one at a time in the background; asking for another source cancels the one in progress. A source is
+    not read again within its ``fresh_s`` of the last read being started, even when that read was cancelled. Everything
     here is used from the GUI thread only.
     """
 
@@ -44,7 +54,7 @@ class Thumbnails(QObject):
         self._open_frames = open_frames
         self._latest = LatestRequest(self)
         self._scope = (jobs or background_jobs("thumbnails", max_workers=2)).scope(self)
-        self._remembered: OrderedDict[ThumbnailSource, tuple[float, QImage | None]] = OrderedDict()
+        self._memory: OrderedDict[ThumbnailSource, _Memory] = OrderedDict()
         self._reading: ThumbnailSource | None = None
         self._on_image: OnImage | None = None
 
@@ -57,20 +67,25 @@ class Thumbnails(QObject):
         frame = source.open_frame(self._open_frames)
         if frame is not None:
             if not frame.isNull():
+                if source == self._reading:  # A snapshot still on its way must not replace this newer frame.
+                    self._latest.cancel()
+                    self._reading = self._on_image = None
                 on_image(fit(frame, THUMBNAIL_EDGE_PX))
             return
-        remembered = self._remembered.get(source)
-        if remembered is not None:
-            self._remembered.move_to_end(source)
-            remembered_at, image = remembered
-            if time.monotonic() - remembered_at < source.fresh_s:
-                on_image(image)
-                return
-            if image is not None:
-                on_image(image)
+        memory = self._memory.get(source)
+        image = memory.image if memory is not None else None
         if source == self._reading:
             self._on_image = on_image
+            if image is not None:
+                on_image(image)
             return
+        fresh = memory is not None and time.monotonic() - memory.attempted_at < source.fresh_s
+        if fresh or image is not None:
+            self._memory.move_to_end(source)
+            on_image(image)
+        if fresh:
+            return
+        self._remember(source).attempted_at = time.monotonic()
         self._reading = source
         self._on_image = on_image
         self._latest.submit(
@@ -87,12 +102,17 @@ class Thumbnails(QObject):
         self._scope.close()
         self._reading = self._on_image = None
 
+    def _remember(self, source: ThumbnailSource) -> _Memory:
+        """Return what is known of *source*, as the most recently used, forgetting the least recently used."""
+        memory = self._memory.setdefault(source, _Memory(time.monotonic()))
+        self._memory.move_to_end(source)
+        while len(self._memory) > REMEMBERED_IMAGES:
+            self._memory.popitem(last=False)
+        return memory
+
     def _finish(self, source: ThumbnailSource, image: QImage | None) -> None:
         """Remember what was read, then hand it to whoever last asked."""
-        self._remembered[source] = (time.monotonic(), image)
-        self._remembered.move_to_end(source)
-        while len(self._remembered) > REMEMBERED_IMAGES:
-            self._remembered.popitem(last=False)
+        self._remember(source).image = image
         on_image = self._on_image
         self._reading = self._on_image = None
         if on_image is not None:

@@ -11,7 +11,7 @@ from PySide6.QtGui import QCursor, QGuiApplication, QHelpEvent, QImage, QMouseEv
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.chrome.hover_card import HoverCard
-from ax_devil.modules.thumbnails import Thumbnails
+from ax_devil.modules.thumbnails import Thumbnails, ThumbnailSource
 from ax_devil.modules.workspace.ui.browser_rows import WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.section_tree import ROW_ROLE, SectionTree
 
@@ -35,6 +35,10 @@ class _Hovered:
     rect: QRect
 
 
+def _identity(row: WorkspaceBrowserRow) -> tuple[str, ThumbnailSource | None]:
+    return row.row_id, row.thumbnail
+
+
 class RowHover(QObject):
     """Show a ``HoverCard`` for the row of a watched tree that the pointer rests on: its name and facts, and the
     picture its thumbnail source gives, if it has one.
@@ -52,8 +56,9 @@ class RowHover(QObject):
         self._trees: dict[QObject, SectionTree] = {}
         """The watched trees by their viewports."""
         self._card: HoverCard | None = None
-        self._shown: str | None = None
-        """The id of the row the card shows, None while it is hidden."""
+        self._shown: tuple[str, ThumbnailSource | None] | None = None
+        """The id and thumbnail source of the row the card shows, None while it is hidden. A row whose source changes
+        is shown afresh, and answers to the earlier source are ignored."""
         self._refresh = QTimer(self)
         self._refresh.setInterval(_REFRESH_MS)
         self._refresh.timeout.connect(self._refresh_card)
@@ -123,7 +128,7 @@ class RowHover(QObject):
         hovered = self._row_under(global_pos)
         if hovered is None:
             self.hide()
-        elif hovered.row.row_id != self._shown:
+        elif _identity(hovered.row) != self._shown:
             self._show(hovered)
 
     def _refresh_card(self) -> None:
@@ -141,8 +146,9 @@ class RowHover(QObject):
         if card is None:
             card = self._card = HoverCard(hovered.tree.window())
         card.set_content(row.label, row.tooltip)
-        if row.row_id != self._shown:
-            self._shown = row.row_id
+        identity = _identity(row)
+        if identity != self._shown:
+            self._shown = identity
             if row.thumbnail is None:
                 card.set_picture(None)
             else:
@@ -152,9 +158,9 @@ class RowHover(QObject):
                 app.installEventFilter(self)
             self._refresh.start()
         if row.thumbnail is not None:
-            self._thumbnails.request(row.thumbnail, partial(self._deliver, row.row_id))
+            self._thumbnails.request(row.thumbnail, partial(self._deliver, identity))
 
-    def _deliver(self, row_id: str, image: QImage | None) -> None:
-        """Show *image* in the card, unless the card has moved on to another row."""
-        if self._card is not None and row_id == self._shown:
+    def _deliver(self, identity: tuple[str, ThumbnailSource | None], image: QImage | None) -> None:
+        """Show *image* in the card, unless the card has moved on to another row or another thumbnail source."""
+        if self._card is not None and identity == self._shown:
             self._card.set_picture(image)

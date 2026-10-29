@@ -10,8 +10,10 @@ from typing import Any
 
 import av
 import pytest
+from PySide6.QtGui import QColor, QImage
 
 from ax_devil.core.cancellation import NEVER
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.thumbnails.first_frame import cached_first_frame, keep_newest
 
 
@@ -45,6 +47,30 @@ def test_first_frame_is_decoded_once_until_the_file_changes(
     shutil.copyfile(video_file_factory(2.0, 25), video)
     assert not cached_first_frame(video, None, NEVER).isNull()
     assert len(opens) == 2
+
+
+def test_an_image_sequence_is_decoded_again_when_its_first_image_is_overwritten(
+    isolated_cache: Path, tmp_path: Path, opens: list[str]
+) -> None:
+    folder = tmp_path / "img1"
+    folder.mkdir()
+    pattern = folder / "%06d.png"
+    sequence = ImageSequenceConfig(fps=10, width=8, height=6, total_frames=1)
+    first = QImage(8, 6, QImage.Format.Format_RGB32)
+    first.fill(QColor("red"))
+    first.save(str(folder / "000001.png"))
+
+    cached_first_frame(pattern, sequence, NEVER)
+    cached_first_frame(pattern, sequence, NEVER)
+    assert len(opens) == 1
+
+    first.fill(QColor("blue"))
+    first.save(str(folder / "000001.png"))
+    cached_first_frame(pattern, sequence, NEVER)
+
+    assert len(opens) == 2
+    with pytest.raises(FileNotFoundError):
+        cached_first_frame(folder / "%06d.jpg", sequence, NEVER)
 
 
 def test_keep_newest_deletes_the_oldest_files(tmp_path: Path) -> None:

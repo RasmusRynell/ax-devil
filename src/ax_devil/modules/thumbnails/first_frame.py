@@ -28,12 +28,13 @@ JPEG_QUALITY = 85
 def cached_first_frame(path: Path, image_sequence: ImageSequenceConfig | None, token: CancelToken) -> QImage:
     """Return the first frame of *path* from the disk cache, decoding and caching it when the source changed.
 
-    An image sequence's *path* is a numbered pattern, so its folder is what changes when frames are added or replaced.
-    Raises ``FileNotFoundError`` when the source is missing.
+    An image sequence's *path* is a numbered pattern, so its first image file is what is fingerprinted. Raises
+    ``FileNotFoundError`` when the source is missing.
     """
-    fingerprint = Fingerprint.of(path.parent if image_sequence is not None else path)
+    source = _first_image(path, image_sequence) if image_sequence is not None else path
+    fingerprint = Fingerprint.of(source)
     if fingerprint is None:
-        raise FileNotFoundError(path)
+        raise FileNotFoundError(source)
     key = hashlib.sha256(f"{tuple(fingerprint)}|{THUMBNAIL_EDGE_PX}|{image_sequence}".encode()).hexdigest()
     cache_path = CacheManager().get_cache_path("thumbnails", path, ".jpg", content_hash=key)
     try:
@@ -57,6 +58,14 @@ def cached_first_frame(path: Path, image_sequence: ImageSequenceConfig | None, t
         except OSError as error:
             logger.debug(f"Thumbnail not cached → {path.name}: {error}")
     return image
+
+
+def _first_image(pattern: Path, image_sequence: ImageSequenceConfig) -> Path:
+    """Return the file the numbered *pattern* names at the sequence's start number; raise when it names none."""
+    try:
+        return Path(str(pattern) % image_sequence.start_number)
+    except (TypeError, ValueError) as error:
+        raise FileNotFoundError(pattern) from error
 
 
 def read_first_frame(path: Path, image_sequence: ImageSequenceConfig | None, token: CancelToken) -> QImage:
