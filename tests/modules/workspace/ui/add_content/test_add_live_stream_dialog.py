@@ -336,6 +336,7 @@ def test_resolutions_are_read_again_for_a_changed_host_and_after_an_empty_answer
     assert hosts == ["camera.local", "other.local"]
     field.showPopup()
     qtbot.waitUntil(lambda: field.itemText(0) == "1920x1080")
+    qtbot.waitUntil(lambda: field.view().height() >= 2 * field.view().sizeHintForRow(0))  # The open popup grew.
     field.hidePopup()
     dialog.cleanup()
 

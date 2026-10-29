@@ -182,3 +182,5 @@ class ResolutionField(QComboBox):
             self._model.item(0).setEnabled(False)
         self._model.blockSignals(False)
         self.view().reset()
+        if self.view().isVisible():  # An open popup keeps the height of the rows it opened with.
+            super().showPopup()
