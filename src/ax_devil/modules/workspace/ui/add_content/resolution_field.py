@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from functools import partial
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QShowEvent, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QComboBox, QLineEdit, QWidget
 
 from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest, background_jobs
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.data_sources.live.camera_resolutions import (
     CameraResolutions,
     ChannelResolutions,
@@ -17,6 +19,8 @@ from ax_devil.modules.data_sources.live.camera_resolutions import (
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+_DEBOUNCE_MS = 600  # Typing a host passes through addresses that are not the camera.
 
 
 def _read(connection: DeviceConnection, _job: JobContext[None]) -> CameraResolutions:
@@ -39,7 +43,7 @@ class ResolutionField(QComboBox):
         self._camera_head = camera_head
         self._connection = DeviceConnection("", DeviceProtocol.HTTPS)
         self._result: CameraResolutions | None = None
-        self._failed = False
+        self._problem = ""  # The status row after an attempt that gave no usable list.
         self._chosen = False
         self._shown = False
         self._model = QStandardItemModel(self)
@@ -50,7 +54,13 @@ class ResolutionField(QComboBox):
         self.setCompleter(None)  # type: ignore[arg-type]  # Inline completion would turn a typed "1" into "1920x1080".
         self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.setMinimumContentsLength(12)
+        # Editable combos skip the padded menu-style popup that the other combos get.
+        self.view().setStyleSheet(f"QListView::item {{ padding: {Space.S}px {Space.XL}px; }}")
         self._request = LatestRequest(self)
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(_DEBOUNCE_MS)
+        self._timer.timeout.connect(self._load)
         self._jobs = (jobs or background_jobs("discovery")).scope(self)
         self._closed = False
         self.setEditText(configured)
@@ -69,18 +79,23 @@ class ResolutionField(QComboBox):
         return self.currentText().strip()
 
     def set_connection(self, connection: DeviceConnection) -> None:
-        """List again for another device or login, keeping the text."""
+        """List again for another device or login, keeping the text; a shown field waits out typing first."""
         if connection == self._connection:
             return
         self._request.cancel()
         self._connection = connection
         self._result = None
-        self._failed = False
+        self._problem = ""
+        if self.isVisible() and connection.host:
+            self._timer.start()
+        else:
+            self._timer.stop()
         self._rebuild()
 
     def cleanup(self) -> None:
         """Drop any request still in flight."""
         self._closed = True
+        self._timer.stop()
         self._request.close()
         self._jobs.close()
 
@@ -102,7 +117,8 @@ class ResolutionField(QComboBox):
     def _load(self) -> None:
         if self._closed or self._request.pending or self._result is not None or not self._connection.host:
             return
-        self._failed = False
+        self._timer.stop()
+        self._problem = ""
         self._request.submit(
             self._jobs,
             "load resolutions",
@@ -113,20 +129,29 @@ class ResolutionField(QComboBox):
         self._rebuild()
 
     def _on_loaded(self, result: CameraResolutions) -> None:
-        self._result = result
+        if result.params:
+            self._result = result
+        else:  # An empty or error answer lists nothing worth keeping; the next popup asks again.
+            self._problem = "Camera lists no resolutions"
         self._rebuild()
-        if not self._chosen:
-            self.setEditText(self._channel().preferred(self._configured))
+        self._apply_preferred()
 
     def _on_failed(self, error: Exception) -> None:
         logger.debug(f"Could not read resolutions from {self._connection.host}: {error}")
-        self._failed = True
+        self._problem = "Could not read resolutions"
         self._rebuild()
 
     def _on_camera_head_changed(self) -> None:
         self._rebuild()
-        if self._result is not None and not self._chosen:
-            self.setEditText(self._channel().preferred(self._configured))
+        self._apply_preferred()
+
+    def _apply_preferred(self) -> None:
+        """Start on what the camera offers for the channel, until the user has typed or chosen."""
+        if self._chosen or self._result is None:
+            return
+        preferred = self._channel().preferred(self._configured)
+        if preferred != self.currentText():
+            self.setEditText(preferred)
 
     def _channel(self) -> ChannelResolutions:
         text = self._camera_head.text().strip() or "1"
@@ -137,23 +162,23 @@ class ResolutionField(QComboBox):
     def _status(self) -> str:
         if not self._connection.host:
             return "Enter a device host to list resolutions"
-        if self._failed:
-            return "Could not read resolutions"
-        if self._result is not None:
-            return "Camera lists no resolutions"
-        return "Loading resolutions…"
+        if self._request.pending or self._timer.isActive():
+            return "Loading resolutions…"
+        if self._problem:
+            return self._problem
+        return "Camera lists no resolutions" if self._result is not None else "Resolutions not read yet"
 
     def _rebuild(self) -> None:
-        """List the channel's resolutions, or one disabled row saying why there are none; the text stays as it is."""
-        text = self.currentText()
+        """List the channel's resolutions, or one disabled row saying why there are none.
+
+        The combo is not told, so it leaves the editor alone: its text, caret, selection and undo are the user's.
+        """
         resolutions = self._channel().resolutions
-        blocked = (self.blockSignals(True), self._line.blockSignals(True))
-        self.clear()
+        self._model.blockSignals(True)
+        self._model.removeRows(0, self._model.rowCount())
         for resolution in resolutions or (self._status(),):
             self._model.appendRow(QStandardItem(resolution))
         if not resolutions:
             self._model.item(0).setEnabled(False)
-        self.setCurrentIndex(-1)
-        self.setEditText(text)
-        self.blockSignals(blocked[0])
-        self._line.blockSignals(blocked[1])
+        self._model.blockSignals(False)
+        self.view().reset()
