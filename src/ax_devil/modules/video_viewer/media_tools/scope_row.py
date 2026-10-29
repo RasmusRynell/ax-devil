@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Generic, TypeVar
 
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedLayout, QWidget
 
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.tokens import Space, TextRole
@@ -49,11 +49,23 @@ class ScopeRow(QWidget, Generic[T]):
         self._apply_to_all_button.setObjectName("applyToAllButton")
         self._apply_to_all_button.setToolTip("Use these settings in every open viewer and lane.")
 
+        # The label and Make default share one cell, and a hidden Apply to all keeps its room, so the row's size hint
+        # never changes and a menu or window holding it never needs to resize.
+        self._status = QStackedLayout()
+        self._status.addWidget(self._default_label)
+        button_cell = QWidget(self)  # A stacked widget fills its cell; the cell keeps the button its natural width
+        button_layout = QHBoxLayout(button_cell)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.addWidget(self._make_default_button)
+        button_layout.addStretch(1)
+        self._status.addWidget(button_cell)
+        policy = self._apply_to_all_button.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        self._apply_to_all_button.setSizePolicy(policy)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(Space.S)
-        layout.addWidget(self._default_label)
-        layout.addWidget(self._make_default_button)
+        layout.addLayout(self._status)
         layout.addStretch(1)
         layout.addWidget(self._apply_to_all_button)
 
@@ -94,9 +106,6 @@ class ScopeRow(QWidget, Generic[T]):
         in_use = self._hub.values_in_use()
         is_default = self._value == self._hub.default()
         differs = any(value != self._value for value in in_use)
-        self._default_label.setVisible(is_default)
-        self._make_default_button.setVisible(not is_default)
+        self._status.setCurrentIndex(0 if is_default else 1)
         self._apply_to_all_button.setText(f"Apply to all {len(in_use)}")
         self._apply_to_all_button.setVisible(differs)
-        if self.isVisible():
-            self.window().adjustSize()

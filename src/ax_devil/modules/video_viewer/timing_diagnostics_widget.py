@@ -148,6 +148,10 @@ class TimingDiagnosticsWidget(QWidget):
         self._scope.set_value(self._timestamp_fallback_policy)
         self.timestampFallbackPolicyChanged.emit(self._timestamp_fallback_policy)
 
+    def cleanup(self) -> None:
+        """Leave the shared view list when the owning view closes; repeat calls do nothing."""
+        self._scope.cleanup()
+
     def _adopt(self, policy: TimestampFallbackPolicy) -> None:
         """Show a policy that Apply to all chose in another view, and tell the owner."""
         self.set_timestamp_fallback_policy(policy)

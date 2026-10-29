@@ -56,8 +56,6 @@ def _range_from_config(value: object) -> MeasureRange:
     if not isinstance(value, dict) or set(value) != {"minimum", "maximum"}:
         raise ValueError(f"Invalid range {value!r}")
     minimum, maximum = _bound_from_config(value["minimum"]), _bound_from_config(value["maximum"])
-    if minimum is not None and maximum is not None and minimum > maximum:
-        raise ValueError(f"Range minimum {minimum} is above its maximum {maximum}")
     return MeasureRange(minimum, maximum)
 
 

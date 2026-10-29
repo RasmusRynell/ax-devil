@@ -10,6 +10,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.data_sources.scene_history import SceneHistory
+from ax_devil.modules.filtering.filter_choice import FilterChoice
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
@@ -128,6 +129,11 @@ def test_the_filter_drawer_hides_objects_as_the_overlay_does_and_clear_restores_
     clear.click()
     assert sorted(listed_ids(panel)) == ["a", "b"]
     assert button.text() == "Filter" and chip.isChecked() and not clear.isEnabled()
+
+    filters.apply_choice(FilterChoice(classes=frozenset({("not_in_this_decoder", False)})))  # Carried, not visible
+    assert button.text() == "Filter" and clear.isEnabled()
+    clear.click()
+    assert not clear.isEnabled()
 
 
 def test_file_scope_lists_the_whole_file(qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection) -> None:

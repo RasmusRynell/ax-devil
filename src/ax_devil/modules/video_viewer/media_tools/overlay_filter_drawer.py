@@ -10,6 +10,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.small_button import SmallButton
 from ax_devil.modules.chrome.toggle_chip import ToggleChips
 from ax_devil.modules.chrome.tokens import Space, TextRole, keep_minimum_chars
+from ax_devil.modules.filtering.filter_choice import FilterChoice
 from ax_devil.modules.filtering.measure_range import Measure, MeasureRange
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.video_viewer.media_tools.media_tools_section import MediaToolsSection
@@ -147,7 +148,7 @@ class OverlayFilterDrawer(QWidget):
         changed = self._filter.changed_count
         self.button.setText("Filter" if changed == 0 else f"Filter {changed}")
         self.button.setProperty("active", changed > 0)
-        self._clear.setEnabled(changed > 0)
+        self._clear.setEnabled(self._filter.choice() != FilterChoice())  # Also for a choice with no visible effect
         self._scope.set_value(self._filter.choice())
         if (style := self.button.style()) is not None:
             style.unpolish(self.button)

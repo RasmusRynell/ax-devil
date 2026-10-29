@@ -33,7 +33,7 @@ def _restart(config_path: Path) -> None:
             OBJECT_FILTER,
             FilterChoice(
                 classes=frozenset({("show_cars", False)}),
-                ranges=frozenset({(Measure.SCORE, MeasureRange(minimum=0.5))}),
+                ranges=frozenset({(Measure.SCORE, MeasureRange(minimum=0.9, maximum=0.2))}),  # As the drawer accepts it
             ),
         ),
     ],

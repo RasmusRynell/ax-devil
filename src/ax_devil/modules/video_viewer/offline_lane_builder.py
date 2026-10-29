@@ -124,6 +124,7 @@ def build_lane(
 
     overlay_source = opened.overlay.source if opened.overlay else None
     timing_controls = TimingDiagnosticsWidget()
+    rollback.callback(timing_controls.cleanup)
     render_catalog_selection = render_catalog_manager.create_selection(
         visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container
     )
