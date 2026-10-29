@@ -63,13 +63,40 @@ def test_persisted_scenes_are_reused_only_for_an_unchanged_source_and_identity(
     assert len(changed_source) == 3
     assert rebuilt.get_total_frames() == 3
 
-    # A same-size, same-mtime replacement (cp -p, rsync) is a different file.
+    # A same-size, same-mtime replacement with other contents (cp -p, rsync) is a different file.
     replacement = tmp_path / "replacement.jsonl"
-    shutil.copy2(path, replacement)
+    replacement.write_text(path.read_text(encoding="utf-8").replace('"a"', '"z"'), encoding="utf-8")
+    shutil.copystat(path, replacement)
     os.replace(replacement, path)
     replaced: list[str] = []
     open_provider(replaced, decode_options={"profile": "changed"}, artifact_version=2)
     assert len(replaced) == 3
+
+
+@pytest.mark.parametrize("storage_mode", list(StorageMode))
+def test_source_identity_is_its_content_not_its_timestamps(tmp_path: Path, storage_mode: StorageMode) -> None:
+    """A touch reuses the artifact; a same-size edit that restores mtime is still noticed."""
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
+    _build_provider(path, storage_mode=storage_mode).close()
+    original_mtime_ns = path.stat().st_mtime_ns
+
+    os.utime(path, ns=(original_mtime_ns + 5_000_000_000,) * 2)
+    touched: list[str] = []
+    _build_provider(path, storage_mode=storage_mode, decoded=touched).close()
+    assert touched == []
+    recorded_mtime_ns = path.stat().st_mtime_ns  # the mtime the republished identity now holds
+
+    path.write_bytes(path.read_bytes().replace(b'"id": "b"', b'"id": "c"'))
+    os.utime(path, ns=(recorded_mtime_ns,) * 2)
+    edited: list[str] = []
+    provider = _build_provider(path, storage_mode=storage_mode, decoded=edited)
+    try:
+        assert len(edited) == 2
+        last = max(provider.get_available_frames())
+        scene = provider.load_by_frame_id(_frame(last))
+        assert scene is not None and EntityId("c") in scene.entities
+    finally:
+        provider.close()
 
 
 class _RegeneratesSourceWhenFirstDecoded(list[str]):

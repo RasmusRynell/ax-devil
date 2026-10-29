@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections import OrderedDict
@@ -17,8 +18,11 @@ from ax_devil.modules.data_sources.file_data_provider.scene_catalog import (
     SceneStoreContext,
     build_default_metadata_payload,
     build_scene_artifact_identity,
+    hash_file,
+    hash_stream,
     parse_scene_catalog,
     persisted_metadata,
+    stat_key,
 )
 from ax_devil.modules.data_sources.scene_history import SceneHistoryCollector
 from ax_devil.modules.scene.model import Scene
@@ -85,17 +89,13 @@ class IndexedFrameSceneStore:
         if self._cache.exists():
             cached_metadata = self._cache.load_metadata()
             if cached_metadata:
-                cached_frames = self._cache.available_frames()
-                artifact_identity = build_scene_artifact_identity(
-                    context=self._context,
-                    fingerprint=Fingerprint.of_stat(self._file_path.stat()),
-                )
                 catalog = parse_scene_catalog(
                     raw_metadata=cached_metadata,
-                    cached_frames=cached_frames,
-                    expected_artifact_identity=artifact_identity,
-                    sequence_lookup_enabled=self._context.sequence_lookup_enabled,
-                    restore_additional_state=self._context.restore_additional_state_from_cache,
+                    cached_frames=self._cache.available_frames(),
+                    context=self._context,
+                    source_stat=self._file_path.stat,
+                    source_digest=lambda: hash_file(self._file_path),
+                    republish=self._republish,
                 )
                 if catalog is not None:
                     logger.debug(
@@ -105,14 +105,20 @@ class IndexedFrameSceneStore:
 
         return self._rebuild()
 
+    def _republish(self, catalog: SceneCatalog) -> None:
+        self._cache.replace_metadata(persisted_metadata(catalog.all_metadata, catalog.history))
+
     def _rebuild(self) -> SceneCatalog:
         logger.debug(f"Rebuilding indexed frame store for {self._file_path.name}")
-        # Taken before reading, so a write during the build reads as newer than the cached artifact.
-        fingerprint = Fingerprint.of_stat(self._file_path.stat())
+        # Identified before the parse: an edit during it leaves an artifact the next open rejects.
+        artifact_identity = build_scene_artifact_identity(
+            context=self._context,
+            source_stat=self._file_path.stat(),
+            content_digest=hash_file(self._file_path),
+        )
         payloads = self._context.iter_payloads()
         decoder = self._context.decoder_factory()
         build_result = self._context.build_scene_maps(payloads, decoder)
-        artifact_identity = build_scene_artifact_identity(context=self._context, fingerprint=fingerprint)
         collector = SceneHistoryCollector()
         for timestamp_key, scene in build_result.scene_map.items():
             collector.add(timestamp_key, scene)
@@ -213,12 +219,10 @@ class SourceIndexedSceneStore:
         catalog = parse_scene_catalog(
             raw_metadata=raw_metadata,
             cached_frames=line_locations.keys(),
-            expected_artifact_identity=build_scene_artifact_identity(
-                context=self._context,
-                fingerprint=self._source_fingerprint(),
-            ),
-            sequence_lookup_enabled=self._context.sequence_lookup_enabled,
-            restore_additional_state=self._context.restore_additional_state_from_cache,
+            context=self._context,
+            source_stat=self._source_stat,
+            source_digest=lambda: hash_stream(self._open_source_handle()),
+            republish=lambda refreshed: self._write_index(refreshed, line_locations),
         )
         if catalog is None:
             return None
@@ -230,7 +234,8 @@ class SourceIndexedSceneStore:
     def _rebuild(self) -> SceneCatalog:
         logger.debug(f"Building source index store for {self._file_path.name}")
         # Taken before reading, so a write during the build reads as newer than the cached artifact.
-        fingerprint = self._source_fingerprint()
+        source_stat = self._source_stat()
+        digest = hashlib.sha256()
         line_locations: dict[int, tuple[int, int]] = {}
         timestamp_to_sequence: dict[int, int] = {}
         sequence_to_timestamp: dict[int, int] = {}
@@ -247,6 +252,7 @@ class SourceIndexedSceneStore:
             raw_line = file_obj.readline()
             if not raw_line:
                 break
+            digest.update(raw_line)
             raw_line_number += 1
             try:
                 decoded_line = raw_line.decode("utf-8")
@@ -295,7 +301,9 @@ class SourceIndexedSceneStore:
             collector.add(timestamp_key, scene)
 
         self._line_locations = line_locations
-        artifact_identity = build_scene_artifact_identity(context=self._context, fingerprint=fingerprint)
+        artifact_identity = build_scene_artifact_identity(
+            context=self._context, source_stat=source_stat, content_digest=digest.hexdigest()
+        )
         history = collector.records()
         warning = skipped.warning(candidate_lines)
         warnings = (warning,) if warning is not None else ()
@@ -309,13 +317,7 @@ class SourceIndexedSceneStore:
         additional_metadata = self._context.collect_additional_cache_metadata()
         if additional_metadata:
             metadata.update(additional_metadata)
-        payload = {
-            "metadata": persisted_metadata(metadata, history),
-            "line_locations": {str(key): [offset, length] for key, (offset, length) in line_locations.items()},
-        }
-        with write_atomically(self._index_path) as index_file:
-            index_file.write(json.dumps(payload, separators=(",", ":")))
-        return SceneCatalog(
+        catalog = SceneCatalog(
             total_lines=total_lines,
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,
             timestamp_to_sequence=timestamp_to_sequence,
@@ -325,6 +327,18 @@ class SourceIndexedSceneStore:
             history=history,
             warnings=warnings,
         )
+        # An edit during the parse leaves the index describing no single version of the file.
+        if stat_key(self._source_stat()) == stat_key(source_stat):
+            self._write_index(catalog, line_locations)
+        return catalog
+
+    def _write_index(self, catalog: SceneCatalog, line_locations: dict[int, tuple[int, int]]) -> None:
+        payload = {
+            "metadata": persisted_metadata(catalog.all_metadata, catalog.history),
+            "line_locations": {str(key): [offset, length] for key, (offset, length) in line_locations.items()},
+        }
+        with write_atomically(self._index_path) as index_file:
+            index_file.write(json.dumps(payload, separators=(",", ":")))
 
     def load_scene(self, timestamp_key: int) -> Scene | None:
         if self._source_changed:
@@ -365,8 +379,11 @@ class SourceIndexedSceneStore:
             raise ValueError(f"Scene store for {self._file_path.name} is closed")
         return self._source_handle
 
+    def _source_stat(self) -> os.stat_result:
+        return os.fstat(self._open_source_handle().fileno())
+
     def _source_fingerprint(self) -> Fingerprint:
-        return Fingerprint.of_stat(os.fstat(self._open_source_handle().fileno()))
+        return Fingerprint.of_stat(self._source_stat())
 
     def close(self) -> None:
         if self._source_handle is not None:

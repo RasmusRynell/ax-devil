@@ -194,12 +194,14 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 ## Data Pipeline
 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
-- Scene file provider artifacts invalidate unless their complete identity matches: source fingerprint, decoder name,
-  explicit artifact version, Scene model version, and provider-owned decode options. Cache files can always be rebuilt.
-  The source fingerprint is taken from the held handle before the source is read, so a file written during indexing
-  reads as changed on the next open; cache files are replaced atomically and read through the handle that wrote them. An
-  open source-indexed store holds its source file open, and stops serving once that file is rewritten in place, since
-  its byte offsets no longer match; a replaced file leaves it valid.
+- Scene file provider artifacts invalidate unless their complete identity matches: source content digest (the stat
+  fingerprint only spares hashing an unchanged file), decoder name, explicit artifact version, Scene model version,
+  provider-owned decode options, and store format version. When only the stat fingerprint differs, the artifact is
+  accepted and republished with the new one. The fingerprint is taken from the held handle before the source is read
+  and a source-indexed store skips persisting if the source changed during the build, so a file written during indexing
+  reads as changed on the next open; cache files are replaced atomically and read through the handle that wrote them.
+  Cache files can always be rebuilt. An open source-indexed store holds its source file open, and stops serving once
+  that file is rewritten in place, since its byte offsets no longer match; a replaced file leaves it valid.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
   history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
   sequence frame, and omits events outside the video; an object is present on exactly the frames whose looked-up sample
