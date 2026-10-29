@@ -97,7 +97,7 @@ def test_cvat_object_metadata_survives_xml_to_scene(tmp_path: Path) -> None:
 
     assert Attribute("group_id", 7) in observation.classification[0].attributes
     assert Attribute("reviewed", "yes") in observation.classification[0].attributes
-    raw = observation.debug["cvat"]
+    raw = observation.source_data["cvat"]
     assert raw["track"]["@attributes"]["source"] == "manual"
     assert raw["shape"]["@attributes"]["rotation"] == "15"
     assert raw["shape"]["@attributes"]["vendor_field"] == "extra"
@@ -129,7 +129,7 @@ def test_cvat_image_metadata_and_unrendered_shapes_are_retained(tmp_path: Path) 
     assert isinstance(observation.geometry, BoundingBox)
     assert observation.geometry.as_xywh() == pytest.approx((0.1, 0.1, 0.2, 0.2))
     assert Attribute("group_id", 3) in observation.classification[0].attributes
-    assert observation.debug["cvat"]["image"]["@attributes"]["name"] == "frame.jpg"
+    assert observation.source_data["cvat"]["image"]["@attributes"]["name"] == "frame.jpg"
     assert scene.debug["cvat"]["image"]["@attributes"]["subset"] == "validation"
     unrendered = scene.debug["cvat"]["unrendered_shapes"][0]
     assert unrendered["shape_type"] == "points"

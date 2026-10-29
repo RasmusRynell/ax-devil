@@ -200,7 +200,7 @@ class _Delegate(QStyledItemDelegate):
             painter,
             rect.adjusted(_ARROW_PX - Space.S, 0, 0, 0),
             palette,
-            f"{section.name}  {len(section.rows)}",
+            f"{section.name}  {section.count}",
             category_color(section.name, palette),
         )
 

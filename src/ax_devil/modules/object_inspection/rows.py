@@ -24,7 +24,7 @@ from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.data_sources.scene_history import FrameEvent
 from ax_devil.modules.object_inspection.frame_labels import format_frame_time
 from ax_devil.modules.object_inspection.pinned_fields import FieldId
-from ax_devil.modules.scene.inspection import InspectionField
+from ax_devil.modules.scene.inspection import FieldOrigin, InspectionField
 from ax_devil.modules.scene.model import RGB
 
 _EVENT_TEXT_CHARS = (
@@ -39,6 +39,7 @@ class RowFonts:
 
     body: QFont
     mono: QFont
+    caption: QFont
     body_metrics: QFontMetrics
     mono_metrics: QFontMetrics
     small_metrics: QFontMetrics
@@ -47,7 +48,14 @@ class RowFonts:
     def current(cls) -> RowFonts:
         """Return the fonts for the current text size."""
         body, mono = TextRole.BODY.font(), TextRole.MONO.font()
-        return cls(body, mono, QFontMetrics(body), QFontMetrics(mono), QFontMetrics(TextRole.SMALL.font()))
+        return cls(
+            body,
+            mono,
+            TextRole.CAPTION.font(),
+            QFontMetrics(body),
+            QFontMetrics(mono),
+            QFontMetrics(TextRole.SMALL.font()),
+        )
 
 
 def _draw_text(
@@ -68,13 +76,14 @@ class Row(ABC):
     """One line under a section: it has a *key* that identifies it across updates, paints itself and says what
     copying it puts on the clipboard. A row that is an event carries it in *event*; a row with a *label* has it
     drawn in the view's label column; a row with a *field_id* can be pinned, and one that is not *copyable* has
-    nothing to copy.
+    nothing to copy. A row that only heads others is not *counted* in its section's size.
     """
 
     event: FrameEvent | None = None
     label: str = ""
     field_id: FieldId | None = None
     copyable: bool = True
+    counted: bool = True
 
     @property
     @abstractmethod
@@ -257,6 +266,7 @@ class HeadingRow(Row):
     """The name of the attribute whose colors follow, across the whole row; it has nothing to copy or pin."""
 
     copyable = False
+    counted = False
 
     def __init__(self, path: tuple[str, ...]) -> None:
         self._path = path
@@ -280,8 +290,44 @@ class HeadingRow(Row):
         return ""
 
 
+class OriginCaptionRow(Row):
+    """The caption over one origin's fields in a group with source-supplied fields; nothing to copy, pin or count."""
+
+    copyable = False
+    counted = False
+
+    def __init__(self, origin: FieldOrigin) -> None:
+        self._origin = origin
+        self.label = origin.title
+
+    @property
+    def key(self) -> Hashable:
+        """Return the origin."""
+        return self._origin
+
+    def paint(self, painter: QPainter, rect: QRect, palette: QPalette, fonts: RowFonts, label_width: int) -> None:
+        """Draw the origin's title in muted caption text, cut at the right."""
+        _draw_text(painter, rect, fonts.caption, palette.color(QPalette.ColorRole.PlaceholderText), self.label)
+
+    def copy_text(self) -> str:
+        """Return nothing."""
+        return ""
+
+
 def field_rows(fields: Sequence[InspectionField], group: str) -> Iterator[Row]:
-    """Return *fields* of the group titled *group* as rows, each run of colors of one attribute under a heading."""
+    """Return *fields* of the group titled *group* as rows, each run of colors of one attribute under a heading.
+
+    When any field came from the source, each origin's fields form a run under a caption, the source's first.
+    """
+    captioned = any(field.origin is FieldOrigin.SOURCE for field in fields)
+    for origin in FieldOrigin:
+        run = [field for field in fields if field.origin is origin]
+        if captioned and run:
+            yield OriginCaptionRow(origin)
+        yield from _attribute_rows(run, group)
+
+
+def _attribute_rows(fields: Sequence[InspectionField], group: str) -> Iterator[Row]:
     previous: tuple[str, ...] | None = None
     for field in fields:
         parent = field.path[:-1] if field.rgb is not None else None
