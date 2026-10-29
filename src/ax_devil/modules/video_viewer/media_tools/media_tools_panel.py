@@ -171,6 +171,7 @@ class MediaToolsPanel(QWidget):
         """Disconnect persistent selection observers when the owning view closes."""
         self._idle_refresh.stop()
         self._appearance.cleanup()
+        self._overlay_controls.cleanup()
 
     @property
     def overlay_controls(self) -> OverlayPersistenceControls:

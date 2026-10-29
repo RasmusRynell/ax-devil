@@ -55,6 +55,7 @@ class _FakeStreamMediaController:
         content: LiveVideoContent,
         *,
         render_catalog_selection: object,
+        overlay_persistence: object,
         frame_displayed: Callable[[VideoFrameWithOverlays], None],
         connection_changed: Callable[[LiveConnectionStatus], None],
     ) -> None:

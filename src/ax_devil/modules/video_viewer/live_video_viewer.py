@@ -21,6 +21,7 @@ from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
+from ax_devil.modules.video_viewer.overlay_persistence_views import overlay_persistence_views
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
 from ax_devil.modules.workspace.core import LiveVideoContent
 from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
@@ -189,15 +190,17 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._show_connection_status(LiveConnectionStatus.connecting([LiveFeed.VIDEO]))
 
         try:
+            sticky = overlay_persistence_views().default()
             controller = StreamMediaController(
                 display,
                 self._content,
                 render_catalog_selection=self._render_catalog_selection,
+                overlay_persistence=sticky,
                 frame_displayed=status_panel.display_frame_status,
                 connection_changed=self._show_connection_status,
             )
             self._controller = controller
-            self._attach_tools_panel(display, controller)
+            self._attach_tools_panel(display, controller, sticky)
             controller.start_playback()
             self._publish_stream_status()  # Statuses the controller reported before it was set read as connecting.
         except Exception as e:
@@ -244,13 +247,14 @@ class LiveVideoViewerWidget(ViewerWidget):
         self,
         display: FrameDisplay,
         controller: StreamMediaController,
+        sticky: OverlayPersistenceSettings,
     ) -> None:
         """Create and wire a MediaToolsPanel to the display and controller."""
         filter_model = SessionFilter(controller.get_filter_config())
         tools_panel = MediaToolsPanel(
             self._render_catalog_selection,
             filter_model=filter_model,
-            overlay_settings=OverlayPersistenceSettings.default_enabled(),
+            overlay_settings=sticky,
         )
         display.set_side_panel_widget(tools_panel)
         tools_panel.link_selection(display)

@@ -151,6 +151,7 @@ class OfflineSession(QObject):
                     use_lane_controls=use_lane_controls and len(media.lanes) == 1,
                     lane_visibility={} if lane_visibility is None else lane_visibility,
                     pane_title=pane_title,
+                    overlay_settings=media.sticky,
                     rollback=rollback,
                 )
                 for position, opened in enumerate(media.lanes)

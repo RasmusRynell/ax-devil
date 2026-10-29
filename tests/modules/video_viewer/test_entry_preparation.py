@@ -25,6 +25,7 @@ from ax_devil.modules.video_viewer.entry_preparation import (
     prepare_entry,
 )
 from ax_devil.modules.video_viewer.offline_entry_media import open_entry_media
+from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
@@ -77,7 +78,8 @@ def test_entry_opens_from_caches_prepared_by_the_child_process(
     monkeypatch.setattr(SourceIndexedSceneStore, "_rebuild", rebuild)
     job = MagicMock(spec=JobContext)
     job.token = CancelToken()
-    media = open_entry_media(entry, (0,), QThread.currentThread(), job)
+    sticky = OverlayPersistenceSettings.default_enabled()
+    media = open_entry_media(entry, (0,), QThread.currentThread(), job, sticky=sticky)
     try:
         assert media.error is None
         assert len(media.overlay_sources()) == 1

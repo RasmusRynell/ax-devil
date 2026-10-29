@@ -7,6 +7,11 @@ from dataclasses import dataclass, replace
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
 from ax_devil.core.time_units import ms_to_us
 from ax_devil.modules.data_sources.base import OverlayLookup
+from ax_devil.modules.settings.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+MAX_TIMEOUT_MS = 100000
 
 
 @dataclass(slots=True)
@@ -26,6 +31,27 @@ class OverlayPersistenceSettings:
         """Return settings with sticky overlays enabled."""
         return cls(enabled=True)
 
+    @classmethod
+    def from_config(cls, value: object) -> "OverlayPersistenceSettings":
+        """Return the settings saved as *value*, or the built-in default for null or a malformed value."""
+        if value is None:
+            return cls.default_enabled()
+        if isinstance(value, dict):
+            enabled, timeout_ms, opacity = value.get("enabled"), value.get("timeout_ms"), value.get("opacity")
+            if (
+                isinstance(enabled, bool)
+                and _is_valid_timeout(timeout_ms)
+                and isinstance(opacity, (int, float))
+                and not isinstance(opacity, bool)
+            ):
+                return cls(enabled=enabled, timeout_ms=timeout_ms, opacity=_clamp_opacity(float(opacity)))
+        logger.warning(f"Invalid saved sticky overlay settings {value!r}; using the built-in default.")
+        return cls.default_enabled()
+
+    def config_value(self) -> dict[str, object]:
+        """Return the settings as the JSON object saved under ``settings.sticky_overlays``."""
+        return {"enabled": self.enabled, "timeout_ms": self.timeout_ms, "opacity": self.opacity}
+
 
 @dataclass(slots=True)
 class OverlaySelection:
@@ -41,6 +67,13 @@ class OverlaySelection:
             "overlay_reused": self.reused,
             "overlay_opacity": self.effective_opacity,
         }
+
+
+def _is_valid_timeout(value: object) -> bool:
+    """Return whether *value* is no timeout or a whole number of ms the timeout control can show."""
+    if value is None:
+        return True
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_TIMEOUT_MS
 
 
 def _clamp_opacity(value: float) -> float:

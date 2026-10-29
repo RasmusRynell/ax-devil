@@ -278,7 +278,9 @@ def test_overlay_source_is_opened_with_the_decoder_options_and_fallback_policy_o
     )
 
     opened = offline_entry_media.create_overlay_source(
-        overlay, frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple)
+        overlay,
+        frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple),
+        sticky=OverlayPersistenceSettings.default_enabled(),
     )
 
     provider = opened.source.data_provider
@@ -298,7 +300,9 @@ def test_entry_media_rejects_non_file_overlay_source_spec() -> None:
 
     with pytest.raises(RuntimeError, match="requires a file overlay source spec"):
         offline_entry_media.create_overlay_source(
-            overlay, frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple)
+            overlay,
+            frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple),
+            sticky=OverlayPersistenceSettings.default_enabled(),
         )
 
 

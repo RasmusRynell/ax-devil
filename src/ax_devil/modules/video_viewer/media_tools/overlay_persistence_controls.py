@@ -15,8 +15,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ax_devil.modules.chrome.tokens import Space
-from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
+from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.tokens import Space, TextRole
+from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.video_viewer.overlay_persistence import MAX_TIMEOUT_MS, OverlayPersistenceSettings
+from ax_devil.modules.video_viewer.overlay_persistence_views import overlay_persistence_views
+
+logger = get_logger(__name__)
+
+_MUTED = "color: palette(placeholder-text);"
 
 
 class OverlayPersistenceControls(QGroupBox):
@@ -48,6 +55,21 @@ class OverlayPersistenceControls(QGroupBox):
         self._opacity_spin = QDoubleSpinBox()
         self._opacity_spin.setObjectName("overlayOpacitySpin")
 
+        self._default_label = QLabel("Default for new views")
+        self._default_label.setObjectName("stickyDefaultLabel")
+        self._default_label.setStyleSheet(_MUTED)
+        TextRole.SMALL.apply(self._default_label)
+        self._make_default_button = SmallButton("Make default")
+        self._make_default_button.setObjectName("useStickyAsDefaultButton")
+        self._make_default_button.setToolTip("Start new viewers and lanes with these settings.")
+        self._apply_to_all_button = SmallButton("Apply to all")
+        self._apply_to_all_button.setObjectName("applyStickyToAllButton")
+        self._apply_to_all_button.setToolTip("Use these settings in every open viewer and lane.")
+
+        self._closed = False
+        self._views = overlay_persistence_views()
+        self._key = self._views.add(self._current_settings)
+
         self._build_ui()
         self.apply_settings(self._current_settings)
         self._connect_signals()
@@ -65,7 +87,7 @@ class OverlayPersistenceControls(QGroupBox):
         timeout_row = QHBoxLayout()
         timeout_row.setSpacing(Space.S)
 
-        self._timeout_spin.setRange(0, 100000)
+        self._timeout_spin.setRange(0, MAX_TIMEOUT_MS)
         self._timeout_spin.setSingleStep(1)
 
         timeout_row.addWidget(self._timeout_checkbox)
@@ -86,11 +108,55 @@ class OverlayPersistenceControls(QGroupBox):
         opacity_row.addStretch(1)
         layout.addLayout(opacity_row)
 
+        scope_row = QHBoxLayout()
+        scope_row.setSpacing(Space.S)
+        scope_row.addWidget(self._default_label)
+        scope_row.addWidget(self._make_default_button)
+        scope_row.addStretch(1)
+        scope_row.addWidget(self._apply_to_all_button)
+        layout.addLayout(scope_row)
+
     def _connect_signals(self) -> None:
         self._enabled_checkbox.toggled.connect(self._on_enabled_toggled)
         self._timeout_checkbox.toggled.connect(self._on_timeout_toggled)
         self._timeout_spin.valueChanged.connect(lambda _: self._emit_settings())
         self._opacity_spin.valueChanged.connect(lambda _: self._emit_settings())
+        self._make_default_button.clicked.connect(self._make_default)
+        self._apply_to_all_button.clicked.connect(lambda: self._views.apply_to_all(self._current_settings))
+        self._views.changed.connect(self._render_scope)
+        self._views.appliedToAll.connect(self._adopt)
+
+    def cleanup(self) -> None:
+        """Leave the shared view list and stop listening to it when the owning view closes; repeat calls do nothing."""
+        if self._closed:
+            return
+        self._closed = True
+        self._views.discard(self._key)
+        self._views.changed.disconnect(self._render_scope)
+        self._views.appliedToAll.disconnect(self._adopt)
+
+    def _make_default(self) -> None:
+        try:
+            self._views.use_as_default(self._current_settings)
+        except OSError as exc:
+            logger.error(f"Could not save the default sticky overlay settings: {exc}")
+
+    def _adopt(self, settings: OverlayPersistenceSettings) -> None:
+        if settings == self._current_settings:
+            return
+        self.apply_settings(settings)
+        self.settingsChanged.emit(settings.copy())
+
+    def _render_scope(self) -> None:
+        in_use = self._views.settings_in_use()
+        is_default = self._current_settings == self._views.default()
+        differs = any(settings != self._current_settings for settings in in_use)
+        self._default_label.setVisible(is_default)
+        self._make_default_button.setVisible(not is_default)
+        self._apply_to_all_button.setText(f"Apply to all {len(in_use)}")
+        self._apply_to_all_button.setVisible(differs)
+        if self.isVisible():
+            self.window().adjustSize()
 
     def apply_settings(self, settings: OverlayPersistenceSettings) -> None:
         """Populate controls from the provided settings without emitting."""
@@ -115,6 +181,8 @@ class OverlayPersistenceControls(QGroupBox):
             self._opacity_spin.blockSignals(False)
 
         self._refresh_control_states()
+        self._views.set_settings(self._key, snapshot)
+        self._render_scope()
 
     def current_settings(self) -> OverlayPersistenceSettings:
         """Return the latest settings represented by the controls."""
@@ -147,4 +215,5 @@ class OverlayPersistenceControls(QGroupBox):
             return
 
         self._current_settings = updated
+        self._views.set_settings(self._key, updated)
         self.settingsChanged.emit(updated.copy())

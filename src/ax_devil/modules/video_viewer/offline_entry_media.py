@@ -74,6 +74,7 @@ class EntryMedia:
     video_sources: list[FileFrameSource] = field(default_factory=list)
     lanes: list[OpenedLane] = field(default_factory=list)
     error: str | None = None
+    sticky: OverlayPersistenceSettings = field(default_factory=OverlayPersistenceSettings.default_enabled)
 
     def overlay_sources(self) -> list[FileOverlaySource]:
         """Return the overlay sources of all lanes."""
@@ -122,6 +123,7 @@ def create_overlay_source(
     overlay: OverlayContent,
     *,
     frame_timeline: FrameTimeline,
+    sticky: OverlayPersistenceSettings,
 ) -> LaneOverlay:
     """Open the file overlay source for *overlay*. Blocks while the decoder reads the file."""
     if not isinstance(overlay.source_spec, FileOverlaySourceSpec):
@@ -139,7 +141,7 @@ def create_overlay_source(
     except Exception as exc:
         raise RuntimeError(f"Failed to create overlay source for {overlay.display_name}: {exc}") from exc
 
-    return LaneOverlay(overlay_source, OverlayPersistencePolicy(OverlayPersistenceSettings.default_enabled()))
+    return LaneOverlay(overlay_source, OverlayPersistencePolicy(sticky))
 
 
 def place_scene_history(
@@ -200,7 +202,7 @@ def _open_lanes(
         else:
             report(f"Parsing overlay data ({position + 1}/{len(lane_indices)}): {lane.overlay.display_name}")
         frame_timeline = media.video_sources[source_index].get_frame_timeline()
-        opened.overlay = create_overlay_source(lane.overlay, frame_timeline=frame_timeline)
+        opened.overlay = create_overlay_source(lane.overlay, frame_timeline=frame_timeline, sticky=media.sticky)
         token.raise_if_cancelled()
         opened.scene_history = place_scene_history(opened.overlay, frame_timeline, token)
         token.raise_if_cancelled()
@@ -212,15 +214,18 @@ def open_entry_media(
     lane_indices: tuple[int, ...],
     gui_thread: QThread,
     job: JobContext[str],
+    *,
+    sticky: OverlayPersistenceSettings,
 ) -> EntryMedia:
     """Open the sources of *entry*'s lanes at *lane_indices* and move them to *gui_thread*.
 
-    Blocks; run it as a background job. *job* receives progress messages. Never raises: a failure or cancellation is
+    Blocks; run it as a background job. *job* receives progress messages. *sticky* is the sticky overlay
+    settings every lane's overlay starts with, read on the GUI thread. Never raises: a failure or cancellation is
     recorded in `EntryMedia.error`, and every source opened before it is still in the returned media. The sources can
     only be freed on the GUI thread, so they go back to the job as a result: delivered to the viewer, or, for a
     cancelled job, to `on_discard`, which releases them off the opening queue.
     """
-    media = EntryMedia()
+    media = EntryMedia(sticky=sticky)
     try:
         _open_lanes(media, entry, lane_indices, job)
     except Cancelled:

@@ -109,6 +109,7 @@ def build_lane(
     use_lane_controls: bool,
     lane_visibility: dict[int, OverlayVisibility],
     pane_title: str,
+    overlay_settings: OverlayPersistenceSettings,
     rollback: ExitStack,
 ) -> OfflineLane:
     lane_content = opened.lane
@@ -141,11 +142,12 @@ def build_lane(
     tools_panel = MediaToolsPanel(
         render_catalog_selection,
         filter_model=filter_model,
-        overlay_settings=OverlayPersistenceSettings.default_enabled(),
+        overlay_settings=overlay_settings,
         export_action=export_action,
         scene_history=opened.scene_history,
         timing_controls=timing_controls,
     )
+    rollback.callback(tools_panel.cleanup)
     presenter = SceneFramePresenter(
         scene_filter=filter_model,
         scene_render_catalog=render_catalog_selection.active_catalog(),
