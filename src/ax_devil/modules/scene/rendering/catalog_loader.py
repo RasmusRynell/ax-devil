@@ -104,7 +104,7 @@ class SceneRenderCatalogLoader:
         require_keys(document, {"metadata", "templates", "recipes"}, {"metadata", "templates", "recipes"}, "$")
         require_keys(
             metadata,
-            {"id", "name", "schema_version", "description", "design_notes"},
+            {"id", "name", "schema_version", "description", "design_notes", "origin"},
             {"id", "name", "schema_version"},
             "$.metadata",
         )
@@ -227,6 +227,11 @@ def _catalog_hash(document: CatalogJsonDocument) -> str:
     return hashlib.sha256(
         json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     ).hexdigest()[:16]
+
+
+def catalog_body_hash(document: CatalogJsonDocument) -> str:
+    """Hash everything but the metadata, so renaming or describing a catalog does not change it."""
+    return _catalog_hash({key: value for key, value in document.items() if key != "metadata"})
 
 
 _DESCRIPTIVE_KEYS = frozenset({"description", "label"})

@@ -39,6 +39,7 @@ def test_new_creates_an_editable_copy_that_list_shows(tmp_path: Path, config: li
     assert path.parent == tmp_path / "catalogs" and path.exists()
     assert "Night shift" in listed.output and str(path) in listed.output
     assert "* Standard" in listed.output
+    assert "(copy of Standard)" in listed.output
 
 
 def test_check_passes_a_working_catalog_and_names_where_a_broken_one_fails(qtbot: QtBot, config: list[str]) -> None:
