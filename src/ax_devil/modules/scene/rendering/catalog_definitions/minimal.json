@@ -330,7 +330,7 @@
     "movement_badge": {
       "label": "Movement badge",
       "feature": "movement",
-      "description": "A small tab in the class color inside the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
+      "description": "A small tab in the class color just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -366,7 +366,7 @@
         "shift": {
           "type": "length",
           "label": "Shift",
-          "description": "Moves the tab in to line up with the inside of the box line.",
+          "description": "Moves the tab to line up with the outside of the box line.",
           "default": {
             "value": 0.5,
             "unit": "px"
@@ -394,6 +394,12 @@
                   }
                 },
                 "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
                   "call": "mul",
                   "args": {
                     "values": [
@@ -406,16 +412,10 @@
                       -1
                     ]
                   }
-                },
-                "dy": {
-                  "ref": [
-                    "parameters",
-                    "shift"
-                  ]
                 }
               }
             },
-            "anchor": "top-right",
+            "anchor": "top-left",
             "runs": [
               {
                 "text": {

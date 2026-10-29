@@ -2038,7 +2038,7 @@
     "movement_badge": {
       "label": "Movement badge",
       "feature": "movement",
-      "description": "A small dark pill inside the bottom-right corner of the box: ▶ moving, Ⅱ stationary, ? unknown. Small boxes show none.",
+      "description": "A small dark pill just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -2050,22 +2050,13 @@
           "label": "Motion state",
           "required": true
         },
-        "minimum_size": {
-          "type": "length",
-          "label": "Minimum box size",
-          "description": "Smaller boxes show no badge.",
-          "minimum": 0,
-          "default": {
-            "value": 44,
-            "unit": "px"
-          }
-        },
         "margin": {
           "type": "length",
           "label": "Margin",
+          "description": "Gap between the box and the pill.",
           "minimum": 0,
           "default": {
-            "value": 6,
+            "value": 3,
             "unit": "px"
           }
         },
@@ -2080,64 +2071,16 @@
           }
         }
       },
-      "values": {
-        "room": {
-          "call": "gt",
-          "args": {
-            "left": {
-              "call": "div",
-              "args": {
-                "numerator": {
-                  "call": "box_min_size",
-                  "args": {
-                    "geometry": {
-                      "ref": [
-                        "parameters",
-                        "geometry"
-                      ]
-                    }
-                  }
-                },
-                "denominator": {
-                  "value": 1,
-                  "unit": "px"
-                }
-              }
-            },
-            "right": {
-              "call": "div",
-              "args": {
-                "numerator": {
-                  "ref": [
-                    "parameters",
-                    "minimum_size"
-                  ]
-                },
-                "denominator": {
-                  "value": 1,
-                  "unit": "px"
-                }
-              }
-            }
-          }
-        }
-      },
       "steps": [
         {
           "label": "Badge",
           "primitive": "label",
-          "enabled": {
-            "ref": [
-              "values",
-              "room"
-            ]
-          },
           "fields": {
             "position": {
-              "call": "box_anchor",
+              "call": "offset_point",
               "args": {
-                "geometry": {
-                  "call": "inset_box",
+                "point": {
+                  "call": "box_anchor",
                   "args": {
                     "geometry": {
                       "ref": [
@@ -2145,18 +2088,22 @@
                         "geometry"
                       ]
                     },
-                    "margin": {
-                      "ref": [
-                        "parameters",
-                        "margin"
-                      ]
-                    }
+                    "anchor": "top-right"
                   }
                 },
-                "anchor": "bottom-right"
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "margin"
+                  ]
+                },
+                "dy": {
+                  "value": 0,
+                  "unit": "px"
+                }
               }
             },
-            "anchor": "bottom-right",
+            "anchor": "top-left",
             "runs": [
               {
                 "text": {
@@ -3570,10 +3517,6 @@
                   "entity",
                   "motion_state"
                 ]
-              },
-              "minimum_size": {
-                "value": 80,
-                "unit": "px"
               }
             }
           }

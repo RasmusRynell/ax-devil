@@ -1063,7 +1063,7 @@
     "movement_badge": {
       "label": "Movement badge",
       "feature": "movement",
-      "description": "The motion state as a symbol in the track color on a dark tag, just below the box's bottom-left corner, or just inside it when the box touches the bottom of the picture: ▶ moving, Ⅱ stationary, ? unknown.",
+      "description": "The motion state as a symbol in the track color on a dark tag, just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -1097,144 +1097,37 @@
           "default": 200
         }
       },
-      "values": {
-        "room": {
-          "call": "gt",
-          "args": {
-            "left": {
-              "call": "sub",
-              "args": {
-                "left": 1,
-                "right": {
-                  "call": "add",
-                  "args": {
-                    "values": [
-                      {
-                        "ref": [
-                          "parameters",
-                          "geometry",
-                          "y"
-                        ]
-                      },
-                      {
-                        "ref": [
-                          "parameters",
-                          "geometry",
-                          "h"
-                        ]
-                      }
-                    ]
-                  }
-                }
-              }
-            },
-            "right": {
-              "call": "div",
-              "args": {
-                "numerator": {
-                  "value": 16,
-                  "unit": "px"
-                },
-                "denominator": {
-                  "value": 1,
-                  "unit": "image_height"
-                }
-              }
-            }
-          }
-        },
-        "corner": {
-          "call": "box_anchor",
-          "args": {
-            "geometry": {
-              "ref": [
-                "parameters",
-                "geometry"
-              ]
-            },
-            "anchor": "bottom-left"
-          }
-        },
-        "position": {
-          "call": "if",
-          "args": {
-            "condition": {
-              "ref": [
-                "values",
-                "room"
-              ]
-            },
-            "then": {
-              "call": "offset_point",
-              "args": {
-                "point": {
-                  "ref": [
-                    "values",
-                    "corner"
-                  ]
-                },
-                "dx": {
-                  "value": -2,
-                  "unit": "px"
-                },
-                "dy": {
-                  "value": 2,
-                  "unit": "px"
-                }
-              }
-            },
-            "else": {
-              "call": "offset_point",
-              "args": {
-                "point": {
-                  "ref": [
-                    "values",
-                    "corner"
-                  ]
-                },
-                "dx": {
-                  "value": 2,
-                  "unit": "px"
-                },
-                "dy": {
-                  "value": -2,
-                  "unit": "px"
-                }
-              }
-            }
-          }
-        },
-        "anchor": {
-          "call": "if",
-          "args": {
-            "condition": {
-              "ref": [
-                "values",
-                "room"
-              ]
-            },
-            "then": "top-left",
-            "else": "bottom-left"
-          }
-        }
-      },
       "steps": [
         {
           "label": "Label",
           "primitive": "label",
           "fields": {
             "position": {
-              "ref": [
-                "values",
-                "position"
-              ]
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-right"
+                  }
+                },
+                "dx": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "dy": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
             },
-            "anchor": {
-              "ref": [
-                "values",
-                "anchor"
-              ]
-            },
+            "anchor": "top-left",
             "runs": [
               {
                 "text": {

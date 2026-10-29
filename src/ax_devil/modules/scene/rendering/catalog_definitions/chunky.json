@@ -1134,7 +1134,7 @@
     "movement_badge": {
       "label": "Movement badge",
       "feature": "movement",
-      "description": "A small tab in the class color inside the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
+      "description": "A small tab in the class color just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -1157,12 +1157,6 @@
           "label": "Motion state",
           "required": true
         },
-        "above": {
-          "type": "bool",
-          "label": "Above the box",
-          "description": "Puts the tab above the box's top-right corner instead of inside it, clear of an id tab inside the box.",
-          "default": false
-        },
         "font_size": {
           "type": "length",
           "label": "Font size",
@@ -1176,110 +1170,10 @@
         "shift": {
           "type": "length",
           "label": "Shift",
-          "description": "Moves the tab in to line up with the inside of the box line.",
+          "description": "Moves the tab to line up with the outside of the box line.",
           "default": {
             "value": 1.5,
             "unit": "px"
-          }
-        }
-      },
-      "values": {
-        "position": {
-          "call": "if",
-          "args": {
-            "condition": {
-              "ref": [
-                "parameters",
-                "above"
-              ]
-            },
-            "then": {
-              "call": "offset_point",
-              "args": {
-                "point": {
-                  "call": "box_anchor",
-                  "args": {
-                    "geometry": {
-                      "ref": [
-                        "parameters",
-                        "geometry"
-                      ]
-                    },
-                    "anchor": "top-right"
-                  }
-                },
-                "dx": {
-                  "ref": [
-                    "parameters",
-                    "shift"
-                  ]
-                },
-                "dy": {
-                  "call": "mul",
-                  "args": {
-                    "values": [
-                      {
-                        "ref": [
-                          "parameters",
-                          "shift"
-                        ]
-                      },
-                      -1
-                    ]
-                  }
-                }
-              }
-            },
-            "else": {
-              "call": "offset_point",
-              "args": {
-                "point": {
-                  "call": "box_anchor",
-                  "args": {
-                    "geometry": {
-                      "ref": [
-                        "parameters",
-                        "geometry"
-                      ]
-                    },
-                    "anchor": "top-right"
-                  }
-                },
-                "dx": {
-                  "call": "mul",
-                  "args": {
-                    "values": [
-                      {
-                        "ref": [
-                          "parameters",
-                          "shift"
-                        ]
-                      },
-                      -1
-                    ]
-                  }
-                },
-                "dy": {
-                  "ref": [
-                    "parameters",
-                    "shift"
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "anchor": {
-          "call": "if",
-          "args": {
-            "condition": {
-              "ref": [
-                "parameters",
-                "above"
-              ]
-            },
-            "then": "bottom-right",
-            "else": "top-right"
           }
         }
       },
@@ -1289,17 +1183,43 @@
           "primitive": "label",
           "fields": {
             "position": {
-              "ref": [
-                "values",
-                "position"
-              ]
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "shift"
+                        ]
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
             },
-            "anchor": {
-              "ref": [
-                "values",
-                "anchor"
-              ]
-            },
+            "anchor": "top-left",
             "runs": [
               {
                 "text": {
@@ -2618,8 +2538,7 @@
                   "entity",
                   "motion_state"
                 ]
-              },
-              "above": true
+              }
             }
           },
           {
