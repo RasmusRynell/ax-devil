@@ -1,0 +1,8 @@
+* Standard                     /tmp/axshots-head/src/ax_devil/modules/scene/rendering/catalog_definitions/standard.json  (built-in, read-only)
+  Minimal                      /tmp/axshots-head/src/ax_devil/modules/scene/rendering/catalog_definitions/minimal.json  (built-in, read-only)
+  Chunky                       /tmp/axshots-head/src/ax_devil/modules/scene/rendering/catalog_definitions/chunky.json  (built-in, read-only)
+  Glass                        /tmp/axshots-head/src/ax_devil/modules/scene/rendering/catalog_definitions/glass.json  (built-in, read-only)
+  Tracking                     /tmp/axshots-head/src/ax_devil/modules/scene/rendering/catalog_definitions/tracking.json  (built-in, read-only)
+  Classic                      /tmp/axshots-head/src/ax_devil/modules/scene/rendering/catalog_definitions/classic.json  (built-in, read-only)
+  My tweaked copy              /tmp/axshots/home/.ax_devil/render_catalogs/my-tweaked-copy.json  (copy of Standard, modified)
+  My unmodified copy           /tmp/axshots/home/.ax_devil/render_catalogs/my-unmodified-copy.json  (copy of Standard)
