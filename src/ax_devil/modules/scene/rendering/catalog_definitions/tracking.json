@@ -32,6 +32,12 @@
           "default": null,
           "nullable": true
         },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "default": null,
+          "nullable": true
+        },
         "occluded": {
           "type": "bool",
           "label": "Partly hidden",
@@ -260,6 +266,41 @@
               "ref": [
                 "parameters",
                 "velocity"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Movement badge",
+          "template": "movement_badge",
+          "enabled": {
+            "call": "is_present",
+            "args": {
+              "value": {
+                "ref": [
+                  "parameters",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          "inputs": {
+            "geometry": {
+              "ref": [
+                "parameters",
+                "geometry"
+              ]
+            },
+            "color": {
+              "ref": [
+                "values",
+                "color"
+              ]
+            },
+            "motion_state": {
+              "ref": [
+                "parameters",
+                "motion_state"
               ]
             }
           }
@@ -1019,6 +1060,262 @@
         }
       ]
     },
+    "movement_badge": {
+      "label": "Movement badge",
+      "feature": "movement",
+      "description": "The motion state as a symbol in the track color on a dark tag, just below the box's bottom-left corner, or just inside it when the box touches the bottom of the picture: ▶ moving, Ⅱ stationary, ? unknown.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Text color",
+          "required": true
+        },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "required": true
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 10,
+            "unit": "px"
+          }
+        },
+        "background_opacity": {
+          "type": "integer",
+          "label": "Tag opacity",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 200
+        }
+      },
+      "values": {
+        "room": {
+          "call": "gt",
+          "args": {
+            "left": {
+              "call": "sub",
+              "args": {
+                "left": 1,
+                "right": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "y"
+                        ]
+                      },
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "h"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "right": {
+              "call": "div",
+              "args": {
+                "numerator": {
+                  "value": 16,
+                  "unit": "px"
+                },
+                "denominator": {
+                  "value": 1,
+                  "unit": "image_height"
+                }
+              }
+            }
+          }
+        },
+        "corner": {
+          "call": "box_anchor",
+          "args": {
+            "geometry": {
+              "ref": [
+                "parameters",
+                "geometry"
+              ]
+            },
+            "anchor": "bottom-left"
+          }
+        },
+        "position": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "ref": [
+                    "values",
+                    "corner"
+                  ]
+                },
+                "dx": {
+                  "value": -2,
+                  "unit": "px"
+                },
+                "dy": {
+                  "value": 2,
+                  "unit": "px"
+                }
+              }
+            },
+            "else": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "ref": [
+                    "values",
+                    "corner"
+                  ]
+                },
+                "dx": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "dy": {
+                  "value": -2,
+                  "unit": "px"
+                }
+              }
+            }
+          }
+        },
+        "anchor": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": "top-left",
+            "else": "bottom-left"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "ref": [
+                "values",
+                "position"
+              ]
+            },
+            "anchor": {
+              "ref": [
+                "values",
+                "anchor"
+              ]
+            },
+            "runs": [
+              {
+                "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": [
+                  0,
+                  0,
+                  0
+                ],
+                "alpha": {
+                  "ref": [
+                    "parameters",
+                    "background_opacity"
+                  ]
+                }
+              },
+              "padding_x": {
+                "value": 3,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 0,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
     "part_link": {
       "label": "Part link",
       "feature": "relations",
@@ -1251,6 +1548,13 @@
                   "observation",
                   "velocity"
                 ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
               }
             }
           }
@@ -1302,6 +1606,13 @@
                   "scene",
                   "observation",
                   "velocity"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               },
               "occluded": {
@@ -1381,6 +1692,13 @@
                   "velocity"
                 ]
               },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              },
               "occluded": {
                 "call": "coalesce",
                 "args": {
@@ -1450,6 +1768,13 @@
                   "velocity"
                 ]
               },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              },
               "occluded": {
                 "call": "coalesce",
                 "args": {
@@ -1517,6 +1842,13 @@
                   "scene",
                   "observation",
                   "velocity"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               },
               "occluded": {

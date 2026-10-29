@@ -2035,6 +2035,203 @@
         }
       ]
     },
+    "movement_badge": {
+      "label": "Movement badge",
+      "feature": "movement",
+      "description": "A small dark pill inside the bottom-right corner of the box: ▶ moving, Ⅱ stationary, ? unknown. Small boxes show none.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "required": true
+        },
+        "minimum_size": {
+          "type": "length",
+          "label": "Minimum box size",
+          "description": "Smaller boxes show no badge.",
+          "minimum": 0,
+          "default": {
+            "value": 44,
+            "unit": "px"
+          }
+        },
+        "margin": {
+          "type": "length",
+          "label": "Margin",
+          "minimum": 0,
+          "default": {
+            "value": 6,
+            "unit": "px"
+          }
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 10,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "room": {
+          "call": "gt",
+          "args": {
+            "left": {
+              "call": "div",
+              "args": {
+                "numerator": {
+                  "call": "box_min_size",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    }
+                  }
+                },
+                "denominator": {
+                  "value": 1,
+                  "unit": "px"
+                }
+              }
+            },
+            "right": {
+              "call": "div",
+              "args": {
+                "numerator": {
+                  "ref": [
+                    "parameters",
+                    "minimum_size"
+                  ]
+                },
+                "denominator": {
+                  "value": 1,
+                  "unit": "px"
+                }
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Badge",
+          "primitive": "label",
+          "enabled": {
+            "ref": [
+              "values",
+              "room"
+            ]
+          },
+          "fields": {
+            "position": {
+              "call": "box_anchor",
+              "args": {
+                "geometry": {
+                  "call": "inset_box",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "margin": {
+                      "ref": [
+                        "parameters",
+                        "margin"
+                      ]
+                    }
+                  }
+                },
+                "anchor": "bottom-right"
+              }
+            },
+            "anchor": "bottom-right",
+            "runs": [
+              {
+                "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": [
+                  230,
+                  233,
+                  237
+                ],
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": [
+                  14,
+                  16,
+                  20
+                ],
+                "alpha": 170
+              },
+              "padding_x": {
+                "value": 5,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 1.5,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 8,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
     "part_link": {
       "label": "Part link",
       "feature": "relations",
@@ -2314,6 +2511,38 @@
                 }
               }
             }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
           }
         ]
       },
@@ -2496,6 +2725,38 @@
                   "scene",
                   "classification",
                   "confidence"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               }
             }
@@ -2718,6 +2979,38 @@
                   "bindings",
                   "vehicle_color",
                   "color"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               }
             }
@@ -2975,6 +3268,38 @@
                 }
               }
             }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
           }
         ]
       },
@@ -3214,6 +3539,42 @@
                 }
               },
               "tag_corner": "bottom-left"
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              },
+              "minimum_size": {
+                "value": 80,
+                "unit": "px"
+              }
             }
           }
         ]
