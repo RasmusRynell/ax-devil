@@ -2035,6 +2035,150 @@
         }
       ]
     },
+    "movement_badge": {
+      "label": "Movement badge",
+      "feature": "movement",
+      "description": "A small dark pill just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "required": true
+        },
+        "margin": {
+          "type": "length",
+          "label": "Margin",
+          "description": "Gap between the box and the pill.",
+          "minimum": 0,
+          "default": {
+            "value": 3,
+            "unit": "px"
+          }
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 10,
+            "unit": "px"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Badge",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "margin"
+                  ]
+                },
+                "dy": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            },
+            "anchor": "top-left",
+            "runs": [
+              {
+                "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": [
+                  230,
+                  233,
+                  237
+                ],
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": [
+                  14,
+                  16,
+                  20
+                ],
+                "alpha": 170
+              },
+              "padding_x": {
+                "value": 5,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 1.5,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 8,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
     "part_link": {
       "label": "Part link",
       "feature": "relations",
@@ -2314,6 +2458,38 @@
                 }
               }
             }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
           }
         ]
       },
@@ -2496,6 +2672,38 @@
                   "scene",
                   "classification",
                   "confidence"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               }
             }
@@ -2718,6 +2926,38 @@
                   "bindings",
                   "vehicle_color",
                   "color"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               }
             }
@@ -2975,6 +3215,38 @@
                 }
               }
             }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
           }
         ]
       },
@@ -3214,6 +3486,38 @@
                 }
               },
               "tag_corner": "bottom-left"
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
             }
           }
         ]
