@@ -120,9 +120,9 @@ class OfflineVideoViewerWidget(ViewerWidget):
         """Show entry *index*: drop any entry still opening and open *index* in the background.
 
         The only way an entry is shown. The viewer stays responsive while sources open, and a newer request simply
-        replaces an older one. The entry plays from its first frame, or shows *start_frame* paused. Unless *keep_shown*,
-        the shown entry is released first and a loading indicator stands in; with it, the shown entry keeps playing
-        until the new media is ready, and stays if that cannot be shown.
+        replaces an older one. The entry plays from its first frame, or shows *start_frame* paused. A loading indicator
+        covers the viewer meanwhile. Unless *keep_shown*, the shown entry is released first; with it, the shown entry
+        stays beneath the indicator until the new media is ready, and stays if that cannot be shown.
         """
         if self._is_cleaned_up:
             return
@@ -144,14 +144,14 @@ class OfflineVideoViewerWidget(ViewerWidget):
 
         entry = self._navigation.get_entries()[index]
         lane_indices = self._considered_lanes(index)
-        indicator = self._show_loading_indicator() if self._runtime is None else None
+        indicator = self._show_loading_indicator()
         self._opening.submit(
             self._opening_jobs,
             "open offline entry",
             partial(open_entry_media, entry, lane_indices, QThread.currentThread()),
             on_result=partial(self._on_entry_opened, index, start_frame, keep_shown),
             on_error=lambda error: self._on_entry_opened(index, start_frame, keep_shown, EntryMedia(error=str(error))),
-            on_progress=indicator.set_message if indicator is not None else None,
+            on_progress=indicator.set_message,
             on_discard=release_media,
         )
 

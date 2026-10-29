@@ -218,7 +218,7 @@ class SceneRenderCatalogSelection(QObject):
             self._active_catalog_path = catalog_path
             self._manager.catalogs_in_use.set_path(self._in_use_key, catalog_path)
             self._load_error = None
-        if catalog_path != self._loaded_catalog_path:
+        if force_reload or catalog_path != self._loaded_catalog_path:
             self._publish(f"Loading {catalog_path.name}…")
         failed = on_failed or partial(self._fail_load, catalog_path)
         self._showing.start(

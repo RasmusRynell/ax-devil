@@ -44,6 +44,8 @@ def list_catalogs(config: Path | None) -> None:
     for listed in listing.catalogs:
         mark = "*" if listed.path == listing.default_path else " "
         note = "  (built-in, read-only)" if listed.is_built_in else ""
+        if listed.origin is not None:
+            note = f"  ({listed.origin.note})"
         click.echo(f"{mark} {listed.name:<28} {listed.path}{note}")
     for error in listing.errors:
         click.echo(f"! {error.path.name:<28} {error.path}  (does not load: {error.message})")

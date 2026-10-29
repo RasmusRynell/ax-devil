@@ -16,6 +16,7 @@ from ax_devil.modules.cache.cache_manager import CacheManager
 from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
+from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import EntryMedia
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.workspace.core import OverlayFile, RecentWorkspaces, VideoItem
@@ -123,7 +124,9 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
         banner = _banner(viewer)
         assert isinstance(banner, Banner)
         banner.action.click()
+        assert viewer.findChildren(LoadingIndicator)  # The old entry stays beneath it until the new one is ready.
         qtbot.waitUntil(lambda: viewer._runtime is not old_runtime)
+        qtbot.waitUntil(lambda: not viewer.findChildren(LoadingIndicator))
         qtbot.waitUntil(lambda: viewer._runtime is not None and viewer._runtime.playback.presented_frame is not None)
         assert _banner(viewer) is None
         assert viewer._runtime is not None
@@ -140,7 +143,9 @@ def test_a_rewritten_overlay_file_offers_a_reload_that_keeps_the_frame(
         banner = _banner(viewer)
         assert isinstance(banner, Banner)
         banner.action.click()
+        assert viewer.findChildren(LoadingIndicator)
         qtbot.waitUntil(lambda: _banner(viewer) is not None)
+        qtbot.waitUntil(lambda: not viewer.findChildren(LoadingIndicator))
         assert "Could not reload" in _banner_text(viewer)
         assert "Unreadable overlay file" in _banner_text(viewer)
         assert viewer._runtime is shown

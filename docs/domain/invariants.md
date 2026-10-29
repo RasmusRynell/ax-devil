@@ -229,7 +229,8 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 - Built-in catalogs are read in place from the installed package and never copied into the store, written or
   deleted. Every JSON file in the user catalog directory is a user catalog, and startup and listing never overwrite
   one. The one write the app makes is an explicit copy,
-  which validates before atomically replacing its destination.
+  which validates before atomically replacing its destination. A copy of a built-in catalog records it in
+  `metadata.origin`; that is shown, never acted on.
 - The default catalog is the only catalog choice remembered across restarts. Overlay visibility belongs to each view or
   lane, independently of filters and catalog authoring; hiding a feature keeps its inspection and hover data.
 - A failed catalog load or reload keeps the last compiled catalog in use and reports the error; it never leaves a view

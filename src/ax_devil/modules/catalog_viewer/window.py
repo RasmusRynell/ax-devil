@@ -286,7 +286,9 @@ class CatalogViewerWindow(ChromeWindow):
             self._banner.show()
             return
         updated = f" · updated {self._loaded_at:%H:%M:%S}" if self._changes and self._loaded_at is not None else ""
-        self._state.setText(f"● Live{updated}")
+        listed = self._manager.listing().catalog_for(self._path)
+        origin = f" · {listed.origin.note}" if listed is not None and listed.origin is not None else ""
+        self._state.setText(f"● Live{updated}{origin}")
         self._state.setToolTip("Redrawn every time the catalog file is saved")
         self._state.setStyleSheet(StatusColor.SUCCESS.css(self.palette()))
         self._banner.hide()
