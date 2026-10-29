@@ -2,29 +2,23 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
 from ax_devil.core.time_units import ms_to_us
 from ax_devil.modules.data_sources.base import OverlayLookup
-from ax_devil.modules.settings.logging_config import get_logger
-
-logger = get_logger(__name__)
 
 MAX_TIMEOUT_MS = 100000
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class OverlayPersistenceSettings:
     """Configuration used when deciding whether to reuse previous overlays."""
 
     enabled: bool = False
     timeout_ms: int | None = 2050
     opacity: float = 1.0
-
-    def copy(self) -> "OverlayPersistenceSettings":
-        """Return a shallow copy of the current settings."""
-        return replace(self)
 
     @classmethod
     def default_enabled(cls) -> "OverlayPersistenceSettings":
@@ -33,9 +27,7 @@ class OverlayPersistenceSettings:
 
     @classmethod
     def from_config(cls, value: object) -> "OverlayPersistenceSettings":
-        """Return the settings saved as *value*, or the built-in default for null or a malformed value."""
-        if value is None:
-            return cls.default_enabled()
+        """Return the settings saved as *value*; raise ValueError when it is malformed."""
         if isinstance(value, dict):
             enabled, timeout_ms, opacity = value.get("enabled"), value.get("timeout_ms"), value.get("opacity")
             if (
@@ -43,13 +35,13 @@ class OverlayPersistenceSettings:
                 and _is_valid_timeout(timeout_ms)
                 and isinstance(opacity, (int, float))
                 and not isinstance(opacity, bool)
+                and math.isfinite(opacity)
             ):
                 return cls(enabled=enabled, timeout_ms=timeout_ms, opacity=_clamp_opacity(float(opacity)))
-        logger.warning(f"Invalid saved sticky overlay settings {value!r}; using the built-in default.")
-        return cls.default_enabled()
+        raise ValueError(f"Invalid sticky overlay settings {value!r}")
 
     def config_value(self) -> dict[str, object]:
-        """Return the settings as the JSON object saved under ``settings.sticky_overlays``."""
+        """Return the settings as the JSON object saved under ``settings.view_defaults``."""
         return {"enabled": self.enabled, "timeout_ms": self.timeout_ms, "opacity": self.opacity}
 
 
@@ -93,9 +85,8 @@ class OverlayPersistencePolicy:
         self,
         settings: OverlayPersistenceSettings | None = None,
     ) -> None:
-        initial = replace(settings) if settings is not None else OverlayPersistenceSettings()
-        initial.opacity = _clamp_opacity(initial.opacity)
-        self._settings = initial
+        initial = settings if settings is not None else OverlayPersistenceSettings()
+        self._settings = replace(initial, opacity=_clamp_opacity(initial.opacity))
         self._cached_overlay: OverlayData | None = None
 
     @property
@@ -105,9 +96,7 @@ class OverlayPersistencePolicy:
 
     def update_settings(self, new_settings: OverlayPersistenceSettings) -> None:
         """Replace settings in preparation for configurable behaviour."""
-        updated = replace(new_settings)
-        updated.opacity = _clamp_opacity(updated.opacity)
-        self._settings = updated
+        self._settings = replace(new_settings, opacity=_clamp_opacity(new_settings.opacity))
         if not self._settings.enabled:
             self.reset()
 

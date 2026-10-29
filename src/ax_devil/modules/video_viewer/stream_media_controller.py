@@ -280,7 +280,7 @@ class StreamMediaController:
 
     def set_overlay_persistence(self, persistence_settings: OverlayPersistenceSettings) -> None:
         """Update sticky overlay configuration at runtime."""
-        self._overlay_policy.update_settings(persistence_settings.copy())
+        self._overlay_policy.update_settings(persistence_settings)
 
     def _init_synchronizer(self, frame_display: FrameDisplay) -> QtStreamSync:
         delay_ms = 1500

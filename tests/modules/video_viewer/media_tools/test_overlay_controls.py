@@ -19,11 +19,11 @@ from pytestqt.qtbot import QtBot
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.video_viewer import overlay_persistence_views as views_module
+from ax_devil.modules.video_viewer import view_settings as views_module
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel, OverlayPersistenceControls
 from ax_devil.modules.video_viewer.media_tools.appearance_popover import AppearancePopover
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
-from ax_devil.modules.video_viewer.overlay_persistence_views import OverlayPersistenceViews
+from ax_devil.modules.video_viewer.view_settings import STICKY_OVERLAYS, ViewSettings
 from tests.catalog_helpers import create_catalog
 
 _W = TypeVar("_W", bound=QWidget)
@@ -135,16 +135,16 @@ def test_apply_to_all_and_make_default_reach_every_open_control(
     qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     ConfigManager().set_config_path(tmp_path / "c.json")
-    monkeypatch.setattr(views_module, "_views", OverlayPersistenceViews())
+    monkeypatch.setattr(views_module, "_hubs", {STICKY_OVERLAYS.key: ViewSettings(STICKY_OVERLAYS)})
     start = OverlayPersistenceSettings.default_enabled()
     first = OverlayPersistenceControls(initial_settings=start)
     second = OverlayPersistenceControls(initial_settings=start)
     for controls in (first, second):
         qtbot.addWidget(controls)
         controls.show()
-    apply_buttons = [_child(controls, QPushButton, "applyStickyToAllButton") for controls in (first, second)]
-    default_buttons = [_child(controls, QPushButton, "useStickyAsDefaultButton") for controls in (first, second)]
-    labels = [_child(controls, QLabel, "stickyDefaultLabel") for controls in (first, second)]
+    apply_buttons = [_child(controls, QPushButton, "applyToAllButton") for controls in (first, second)]
+    default_buttons = [_child(controls, QPushButton, "useAsDefaultButton") for controls in (first, second)]
+    labels = [_child(controls, QLabel, "defaultLabel") for controls in (first, second)]
     opacity_spin = _child(first, QDoubleSpinBox, "overlayOpacitySpin")
     assert not apply_buttons[0].isVisible() and labels[0].isVisible()
 

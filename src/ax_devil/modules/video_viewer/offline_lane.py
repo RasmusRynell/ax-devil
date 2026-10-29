@@ -142,7 +142,7 @@ class OfflineLane:
             video_source=self.video_source,
             presenter=SceneFramePresenter(scene_filter=self.filter_model.snapshot(), scene_render_catalog=catalog),
             overlay_source=self.overlay.source if self.overlay else None,
-            overlay_policy=OverlayPersistencePolicy(self.overlay.policy.settings.copy()) if self.overlay else None,
+            overlay_policy=OverlayPersistencePolicy(self.overlay.policy.settings) if self.overlay else None,
         )
 
     def initialize_timing_diagnostics(self, alignment_report: OverlayAlignmentReport | None) -> None:

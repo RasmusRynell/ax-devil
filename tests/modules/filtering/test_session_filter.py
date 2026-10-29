@@ -1,6 +1,7 @@
 """Session filtering behavior shared by display and export."""
 
 from ax_devil.modules.filtering import FilterConfig, FilterOption
+from ax_devil.modules.filtering.filter_choice import FilterChoice
 from ax_devil.modules.filtering.measure_range import Measure, MeasureRange
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import (
@@ -99,3 +100,27 @@ def test_reset_restores_the_decoders_defaults_in_one_notification() -> None:
     assert model.range(Measure.SCORE) == MeasureRange()
     model.reset()
     assert notifications == [0]
+
+
+def test_a_choice_moves_to_another_decoder_and_reset_clears_it() -> None:
+    def option(option_id: str) -> FilterOption:
+        return FilterOption(id=option_id, label=option_id, predicate=lambda _entity, _state: True)
+
+    first, second = (
+        SessionFilter(FilterConfig((option("a"), option("b")))),
+        SessionFilter(FilterConfig((option("b"), option("c")))),
+    )
+    first.set_enabled("a", False)
+    first.set_enabled("b", False)
+    first.set_range(Measure.SCORE, MeasureRange(minimum=0.5))
+    chosen = first.choice()
+
+    second.apply_choice(chosen)
+
+    assert not second.is_enabled("b") and second.is_enabled("c")
+    assert second.range(Measure.SCORE) == MeasureRange(minimum=0.5)
+    assert second.choice() == chosen  # "a" is not in this decoder but travels on
+
+    second.reset()
+
+    assert second.choice() == FilterChoice() and second.is_enabled("b")

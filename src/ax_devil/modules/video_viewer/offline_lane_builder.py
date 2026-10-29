@@ -28,14 +28,12 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
     OpenedLane,
 )
 from ax_devil.modules.video_viewer.offline_lane import OfflineLane
-from ax_devil.modules.video_viewer.overlay_persistence import (
-    OverlayPersistenceSettings,
-)
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
 from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     OverlayAlignmentIndicator,
     TimingDiagnosticsWidget,
 )
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults
 from ax_devil.modules.workspace.core import EntryLane
 
 
@@ -109,7 +107,7 @@ def build_lane(
     use_lane_controls: bool,
     lane_visibility: dict[int, OverlayVisibility],
     pane_title: str,
-    overlay_settings: OverlayPersistenceSettings,
+    defaults: ViewDefaults,
     rollback: ExitStack,
 ) -> OfflineLane:
     lane_content = opened.lane
@@ -138,11 +136,13 @@ def build_lane(
 
     render_catalog_selection.selectionChanged.connect(remember_visibility)
     filter_model = SessionFilter(overlay_source.get_filter_config() if overlay_source is not None else None)
+    filter_model.apply_choice(defaults.object_filter)
+    timing_controls.set_timestamp_fallback_policy(defaults.overlay_sync)
     export_action = QAction(Icon.EXPORT.icon(), "Export video", display)
     tools_panel = MediaToolsPanel(
         render_catalog_selection,
         filter_model=filter_model,
-        overlay_settings=overlay_settings,
+        overlay_settings=defaults.sticky,
         export_action=export_action,
         scene_history=opened.scene_history,
         timing_controls=timing_controls,

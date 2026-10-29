@@ -13,6 +13,8 @@ from ax_devil.modules.chrome.tokens import Space, TextRole, keep_minimum_chars
 from ax_devil.modules.filtering.measure_range import Measure, MeasureRange
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.video_viewer.media_tools.media_tools_section import MediaToolsSection
+from ax_devil.modules.video_viewer.media_tools.scope_row import ScopeRow
+from ax_devil.modules.video_viewer.view_settings import OBJECT_FILTER
 
 _MUTED = "color: palette(placeholder-text);"
 _RANGE_EDIT_CHARS = 5
@@ -34,7 +36,8 @@ class OverlayFilterDrawer(QWidget):
     """Class chips and a score and confidence range of the session filter, hidden until ``button`` is clicked.
 
     The button reads "Filter N" for the N choices that differ from the decoder's defaults and is highlighted while
-    any do. The drawer only edits the ``SessionFilter`` and follows its ``changed`` signal.
+    any do. The drawer only edits the ``SessionFilter`` and follows its ``changed`` signal; its last row makes the
+    filter the default for new views or applies it to every open view.
     """
 
     def __init__(self, scene_filter: SessionFilter, parent: QWidget | None = None) -> None:
@@ -87,6 +90,8 @@ class OverlayFilterDrawer(QWidget):
         column.addLayout(self._range_rows())
         column.addWidget(self._summary)
         column.addLayout(footer)
+        self._scope = ScopeRow(OBJECT_FILTER, scene_filter.choice(), adopt=scene_filter.apply_choice, parent=self)
+        column.addWidget(self._scope)
 
         self.hide()
         scene_filter.changed.connect(self._refresh)
@@ -143,6 +148,7 @@ class OverlayFilterDrawer(QWidget):
         self.button.setText("Filter" if changed == 0 else f"Filter {changed}")
         self.button.setProperty("active", changed > 0)
         self._clear.setEnabled(changed > 0)
+        self._scope.set_value(self._filter.choice())
         if (style := self.button.style()) is not None:
             style.unpolish(self.button)
             style.polish(self.button)

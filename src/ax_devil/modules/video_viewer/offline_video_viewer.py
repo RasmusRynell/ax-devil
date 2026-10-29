@@ -28,7 +28,7 @@ from ax_devil.modules.video_viewer.offline_transport import OfflineTransport, Tr
 from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.video_viewer.offline_viewer_widgets import EntryNavigationBar, ViewerOverlayHost, exec_lane_menu
-from ax_devil.modules.video_viewer.overlay_persistence_views import overlay_persistence_views
+from ax_devil.modules.video_viewer.view_settings import view_defaults
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
     BookmarkTarget,
@@ -154,7 +154,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 entry,
                 lane_indices,
                 QThread.currentThread(),
-                sticky=overlay_persistence_views().default(),
+                defaults=view_defaults(),
             ),
             on_result=partial(self._on_entry_opened, index, start_frame, keep_shown),
             on_error=lambda error: self._on_entry_opened(index, start_frame, keep_shown, EntryMedia(error=str(error))),
