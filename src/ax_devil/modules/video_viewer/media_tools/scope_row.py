@@ -23,11 +23,19 @@ class ScopeRow(QWidget, Generic[T]):
     """Say whether a view's value is the default for new views, and offer Make default and Apply to all.
 
     The owner reports the view's value with `set_value` and supplies *adopt*, which makes the view show a value that
-    Apply to all chose in another view. Call `cleanup` when the owning view closes.
+    Apply to all chose in another view. Call `cleanup` when the owning view closes. With *hide_when_idle* the whole
+    row is hidden, and takes no room, while it has nothing to offer: the value is the saved default and no other view
+    differs.
     """
 
     def __init__(
-        self, kind: SettingKind[T], value: T, adopt: Callable[[T], None], parent: QWidget | None = None
+        self,
+        kind: SettingKind[T],
+        value: T,
+        adopt: Callable[[T], None],
+        parent: QWidget | None = None,
+        *,
+        hide_when_idle: bool = False,
     ) -> None:
         """Create the row for a view currently showing *value*."""
         super().__init__(parent)
@@ -35,6 +43,7 @@ class ScopeRow(QWidget, Generic[T]):
         self._kind = kind
         self._value = value
         self._adopt = adopt
+        self._hide_when_idle = hide_when_idle
         self._closed = False
         self._hub = view_settings(kind)
 
@@ -109,3 +118,5 @@ class ScopeRow(QWidget, Generic[T]):
         self._status.setCurrentIndex(0 if is_default else 1)
         self._apply_to_all_button.setText(f"Apply to all {len(in_use)}")
         self._apply_to_all_button.setVisible(differs)
+        if self._hide_when_idle:
+            self.setVisible(not is_default or differs)

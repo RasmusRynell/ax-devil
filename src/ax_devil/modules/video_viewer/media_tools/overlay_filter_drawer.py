@@ -91,7 +91,9 @@ class OverlayFilterDrawer(QWidget):
         column.addLayout(self._range_rows())
         column.addWidget(self._summary)
         column.addLayout(footer)
-        self._scope = ScopeRow(OBJECT_FILTER, scene_filter.choice(), adopt=scene_filter.apply_choice, parent=self)
+        self._scope = ScopeRow(
+            OBJECT_FILTER, scene_filter.choice(), adopt=scene_filter.apply_choice, parent=self, hide_when_idle=True
+        )
         column.addWidget(self._scope)
 
         self.hide()

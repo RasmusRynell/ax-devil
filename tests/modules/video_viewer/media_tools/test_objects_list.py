@@ -117,18 +117,20 @@ def test_the_filter_drawer_hides_objects_as_the_overlay_does_and_clear_restores_
     assert drawer.isVisible()
     chip = drawer.findChild(QPushButton, "filterOption_show_cars")
     clear = drawer.findChild(QPushButton, "filterClear")
-    assert chip is not None and clear is not None and not clear.isEnabled()
+    scope = drawer.findChild(QWidget, "object_filterScope")
+    assert chip is not None and clear is not None and scope is not None
+    assert not clear.isEnabled() and not scope.isVisible()  # Nothing to save or apply takes no room
     chip.click()
 
     assert listed_ids(panel) == ["a"]
     assert list(filters.process_scene(full).entities) == ["a"]  # The overlay and hover hide it too.
-    assert button.text() == "Filter 1" and clear.isEnabled()
+    assert button.text() == "Filter 1" and clear.isEnabled() and scope.isVisible()
     summary = [label.text() for label in drawer.findChildren(QLabel) if label.text().startswith("Showing")]
     assert summary == ["Showing 1 of 2 in this frame"]
 
     clear.click()
     assert sorted(listed_ids(panel)) == ["a", "b"]
-    assert button.text() == "Filter" and chip.isChecked() and not clear.isEnabled()
+    assert button.text() == "Filter" and chip.isChecked() and not clear.isEnabled() and not scope.isVisible()
 
     filters.apply_choice(FilterChoice(classes=frozenset({("not_in_this_decoder", False)})))  # Carried, not visible
     assert button.text() == "Filter" and clear.isEnabled()

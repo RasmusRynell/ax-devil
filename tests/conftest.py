@@ -25,6 +25,7 @@ from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogStore,
 )
 from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.video_viewer import view_settings
 from tests import OWNS_TEST_HOME, REAL_DATA_HOME, REAL_HOME, TEST_HOME
 from tests.catalog_helpers import catalog_document, create_ready_catalog_manager, wait_for_catalogs
 from tests.helpers.video import create_test_video
@@ -154,12 +155,14 @@ def _restore_test_config(_load_plugins: Path) -> Generator[None, None, None]:
     """Point the app back at the test configuration after each test.
 
     CLI commands and settings tests switch the shared configuration to another file. Without this, later tests would
-    use that file's storage folders instead of the ones this suite set up. Remembered window state is cleared too.
+    use that file's storage folders instead of the ones this suite set up. Remembered window state and the shared view
+    settings are cleared too.
     """
     yield
     ConfigManager().set_config_path(_load_plugins, create_if_missing=False)
     # Remembered window sizes and panel states would otherwise carry over into the next test.
     (Path(ConfigManager().get("storage")["base_dir"]) / "window-state.ini").unlink(missing_ok=True)
+    view_settings._hubs.clear()  # Views a test left open, and defaults read from its config, are not the next test's
 
 
 @pytest.fixture(autouse=True)
