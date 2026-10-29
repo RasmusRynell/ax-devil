@@ -46,10 +46,15 @@ class FieldGroup(Enum):
 
 
 class FieldOrigin(Enum):
-    """Who supplied a field's value: the source file or stream verbatim, or the decoder."""
+    """Who supplied a field's value: the source file or stream verbatim, or the decoder; in display order."""
 
-    SOURCE = "source"
-    DECODER = "decoder"
+    SOURCE = "Source"
+    DECODER = "Computed"
+
+    @property
+    def title(self) -> str:
+        """Return the caption over the fields of this origin."""
+        return self.value
 
 
 @dataclass(frozen=True, slots=True)
