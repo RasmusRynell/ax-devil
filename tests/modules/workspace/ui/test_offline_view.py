@@ -234,7 +234,7 @@ def test_a_playlist_that_failed_says_why_on_hover_and_offers_no_action(
 
     failed = row(view.tree, "Archive")
     assert row_texts(failed) == ["Archive"]
-    assert "is not installed" in failed.toolTip()
+    assert "is not installed" in failed.row.tooltip
     assert row_action(failed) == ""
 
 
@@ -268,7 +268,7 @@ def test_a_playlist_still_resolving_shows_loading_and_no_actions(
     assert row_action(row(view.tree, "Night shift")) == ""
     with patch(_OFFLINE_VIEWER, DummyViewer):
         blocking.release.set()
-        qtbot.waitUntil(lambda: "1 entry" in row(view.tree, "Night shift").toolTip())
+        qtbot.waitUntil(lambda: "1 entry" in row(view.tree, "Night shift").row.tooltip)
 
 
 def _external_resolver() -> PluginRecord:

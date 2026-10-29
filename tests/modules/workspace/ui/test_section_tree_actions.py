@@ -213,7 +213,7 @@ def test_rows_keep_their_text_and_buttons_inside_a_narrow_tree(qtbot: QtBot, tex
             assert button.width() == button.sizeHint().width()
 
 
-def test_hovering_any_text_of_a_row_shows_the_rows_tooltip(qtbot: QtBot) -> None:
+def test_the_text_of_a_row_has_no_tooltip_of_its_own(qtbot: QtBot) -> None:
     row = WorkspaceBrowserRow(
         row_id="archive",
         label="Archive",
@@ -225,10 +225,9 @@ def test_hovering_any_text_of_a_row_shows_the_rows_tooltip(qtbot: QtBot) -> None
 
     widget = row_widget(tree, item_at(tree, 0))
 
-    assert "is not installed" in widget.toolTip()
     labels = widget.findChildren(QLabel)
     assert labels, "the row shows text"
-    assert not any(label.toolTip() for label in labels), "a label tooltip would hide the row's"
+    assert not any(label.toolTip() for label in labels), "a label tooltip would swallow the hover the card waits for"
 
 
 def _camera(

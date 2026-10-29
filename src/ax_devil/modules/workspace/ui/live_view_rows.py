@@ -171,6 +171,7 @@ def _stream_row(row: WorkspaceBrowserRow, item: LiveStreamItem, own: DiscoveredC
         row,
         icon_kind="unavailable",
         stream=None,
+        thumbnail=None,
         idle=False,
         warning=_REFUSED,
         actions=tuple(offered for offered in row.actions if offered.action is not RowAction.START_STREAM),

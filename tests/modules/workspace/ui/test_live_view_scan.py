@@ -60,8 +60,8 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: Live, monke
     assert live.cameras()[2:] == ["192.0.2.12"]
     assert live.rows()["192.0.2.12"] == "Add"
     assert "AXIS P3265-LVE" in live.detail("192.0.2.12")
-    assert "ACCC8E000002" in live.row("192.0.2.12").toolTip()
-    assert "12.6.85" in live.row("192.0.2.12").toolTip()
+    assert "ACCC8E000002" in live.row("192.0.2.12").row.tooltip
+    assert "12.6.85" in live.row("192.0.2.12").row.tooltip
 
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", ""))
 
@@ -74,9 +74,9 @@ def test_a_held_camera_the_scan_found_shows_and_is_found_by_what_the_scan_learne
 
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "ACCC8E000001", "11.11.73"))
 
-    hover = live.row("Entrance").toolTip()
+    hover = live.row("Entrance").row.tooltip
     assert all(fact in hover for fact in ("AXIS Q1656", "ACCC8E000001", "11.11.73"))
-    assert "AXIS Q1656" not in live.row("192.0.2.11").toolTip()
+    assert "AXIS Q1656" not in live.row("192.0.2.11").row.tooltip
     live.search("q1656")
     assert list(live.rows()) == ["Entrance", "Entrance/Video only"]
 

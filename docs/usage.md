@@ -33,7 +33,8 @@ entries when it loads, unless it has more than 200; expand a longer one with its
 
 - **Live**: a camera streams while its viewer is open, and starts only with **Start stream**, never by
   double-clicking it. It can start before ax-devil has checked its login. With sign-in on, a camera whose saved login
-  is refused loses **Start stream** and shows why on hover.
+  is refused loses **Start stream** and shows why on hover. Hovering a stream that isn't playing asks its camera
+  for one snapshot with the stream's login, at most every 10 s.
   - A background scan starts at launch; **Scan settings** takes addresses and ranges such as `192.168.1.0/24`, and an
     empty field searches this computer's `/24` network. Startup scanning and sign-in can each be turned off in
     [Settings → Network scan](settings.md).

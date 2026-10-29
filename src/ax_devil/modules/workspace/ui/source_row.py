@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from html import escape
-
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QLabel, QWidget
@@ -41,7 +39,6 @@ def row_look(row: WorkspaceBrowserRow, *, info_shown: bool = False) -> tuple[obj
         row.is_dimmed,
         row.is_open,
         row.inline_actions,
-        row.tooltip,
     )
 
 
@@ -50,9 +47,9 @@ class SourceRow(ListRow):
     and, while *info_shown*, its info lines under it.
 
     The mark is muted and the name dimmed as the row says; a row open in a viewer is the list row's active one.
-    Hovering shows the full name over the row's tooltip. ``action_requested`` carries the row and the inline action
-    pressed; a click on the row itself is ``activated``. Kind colors are drawn for the palette at construction, so
-    owners build rows again when the theme changes.
+    The row shows no tooltip: its hover card is the tree's (``RowHover``). ``action_requested`` carries the row and the
+    inline action pressed; a click on the row itself is ``activated``. Kind colors are drawn for the palette at
+    construction, so owners build rows again when the theme changes.
     """
 
     action_requested = Signal(object, object)  # WorkspaceBrowserRow, RowAction
@@ -83,7 +80,5 @@ class SourceRow(ListRow):
             parent=parent,
         )
         self.row = row
-        lines = "".join(f"<br>{escape(line)}" for line in row.tooltip.splitlines())
-        self.setToolTip(f"<b>{escape(row.label)}</b>{lines}")
         for label in self.findChildren(QLabel):
-            label.setToolTip("")  # The name's and detail's own tooltips would hide the row's, which has the reason.
+            label.setToolTip("")  # An elided label's own tooltip would swallow the hover the card waits for.

@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.theme import KindColor, StatusColor
+from ax_devil.modules.thumbnails import ThumbnailSource
 from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.content import (
     Content,
@@ -217,6 +218,8 @@ class WorkspaceBrowserRow:
     """Whether the row shows the rows under it until the user collapses it."""
     glyph: Icon | None = None
     """The icon drawn in place of the mark's, in the mark's color; None keeps the mark's."""
+    thumbnail: ThumbnailSource | None = None
+    """What the row's hover card shows a frame of; None for a row of no video, which gets text only."""
 
     def offered(self, action: RowAction) -> OfferedAction | None:
         """Return *action* as the row offers it, or None when it does not."""

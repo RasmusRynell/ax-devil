@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import PurePath
 from types import MappingProxyType
 
+from ax_devil.modules.thumbnails import SNAPSHOT_TIMEOUT_S, CameraThumbnail, FileThumbnail, ThumbnailSource
 from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.content import (
     Content,
@@ -89,6 +90,14 @@ def _with_actions(row: WorkspaceBrowserRow, inline: RowAction | None = None) -> 
             offered.append(OfferedAction(RowAction.EDIT))
         offered.append(OfferedAction(RowAction.REMOVE))
     return replace(row, actions=tuple(offered))
+
+
+def _thumbnail(video: SeekableVideoContent | LiveVideoContent) -> ThumbnailSource:
+    """Return what a hover card shows a frame of for *video*: its camera, or its file's first frame."""
+    if isinstance(video, LiveVideoContent):  # is_live does not narrow the type for mypy.
+        spec = video.source_spec
+        return CameraThumbnail(video.content_id, spec.connection(SNAPSHOT_TIMEOUT_S), spec.camera_head)
+    return FileThumbnail(video.source_spec.path, video.source_spec.image_sequence_config)
 
 
 def _counted(count: int, noun: str, plural: str = "") -> str:
@@ -222,6 +231,7 @@ class _RowProjection:
                 facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
                 idle=content.is_live and not is_open,
                 stream=stream,
+                thumbnail=_thumbnail(content),
             ),
             inline=(RowAction.STOP_STREAM if is_open else RowAction.START_STREAM) if content.is_live else None,
         )
@@ -259,6 +269,7 @@ class _RowProjection:
                 children=children,
                 location=entry.source_location,
                 facts=(f"Entry {entry_index + 1} of {len(playlist.entries)}",),
+                thumbnail=_thumbnail(entry.lanes[0].video),
             )
         )
 
@@ -286,6 +297,7 @@ class _RowProjection:
                         is_considered=(self._is_considered(lane_ref) if consideration_item is not None else True),
                         location=lane.source_location,
                         facts=(_lane_fact(lane),),
+                        thumbnail=_thumbnail(lane.video),
                     )
                 )
             )
@@ -321,6 +333,7 @@ class _RowProjection:
                 is_considered=self._is_considered(ref),
                 location=lane.source_location,
                 facts=(_lane_fact(lane),),
+                thumbnail=_thumbnail(lane.video),
             )
         )
 
