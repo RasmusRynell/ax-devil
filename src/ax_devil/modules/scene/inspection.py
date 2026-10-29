@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -45,13 +45,21 @@ class FieldGroup(Enum):
         return self in (FieldGroup.DEBUG, FieldGroup.RAW, FieldGroup.IMAGES)
 
 
+class FieldOrigin(Enum):
+    """Who supplied a field's value: the source file or stream verbatim, or the decoder."""
+
+    SOURCE = "source"
+    DECODER = "decoder"
+
+
 @dataclass(frozen=True, slots=True)
 class InspectionField:
     """One leaf value of an entity, addressed by its path inside a ``FieldGroup``.
 
     ``fraction`` is set for scores and confidences in [0, 1] so a view can draw them as a bar. ``text`` is what a view
     shows in place of the value (``0.87`` for 0.8712); queries compare the value. ``rgb`` is set on a color entry, whose
-    path ends in its name and whose value is its score.
+    path ends in its name and whose value is its score. ``origin`` says whether the source supplied the value verbatim
+    or the decoder produced it.
     """
 
     path: tuple[str, ...]
@@ -59,6 +67,7 @@ class InspectionField:
     fraction: float | None = None
     rgb: RGB | None = None
     text: str | None = None
+    origin: FieldOrigin = FieldOrigin.DECODER
 
     def record_items(self) -> Iterator[tuple[tuple[str, ...], FieldValue]]:
         """Yield the (path, value) pairs a query searches: the field itself and, for a color, its r, g and b."""
@@ -91,8 +100,10 @@ _OBSERVATION_GROUPS = {
     "velocity_in_image_space": FieldGroup.MOTION,
     "velocity_in_world_space": FieldGroup.MOTION,
     "debug": FieldGroup.DEBUG,
+    "source_data": FieldGroup.DEBUG,
 }
-_UNPREFIXED_OBSERVATION_FIELDS = frozenset({"geometry", "debug"})
+_UNPREFIXED_OBSERVATION_FIELDS = frozenset({"geometry", "debug", "source_data"})
+_DEBUG_ORIGINS = {"debug": FieldOrigin.DECODER, "source_data": FieldOrigin.SOURCE}
 _UNKNOWN_CLASS = "unknown"
 
 
@@ -112,7 +123,8 @@ def entity_fields(entity: Entity) -> tuple[tuple[FieldGroup, tuple[InspectionFie
         for name, value in _dataclass_items(observation, skip={"classification"}):
             prefix = () if name in _UNPREFIXED_OBSERVATION_FIELDS else (name,)
             group = _OBSERVATION_GROUPS.get(name, FieldGroup.RAW)
-            grouped[group].extend((_debug_leaves if name == "debug" else _flatten)(value, prefix))
+            origin = _DEBUG_ORIGINS.get(name)
+            grouped[group].extend(_flatten(value, prefix) if origin is None else _debug_leaves(value, prefix, origin))
     return tuple((group, tuple(items)) for group, items in grouped.items() if items)
 
 
@@ -169,27 +181,28 @@ def _flatten_items(items: Iterable[tuple[str, Any]]) -> Iterator[InspectionField
         yield from _flatten(value, (name,))
 
 
-def _debug_leaves(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
+def _debug_leaves(value: Any, path: tuple[str, ...], origin: FieldOrigin) -> Iterator[InspectionField]:
     """Yield every debug leaf; reported empty values stay as ``null``, ``""``, ``[]`` or ``{}``, bytes as hex."""
     if value is None:
-        yield InspectionField(path, "null")
+        yield InspectionField(path, "null", origin=origin)
     elif isinstance(value, str):
-        yield InspectionField(path, value)
+        yield InspectionField(path, value, origin=origin)
     elif isinstance(value, bytes):
         shown = value[:_MAX_DEBUG_BYTES].hex()
-        yield InspectionField(path, shown if len(value) <= _MAX_DEBUG_BYTES else f"{shown}... ({len(value)} bytes)")
+        text = shown if len(value) <= _MAX_DEBUG_BYTES else f"{shown}... ({len(value)} bytes)"
+        yield InspectionField(path, text, origin=origin)
     elif isinstance(value, Mapping):
         for key, item in value.items():
-            yield from _debug_leaves(item, (*path, str(key)))
+            yield from _debug_leaves(item, (*path, str(key)), origin)
         if not value:
-            yield InspectionField(path, "{}")
+            yield InspectionField(path, "{}", origin=origin)
     elif isinstance(value, list | tuple):
         for index, item in enumerate(value):
-            yield from _debug_leaves(item, (*path, str(index)))
+            yield from _debug_leaves(item, (*path, str(index)), origin)
         if not value:
-            yield InspectionField(path, "[]")
+            yield InspectionField(path, "[]", origin=origin)
     else:
-        yield from _flatten(value, path)
+        yield from (replace(item, origin=origin) for item in _flatten(value, path))
 
 
 def _flatten(value: Any, path: tuple[str, ...]) -> Iterator[InspectionField]:
