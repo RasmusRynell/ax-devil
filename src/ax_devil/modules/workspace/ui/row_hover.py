@@ -1,4 +1,4 @@
-"""The hover card a section tree shows beside the row the user rests the pointer on."""
+"""The hover card a section tree shows next to the pointer while it rests on a row that has a picture."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import cast
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, QRect, Qt, QTimer
-from PySide6.QtGui import QCursor, QGuiApplication, QHelpEvent, QImage, QMouseEvent
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, Qt, QTimer
+from PySide6.QtGui import QGuiApplication, QHelpEvent, QImage, QMouseEvent
 from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.chrome.hover_card import HoverCard
@@ -28,11 +28,10 @@ _HIDING_EVENTS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class _Hovered:
-    """The row under the pointer and where it is on screen."""
+    """The row under the pointer and the tree it is in."""
 
     tree: SectionTree
     row: WorkspaceBrowserRow
-    rect: QRect
 
 
 def _identity(row: WorkspaceBrowserRow) -> tuple[str, ThumbnailSource | None]:
@@ -40,13 +39,13 @@ def _identity(row: WorkspaceBrowserRow) -> tuple[str, ThumbnailSource | None]:
 
 
 class RowHover(QObject):
-    """Show a ``HoverCard`` for the row of a watched tree that the pointer rests on: its name and facts, and the
-    picture its thumbnail source gives, if it has one.
+    """Show a ``HoverCard`` with the thumbnail of the row of a watched tree that the pointer rests on.
 
-    The tree's own tooltip delay is the hover intent. While the card is shown it follows the pointer from row to row
-    and goes away when the pointer leaves the rows or the user scrolls, clicks, types, or leaves the application. A
-    second after it appears, and every second after, it asks for its picture again, so the picture of an open stream
-    moves and a stale one is checked again.
+    The tree's own tooltip delay is the hover intent. The card appears only once the picture is there: a row without a
+    thumbnail, or whose picture is still loading or fails, shows nothing. While it is shown the card follows the
+    pointer; moving to another row hides it until that row's picture is there, and leaving the rows or scrolling,
+    clicking, typing, or leaving the application hides it. A second after it appears, and every second after, it asks
+    for its picture again, so the picture of an open stream moves and a stale one is checked again.
     """
 
     def __init__(self, thumbnails: Thumbnails, parent: QObject | None = None) -> None:
@@ -57,8 +56,10 @@ class RowHover(QObject):
         """The watched trees by their viewports."""
         self._card: HoverCard | None = None
         self._shown: tuple[str, ThumbnailSource | None] | None = None
-        """The id and thumbnail source of the row the card shows, None while it is hidden. A row whose source changes
-        is shown afresh, and answers to the earlier source are ignored."""
+        """The id and thumbnail source of the row under the pointer, None while nothing is tracked. A row whose source
+        changes is requested afresh, and answers to the earlier source are ignored."""
+        self._pointer = QPoint()
+        """Where the pointer last was, in global coordinates."""
         self._refresh = QTimer(self)
         self._refresh.setInterval(_REFRESH_MS)
         self._refresh.timeout.connect(self._refresh_card)
@@ -89,6 +90,7 @@ class RowHover(QObject):
             hovered = self._row_at(tree, cast(QHelpEvent, event).pos()) if tree is not None else None
             if hovered is None:
                 return False
+            self._pointer = cast(QHelpEvent, event).globalPos()
             self._show(hovered)
             return True
         if self._shown is None:
@@ -110,9 +112,7 @@ class RowHover(QObject):
         row = item.data(0, ROW_ROLE) if item is not None else None
         if item is None or row is None:
             return None
-        viewport = tree.viewport()
-        rect = tree.visualItemRect(item)
-        return _Hovered(tree, cast(WorkspaceBrowserRow, row), QRect(viewport.mapToGlobal(rect.topLeft()), rect.size()))
+        return _Hovered(tree, cast(WorkspaceBrowserRow, row))
 
     def _row_under(self, global_pos: QPoint) -> _Hovered | None:
         """Return the row of a watched tree at *global_pos*, or None where the pointer is not over one."""
@@ -124,43 +124,47 @@ class RowHover(QObject):
         return None
 
     def _follow(self, global_pos: QPoint) -> None:
-        """Move the card to the row at *global_pos* when that is another row, and hide it off the rows."""
+        """Move the card with the pointer to *global_pos*; on another row hide it and ask for that row's picture."""
+        self._pointer = global_pos
         hovered = self._row_under(global_pos)
         if hovered is None:
             self.hide()
         elif _identity(hovered.row) != self._shown:
             self._show(hovered)
+        elif self._card is not None and self._card.isVisible():
+            self._card.show_at(global_pos)
 
     def _refresh_card(self) -> None:
         """Ask again for the picture of the row under the pointer, which may be another row than the card shows."""
-        hovered = self._row_under(QCursor.pos())
+        hovered = self._row_under(self._pointer)
         if hovered is None:
             self.hide()
         else:
             self._show(hovered)
 
     def _show(self, hovered: _Hovered) -> None:
-        """Show the card for *hovered*, replacing the one shown, and request its picture."""
+        """Track *hovered*, hiding the card when it is a new row, and request its picture."""
         row = hovered.row
-        card = self._card
-        if card is None:
-            card = self._card = HoverCard(hovered.tree.window())
-        card.set_content(row.label, row.tooltip)
         identity = _identity(row)
         if identity != self._shown:
+            if self._card is not None:
+                self._card.hide()
             self._shown = identity
-            if row.thumbnail is None:
-                card.set_picture(None)
-            else:
-                card.set_picture_pending()  # Before the request, which may answer at once.
-            card.show_beside(hovered.rect)
             if (app := QCoreApplication.instance()) is not None:
                 app.installEventFilter(self)
             self._refresh.start()
         if row.thumbnail is not None:
-            self._thumbnails.request(row.thumbnail, partial(self._deliver, identity))
+            self._thumbnails.request(row.thumbnail, partial(self._deliver, identity, hovered.tree))
 
-    def _deliver(self, identity: tuple[str, ThumbnailSource | None], image: QImage | None) -> None:
-        """Show *image* in the card, unless the card has moved on to another row or another thumbnail source."""
-        if self._card is not None and identity == self._shown:
-            self._card.set_picture(image)
+    def _deliver(self, identity: tuple[str, ThumbnailSource | None], tree: SectionTree, image: QImage | None) -> None:
+        """Show *image* at the pointer, or hide the card when there is none, unless the pointer has moved on to
+        another row or another thumbnail source."""
+        if identity != self._shown:
+            return
+        if image is None:
+            self.hide()
+            return
+        if self._card is None:
+            self._card = HoverCard(tree.window())
+        self._card.set_picture(image)
+        self._card.show_at(self._pointer)

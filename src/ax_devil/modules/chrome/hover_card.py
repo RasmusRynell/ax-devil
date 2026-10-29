@@ -1,128 +1,74 @@
-"""A small card that appears beside a list row to show what the row stands for: its name, facts and a picture."""
+"""A small rounded picture that follows the pointer to show what the row under it stands for."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QGuiApplication, QImage, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import QPoint, QRectF, QSize, Qt
+from PySide6.QtGui import QGuiApplication, QImage, QPainter, QPainterPath, QPaintEvent, QPalette, QPen, QPixmap
+from PySide6.QtWidgets import QWidget
 
-from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.theme import VIDEO_CANVAS
-from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
+from ax_devil.modules.chrome.tokens import Radius, Space
 
-_WIDTH_IN_BODY_PX = 18
-_STYLE = f"""
-QFrame#HoverCard {{
-    background-color: palette(base);
-    border: 1px solid palette(mid);
-    border-radius: {Radius.POPUP}px;
-}}
-QFrame#HoverCard QLabel {{ border: none; background: transparent; }}
-"""
-_LOADING_STYLE = f"background-color: {VIDEO_CANVAS.name()}; border-radius: {Radius.CONTROL}px;"
+LONG_EDGE_PX = 180
 
 
-class HoverCard(QFrame):
-    """A tooltip-like window with a title, lines of text and an optional picture, that never takes focus or clicks.
+class HoverCard(QWidget):
+    """A tooltip-like window that is only a picture, never takes focus or clicks.
 
-    The picture is a box as wide as ``18`` body-text pixels: a 16:9 dark box while it loads, then the image fitted
-    inside the box's width and three quarters of that in height. With no picture the box is not there.
+    The picture keeps its aspect ratio with its longer side ``LONG_EDGE_PX`` logical pixels, has rounded corners and a
+    thin outline that reads on light and dark backgrounds. It is drawn on a translucent window.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Create a hidden card; *parent* only keeps it alive and in the application's style."""
+        """Create a hidden card; *parent* only keeps it alive."""
         super().__init__(parent, Qt.WindowType.ToolTip)
-        self.setObjectName("HoverCard")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setStyleSheet(_STYLE)
-        self._image: QImage | None = None
-        self._loading = False
-        self._anchor = QRect()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
-        layout.setSpacing(Space.S)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
-        self._layout = layout
-        self._title = self._label()
-        TextRole.STRONG.apply(self._title)
-        self._picture = QLabel(self)
-        self._picture.hide()
-        layout.addWidget(self._picture, 0, Qt.AlignmentFlag.AlignLeft)
-        self._text = self._label()
-        self._text.hide()
-        follow_appearance(self, self._show_picture)
+        self._image = QImage()
+        self._pixmap = QPixmap()
 
-    def set_content(self, title: str, text: str) -> None:
-        """Show *title* over the lines of *text*; empty text shows no lines."""
-        if self._title.text() != title:
-            self._title.setText(title)
-        if self._text.text() != text:
-            self._text.setText(text)
-        self._text.setVisible(bool(text))
-        self._place()
+    def set_picture(self, image: QImage) -> None:
+        """Show *image*, resized to fit the card's long edge; a null image leaves the card as it was."""
+        if image.isNull():
+            return
+        self._image = image
+        self._pixmap = QPixmap()  # Scaled when painted, for the screen the card is on.
+        size = image.size().scaled(QSize(LONG_EDGE_PX, LONG_EDGE_PX), Qt.AspectRatioMode.KeepAspectRatio)
+        self.setFixedSize(size)
+        self.update()
 
-    def set_picture(self, image: QImage | None) -> None:
-        """Show *image* fitted into the picture box, or no picture box when there is none or it is null."""
-        self._image = image if image is not None and not image.isNull() else None
-        self._loading = False
-        self._show_picture()
-
-    def set_picture_pending(self) -> None:
-        """Show the dark loading box where the picture will be."""
-        self._image = None
-        self._loading = True
-        self._show_picture()
-
-    def show_beside(self, anchor: QRect) -> None:
-        """Show the card with its top at the top of *anchor*, a global rectangle, and its left just right of it.
-
-        The card stays inside the screen of *anchor*, even where that covers the anchor.
-        """
-        self._anchor = anchor
-        self._place()
+    def show_at(self, global_pos: QPoint) -> None:
+        """Show the card down and right of *global_pos*, on the other side of it where it would leave the screen."""
+        screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
+        area = screen.availableGeometry()
+        left = global_pos.x() + Space.M
+        top = global_pos.y() + Space.M
+        if left + self.width() > area.right() + 1:
+            left = global_pos.x() - Space.M - self.width()
+        if top + self.height() > area.bottom() + 1:
+            top = global_pos.y() - Space.M - self.height()
+        self.move(max(area.left(), left), max(area.top(), top))
         self.show()
 
-    def _label(self) -> QLabel:
-        """Return a left-aligned plain-text label, added to the layout, whose text is never wrapped."""
-        label = QLabel(self)
-        label.setTextFormat(Qt.TextFormat.PlainText)
-        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self._layout.addWidget(label)
-        return label
-
-    def _show_picture(self) -> None:
-        """Draw the picture box for the current state, at the current text size and screen scale."""
-        width = _WIDTH_IN_BODY_PX * TextRole.BODY.px
-        picture = self._picture
-        if self._image is not None:
-            ratio = self.devicePixelRatioF()
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Paint the picture inside a rounded outline."""
+        if self._image.isNull():
+            return
+        ratio = self.devicePixelRatioF()
+        if self._pixmap.isNull() or self._pixmap.devicePixelRatio() != ratio:
             scaled = self._image.scaled(
-                QSize(width, width * 3 // 4) * ratio,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+                self.size() * ratio, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
             scaled.setDevicePixelRatio(ratio)
-            picture.setStyleSheet("")
-            picture.setPixmap(QPixmap.fromImage(scaled))
-            picture.setFixedSize(QSize(round(scaled.width() / ratio), round(scaled.height() / ratio)))
-        elif self._loading:
-            picture.clear()
-            picture.setStyleSheet(_LOADING_STYLE)
-            picture.setFixedSize(width, width * 9 // 16)
-        else:
-            picture.clear()
-        picture.setVisible(self._image is not None or self._loading)
-        self._place()
-
-    def _place(self) -> None:
-        """Fit the card to its content and, once shown, keep it beside its anchor and inside the screen."""
-        self._layout.activate()
-        if self._anchor.isNull():
-            return
-        screen = QGuiApplication.screenAt(self._anchor.center()) or QGuiApplication.primaryScreen()
-        area = screen.availableGeometry()
-        size = self.sizeHint()
-        left = min(self._anchor.right() + Space.S, area.right() + 1 - size.width())
-        top = min(self._anchor.top(), area.bottom() + 1 - size.height())
-        self.move(max(area.left(), left), max(area.top(), top))
+            self._pixmap = QPixmap.fromImage(scaled)
+        outline = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        shape = QPainterPath()
+        shape.addRoundedRect(outline, Radius.POPUP, Radius.POPUP)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setClipPath(shape)
+        painter.drawPixmap(0, 0, self._pixmap)
+        painter.setClipping(False)
+        painter.setPen(QPen(self.palette().color(QPalette.ColorRole.Mid), 1))
+        painter.drawPath(shape)
+        painter.end()

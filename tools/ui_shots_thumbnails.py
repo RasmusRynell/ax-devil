@@ -1,15 +1,19 @@
-"""Hover card screenshots: the card the sidebar shows beside a row, in the running application.
+"""Hover card screenshots: the picture the sidebar shows at the pointer when it rests on a row, in the app.
 
 The rows are the real ones of the sample workspace and a stubbed network scan, shown by the real section trees and
-``RowHover``; the cards are the real ``HoverCard``. A tooltip request is sent to the row's widget, as Qt sends one
-when the pointer rests on it, and the shot is the window with the card painted in at its screen position.
+``RowHover``; the cards are the real ``HoverCard``. A tooltip request is sent to the middle of the row's widget, as Qt
+sends one when the pointer rests there, and the shot is the window with the card painted in at its screen position,
+just down and right of that pointer position.
 
-Two pictures are stand-ins, because the private display has neither a stream nor a camera:
+Three shots show no card, because that is what the user sees: rows whose picture is not there. They are the plain window
+at the moment the pointer rests on the row.
+
+Two states are stand-ins, because the private display has neither a stream nor a camera:
 
 - ``hover-card-live-synthetic`` shows an open stream whose newest frame is a SYNTHETIC gradient, supplied in place of
   a viewer's frame.
-- ``hover-card-live-loading`` shows a stream that is not open while the snapshot read is held back, so the card keeps
-  its dark loading box. Nothing connects to a camera.
+- ``hover-card-live-loading`` shows a stream that is not open while the snapshot read is held back, so there is no
+  card yet. Nothing connects to a camera.
 """
 
 from __future__ import annotations
@@ -18,9 +22,9 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEvent, QPoint
+from PySide6.QtCore import QEvent
 from PySide6.QtGui import QColor, QHelpEvent, QImage, QLinearGradient, QPainter
-from PySide6.QtWidgets import QApplication, QLabel, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
+from PySide6.QtWidgets import QApplication, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.app import Application
@@ -66,12 +70,13 @@ def rows(window: QWidget, view: str) -> Iterator[tuple[QTreeWidget, QTreeWidgetI
             iterator += 1
 
 
-def card_shot(window: QWidget, card: HoverCard, path: Path) -> None:
-    """Save *window* with *card* painted in where it is on screen."""
+def card_shot(window: QWidget, card: HoverCard | None, path: Path) -> None:
+    """Save *window* with *card* painted in where it is on screen, or the plain window when there is no card."""
     shot = window.grab()
-    painter = QPainter(shot)
-    painter.drawPixmap(window.mapFromGlobal(card.pos()), card.grab())
-    painter.end()
+    if card is not None:
+        painter = QPainter(shot)
+        painter.drawPixmap(window.mapFromGlobal(card.pos()), card.grab())
+        painter.end()
     shot.save(str(path))
 
 
@@ -83,8 +88,8 @@ def thumbnail_card_screenshots(
     video_file_factory: Callable[[float, int], Path],
     theme: str,
 ) -> None:
-    """Save the hover card on a video, an overlay lane, a playlist entry, an open and a loading stream, and two rows
-    without a picture, at both text sizes.
+    """Save the hover card on a video, an overlay lane, a playlist entry and an open stream, and the window with no
+    card for a stream still loading and for a refused login, at both text sizes.
 
     Add a card with one more row in ``cards``.
     """
@@ -124,15 +129,14 @@ def thumbnail_card_screenshots(
         ]
         return found[nth]
 
-    # (view, label, icon kind, which of the rows so named, name of the shot, what the card must show)
+    # (view, label, icon kind, which of the rows so named, name of the shot, whether a card must show)
     cards = (
-        ("Offline", "Tracked video", "video", 0, "file", "picture"),
-        ("Offline", "tracks", "overlay", 0, "overlay-lane", "picture"),
-        ("Offline", "run_02", "video", 0, "playlist-entry", "picture"),
-        ("Live", "Video only", "live_video", 0, "live-synthetic", "picture"),
-        ("Live", "Video only", "live_video", 2, "live-loading", "loading"),
-        ("Live", "Entrance", "live_video", 0, "camera-group", "text"),
-        ("Live", "192.0.2.51", "live_video", 0, "refused-login", "text"),
+        ("Offline", "Tracked video", "video", 0, "file", True),
+        ("Offline", "tracks", "overlay", 0, "overlay-lane", True),
+        ("Offline", "run_02", "video", 0, "playlist-entry", True),
+        ("Live", "Video only", "live_video", 0, "live-synthetic", True),
+        ("Live", "Video only", "live_video", 2, "live-loading", False),
+        ("Live", "192.0.2.51", "live_video", 0, "refused-login", False),
     )
     for text_size in TEXT_SIZES:
         GlobalSettings().text_size = text_size
@@ -145,24 +149,17 @@ def thumbnail_card_screenshots(
                 open_frame.append(synthetic_frame())
             widget = tree.itemWidget(item, 0)
             assert isinstance(widget, SourceRow)
-            QApplication.sendEvent(
-                widget, QHelpEvent(QEvent.Type.ToolTip, QPoint(4, 4), widget.mapToGlobal(QPoint(4, 4)))
-            )
-            card = window.findChild(HoverCard)
-            assert card is not None
-            qtbot.waitUntil(card.isVisible, timeout=5000)
-
-            def picture_drawn(card: HoverCard = card) -> bool:
-                return any(not label.pixmap().isNull() for label in card.findChildren(QLabel))
-
-            if shows == "picture":
-                qtbot.waitUntil(picture_drawn, timeout=10000)
+            local = widget.rect().center()
+            QApplication.sendEvent(widget, QHelpEvent(QEvent.Type.ToolTip, local, widget.mapToGlobal(local)))
+            if shows:
+                qtbot.waitUntil(lambda: (c := window.findChild(HoverCard)) is not None and c.isVisible(), timeout=10000)
             else:
                 qtbot.wait(300)
-                assert not picture_drawn()
-            if shows == "loading":
+            card = window.findChild(HoverCard)
+            assert (card is not None and card.isVisible()) == shows
+            if name == "live-loading":
                 qtbot.waitUntil(lambda: bool(read_started), timeout=5000)
-            card_shot(window, card, OUT / f"{theme}-{text_size.value}-hover-card-{name}.png")
+            card_shot(window, card if shows else None, OUT / f"{theme}-{text_size.value}-hover-card-{name}.png")
             open_frame.clear()
             QApplication.sendEvent(tree.viewport(), QEvent(QEvent.Type.Leave))  # The pointer moves away.
-            assert not card.isVisible()
+            assert card is None or not card.isVisible()
