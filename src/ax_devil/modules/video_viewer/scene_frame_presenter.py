@@ -111,6 +111,7 @@ class SceneFramePresenter:
                 frame_id=frame_data.frame_id,
                 metadata=metadata,
                 refilter=partial(self._filtered_scene, selected_overlay, cached_overlay),
+                source_count=len(selected_overlay.content.entities) if selected_overlay is not None else None,
             ),
         )
 

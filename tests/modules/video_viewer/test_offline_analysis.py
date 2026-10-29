@@ -49,7 +49,7 @@ class _Panel:
         self.histories: list[SceneHistory] = []
         self.notices: list[str] = []
 
-    def update_scene(self, *args: object) -> None:
+    def update_scene(self, *args: object, **kwargs: object) -> None:
         """Accept inspection of the held frame."""
 
     def refresh_scene(self) -> None:

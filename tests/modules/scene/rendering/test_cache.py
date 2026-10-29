@@ -195,7 +195,7 @@ def test_panning_within_the_culling_margin_reuses_the_drawing() -> None:
     assert moved is not first
 
 
-def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:
+def test_cached_scene_overlay_tracks_disabling_all_without_new_scene() -> None:
     scene = _classified_scene()
     model = SessionFilter(build_default_filter_config())
     overlay = CachedSceneOverlay(scene=scene, scene_filter=model)
@@ -205,7 +205,7 @@ def test_cached_scene_overlay_tracks_toggle_all_without_new_scene() -> None:
     assert len(first) > 0
     assert overlay.hit_test(0.2, 0.3) is not None
 
-    model.toggle_all()
+    model.set_all_enabled(False)
     assert len(overlay.prepare_drawing(context, DrawingBuffer(settings))) == 0
     assert overlay.hit_test(0.2, 0.3) is None
 

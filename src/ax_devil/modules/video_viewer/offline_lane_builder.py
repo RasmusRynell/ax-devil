@@ -128,6 +128,7 @@ def build_lane(
     render_catalog_selection = render_catalog_manager.create_selection(
         visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container
     )
+    rollback.callback(render_catalog_selection.cleanup)
 
     def remember_visibility(
         *, selection: SceneRenderCatalogSelection = render_catalog_selection, lane_index: int = opened.lane_index
@@ -165,6 +166,7 @@ def build_lane(
         lane_index=opened.lane_index,
         presenter=presenter,
         tools_panel=tools_panel,
+        catalog_selection=render_catalog_selection,
         filter_model=filter_model,
         timing_controls=timing_controls,
         alignment_indicator=alignment_indicator,

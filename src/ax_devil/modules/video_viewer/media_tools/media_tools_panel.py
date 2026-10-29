@@ -1,4 +1,4 @@
-"""Side panel of a video: its objects and events as pages, with the overlay controls in a menu."""
+"""Side panel of a video: its objects and events as pages, with appearance and overlay controls above them."""
 
 from __future__ import annotations
 
@@ -25,17 +25,15 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.scene_inspection import SceneRefilter
 
-from .entity_filter_widget import EntityFilterWidget
+from .appearance_popover import AppearancePopover
 from .event_page import EventPage
 from .events_page import EventsPage
 from .media_tools_section import MediaToolsSection
 from .object_page import ObjectPage
 from .objects_page import ObjectsPage
 from .overlay_persistence_controls import OverlayPersistenceControls
-from .overlay_visibility_widget import OverlayVisibilityWidget
 from .page_stack import EventPageKey, ObjectPageKey, PageKey, PageStack
 from .panel_tab_row import PanelTabRow
-from .scene_render_catalog_selector import SceneRenderCatalogSelector
 
 _INSPECTION_INTERVAL_S = 0.1
 
@@ -45,7 +43,7 @@ _MIN_CHARS = 37
 
 
 class MediaToolsPanel(QWidget):
-    """Side panel: the displayed frame's objects and the Scene events as pages, and the overlay controls in a menu.
+    """Side panel: the displayed frame's objects and the Scene events as pages, with appearance and overlay controls.
 
     The roots are an Objects list and an Events list under a tab bar. Opening an object or an event drills into its
     page, which replaces the tabs until the user goes back; ``show_object`` opens an object the same way, for a
@@ -72,7 +70,7 @@ class MediaToolsPanel(QWidget):
     ) -> None:
         """Create the panel for one video's *render_catalog_selection* and session *filter_model*.
 
-        *export_action* belongs to the viewer and is listed in the menu; *timing_controls* (offline videos) become
+        *export_action* belongs to the viewer and is listed in the ⋯ menu; *timing_controls* (offline videos) become
         its Overlay sync section.
         """
         super().__init__(parent)
@@ -87,6 +85,7 @@ class MediaToolsPanel(QWidget):
         self._last_scene: Scene | None = None
         self._last_frame_id: FrameIdentifier | None = None
         self._refilter: SceneRefilter | None = None
+        self._source_count: int | None = None
         self._history = scene_history
         self._pending_object: ObjectPageKey | None = None
         self._followed: ObjectPage | EventPage | None = None  # The drilled page on top, which follows the frame
@@ -102,17 +101,12 @@ class MediaToolsPanel(QWidget):
         self._fold_state: dict[str, bool] = {}
         self._pinned_fields = PinnedFields()
         self.filter_model = filter_model
-        self._filter_widget = EntityFilterWidget(filter_model=self.filter_model, show_title=False)
         self._overlay_controls = OverlayPersistenceControls(initial_settings=overlay_settings, show_title=False)
         self._overlay_controls.settingsChanged.connect(self.overlayPersistenceChanged.emit)
-        self._catalog_selector = SceneRenderCatalogSelector(
-            self._render_catalog_selection,
-            show_title=False,
-        )
-        self._catalog_selector.catalogViewerRequested.connect(self.catalogViewerRequested.emit)
-        self._visibility_widget = OverlayVisibilityWidget(self._render_catalog_selection)
+        self._appearance = AppearancePopover(self._render_catalog_selection, self)
+        self._appearance.catalogViewerRequested.connect(self.catalogViewerRequested.emit)
 
-        self._objects = ObjectsPage(self)
+        self._objects = ObjectsPage(filter_model, self)
         self._objects.objectActivated.connect(self._open_object)
         self._objects.setObjectName("mediaToolsObjects")
         self._events = EventsPage(scene_history, self)
@@ -127,9 +121,7 @@ class MediaToolsPanel(QWidget):
 
         self._tab_row = PanelTabRow(
             [section for section, _root in roots],
-            catalog_selector=self._catalog_selector,
-            visibility_widget=self._visibility_widget,
-            filter_widget=self._filter_widget,
+            appearance=self._appearance,
             overlay_controls=self._overlay_controls,
             timing_controls=timing_controls,
             export_action=export_action,
@@ -160,7 +152,7 @@ class MediaToolsPanel(QWidget):
         layout.addWidget(self._stack, 1)
 
         if scene_history is not None:
-            self._objects.set_history(scene_history, filter_model)
+            self._objects.set_history(scene_history)
         self.filter_model.changed.connect(self._on_filter_changed)
         self._on_filter_changed()
 
@@ -178,12 +170,7 @@ class MediaToolsPanel(QWidget):
     def cleanup(self) -> None:
         """Disconnect persistent selection observers when the owning view closes."""
         self._idle_refresh.stop()
-        self._visibility_widget.cleanup()
-
-    @property
-    def filter_widget(self) -> EntityFilterWidget:
-        """Return the embedded entity filter widget."""
-        return self._filter_widget
+        self._appearance.cleanup()
 
     @property
     def overlay_controls(self) -> OverlayPersistenceControls:
@@ -200,17 +187,12 @@ class MediaToolsPanel(QWidget):
         """Return the Scene events list, the Events root page."""
         return self._events
 
-    @property
-    def catalog_selector(self) -> SceneRenderCatalogSelector:
-        """Return the render catalog selector widget."""
-        return self._catalog_selector
-
     def clear(self) -> None:
         """Clear the frame-following tools."""
         self._idle_refresh.stop()
         self._last_refresh_at = float("-inf")
         frame_id = self._last_frame_id
-        self._last_scene, self._last_frame_id, self._refilter = None, None, None
+        self._last_scene, self._last_frame_id, self._refilter, self._source_count = None, None, None, None
         self._objects.clear()
         self._events.clear()
         if self._followed is not None and frame_id is not None:
@@ -222,8 +204,9 @@ class MediaToolsPanel(QWidget):
         frame_id: FrameIdentifier | None,
         metadata: dict[str, Any] | None,
         refilter: SceneRefilter | None = None,
+        source_count: int | None = None,
     ) -> None:
-        """Forward the Scene shown for a displayed frame to every page that follows it.
+        """Forward the Scene shown for a displayed frame, with its *source_count* before filtering, to every page.
 
         Pages retain only the latest snapshot; live events are recorded before visual updates are coalesced.
         During playback the visible page refreshes at most ten times a second, on an arriving frame. A trailing
@@ -232,7 +215,10 @@ class MediaToolsPanel(QWidget):
         if scene is self._last_scene and frame_id == self._last_frame_id:
             return
         self._last_scene, self._last_frame_id, self._refilter = scene, frame_id, refilter
-        self._objects.update_scene(scene, frame_id.sequence_id if frame_id is not None else None, defer=True)
+        self._source_count = source_count
+        self._objects.update_scene(
+            scene, frame_id.sequence_id if frame_id is not None else None, source_count=source_count, defer=True
+        )
         self._events.update_scene(scene, frame_id, metadata, defer=True)
         self._follow_frame(defer=True)
         if not self.isVisible():
@@ -268,7 +254,7 @@ class MediaToolsPanel(QWidget):
         """Replace the history after a change in how overlay samples are selected."""
         self._history = history
         self._history_notice.setVisible(False)
-        self._objects.set_history(history, self.filter_model)
+        self._objects.set_history(history)
         self._events.set_history(history)
         # An open event may now sit on another frame, or be gone; its page then follows it, or closes.
         self._stack.remap(lambda key: self._key_resolvers[type(key)](key))
@@ -384,10 +370,10 @@ class MediaToolsPanel(QWidget):
             self._followed.update_scene(self._last_scene, self._last_frame_id.sequence_id, defer=defer)
 
     def _on_filter_changed(self) -> None:
-        enabled, total = self.filter_model.enabled_count, len(self.filter_model.options)
-        self._tab_row.set_filter_count(enabled, total)
         self._objects.refilter()
         if self._refilter is not None and self._last_frame_id is not None:
             self._last_scene = self._refilter()
-            self._objects.update_scene(self._last_scene, self._last_frame_id.sequence_id)
+            self._objects.update_scene(
+                self._last_scene, self._last_frame_id.sequence_id, source_count=self._source_count
+            )
             self._follow_frame()

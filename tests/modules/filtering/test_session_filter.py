@@ -40,7 +40,7 @@ def test_detached_snapshot_keeps_decoder_predicates_after_session_edits() -> Non
     assert list(snapshot.process_scene(scene).entities) == ["other-A"]
     assert not snapshot.supports_history_filtering
 
-    model.toggle_all()
+    model.set_all_enabled(False)
     assert not model.process_scene(scene).entities
     assert list(snapshot.process_scene(scene).entities) == ["other-A"]
 
@@ -73,3 +73,29 @@ def test_ranges_judge_only_reported_values_and_change_what_is_cached() -> None:
     model.set_range(Measure.SCORE, MeasureRange())
     model.set_range(Measure.CONFIDENCE, MeasureRange())
     assert model.cache_identity == unfiltered
+
+
+def test_reset_restores_the_decoders_defaults_in_one_notification() -> None:
+    config = FilterConfig(
+        options=(
+            FilterOption(id="shown", label="Shown", predicate=lambda _entity, _state: True),
+            FilterOption(id="hidden", label="Hidden", predicate=lambda _entity, _state: True, default_enabled=False),
+        )
+    )
+    model = SessionFilter(config)
+    assert model.changed_count == 0
+    notifications: list[int] = []
+    model.changed.connect(lambda: notifications.append(model.changed_count))
+
+    model.set_enabled("hidden", True)
+    model.set_range(Measure.SCORE, MeasureRange(minimum=0.5))
+    model.set_enabled("shown", False)
+    assert model.changed_count == 3
+
+    notifications.clear()
+    model.reset()
+    assert notifications == [0]
+    assert (model.is_enabled("shown"), model.is_enabled("hidden")) == (True, False)
+    assert model.range(Measure.SCORE) == MeasureRange()
+    model.reset()
+    assert notifications == [0]

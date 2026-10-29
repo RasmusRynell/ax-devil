@@ -18,7 +18,8 @@ documented by `ax-devil catalog reference`, generated from the runtime definitio
 - `catalog_manager.py`: `SceneRenderCatalogManager` (discovery, file watching, default catalog, apply to all) with the
   worker jobs, waiting consumers and compiled-revision cache (`CatalogRevisions`) it uses in `catalog_jobs.py`;
   `catalog_selection.py`:
-  `SceneRenderCatalogSelection` (one consumer's active catalog and visibility choices).
+  `SceneRenderCatalogSelection` (one consumer's active catalog and visibility choices; its `cleanup()` also removes it
+  from the open views that Apply to all counts); `catalogs_in_use.py`: `CatalogsInUse`, the catalog each open view shows.
 - `visibility.py`: the typed `OverlayFeature` groups a view can hide, and immutable per-view visibility.
 - `catalog_definitions/`: the packaged built-in catalogs (schema version 3) and their generated JSON Schema.
 - `template_runtime/`: the catalog language. `definitions.py` is the closed set of value types, operations and

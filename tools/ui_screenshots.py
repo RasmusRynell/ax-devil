@@ -8,9 +8,9 @@ Settings dialog does::
     PYTHONPATH=. uv run pytest -p tests.conftest tools/ui_screenshots.py -q
     PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/after uv run pytest -p tests.conftest tools/ui_screenshots.py -q
 
-``test_media_tools_screenshots`` adds ``<theme>-panel-*.png``, ``<theme>-grid*.png``, ``<theme>-hover-chip.png`` and
-``<theme>-selected-object.png`` shots of the media tools panel and of picking objects on the video; run it alone with
-``-k media_tools``.
+``test_media_tools_screenshots`` (in ``ui_shots_media_panel.py``) adds ``<theme>-panel-*.png``, ``<theme>-grid*.png``,
+``<theme>-hover-chip.png`` and ``<theme>-selected-object.png`` shots of the media tools panel, its filter drawer,
+Appearance popover and menu, and of picking objects on the video; run it alone with ``-k media_tools``.
 
 Shots go to ``AX_DEVIL_UI_SHOTS`` (default ``/tmp/ax-devil-ui-shots``) as ``<theme>-<text size>-<surface>.png``.
 They are rendered at ``AX_DEVIL_UI_SHOTS_SCALE`` device pixels per logical pixel (default 2, as on a high-DPI screen).
@@ -21,19 +21,17 @@ the theme's earlier shots there, so a folder reused across runs holds only curre
 from __future__ import annotations
 
 import json
-import shutil
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
-    QMenu,
     QTabBar,
     QVBoxLayout,
     QWidget,
@@ -44,40 +42,14 @@ from ax_devil.app import Application
 from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
-from ax_devil.modules.object_inspection.pinned_fields import FieldId
-from ax_devil.modules.plugin_system import (
-    RuntimePluginRegistry,
-)
-from ax_devil.modules.scene.model import EntityId
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.video_player.engine.data_types import HoverHit
 from ax_devil.modules.video_player.ui.hover_chip import HoverChip
-from ax_devil.modules.video_player.ui.viewport import FrameViewport
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed, LiveFeedStatus
 from ax_devil.modules.video_viewer.live_video_viewer import LiveStatusPanel
-from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
-from ax_devil.modules.video_viewer.media_tools.object_scope import ObjectScope
-from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
-from ax_devil.modules.workspace.core import (
-    OverlayFile,
-    PlaylistItem,
-    VideoItem,
-    Workspace,
-    save_workspace,
-)
-from ax_devil.plugins.decoders.onvif_xml.plugin import ONVIF_XML
-from tools.ui_samples import CLIP_FPS, CLIP_FRAMES, sample_workspace, write_tracks
-from tools.ui_shots_config import GRID_SIZE, OUT, TEXT_SIZES, WINDOW_SIZES, configured
-from tools.ui_shots_media_tools import (
-    FourCameras,
-    click_object,
-    grid_panels,
-    move_pointer,
-    object_point,
-    save_shot,
-    with_merge_and_split,
-)
+from tools.ui_samples import CLIP_FPS, CLIP_FRAMES, sample_workspace
+from tools.ui_shots_config import OUT, TEXT_SIZES, WINDOW_SIZES, configured
 from tools.ui_shots_navigation import (
     fill_sidebar_views,
     grab_next_dialog,
@@ -292,149 +264,10 @@ def test_media_tools_screenshots(
     video_file_factory: Callable[[float, int], Path],
     theme: str,
 ) -> None:
-    """Save the media tools panel on one video, its menu, and a 2x2 lane grid with a panel in every lane.
+    """Save the media tools panel on one video, its popups, and a 2x2 lane grid with a panel in every lane."""
+    from tools.ui_shots_media_panel import media_tools_screenshots
 
-    Add a shot with one more ``shoot`` call.
-    """
-    OUT.mkdir(parents=True, exist_ok=True)
-    for stale in (
-        *OUT.glob(f"{theme}-panel-*.png"),
-        *OUT.glob(f"{theme}-grid*.png"),
-        *OUT.glob(f"{theme}-hover-chip.png"),
-        *OUT.glob(f"{theme}-selected-object.png"),
-    ):
-        stale.unlink()
-    config = configured(theme)
-    clip = video_file_factory(CLIP_FRAMES / CLIP_FPS, CLIP_FPS)
-    tracks = write_tracks(tmp_path / "tracks.xml")
-    cameras = []
-    for index in range(4):
-        cameras.append(tmp_path / f"cam-{index + 1}.mp4")
-        shutil.copyfile(clip, cameras[-1])
-    workspace_path = tmp_path / "Media tools.ax-devil.workspace"
-    save_workspace(
-        Workspace(
-            name="Media tools",
-            items=(
-                VideoItem(video=clip, overlays=(OverlayFile(tracks, ONVIF_XML),), label="Tracked video"),
-                PlaylistItem(
-                    resolver=FourCameras.plugin_id(),
-                    settings={"videos": [str(camera) for camera in cameras], "overlay": str(tracks)},
-                    label="Four cameras",
-                ),
-            ),
-        ),
-        workspace_path,
-    )
-    # The registry is restored when the test ends. The application loads the built-in plugins once per process.
-    monkeypatch.setattr(
-        RuntimePluginRegistry,
-        "_plugins_by_type",
-        {k: dict(v) for k, v in RuntimePluginRegistry._plugins_by_type.items()},
-    )
-    RuntimePluginRegistry.register_plugin(FourCameras, None)
-    window = Application(config_path=config.config_path, workspace_file=workspace_path).start(qapp)
-    qtbot.addWidget(window)
-    qtbot.wait(100)  # Let the window restore its remembered size before choosing ours.
-
-    def shoot(name: str, menu: QMenu | None = None, anchor: QWidget | None = None) -> None:
-        qtbot.wait(300)  # Let the query debounce and the lists catch up.
-        save_shot(window, theme, name, menu, anchor)
-
-    # One video: the SHOWN_FRAME has objects 1, 2, 4, 5, 7; object 6 ended earlier and 8 ends one frame before.
-    window.resize(*WINDOW_SIZES["wide"])
-    viewer = open_video(qtbot, window, "Tracked video")
-    trigger(window, "Media Tools Panel")
-    qtbot.wait(500)
-    panel = viewer.findChild(MediaToolsPanel)
-    assert panel is not None
-    objects = panel.objects_page
-    shoot("panel-objects")
-    objects.set_scope(ObjectScope.FILE)
-    shoot("panel-objects-file")
-    objects.set_scope(ObjectScope.FRAME)
-    objects._query_bar.set_text("class:human conf>0.5")
-    shoot("panel-objects-query")
-    objects._query_bar.set_text("")
-    viewport = viewer.findChild(FrameViewport)
-    assert viewport is not None
-    move_pointer(viewport, object_point(viewport, "1"))
-    shoot("hover-chip")
-    click_object(viewport, "1")
-    shoot("selected-object")
-    panel._stack.show_root(objects)
-    panel.show_object("7")
-    shoot("panel-object")
-    # Pin three fields on object 7, which has them, then follow object 1, which lacks one of them.
-    scene = panel._last_scene
-    assert scene is not None and panel._last_frame_id is not None
-    debug_values: dict[str, dict[str, Any]] = {
-        "7": {"movement": {"moving": True, "stationary_s": 0.0}},
-        "1": {"movement": {"moving": False}},
-    }
-    for entity_id, debug in debug_values.items():
-        observation = scene.entities[EntityId(entity_id)].latest_observation
-        assert observation is not None
-        observation.debug = debug
-    for field_id in (
-        FieldId("Debug", ("movement", "moving")),
-        FieldId("Debug", ("movement", "stationary_s")),
-        FieldId("Classification", ("conf",)),
-    ):
-        panel._pinned_fields.toggle(field_id)
-    assert panel._followed is not None
-    panel._followed.update_scene(scene, panel._last_frame_id.sequence_id)
-    shoot("panel-object-pinned")
-    panel.show_object("1")
-    shoot("panel-object-pinned-unavailable")
-    panel.show_object("7")
-    panel._pinned_fields.toggle(FieldId("Debug", ("movement", "stationary_s")))
-    panel._pinned_fields.toggle(FieldId("Debug", ("movement", "moving")))
-    panel._pinned_fields.toggle(FieldId("Classification", ("conf",)))
-    panel._followed.update_scene(scene, panel._last_frame_id.sequence_id)
-    panel.show_object("6")
-    shoot("panel-object-absent")
-    panel._stack.show_root(objects)
-    qtbot.wait(200)
-    more_button = panel._tab_row.more_button
-    panel._tab_row.more_menu.popup(more_button.mapToGlobal(QPoint(0, more_button.height())))
-    qtbot.wait(200)
-    shoot("panel-menu", panel._tab_row.more_menu, more_button)
-    panel._tab_row.more_menu.close()
-
-    # The Events tab: past rows above the now line at SHOWN_FRAME, upcoming ones below it.
-    rename = with_merge_and_split(panel)
-    panel._tab_row.tabs.setCurrentIndex(1)
-    shoot("panel-events")
-    events = panel.events_page
-    events._query_bar.set_text("kind:merge")
-    shoot("panel-events-query")
-    events._query_bar.set_text("")
-    events.eventActivated.emit(EventPageKey(rename))
-    shoot("panel-event")
-
-    # Four lanes of the same clip, the panel open on Objects in each, then an object page in each.
-    window.resize(*GRID_SIZE)
-    grid = open_video(qtbot, window, "Four cameras")
-    qtbot.waitUntil(lambda: len(grid.findChildren(FrameViewport)) == len(cameras), timeout=10000)
-    qtbot.wait(1500)
-    panels = grid_panels(qtbot, grid)
-    shoot("grid")
-    for lane_panel in panels:
-        with_merge_and_split(lane_panel)
-        lane_panel._tab_row.tabs.setCurrentIndex(1)
-    shoot("grid-events")
-    for lane_panel in panels:
-        lane_panel._tab_row.tabs.setCurrentIndex(0)
-    selected_lane = grid.findChildren(FrameViewport)[1]
-    click_object(selected_lane, "2")
-    shoot("grid-selected")
-    for lane_panel in panels:
-        lane_panel._stack.show_root(lane_panel.objects_page)
-    for lane_panel in panels:
-        lane_panel.show_object("7")
-    qtbot.wait(500)
-    shoot("grid-object")
+    media_tools_screenshots(qtbot, tmp_path, monkeypatch, qapp, video_file_factory, theme)
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

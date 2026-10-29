@@ -61,6 +61,7 @@ class Icon(Enum):
     FILE = ("file-text", False)
     BROADCAST = ("radio", False)
     HELP = ("circle-help", False)
+    FILTER = ("funnel", False)
 
     def __init__(self, file_stem: str, filled: bool) -> None:
         self.file_stem = file_stem

@@ -28,8 +28,9 @@ class SceneInspectorSink(Protocol):
         frame_id: FrameIdentifier | None,
         metadata: dict[str, Any] | None,
         refilter: SceneRefilter | None = None,
+        source_count: int | None = None,
     ) -> None:
-        """Publish the Scene shown for a displayed frame."""
+        """Publish the Scene shown for a displayed frame; *source_count* is its object count before filtering."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,10 +41,11 @@ class SceneInspectionUpdate:
     frame_id: FrameIdentifier | None
     metadata: dict[str, Any]
     refilter: SceneRefilter | None = None
+    source_count: int | None = None
 
 
 def deliver_scene_inspection_update(sink: SceneInspectorSink | None, update: SceneInspectionUpdate) -> None:
     """Deliver a Scene inspection update immediately."""
     if sink is None:
         return
-    sink.update_scene(update.scene, update.frame_id, update.metadata, update.refilter)
+    sink.update_scene(update.scene, update.frame_id, update.metadata, update.refilter, source_count=update.source_count)

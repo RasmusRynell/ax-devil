@@ -18,6 +18,7 @@ from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.scene.model import Scene, TimeSlice
+from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
@@ -223,6 +224,7 @@ def make_lane(
         source_index=source_index,
         presenter=SceneFramePresenter(),
         tools_panel=tools_panel or cast(MediaToolsPanel, _InspectionPanel()),
+        catalog_selection=cast(SceneRenderCatalogSelection, _InspectionPanel()),
         filter_model=SessionFilter(),
         timing_controls=timing_controls or cast(TimingDiagnosticsWidget, object()),
         alignment_indicator=alignment_indicator or cast(OverlayAlignmentIndicator, object()),

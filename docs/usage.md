@@ -77,14 +77,14 @@ not RTSP or MQTT.
 
 ## Overlay appearance
 
-Built-in catalogs are read-only; make a copy before editing. A catalog choice applies to the current view; the
-**⋯** menu next to it applies it to all open views or makes it the default for new ones. For authoring, see the
+Built-in catalogs are read-only; make a copy before editing. A catalog choice applies to the current view until you
+apply it to all open views or make it the default for new ones. For authoring, see the
 [render-catalog skill](../.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built);
 `ax-devil catalog reference` prints the full language.
 
 ## Overlay details
 
-The **Overlay details** choices in the media tools panel only change what a view draws; hidden data stays in
+The overlay detail choices in the media tools panel only change what a view draws; hidden data stays in
 inspection and the hover chip. Each view or comparison lane keeps its own choices when changing catalogs, and offline
 playlists retain them by lane position across entries. Choices last until the viewer closes and are not saved across
 restarts. Export uses the choices selected when it starts.

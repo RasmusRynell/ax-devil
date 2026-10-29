@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QComboBox, QPushButton
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_viewer.media_tools import SceneRenderCatalogSelector
 from tests.catalog_helpers import create_catalog, wait_for_catalogs
@@ -60,3 +61,29 @@ def test_reload_button_picks_up_edits_to_the_active_catalog(
     after = selection.active_catalog()
     assert after is not None
     assert after.content_hash != before.content_hash
+
+
+def test_apply_to_all_names_the_catalogs_other_open_views_use_until_they_close(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, small_catalog_path: Path
+) -> None:
+    other_path = create_catalog(
+        qtbot, render_catalog_manager, "Vehicle Review", base_catalog_path=small_catalog_path
+    ).path
+    selection = render_catalog_manager.create_selection()
+    selector = SceneRenderCatalogSelector(selection)
+    qtbot.addWidget(selector)
+    other = render_catalog_manager.create_selection()
+    wait_for_catalogs(qtbot, render_catalog_manager)
+    apply_button = selector.findChild(QPushButton, "applyRenderCatalogToAllButton")
+    others = selector.findChild(ElidedLabel, "renderCatalogOthersLabel")
+    assert apply_button is not None and others is not None
+    assert not apply_button.isVisibleTo(selector)
+
+    other.select_catalog(other_path)
+    wait_for_catalogs(qtbot, render_catalog_manager)
+
+    assert apply_button.isVisibleTo(selector) and apply_button.text() == "Apply to all 2"
+    assert others.full_text() == "Other views use: Vehicle Review"
+    other.cleanup()
+    assert not apply_button.isVisibleTo(selector)
+    assert render_catalog_manager.catalogs_in_use.paths() == (selection.active_catalog_path(),)

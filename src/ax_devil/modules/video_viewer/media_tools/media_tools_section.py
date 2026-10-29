@@ -22,7 +22,7 @@ _MENU_CONTENT_MARGINS = (Space.M, Space.M, Space.M, Space.M)
 
 
 class MediaToolsSection(Enum):
-    """Parts of the media tools panel that carry help text: the root pages and the overlay controls in its menu."""
+    """Parts of the media tools panel that carry help text: the root pages, filter, appearance and the overflow menu."""
 
     OVERLAY_SYNC = "overlay_sync"
     FILTERS = "filters"
@@ -37,10 +37,10 @@ class MediaToolsSection(Enum):
         """Return the section heading."""
         return {
             MediaToolsSection.OVERLAY_SYNC: "Overlay sync",
-            MediaToolsSection.FILTERS: "Overlay filter",
+            MediaToolsSection.FILTERS: "Filter",
             MediaToolsSection.OVERLAY_PERSISTENCE: "Sticky overlays",
             MediaToolsSection.RENDER_CATALOG: "Catalog",
-            MediaToolsSection.OVERLAY_DETAILS: "Overlay details",
+            MediaToolsSection.OVERLAY_DETAILS: "Details",
             MediaToolsSection.OBJECTS: "Objects",
             MediaToolsSection.EVENTS: "Events",
         }[self]
@@ -61,18 +61,19 @@ class MediaToolsSection(Enum):
                 "Reused overlay opacity controls how strongly retained overlays are shown."
             ),
             MediaToolsSection.FILTERS: (
-                "Show only objects of the checked types. The choice applies to the overlay, the object list and "
-                "the exported video."
+                "Hide objects by class, score or confidence. The choice applies to the overlay and its hover, the "
+                "Objects list and the exported video.\n\n"
+                "In File scope only the classes hide objects. Objects without a score or confidence are kept."
             ),
             MediaToolsSection.OVERLAY_DETAILS: (
                 "Choose which details this view draws. Choices apply immediately, including while paused. "
                 "Hidden details remain available in inspection and the hover chip. Reset enables every detail."
             ),
             MediaToolsSection.RENDER_CATALOG: (
-                "Choose how overlay entities are drawn. The choice applies to this view only.\n\n"
+                "Choose how overlay entities are drawn. The choice applies to this view only, until you apply it to "
+                "all open views or make it the default for new ones.\n\n"
                 "Changes to the catalog file appear here as soon as it is saved. View shows the catalog on example "
-                "objects, Reload reads the file again, and ⋯ applies the catalog to every open view or makes it the "
-                "default for new ones."
+                "objects and Reload reads the file again."
             ),
             MediaToolsSection.OBJECTS: (
                 "The objects in the displayed frame. Search by id, class or state, or by any attribute with "

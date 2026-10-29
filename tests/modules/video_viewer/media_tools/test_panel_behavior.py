@@ -6,7 +6,17 @@ from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMenu, QTabBar, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QTabBar,
+    QToolButton,
+    QWidget,
+)
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
@@ -20,12 +30,15 @@ from ax_devil.modules.scene.model import (
     EntityId,
 )
 from ax_devil.modules.scene.rendering import SceneRenderCatalogSelection
+from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.video_player.ui.draggable import DraggablePanel
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
+from ax_devil.modules.video_viewer.media_tools.appearance_popover import AppearancePopover
 from ax_devil.modules.video_viewer.media_tools.object_scope import ObjectScope
 from ax_devil.modules.video_viewer.media_tools.page_stack import EventPageKey
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
+from tests.helpers.clipping import clipped_text_widgets, shorter_than_wrapped_content
 from tests.helpers.media_tools_panel import (
     listed_ids,
     make_entity,
@@ -43,16 +56,56 @@ def test_overflow_submenu_fits_its_content_after_the_text_size_grows(
 ) -> None:
     apply_text_size(13)
     panel = make_panel(qtbot, render_catalog_selection)
-    [filters] = [menu for menu in panel._tab_row.more_menu.findChildren(QMenu) if menu.title() == "Overlay filter"]
-    filters.popup(panel.mapToGlobal(QPoint(0, 0)))
-    filters.hide()
+    [sticky] = [menu for menu in panel._tab_row.more_menu.findChildren(QMenu) if menu.title() == "Sticky overlays"]
+    sticky.popup(panel.mapToGlobal(QPoint(0, 0)))
+    sticky.hide()
 
     apply_text_size(21)
-    filters.popup(panel.mapToGlobal(QPoint(0, 0)))
+    sticky.popup(panel.mapToGlobal(QPoint(0, 0)))
 
-    content = panel.filter_widget.parentWidget()
+    content = panel.overlay_controls.parentWidget()
     assert content is not None
-    assert filters.width() >= content.sizeHint().width()
+    assert sticky.width() >= content.sizeHint().width()
+
+
+@pytest.mark.usefixtures("restore_app_appearance")
+# 360 high is the panel of a 400 px high video pane.
+@pytest.mark.parametrize(("text_size", "height"), [(13, 700), (21, 700), (21, 360)])
+def test_filter_drawer_and_appearance_popover_fit_the_narrowest_panel_after_a_text_size_change(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection, text_size: int, height: int
+) -> None:
+    """At the narrowest and a short panel the chips wrap and nothing is cut off, whichever size they opened at."""
+    manager = render_catalog_selection.manager
+    manager.create_selection().select_catalog(next(path for path in BUILT_IN_CATALOG_PATHS if path.stem == "minimal"))
+    apply_text_size(15)
+    panel = make_panel(qtbot, render_catalog_selection, show=False)
+    apply_text_size(text_size)  # Changed while the drawer and the popover were closed and never shown.
+    narrowest = panel.minimumSizeHint().width()
+    panel.resize(narrowest, height)
+    panel.show()
+    qtbot.waitExposed(panel)
+    panel.update_scene(make_scene(make_entity("a"), make_entity("b", "car")), make_frame(0), {}, source_count=2)
+    button = panel.findChild(QToolButton, "objectsFilterButton")
+    drawer = panel.findChild(QWidget, "objectsFilterDrawer")
+    appearance = panel.findChild(QToolButton, "mediaToolsAppearanceButton")
+    popover = panel.findChild(AppearancePopover)
+    assert button is not None and drawer is not None and appearance is not None and popover is not None
+    button.click()
+    appearance.click()
+    qtbot.wait(20)
+
+    assert drawer.isVisible() and popover.isVisible()
+    assert panel.minimumSizeHint().width() == panel.width() == narrowest
+    for shown, window in ((drawer, panel), (popover, popover)):
+        assert shown.minimumSizeHint().width() <= shown.width()
+        assert clipped_text_widgets(window) == []
+        assert shorter_than_wrapped_content(shown) == []
+        squeezed = [
+            type(widget).__name__
+            for widget in shown.findChildren(QAbstractButton) + shown.findChildren(QLineEdit)
+            if widget.isVisibleTo(window) and widget.width() < widget.minimumSizeHint().width()
+        ]
+        assert squeezed == []
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
@@ -93,6 +146,10 @@ def test_panel_keeps_its_width_whatever_it_shows(
 
     tabs = panel.findChild(QTabBar, "mediaToolsTabs")
     assert tabs is not None
+    unchanged()
+    filter_button = panel.findChild(QToolButton, "objectsFilterButton")
+    assert filter_button is not None
+    filter_button.click()  # The filter drawer is part of the page, so it may not move the width either.
     unchanged()
     for kind, entity_id in (("car", "a"), (long_class, "b"), ("human", uuid)):
         panel.update_scene(make_scene(make_entity(entity_id, kind)), make_frame(1), {})

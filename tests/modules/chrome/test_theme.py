@@ -14,6 +14,7 @@ from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.palette_css import palette_color_css
 from ax_devil.modules.chrome.theme import StatusColor, apply_text_size, apply_theme
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
+from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
 from ax_devil.modules.scene.model import (
     BoundingBox,
@@ -73,7 +74,7 @@ def test_open_views_stay_readable_through_theme_switches(qtbot: QtBot, qapp: QAp
         objects=(ObjectHistory("person-1", ("human",), ((0, 8),), tuple(i * 1_000_000 for i in range(10))),),
         frame_count=10,
     )
-    entities = ObjectsPage()
+    entities = ObjectsPage(SessionFilter())
     entities.resize(400, 300)
     events = EventsPage(history)
     events.resize(500, 150)

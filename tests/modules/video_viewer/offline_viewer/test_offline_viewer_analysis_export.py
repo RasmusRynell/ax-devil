@@ -10,7 +10,6 @@ from unittest.mock import patch
 import pytest
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import (
-    QCheckBox,
     QLabel,
     QPushButton,
     QToolButton,
@@ -159,9 +158,9 @@ class TestOfflineViewerAnalysisExport(OfflineViewerTest):
         )
         widget = self._open(qtbot, playlist)
 
-        def details(lane: OfflineLane) -> tuple[QCheckBox, QPushButton]:
+        def details(lane: OfflineLane) -> tuple[QPushButton, QPushButton]:
             assert lane.tools_panel is not None
-            confidence = lane.tools_panel.findChild(QCheckBox, "overlayFeature_confidence")
+            confidence = lane.tools_panel.findChild(QPushButton, "overlayFeature_confidence")
             reset = lane.tools_panel.findChild(QPushButton, "overlayVisibilityReset")
             assert confidence is not None and reset is not None
             return confidence, reset

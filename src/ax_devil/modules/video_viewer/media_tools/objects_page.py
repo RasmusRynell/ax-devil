@@ -11,6 +11,7 @@ from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QStackedLayout,
     QVBoxLayout,
     QWidget,
@@ -32,6 +33,7 @@ from ax_devil.modules.video_viewer.media_tools.object_list_rows import (
 )
 from ax_devil.modules.video_viewer.media_tools.object_rows import id_order
 from ax_devil.modules.video_viewer.media_tools.object_scope import ObjectScope, ScopeSwitch
+from ax_devil.modules.video_viewer.media_tools.overlay_filter_drawer import OverlayFilterDrawer
 from ax_devil.modules.video_viewer.media_tools.page_stack import PageKey
 from ax_devil.modules.video_viewer.media_tools.presence import Presence
 from ax_devil.modules.video_viewer.media_tools.query_bar import QueryBar
@@ -66,15 +68,16 @@ class ObjectsPage(QWidget):
     objectActivated = Signal(str)  # noqa: N815  # entity id
     countChanged = Signal(int)  # noqa: N815
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        """Create an empty page in Frame scope."""
+    def __init__(self, scene_filter: SessionFilter, parent: QWidget | None = None) -> None:
+        """Create an empty page in Frame scope, with the filter drawer editing *scene_filter*."""
         super().__init__(parent)
         self._scene: Scene | None = None
+        self._source_count: int | None = None
         self._frame: int | None = None
         self._query = compile_query("")
         self._scope = ObjectScope.FRAME
         self._history: SceneHistory | None = None
-        self._scene_filter: SessionFilter | None = None
+        self._scene_filter = scene_filter
         self._frame_rows: dict[str, FrameRow] = {}
         self._file_key: tuple[SceneHistory, SessionFilter, Hashable] | None = None
         self._file_histories: list[ObjectHistory] = []
@@ -85,6 +88,7 @@ class ObjectsPage(QWidget):
         self._count = 0
 
         self._query_bar = QueryBar(self)
+        self._drawer = OverlayFilterDrawer(scene_filter, self)
         self._switch = ScopeSwitch(self)
         self._switch.set_scope(self._scope)
         self._count_label = QLabel(self)
@@ -107,12 +111,23 @@ class ObjectsPage(QWidget):
         for table in self._tables.values():
             self._stack.addWidget(table.view)
         self._stack.addWidget(self._empty)
+        # The list gives way first in a short panel: the controls above it, with the open filter drawer, keep the
+        # height their wrapped contents need, which a layout does not know when it squeezes to minimum sizes.
+        for index in range(self._stack.count()):
+            if (shown := self._stack.itemAt(index)) is not None and (widget := shown.widget()) is not None:
+                widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
 
         controls = QWidget(self)
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(Space.M, Space.M, Space.M, Space.S)
         controls_layout.setSpacing(Space.S)
-        controls_layout.addWidget(self._query_bar)
+        search_row = QHBoxLayout()
+        search_row.setContentsMargins(0, 0, 0, 0)
+        search_row.setSpacing(Space.S)
+        search_row.addWidget(self._query_bar, 1)
+        search_row.addWidget(self._drawer.button, 0, Qt.AlignmentFlag.AlignTop)
+        controls_layout.addLayout(search_row)
+        controls_layout.addWidget(self._drawer)
         scope_row = QHBoxLayout()
         scope_row.setContentsMargins(0, 0, 0, 0)
         scope_row.addWidget(self._switch)
@@ -140,11 +155,16 @@ class ObjectsPage(QWidget):
         """Return the scope in use."""
         return self._scope
 
-    def update_scene(self, scene: Scene | None, frame_index: int | None, *, defer: bool = False) -> None:
-        """Show the objects of *scene*, displayed at video frame *frame_index* (None when there is none)."""
-        if scene is self._scene and frame_index == self._frame:
+    def update_scene(
+        self, scene: Scene | None, frame_index: int | None, *, source_count: int | None = None, defer: bool = False
+    ) -> None:
+        """Show the objects of *scene*, displayed at video frame *frame_index* (None when there is none).
+
+        *source_count* is how many objects the frame holds before the filter, which the drawer compares with.
+        """
+        if scene is self._scene and frame_index == self._frame and source_count == self._source_count:
             return
-        self._scene, self._frame = scene, frame_index
+        self._scene, self._frame, self._source_count = scene, frame_index, source_count
         self._stale = True
         if not defer:
             self.refresh()
@@ -158,18 +178,18 @@ class ObjectsPage(QWidget):
 
     def clear(self) -> None:
         """Forget the displayed scene; the file's history and the query stay."""
-        self._scene, self._frame = None, None
+        self._scene, self._frame, self._source_count = None, None, None
         self._frame_rows = {}
         self._update_count()
         self._refresh()
 
-    def set_history(self, history: SceneHistory | None, scene_filter: SessionFilter | None) -> None:
-        """Offer the File scope for *history*, filtered by *scene_filter* like the overlay; None removes it.
+    def set_history(self, history: SceneHistory | None) -> None:
+        """Offer the File scope for *history*, filtered by the session filter like the overlay; None removes it.
 
-        The scope is only offered when *scene_filter* can filter history, which needs the decoder's classification
+        The scope is only offered when the filter can filter history, which needs the decoder's classification
         policies.
         """
-        self._history, self._scene_filter = history, scene_filter
+        self._history = history
         self._file_key, self._file_rows, self._file_dirty = None, {}, True
         self._update_count()
         self._refresh()
@@ -251,11 +271,7 @@ class ObjectsPage(QWidget):
         return self._frame is not None and not row.history.is_visible_at(self._frame)
 
     def _file_available(self) -> bool:
-        return (
-            self._history is not None
-            and self._scene_filter is not None
-            and self._scene_filter.supports_history_filtering
-        )
+        return self._history is not None and self._scene_filter.supports_history_filtering
 
     def _update_switch(self) -> None:
         available = self._file_available()
@@ -266,14 +282,13 @@ class ObjectsPage(QWidget):
     def _filtered_histories(self) -> list[ObjectHistory]:
         """Return the file's objects that pass the session filter, redone only when the history or filter changed."""
         history, scene_filter = self._history, self._scene_filter
-        if history is None or scene_filter is None or not scene_filter.supports_history_filtering:
-            key = None
-        else:
+        key = None
+        if history is not None and scene_filter.supports_history_filtering:
             key = (history, scene_filter, scene_filter.cache_identity)
         if key != self._file_key:
             self._file_key = key
             self._file_dirty = True
-            self._file_histories = [] if key is None else key[1].filter_history(key[0].objects)
+            self._file_histories = [] if key is None else scene_filter.filter_history(key[0].objects)
         return self._file_histories
 
     def _file_row(self, history: SceneHistory, objects: ObjectHistory) -> FileRow:
@@ -290,6 +305,8 @@ class ObjectsPage(QWidget):
         self._refresh()
 
     def _update_count(self) -> None:
+        kept = len(self._scene.entities) if self._scene is not None else None
+        self._drawer.set_frame_counts(kept, self._source_count)
         if self._scope is ObjectScope.FRAME:
             count = len(self._scene.entities) if self._scene is not None else 0
         else:

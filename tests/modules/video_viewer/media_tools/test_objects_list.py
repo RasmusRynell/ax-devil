@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QLineEdit, QTabBar, QToolButton
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTabBar, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
@@ -98,6 +98,36 @@ def test_filter_changes_reach_the_listed_frame_while_paused(
     panel.filter_model.set_enabled("show_humans", False)
 
     assert listed_ids(panel) == ["b"]
+
+
+def test_the_filter_drawer_hides_objects_as_the_overlay_does_and_clear_restores_them(
+    qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection
+) -> None:
+    panel = make_panel(qtbot, render_catalog_selection)
+    full = make_scene(make_entity("a"), make_entity("b", "car"))
+    filters = panel.filter_model
+    panel.update_scene(full, make_frame(0), {}, lambda: filters.process_scene(full), source_count=2)
+    button = panel.findChild(QToolButton, "objectsFilterButton")
+    drawer = panel.findChild(QWidget, "objectsFilterDrawer")
+    assert button is not None and drawer is not None
+    assert not drawer.isVisible() and button.text() == "Filter"
+
+    button.click()
+    assert drawer.isVisible()
+    chip = drawer.findChild(QPushButton, "filterOption_show_cars")
+    clear = drawer.findChild(QPushButton, "filterClear")
+    assert chip is not None and clear is not None and not clear.isEnabled()
+    chip.click()
+
+    assert listed_ids(panel) == ["a"]
+    assert list(filters.process_scene(full).entities) == ["a"]  # The overlay and hover hide it too.
+    assert button.text() == "Filter 1" and clear.isEnabled()
+    summary = [label.text() for label in drawer.findChildren(QLabel) if label.text().startswith("Showing")]
+    assert summary == ["Showing 1 of 2 in this frame"]
+
+    clear.click()
+    assert sorted(listed_ids(panel)) == ["a", "b"]
+    assert button.text() == "Filter" and chip.isChecked() and not clear.isEnabled()
 
 
 def test_file_scope_lists_the_whole_file(qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection) -> None:

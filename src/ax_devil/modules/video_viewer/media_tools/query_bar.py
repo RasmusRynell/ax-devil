@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QInputMethodEvent, QPalette, QTextCharFormat
 from PySide6.QtWidgets import (
     QApplication,
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -21,7 +20,8 @@ from PySide6.QtWidgets import (
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.popover import Popover
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.scene.query import Query, QueryToken, TokenKind, compile_query, tokenize
 
 _DEBOUNCE_MS = 150
@@ -37,13 +37,6 @@ _SYNTAX = (
     ("a OR b", "either term"),
     ("a b", "both terms (default)"),
 )
-_POPUP_STYLE = f"""
-QFrame#QuerySyntax {{
-    background-color: palette(base);
-    border: 1px solid palette(mid);
-    border-radius: {Radius.POPUP}px;
-}}
-"""
 _MUTED = "color: palette(placeholder-text);"
 
 
@@ -167,11 +160,7 @@ class QueryBar(QWidget):
     def _show_syntax(self) -> None:
         if self._syntax is None:
             self._syntax = _SyntaxPopup(self, self._syntax_rows)
-        popup = self._syntax
-        popup.adjustSize()
-        below = self._help.mapToGlobal(QPoint(self._help.width(), self._help.height() + Space.XS))
-        popup.move(below - QPoint(popup.width(), 0))
-        popup.show()
+        self._syntax.open_below(self._help)
 
 
 def _token_format(token: QueryToken, palette: QPalette) -> QTextCharFormat:
@@ -191,13 +180,11 @@ def _token_format(token: QueryToken, palette: QPalette) -> QTextCharFormat:
     return fmt
 
 
-class _SyntaxPopup(QFrame):
+class _SyntaxPopup(Popover):
     """The static syntax sheet: what to type and what it does."""
 
     def __init__(self, owner: QWidget, rows: Sequence[tuple[str, str]]) -> None:
-        super().__init__(owner, Qt.WindowType.Popup)
-        self.setObjectName("QuerySyntax")
-        self.setStyleSheet(_POPUP_STYLE)
+        super().__init__(owner)
         grid = QGridLayout(self)
         grid.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
         grid.setHorizontalSpacing(Space.L)
