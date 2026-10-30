@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -28,6 +29,11 @@ _WARNINGS_KEY = "load_warnings"
 # Bump when the persisted layout of a scene store artifact changes; older artifacts are rebuilt.
 STORE_FORMAT_VERSION = 1
 _HASH_CHUNK_BYTES = 1 << 20
+
+# An unchanged stat key spares hashing the source only where ``st_ctime_ns`` is a change time. On Windows it is the
+# creation time, so a same-size in-place edit that restores the mtime would be accepted stale; there the digest is
+# checked on every open instead (about 22 ms per 54 MB).
+STAT_SHORTCUT_IS_SOUND = sys.platform != "win32"
 
 
 def stat_key(source_stat: os.stat_result) -> tuple[Fingerprint, int]:
@@ -197,16 +203,17 @@ def _resolve_artifact_identity(
 ) -> SceneArtifactIdentity | None:
     """Return the identity of the current source when the *stored* identity still describes it.
 
-    An unchanged stat key is accepted as is. A changed one is accepted only if the source's digest is still the stored
-    one, and then the returned identity carries the new stat key.
+    An unchanged stat key is accepted as is where ``STAT_SHORTCUT_IS_SOUND``. Any other is accepted only if the
+    source's digest is still the stored one, and then the returned identity carries the new stat key.
     """
-    if not isinstance(stored, dict) or not isinstance(stored.get("content_digest"), str):
+    if not isinstance(stored, dict):
+        return None
+    stored_digest = stored.get("content_digest")
+    if not isinstance(stored_digest, str) or not stored_digest:  # Empty: written while the source changed.
         return None
     before = source_stat()
-    current = build_scene_artifact_identity(
-        context=context, source_stat=before, content_digest=stored["content_digest"]
-    )
-    if current.to_metadata() == stored:
+    current = build_scene_artifact_identity(context=context, source_stat=before, content_digest=stored_digest)
+    if STAT_SHORTCUT_IS_SOUND and current.to_metadata() == stored:
         return current
     if any(stored.get(key) != value for key, value in current.decode_metadata().items()):
         return None

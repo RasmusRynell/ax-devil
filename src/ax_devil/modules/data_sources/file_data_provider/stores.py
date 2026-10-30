@@ -110,12 +110,9 @@ class IndexedFrameSceneStore:
 
     def _rebuild(self) -> SceneCatalog:
         logger.debug(f"Rebuilding indexed frame store for {self._file_path.name}")
-        # Identified before the parse: an edit during it leaves an artifact the next open rejects.
-        artifact_identity = build_scene_artifact_identity(
-            context=self._context,
-            source_stat=self._file_path.stat(),
-            content_digest=hash_file(self._file_path),
-        )
+        # Hashing and parsing open the path separately, so the stat key brackets both.
+        stat_before = self._file_path.stat()
+        content_digest = hash_file(self._file_path)
         payloads = self._context.iter_payloads()
         decoder = self._context.decoder_factory()
         build_result = self._context.build_scene_maps(payloads, decoder)
@@ -123,6 +120,11 @@ class IndexedFrameSceneStore:
         for timestamp_key, scene in build_result.scene_map.items():
             collector.add(timestamp_key, scene)
         history = collector.records()
+        if stat_key(self._file_path.stat()) != stat_key(stat_before):
+            content_digest = ""  # Served from this open's cache, but the next open must not accept it.
+        artifact_identity = build_scene_artifact_identity(
+            context=self._context, source_stat=stat_before, content_digest=content_digest
+        )
         metadata = build_default_metadata_payload(
             total_lines=build_result.total_lines,
             sequence_lookup_enabled=self._context.sequence_lookup_enabled,
