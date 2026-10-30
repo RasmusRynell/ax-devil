@@ -38,6 +38,10 @@ class _Hovered:
     row: WorkspaceBrowserRow
 
 
+def _widget_at(global_pos: QPoint) -> QWidget | None:
+    return QApplication.widgetAt(global_pos)
+
+
 def _identity(row: WorkspaceBrowserRow) -> tuple[str, ThumbnailSource | None]:
     return row.row_id, row.thumbnail
 
@@ -145,7 +149,7 @@ class RowHover(QObject):
 
     def _row_under(self, global_pos: QPoint) -> _Hovered | None:
         """Return the row of a watched tree at *global_pos*, or None where the pointer is not over one."""
-        widget = QApplication.widgetAt(global_pos)
+        widget = _widget_at(global_pos)
         for tree in self._trees.values():
             viewport = tree.viewport()
             if widget is not None and (widget is viewport or viewport.isAncestorOf(widget)):

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import ClassVar
 
 import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QEnterEvent, QImage, QMouseEvent, QWheelEvent
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtGui import QEnterEvent, QGuiApplication, QImage, QMouseEvent, QWheelEvent
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
@@ -39,17 +40,42 @@ class FakeCursor:
     """The pointer position the hover refresh reads, which the tests set instead of moving the real pointer."""
 
     position = QPoint()
+    tree: SectionTree
 
     @staticmethod
     def pos() -> QPoint:
         return FakeCursor.position
 
 
+def _widget_at(global_pos: QPoint) -> QWidget | None:
+    """The widget of the tree at *global_pos*, ignoring whatever else is on the screen."""
+    viewport = FakeCursor.tree.viewport()
+    local = viewport.mapFromGlobal(global_pos)
+    return viewport.childAt(local) or (viewport if viewport.rect().contains(local) else None)
+
+
 @pytest.fixture()
-def tree(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Iterator[SectionTree]:
+def hides(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """What hid the card, with the application state then, for the message of a card that never showed."""
+    reasons: list[str] = []
+    hide = RowHover.hide
+
+    def recording_hide(self: RowHover) -> None:
+        caller = sys._getframe(1)
+        event = caller.f_locals.get("kind")
+        reasons.append(f"{caller.f_code.co_name}({event}) while {QGuiApplication.applicationState().name}")
+        hide(self)
+
+    monkeypatch.setattr(RowHover, "hide", recording_hide)
+    return reasons
+
+
+@pytest.fixture()
+def tree(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, hides: list[str]) -> Iterator[SectionTree]:
     monkeypatch.setattr(row_hover, "INTENT_MS", 0)
     monkeypatch.setattr(row_hover, "_REFRESH_MS", 20)
     monkeypatch.setattr(row_hover, "QCursor", FakeCursor)
+    monkeypatch.setattr(row_hover, "_widget_at", _widget_at)  # Not the real screen, where other windows can be on top.
     thumbnails = Thumbnails(lambda _id: None)
     hover = RowHover(thumbnails)
     tree = show_tree(
@@ -58,6 +84,7 @@ def tree(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Iterator[SectionTree]
         WorkspaceBrowserRow(row_id="b", label="Night shift", icon_kind="playlist"),
         WorkspaceBrowserRow(row_id="c", label="garage", icon_kind="video", thumbnail=OpenStream()),
     )
+    FakeCursor.tree = tree
     tree.activateWindow()
     qtbot.waitUntil(tree.isActiveWindow)
     hover.watch(tree)
@@ -93,32 +120,45 @@ def _move_to(tree: SectionTree, global_pos: QPoint) -> None:
     QApplication.sendEvent(tree.viewport(), move)
 
 
-def _visible_card(qtbot: QtBot, tree: SectionTree) -> HoverCard:
-    qtbot.waitUntil(lambda: (card := _card(tree)) is not None and card.isVisible())
+def _visible_card(qtbot: QtBot, tree: SectionTree, hides: list[str]) -> HoverCard:
+    def shown() -> None:
+        card = _card(tree)
+        assert card is not None and card.isVisible(), f"no visible card; hidden by {hides}"
+
+    qtbot.waitUntil(shown)
     card = _card(tree)
     assert card is not None
     return card
 
 
 def test_the_card_shows_only_the_picture_stays_where_it_was_placed_and_hides_on_leaving_or_scrolling(
-    qtbot: QtBot, tree: SectionTree
+    qtbot: QtBot, tree: SectionTree, hides: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    placed: list[QPoint] = []
+    show_at = HoverCard.show_at  # The window system may move a window, so what is checked is where it was placed.
+
+    def recording_show_at(card: HoverCard, pos: QPoint) -> None:
+        placed.append(pos)
+        show_at(card, pos)
+
+    monkeypatch.setattr(HoverCard, "show_at", recording_show_at)
+
     entered = _enter(tree, 0)
-    card = _visible_card(qtbot, tree)
+    card = _visible_card(qtbot, tree, hides)
     assert not card.findChildren(QLabel)
-    assert card.pos() == card.placement(entered)
+    assert placed == [entered]
 
     _move_to(tree, row_widget(tree, item_at(tree, 0)).mapToGlobal(QPoint(30, 6)))
-    assert card.pos() == card.placement(entered)
+    assert placed == [entered]
 
     entered = _enter(tree, 2, QPoint(20, 5))
-    assert card.pos() == card.placement(entered)
+    assert placed[-1] == entered
 
     _enter(tree, 1)
     assert not card.isVisible()
 
     _enter(tree, 0)
-    _visible_card(qtbot, tree)
+    _visible_card(qtbot, tree, hides)
     wheel = QWheelEvent(
         QPointF(4, 4), QPointF(4, 4), QPoint(), QPoint(0, -120), Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False,
@@ -133,9 +173,9 @@ def test_a_row_without_a_thumbnail_shows_no_card(tree: SectionTree) -> None:
     assert _card(tree) is None
 
 
-def test_a_row_whose_thumbnail_goes_away_gets_no_card_again(qtbot: QtBot, tree: SectionTree) -> None:
+def test_a_row_whose_thumbnail_goes_away_gets_no_card_again(qtbot: QtBot, tree: SectionTree, hides: list[str]) -> None:
     _enter(tree, 0)
-    card = _visible_card(qtbot, tree)
+    card = _visible_card(qtbot, tree, hides)
 
     tree.set_sections(
         (
@@ -149,9 +189,11 @@ def test_a_row_whose_thumbnail_goes_away_gets_no_card_again(qtbot: QtBot, tree: 
     assert not card.isVisible()
 
 
-def test_the_card_hides_when_the_pointer_leaves_the_row_for_the_empty_viewport(qtbot: QtBot, tree: SectionTree) -> None:
+def test_the_card_hides_when_the_pointer_leaves_the_row_for_the_empty_viewport(
+    qtbot: QtBot, tree: SectionTree, hides: list[str]
+) -> None:
     _enter(tree, 0)
-    card = _visible_card(qtbot, tree)
+    card = _visible_card(qtbot, tree, hides)
 
     FakeCursor.position = tree.viewport().mapToGlobal(QPoint(10, tree.viewport().height() - 10))  # No event is sent.
 
