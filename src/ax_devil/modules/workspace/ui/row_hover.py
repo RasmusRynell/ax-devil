@@ -202,5 +202,5 @@ class RowHover(QObject):
             self._card = HoverCard(tree.window())
         self._card.set_picture(image)
         self._picture = image
-        if self._intent_over:
+        if self._intent_over and not self._card.isVisible():
             self._card.show_at(self._pointer)
