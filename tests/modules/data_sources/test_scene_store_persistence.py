@@ -4,11 +4,13 @@ import json
 import os
 import shutil
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from ax_devil.modules.data_sources.file_data_provider import scene_catalog, stores
 from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
     SceneDecoderFileProvider,
     StorageMode,
@@ -63,39 +65,113 @@ def test_persisted_scenes_are_reused_only_for_an_unchanged_source_and_identity(
     assert len(changed_source) == 3
     assert rebuilt.get_total_frames() == 3
 
-    # A same-size, same-mtime replacement (cp -p, rsync) is a different file.
+    # A same-size, same-mtime replacement with other contents (cp -p, rsync) is a different file.
     replacement = tmp_path / "replacement.jsonl"
-    shutil.copy2(path, replacement)
+    replacement.write_text(path.read_text(encoding="utf-8").replace('"a"', '"z"'), encoding="utf-8")
+    shutil.copystat(path, replacement)
     os.replace(replacement, path)
     replaced: list[str] = []
     open_provider(replaced, decode_options={"profile": "changed"}, artifact_version=2)
     assert len(replaced) == 3
 
 
-class _RegeneratesSourceWhenFirstDecoded(list[str]):
-    """Decoded-payload log that rewrites the source, same size, as the first payload is decoded."""
+@pytest.mark.parametrize("storage_mode", list(StorageMode))
+@pytest.mark.parametrize("ctime_is_change_time", [True, False], ids=["ctime-shortcut", "digest-only"])
+def test_source_identity_is_its_content_not_its_timestamps(
+    tmp_path: Path, storage_mode: StorageMode, ctime_is_change_time: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A touch reuses the artifact; a same-size edit that restores mtime is still noticed.
 
-    def __init__(self, path: Path) -> None:
+    Without a usable ctime (Windows) the stat key is made blind to the edit, so only the digest can notice it.
+    """
+    if not ctime_is_change_time:
+        monkeypatch.setattr(scene_catalog, "STAT_SHORTCUT_IS_SOUND", False)
+        for module in (scene_catalog, stores):
+            original = module.build_scene_artifact_identity
+            monkeypatch.setattr(
+                module,
+                "build_scene_artifact_identity",
+                lambda *, original=original, **kwargs: replace(original(**kwargs), source_ctime_ns=0),
+            )
+    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
+    _build_provider(path, storage_mode=storage_mode).close()
+    original_mtime_ns = path.stat().st_mtime_ns
+
+    os.utime(path, ns=(original_mtime_ns + 5_000_000_000,) * 2)
+    touched: list[str] = []
+    _build_provider(path, storage_mode=storage_mode, decoded=touched).close()
+    assert touched == []
+    recorded_mtime_ns = path.stat().st_mtime_ns  # the mtime the republished identity now holds
+
+    path.write_bytes(path.read_bytes().replace(b'"id": "b"', b'"id": "c"'))
+    os.utime(path, ns=(recorded_mtime_ns,) * 2)
+    edited: list[str] = []
+    provider = _build_provider(path, storage_mode=storage_mode, decoded=edited)
+    try:
+        assert len(edited) == 2
+        last = max(provider.get_available_frames())
+        scene = provider.load_by_frame_id(_frame(last))
+        assert scene is not None and EntityId("c") in scene.entities
+    finally:
+        provider.close()
+
+
+class _RegeneratesSource(list[str]):
+    """Decoded-payload log that regenerates the source, same size, once, and can restore it after the parse."""
+
+    def __init__(self, path: Path, *, restore: bool) -> None:
         super().__init__()
         self._path = path
+        self._restore = restore
+        self._original = (path.read_bytes(), path.stat().st_mtime_ns)
+        self._regenerated = False
+
+    def regenerate(self) -> None:
+        """Replace the contents with another generation (once), moving the mtime on."""
+        if self._regenerated:
+            return
+        self._regenerated = True
+        self._path.write_bytes(self._original[0].replace(b'"a"', b'"z"'))
+        stat_result = self._path.stat()
+        os.utime(self._path, ns=(stat_result.st_atime_ns, stat_result.st_mtime_ns + 1_000_000_000))
 
     def append(self, payload: str) -> None:
-        if not self:
-            self._path.write_text(self._path.read_text(encoding="utf-8").replace('"a"', '"z"'), encoding="utf-8")
-            stat_result = self._path.stat()
-            os.utime(self._path, ns=(stat_result.st_atime_ns, stat_result.st_mtime_ns + 1_000_000_000))
+        self.regenerate()
         super().append(payload)
+        if self._restore and len(self) == 2:
+            self._path.write_bytes(self._original[0])
+            os.utime(self._path, ns=(self._original[1],) * 2)
 
 
 @pytest.mark.parametrize("storage_mode", list(StorageMode))
-def test_source_changed_while_indexing_is_rebuilt_on_next_open(tmp_path: Path, storage_mode: StorageMode) -> None:
+@pytest.mark.parametrize("restored", [False, True], ids=["regenerated", "regenerated-then-restored"])
+def test_source_changed_while_indexing_is_rebuilt_on_next_open(
+    tmp_path: Path, storage_mode: StorageMode, restored: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A regeneration that lands during indexing must not be cached as if the index had already seen it."""
+    if restored and not scene_catalog.STAT_SHORTCUT_IS_SOUND:
+        pytest.skip("Windows has no change time, so a restore during indexing cannot be told apart")
     path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
-    _build_provider(path, storage_mode=storage_mode, decoded=_RegeneratesSourceWhenFirstDecoded(path)).close()
+    log = _RegeneratesSource(path, restore=restored)
+    real_hash_file = scene_catalog.hash_file
+
+    def regenerate_after_hashing(file_path: Path) -> str:
+        digest = real_hash_file(file_path)
+        log.regenerate()  # Lands between hashing and parsing, so the parse reads the other generation.
+        return digest
+
+    with monkeypatch.context() as patch:
+        patch.setattr(stores, "hash_file", regenerate_after_hashing)
+        _build_provider(path, storage_mode=storage_mode, decoded=log).close()
 
     reopened_decodes: list[str] = []
-    _build_provider(path, storage_mode=storage_mode, decoded=reopened_decodes).close()
-    assert len(reopened_decodes) == 2
+    provider = _build_provider(path, storage_mode=storage_mode, decoded=reopened_decodes)
+    try:
+        assert len(reopened_decodes) == 2
+        scene = provider.load_by_frame_id(_frame(min(provider.get_available_frames())))
+        assert scene is not None and set(scene.entities) == {EntityId("a" if restored else "z")}
+    finally:
+        provider.close()
 
 
 @pytest.mark.parametrize("storage_mode", list(StorageMode))
