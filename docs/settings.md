@@ -12,7 +12,8 @@
 
 **OK** saves all pages and closes, and **Cancel** discards the changes. When a saved change needs a restart, ax-devil
 asks whether to restart now or later.
-Stream defaults apply to newly opened live-stream dialogs. **Default IP range** (`defaults.network_scan.ip_range`) is the
+Stream defaults apply to newly opened live-stream dialogs. A new stream starts at the default resolution when the camera offers it, otherwise at the camera's own default.
+**Default IP range** (`defaults.network_scan.ip_range`) is the
 addresses the Live view's **Scan settings** start with, such as `192.168.1.0/24`. **Sign-in logins**
 (`defaults.network_scan.credentials`, a list of `username` and `password` pairs) are what **Try to sign in to found
 cameras** tries on each camera, in order; **Add login** adds one, and a row without a username is dropped on save. The
