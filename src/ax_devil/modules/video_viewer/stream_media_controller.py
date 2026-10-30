@@ -49,6 +49,7 @@ class StreamMediaController:
         content: LiveVideoContent,
         *,
         render_catalog_selection: SceneRenderCatalogSelection,
+        overlay_persistence: OverlayPersistenceSettings,
         frame_displayed: Callable[[VideoFrameWithOverlays], None] | None = None,
         connection_changed: Callable[[LiveConnectionStatus], None] | None = None,
     ) -> None:
@@ -63,8 +64,7 @@ class StreamMediaController:
         self._presenter = SceneFramePresenter(
             scene_render_catalog=self._render_catalog_selection.active_catalog(), await_catalog=True
         )
-        self._overlay_persistence = OverlayPersistenceSettings.default_enabled()
-        self._overlay_policy = OverlayPersistencePolicy(self._overlay_persistence.copy())
+        self._overlay_policy = OverlayPersistencePolicy(overlay_persistence)
         self._paused: bool = False
         self._connection_changed = connection_changed
         self._source_slots: list[tuple[SignalInstance, Callable[..., None]]] = []
@@ -280,9 +280,7 @@ class StreamMediaController:
 
     def set_overlay_persistence(self, persistence_settings: OverlayPersistenceSettings) -> None:
         """Update sticky overlay configuration at runtime."""
-        snapshot = persistence_settings.copy()
-        self._overlay_persistence = snapshot
-        self._overlay_policy.update_settings(snapshot)
+        self._overlay_policy.update_settings(persistence_settings)
 
     def _init_synchronizer(self, frame_display: FrameDisplay) -> QtStreamSync:
         delay_ms = 1500

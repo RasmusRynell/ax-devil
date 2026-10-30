@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.tokens import Space
-from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
+from ax_devil.modules.video_viewer.media_tools.scope_row import ScopeRow
+from ax_devil.modules.video_viewer.overlay_persistence import MAX_TIMEOUT_MS, OverlayPersistenceSettings
+from ax_devil.modules.video_viewer.view_settings import STICKY_OVERLAYS
 
 
 class OverlayPersistenceControls(QGroupBox):
@@ -35,9 +37,7 @@ class OverlayPersistenceControls(QGroupBox):
 
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._show_title = show_title
-        self._current_settings = (
-            initial_settings.copy() if initial_settings is not None else OverlayPersistenceSettings()
-        )
+        self._current_settings = initial_settings if initial_settings is not None else OverlayPersistenceSettings()
 
         self._enabled_checkbox = QCheckBox("Enable sticky overlays")
         self._enabled_checkbox.setObjectName("overlayEnabledCheckbox")
@@ -47,6 +47,8 @@ class OverlayPersistenceControls(QGroupBox):
         self._timeout_spin.setObjectName("overlayTimeoutSpin")
         self._opacity_spin = QDoubleSpinBox()
         self._opacity_spin.setObjectName("overlayOpacitySpin")
+
+        self._scope = ScopeRow(STICKY_OVERLAYS, self._current_settings, adopt=self._adopt)
 
         self._build_ui()
         self.apply_settings(self._current_settings)
@@ -65,7 +67,7 @@ class OverlayPersistenceControls(QGroupBox):
         timeout_row = QHBoxLayout()
         timeout_row.setSpacing(Space.S)
 
-        self._timeout_spin.setRange(0, 100000)
+        self._timeout_spin.setRange(0, MAX_TIMEOUT_MS)
         self._timeout_spin.setSingleStep(1)
 
         timeout_row.addWidget(self._timeout_checkbox)
@@ -86,28 +88,34 @@ class OverlayPersistenceControls(QGroupBox):
         opacity_row.addStretch(1)
         layout.addLayout(opacity_row)
 
+        layout.addWidget(self._scope)
+
     def _connect_signals(self) -> None:
         self._enabled_checkbox.toggled.connect(self._on_enabled_toggled)
         self._timeout_checkbox.toggled.connect(self._on_timeout_toggled)
         self._timeout_spin.valueChanged.connect(lambda _: self._emit_settings())
         self._opacity_spin.valueChanged.connect(lambda _: self._emit_settings())
 
+    def _adopt(self, settings: OverlayPersistenceSettings) -> None:
+        """Show settings that Apply to all chose in another view, and tell the owner."""
+        self.apply_settings(settings)
+        self.settingsChanged.emit(settings)
+
     def apply_settings(self, settings: OverlayPersistenceSettings) -> None:
         """Populate controls from the provided settings without emitting."""
-        snapshot = settings.copy()
-        self._current_settings = snapshot
+        self._current_settings = settings
 
         self._enabled_checkbox.blockSignals(True)
         self._timeout_checkbox.blockSignals(True)
         self._timeout_spin.blockSignals(True)
         self._opacity_spin.blockSignals(True)
         try:
-            self._enabled_checkbox.setChecked(snapshot.enabled)
-            timeout_enabled = snapshot.timeout_ms is not None
+            self._enabled_checkbox.setChecked(settings.enabled)
+            timeout_enabled = settings.timeout_ms is not None
             self._timeout_checkbox.setChecked(timeout_enabled)
-            if snapshot.timeout_ms is not None:
-                self._timeout_spin.setValue(int(snapshot.timeout_ms))
-            self._opacity_spin.setValue(snapshot.opacity)
+            if settings.timeout_ms is not None:
+                self._timeout_spin.setValue(int(settings.timeout_ms))
+            self._opacity_spin.setValue(settings.opacity)
         finally:
             self._enabled_checkbox.blockSignals(False)
             self._timeout_checkbox.blockSignals(False)
@@ -115,10 +123,11 @@ class OverlayPersistenceControls(QGroupBox):
             self._opacity_spin.blockSignals(False)
 
         self._refresh_control_states()
+        self._scope.set_value(settings)
 
     def current_settings(self) -> OverlayPersistenceSettings:
         """Return the latest settings represented by the controls."""
-        return self._current_settings.copy()
+        return self._current_settings
 
     def _on_enabled_toggled(self, enabled: bool) -> None:
         self._refresh_control_states()
@@ -147,4 +156,5 @@ class OverlayPersistenceControls(QGroupBox):
             return
 
         self._current_settings = updated
-        self.settingsChanged.emit(updated.copy())
+        self._scope.set_value(updated)
+        self.settingsChanged.emit(updated)

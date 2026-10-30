@@ -12,6 +12,8 @@ from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.data_sources.timing_reports import OverlayAlignmentReport, VideoTimingProfile
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
+from ax_devil.modules.video_viewer.media_tools.scope_row import ScopeRow
+from ax_devil.modules.video_viewer.view_settings import OVERLAY_SYNC
 
 _INDICATOR_ICON_SIZE = 16
 _INDICATOR_WIDTH = _INDICATOR_ICON_SIZE + 8
@@ -114,6 +116,8 @@ class TimingDiagnosticsWidget(QWidget):
             self._mode_group.addButton(button)
         button_row.addStretch(1)
         layout.addLayout(button_row)
+        self._scope = ScopeRow(OVERLAY_SYNC, self._timestamp_fallback_policy, adopt=self._adopt, parent=self)
+        layout.addWidget(self._scope)
         self._previous_button.setChecked(True)
         self._exact_button.setToolTip("Disable timestamp fallback after exact and sequence lookup")
         self._previous_button.setToolTip("Use the previous overlay timestamp within the configured tolerance")
@@ -141,7 +145,17 @@ class TimingDiagnosticsWidget(QWidget):
             mode=mode,
             tolerance_us=self._timestamp_fallback_policy.tolerance_us,
         )
+        self._scope.set_value(self._timestamp_fallback_policy)
         self.timestampFallbackPolicyChanged.emit(self._timestamp_fallback_policy)
+
+    def cleanup(self) -> None:
+        """Leave the shared view list when the owning view closes; repeat calls do nothing."""
+        self._scope.cleanup()
+
+    def _adopt(self, policy: TimestampFallbackPolicy) -> None:
+        """Show a policy that Apply to all chose in another view, and tell the owner."""
+        self.set_timestamp_fallback_policy(policy)
+        self.timestampFallbackPolicyChanged.emit(policy)
 
     def timestamp_fallback_policy(self) -> TimestampFallbackPolicy:
         """Return the selected timestamp fallback policy."""
@@ -156,6 +170,7 @@ class TimingDiagnosticsWidget(QWidget):
         self._previous_button.setChecked(policy.mode is TimestampFallbackMode.PREVIOUS_WITH_TOLERANCE)
         self._exact_button.blockSignals(False)
         self._previous_button.blockSignals(False)
+        self._scope.set_value(policy)
 
     def set_timestamp_fallback_controls_enabled(self, enabled: bool) -> None:
         """Enable timestamp fallback controls when an overlay source is present."""

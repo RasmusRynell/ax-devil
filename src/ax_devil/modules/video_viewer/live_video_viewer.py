@@ -21,8 +21,8 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
-from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults, view_defaults
 from ax_devil.modules.workspace.core import LiveVideoContent
 from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
 from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
@@ -191,15 +191,17 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._show_connection_status(LiveConnectionStatus.connecting([LiveFeed.VIDEO]))
 
         try:
+            defaults = view_defaults()
             controller = StreamMediaController(
                 display,
                 self._content,
                 render_catalog_selection=self._render_catalog_selection,
+                overlay_persistence=defaults.sticky,
                 frame_displayed=self._show_frame,
                 connection_changed=self._show_connection_status,
             )
             self._controller = controller
-            self._attach_tools_panel(display, controller)
+            self._attach_tools_panel(display, controller, defaults)
             controller.start_playback()
             self._publish_stream_status()  # Statuses the controller reported before it was set read as connecting.
         except Exception as e:
@@ -256,13 +258,15 @@ class LiveVideoViewerWidget(ViewerWidget):
         self,
         display: FrameDisplay,
         controller: StreamMediaController,
+        defaults: ViewDefaults,
     ) -> None:
         """Create and wire a MediaToolsPanel to the display and controller."""
         filter_model = SessionFilter(controller.get_filter_config())
+        filter_model.apply_choice(defaults.object_filter)
         tools_panel = MediaToolsPanel(
             self._render_catalog_selection,
             filter_model=filter_model,
-            overlay_settings=OverlayPersistenceSettings.default_enabled(),
+            overlay_settings=defaults.sticky,
         )
         display.set_side_panel_widget(tools_panel)
         tools_panel.link_selection(display)

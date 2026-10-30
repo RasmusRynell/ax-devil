@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from threading import Event
 from typing import Any
 
 import pytest
@@ -11,9 +12,11 @@ from PySide6.QtWidgets import QApplication, QComboBox, QLineEdit, QPushButton, Q
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
+from ax_devil.modules.data_sources.live.camera_resolutions import CameraResolutions, parse_camera_resolutions
 from ax_devil.modules.workspace.core import LiveMQTTOverlaySourceSpec, LiveOverlayMode, LiveStreamItem, LiveVideoContent
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
 from ax_devil.modules.workspace.ui.add_content.analytics_choice import AnalyticsChoice
+from ax_devil.modules.workspace.ui.add_content.resolution_field import ResolutionField
 from tests.helpers.add_dialogs import Discovery, ok_button, select_data, set_overlay_mode, shows_text, use_defaults
 from tests.helpers.dialogs import visible_texts
 from tests.helpers.forms import form_field
@@ -255,6 +258,104 @@ def test_add_live_stream_mqtt_needs_broker_and_data_source_then_builds_spec(
         broker_username="mqtt-user",
         analytics_data_source_key="analytics/source",
     )
+
+
+CAMERA = (
+    "root.Properties.Image.I0.H264.Resolution=1920x1080,640x480\r\n"
+    "root.Properties.Image.I1.H264.Resolution=1024x768,800x600\r\n"
+    "root.Image.I0.Appearance.Resolution=640x480\r\n"
+    "root.Image.I1.Appearance.Resolution=800x600\r\n"
+)
+
+
+def _camera_answers(monkeypatch: pytest.MonkeyPatch, *answers: str | None) -> tuple[Event, list[str]]:
+    """Make the camera give each read the next of *answers* (the last repeats; ``None`` is unreachable).
+
+    Reads wait for the returned gate; the list holds the host each read asked.
+    """
+    gate, hosts = Event(), list[str]()
+
+    def read(connection: DeviceConnection) -> CameraResolutions:
+        assert gate.wait(5)
+        hosts.append(connection.host)
+        answer = answers[min(len(hosts), len(answers)) - 1]
+        if answer is None:
+            raise OSError("unreachable")
+        return parse_camera_resolutions(answer)
+
+    monkeypatch.setattr("ax_devil.modules.workspace.ui.add_content.resolution_field.read_camera_resolutions", read)
+    return gate, hosts
+
+
+def test_new_stream_starts_on_a_resolution_the_camera_offers(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The configured 1280x720 is not offered, so the stream starts on the camera's default for its camera head."""
+    gate, _hosts = _camera_answers(monkeypatch, CAMERA)
+    gate.set()
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    field = form_field(dialog, "Resolution", ResolutionField)
+    dialog.show()
+    qtbot.waitUntil(lambda: field.value() == "640x480")
+
+    form_field(dialog, "Camera Head", QLineEdit).setText("2")
+    assert field.value() == "800x600"
+    dialog.cleanup()
+
+    # A value typed before the camera answers is the user's.
+    gate.clear()
+    typing = AddLiveStreamDialog()
+    qtbot.addWidget(typing)
+    field = form_field(typing, "Resolution", ResolutionField)
+    typing.show()
+    typed = form_field(typing, "Resolution", QLineEdit)
+    typed.selectAll()
+    QTest.keyClicks(typed, "19")
+    typed.setCursorPosition(1)
+    gate.set()
+    qtbot.waitUntil(lambda: field.itemText(0) == "1920x1080")
+    QTest.keyClicks(typed, "x")  # The answer neither replaces the text nor moves the caret.
+    assert field.value() == "1x9"
+    typing.cleanup()
+
+
+def test_resolutions_are_read_again_for_a_changed_host_and_after_an_empty_answer(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another host is asked once typing pauses; an answer that lists nothing is asked again when the list opens."""
+    monkeypatch.setattr("ax_devil.modules.workspace.ui.add_content.resolution_field._DEBOUNCE_MS", 0)
+    gate, hosts = _camera_answers(monkeypatch, CAMERA, "", CAMERA)
+    gate.set()
+    dialog = AddLiveStreamDialog()
+    qtbot.addWidget(dialog)
+    field = form_field(dialog, "Resolution", ResolutionField)
+    dialog.show()
+    qtbot.waitUntil(lambda: field.itemText(0) == "1920x1080")
+
+    form_field(dialog, "Host", QLineEdit).setText("other.local")
+    qtbot.waitUntil(lambda: field.itemText(0) == "Camera lists no resolutions")
+    assert hosts == ["camera.local", "other.local"]
+    field.showPopup()
+    qtbot.waitUntil(lambda: field.itemText(0) == "1920x1080")
+    qtbot.waitUntil(lambda: field.view().height() >= 2 * field.view().sizeHintForRow(0))  # The open popup grew.
+    field.hidePopup()
+    dialog.cleanup()
+
+
+@pytest.mark.parametrize("answer", [CAMERA, None], ids=["listed", "unreachable"])
+def test_saved_resolution_is_kept_whatever_the_camera_answers(
+    qtbot: QtBot, live_handler: None, monkeypatch: pytest.MonkeyPatch, answer: str | None
+) -> None:
+    """A saved 1280x720 that is not offered stays, with or without an answer, and saving stays possible."""
+    _camera_answers(monkeypatch, answer)[0].set()
+    dialog = AddLiveStreamDialog(existing=LiveStreamItem(host="camera.local", resolution="1280x720"))
+    qtbot.addWidget(dialog)
+    field = form_field(dialog, "Resolution", ResolutionField)
+    dialog.show()
+    qtbot.waitUntil(lambda: field.itemText(0) in ("1920x1080", "Could not read resolutions"))
+
+    assert field.value() == "1280x720"
+    assert next(button for button in dialog.findChildren(QPushButton) if button.text() == "Save").isEnabled()
+    dialog.cleanup()
 
 
 @pytest.mark.parametrize("clear_resolution", [False, True])

@@ -14,6 +14,7 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer import live_transports as live_transports_module
 from ax_devil.modules.video_viewer import stream_media_controller
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus
+from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
 from ax_devil.modules.workspace.core import (
     LiveVideoContent,
@@ -78,6 +79,7 @@ def make_controller(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogMana
                 display,
                 content,
                 render_catalog_selection=selection or render_catalog_manager.create_selection(),
+                overlay_persistence=OverlayPersistenceSettings.default_enabled(),
                 frame_displayed=frame_displayed,
                 connection_changed=connection_changed,
             )

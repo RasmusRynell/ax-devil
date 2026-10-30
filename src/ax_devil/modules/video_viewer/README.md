@@ -22,6 +22,8 @@ Purpose: application-specific Video Viewer workflows for live and offline inspec
 - `scene_frame_presenter.py`: frame plus Scene overlay presentation assembly for live and offline display.
 - `scene_inspection.py`: Scene inspection update payloads and the side-panel delivery contract.
 - `overlay_persistence.py`: sample-age selection for indexed offline overlays and cached live overlays.
+- `view_settings.py`: each open view's sticky overlay, overlay sync and object filter settings, Apply to all, and the
+  defaults new views start from (`settings.view_defaults`, null = built-in).
 - `lane_grid.py`: shared lane-grid dimensions for offline display and export.
 - `export/export_job.py`: synchronous decode, presentation, tiling, encoding, cancellation, and atomic output replacement;
   borrows frozen lane inputs and owns rendering/output resources on the GUI thread.
