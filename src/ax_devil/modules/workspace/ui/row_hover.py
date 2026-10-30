@@ -7,7 +7,7 @@ from functools import partial
 from typing import cast
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, Qt, QTimer
-from PySide6.QtGui import QCursor, QEnterEvent, QGuiApplication, QImage
+from PySide6.QtGui import QCursor, QGuiApplication, QImage
 from PySide6.QtWidgets import QApplication, QWidget
 from shiboken6 import isValid
 
@@ -111,11 +111,12 @@ class RowHover(QObject):
         """Track the row the pointer enters in a watched tree, and hide the card as the user moves on.
 
         Nothing is consumed. The application filter is what sees the rows' own widgets, which sit in the tree's
-        viewport.
+        viewport. Where the pointer is comes from the cursor, as in ``_refresh_card``, not from the event, which can be
+        a stale one the window system delivers late.
         """
         kind = event.type()
         if kind == QEvent.Type.Enter and watched.isWidgetType():
-            self._entered(cast(QWidget, watched), cast(QEnterEvent, event).globalPosition().toPoint())
+            self._entered(cast(QWidget, watched), QCursor.pos())
         elif self._shown is None:
             pass
         elif kind in _HIDING_EVENTS or (kind in (QEvent.Type.Hide, QEvent.Type.Leave) and watched in self._trees):
