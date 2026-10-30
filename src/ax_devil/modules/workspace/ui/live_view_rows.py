@@ -7,8 +7,11 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import partial
 
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, SignIn
+from ax_devil.modules.settings.config_manager import expand_environment_reference
+from ax_devil.modules.thumbnails import SNAPSHOT_TIMEOUT_S, CameraThumbnail
 from ax_devil.modules.workspace.core import LiveOverlayMode, LiveStreamItem
 from ax_devil.modules.workspace.ui.browser_rows import Facet, OfferedAction, RowAction, WorkspaceBrowserRow
 from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
@@ -53,6 +56,22 @@ def network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceB
     """Return the row of a *camera* the scan found: its model, or else whether the scan signed in, beside the address;
     it has Add only when the scan signed in to it."""
     can_add = camera.sign_in is SignIn.SIGNED_IN
+    login = camera.login
+    thumbnail = (
+        CameraThumbnail(
+            network_row_id(camera),
+            DeviceConnection(
+                camera.host,
+                camera.protocol,
+                username=expand_environment_reference(login.username),
+                password=expand_environment_reference(login.password),
+                timeout_s=SNAPSHOT_TIMEOUT_S,
+            ),
+            camera_head=1,
+        )
+        if can_add and login is not None
+        else None
+    )
     return WorkspaceBrowserRow(
         row_id=network_row_id(camera),
         label=camera.host,
@@ -66,6 +85,7 @@ def network_row(camera: DiscoveredCamera, add: Callable[[], None]) -> WorkspaceB
         idle=not can_add,
         search_terms=_camera_search_terms(camera.host, camera),
         facets=_facets(camera),
+        thumbnail=thumbnail,
     )
 
 
@@ -133,6 +153,7 @@ def camera_row(group: CameraGroup, add_stream: Callable[[LiveStreamItem | None],
         stream=status,
         search_terms=_camera_search_terms(group.items[0].default_name, scan),
         facets=_facets(scan) if scan is not None else frozenset(),
+        thumbnail=next((stream.thumbnail for stream in group.streams if stream.thumbnail is not None), None),
         expanded_at_first=True,
     )
 
