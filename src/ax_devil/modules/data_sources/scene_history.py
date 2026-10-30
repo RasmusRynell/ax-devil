@@ -10,11 +10,14 @@ import sys
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.scene.model import Event, Scene
+
+SampleRow = tuple[tuple[tuple[str, str, tuple[str, ...]], ...], tuple[tuple[str, tuple[str, ...]], ...]]
+"""One sample's history contribution: its events as (kind, label, entity ids) and its entities as (id, types)."""
 
 FramePosition = Callable[[int], int]
 """Map a sample timestamp to the video frame index that first shows it: below 0 before the video, at or past the
@@ -79,6 +82,57 @@ class SceneHistoryRecords:
         return cls(events, tracks)
 
 
+class SampleRows:
+    """Make and check `SampleRow`s for one index build.
+
+    Equal entity ids and type tuples become one object, so a persisted row set stores each once.
+    """
+
+    def __init__(self) -> None:
+        self._types: dict[tuple[str, ...], tuple[str, ...]] = {}
+
+    def from_scene(self, scene: Scene) -> SampleRow:
+        """Return what one sample contributes to the history, as plain data that can be persisted and replayed."""
+        events = tuple((event.kind, event.label, _involved_ids(event)) for event in scene.events)
+        entities: list[tuple[str, tuple[str, ...]]] = []
+        for entity_id, entity in scene.entities.items():
+            observation = entity.latest_observation
+            types = tuple(c.type for c in observation.classification) if observation is not None else ()
+            entities.append((sys.intern(str(entity_id)), self._types.setdefault(types, types)))
+        return events, tuple(entities)
+
+    def checked(self, raw: Any) -> SampleRow:
+        """Return *raw*, a persisted row, or raise when it is not exactly a `SampleRow`."""
+        if type(raw) is not tuple or len(raw) != 2:
+            raise ValueError("malformed sample row")
+        events, entities = raw
+        if type(events) is not tuple or type(entities) is not tuple:
+            raise ValueError("malformed sample row")
+        for event in events:
+            if type(event) is not tuple or len(event) != 3 or not _is_event(event):
+                raise ValueError("malformed sample row")
+        known = self._types
+        for entity in entities:
+            if type(entity) is not tuple or len(entity) != 2 or type(entity[0]) is not str:
+                raise ValueError("malformed sample row")
+            types = entity[1]
+            if type(types) is not tuple:
+                raise ValueError("malformed sample row")
+            if known.get(types) is not types:  # A persisted row repeats one tuple object, checked once.
+                if not _is_texts(types):
+                    raise ValueError("malformed sample row")
+                known[types] = types
+        return cast(SampleRow, raw)
+
+
+def _is_event(event: tuple[Any, ...]) -> bool:
+    return type(event[0]) is str and type(event[1]) is str and _is_texts(event[2])
+
+
+def _is_texts(values: object) -> bool:
+    return type(values) is tuple and all(type(value) is str for value in values)
+
+
 class SceneHistoryCollector:
     """Collect history records from decoded samples.
 
@@ -88,19 +142,19 @@ class SceneHistoryCollector:
     def __init__(self) -> None:
         self._events: dict[int, tuple[SampleEvent, ...]] = {}
         self._entities: dict[int, tuple[tuple[str, tuple[str, ...]], ...]] = {}  # (entity id, types) per sample.
-        self._types: dict[tuple[str, ...], tuple[str, ...]] = {}  # Shares equal type tuples across samples.
+        self.rows = SampleRows()
 
     def add(self, timestamp_key: int, scene: Scene) -> None:
         """Record the events and entities of one sample."""
+        self.add_row(timestamp_key, self.rows.from_scene(scene))
+
+    def add_row(self, timestamp_key: int, row: SampleRow) -> None:
+        """Record one sample from `SampleRows`."""
+        events, entities = row
         self._events[timestamp_key] = tuple(
-            SampleEvent(timestamp_key, event.kind, event.label, _involved_ids(event)) for event in scene.events
+            SampleEvent(timestamp_key, kind, label, entity_ids) for kind, label, entity_ids in events
         )
-        entities: list[tuple[str, tuple[str, ...]]] = []
-        for entity_id, entity in scene.entities.items():
-            observation = entity.latest_observation
-            types = tuple(c.type for c in observation.classification) if observation is not None else ()
-            entities.append((sys.intern(str(entity_id)), self._types.setdefault(types, types)))
-        self._entities[timestamp_key] = tuple(entities)
+        self._entities[timestamp_key] = tuple((sys.intern(entity_id), types) for entity_id, types in entities)
 
     def records(self) -> SceneHistoryRecords:
         """Return events in sample order and each entity's runs of consecutive samples."""

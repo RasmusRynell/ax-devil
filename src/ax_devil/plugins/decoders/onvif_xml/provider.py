@@ -39,19 +39,15 @@ class ONVIFDecoder(PayloadToSceneDecoder):
 class ONVIFXMLDataProvider(SceneDecoderFileProvider):
     """Data provider for ONVIF XML metadata files with one XML document per line."""
 
-    def __init__(
-        self,
-        file_path: str | Path,
-        decoder_factory: type[PayloadToSceneDecoder] = ONVIFDecoder,
-        decoder_name: str = "onvif_xml",
-    ) -> None:
+    def __init__(self, file_path: str | Path) -> None:
         super().__init__(
             file_path=file_path,
-            decoder_factory=decoder_factory,
-            decoder_name=decoder_name,
+            decoder_factory=ONVIFDecoder,
+            decoder_name="onvif_xml",
             artifact_version=1,
             supports_sequence_lookup=True,
             filter_config_factory=build_onvif_filter_config,
             storage_mode=StorageMode.SOURCE_INDEX,
+            independent_records=True,
         )
-        logger.debug(f"ONVIF XML provider initialized for {self.file_path.name} with decoder '{decoder_name}'")
+        logger.debug(f"ONVIF XML provider initialized for {self.file_path.name}")
