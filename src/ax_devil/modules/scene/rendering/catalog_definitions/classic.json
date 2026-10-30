@@ -470,7 +470,7 @@
     "movement_badge": {
       "label": "Movement badge",
       "feature": "movement",
-      "description": "Symbol inside the top-left of the box, above the score bar: ▶ moving, Ⅱ stationary, ? unknown.",
+      "description": "A small dark tag just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -486,9 +486,10 @@
           "type": "length",
           "exclusive_minimum": 0,
           "label": "Font size",
-          "default": null,
-          "nullable": true,
-          "description": "Exact font size. Null selects 25% of the shorter side, bounded to 8–12 px."
+          "default": {
+            "value": 11,
+            "unit": "px"
+          }
         },
         "color": {
           "type": "rgb",
@@ -499,19 +500,21 @@
             255
           ]
         },
-        "inset": {
+        "margin": {
           "type": "length",
-          "label": "Inset",
-          "description": "Distance from the left edge. Null selects 10% of the shorter side, capped at 4 px, matching the score bar.",
-          "default": null,
-          "minimum": 0,
-          "nullable": true
+          "label": "Margin",
+          "description": "Gap between the box and the tag.",
+          "default": {
+            "value": 3,
+            "unit": "px"
+          },
+          "minimum": 0
         }
       },
       "steps": [
         {
-          "label": "Text",
-          "primitive": "text",
+          "label": "Tag",
+          "primitive": "label",
           "fields": {
             "position": {
               "call": "offset_point",
@@ -525,13 +528,13 @@
                         "geometry"
                       ]
                     },
-                    "anchor": "top-left"
+                    "anchor": "top-right"
                   }
                 },
                 "dx": {
                   "ref": [
-                    "values",
-                    "inset"
+                    "parameters",
+                    "margin"
                   ]
                 },
                 "dy": {
@@ -540,142 +543,82 @@
                 }
               }
             },
-            "text": {
-              "call": "lookup_text",
-              "args": {
+            "anchor": "top-left",
+            "runs": [
+              {
                 "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": {
                   "ref": [
                     "parameters",
-                    "motion_state"
+                    "color"
                   ]
                 },
-                "mapping": [
-                  {
-                    "key": "moving",
-                    "text": "▶"
-                  },
-                  {
-                    "key": "stationary",
-                    "text": "Ⅱ"
-                  },
-                  {
-                    "key": "unknown",
-                    "text": "?"
-                  }
-                ],
-                "default": "?"
+                "weight": "medium"
               }
-            },
-            "anchor": "top-left"
+            ]
           },
           "style": {
-            "text": {
-              "color": {
-                "ref": [
-                  "parameters",
-                  "color"
-                ]
-              },
+            "label": {
               "size": {
                 "ref": [
-                  "values",
+                  "parameters",
                   "font_size"
                 ]
+              },
+              "family": null,
+              "background": {
+                "color": [
+                  14,
+                  16,
+                  20
+                ],
+                "alpha": 170
+              },
+              "padding_x": {
+                "value": 3,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 1,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 2,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
               }
             }
           }
         }
-      ],
-      "values": {
-        "font_size": {
-          "call": "coalesce",
-          "args": {
-            "values": [
-              {
-                "ref": [
-                  "parameters",
-                  "font_size"
-                ]
-              },
-              {
-                "call": "clamp",
-                "args": {
-                  "value": {
-                    "call": "mul",
-                    "args": {
-                      "values": [
-                        {
-                          "call": "box_min_size",
-                          "args": {
-                            "geometry": {
-                              "ref": [
-                                "parameters",
-                                "geometry"
-                              ]
-                            }
-                          }
-                        },
-                        0.25
-                      ]
-                    }
-                  },
-                  "minimum": {
-                    "value": 8,
-                    "unit": "px"
-                  },
-                  "maximum": {
-                    "value": 12,
-                    "unit": "px"
-                  }
-                }
-              }
-            ]
-          }
-        },
-        "inset": {
-          "call": "coalesce",
-          "args": {
-            "values": [
-              {
-                "ref": [
-                  "parameters",
-                  "inset"
-                ]
-              },
-              {
-                "call": "min",
-                "args": {
-                  "values": [
-                    {
-                      "call": "mul",
-                      "args": {
-                        "values": [
-                          {
-                            "call": "box_min_size",
-                            "args": {
-                              "geometry": {
-                                "ref": [
-                                  "parameters",
-                                  "geometry"
-                                ]
-                              }
-                            }
-                          },
-                          0.1
-                        ]
-                      }
-                    },
-                    {
-                      "value": 4,
-                      "unit": "px"
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      }
+      ]
     },
     "object_box": {
       "label": "Object box",

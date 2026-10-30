@@ -8,6 +8,7 @@ import numpy as np
 
 from ax_devil.modules.scene.inspection import (
     FieldGroup,
+    FieldOrigin,
     entity_fields,
     entity_record,
     entity_summary,
@@ -98,6 +99,18 @@ def test_debug_leaves_keep_reported_empties_and_searchable_bytes_and_arrays_do_n
     assert debug[("blob",)] == f"{bytes(range(32)).hex()}... (40 bytes)"
     assert compile_query("serial:00ff").matches(entity_record(entity))
     assert compile_query("absent:null").matches(entity_record(entity))
+
+
+def test_debug_fields_carry_their_origin_and_share_debug_paths() -> None:
+    entity = _inspection_entity()
+    observation = entity.latest_observation
+    assert observation is not None
+    observation.source_data = {"vendor": {"track_id": 9, "label": "car"}}
+
+    origins = {item.path: item.origin for item in dict(entity_fields(entity))[FieldGroup.DEBUG]}
+    assert origins[("latency",)] is origins[("tracker", "state")] is FieldOrigin.DECODER
+    assert origins[("vendor", "track_id")] is origins[("vendor", "label")] is FieldOrigin.SOURCE
+    assert compile_query("debug.vendor.track_id:9").matches(entity_record(entity))
 
 
 def test_classification_candidates_get_a_fraction_only_for_scores_in_unit_range() -> None:

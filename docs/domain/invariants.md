@@ -92,9 +92,10 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
   before unscored, then by score, then by confidence.
 - `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
   not rendered.
-- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows and queries
-  `Observation.debug`; `Scene.debug` is kept for diagnostics only. Scene filtering, rendering, synchronization, and
-  hit-testing never read either.
+- `Observation.source_data` holds what the source supplied verbatim; `Observation.debug` holds what the decoder
+  computed. Both are free-form and picklable, and inspection shows and queries them under Debug, each field with its
+  `FieldOrigin`. `Scene.debug` is free-form decoder-owned frame diagnostics, never displayed and without origin.
+  Scene filtering, rendering, synchronization, and hit-testing never read any of them.
 - Changing the Scene contract requires bumping `SCENE_MODEL_VERSION`: major when breaking, including stricter value
   requirements, minor when additive. Scene datetimes must be timezone-aware. Decoder plugins declaring another major,
   or a newer minor, fail to load.
