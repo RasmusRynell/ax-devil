@@ -7,7 +7,7 @@ from functools import partial
 from typing import cast
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, Qt, QTimer
-from PySide6.QtGui import QEnterEvent, QGuiApplication, QImage
+from PySide6.QtGui import QCursor, QEnterEvent, QGuiApplication, QImage
 from PySide6.QtWidgets import QApplication, QWidget
 from shiboken6 import isValid
 
@@ -64,7 +64,7 @@ class RowHover(QObject):
         """The id and thumbnail source of the row under the pointer, None while nothing is tracked. A row whose source
         changes is requested afresh, and answers to the earlier source are ignored."""
         self._pointer = QPoint()
-        """Where the pointer entered the tracked row, in global coordinates."""
+        """Where the pointer entered the tracked row, in global coordinates, where the card is placed."""
         self._intent_over = False
         """Whether the pointer has rested on the tracked row for ``INTENT_MS``."""
         self._intent = QTimer(self)
@@ -153,12 +153,14 @@ class RowHover(QObject):
         return None
 
     def _refresh_card(self) -> None:
-        """Ask again for the picture of the row under the pointer, which may be another row than the card shows."""
-        hovered = self._row_under(self._pointer)
+        """Ask again for the picture of the row under the pointer now, which may be another row than the card shows,
+        or none: the pointer can leave a row for the empty viewport without any event reaching this filter."""
+        pointer = QCursor.pos()
+        hovered = self._row_under(pointer)
         if hovered is None:
             self.hide()
         elif _identity(hovered.row) != self._shown:
-            self._begin(hovered, self._pointer)
+            self._begin(hovered, pointer)
         else:
             self._request(hovered)
 

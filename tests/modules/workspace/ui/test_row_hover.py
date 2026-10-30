@@ -35,9 +35,21 @@ class OpenStream:
         raise AssertionError("an open stream is never read")
 
 
+class FakeCursor:
+    """The pointer position the hover refresh reads, which the tests set instead of moving the real pointer."""
+
+    position = QPoint()
+
+    @staticmethod
+    def pos() -> QPoint:
+        return FakeCursor.position
+
+
 @pytest.fixture()
 def tree(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Iterator[SectionTree]:
     monkeypatch.setattr(row_hover, "INTENT_MS", 0)
+    monkeypatch.setattr(row_hover, "_REFRESH_MS", 20)
+    monkeypatch.setattr(row_hover, "QCursor", FakeCursor)
     thumbnails = Thumbnails(lambda _id: None)
     hover = RowHover(thumbnails)
     tree = show_tree(
@@ -58,9 +70,10 @@ def _enter(tree: SectionTree, index: int, offset: QPoint = QPoint(4, 4)) -> QPoi
     """Send the pointer entering row *index* at *offset* in its widget; return that global position."""
     widget = row_widget(tree, item_at(tree, index))
     local, global_pos = QPointF(offset), QPointF(widget.mapToGlobal(offset))
+    FakeCursor.position = global_pos.toPoint()
     QApplication.sendEvent(widget, QEnterEvent(local, local, global_pos))
     QApplication.processEvents()  # Lets the hover intent timer run out.
-    return global_pos.toPoint()
+    return FakeCursor.position
 
 
 def _card(tree: SectionTree) -> HoverCard | None:
@@ -134,3 +147,12 @@ def test_a_row_whose_thumbnail_goes_away_gets_no_card_again(qtbot: QtBot, tree: 
     _enter(tree, 0)
 
     assert not card.isVisible()
+
+
+def test_the_card_hides_when_the_pointer_leaves_the_row_for_the_empty_viewport(qtbot: QtBot, tree: SectionTree) -> None:
+    _enter(tree, 0)
+    card = _visible_card(qtbot, tree)
+
+    FakeCursor.position = tree.viewport().mapToGlobal(QPoint(10, tree.viewport().height() - 10))  # No event is sent.
+
+    qtbot.waitUntil(lambda: not card.isVisible())
