@@ -120,6 +120,8 @@ class IndexedFrameSceneStore:
         for timestamp_key, scene in build_result.scene_map.items():
             collector.add(timestamp_key, scene)
         history = collector.records()
+        # Windows has no change time, so restoring the original bytes, size and mtime during the parse window is
+        # undetectable here; acceptable, since only that A->B->A-within-parse case is affected.
         if stat_key(self._file_path.stat()) != stat_key(stat_before):
             content_digest = ""  # Served from this open's cache, but the next open must not accept it.
         artifact_identity = build_scene_artifact_identity(

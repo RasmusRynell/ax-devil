@@ -149,6 +149,8 @@ def test_source_changed_while_indexing_is_rebuilt_on_next_open(
     tmp_path: Path, storage_mode: StorageMode, restored: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A regeneration that lands during indexing must not be cached as if the index had already seen it."""
+    if restored and not scene_catalog.STAT_SHORTCUT_IS_SOUND:
+        pytest.skip("Windows has no change time, so a restore during indexing cannot be told apart")
     path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
     log = _RegeneratesSource(path, restore=restored)
     real_hash_file = scene_catalog.hash_file

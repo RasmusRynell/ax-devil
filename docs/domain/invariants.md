@@ -200,7 +200,7 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
   only the stat fingerprint differs, the artifact is accepted and republished with the new one. The fingerprint is
   taken from the held handle before the source is read. If the source changed during the build, a source-indexed store
   skips persisting and a derived one persists without a digest, so a file written during indexing reads as changed on
-  the next open; cache files are replaced atomically and read through the handle that wrote them.
+  the next open (except where the platform has no change time, Windows, and the original is restored); cache files are replaced atomically and read through the handle that wrote them.
   Cache files can always be rebuilt. An open source-indexed store holds its source file open, and stops serving once
   that file is rewritten in place, since its byte offsets no longer match; a replaced file leaves it valid.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
