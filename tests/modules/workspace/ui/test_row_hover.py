@@ -1,4 +1,4 @@
-"""Resting the pointer on a row with a thumbnail shows a picture-only hover card that follows the pointer."""
+"""Entering a row with a thumbnail shows a picture-only hover card, placed once at the pointer."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import ClassVar
 
 import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QHelpEvent, QImage, QMouseEvent, QWheelEvent
+from PySide6.QtGui import QEnterEvent, QImage, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication, QLabel
 from pytestqt.qtbot import QtBot
 
@@ -16,6 +16,7 @@ from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.chrome.hover_card import HoverCard
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.thumbnails import OpenFrames, Thumbnails
+from ax_devil.modules.workspace.ui import row_hover
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.row_hover import RowHover
 from ax_devil.modules.workspace.ui.section_tree import SectionTree
@@ -36,13 +37,15 @@ class OpenStream:
 
 
 @pytest.fixture()
-def tree(qtbot: QtBot) -> Iterator[SectionTree]:
+def tree(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Iterator[SectionTree]:
+    monkeypatch.setattr(row_hover, "INTENT_MS", 0)
     thumbnails = Thumbnails(lambda _id: None)
     hover = RowHover(thumbnails)
     tree = show_tree(
         qtbot,
         WorkspaceBrowserRow(row_id="a", label="front_door", icon_kind="video", thumbnail=OpenStream()),
         WorkspaceBrowserRow(row_id="b", label="Night shift", icon_kind="playlist"),
+        WorkspaceBrowserRow(row_id="c", label="garage", icon_kind="video", thumbnail=OpenStream()),
     )
     hover.watch(tree)
     yield tree
@@ -50,9 +53,13 @@ def tree(qtbot: QtBot) -> Iterator[SectionTree]:
     thumbnails.cleanup()
 
 
-def _rest_on(tree: SectionTree, index: int) -> None:
+def _enter(tree: SectionTree, index: int, offset: QPoint = QPoint(4, 4)) -> QPoint:
+    """Send the pointer entering row *index* at *offset* in its widget; return that global position."""
     widget = row_widget(tree, item_at(tree, index))
-    QApplication.sendEvent(widget, QHelpEvent(QEvent.Type.ToolTip, QPoint(4, 4), widget.mapToGlobal(QPoint(4, 4))))
+    local, global_pos = QPointF(offset), QPointF(widget.mapToGlobal(offset))
+    QApplication.sendEvent(widget, QEnterEvent(local, local, global_pos))
+    QApplication.processEvents()  # Lets the hover intent timer run out.
+    return global_pos.toPoint()
 
 
 def _card(tree: SectionTree) -> HoverCard | None:
@@ -72,23 +79,32 @@ def _move_to(tree: SectionTree, global_pos: QPoint) -> None:
     QApplication.sendEvent(tree.viewport(), move)
 
 
-def test_the_card_shows_only_the_picture_follows_the_pointer_and_hides_on_leaving_or_scrolling(
-    tree: SectionTree,
-) -> None:
-    _rest_on(tree, 0)
+def _visible_card(qtbot: QtBot, tree: SectionTree) -> HoverCard:
+    qtbot.waitUntil(lambda: (card := _card(tree)) is not None and card.isVisible())
     card = _card(tree)
     assert card is not None
-    assert card.isVisible()
+    return card
+
+
+def test_the_card_shows_only_the_picture_stays_where_it_was_placed_and_hides_on_leaving_or_scrolling(
+    qtbot: QtBot, tree: SectionTree
+) -> None:
+    entered = _enter(tree, 0)
+    card = _visible_card(qtbot, tree)
     assert not card.findChildren(QLabel)
+    assert card.pos() == entered + QPoint(Space.M, Space.M)
 
-    inside = row_widget(tree, item_at(tree, 0)).mapToGlobal(QPoint(30, 6))
-    _move_to(tree, inside)
-    assert card.pos() == inside + QPoint(Space.M, Space.M)
+    _move_to(tree, row_widget(tree, item_at(tree, 0)).mapToGlobal(QPoint(30, 6)))
+    assert card.pos() == entered + QPoint(Space.M, Space.M)
 
-    _move_to(tree, row_widget(tree, item_at(tree, 1)).mapToGlobal(QPoint(4, 4)))
+    entered = _enter(tree, 2, QPoint(20, 5))
+    assert card.pos() == entered + QPoint(Space.M, Space.M)
+
+    _enter(tree, 1)
     assert not card.isVisible()
 
-    _rest_on(tree, 0)
+    _enter(tree, 0)
+    _visible_card(qtbot, tree)
     wheel = QWheelEvent(
         QPointF(4, 4), QPointF(4, 4), QPoint(), QPoint(0, -120), Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False,
@@ -98,16 +114,14 @@ def test_the_card_shows_only_the_picture_follows_the_pointer_and_hides_on_leavin
 
 
 def test_a_row_without_a_thumbnail_shows_no_card(tree: SectionTree) -> None:
-    _rest_on(tree, 1)
+    _enter(tree, 1)
 
     assert _card(tree) is None
 
 
-def test_a_row_whose_thumbnail_goes_away_gets_no_card_again(tree: SectionTree) -> None:
-    _rest_on(tree, 0)
-    card = _card(tree)
-    assert card is not None
-    assert card.isVisible()
+def test_a_row_whose_thumbnail_goes_away_gets_no_card_again(qtbot: QtBot, tree: SectionTree) -> None:
+    _enter(tree, 0)
+    card = _visible_card(qtbot, tree)
 
     tree.set_sections(
         (
@@ -116,6 +130,6 @@ def test_a_row_whose_thumbnail_goes_away_gets_no_card_again(tree: SectionTree) -
             ),
         )
     )
-    _rest_on(tree, 0)
+    _enter(tree, 0)
 
     assert not card.isVisible()

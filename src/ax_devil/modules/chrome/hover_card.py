@@ -1,4 +1,4 @@
-"""A small rounded picture that follows the pointer to show what the row under it stands for."""
+"""A small rounded picture placed at the pointer to show what the row under it stands for."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.chrome.tokens import Radius, Space
 
-LONG_EDGE_PX = 180
+LONG_EDGE_PX = 270
 
 
 class HoverCard(QWidget):

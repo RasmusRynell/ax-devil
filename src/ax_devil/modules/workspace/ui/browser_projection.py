@@ -297,7 +297,6 @@ class _RowProjection:
                         is_considered=(self._is_considered(lane_ref) if consideration_item is not None else True),
                         location=lane.source_location,
                         facts=(_lane_fact(lane),),
-                        thumbnail=_thumbnail(lane.video),
                     )
                 )
             )
@@ -333,7 +332,6 @@ class _RowProjection:
                 is_considered=self._is_considered(ref),
                 location=lane.source_location,
                 facts=(_lane_fact(lane),),
-                thumbnail=_thumbnail(lane.video),
             )
         )
 

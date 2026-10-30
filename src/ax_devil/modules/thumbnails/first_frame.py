@@ -21,7 +21,7 @@ from ax_devil.modules.thumbnails.scaling import THUMBNAIL_EDGE_PX
 logger = get_logger(__name__)
 
 DISK_CACHE_FILES = 500
-"""Thumbnails kept on disk (about 20 MB); the oldest are deleted first."""
+"""Thumbnails kept on disk (about 25 MB); the oldest are deleted first."""
 JPEG_QUALITY = 85
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
 
-THUMBNAIL_EDGE_PX = 480
+THUMBNAIL_EDGE_PX = 560
 """The longest side of a thumbnail."""
 
 

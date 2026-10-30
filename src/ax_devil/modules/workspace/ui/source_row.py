@@ -81,4 +81,4 @@ class SourceRow(ListRow):
         )
         self.row = row
         for label in self.findChildren(QLabel):
-            label.setToolTip("")  # An elided label's own tooltip would swallow the hover the card waits for.
+            label.setToolTip("")  # An elided label's own tooltip would show beside the card.

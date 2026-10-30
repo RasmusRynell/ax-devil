@@ -58,7 +58,7 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
     assert row.label == "test.mp4"
     assert row.icon_kind == "video"
     assert row.thumbnail == FileThumbnail(Path("/tmp/test.mp4"))
-    assert row.children[0].thumbnail == row.thumbnail, "an overlay lane shows its video"
+    assert row.children[0].thumbnail is None, "an overlay lane shows no picture"
     assert row.item == state.workspace.items[0]
     assert row.is_open
     assert row.information_factory is not None

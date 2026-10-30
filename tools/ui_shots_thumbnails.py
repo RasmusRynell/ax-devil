@@ -1,12 +1,11 @@
-"""Hover card screenshots: the picture the sidebar shows at the pointer when it rests on a row, in the app.
+"""Hover card screenshots: the picture the sidebar shows at the pointer when it enters a row, in the app.
 
 The rows are the real ones of the sample workspace and a stubbed network scan, shown by the real section trees and
-``RowHover``; the cards are the real ``HoverCard``. A tooltip request is sent to the middle of the row's widget, as Qt
-sends one when the pointer rests there, and the shot is the window with the card painted in at its screen position,
-just down and right of that pointer position.
+``RowHover``; the cards are the real ``HoverCard``. The pointer enters the row's widget at its middle, as Qt reports
+it, and the shot is the window with the card painted in at its screen position, just down and right of that position.
 
-Three shots show no card, because that is what the user sees: rows whose picture is not there. They are the plain window
-at the moment the pointer rests on the row.
+Four shots show no card, because that is what the user sees: overlay lane rows, which have no picture, and rows whose
+picture is not there. They are the plain window at the moment the pointer enters the row.
 
 Two states are stand-ins, because the private display has neither a stream nor a camera:
 
@@ -22,8 +21,8 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEvent
-from PySide6.QtGui import QColor, QHelpEvent, QImage, QLinearGradient, QPainter
+from PySide6.QtCore import QEvent, QPointF
+from PySide6.QtGui import QColor, QEnterEvent, QImage, QLinearGradient, QPainter
 from PySide6.QtWidgets import QApplication, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 from pytestqt.qtbot import QtBot
 
@@ -88,8 +87,8 @@ def thumbnail_card_screenshots(
     video_file_factory: Callable[[float, int], Path],
     theme: str,
 ) -> None:
-    """Save the hover card on a video, an overlay lane, a playlist entry and an open stream, and the window with no
-    card for a stream still loading and for a refused login, at both text sizes.
+    """Save the hover card on a video, a playlist entry and an open stream, and the window with no card for an
+    overlay lane, a stream still loading and a refused login, at both text sizes.
 
     Add a card with one more row in ``cards``.
     """
@@ -132,7 +131,7 @@ def thumbnail_card_screenshots(
     # (view, label, icon kind, which of the rows so named, name of the shot, whether a card must show)
     cards = (
         ("Offline", "Tracked video", "video", 0, "file", True),
-        ("Offline", "tracks", "overlay", 0, "overlay-lane", True),
+        ("Offline", "tracks", "overlay", 0, "overlay-lane", False),
         ("Offline", "run_02", "video", 0, "playlist-entry", True),
         ("Live", "Video only", "live_video", 0, "live-synthetic", True),
         ("Live", "Video only", "live_video", 2, "live-loading", False),
@@ -150,7 +149,8 @@ def thumbnail_card_screenshots(
             widget = tree.itemWidget(item, 0)
             assert isinstance(widget, SourceRow)
             local = widget.rect().center()
-            QApplication.sendEvent(widget, QHelpEvent(QEvent.Type.ToolTip, local, widget.mapToGlobal(local)))
+            entered = QPointF(local)
+            QApplication.sendEvent(widget, QEnterEvent(entered, entered, QPointF(widget.mapToGlobal(local))))
             if shows:
                 qtbot.waitUntil(lambda: (c := window.findChild(HoverCard)) is not None and c.isVisible(), timeout=10000)
             else:
