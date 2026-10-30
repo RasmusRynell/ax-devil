@@ -50,7 +50,7 @@ class LiveStreamItem(WorkspaceItem):
     username: str = field(default="", repr=False)
     password: str = field(default="", repr=False)
     camera_head: int = 1
-    resolution: str = "1280x720"
+    resolution: str = ""
     stream_url: str | None = field(default=None, repr=False)
     overlay_mode: LiveOverlayMode = LiveOverlayMode.NONE
     handler_type: str | None = None
@@ -188,7 +188,7 @@ def live_stream_item_from_defaults(
         username=username or str(device.get("username") or ""),
         password=password or str(device.get("password") or ""),
         camera_head=camera_head if camera_head is not None else integer_default(rtsp.get("camera_head", 1), 1),
-        resolution=resolution or rtsp.get("resolution", "1280x720"),
+        resolution=resolution or "",
         overlay_mode=resolved_overlay,
         handler_type=resolved_handler,
         mqtt_host=mqtt_host or str(raw_mqtt.get("broker_host") or ""),

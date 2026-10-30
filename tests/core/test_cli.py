@@ -241,8 +241,9 @@ def test_group_resolver_subcommand_opens_its_playlists(
     assert (item.resolver, item.settings) == ("external_group", {"root": str(tmp_path), "select": ["alpha"]})
 
 
+@pytest.mark.parametrize("resolution", [None, "", "1920x1080"])
 def test_live_keeps_configured_credential_references_in_the_item(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches, resolution: str | None
 ) -> None:
     monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "camera.example")
     monkeypatch.setenv("AX_DEVIL_TARGET_USER", "operator")
@@ -251,10 +252,12 @@ def test_live_keeps_configured_credential_references_in_the_item(
     monkeypatch.setenv("AX_DEVIL_MQTT_BROKER_USER", "mqtt-user")
     monkeypatch.setenv("AX_DEVIL_MQTT_BROKER_PASS", "mqtt-pass")
 
-    result = _invoke("--config", _write_config(tmp_path, _default_config()), "live", "--overlay", "mqtt")
+    args = [] if resolution is None else ["--resolution", resolution]
+    result = _invoke("--config", _write_config(tmp_path, _default_config()), "live", "--overlay", "mqtt", *args)
 
     assert result.exit_code == 0, result.output
     [item] = startups
+    assert item.resolution == (resolution or "")
     assert (item.label, item.display_name) == ("", "camera.example"), "the shown host is expanded, never stored"
     assert (item.host, item.username, item.password) == (
         "$AX_DEVIL_TARGET_ADDR",

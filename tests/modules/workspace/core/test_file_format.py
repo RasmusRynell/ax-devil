@@ -43,7 +43,8 @@ def _written(path: Path) -> dict[str, Any]:
     return document
 
 
-def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path) -> None:
+@pytest.mark.parametrize("resolution", ["", "640x480"])
+def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path, resolution: str) -> None:
     items = (
         VideoItem(
             label="Lot",
@@ -56,7 +57,7 @@ def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path)
             username="root",
             password="$AX_DEVIL_TARGET_PASS",
             camera_head=2,
-            resolution="640x480",
+            resolution=resolution,
             stream_url="rtsp://camera/stream",
             overlay_mode=LiveOverlayMode.NONE,
             handler_type="MQTT",

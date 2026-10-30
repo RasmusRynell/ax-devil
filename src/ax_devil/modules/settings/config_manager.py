@@ -60,7 +60,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "live_stream": {
             "rtsp": {
                 "camera_head": 1,
-                "resolution": "1280x720",
                 "data_stream_handler": "ONVIF_XML",
             },
             "analytics-mqtt": {

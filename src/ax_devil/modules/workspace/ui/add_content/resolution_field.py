@@ -13,7 +13,6 @@ from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestR
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.data_sources.live.camera_resolutions import (
     CameraResolutions,
-    ChannelResolutions,
     read_camera_resolutions,
 )
 from ax_devil.modules.settings.logging_config import get_logger
@@ -30,26 +29,22 @@ def _read(connection: DeviceConnection, _job: JobContext[None]) -> CameraResolut
 class ResolutionField(QComboBox):
     """Editable resolution that lists what the camera offers for the chosen camera head.
 
-    A new stream starts at the *configured* resolution when the camera offers it, else at the camera's own default.
-    Whatever the user types or picks, or ``restore`` sets, is never changed by code, and a camera that cannot be read
-    leaves the text as it is: listing is a convenience that never blocks the form.
+    An empty value uses the camera default. Discovery lists choices without changing the current value;
+    listing is a convenience that never blocks the form.
     """
 
-    def __init__(
-        self, configured: str, camera_head: QLineEdit, parent: QWidget, *, jobs: BackgroundJobs | None = None
-    ) -> None:
+    def __init__(self, camera_head: QLineEdit, parent: QWidget, *, jobs: BackgroundJobs | None = None) -> None:
         super().__init__(parent)
-        self._configured = configured
         self._camera_head = camera_head
         self._connection = DeviceConnection("", DeviceProtocol.HTTPS)
         self._result: CameraResolutions | None = None
         self._problem = ""  # The status row after an attempt that gave no usable list.
-        self._chosen = False
         self._shown = False
         self._model = QStandardItemModel(self)
         self.setModel(self._model)
         self.setEditable(True)
         self._line = self.lineEdit() or QLineEdit()  # Editable, so it has one.
+        self._line.setPlaceholderText("Camera default")
         self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.setCompleter(None)  # type: ignore[arg-type]  # Inline completion would turn a typed "1" into "1920x1080".
         self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -63,15 +58,13 @@ class ResolutionField(QComboBox):
         self._timer.timeout.connect(self._load)
         self._jobs = (jobs or background_jobs("discovery")).scope(self)
         self._closed = False
-        self.setEditText(configured)
-        self._line.textEdited.connect(self._choose)
+        self.setEditText("")
         self.activated.connect(self._choose)
         camera_head.textChanged.connect(self._on_camera_head_changed)
         self._rebuild()
 
     def restore(self, saved: str) -> None:
         """Show a saved resolution as it was; the camera's answer never replaces it."""
-        self._chosen = True
         self.setEditText(saved)
 
     def value(self) -> str:
@@ -111,8 +104,9 @@ class ResolutionField(QComboBox):
         self._load()
         super().showPopup()
 
-    def _choose(self) -> None:
-        self._chosen = True
+    def _choose(self, index: int) -> None:
+        if index == 0:
+            self.setEditText("")
 
     def _load(self) -> None:
         if self._closed or self._request.pending or self._result is not None or not self._connection.host:
@@ -134,7 +128,6 @@ class ResolutionField(QComboBox):
         else:  # An empty or error answer lists nothing worth keeping; the next popup asks again.
             self._problem = "Camera lists no resolutions"
         self._rebuild()
-        self._apply_preferred()
 
     def _on_failed(self, error: Exception) -> None:
         logger.debug(f"Could not read resolutions from {self._connection.host}: {error}")
@@ -143,20 +136,11 @@ class ResolutionField(QComboBox):
 
     def _on_camera_head_changed(self) -> None:
         self._rebuild()
-        self._apply_preferred()
 
-    def _apply_preferred(self) -> None:
-        """Start on what the camera offers for the channel, until the user has typed or chosen."""
-        if self._chosen or self._result is None:
-            return
-        preferred = self._channel().preferred(self._configured)
-        if preferred != self.currentText():
-            self.setEditText(preferred)
-
-    def _channel(self) -> ChannelResolutions:
+    def _channel(self) -> tuple[str, ...]:
         text = self._camera_head.text().strip() or "1"
         if self._result is None or not text.isdigit() or int(text) < 1:
-            return ChannelResolutions((), "")
+            return ()
         return self._result.channel(int(text))
 
     def _status(self) -> str:
@@ -169,17 +153,18 @@ class ResolutionField(QComboBox):
         return "Camera lists no resolutions" if self._result is not None else "Resolutions not read yet"
 
     def _rebuild(self) -> None:
-        """List the channel's resolutions, or one disabled row saying why there are none.
+        """Offer camera default, then the channel's sizes or one disabled status row.
 
         The combo is not told, so it leaves the editor alone: its text, caret, selection and undo are the user's.
         """
-        resolutions = self._channel().resolutions
+        resolutions = self._channel()
         self._model.blockSignals(True)
         self._model.removeRows(0, self._model.rowCount())
+        self._model.appendRow(QStandardItem("Camera default"))
         for resolution in resolutions or (self._status(),):
             self._model.appendRow(QStandardItem(resolution))
         if not resolutions:
-            self._model.item(0).setEnabled(False)
+            self._model.item(1).setEnabled(False)
         self._model.blockSignals(False)
         self.view().reset()
         if self.view().isVisible():  # An open popup keeps the height of the rows it opened with.

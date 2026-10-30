@@ -193,7 +193,7 @@ class AddLiveStreamDialog(BaseDialog):
         connection_layout.addRow("Camera Head", self._camera_head_edit)
         connection_layout.addRow("RTSP Port", self._rtsp_port_edit)
 
-        self._resolution = ResolutionField(rtsp_defaults.get("resolution", "1280x720"), self._camera_head_edit, self)
+        self._resolution = ResolutionField(self._camera_head_edit, self)
         connection_layout.addRow("Resolution", self._resolution)
 
         self._stream_url_edit = QLineEdit()
@@ -372,7 +372,7 @@ class AddLiveStreamDialog(BaseDialog):
             username=self._text_or_default(self._username_edit, str(raw_device_defaults.get("username") or "")),
             password=self._text_or_default(self._password_edit, str(raw_device_defaults.get("password") or "")),
             camera_head=int(camera_head),
-            resolution=self._resolution.value() or "1280x720",
+            resolution=self._resolution.value(),
             stream_url=stream_url if stream_url or saved_empty_url else None,
             overlay_mode=mode,
             handler_type=handler_type,

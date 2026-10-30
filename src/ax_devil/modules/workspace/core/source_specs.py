@@ -124,7 +124,7 @@ class LiveRTSPStreamSpec:
     username: str = field(repr=False)
     password: str = field(repr=False)
     camera_head: int = 1
-    resolution: str = "1280x720"
+    resolution: str = ""
     stream_url: str | None = field(default=None, repr=False)
     device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS
     device_port: int = 0

@@ -109,7 +109,7 @@ class WorkspaceIntake:
         username: str,
         password: str,
         camera_head: int = 1,
-        resolution: str = "1280x720",
+        resolution: str = "",
         display_name: str,
         stream_url: str | None = None,
         overlay_mode: LiveOverlayMode = LiveOverlayMode.NONE,
