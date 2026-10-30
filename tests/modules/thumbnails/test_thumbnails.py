@@ -29,6 +29,7 @@ class StubSource:
 
     name: str
     fails: bool = False
+    retry_cancelled: bool = False
     opened: QImage | None = field(default=None, compare=False)
     release: threading.Event = field(default_factory=threading.Event, compare=False)
     reads: list[str] = field(default_factory=list, compare=False)
@@ -99,21 +100,27 @@ def test_a_stream_still_connecting_shows_nothing_and_is_not_read(thumbnails: Thu
     assert source.reads == []
 
 
-def test_a_camera_whose_read_was_cancelled_is_not_asked_again_within_its_cooldown(
-    qtbot: QtBot, thumbnails: Thumbnails
+@pytest.mark.parametrize("retry_cancelled", [False, True], ids=["camera", "file"])
+def test_returning_to_a_cancelled_read_respects_the_source_retry_policy(
+    qtbot: QtBot, thumbnails: Thumbnails, retry_cancelled: bool
 ) -> None:
-    camera, other = StubSource("camera"), StubSource("other")
+    source, other = StubSource("first", retry_cancelled=retry_cancelled), StubSource("other")
     delivered: list[QImage | None] = []
 
-    thumbnails.request(camera, lambda image: None)
-    qtbot.waitUntil(lambda: camera.reads == ["camera"], timeout=5000)
-    camera.release.set()
-    thumbnails.request(other, lambda image: None)  # Cancels the camera's read.
+    thumbnails.request(source, lambda image: None)
+    qtbot.waitUntil(lambda: source.reads == ["first"], timeout=5000)
+    thumbnails.request(other, lambda image: None)
+    source.release.set()
     other.release.set()
     qtbot.waitUntil(lambda: other.reads == ["other"], timeout=5000)
-    thumbnails.request(camera, delivered.append)
+    thumbnails.request(source, delivered.append)
+    qtbot.waitUntil(lambda: bool(delivered), timeout=5000)
 
-    assert camera.reads == ["camera"]
+    if retry_cancelled:
+        assert delivered[0] is not None and not delivered[0].isNull()
+    else:
+        assert delivered == [None]
+        assert source.reads == ["first"]
 
 
 def test_a_snapshot_on_its_way_does_not_replace_a_newer_live_frame(qtbot: QtBot) -> None:

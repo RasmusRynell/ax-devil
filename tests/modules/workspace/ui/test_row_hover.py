@@ -28,6 +28,7 @@ class OpenStream:
     """A source whose picture an open viewer already has, so it is never read."""
 
     fresh_s: ClassVar[float] = 1.0
+    retry_cancelled: ClassVar[bool] = False
 
     def open_frame(self, open_frames: OpenFrames) -> QImage:
         return QImage(64, 48, QImage.Format.Format_RGB32)
