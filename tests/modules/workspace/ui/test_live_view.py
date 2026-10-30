@@ -185,7 +185,11 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: L
     live.qtbot.waitUntil(lambda: live.streams()["Entrance/Video only"] == "")
 
     assert "refused" in live.detail("Entrance/Video only")
-    assert "refused" in live.row("Entrance").toolTip(), "the camera row says why too"
+    assert live.row("Entrance/Video only").row.thumbnail is None, "a refused login is never sent to the camera"
+    assert live.row("Dock/Video only").row.thumbnail is not None
+    refused = [row for section in live.workspace.sections() for row in section.rows if row.thumbnail is None]
+    assert [row.label for row in refused] == ["Entrance"], "and no other view of the workspace sends it either"
+    assert "refused" in live.row("Entrance").row.tooltip, "the camera row says why too"
     assert live.streams()["Dock/Video only"] == "Start stream", "a camera without a login to try is left alone"
     assert live.checker.calls == [(DeviceConnection("192.0.2.10", DeviceProtocol.HTTP, 8080), Login("root", "pw"))]
 
@@ -206,7 +210,7 @@ def test_a_refused_camera_can_be_checked_again_so_a_fixed_login_is_noticed(live:
 
     live.qtbot.waitUntil(lambda: len(live.checker.calls) == 2)
     live.qtbot.waitUntil(lambda: live.streams()["Entrance/Video only"] == "Start stream")
-    assert "refused" not in live.row("Entrance").toolTip()
+    assert "refused" not in live.row("Entrance").row.tooltip
 
 
 def test_a_camera_whose_check_failed_for_another_reason_can_still_start(live: Live) -> None:
@@ -216,7 +220,7 @@ def test_a_camera_whose_check_failed_for_another_reason_can_still_start(live: Li
     live.qtbot.waitUntil(lambda: "AXIS Q1656" in live.detail("Entrance"))
 
     assert live.streams() == {"Entrance/Video only": "Start stream"}
-    assert "refused" not in live.row("Entrance").toolTip()
+    assert "refused" not in live.row("Entrance").row.tooltip
 
 
 def test_a_scan_refusal_does_not_warn_about_a_camera_that_has_its_own_login(live: Live) -> None:
@@ -225,7 +229,7 @@ def test_a_scan_refusal_does_not_warn_about_a_camera_that_has_its_own_login(live
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "", sign_in=SignIn.REFUSED))
 
     assert live.streams() == {"Entrance/Video only": "Start stream"}
-    assert "refused" not in live.row("Entrance").toolTip()
+    assert "refused" not in live.row("Entrance").row.tooltip
 
 
 def test_cameras_are_not_signed_in_to_when_signing_in_is_turned_off(
@@ -263,7 +267,7 @@ def test_a_camera_can_start_before_its_login_is_checked_and_keeps_stop_when_the_
     live.press("Entrance/Video only")
     live.checker.gate.set()
 
-    live.qtbot.waitUntil(lambda: "refused" in live.row("Entrance").toolTip())
+    live.qtbot.waitUntil(lambda: "refused" in live.row("Entrance").row.tooltip)
     assert live.streams() == {"Entrance/Video only": "Stop stream"}
 
 
@@ -283,7 +287,7 @@ def test_what_a_check_found_is_dropped_when_the_camera_was_replaced_meanwhile(li
 
     live.qtbot.waitUntil(lambda: "AXIS P3265-LVE" in live.detail("Entrance"))
     assert live.streams() == {"Entrance/Video only": "Start stream"}
-    assert "refused" not in live.row("Entrance").toolTip()
+    assert "refused" not in live.row("Entrance").row.tooltip
 
 
 def test_a_stream_starts_only_with_its_start_button(live: Live) -> None:
@@ -308,7 +312,7 @@ def test_streams_that_cannot_open_yet_or_at_all_offer_no_action(live: Live) -> N
 
     assert live.streams() == {"Dock/nope": "", "Gate/Video only": ""}
     assert "nope" in live.detail("Dock/nope"), "the reason shows under the stream"
-    assert "nope" in live.row("Dock").toolTip(), "and on its camera"
+    assert "nope" in live.row("Dock").row.tooltip, "and on its camera"
 
     live.resolutions.finish()
     assert live.streams()["Gate/Video only"] == "Stop stream", "an added camera opens once resolved"

@@ -38,6 +38,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Occasional finite work away from the GUI thread, with outcomes delivered on it | `src/ax_devil/modules/background_jobs/` |
 | Noticing that watched files and folders changed on local disk | `src/ax_devil/modules/file_watching/` |
 | Cache services | `src/ax_devil/modules/cache/` |
+| Thumbnails of Video Content for hover cards: a file's first frame cached on disk by fingerprint, an open stream's newest frame or a camera snapshot, remembered in memory | `src/ax_devil/modules/thumbnails/` |
 
 ## Live Sources And Add-Content Placement
 

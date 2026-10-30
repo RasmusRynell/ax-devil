@@ -5,6 +5,7 @@ from __future__ import annotations
 import traceback
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from ax_devil.core.time_units import us_to_datetime
@@ -170,6 +171,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._frame_display: FrameDisplay | None = None
         self._status_panel: LiveStatusPanel | None = None
         self._stream_status: LiveStreamStatus | None = None  # Set up while the base class builds the UI.
+        self._latest_frame: QImage | None = QImage()  # Null until the first frame.
         super().__init__(parent)
 
     def _setup_widget_ui(self) -> None:
@@ -195,7 +197,7 @@ class LiveVideoViewerWidget(ViewerWidget):
                 self._content,
                 render_catalog_selection=self._render_catalog_selection,
                 overlay_persistence=defaults.sticky,
-                frame_displayed=status_panel.display_frame_status,
+                frame_displayed=self._show_frame,
                 connection_changed=self._show_connection_status,
             )
             self._controller = controller
@@ -216,6 +218,16 @@ class LiveVideoViewerWidget(ViewerWidget):
             self._frame_display.viewport.set_background_text(status.placeholder_text)
             self._frame_display.viewport.position_overlays()
         self._publish_stream_status()
+
+    def _show_frame(self, frame: VideoFrameWithOverlays) -> None:
+        """Keep the newest frame for hover cards and update the status panel from it."""
+        self._latest_frame = frame.frame.image
+        if self._status_panel is not None:
+            self._status_panel.display_frame_status(frame)
+
+    def latest_frame(self) -> QImage | None:
+        """Return the newest frame shown, a null image before the first, or None once the viewer is cleaned up."""
+        return self._latest_frame
 
     def stream_status(self) -> LiveStreamStatus:
         """Return how the stream is doing: paused, else the state of the video feed."""
@@ -319,6 +331,7 @@ class LiveVideoViewerWidget(ViewerWidget):
 
     def cleanup(self) -> None:
         """Tear down controller, display, and tools panel."""
+        self._latest_frame = None
         if self._controller:
             try:
                 self._controller.cleanup()

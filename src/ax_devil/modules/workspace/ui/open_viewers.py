@@ -7,7 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPoint
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QImage
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
@@ -62,6 +62,15 @@ class OpenViewers:
             if item is not None and status is not None:
                 statuses[item.content_id] = (*statuses.get(item.content_id, ()), status)
         return statuses
+
+    def latest_frame(self, content_id: str) -> QImage | None:
+        """Return the newest frame of an open viewer streaming the content *content_id* (null before its first), or
+        None when no viewer streams it."""
+        for widget in self._widget_item_ids:
+            item = widget.current_on_screen_item()
+            if item is not None and item.content_id == content_id and (frame := widget.latest_frame()) is not None:
+                return frame
+        return None
 
     def of_item(self, item_id: str) -> tuple[ViewerWidget, ...]:
         """Return the viewers showing Content of the item *item_id*."""

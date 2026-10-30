@@ -129,10 +129,10 @@ def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that
 
     assert live.scanner.logins == (guest, operator)
     assert "Signed in" not in live.detail("192.0.2.12")
-    assert "Credentials refused" in live.row("192.0.2.13").toolTip()
+    assert "Credentials refused" in live.row("192.0.2.13").row.tooltip
     assert live.rows()["192.0.2.13"] == "", "a camera that did not accept a login cannot be added"
-    assert "Not signed in" in live.row("192.0.2.14").toolTip(), "a camera never tried says why"
-    assert "Not signed in" not in live.row("192.0.2.12").toolTip()
+    assert "Not signed in" in live.row("192.0.2.14").row.tooltip, "a camera never tried says why"
+    assert "Not signed in" not in live.row("192.0.2.12").row.tooltip
     live.press("192.0.2.12")
     [signed_in] = live.store.workspace.items
     assert isinstance(signed_in, LiveStreamItem)
@@ -162,7 +162,7 @@ def test_a_found_camera_opens_its_information_and_hides_its_password(live: Live)
     assert live.detail("192.0.2.12") == (
         "AXIS P3265-LVE · 192.0.2.12 · Dome Camera · Firmware 12.6.85 · Serial ACCC8E000002 · Up 1d 2h"
     )
-    hover = live.row("192.0.2.12").toolTip()
+    hover = live.row("192.0.2.12").row.tooltip
     assert "aarch64" in hover and "Ambarella CV25" in hover
     assert "never-display-this" not in hover and "Signed in" not in hover
 

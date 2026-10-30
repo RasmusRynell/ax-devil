@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.theme import KindColor, StatusColor
+from ax_devil.modules.thumbnails import CameraThumbnail, FileThumbnail
 from ax_devil.modules.workspace.core import (
     LiveRTSPStreamSpec,
     LiveStreamItem,
@@ -56,6 +57,8 @@ def test_video_rows_include_overlay_children_targets_refs_and_information() -> N
 
     assert row.label == "test.mp4"
     assert row.icon_kind == "video"
+    assert row.thumbnail == FileThumbnail(Path("/tmp/test.mp4"))
+    assert row.children[0].thumbnail is None, "an overlay lane shows no picture"
     assert row.item == state.workspace.items[0]
     assert row.is_open
     assert row.information_factory is not None
@@ -87,6 +90,7 @@ def test_live_rows_use_live_icon_and_embedded_overlay_child() -> None:
     assert row.children[0].consideration_ref is None
     assert row.activation_target is None
     assert row.children[0].activation_target is None, "a live camera starts only with its Start stream action"
+    assert row.thumbnail == CameraThumbnail(live_video.content_id, live_video.source_spec.connection(3.0), 1)
 
 
 def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads() -> None:
@@ -122,6 +126,8 @@ def test_playlist_rows_include_entries_lanes_open_flags_and_information_payloads
     assert first_entry.information_factory is not None
     assert ("note", "first entry") in first_entry.information_factory().fields
     assert second_entry.is_open
+    assert second_entry.thumbnail == FileThumbnail(Path("/tmp/b.mp4"))
+    assert row.thumbnail is None, "a playlist shows no picture"
 
 
 def test_multi_video_playlist_entry_uses_playlist_icon() -> None:

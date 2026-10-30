@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import PurePath
 from types import MappingProxyType
 
+from ax_devil.modules.thumbnails import SNAPSHOT_TIMEOUT_S, CameraThumbnail, FileThumbnail, ThumbnailSource
 from ax_devil.modules.workspace.core.consideration import ConsiderationItemRef, OnScreenWorkspaceItem
 from ax_devil.modules.workspace.core.content import (
     Content,
@@ -91,6 +92,14 @@ def _with_actions(row: WorkspaceBrowserRow, inline: RowAction | None = None) -> 
     return replace(row, actions=tuple(offered))
 
 
+def _thumbnail(video: SeekableVideoContent | LiveVideoContent) -> ThumbnailSource:
+    """Return what a hover card shows a frame of for *video*: its camera, or its file's first frame."""
+    if isinstance(video, LiveVideoContent):  # is_live does not narrow the type for mypy.
+        spec = video.source_spec
+        return CameraThumbnail(video.content_id, spec.connection(SNAPSHOT_TIMEOUT_S), spec.camera_head)
+    return FileThumbnail(video.source_spec.path, video.source_spec.image_sequence_config)
+
+
 def _counted(count: int, noun: str, plural: str = "") -> str:
     """Return *count* followed by *noun*, or by *plural* (default *noun* plus s) unless the count is one."""
     return f"{count} {noun}" if count == 1 else f"{count} {plural or f'{noun}s'}"
@@ -109,9 +118,11 @@ class _RowProjection:
         self,
         is_considered: Callable[[ConsiderationItemRef], bool],
         stream_statuses: Mapping[str, Sequence[LiveStreamStatus]],
+        refused_streams: Set[str],
     ) -> None:
         self._is_considered = is_considered
         self._stream_statuses = stream_statuses
+        self._refused_streams = refused_streams
         self._file_paths: dict[str, PurePath] = {}  # Only file rows participate in folder disambiguation.
 
     def sections(
@@ -222,6 +233,7 @@ class _RowProjection:
                 facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
                 idle=content.is_live and not is_open,
                 stream=stream,
+                thumbnail=None if item.id in self._refused_streams else _thumbnail(content),
             ),
             inline=(RowAction.STOP_STREAM if is_open else RowAction.START_STREAM) if content.is_live else None,
         )
@@ -259,6 +271,7 @@ class _RowProjection:
                 children=children,
                 location=entry.source_location,
                 facts=(f"Entry {entry_index + 1} of {len(playlist.entries)}",),
+                thumbnail=_thumbnail(entry.lanes[0].video),
             )
         )
 
@@ -347,10 +360,12 @@ def build_browser_sections(
     open_items: Set[OnScreenWorkspaceItem] = frozenset(),
     *,
     stream_statuses: Mapping[str, Sequence[LiveStreamStatus]] = MappingProxyType({}),
+    refused_streams: Set[str] = frozenset(),
 ) -> tuple[WorkspaceBrowserSection, ...]:
     """Return the sidebar sections for the items' *resolutions*; an item that failed to resolve gets one row.
 
     *is_considered* answers whether a consideration item participates in navigation and layout; *open_items* are the
-    items currently shown in a viewer, and *stream_statuses* the state of each viewer's stream by content id.
+    items currently shown in a viewer, *stream_statuses* the state of each viewer's stream by content id, and
+    *refused_streams* the ids of the live streams whose camera refuses their login, which show no thumbnail.
     """
-    return _RowProjection(is_considered, stream_statuses).sections(resolutions, open_items)
+    return _RowProjection(is_considered, stream_statuses, refused_streams).sections(resolutions, open_items)
