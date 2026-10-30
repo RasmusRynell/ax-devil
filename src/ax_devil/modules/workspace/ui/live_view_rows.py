@@ -148,6 +148,12 @@ def _refuses(own: DiscoveredCamera | None) -> bool:
     return own is not None and own.sign_in is SignIn.REFUSED
 
 
+def refused_streams(checked: Mapping[str, DiscoveredCamera]) -> frozenset[str]:
+    """Return the ids of the items whose camera refused the login saved with them, from *checked*, what signing in
+    with each item's own login found."""
+    return frozenset(item_id for item_id, camera in checked.items() if _refuses(camera))
+
+
 def _stream_row(row: WorkspaceBrowserRow, item: LiveStreamItem, own: DiscoveredCamera | None) -> WorkspaceBrowserRow:
     """Return *row*, the row of a stream of *item*, as a stream under its camera: how its overlay arrives, what it
     draws, a problem under it, and a glyph for whether it has an overlay; a stream whose login the camera refuses can
@@ -171,7 +177,6 @@ def _stream_row(row: WorkspaceBrowserRow, item: LiveStreamItem, own: DiscoveredC
         row,
         icon_kind="unavailable",
         stream=None,
-        thumbnail=None,
         idle=False,
         warning=_REFUSED,
         actions=tuple(offered for offered in row.actions if offered.action is not RowAction.START_STREAM),

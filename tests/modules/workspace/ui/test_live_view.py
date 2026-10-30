@@ -187,6 +187,8 @@ def test_a_camera_that_refuses_its_login_warns_and_cannot_start_a_stream(live: L
     assert "refused" in live.detail("Entrance/Video only")
     assert live.row("Entrance/Video only").row.thumbnail is None, "a refused login is never sent to the camera"
     assert live.row("Dock/Video only").row.thumbnail is not None
+    refused = [row for section in live.workspace.sections() for row in section.rows if row.thumbnail is None]
+    assert [row.label for row in refused] == ["Entrance"], "and no other view of the workspace sends it either"
     assert "refused" in live.row("Entrance").row.tooltip, "the camera row says why too"
     assert live.streams()["Dock/Video only"] == "Start stream", "a camera without a login to try is left alone"
     assert live.checker.calls == [(DeviceConnection("192.0.2.10", DeviceProtocol.HTTP, 8080), Login("root", "pw"))]

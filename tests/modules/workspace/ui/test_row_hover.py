@@ -14,7 +14,6 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.modules.chrome.hover_card import HoverCard
-from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.thumbnails import OpenFrames, Thumbnails
 from ax_devil.modules.workspace.ui import row_hover
 from ax_devil.modules.workspace.ui.browser_rows import BrowserSection, WorkspaceBrowserRow, WorkspaceBrowserSection
@@ -47,6 +46,8 @@ def tree(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Iterator[SectionTree]
         WorkspaceBrowserRow(row_id="b", label="Night shift", icon_kind="playlist"),
         WorkspaceBrowserRow(row_id="c", label="garage", icon_kind="video", thumbnail=OpenStream()),
     )
+    tree.activateWindow()
+    qtbot.waitUntil(tree.isActiveWindow)
     hover.watch(tree)
     yield tree
     hover.hide()
@@ -92,13 +93,13 @@ def test_the_card_shows_only_the_picture_stays_where_it_was_placed_and_hides_on_
     entered = _enter(tree, 0)
     card = _visible_card(qtbot, tree)
     assert not card.findChildren(QLabel)
-    assert card.pos() == entered + QPoint(Space.M, Space.M)
+    assert card.pos() == card.placement(entered)
 
     _move_to(tree, row_widget(tree, item_at(tree, 0)).mapToGlobal(QPoint(30, 6)))
-    assert card.pos() == entered + QPoint(Space.M, Space.M)
+    assert card.pos() == card.placement(entered)
 
     entered = _enter(tree, 2, QPoint(20, 5))
-    assert card.pos() == entered + QPoint(Space.M, Space.M)
+    assert card.pos() == card.placement(entered)
 
     _enter(tree, 1)
     assert not card.isVisible()

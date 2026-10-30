@@ -9,6 +9,7 @@ from typing import cast
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, Qt, QTimer
 from PySide6.QtGui import QEnterEvent, QGuiApplication, QImage
 from PySide6.QtWidgets import QApplication, QWidget
+from shiboken6 import isValid
 
 from ax_devil.modules.chrome.hover_card import HoverCard
 from ax_devil.modules.thumbnails import Thumbnails, ThumbnailSource
@@ -83,6 +84,16 @@ class RowHover(QObject):
         tree.destroyed.connect(partial(self._trees.pop, viewport, None))
         if (app := QCoreApplication.instance()) is not None:
             app.installEventFilter(self)  # Installing again is harmless.
+
+    def __del__(self) -> None:
+        """Stop filtering the application's events before the garbage collector clears this object's attributes.
+
+        The collector clears a collected object's attributes before Qt deletes it, and the application filter would
+        keep calling ``eventFilter`` on the cleared object in between. Finalizers run before any clearing.
+        """
+        app = QCoreApplication.instance()
+        if app is not None and isValid(self):
+            app.removeEventFilter(self)
 
     def hide(self) -> None:
         """Hide the card now and stop tracking the row."""

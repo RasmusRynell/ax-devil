@@ -12,8 +12,9 @@ from PySide6.QtGui import QColor, QImage
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.cancellation import CancelToken
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.background_jobs import BackgroundJobs
-from ax_devil.modules.thumbnails import OpenFrames, Thumbnails
+from ax_devil.modules.thumbnails import CameraThumbnail, OpenFrames, Thumbnails, sources
 
 
 def _picture() -> QImage:
@@ -131,3 +132,24 @@ def test_a_snapshot_on_its_way_does_not_replace_a_newer_live_frame(qtbot: QtBot)
         assert len(delivered) == 1
     finally:
         service.cleanup()
+
+
+def test_the_streams_of_one_camera_share_one_snapshot_and_its_cooldown(
+    qtbot: QtBot, thumbnails: Thumbnails, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshots: list[DeviceConnection] = []
+
+    def snapshot(connection: DeviceConnection, camera_head: int, token: CancelToken) -> QImage:
+        snapshots.append(connection)
+        return _picture()
+
+    monkeypatch.setattr(sources, "read_snapshot", snapshot)
+    connection = DeviceConnection("camera", DeviceProtocol.HTTP)
+    delivered: list[QImage | None] = []
+
+    thumbnails.request(CameraThumbnail("stream-1", connection, 1), delivered.append)
+    qtbot.waitUntil(lambda: len(delivered) == 1, timeout=5000)
+    thumbnails.request(CameraThumbnail("stream-2", connection, 1), delivered.append)
+
+    assert len(snapshots) == 1
+    assert len(delivered) == 2

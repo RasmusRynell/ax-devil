@@ -62,6 +62,7 @@ class WorkspaceController(QObject):
         self._starting: set[str] = set()
         """The items to start streaming once they have resolved."""
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
+        self._refused_streams: frozenset[str] = frozenset()
         self._viewers = OpenViewers(
             center_area,
             workspace_store,
@@ -158,6 +159,13 @@ class WorkspaceController(QObject):
         self._workspace_store.item_renamed.connect(self._on_item_renamed)
         self._workspace_store.item_consideration_changed.connect(self._on_item_consideration_changed)
 
+    def set_refused_streams(self, item_ids: frozenset[str]) -> None:
+        """Give the streams of *item_ids*, whose cameras refuse the login saved with them, no thumbnail in any view, so
+        the camera is not asked again with that login."""
+        if item_ids != self._refused_streams:
+            self._refused_streams = item_ids
+            self._publish_sections()
+
     def _publish_sections(self, *_args: object) -> None:
         """Build the rows of the Workspace as it is now and report them."""
         open_items = frozenset(
@@ -168,6 +176,7 @@ class WorkspaceController(QObject):
             self._workspace_store.is_item_considered,
             open_items,
             stream_statuses=self._viewers.stream_statuses(),
+            refused_streams=self._refused_streams,
         )
         self.sections_changed.emit(self._sections)
 

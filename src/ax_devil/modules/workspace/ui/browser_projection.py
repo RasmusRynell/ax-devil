@@ -118,9 +118,11 @@ class _RowProjection:
         self,
         is_considered: Callable[[ConsiderationItemRef], bool],
         stream_statuses: Mapping[str, Sequence[LiveStreamStatus]],
+        refused_streams: Set[str],
     ) -> None:
         self._is_considered = is_considered
         self._stream_statuses = stream_statuses
+        self._refused_streams = refused_streams
         self._file_paths: dict[str, PurePath] = {}  # Only file rows participate in folder disambiguation.
 
     def sections(
@@ -231,7 +233,7 @@ class _RowProjection:
                 facts=(f"{'Live stream' if content.is_live else 'Video'}{overlays}",),
                 idle=content.is_live and not is_open,
                 stream=stream,
-                thumbnail=_thumbnail(content),
+                thumbnail=None if item.id in self._refused_streams else _thumbnail(content),
             ),
             inline=(RowAction.STOP_STREAM if is_open else RowAction.START_STREAM) if content.is_live else None,
         )
@@ -358,10 +360,12 @@ def build_browser_sections(
     open_items: Set[OnScreenWorkspaceItem] = frozenset(),
     *,
     stream_statuses: Mapping[str, Sequence[LiveStreamStatus]] = MappingProxyType({}),
+    refused_streams: Set[str] = frozenset(),
 ) -> tuple[WorkspaceBrowserSection, ...]:
     """Return the sidebar sections for the items' *resolutions*; an item that failed to resolve gets one row.
 
     *is_considered* answers whether a consideration item participates in navigation and layout; *open_items* are the
-    items currently shown in a viewer, and *stream_statuses* the state of each viewer's stream by content id.
+    items currently shown in a viewer, *stream_statuses* the state of each viewer's stream by content id, and
+    *refused_streams* the ids of the live streams whose camera refuses their login, which show no thumbnail.
     """
-    return _RowProjection(is_considered, stream_statuses).sections(resolutions, open_items)
+    return _RowProjection(is_considered, stream_statuses, refused_streams).sections(resolutions, open_items)

@@ -57,9 +57,13 @@ class FileThumbnail:
 
 @dataclass(frozen=True, slots=True)
 class CameraThumbnail:
-    """The picture of a live stream: its open viewer's newest frame, else one snapshot from the camera."""
+    """The picture of a live stream: its open viewer's newest frame, else one snapshot from the camera.
 
-    content_id: str
+    The snapshot is the camera's, whichever of its streams is asked about, so streams of one camera are the same
+    source and share one read and one cooldown. Only the open-viewer lookup tells them apart.
+    """
+
+    content_id: str = field(compare=False)
     connection: DeviceConnection
     camera_head: int
     fresh_s: ClassVar[float] = 10.0

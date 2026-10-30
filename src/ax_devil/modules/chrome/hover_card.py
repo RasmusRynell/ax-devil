@@ -37,8 +37,9 @@ class HoverCard(QWidget):
         self.setFixedSize(size)
         self.update()
 
-    def show_at(self, global_pos: QPoint) -> None:
-        """Show the card down and right of *global_pos*, on the other side of it where it would leave the screen."""
+    def placement(self, global_pos: QPoint) -> QPoint:
+        """Return the top-left corner for the card down and right of *global_pos*, on the other side of it where it
+        would leave the screen, and never above or left of the screen's available area."""
         screen = QGuiApplication.screenAt(global_pos) or QGuiApplication.primaryScreen()
         area = screen.availableGeometry()
         left = global_pos.x() + Space.M
@@ -47,7 +48,11 @@ class HoverCard(QWidget):
             left = global_pos.x() - Space.M - self.width()
         if top + self.height() > area.bottom() + 1:
             top = global_pos.y() - Space.M - self.height()
-        self.move(max(area.left(), left), max(area.top(), top))
+        return QPoint(max(area.left(), left), max(area.top(), top))
+
+    def show_at(self, global_pos: QPoint) -> None:
+        """Show the card at its ``placement`` for *global_pos*."""
+        self.move(self.placement(global_pos))
         self.show()
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
