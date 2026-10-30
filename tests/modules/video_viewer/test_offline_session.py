@@ -15,6 +15,7 @@ from ax_devil.modules.data_sources.timing_reports import FrameTimeline
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
 from ax_devil.modules.video_viewer import offline_entry_media
 from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults
 from ax_devil.modules.workspace.core import (
     FileOverlaySourceSpec,
     LiveMQTTOverlaySourceSpec,
@@ -258,7 +259,7 @@ class _RecordingProvider:
         return 0
 
 
-def test_overlay_source_is_opened_with_the_decoder_options_and_fallback_policy_of_its_spec(
+def test_overlay_source_is_opened_with_the_decoder_options_and_fallback_policy_of_its_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def get_file_decoder_factory(handler_type: str) -> type[_RecordingProvider]:
@@ -272,13 +273,14 @@ def test_overlay_source_is_opened_with_the_decoder_options_and_fallback_policy_o
         source_spec=FileOverlaySourceSpec(
             path=Path("/tmp/overlay.txt"),
             handler_type="MOT_FILE",
-            timestamp_fallback_policy=policy,
             decoder_kwargs={"width": 1920, "height": 1080},
         ),
     )
 
     opened = offline_entry_media.create_overlay_source(
-        overlay, frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple)
+        overlay,
+        frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple),
+        defaults=ViewDefaults(overlay_sync=policy),
     )
 
     provider = opened.source.data_provider
@@ -298,7 +300,9 @@ def test_entry_media_rejects_non_file_overlay_source_spec() -> None:
 
     with pytest.raises(RuntimeError, match="requires a file overlay source spec"):
         offline_entry_media.create_overlay_source(
-            overlay, frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple)
+            overlay,
+            frame_timeline=FrameTimeline.lazy(count=0, timestamp_loader=tuple),
+            defaults=ViewDefaults(),
         )
 
 

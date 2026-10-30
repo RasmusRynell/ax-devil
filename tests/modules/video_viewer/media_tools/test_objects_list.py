@@ -10,6 +10,7 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.data_sources.scene_history import SceneHistory
+from ax_devil.modules.filtering.filter_choice import FilterChoice
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.session_filter import SessionFilter
 from ax_devil.modules.object_inspection.pinned_fields import PinnedFields
@@ -116,18 +117,25 @@ def test_the_filter_drawer_hides_objects_as_the_overlay_does_and_clear_restores_
     assert drawer.isVisible()
     chip = drawer.findChild(QPushButton, "filterOption_show_cars")
     clear = drawer.findChild(QPushButton, "filterClear")
-    assert chip is not None and clear is not None and not clear.isEnabled()
+    scope = drawer.findChild(QWidget, "object_filterScope")
+    assert chip is not None and clear is not None and scope is not None
+    assert not clear.isEnabled() and not scope.isVisible()  # Nothing to save or apply takes no room
     chip.click()
 
     assert listed_ids(panel) == ["a"]
     assert list(filters.process_scene(full).entities) == ["a"]  # The overlay and hover hide it too.
-    assert button.text() == "Filter 1" and clear.isEnabled()
+    assert button.text() == "Filter 1" and clear.isEnabled() and scope.isVisible()
     summary = [label.text() for label in drawer.findChildren(QLabel) if label.text().startswith("Showing")]
     assert summary == ["Showing 1 of 2 in this frame"]
 
     clear.click()
     assert sorted(listed_ids(panel)) == ["a", "b"]
-    assert button.text() == "Filter" and chip.isChecked() and not clear.isEnabled()
+    assert button.text() == "Filter" and chip.isChecked() and not clear.isEnabled() and not scope.isVisible()
+
+    filters.apply_choice(FilterChoice(classes=frozenset({("not_in_this_decoder", False)})))  # Carried, not visible
+    assert button.text() == "Filter" and clear.isEnabled()
+    clear.click()
+    assert not clear.isEnabled()
 
 
 def test_file_scope_lists_the_whole_file(qtbot: QtBot, render_catalog_selection: SceneRenderCatalogSelection) -> None:

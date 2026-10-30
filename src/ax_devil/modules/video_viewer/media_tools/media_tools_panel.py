@@ -34,6 +34,7 @@ from .objects_page import ObjectsPage
 from .overlay_persistence_controls import OverlayPersistenceControls
 from .page_stack import EventPageKey, ObjectPageKey, PageKey, PageStack
 from .panel_tab_row import PanelTabRow
+from .scope_row import ScopeRow
 
 _INSPECTION_INTERVAL_S = 0.1
 
@@ -171,6 +172,8 @@ class MediaToolsPanel(QWidget):
         """Disconnect persistent selection observers when the owning view closes."""
         self._idle_refresh.stop()
         self._appearance.cleanup()
+        for row in self.findChildren(ScopeRow):  # In the overlay menus and the Objects filter drawer
+            row.cleanup()
 
     @property
     def overlay_controls(self) -> OverlayPersistenceControls:
