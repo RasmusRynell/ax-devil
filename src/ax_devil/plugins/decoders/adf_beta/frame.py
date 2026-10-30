@@ -217,6 +217,7 @@ class ADFBetaFrameJSONLDataProvider(SceneDecoderFileProvider):
             artifact_version=1,
             filter_config_factory=build_adf_beta_filter_config,
             storage_mode=StorageMode.SOURCE_INDEX,
+            independent_records=True,
         )
 
 

@@ -16,6 +16,11 @@ from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameIdentifier
 from ax_devil.modules.scene.model import Event, Scene
 
+SampleRow = tuple[tuple[tuple[str, str, tuple[str, ...]], ...], tuple[tuple[str, tuple[str, ...]], ...]]
+"""One sample's history contribution: its events as (kind, label, entity ids) and its entities as (id, types)."""
+
+_SHARED_TYPES: dict[tuple[str, ...], tuple[str, ...]] = {}  # Equal type tuples become one object, and one pickle entry.
+
 FramePosition = Callable[[int], int]
 """Map a sample timestamp to the video frame index that first shows it: below 0 before the video, at or past the
 frame count after it."""
@@ -90,17 +95,30 @@ class SceneHistoryCollector:
         self._entities: dict[int, tuple[tuple[str, tuple[str, ...]], ...]] = {}  # (entity id, types) per sample.
         self._types: dict[tuple[str, ...], tuple[str, ...]] = {}  # Shares equal type tuples across samples.
 
-    def add(self, timestamp_key: int, scene: Scene) -> None:
-        """Record the events and entities of one sample."""
-        self._events[timestamp_key] = tuple(
-            SampleEvent(timestamp_key, event.kind, event.label, _involved_ids(event)) for event in scene.events
-        )
+    @staticmethod
+    def sample_row(scene: Scene) -> SampleRow:
+        """Return what one sample contributes to the history, as plain data that can be persisted and replayed."""
+        events = tuple((event.kind, event.label, _involved_ids(event)) for event in scene.events)
         entities: list[tuple[str, tuple[str, ...]]] = []
         for entity_id, entity in scene.entities.items():
             observation = entity.latest_observation
             types = tuple(c.type for c in observation.classification) if observation is not None else ()
-            entities.append((sys.intern(str(entity_id)), self._types.setdefault(types, types)))
-        self._entities[timestamp_key] = tuple(entities)
+            entities.append((sys.intern(str(entity_id)), _SHARED_TYPES.setdefault(types, types)))
+        return events, tuple(entities)
+
+    def add(self, timestamp_key: int, scene: Scene) -> None:
+        """Record the events and entities of one sample."""
+        self.add_row(timestamp_key, self.sample_row(scene))
+
+    def add_row(self, timestamp_key: int, row: SampleRow) -> None:
+        """Record one sample from its `sample_row`."""
+        events, entities = row
+        self._events[timestamp_key] = tuple(
+            SampleEvent(timestamp_key, kind, label, entity_ids) for kind, label, entity_ids in events
+        )
+        self._entities[timestamp_key] = tuple(
+            (sys.intern(entity_id), self._types.setdefault(types, types)) for entity_id, types in entities
+        )
 
     def records(self) -> SceneHistoryRecords:
         """Return events in sample order and each entity's runs of consecutive samples."""

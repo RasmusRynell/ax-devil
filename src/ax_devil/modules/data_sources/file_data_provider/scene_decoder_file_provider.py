@@ -91,6 +91,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         cache_namespace: str | None = None,
         storage_mode: StorageMode = StorageMode.SOURCE_INDEX,
         timestamp_fallback_policy: TimestampFallbackPolicy | None = None,
+        independent_records: bool = False,
     ) -> None:
         """Initialize a decoder-backed file provider.
 
@@ -112,6 +113,10 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                 providers that require whole-file parsing or aggregation.
             timestamp_fallback_policy: Timestamp fallback policy used after
                 exact timestamp lookup and provider-owned sequence lookup fail.
+            independent_records: SOURCE_INDEX only. True when each record decodes to the same Scene, timestamp and
+                sequence key on its own, whatever else the file holds, and
+                ``_collect_additional_cache_metadata`` does not depend on decoded records. An edited file then
+                decodes only its changed records.
         """
         self.file_path = Path(file_path)
         self.decoder_name = str(decoder_name)
@@ -125,6 +130,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         self._decoder_factory = decoder_factory
         self._sequence_lookup_enabled = supports_sequence_lookup
         self._storage_mode = storage_mode
+        self._independent_records = independent_records
         self._runtime_cache = RuntimeSceneCache()
         self._metadata: SceneDecoderFileMetadata | None = None
         self._available_frame_ids: set[int] = set()
@@ -168,6 +174,7 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
             file_path=self.file_path,
             cache_namespace=self._cache_namespace,
             context=context,
+            reuse_records=self._independent_records,
         )
 
     def _apply_catalog(self, catalog: SceneCatalog) -> None:
@@ -266,7 +273,8 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
                 logger.warning(f"Scene at line {line_num} has no timestamp, skipping")
                 continue
 
-            sequence_key = self._extract_sequence_key(scene, fallback_sequence=line_num)
+            extracted_sequence_key = self._extract_sequence_key(scene)
+            sequence_key = extracted_sequence_key if extracted_sequence_key is not None else line_num
             scene_map[timestamp_key] = scene
             timestamp_to_sequence[timestamp_key] = sequence_key
 
@@ -383,12 +391,10 @@ class SceneDecoderFileProvider(FrameIdentifierDataProvider):
         start = scene.time_slice.start
         return start if isinstance(start, int) else None
 
-    def _extract_sequence_key(self, scene: Scene, fallback_sequence: int) -> int:
-        """Determine the sequence identifier for a scene."""
+    def _extract_sequence_key(self, scene: Scene) -> int | None:
+        """Determine the sequence identifier for a scene; None uses the record's position."""
         start = scene.time_slice.start
-        if isinstance(start, int):
-            return int(start)
-        return fallback_sequence
+        return int(start) if isinstance(start, int) else None
 
     def get_filter_config(self) -> FilterConfig:
         """Get a default filter configuration."""

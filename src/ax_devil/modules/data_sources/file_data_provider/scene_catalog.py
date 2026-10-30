@@ -133,7 +133,7 @@ class SceneStoreContext:
     collect_additional_cache_metadata: Callable[[], dict[str, Any]]
     restore_additional_state_from_cache: Callable[[dict[str, Any]], None]
     extract_timestamp_key: Callable[[Scene], int | None]
-    extract_sequence_key: Callable[[Scene, int], int]
+    extract_sequence_key: Callable[[Scene], int | None]  # None: the record's position among payload lines.
 
 
 class SceneStore(Protocol):
