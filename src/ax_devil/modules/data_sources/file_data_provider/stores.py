@@ -26,7 +26,7 @@ from ax_devil.modules.data_sources.file_data_provider.scene_catalog import (
     persisted_metadata,
     stat_key,
 )
-from ax_devil.modules.data_sources.scene_history import SampleRow, SceneHistoryCollector
+from ax_devil.modules.data_sources.scene_history import SampleRow, SampleRows, SceneHistoryCollector
 from ax_devil.modules.scene.model import Scene
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -167,6 +167,25 @@ class _Row(NamedTuple):
     sequence_key: int | None  # None: the line's position among payload lines.
     sample: SampleRow | None
 
+    @classmethod
+    def checked(cls, raw: Any, sample_rows: SampleRows) -> _Row:
+        """Return the row persisted as *raw*, or raise ValueError when any field has the wrong shape."""
+        try:
+            is_payload, skip_reason, timestamp_key, sequence_key, sample = raw
+        except (TypeError, ValueError) as exc:
+            raise ValueError("malformed row") from exc
+        valid = (
+            type(is_payload) is bool
+            and (skip_reason is None or type(skip_reason) is str)
+            and (timestamp_key is None or type(timestamp_key) is int)
+            and (sequence_key is None or type(sequence_key) is int)
+        )
+        if not valid:
+            raise ValueError("malformed row")
+        if sample is not None:
+            sample = sample_rows.checked(sample)
+        return cls(is_payload, skip_reason, timestamp_key, sequence_key, sample)
+
 
 _BLANK_ROW = _Row(False, None, None, None, None)
 
@@ -183,14 +202,14 @@ def _line_key(raw_line: bytes) -> bytes:
     return hashlib.sha256(raw_line.removesuffix(b"\n")).digest()[:16]
 
 
-def _load_rows(path: Path, decode_metadata: dict[str, Any]) -> dict[bytes, _Row]:
+def _load_rows(path: Path, decode_metadata: dict[str, Any], sample_rows: SampleRows) -> dict[bytes, _Row]:
     """Return the rows saved for lines decoded under *decode_metadata*, or none when the file cannot vouch for them."""
     try:
         with path.open("rb") as file_obj:
             payload = _PlainDataUnpickler(file_obj).load()
         if payload["decode"] != decode_metadata:
             return {}
-        return {key: _Row(*row) for key, row in payload["rows"].items()}
+        return {key: _Row.checked(row, sample_rows) for key, row in payload["rows"].items()}
     except Exception as exc:  # A damaged or foreign file only costs a full decode.
         logger.debug(f"Ignoring line cache {path.name}: {exc}")
         return {}
@@ -338,9 +357,10 @@ class SourceIndexedSceneStore:
             context=self._context, source_stat=source_stat, content_digest=""
         )
         decode_metadata = pending_identity.decode_metadata()
-        known = _load_rows(self._rows_path, decode_metadata) if self._reuse_records else {}
-        rows: dict[bytes, _Row] = {}  # The row of every distinct line of this file.
         build = _IndexBuild()
+        sample_rows = build.collector.rows
+        known = _load_rows(self._rows_path, decode_metadata, sample_rows) if self._reuse_records else {}
+        rows: dict[bytes, _Row] = {}  # The row of every distinct line of this file.
         digest = hashlib.sha256()
         decoded_lines = 0
 
@@ -358,11 +378,11 @@ class SourceIndexedSceneStore:
                 key = _line_key(raw_line)
                 row = rows.get(key) or known.get(key)
                 if row is None:
-                    row = self._decode_line(raw_line, line_number)
+                    row = self._decode_line(raw_line, line_number, sample_rows)
                     decoded_lines += 1
                 rows[key] = row
             else:
-                row = self._decode_line(raw_line, line_number)
+                row = self._decode_line(raw_line, line_number, sample_rows)
                 decoded_lines += 1
             build.apply(row, line_number, offset, len(raw_line))
 
@@ -400,7 +420,7 @@ class SourceIndexedSceneStore:
                 _save_rows(self._rows_path, decode_metadata, rows)
         return catalog
 
-    def _decode_line(self, raw_line: bytes, line_number: int) -> _Row:
+    def _decode_line(self, raw_line: bytes, line_number: int, sample_rows: SampleRows) -> _Row:
         """Decode one source line into its row."""
         where = f"{self._file_path.name} [{self._context.decoder_name}] line {line_number}"
         try:
@@ -431,7 +451,7 @@ class SourceIndexedSceneStore:
             None,
             timestamp_key,
             self._context.extract_sequence_key(scene),
-            SceneHistoryCollector.sample_row(scene),
+            sample_rows.from_scene(scene),
         )
 
     def _write_index(self, catalog: SceneCatalog, line_locations: dict[int, tuple[int, int]]) -> None:

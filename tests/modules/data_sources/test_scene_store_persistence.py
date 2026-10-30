@@ -2,6 +2,7 @@
 
 import json
 import os
+import pickle
 import shutil
 import sys
 from collections.abc import Callable, Iterable
@@ -221,11 +222,17 @@ def _decoder_inputs(lines: Iterable[bytes]) -> set[str]:
     return texts - {""}
 
 
-@pytest.mark.parametrize("edit", _EDITS.values(), ids=list(_EDITS))
+@pytest.mark.parametrize(
+    ("edit", "damaged_line_cache"),
+    [*((edit, False) for edit in _EDITS.values()), (_EDITS["append a duplicate timestamp"], True)],
+    ids=[*_EDITS, "append after a line cache with a malformed sample"],
+)
 def test_edited_source_decodes_only_changed_records_and_matches_a_cold_open(
     tmp_path: Path,
+    isolated_cache: Path,
     monkeypatch: pytest.MonkeyPatch,
     edit: Callable[[list[bytes]], list[bytes]],
+    damaged_line_cache: bool,
 ) -> None:
     """Records can be reused after an edit, but never at the price of a different index than a cold open builds."""
     path = tmp_path / "scenes.jsonl"
@@ -233,11 +240,17 @@ def test_edited_source_decodes_only_changed_records_and_matches_a_cold_open(
     path.write_bytes(b"\n".join(_ORIGINAL_LINES))
     options: dict[str, Any] = {"supports_sequence_lookup": True, "independent_records": True}
     _build_provider(path, **options).close()
+    if damaged_line_cache:  # A line cache that cannot vouch for every row is not trusted for any.
+        (line_cache,) = isolated_cache.glob("*.scene-lines.pickle")
+        payload = pickle.loads(line_cache.read_bytes())
+        key = next(key for key, row in payload["rows"].items() if row[4] is not None)
+        payload["rows"][key] = (*payload["rows"][key][:4], ((("kind", "label", None),), ()))
+        line_cache.write_bytes(pickle.dumps(payload))
 
     path.write_bytes(b"\n".join(edited_lines))
     decoded: list[str] = []
     reopened = _build_provider(path, decoded=decoded, **options)
-    new_inputs = _decoder_inputs(set(edited_lines) - set(_ORIGINAL_LINES))
+    new_inputs = _decoder_inputs(edited_lines if damaged_line_cache else set(edited_lines) - set(_ORIGINAL_LINES))
     assert sorted(decoded) == sorted(new_inputs)
 
     other_version: list[str] = []
