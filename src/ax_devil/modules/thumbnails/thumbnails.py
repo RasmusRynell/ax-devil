@@ -43,8 +43,8 @@ class Thumbnails(QObject):
     """Pictures for hover cards: an open stream's newest frame, else a read remembered in memory for a while.
 
     Reads run one at a time in the background; asking for another source cancels the one in progress. A source is
-    not read again within its ``fresh_s`` of the last read being started, even when that read was cancelled. Everything
-    here is used from the GUI thread only.
+    not read again within its ``fresh_s`` of the last read being started, unless it allows retrying cancelled reads.
+    Everything here is used from the GUI thread only.
     """
 
     def __init__(
@@ -85,6 +85,10 @@ class Thumbnails(QObject):
             on_image(image)
         if fresh:
             return
+        if self._reading is not None and self._reading.retry_cancelled:
+            previous = self._memory.get(self._reading)
+            if previous is not None:
+                previous.attempted_at = float("-inf")
         self._remember(source).attempted_at = time.monotonic()
         self._reading = source
         self._on_image = on_image

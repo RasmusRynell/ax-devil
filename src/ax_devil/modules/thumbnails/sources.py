@@ -29,6 +29,11 @@ class ThumbnailSource(Protocol):
     fresh_s: ClassVar[float]
     """How long a read picture, or failure, is reused before it is read again."""
 
+    @property
+    def retry_cancelled(self) -> bool:
+        """Whether a superseded read can be retried without waiting for the cooldown."""
+        ...
+
     def open_frame(self, open_frames: OpenFrames) -> QImage | None:
         """Return the picture an open viewer already has (null while it has none), or None when nothing is open."""
         ...
@@ -45,6 +50,7 @@ class FileThumbnail:
     path: Path
     image_sequence: ImageSequenceConfig | None = field(default=None, compare=False)
     fresh_s: ClassVar[float] = 10.0
+    retry_cancelled: ClassVar[bool] = True
 
     def open_frame(self, open_frames: OpenFrames) -> None:
         """Return None: a file's first frame never depends on an open viewer."""
@@ -67,6 +73,7 @@ class CameraThumbnail:
     connection: DeviceConnection
     camera_head: int
     fresh_s: ClassVar[float] = 10.0
+    retry_cancelled: ClassVar[bool] = False
 
     def open_frame(self, open_frames: OpenFrames) -> QImage | None:
         """Return the open viewer's newest frame, so no second connection is made."""
