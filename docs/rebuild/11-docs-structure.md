@@ -38,8 +38,9 @@ decisions with lasting rules go to the doc that owns the rule.
 
 ## Day-one scaffold
 
-Starts only after the owner signs D0 ([14](14-build-order.md#d0-stack-choice)). The rebuild PR then creates these
-before feature code, in this order:
+Done by the foundation PR on the prototype's stack, pending the owner's D0 signature
+([14](14-build-order.md#d0-stack-choice)); step 6 covers the main window only until M0 adds text sizes and the fit
+test. The scaffold, in this order:
 
 1. Delete the old tree (list below); keep `LICENSE` and `docs/rebuild/`.
 2. `AGENTS.md` for the new stack; `.agents/skills/` with `review`, `write-tests`, `write-ui` (kit table may start

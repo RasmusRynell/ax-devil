@@ -17,8 +17,8 @@ Sources: `Makefile`, `pyproject.toml`, `.pre-commit-config.yaml`, `scripts/`, `.
 | Dependencies | Bounded ranges; lowest-direct CI job | Same, plus license check ([13](13-security-packaging-ops.md#licensing)) |
 | Fast mode | `make check-fast` | Changed-file mode for agents (SHOULD) |
 
-Keep the command verbs so agents transfer: `sync`, `check`, `check-fast`, `format`, `test`, `test-failed`,
-`test-integration`, `run`, `run-dev`.
+Agents need stable command verbs. The new tree keeps the prototype's Make verbs plus `check-fast` and `format`
+([14](14-build-order.md#decisions-taken-for-the-foundation)); `AGENTS.md` lists them.
 
 ## Definition of done
 

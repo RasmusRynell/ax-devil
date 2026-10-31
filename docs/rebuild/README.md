@@ -5,9 +5,9 @@ rules to keep.
 
 ## Delivery
 
-The rebuild is one PR in this repository. After the owner signs the stack choice (D0), it deletes all existing code
-and everything tied to it (source, tests, tooling config, skills, docs describing the old implementation) and starts
-from scratch with this playbook. The new app reads no data written by the old one: no importers, upgrade paths or
+The rebuild is one branch in this repository. Its foundation PR took the stack choice (D0) and deleted all existing
+code and everything tied to it (source, tests, tooling config, skills, docs describing the old implementation); the
+rewrite builds from there with this playbook, milestone by milestone ([14](14-build-order.md#milestones)). The new app reads no data written by the old one: no importers, upgrade paths or
 compatibility code; artifacts are carried over by hand ([migration.md](migration.md)).
 
 Reading order: this README → [14](14-build-order.md) (stack criteria, D0) → [11](11-docs-structure.md) (docs and
