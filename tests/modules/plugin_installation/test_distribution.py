@@ -168,7 +168,7 @@ def test_distribution_lifecycle(plugin: Path, tmp_path: Path, installer: str) ->
     assert current.resolve() == original
     # Exercise actual validation rejection, not just a resolver conflict.
     plugin_code = plugin / "example_plugin.py"
-    plugin_code.write_text(plugin_code.read_text().replace("return 3\n", "return 999\n"))
+    plugin_code.write_text(plugin_code.read_text().replace("api=3,", "api=999,"))
     run(command, "plugins", "install", str(plugin), success=False)
     assert current.resolve() == original
     assert snapshot() == before
@@ -189,7 +189,7 @@ def test_distribution_lifecycle(plugin: Path, tmp_path: Path, installer: str) ->
     assert current.resolve() == original
     run(interpreter, "-I", str(probe), "9999.0.2", "none")
     # Publish a compatible fixture after verifying that an app upgrade can block refresh.
-    plugin_code.write_text(plugin_code.read_text().replace("return 999\n", "return 3\n"))
+    plugin_code.write_text(plugin_code.read_text().replace("api=999,", "api=3,"))
     (plugin / "pyproject.toml").write_text(
         plugin_metadata.replace('version = "0.1.0"', 'version = "0.3.0"').replace("ax-devil<9999.0.2", "ax-devil")
     )

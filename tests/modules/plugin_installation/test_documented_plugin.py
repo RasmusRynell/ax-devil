@@ -19,7 +19,7 @@ def _decode_documented_plugin(interpreter: str) -> subprocess.CompletedProcess[s
         "from ax_devil.modules.plugin_installation.validate import validate_plugins; "
         "from ax_devil.modules.plugin_system import get_payload_decoder; "
         "validate_plugins(['example-plugin']); "
-        "assert get_payload_decoder('EXAMPLE_FRAME').decode({'frame': 42}).time_slice.start == 42"
+        "assert get_payload_decoder('EXAMPLE_FRAME').decode('42').time_slice.start == 42"
     )
     return subprocess.run([interpreter, "-c", probe], text=True, capture_output=True, timeout=30)
 
@@ -62,7 +62,7 @@ def test_documented_plugin_missing_dependency(discoverable_plugin: Path) -> None
 def test_documented_plugin_incompatible_api(discoverable_plugin: Path) -> None:
     """Reject an installed entry point requiring an incompatible host API."""
     source = discoverable_plugin / "example_plugin.py"
-    source.write_text(source.read_text().replace("return 3\n", "return 999\n"))
+    source.write_text(source.read_text().replace("api=3,", "api=999,"))
     result = _decode_documented_plugin(sys.executable)
     assert result.returncode == 1, result.stderr
     assert "requires plugin API 999" in result.stderr
@@ -89,7 +89,7 @@ def test_real_documented_plugin_installation(plugin: Path) -> None:
     result = _decode_documented_plugin(str(interpreter))
     assert result.returncode == 0, result.stderr
     source = plugin / "example_plugin.py"
-    source.write_text(source.read_text().replace('frame = int(payload["frame"])', 'frame = int(payload["frame"]) + 1'))
+    source.write_text(source.read_text().replace("frame = int(payload)", "frame = int(payload) + 1"))
     changed = subprocess.run(
         [
             str(interpreter),
@@ -98,7 +98,7 @@ def test_real_documented_plugin_installation(plugin: Path) -> None:
             "from ax_devil.modules.plugin_installation.validate import validate_plugins; "
             "from ax_devil.modules.plugin_system import get_payload_decoder; "
             "validate_plugins(['example-plugin']); "
-            "assert get_payload_decoder('EXAMPLE_FRAME').decode({'frame': 42}).time_slice.start == 43",
+            "assert get_payload_decoder('EXAMPLE_FRAME').decode('42').time_slice.start == 43",
         ],
         text=True,
         capture_output=True,
