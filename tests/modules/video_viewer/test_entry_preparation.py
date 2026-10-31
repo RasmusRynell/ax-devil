@@ -21,7 +21,6 @@ from ax_devil.modules.video_viewer import entry_preparation as preparation_modul
 from ax_devil.modules.video_viewer.entry_preparation import (
     EntryPreparation,
     entry_preparation,
-    overlay_specs,
     prepare_entry,
 )
 from ax_devil.modules.video_viewer.offline_entry_media import open_entry_media
@@ -56,7 +55,7 @@ def test_entry_opens_from_caches_prepared_by_the_child_process(
         default_considered=True,
     )
 
-    request = entry_preparation(entry, (0,), ())
+    request = entry_preparation(entry, (0,))
     assert request is not None
     started: list[subprocess.Popen[bytes]] = []
     start = subprocess.Popen
@@ -85,28 +84,6 @@ def test_entry_opens_from_caches_prepared_by_the_child_process(
     finally:
         media.close()
         media.delete_later()
-
-
-def _entry_with_overlay(video_path: Path, overlay_path: Path, width: int) -> PlaylistEntry:
-    video = SeekableVideoContent(display_name="video", source_spec=FileVideoSourceSpec(path=video_path))
-    overlay = OverlayContent(
-        display_name="mot",
-        source_spec=FileOverlaySourceSpec(path=overlay_path, handler_type=MOT_FILE, decoder_kwargs={"width": width}),
-    )
-    lane = EntryLane(display_name="video", video=video, default_considered=True, overlay=overlay)
-    return PlaylistEntry(lanes=(lane,), default_considered=True)
-
-
-def test_preparation_leaves_out_an_overlay_the_playing_entry_reads_with_other_decoder_options(tmp_path: Path) -> None:
-    """An overlay cache is named after its file, so rebuilding it for other options would change the playing boxes."""
-    annotations = tmp_path / "shared.csv"
-    playing = overlay_specs(_entry_with_overlay(tmp_path / "a.mp4", annotations, 64), (0,))
-
-    other_options = entry_preparation(_entry_with_overlay(tmp_path / "b.mp4", annotations, 128), (0,), playing)
-    same_options = entry_preparation(_entry_with_overlay(tmp_path / "b.mp4", annotations, 64), (0,), playing)
-
-    assert other_options is not None and other_options.overlays == ()
-    assert same_options is not None and len(same_options.overlays) == 1
 
 
 _HEARTBEAT = """

@@ -29,9 +29,9 @@ pytestmark = pytest.mark.usefixtures("isolated_cache")
 
 @pytest.mark.parametrize("storage_mode", list(StorageMode))
 def test_persisted_scenes_are_reused_only_for_an_unchanged_source_and_identity(
-    tmp_path: Path, storage_mode: StorageMode
+    tmp_path: Path, isolated_cache: Path, storage_mode: StorageMode
 ) -> None:
-    """Reopening reuses the persisted artifact; changed options, version, or source contents rebuild it."""
+    """Decode variants coexist and are reused until their source changes, which rewrites only that variant."""
     path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
     options = {"profile": "initial"}
 
@@ -57,16 +57,23 @@ def test_persisted_scenes_are_reused_only_for_an_unchanged_source_and_identity(
     open_provider(changed_options, decode_options={"profile": "changed"})
     assert len(changed_options) == 2
 
+    revisited: list[str] = []
+    open_provider(revisited, decode_options=options)
+    assert revisited == []
+
     new_version: list[str] = []
     open_provider(new_version, decode_options={"profile": "changed"}, artifact_version=2)
     assert len(new_version) == 2
 
+    artifacts = {artifact: artifact.read_bytes() for artifact in isolated_cache.iterdir()}
     with path.open("a", encoding="utf-8") as file_obj:
         file_obj.write(f"{json.dumps(_record(2))}\n")
     changed_source: list[str] = []
     rebuilt = open_provider(changed_source, decode_options={"profile": "changed"}, artifact_version=2)
     assert len(changed_source) == 3
     assert rebuilt.get_total_frames() == 3
+    assert set(isolated_cache.iterdir()) == set(artifacts)
+    assert sum(artifact.read_bytes() != content for artifact, content in artifacts.items()) == 1
 
     # A same-size, same-mtime replacement with other contents (cp -p, rsync) is a different file.
     replacement = tmp_path / "replacement.jsonl"

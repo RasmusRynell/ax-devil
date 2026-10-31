@@ -33,6 +33,17 @@ from ax_devil.modules.settings.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _variant_digest(context: SceneStoreContext) -> str:
+    """Identify decode variants without source freshness, so revisions replace the same artifact."""
+    identity = {
+        "decoder_name": context.decoder_name,
+        "artifact_version": context.artifact_version,
+        "decode_options": context.decode_options,
+    }
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
 class RuntimeSceneCache:
     """Retain two decoded scenes for consecutive playback and immediate revisits.
 
@@ -80,7 +91,9 @@ class IndexedFrameSceneStore:
     ) -> None:
         self._file_path = Path(file_path)
         self._context = context
-        self._cache = IndexedFrameCache(self._file_path, cache_type=cache_namespace)
+        self._cache = IndexedFrameCache(
+            self._file_path, cache_type=cache_namespace, cache_suffix=f"-{_variant_digest(context)}.frames"
+        )
         self._catalog = self._load_or_build()
 
     @property
@@ -288,7 +301,7 @@ class SourceIndexedSceneStore:
         self._index_path = cache_manager.get_cache_path(
             cache_type=cache_namespace,
             source_path=self._file_path,
-            suffix=".scene-index.json",
+            suffix=f"-{_variant_digest(context)}.scene-index.json",
         )
         self._rows_path = cache_manager.get_cache_path(
             cache_type=cache_namespace,
