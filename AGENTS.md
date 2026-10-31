@@ -51,9 +51,11 @@ that task. `.claude/skills` links to the same folder for Claude Code.
 
 ```bash
 uv sync       # Create/update .venv with runtime + dev deps
-make check    # ruff format --check + ruff check + scripts/check_logging.py + mypy
+make check    # Full formatting, lint, logging, architecture and type checks
+make check-fast  # Changed-file formatting, lint and logging; full architecture and incremental types
 make format   # ruff check --fix + ruff format
 make test     # Regular offline pytest suite, on a private Xvfb display (docs/runbooks/testing.md)
+make test-failed  # Stop at the first cached failure; same private display, no tests if none failed
 make test-integration  # Run the real installation smoke test (may download packages)
 ```
 
