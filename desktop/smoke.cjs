@@ -31,6 +31,51 @@ module.exports = async (window) => {
     await fs.writeFile(path.join(SCREENSHOTS, `main-${theme}.png`), image.toPNG());
   }
   assert.notEqual(backgrounds.light, backgrounds.dark, "The window must follow the theme");
+
+  // The title bar has the window controls, and Ctrl+= and Ctrl+0 zoom the page.
+  for (const name of ["Minimize", "Maximize", "Close"])
+    assert.notEqual(await js(`document.querySelector('[aria-label=${name}]')`), null, name);
+  const press = (keyCode) =>
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers: ["control"] });
+  press("=");
+  await wait("window.devicePixelRatio > 1");
+  press("0");
+  await wait("window.devicePixelRatio === 1");
+
+  // The smallest window, at normal zoom and at 200%: the View menu, then the Settings dialog, in both themes.
+  window.setSize(640, 480);
+  const frame = () =>
+    js("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
+  const shoot = async (name) => {
+    await frame();
+    await fs.writeFile(
+      path.join(SCREENSHOTS, name),
+      (await window.webContents.capturePage()).toPNG(),
+    );
+  };
+  for (const [theme, zoom] of [
+    ["light", 1],
+    ["dark", 1],
+    ["light", 2],
+    ["dark", 2],
+  ]) {
+    window.webContents.setZoomFactor(zoom);
+    const suffix = zoom === 1 ? "" : "-200";
+    nativeTheme.themeSource = theme;
+    await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    await js(
+      "!document.querySelector('[role=menu]') && [...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'View').click()",
+    );
+    await wait("document.querySelector('[role=menu]')");
+    await shoot(`menu-${theme}${suffix}.png`);
+    await js("document.querySelector('[aria-label=Settings]').click()");
+    await wait("document.querySelector('dialog[open]')");
+    await shoot(`settings-${theme}${suffix}.png`);
+    await js(
+      "[...document.querySelectorAll('dialog button')].find((b) => b.textContent === 'Cancel').click()",
+    );
+    await wait("!document.querySelector('dialog')");
+  }
   console.log(
     `PASS: app shell loaded; screenshots in ${path.relative(path.resolve(__dirname, ".."), SCREENSHOTS)}`,
   );

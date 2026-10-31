@@ -7,17 +7,17 @@ Current feel: `docs/media/demo-catalogs.webp`, `docs/media/demo-compare.webp`.
 ## Principles (MUST)
 
 - Compact: little wasted space, dense lists, the video gets the room.
-- Readable in light and dark and at every text size; theme and text size switch live.
+- Readable in light and dark and at any browser zoom up to 200%; the theme switches live. Zoom is the browser's: no app text-size setting.
 - No taglines, helper text or secondary labels; if a screen needs them, fix the layout.
 - Every component comes from one shared kit; none picks its own sizes or colors.
-- Shell layout: activity bar and sidebar, split viewer area, application menu (`docs/architecture/ui-framework.md#top-level-composition`). SHOULD.
+- Shell layout: activity bar and sidebar, split viewer area, title bar with the application menu and window controls (`docs/architecture/ui-framework.md#top-level-composition`). SHOULD.
 
 ## Tokens (MUST)
 
-Port the token sets by purpose; take values from `chrome/tokens.py` and `docs/settings.md#text-size`.
+Port the token sets by purpose; take values from `chrome/tokens.py`.
 
-- Text roles (body, strong, small, caption, heading, display, mono) as offsets from one body size; the body size
-  follows the OS or a user choice; typeface follows the OS; text-derived sizes scale, margins do not.
+- Text roles (body, strong, small, caption, heading, display, mono) as offsets from one fixed body size; typeface
+  follows the OS. Zoom scales everything together.
 - One spacing scale, two radii, heights derived from text metrics.
 - No literal sizes, spacing, radii or colors outside the token module.
 
@@ -29,7 +29,7 @@ Port the token sets by purpose; take values from `chrome/tokens.py` and `docs/se
   at reduced alpha failed contrast on light.
 - Status colors (success, warning, error) and category accents distinguishable on both surfaces.
 - The video canvas, letterbox and on-video controls stay near-black with white controls in both themes.
-- Anything sized from text or using a fixed color re-applies on theme or text-size change.
+- Anything using a fixed color re-applies on theme change.
 - Contrast target: D10 (proposal: WCAG 2.x AA, 4.5:1 text, 3:1 large text and component boundaries). The repo has
   no numeric target.
 
@@ -47,8 +47,8 @@ progress, icons not glyphs) as the new write-ui skill ([12](12-agent-setup.md)).
   prebuilt so the preferred size covers it.
 - Restructure (pages, tabs, groups) rather than scroll. Scrolling is for content that grows with user data, and as
   accessible overflow when screen bounds make fitting impossible.
-- Open dialogs refit on text-size change; the main window restores size and maximized state only.
-- Every control stays reachable and unclipped at the largest text size and the window minimum (fit test, [09](09-testing.md#ui-verification)).
+- The main window restores size and maximized state only.
+- Every control stays reachable and unclipped at the window minimum and at browser zoom up to 200% (fit test, [09](09-testing.md#ui-verification)).
 - Details: write-ui skill "Common patterns" and `chrome/README.md#rules`.
 
 ## Large lists (MUST)
@@ -96,6 +96,6 @@ and `video_player/README.md#quick-surface`. Additions:
 
 - **MUST** keep display and export rendering semantically identical (same instructions, order, colors and geometry);
   pixels may differ only by documented renderer tolerances.
-- **MUST** keep overlay pixels independent of app theme and text size; they follow the frame.
+- **MUST** keep overlay pixels independent of app theme; they follow the frame.
 - *Current mechanism:* one GPU quad stream plus a glyph atlas inside the toolkit scene graph. The requirement is crisp
   text at fixed screen size and per-frame cost within D9.

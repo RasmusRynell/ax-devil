@@ -1,13 +1,8 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
 @layer base {
-  :root {
-    color-scheme: light dark;
-  }
   body {
-    @apply m-0;
-    background: Canvas;
-    color: CanvasText;
-    font-family: system-ui, sans-serif;
+    @apply m-0 bg-surface font-sans text-body text-fg;
   }
 }

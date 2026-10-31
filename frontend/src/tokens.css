@@ -1,0 +1,50 @@
+/* The one place for design values. Colors are light/dark pairs that follow `color-scheme` on the root; sizes derived
+   from text follow the one body size; spacing and radii stay fixed. Components use the generated utilities only. */
+@theme static {
+  --color-*: initial;
+  --color-surface: light-dark(#f6f8fb, #121314);
+  --color-panel: light-dark(#edf2f7, #191a1b);
+  --color-popup: light-dark(#ffffff, #252627);
+  --color-fg: light-dark(#263445, #cccccc);
+  --color-muted: light-dark(#5a6a7d, #858585);
+  --color-disabled: light-dark(#7c8794, #6e6e6e);
+  --color-line: light-dark(#d5dee8, #252627);
+  --color-line-strong: light-dark(#7b8d9f, #393a3b);
+  --color-accent: light-dark(#23678d, #3994bc);
+  --color-hover: light-dark(#26344514, #cccccc14);
+
+  --spacing-xs: 2px;
+  --spacing-s: 4px;
+  --spacing-m: 8px;
+  --spacing-l: 12px;
+  --spacing-xl: 16px;
+
+  --radius-*: initial;
+  --radius-control: 4px;
+  --radius-popup: 6px;
+
+  --text-*: initial;
+  --text-body: 14px; /* the one base size; zoom is the browser's */
+  --text-small: calc(var(--text-body) - 2px);
+  --text-heading: calc(var(--text-body) + 2px);
+
+  --spacing-icon: calc(var(--text-body) * 1.2);
+  --spacing-row: calc(var(--text-body) + 8px);
+  --spacing-header: calc(var(--text-body) + 12px);
+  --spacing-bar: calc(var(--text-body) + 16px);
+  --spacing-activity: calc(var(--spacing-icon) * 2);
+  --spacing-sidebar: 34ch;
+  --spacing-welcome: 40ch;
+}
+
+/* Theme choices; "auto" follows the operating system live. */
+:root,
+:root[data-theme="auto"] {
+  color-scheme: light dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}

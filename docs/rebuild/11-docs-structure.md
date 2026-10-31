@@ -39,7 +39,7 @@ decisions with lasting rules go to the doc that owns the rule.
 ## Day-one scaffold
 
 Done by the foundation on the prototype's stack, pending the owner's D0 signature
-([14](14-build-order.md#d0-stack-choice)); step 6 covers the main window only until M0 adds text sizes and the fit
+([14](14-build-order.md#d0-stack-choice)); step 6 covers the main window only until M0 adds the fit
 test. The scaffold, in this order:
 
 1. Delete the old tree (list below); keep `LICENSE` and `docs/rebuild/`.

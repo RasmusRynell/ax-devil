@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline");
 const path = require("node:path");
@@ -106,8 +106,33 @@ app
       height: 800,
       minWidth: 640,
       minHeight: 480,
-      autoHideMenuBar: true,
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+      // The page draws its own title bar and window controls (see preload.cjs).
+      frame: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        preload: path.join(__dirname, "preload.cjs"),
+      },
+    });
+    const sendMaximized = () => window.webContents.send("window:maximized", window.isMaximized());
+    window.on("maximize", sendMaximized);
+    window.on("unmaximize", sendMaximized);
+    ipcMain.on("window:minimize", () => window.minimize());
+    ipcMain.on("window:toggle-maximize", () =>
+      window.isMaximized() ? window.unmaximize() : window.maximize(),
+    );
+    ipcMain.on("window:close", () => window.close());
+    ipcMain.handle("window:is-maximized", () => window.isMaximized());
+    // There is no application menu, so zoom is handled here; Chromium remembers it per host.
+    window.webContents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown" || !input.control || input.alt) return;
+      const zoom = window.webContents;
+      if (input.key === "=" || input.key === "+") zoom.setZoomLevel(zoom.getZoomLevel() + 0.5);
+      else if (input.key === "-") zoom.setZoomLevel(zoom.getZoomLevel() - 0.5);
+      else if (input.key === "0") zoom.setZoomLevel(0);
+      else return;
+      event.preventDefault();
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event, url) => {

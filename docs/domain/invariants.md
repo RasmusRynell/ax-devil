@@ -132,8 +132,8 @@ the module that implements it adds one.
   the concept, and building a component never rebuilds shared runtime state as a side effect.
 - Work that discovers files, reads disk, validates, compiles, builds indexes, opens sources or creates shared caches
   belongs behind the owning runtime boundary, never in UI construction.
-- Text sizes, spacing, radii and heights come from the design tokens, never literals, and anything sized from text or
-  using a fixed color re-applies on theme or text-size change, so both apply live. Pixels inside rendered frames
+- Text sizes, spacing, radii, heights and colors come from the design tokens, never literals, and a theme change
+  applies live. Zoom is the browser's; there is no app text-size setting. Pixels inside rendered frames
   (catalogs, sheets, export burn-ins) follow the frame instead.
 - The video surface and its letterbox stay near-black (one canvas token) in both themes, with white playback controls
   on that scrim, not on a theme-dependent panel.

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AppInfo } from "./generated/api";
+import { SettingsProvider } from "./settings";
+import { Shell } from "./shell/Shell";
 
 type Backend =
   | { state: "connecting" }
@@ -25,12 +27,17 @@ export function App() {
       });
     return () => request.abort();
   }, []);
+  if (backend.state === "ready")
+    return (
+      <SettingsProvider>
+        <Shell />
+      </SettingsProvider>
+    );
   return (
     <main
       aria-busy={backend.state === "connecting"}
       className="flex h-screen items-center justify-center"
     >
-      {backend.state === "ready" && <h1 className="text-2xl font-semibold">ax-devil</h1>}
       {backend.state === "failed" && (
         <p role="alert">ax-devil cannot reach its backend: {backend.reason}</p>
       )}

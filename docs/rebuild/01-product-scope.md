@@ -128,7 +128,7 @@ frame rates play, seek, step and export without errors and with that alignment.
 |----|---------|---|--------|
 | ST-01 | Settings dialog pages; restart marker | M | `docs/settings.md` |
 | ST-02 | Quick Setup on first start | M | `docs/settings.md#quick-setup` |
-| ST-03 | Theme and text size, applied live | M | `docs/settings.md#text-size` |
+| ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | `docs/settings.md` |
 | ST-04 | `$VARIABLE` references | M | `docs/settings.md` |
 | ST-05 | Keyboard shortcuts, dialog, override persistence | M | `shortcuts/shortcuts.py` (`DEFAULT_SHORTCUTS`) |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | D18, [13](13-security-packaging-ops.md#threat-model) |
@@ -136,7 +136,7 @@ frame rates play, seek, step and export without errors and with that alignment.
 | AP-02 | Restart from inside the app | M | `application_shell/restart.py` |
 | AP-03 | `clear-cache` | S | `ax-devil clear-cache --help` |
 | AP-04 | About dialog | S | `application_shell/about_dialog.py` |
-| AP-05 | Custom window frame option | S | D7 |
+| AP-05 | Custom window frame: in-page title bar with window controls | S | D7 |
 | AP-06 | Open logs folder / copy diagnostics (new) | S | [13](13-security-packaging-ops.md#observability) |
 
 ### Developer tooling

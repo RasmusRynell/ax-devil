@@ -52,7 +52,7 @@ Startup order (*current:* `Application.start()` in `src/ax_devil/app.py`):
 1. If D1 keeps per-installation plugin selections, resolve the active one.
 2. Logging to console; load settings; ensure storage folders; logging to file.
 3. Discover and register plugins; record failures.
-4. Create the UI; apply theme and text size; install shortcuts.
+4. Create the UI; apply theme; install shortcuts.
 5. Create the catalog manager.
 6. Show the main window and launch: CLI items → new Untitled workspace; `open FILE` → that workspace; plain launch →
    restore the recovery copy if it is the newest recent, else start panel.

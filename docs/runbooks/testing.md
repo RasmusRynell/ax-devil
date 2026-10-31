@@ -43,7 +43,8 @@ not run.
 `make tests-desktop` builds the release app, starts Electron with `--smoke-test` and runs `desktop/smoke.cjs` in the
 window: it waits for the app shell, then switches the theme to light and dark and saves
 `artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
-the current state; capturing earlier fails. New windows and text sizes join the harness as they land
+the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
+minimum, at normal zoom and 200%. New windows join the harness as they land
 ([DT-02](../parity.md#developer-tooling)).
 
 ## Fixtures

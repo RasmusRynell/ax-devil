@@ -11,7 +11,7 @@ other decisions.
 | RTSP client exposing per-frame device capture time for video and metadata tracks (*current:* ONVIF replay header extension, requested with `onvifreplayext=1` in `data_sources/live/rtsp_source.py`; RTCP sender-report NTP mapping is the generic alternative); MQTT; WebSocket with Digest | LV-04, D14 |
 | GPU video plus custom overlay drawing in one surface, and the same semantics offscreen at native size | [06](06-ui-ux.md#overlay-drawing) |
 | Concurrency with a UI-thread hand-off and executor-bound destruction | [03](03-runtime.md#concurrency-guarantees-must) |
-| Live theme and text-size changes, fractional HiDPI, accessibility API | [06](06-ui-ux.md) |
+| Live theme changes, fractional HiDPI, accessibility API | [06](06-ui-ux.md) |
 | Offscreen or private-display rendering, toolkit-level test input, window capture | [09](09-testing.md#isolation-must) |
 | Strict typing, formatter, linter, dependency-rule checker | [10](10-quality-gates.md) |
 | A plugin story compatible with D1 and D6 | [05](05-formats-and-extensions.md#plugin-runtime) |
@@ -61,7 +61,8 @@ option matching the prototype. Paths here are new-tree paths. Each can be revisi
 | The `rewrite` branch is the whole rewrite and the only PR that merges to `main`, at parity. Later work lands as commits on it or as PRs with base `rewrite`, never as separate merges to `main`. CI runs for PRs to and pushes on `main` and `rewrite` | `main` keeps the Python app until the rewrite replaces it in one reviewed merge |
 | No pre-commit hooks; `make check-fast` locally and CI enforce the gates | Hooks need a setup step per clone |
 | Every suite runs through `scripts/isolated`; it guards `~/.ax_devil` and the `ax-devil` folders under the XDG config, data, cache and state homes. Electron's own data (Chromium profile, crash dumps) goes to `ax-devil-chromium` in the cache home instead, so a running session never trips the guard | The new app's storage folders are not chosen yet; whoever chooses them (M1) updates the guard |
-| Native window frame; the prototype's custom title bar is not carried | D7's default |
+| Custom window frame (D7): a frameless Electron window whose in-page top bar is the title bar (title, menus, drag region, minimize/maximize/close through a minimal preload; absent in a plain browser) | The owner's window manager draws no title bar, so a native frame leaves no way to move or close the window |
+| Zoom is the browser's; no app text-size setting. Electron zooms with Ctrl+=, Ctrl+- and Ctrl+0 and Chromium remembers it per host; layouts must fit the window minimum and zoom up to 200% | A web app inherits zoom, so the prototype's `ui.text_size` and its live refit are dropped; a config that still holds the key keeps it untouched |
 | No WebAssembly target or shared Rust/WASM crates yet | The prototype's were spikes; the rendering spike decides whether a crate must also run in the frontend |
 | No root `ARCHITECTURE.md`; the prototype's content lives in `docs/architecture/overview.md` | One home, per [11](11-docs-structure.md#docs-map) |
 | Carried assets: catalogs in `assets/catalogs/`, icons and banner in `assets/`, the ONVIF sample in `fixtures/` | Packaged resources and test inputs, each in one place readable by Rust and the frontend |
@@ -76,15 +77,15 @@ when selected by the owner.
 
 | M | Slice | Exit |
 |---|-------|------|
-| M0 | Day-one scaffold ([11](11-docs-structure.md#day-one-scaffold), done by the foundation); tokens; light/dark/auto and live text size; component kit seed; screenshot harness; fit-test guard | Empty window screenshots in both themes from CI; fit test passes |
-| M1 | Skeleton: `local --video` through minimal item, Content, shared intake and resolution contracts into an in-memory Untitled workspace; clock-following playback, steps, seek; settings service; logging | Frame identity test; live theme and text-size switch passes the fit test |
+| M0 | Day-one scaffold ([11](11-docs-structure.md#day-one-scaffold), done by the foundation); tokens; light/dark/auto; component kit seed; screenshot harness; fit-test guard | Empty window screenshots in both themes from CI; fit test passes |
+| M1 | Skeleton: `local --video` through minimal item, Content, shared intake and resolution contracts into an in-memory Untitled workspace; clock-following playback, steps, seek; settings service; logging | Frame identity test; live theme switch passes the fit test |
 | M2 | Overlay path: Scene model and serialization schema, decoder contract, one built-in decoder, overlay lookup and matching, catalog compiler with Standard, drawing preparation, `catalog check/render` | Canonical instruction comparison passes for Standard's sheets ([09](09-testing.md#oracle-policy)) |
 | M3 | Workspace persistence, recovery copy, store, row projection, Workspace view, split view, `open` | Lifecycle tests and recovery-copy crash safety, toolkit-free |
 | M4 | Offline depth: lanes (same and different videos), playlists, both resolvers, hide, frame cache, sticky, diagnostics, media tools, bookmarks, export | OF-02 parity case; alignment TSVs match the oracle; cache-build crash safety |
 | M5 | Live: RTSP, ONVIF metadata, MQTT, DataHub, sync, status, scan, Live view | Fake-transport and burst tests; one manual camera session |
 | M6 | Catalogs complete: six built-ins, manager, selection scopes, visibility, catalog window | Canonical comparison for all built-ins; catalog conformance suite ([09](09-testing.md#pyramid)) |
 | M7 | Plugin runtime, all built-in decoders, external install/update/remove, Plugins view | The write-plugin example installs and decodes in a fresh process |
-| M8 | Settings dialog, Quick Setup, Shortcuts dialog, accessibility pass, polish | Fit test for every window at both text-size extremes |
+| M8 | Settings dialog, Quick Setup, Shortcuts dialog, accessibility pass, polish | Fit test for every window at the window minimum and at 200% zoom |
 | M9 | Packaging and release; owner-selected S rows (benchmarks, release check, soak) | Every M row done or dropped by the owner in writing |
 
 ## Fixtures from the reference commit
@@ -107,7 +108,7 @@ reference and notes. Dropping an M row needs the owner's written decision. New f
 
 ## Open decisions
 
-The recommended default applies unless the owner objects. D5 and D16 are withdrawn; D13 became parity row AP-06.
+The recommended default applies unless the owner objects. D5 and D16 are withdrawn; D13 became parity row AP-06; D7 is taken ([decisions](#decisions-taken-for-the-foundation)).
 
 | ID | Question | Recommended default | By |
 |----|----------|---------------------|----|
@@ -117,7 +118,6 @@ The recommended default applies unless the owner objects. D5 and D16 are withdra
 | D3 | One process or helper processes? | One process; next-entry warm-up may be a thread natively; a helper only for a plugin bridge | M1 |
 | D4 | Resolver settings as a declared schema ([05](05-formats-and-extensions.md#resolver-contract))? | Yes | D0 |
 | D6 | Packaging; bundled Python for plugins; GPL encoder in bundles? | AppImage or Flatpak plus source build; Python only if D1 keeps a bridge; non-GPL encoder in bundles | M2 |
-| D7 | Custom frameless window? | Native frame default, custom frame optional | M8 |
 | D8 | OS keychain for literal secrets in config and workspace items? | Yes, optional; `$VARIABLE` references stay default | M5 |
 | D9 | Frame-time and memory budgets? | Proposals in [03](03-runtime.md#performance) on one named machine | M2 |
 | D10 | Accessibility target? | WCAG 2.x AA contrast, full keyboard reach, accessible names | M0 |

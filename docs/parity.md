@@ -19,8 +19,8 @@ with the test that proves it.
 | WS-08 | Hide/Unhide entries and lanes | M | todo |  |  |
 | WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | todo |  |  |
 | WS-10 | Bookmarks to CSV | S | todo |  |  |
-| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | todo |  |  |
-| WS-12 | Start panel and welcome area | M | todo |  |  |
+| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/Shell.test.tsx` | Views and search fields are placeholders; no items, sort or filter |
+| WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx` | Layout only; the buttons and rows do nothing yet and recent workspaces are empty |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
 | WS-15 | Hover cards with thumbnails | S | todo |  |  |
@@ -102,9 +102,9 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings dialog pages; restart marker | M | todo |  |  |
+| ST-01 | Settings dialog pages; restart marker | M | in progress | `App.test.tsx` | General page only (theme); the table declares `live` and `label` |
 | ST-02 | Quick Setup on first start | M | todo |  |  |
-| ST-03 | Theme and text size, applied live | M | todo |  |  |
+| ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | done | `crates/settings` tests, `App.test.tsx` | Stored through `/api/settings`; the frontend applies the theme live |
 | ST-04 | `$VARIABLE` references | M | todo |  |  |
 | ST-05 | Keyboard shortcuts, dialog, override persistence | M | todo |  |  |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | todo |  |  |
@@ -112,7 +112,7 @@ with the test that proves it.
 | AP-02 | Restart from inside the app | M | todo |  |  |
 | AP-03 | `clear-cache` | S | todo |  |  |
 | AP-04 | About dialog | S | todo |  |  |
-| AP-05 | Custom window frame option | S | todo |  |  |
+| AP-05 | Custom window frame: in-page title bar with window controls | S | done | `shell/WindowControls.test.tsx` | Frameless Electron window; dragging and maximize on a real window manager are unverified |
 | AP-06 | Open logs folder / copy diagnostics (new) | S | todo |  |  |
 
 ## Developer tooling
@@ -120,7 +120,7 @@ with the test that proves it.
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | in progress | `make tests-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, light and dark; text sizes and other windows land with M0/M8 |
+| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, View menu and Settings dialog in light and dark, at the window minimum and 200% zoom; other windows land with M8 |
 | DT-03 | Rendering benchmarks with A/B against a ref | S | todo |  |  |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |

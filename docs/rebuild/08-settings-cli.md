@@ -26,7 +26,7 @@ and `ax-devil <command> --help` run from a worktree at the reference commit.
 
 | Scope | Lives in |
 |-------|----------|
-| App preference (theme, text size, cache memory, scan on startup, overlay preferences) | Config |
+| App preference (theme, cache memory, scan on startup, overlay preferences) | Config |
 | Defaults for new items (device, broker, DataHub, scan range and logins) | Config |
 | Saved per workspace (items, bookmarks, reviewed marks) | Workspace file |
 | Per view, session only (catalog selection, overlay details, sticky/sync/filter) | Memory; defaults for new views in config (IN-07) |

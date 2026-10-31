@@ -26,3 +26,21 @@ development: boolean,
  */
 pid: number, };
 
+/**
+ * Every setting by dotted key, such as `"ui.theme"`. `PUT /api/settings` replaces all of them; the keys and their
+ * allowed values are declared once, in the settings crate.
+ */
+export type Settings = Record<string, string | boolean>;
+
+/**
+ * What a failed request returns: the reason, shown where the user acted, and what it is about.
+ */
+export type ApiError = { 
+/**
+ * What is wrong, in words for the user.
+ */
+reason: string, 
+/**
+ * The setting key or file the reason is about.
+ */
+location: string, };

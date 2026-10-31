@@ -5,14 +5,25 @@ use ts_rs::TS;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let text = format!(
-        "// Generated from crates/api-types by make; do not edit.\n{}\n",
-        api_types::AppInfo::export_to_string()?
+        "// Generated from crates/api-types by make; do not edit.\n{}\n{}\n\n{}\n",
+        api_types::AppInfo::export_to_string()?,
+        declaration(api_types::Settings::export_to_string()?),
+        declaration(api_types::ApiError::export_to_string()?)
     );
     write_if_changed("frontend/src/generated/api.ts", &text)?;
     // The desktop shell and the development supervisor are CommonJS and read the version from JSON.
     let version = format!("{{ \"apiVersion\": {} }}\n", api_types::API_VERSION);
     write_if_changed("desktop/generated/api.json", &version)?;
     Ok(())
+}
+
+/// Drops the generator comment ts-rs puts above every type, which the file keeps once at the top.
+fn declaration(exported: String) -> String {
+    exported
+        .lines()
+        .skip_while(|line| line.starts_with("//") || line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn write_if_changed(path: &str, text: &str) -> std::io::Result<()> {

@@ -21,7 +21,7 @@ devices and processes at their boundary.
 | Pipeline integration | Medium | Entry opening to display; fake live transports to synchronized pairs; export end to end; file change to re-resolution | `tests/modules/video_viewer/` |
 | Concurrency | Few | Real executors, repeated runs, barriers: job-scope close, cancellation, superseding requests, live queues, destruction on the required executor, shutdown; the stack's sanitizer if it has one | new |
 | State model | Few | Seeded random operation sequences checked after every step | `tests/modules/video_viewer/media_tools/test_scene_render_catalog_state_model.py` |
-| UI behavior | Few | Fit (no clipped text, both themes, small and large text), live text-size refit, focus and keyboard | `tests/modules/chrome/test_surface_fit.py`, `tests/modules/chrome/test_live_text_size.py` |
+| UI behavior | Few | Fit (no clipped text, both themes, window minimum and 200% zoom), focus and keyboard | `tests/modules/chrome/test_surface_fit.py` |
 | Crash safety | Few | Kill the process during a recovery-copy write and during a cache build; the next launch recovers | new |
 | CLI | Few | Commands build the right items; headless catalog commands' exit codes | `tests/core/` |
 | Installation | Separate target | Real install and plugin lifecycle in isolated storage | `make test-integration` |
@@ -74,8 +74,8 @@ devices and processes at their boundary.
 
 ## UI verification
 
-1. The screenshot harness (DT-02) renders the main surfaces in both themes, two text sizes, wide and narrow.
-2. Fit measured at the smallest and largest text size.
+1. The screenshot harness (DT-02) renders the main surfaces in both themes, at normal zoom and 200%, wide and narrow.
+2. Fit measured at the window minimum and at 200% zoom.
 3. Every window joins the fit test; a guard test fails until it is listed or exempted with a reason
    (`.agents/skills/write-ui/SKILL.md#check-it`).
 

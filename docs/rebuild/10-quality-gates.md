@@ -28,7 +28,7 @@ playbook. It is achievable from the first UI slice: tokens, fit test and screens
 - Code, tests, dependencies or build config changed → `check` and `test` pass.
 - Prose only → links, examples and consistency validated.
 - Tests and docs follow `AGENTS.md` "Done": delete tests of removed code; doc additions need a stated reason.
-- UI change → screenshots in both themes and two text sizes; fit test updated.
+- UI change → screenshots in both themes at normal zoom and 200%; fit test updated.
 - Rendering change → instruction dumps and in-stack goldens reviewed; benchmark when on the hot path.
 - Parity row → its line in the parity file updated with the test reference.
 

@@ -1,6 +1,7 @@
 //! Types the backend sends to the frontend, exported to TypeScript by `export-types`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// Raised when a route changes in a way an older desktop shell or frontend cannot use.
@@ -20,4 +21,20 @@ pub struct AppInfo {
     pub development: bool,
     /// The backend process id.
     pub pid: u32,
+}
+
+/// Every setting by dotted key, such as `"ui.theme"`. `PUT /api/settings` replaces all of them; the keys and their
+/// allowed values are declared once, in the settings crate.
+#[derive(Serialize, Deserialize, TS)]
+pub struct Settings(
+    #[ts(type = "Record<string, string | boolean>")] pub BTreeMap<String, serde_json::Value>,
+);
+
+/// What a failed request returns: the reason, shown where the user acted, and what it is about.
+#[derive(Serialize, TS)]
+pub struct ApiError {
+    /// What is wrong, in words for the user.
+    pub reason: String,
+    /// The setting key or file the reason is about.
+    pub location: String,
 }

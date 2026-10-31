@@ -32,7 +32,7 @@ has them; they are optional and not part of this repository.
 |-------|-------------|
 | `.agents/skills/review/SKILL.md` | Reviewing changes for real problems, module depth, architectural ownership, tests worth merging, and documentation placement |
 | `.agents/skills/write-tests/SKILL.md` | Deciding whether a test is worth having, deleting tests, writing regression coverage, changing assertions, or repairing flaky tests |
-| `.agents/skills/write-ui/SKILL.md` | Adding or restyling application UI: windows, dialogs, panels, fonts, spacing, colors, text size |
+| `.agents/skills/write-ui/SKILL.md` | Adding or restyling application UI: windows, dialogs, panels, fonts, spacing, colors |
 | `.agents/skills/port-module/SKILL.md` | Building one module or parity row of the rewrite from the reference commit |
 | `.agents/skills/verify-headless/SKILL.md` | Running the app, a command or the screenshot harness in isolation and inspecting the result |
 
@@ -102,8 +102,8 @@ entry points, and keep reusable build and test steps in the Makefile.
   that removes or merges code leaves test lines flat or lower; a net increase needs a stated reason.
 - Docs: most changes need no doc edit. Before adding to a doc, apply the placement rule under Where A Fact Belongs and delete
   or collapse what the new text makes redundant. Net doc growth needs a stated reason.
-- UI changes: screenshots in both themes from the harness (`make tests-desktop`), and, once text sizes and the fit
-  test exist, at two text sizes with the fit test updated (write-ui skill).
+- UI changes: screenshots in both themes from the harness (`make tests-desktop`), and, once the fit test exists, at
+  200% zoom with the fit test updated (write-ui skill).
 - Rendering changes: Drawing Instruction dumps and in-stack goldens reviewed; a benchmark when on the hot path.
 - A parity row: its line in [docs/parity.md](docs/parity.md) updated with the test that proves it.
 
