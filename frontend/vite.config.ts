@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => ({
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     // App code reports through the UI or the backend logger, never the console.
     rules: { "vite-plus/prefer-vite-plus-imports": "error", "no-console": "error" },
+    // Scripts and the desktop shell are command-line programs; their console is their interface.
+    overrides: [{ files: ["desktop/**", "scripts/**"], rules: { "no-console": "off" } }],
     options: { typeAware: true, typeCheck: true },
   },
   plugins: lazyPlugins(() => [react(), tailwindcss()]),

@@ -3,13 +3,16 @@
 use serde::Serialize;
 use ts_rs::TS;
 
+/// Raised when a route changes in a way an older desktop shell or frontend cannot use.
+pub const API_VERSION: u32 = 1;
+
 /// Identifies a running backend, so the desktop shell and the development supervisor reuse only a compatible one.
 #[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
     /// Always `"ax-devil"`.
     pub app: String,
-    /// The backend API version; a client that expects another one starts its own backend.
+    /// The backend API version; a client that expects another one refuses this backend.
     pub api: u32,
     /// The package version.
     pub version: String,

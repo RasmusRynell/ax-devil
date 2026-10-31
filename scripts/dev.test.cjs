@@ -1,13 +1,13 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
-const { once } = require("node:events");
+const events = require("node:events");
 const net = require("node:net");
 
 async function freePort() {
   const server = net.createServer();
   server.listen(0, "127.0.0.1");
-  await once(server, "listening");
+  await events.once(server, "listening");
   const port = server.address().port;
   await new Promise((resolve) => server.close(resolve));
   return port;
@@ -31,7 +31,7 @@ async function listening(port) {
   });
 }
 
-test(
+void test(
   "supervisor starts a debug backend and stops the full service tree",
   { timeout: 20000 },
   async () => {
@@ -48,7 +48,7 @@ test(
     child.stderr.on("data", (chunk) => {
       output += chunk;
     });
-    const exited = once(child, "close");
+    const exited = events.once(child, "close");
     try {
       await waitFor(() => output.includes("Website:"));
       const response = await fetch(`http://127.0.0.1:${uiPort}/api/info`);

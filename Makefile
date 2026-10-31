@@ -18,7 +18,7 @@ help:
 	  '  build       Build the release app with the frontend embedded; do not launch' \
 	  '  tests       Run all test suites' \
 	  '  check       Run every static check and all test suites' \
-	  '  check-fast  Run the static checks on files changed since HEAD; no tests' \
+	  '  check-fast  Run the static checks, file-size check on changed files only; no tests' \
 	  '  format      Format Rust and TypeScript/JavaScript, and apply lint fixes' \
 	  '' \
 	  'Test suites (isolated home; tests-desktop on a private display):' \
@@ -62,7 +62,7 @@ web: _dev
 desktop: _dev desktop/node_modules/.electron-ready
 	PORT=$(PORT) UI_PORT=$(UI_PORT) node scripts/dev.cjs desktop
 
-_dev: node_modules/.installed .tools/bin/watchexec
+_dev: node_modules/.installed .tools/bin/watchexec _types
 
 _dev-rust: _types
 	$(CARGO) build --locked --no-default-features --bin ax-devil
@@ -79,8 +79,7 @@ tests-integration: _dev _dev-rust
 	$(ISOLATED) node --test scripts/dev.test.cjs
 
 tests-desktop: build desktop/node_modules/.electron-ready
-	timeout 60s $(ISOLATED) --display env -u ELECTRON_RUN_AS_NODE -u PORT -u DESKTOP_DEV_URL \
-	  pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
+	timeout 60s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
 
 tests: tests-frontend tests-backend tests-integration tests-desktop
 
@@ -89,6 +88,7 @@ _static: node_modules/.installed _types
 	node scripts/check-file-tokens.cjs $(CHANGED)
 	$(CARGO) metadata --locked --format-version 1 | node scripts/check-architecture.cjs
 	pnpm exec vp fmt --check $(ROOT_FILES)
+	pnpm exec vp lint --deny-warnings desktop scripts
 	pnpm --dir frontend exec vp check
 	$(CARGO) fmt --all --check
 	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
@@ -107,4 +107,5 @@ check: _static _frontend-build _licenses
 format: node_modules/.installed _types
 	$(CARGO) fmt --all
 	pnpm exec vp fmt $(ROOT_FILES)
+	pnpm exec vp lint --fix desktop scripts
 	pnpm --dir frontend exec vp check --fix

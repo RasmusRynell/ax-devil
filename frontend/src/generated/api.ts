@@ -10,7 +10,7 @@ export type AppInfo = {
  */
 app: string, 
 /**
- * The backend API version; a client that expects another one starts its own backend.
+ * The backend API version; a client that expects another one refuses this backend.
  */
 api: number, 
 /**

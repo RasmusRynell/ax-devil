@@ -50,6 +50,8 @@ before="$(fingerprint)"
 export HOME="$scratch/home" XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data"
 export XDG_CACHE_HOME="$scratch/cache" XDG_STATE_HOME="$scratch/state" XDG_RUNTIME_DIR="$scratch/runtime"
 unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
+# Shells hosted in Electron apps export this, which would start Electron as plain Node.
+unset ELECTRON_RUN_AS_NODE
 
 status=0
 if ((display)); then

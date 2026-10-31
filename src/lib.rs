@@ -1,15 +1,12 @@
 //! The ax-devil backend: HTTP routes for the frontend and, in release builds, the embedded frontend itself.
 
-use api_types::AppInfo;
+use api_types::{API_VERSION, AppInfo};
 use axum::{Json, Router, http::StatusCode, routing::get};
 #[cfg(feature = "embed-assets")]
 use axum::{
     http::{Uri, header},
     response::{IntoResponse, Response},
 };
-
-/// Raised when a route changes in a way an older desktop shell or frontend cannot use.
-pub const API_VERSION: u32 = 1;
 
 #[cfg(feature = "embed-assets")]
 #[derive(rust_embed::RustEmbed)]

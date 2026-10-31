@@ -10,7 +10,7 @@ const BYTES_PER_TOKEN = 4;
 // loaded whole as one JSON document; splitting them would need an include format in the catalog language.
 const EXEMPT = [
   /(^|\/)(Cargo\.lock|pnpm-lock\.yaml)$/,
-  /^frontend\/src\/generated\//,
+  /^(frontend\/src|desktop)\/generated\//,
   /^assets\/catalogs\/[^/]+\.json$/,
   /^fixtures\//,
   /\.(png|jpe?g|gif|webp|ico|svg|mp4|mkv|mov|h26[45]|pdf|ttf|otf|woff2?|zip|gz|tar|wasm|bin)$/i,

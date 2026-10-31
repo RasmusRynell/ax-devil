@@ -19,8 +19,7 @@ The frontend talks to the backend over HTTP and WebSockets on `127.0.0.1`. Types
 types in `crates/api-types`, exported to TypeScript; the frontend never declares its own copy.
 
 Electron supplies Chromium, so rendering and media behave the same on every desktop instead of depending on the
-system webview. The prototype this stack comes from found the Linux WebKitGTK webview crashing during video support
-detection.
+system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).
 
 ## Layers
 
@@ -31,9 +30,9 @@ Dependencies point down only. Numbers are the layers of [02](../rebuild/02-archi
 | 1 | Foundation | Rust crates, `layer = "foundation"` | Workspace crates only; no server crates |
 | 2 | Domain and contracts | Rust crates, `layer = "domain"` | same |
 | 3 | Runtime services | Rust crates, `layer = "services"` | same |
-| 3a | Event-loop adapters: routes, WebSocket notifications, wire types | `src/` routes, `crates/api-types`, `layer = "adapters"` | May use the server crates |
+| 3a | Event-loop adapters: routes, WebSocket notifications, wire types | `crates/api-types` (`layer = "adapters"`) and the routes in `src/lib.rs` | May use the server crates |
 | 4–7 | UI support, generic display, workflows, shell | `frontend/src/` | — |
-| 8 | Entry and bootstrap | `src/main.rs` (backend), `desktop/` (window and backend lifetime) | — |
+| 8 | Entry and bootstrap | `src/main.rs` (backend), `desktop/` (window and backend lifetime) | The root crate holds the routes and `main.rs`, so it declares `layer = "entry"` |
 
 Every crate declares its layer in `[package.metadata.ax-devil]`; `scripts/check-architecture.cjs` (part of
 `make check`) rejects a crate that depends on a higher layer, or a layer 1–3 crate that depends on the HTTP server.

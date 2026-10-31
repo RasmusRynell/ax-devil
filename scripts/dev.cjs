@@ -1,4 +1,5 @@
 const { spawn } = require("node:child_process");
+const { apiVersion } = require("../desktop/generated/api.json");
 const mode = process.argv[2];
 const port = process.env.PORT || "7330";
 const uiPort = process.env.UI_PORT || "7331";
@@ -22,7 +23,7 @@ function stop(code = 0) {
   const timeout = setTimeout(() => {
     for (const child of children) signalTree(child, "SIGKILL");
   }, 3000);
-  Promise.all(
+  void Promise.all(
     children.map((child) =>
       child.exitCode !== null || child.signalCode !== null
         ? Promise.resolve()
@@ -51,15 +52,14 @@ function start(command, args, env = {}) {
 }
 async function available(url) {
   try {
-    const response = await fetch(url + "/api/info", { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(`${url}/api/info`, { signal: AbortSignal.timeout(1000) });
     const data = await response.json();
     if (!data.development)
       throw new Error(
-        "A release server is already running at " +
-          url +
-          ". Stop it or choose another PORT for development.",
+        `A release server is already running at ${url}. Stop it or choose another PORT for development.`,
       );
-    if (data.app !== "ax-devil" || data.api !== 1) throw new Error("Incompatible app at " + url);
+    if (data.app !== "ax-devil" || data.api !== apiVersion)
+      throw new Error(`Incompatible app at ${url}`);
     return true;
   } catch (error) {
     if (error.cause?.code === "ECONNREFUSED") return false;
@@ -71,7 +71,7 @@ async function ready(url) {
     if (await available(url)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error("Startup timed out: " + url);
+  throw new Error(`Startup timed out: ${url}`);
 }
 process.on("SIGINT", () => stop());
 process.on("SIGTERM", () => stop());
@@ -103,19 +103,19 @@ process.on("SIGTERM", () => stop());
       { PORT: port },
     );
     await ready(origin);
-  } else console.log("Reusing backend at " + origin);
+  } else console.log(`Reusing backend at ${origin}`);
   if (!(await available(ui))) {
     start("pnpm", ["--dir", "frontend", "dev", "--port", uiPort], { PORT: port });
     await ready(ui);
   } else {
-    const response = await fetch(ui + "/@vite/client");
+    const response = await fetch(`${ui}/@vite/client`);
     if (!response.ok || !(await response.text()).includes("WebSocket"))
-      throw new Error("UI_PORT is not a Vite development server: " + ui);
-    const direct = await (await fetch(origin + "/api/info")).json();
-    const proxied = await (await fetch(ui + "/api/info")).json();
+      throw new Error(`UI_PORT is not a Vite development server: ${ui}`);
+    const direct = await (await fetch(`${origin}/api/info`)).json();
+    const proxied = await (await fetch(`${ui}/api/info`)).json();
     if (direct.pid !== proxied.pid)
       throw new Error("The existing frontend proxies a different backend. Choose another UI_PORT.");
-    console.log("Reusing frontend at " + ui);
+    console.log(`Reusing frontend at ${ui}`);
   }
   console.log(`\nWebsite: ${ui}\n`);
   if (mode === "desktop") {

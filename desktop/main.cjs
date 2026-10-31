@@ -3,24 +3,35 @@ const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline");
 const path = require("node:path");
 
-const API_VERSION = 1;
+const { apiVersion } = require("./generated/api.json");
+
 const smoke = process.argv.includes("--smoke-test");
+// The smoke test always starts its own release backend and never attaches to a running session.
+const port = smoke ? "0" : process.env.PORT || "7330";
+const devUrl = smoke ? undefined : process.env.DESKTOP_DEV_URL;
+// Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
+// app's folders, so keep Electron out of them.
+app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
 let backend;
 let stopping = false;
 let stopped = false;
 let exitCode = 0;
 
-// Reuses a compatible backend already on PORT (development); otherwise starts the release build and owns it.
+// Reuses a compatible backend already on the port; otherwise starts the release build and owns it.
 async function startBackend() {
-  const port = process.env.PORT || (smoke ? "0" : "7330");
   if (port !== "0") {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/info`, {
         signal: AbortSignal.timeout(1500),
       });
       const info = await response.json();
-      if (info.app !== "ax-devil" || info.api !== API_VERSION)
+      if (info.app !== "ax-devil" || info.api !== apiVersion)
         throw new Error(`Port ${port} belongs to an incompatible server.`);
+      // A development backend serves no frontend; only the development supervisor pairs it with one.
+      if (info.development && !devUrl)
+        throw new Error(
+          `Port ${port} runs a development backend; use make desktop or another PORT.`,
+        );
       return `http://127.0.0.1:${port}`;
     } catch (error) {
       if (error.cause?.code !== "ECONNREFUSED") throw error;
@@ -87,7 +98,7 @@ app
   .whenReady()
   .then(async () => {
     const backendOrigin = await startBackend();
-    const origin = process.env.DESKTOP_DEV_URL || backendOrigin;
+    const origin = devUrl || backendOrigin;
     if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Invalid local desktop URL");
     const window = new BrowserWindow({
       title: "ax-devil",

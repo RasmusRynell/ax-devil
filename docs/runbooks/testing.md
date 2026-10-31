@@ -16,7 +16,7 @@ make check-fast                    # Static checks only, file-size check on chan
 ```
 
 Targets install what they need and exit after one run. The first run downloads the Rust toolchain (into
-`.cargo-cache/` and `.toolchain/` when no `cargo` is on `PATH`), crates, npm packages, Watchexec and cargo-deny
+`.cargo-cache/` and `.toolchain/` when no `rustup` is on `PATH`), crates, npm packages, Watchexec and cargo-deny
 (both built into `.tools/`) and the Electron binary (into the user's download cache). After that, every target runs
 offline as long as `Cargo.lock`, `pnpm-lock.yaml`, `rust-toolchain.toml` and the pinned tool versions in the
 Makefile are unchanged. Test output and evidence go in `artifacts/`.
