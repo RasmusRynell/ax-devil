@@ -1,3 +1,5 @@
+//! Starts the backend on 127.0.0.1:$PORT (default 7330) and stops it on Ctrl+C.
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let port = std::env::var("PORT")

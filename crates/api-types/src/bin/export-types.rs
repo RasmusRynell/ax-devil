@@ -1,3 +1,5 @@
+//! Writes the Rust API types to frontend/src/generated/api.ts, only when they changed.
+
 use ts_rs::TS;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

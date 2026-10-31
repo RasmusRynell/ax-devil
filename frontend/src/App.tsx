@@ -6,6 +6,7 @@ type Backend =
   | { state: "ready"; info: AppInfo }
   | { state: "failed"; reason: string };
 
+/** The application window: shown once the backend answers, with the reason when it does not. */
 export function App() {
   const [backend, setBackend] = useState<Backend>({ state: "connecting" });
   useEffect(() => {
