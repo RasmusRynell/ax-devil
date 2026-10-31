@@ -8,7 +8,7 @@ export function Sidebar({ view, onRun }: { view: ViewId; onRun: (id: string) => 
   return (
     <aside
       aria-label="Sidebar"
-      className="flex w-sidebar max-w-2/5 min-w-0 shrink-0 flex-col gap-m border-r border-line bg-panel"
+      className="flex w-sidebar max-w-full min-w-0 shrink-0 flex-col gap-m bg-panel max-sm:min-h-0 max-sm:w-full max-sm:flex-1 sm:max-w-2/5 sm:border-r sm:border-line"
     >
       <h2 className="m-0 flex h-header items-center px-m text-body font-semibold">
         {VIEW_TITLES[view]}

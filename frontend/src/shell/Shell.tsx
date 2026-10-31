@@ -57,10 +57,12 @@ export function Shell() {
   return (
     <div className="flex h-screen flex-col">
       <TitleBar checked={checked} onSelect={select} />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         <ActivityBar active={sidebarOpen ? view : null} onSelect={activate} />
         {sidebarOpen && <Sidebar view={view} onRun={run} />}
-        <main className="flex min-w-0 flex-1 overflow-auto">
+        <main
+          className={`flex min-h-0 min-w-0 flex-1 overflow-auto ${sidebarOpen ? "max-sm:hidden" : ""}`}
+        >
           <h1 className="sr-only">ax-devil</h1>
           <Welcome onRun={run} />
         </main>

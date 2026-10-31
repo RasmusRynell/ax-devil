@@ -2,6 +2,7 @@
 const { nativeTheme } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
+const fit = require("./fit.cjs");
 const path = require("node:path");
 
 const SCREENSHOTS = path.resolve(__dirname, "../artifacts/screenshots");
@@ -63,6 +64,22 @@ module.exports = async (window) => {
     const suffix = zoom === 1 ? "" : "-200";
     nativeTheme.themeSource = theme;
     await wait(`matchMedia('(prefers-color-scheme: ${theme})').matches`);
+    // Nothing is open: the page must fit the window, and every control must be reachable.
+    await js(
+      "document.querySelector('[role=menu]') && document.querySelector('[aria-expanded=true]').click()",
+    );
+    await frame();
+    // With the sidebar open, then closed (the welcome area shows).
+    for (const sidebar of ["open", "closed"]) {
+      assert.deepEqual(
+        await js(`(${fit.toString()})()`),
+        [],
+        `The page must fit the 640x480 window at ${zoom * 100}% zoom, sidebar ${sidebar}`,
+      );
+      if (zoom === 2) await shoot(`layout-${sidebar}-${theme}${suffix}.png`);
+      await js("document.querySelector('[aria-label=Workspace]').click()");
+      await frame();
+    }
     await js(
       "!document.querySelector('[role=menu]') && [...document.querySelectorAll('[data-top]')].find((b) => b.textContent === 'View').click()",
     );

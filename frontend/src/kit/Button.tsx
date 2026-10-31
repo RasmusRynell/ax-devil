@@ -11,7 +11,7 @@ export function Button({ icon, children, className = "", type = "button", ...res
   return (
     <button
       type={type}
-      className={`inline-flex h-row items-center gap-m rounded-control bg-transparent px-m text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent disabled:text-disabled disabled:hover:bg-transparent ${className}`}
+      className={`inline-flex min-h-row items-center gap-m rounded-control bg-transparent px-m py-xs text-left text-fg hover:bg-hover focus-ring disabled:text-disabled disabled:hover:bg-transparent ${className}`}
       {...rest}
     >
       {icon && <Icon name={icon} />}

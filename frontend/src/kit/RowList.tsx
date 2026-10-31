@@ -28,10 +28,10 @@ export function RowList({ heading, rows, onSelect }: Props) {
             <button
               type="button"
               onClick={() => onSelect(row.id)}
-              className="flex h-row w-full items-center gap-m rounded-control bg-transparent px-m text-left text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent"
+              className="flex min-h-row w-full items-center py-xs gap-m rounded-control bg-transparent px-m text-left text-fg hover:bg-hover focus-ring"
             >
               {row.icon && <Icon name={row.icon} />}
-              <span className="min-w-0 flex-1 truncate">{row.label}</span>
+              <span className="min-w-0 flex-1">{row.label}</span>
               {row.trailing}
             </button>
           </li>

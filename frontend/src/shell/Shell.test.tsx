@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MENUS } from "../commands";
 import { Shell } from "./Shell";
 
@@ -28,6 +28,18 @@ describe("menu bar", () => {
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(view);
+  });
+
+  it("closes when focus leaves the bar, so Tab and clicks into the app do not leave it hanging open", () => {
+    render(<Shell />);
+    const file = screen.getByRole("menuitem", { name: "File" });
+    file.focus();
+    fireEvent.click(file);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    // Only the focused menu button is a Tab stop.
+    expect(screen.getByRole("menuitem", { name: "View" }).getAttribute("tabindex")).toBe("-1");
+    act(() => screen.getByRole("button", { name: "Live" }).focus());
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("toggles a checkable item", () => {

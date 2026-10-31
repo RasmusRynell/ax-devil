@@ -14,7 +14,7 @@ export function ActivityBar({ active, onSelect }: Props) {
       key={item.id}
       icon={item.icon}
       label={item.label}
-      className="size-activity border-l-2 border-transparent aria-pressed:border-accent"
+      className="size-activity border-transparent aria-pressed:border-accent max-sm:border-b-edge sm:border-l-edge"
       aria-pressed={item.opens === "view" ? active === item.id : undefined}
       onClick={() => onSelect(item)}
     />
@@ -22,10 +22,10 @@ export function ActivityBar({ active, onSelect }: Props) {
   return (
     <nav
       aria-label="Activity"
-      className="flex shrink-0 flex-col justify-between border-r border-line bg-panel"
+      className="flex shrink-0 justify-between border-b border-line bg-panel sm:flex-col sm:border-r sm:border-b-0"
     >
-      <div className="flex flex-col">{ACTIVITY.top.map(button)}</div>
-      <div className="flex flex-col">{ACTIVITY.bottom.map(button)}</div>
+      <div className="flex sm:flex-col">{ACTIVITY.top.map(button)}</div>
+      <div className="flex sm:flex-col">{ACTIVITY.bottom.map(button)}</div>
     </nav>
   );
 }

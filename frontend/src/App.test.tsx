@@ -96,4 +96,41 @@ describe("app shell", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("no such theme");
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
+
+  it("ignores a slow save that finishes after its dialog was closed, and never saves twice", async () => {
+    let finish: () => void = () => {};
+    const puts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/api/info")
+          return { ok: true, json: async () => ({ app: "ax-devil", api: 1 }) };
+        if (init?.method !== "PUT") return { ok: true, json: async () => stored };
+        puts.push(init.body as string);
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return { ok: true, json: async () => JSON.parse(init.body as string) as Settings };
+      }),
+    );
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "light" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    expect((screen.getByRole("button", { name: "OK" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(screen.getByRole("dialog", { hidden: true }).querySelector("form") as Element);
+    expect(puts).toHaveLength(1);
+
+    fireEvent(
+      screen.getByRole("dialog", { hidden: true }),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(screen.queryByRole("dialog", { hidden: true })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.change(await screen.findByLabelText("Theme"), { target: { value: "auto" } });
+    finish();
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+    expect(screen.getByRole("dialog", { hidden: true })).toBeTruthy();
+    expect((screen.getByLabelText("Theme") as HTMLSelectElement).value).toBe("auto");
+  });
 });

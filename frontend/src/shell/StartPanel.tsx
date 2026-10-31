@@ -13,7 +13,7 @@ const OPEN: readonly [id: string, icon: IconName][] = [
 export function StartPanel({ onRun }: { onRun: (id: string) => void }) {
   return (
     <div className="flex flex-col gap-l">
-      <div className="flex flex-col">
+      <div className="grid max-sm:grid-cols-2">
         {OPEN.map(([id, icon]) => (
           <Button key={id} icon={icon} className="justify-start" onClick={() => onRun(id)}>
             {command(id).label}

@@ -1,6 +1,5 @@
 {
   "name": "ax-devil-desktop",
-  "productName": "ax-devil",
   "version": "0.1.0",
   "private": true,
   "main": "main.cjs",
@@ -9,5 +8,6 @@
   },
   "devDependencies": {
     "electron": "^42.0.0"
-  }
+  },
+  "productName": "ax-devil"
 }

@@ -192,25 +192,18 @@ fn unknown_keys(document: &Value) -> Vec<String> {
     found
 }
 
-/// Writes the document next to `path` and renames it into place, so a crash never leaves half a file.
+/// Writes the document to a new, uniquely named file next to `path` (created exclusively, so it never follows an
+/// existing link) and renames it into place, so a crash never leaves half a file.
 fn write_atomically(path: &Path, document: &Value) -> io::Result<()> {
     let folder = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(folder)?;
-    let mut name = path.file_name().unwrap_or_default().to_owned();
-    name.push(".tmp");
-    let temporary = folder.join(name);
     let mut text = serde_json::to_string_pretty(document).map_err(io::Error::other)?;
     text.push('\n');
-    let result = fs::File::create(&temporary)
-        .and_then(|mut file| {
-            io::Write::write_all(&mut file, text.as_bytes())?;
-            file.sync_all()
-        })
-        .and_then(|()| fs::rename(&temporary, path));
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    let mut file = tempfile::NamedTempFile::new_in(folder)?;
+    io::Write::write_all(&mut file, text.as_bytes())?;
+    file.as_file().sync_all()?;
+    file.persist(path).map_err(|error| error.error)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -267,7 +260,29 @@ mod tests {
             Settings::load(&path).unwrap().state().values(),
             values("dark")
         );
-        assert!(!path.with_extension("json.tmp").exists());
+        assert_eq!(
+            fs::read_dir(path.parent().unwrap()).unwrap().count(),
+            1,
+            "no temporary file is left behind"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saving_never_writes_through_a_link_left_at_the_old_temporary_name() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("default.json");
+        let victim = folder.path().join("victim.txt");
+        fs::write(&victim, "keep").unwrap();
+        std::os::unix::fs::symlink(&victim, folder.path().join("default.json.tmp")).unwrap();
+
+        Settings::load(&path)
+            .unwrap()
+            .replace(&values("dark"))
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep");
+        assert!(path.exists());
     }
 
     #[test]

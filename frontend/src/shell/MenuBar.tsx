@@ -15,6 +15,8 @@ const FIRST_ITEM = '[role="menu"] [role^="menuitem"]:not(:disabled)';
  */
 export function MenuBar({ checked, onSelect }: Props) {
   const [open, setOpen] = useState<number | null>(null);
+  // Only one menu button is a Tab stop, so Tab leaves the bar instead of walking through it.
+  const [tabStop, setTabStop] = useState(0);
   const bar = useRef<HTMLDivElement>(null);
   const focusItem = useRef(false);
   const tops = () => [...(bar.current?.querySelectorAll<HTMLElement>("[data-top]") ?? [])];
@@ -76,6 +78,9 @@ export function MenuBar({ checked, onSelect }: Props) {
       role="menubar"
       aria-label="Menu"
       onKeyDown={onKeyDown}
+      onBlur={(event) => {
+        if (!bar.current?.contains(event.relatedTarget)) setOpen(null);
+      }}
       className="flex h-full items-center gap-xs px-s [-webkit-app-region:no-drag]"
     >
       {MENUS.map((menu, index) => (
@@ -86,14 +91,16 @@ export function MenuBar({ checked, onSelect }: Props) {
             data-top
             aria-haspopup="menu"
             aria-expanded={open === index}
+            tabIndex={tabStop === index ? 0 : -1}
+            onFocus={() => setTabStop(index)}
             onClick={() => setOpen(open === index ? null : index)}
             onMouseEnter={() => open !== null && setOpen(index)}
-            className="h-row rounded-control bg-transparent px-m whitespace-nowrap text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent aria-expanded:bg-hover"
+            className="h-row rounded-control bg-transparent px-m whitespace-nowrap text-fg hover:bg-hover focus-ring aria-expanded:bg-hover"
           >
             {menu.label}
           </button>
           {open === index && (
-            <div className="absolute top-full left-0 z-10 max-h-[calc(100vh-var(--spacing-bar))] min-w-max overflow-y-auto rounded-popup border border-line-strong bg-popup p-xs shadow-lg">
+            <div className="absolute top-full left-0 z-10 max-h-[calc(100vh-var(--spacing-bar))] min-w-max overflow-y-auto rounded-popup border border-line-strong bg-popup p-xs shadow-popup">
               <Menu
                 entries={menu.entries}
                 checked={checked}
