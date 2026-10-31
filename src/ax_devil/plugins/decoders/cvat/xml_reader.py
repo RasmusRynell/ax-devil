@@ -204,7 +204,7 @@ def _collect_frame_shapes(
             if shape_payload is None:
                 debug.setdefault("unrendered_shapes", []).append(raw_shape)
                 continue
-            shape_payload["debug"] = {"cvat": raw_shape}
+            shape_payload["source_data"] = {"cvat": raw_shape}
             shapes.append(shape_payload)
             labels.add(label)
 

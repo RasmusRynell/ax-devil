@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QContextMenuEvent, QResizeEvent
+from PySide6.QtGui import QAction, QContextMenuEvent, QImage, QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from ax_devil.core.source_paths import SourcePaths
@@ -289,6 +289,11 @@ class ViewerWidget(QFrame):
 
     def stream_status(self) -> LiveStreamStatus | None:
         """Return how the live stream shown is doing, or None for a viewer that shows no live stream."""
+        return None
+
+    def latest_frame(self) -> QImage | None:
+        """Return the newest frame of the live stream shown, a null image until its first frame, or None for a viewer
+        that shows no stream."""
         return None
 
     def _set_banner(self, banner: QWidget | None) -> None:

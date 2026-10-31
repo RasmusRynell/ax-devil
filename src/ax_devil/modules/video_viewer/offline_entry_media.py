@@ -21,10 +21,8 @@ from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
 from ax_devil.modules.plugin_system import get_file_decoder_factory
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.video_viewer.overlay_persistence import (
-    OverlayPersistencePolicy,
-    OverlayPersistenceSettings,
-)
+from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults
 from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
@@ -74,6 +72,7 @@ class EntryMedia:
     video_sources: list[FileFrameSource] = field(default_factory=list)
     lanes: list[OpenedLane] = field(default_factory=list)
     error: str | None = None
+    defaults: ViewDefaults = field(default_factory=ViewDefaults)
 
     def overlay_sources(self) -> list[FileOverlaySource]:
         """Return the overlay sources of all lanes."""
@@ -122,6 +121,7 @@ def create_overlay_source(
     overlay: OverlayContent,
     *,
     frame_timeline: FrameTimeline,
+    defaults: ViewDefaults,
 ) -> LaneOverlay:
     """Open the file overlay source for *overlay*. Blocks while the decoder reads the file."""
     if not isinstance(overlay.source_spec, FileOverlaySourceSpec):
@@ -133,13 +133,13 @@ def create_overlay_source(
             source_spec.path,
             overlay_provider_factory(source_spec),
             source_spec.handler_type,
-            timestamp_fallback_policy=source_spec.timestamp_fallback_policy,
+            timestamp_fallback_policy=defaults.overlay_sync,
             frame_timeline=frame_timeline,
         )
     except Exception as exc:
         raise RuntimeError(f"Failed to create overlay source for {overlay.display_name}: {exc}") from exc
 
-    return LaneOverlay(overlay_source, OverlayPersistencePolicy(OverlayPersistenceSettings.default_enabled()))
+    return LaneOverlay(overlay_source, OverlayPersistencePolicy(defaults.sticky))
 
 
 def place_scene_history(
@@ -200,7 +200,7 @@ def _open_lanes(
         else:
             report(f"Parsing overlay data ({position + 1}/{len(lane_indices)}): {lane.overlay.display_name}")
         frame_timeline = media.video_sources[source_index].get_frame_timeline()
-        opened.overlay = create_overlay_source(lane.overlay, frame_timeline=frame_timeline)
+        opened.overlay = create_overlay_source(lane.overlay, frame_timeline=frame_timeline, defaults=media.defaults)
         token.raise_if_cancelled()
         opened.scene_history = place_scene_history(opened.overlay, frame_timeline, token)
         token.raise_if_cancelled()
@@ -212,15 +212,18 @@ def open_entry_media(
     lane_indices: tuple[int, ...],
     gui_thread: QThread,
     job: JobContext[str],
+    *,
+    defaults: ViewDefaults,
 ) -> EntryMedia:
     """Open the sources of *entry*'s lanes at *lane_indices* and move them to *gui_thread*.
 
-    Blocks; run it as a background job. *job* receives progress messages. Never raises: a failure or cancellation is
-    recorded in `EntryMedia.error`, and every source opened before it is still in the returned media. The sources can
-    only be freed on the GUI thread, so they go back to the job as a result: delivered to the viewer, or, for a
-    cancelled job, to `on_discard`, which releases them off the opening queue.
+    Blocks; run it as a background job. *job* receives progress messages. *defaults* are the settings every
+    lane starts with, read on the GUI thread. Never raises: a failure or cancellation is recorded in
+    `EntryMedia.error`, and every source opened before it is still in the returned media. The sources can only be
+    freed on the GUI thread, so they go back to the job as a result: delivered to the viewer, or, for a cancelled job,
+    to `on_discard`, which releases them off the opening queue.
     """
-    media = EntryMedia()
+    media = EntryMedia(defaults=defaults)
     try:
         _open_lanes(media, entry, lane_indices, job)
     except Cancelled:

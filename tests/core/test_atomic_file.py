@@ -27,3 +27,10 @@ def test_a_failed_write_keeps_the_old_file_and_a_finished_one_keeps_its_permissi
     if os.name == "posix":  # Windows has no permission bits beyond read-only.
         assert target.stat().st_mode & 0o777 == 0o640
     assert list(target.parent.iterdir()) == [target]
+
+
+def test_the_temporary_name_cannot_exceed_the_filename_limit_of_a_long_target(tmp_path: Path) -> None:
+    target = tmp_path / f"{'n' * 247}.frames"
+    with write_atomically(target, "wb") as file:
+        file.write(b"x")
+    assert target.read_bytes() == b"x"

@@ -39,7 +39,13 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     WorkspaceBrowserSection,
 )
 from ax_devil.modules.workspace.ui.live_view import LiveView, ScanStatus
-from ax_devil.modules.workspace.ui.live_view_rows import camera_row, group_cameras, network_row, network_row_id
+from ax_devil.modules.workspace.ui.live_view_rows import (
+    camera_row,
+    group_cameras,
+    network_row,
+    network_row_id,
+    refused_streams,
+)
 from ax_devil.modules.workspace.ui.sections_view_controller import Sections, SectionsViewController
 from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -273,6 +279,7 @@ class LiveViewController(QObject):
             self._view.set_scan_status(ScanStatus.FAILED, str(error) or type(error).__name__)
 
     def _refresh(self) -> None:
+        self._workspace.set_refused_streams(refused_streams(self._checked))
         if self._view is not None:
             self._listing.refresh()
 

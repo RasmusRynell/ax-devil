@@ -6,11 +6,15 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QTimer
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QLineEdit, QMenu, QScrollArea
 from pytestqt.qtbot import QtBot
 
+from ax_devil.core.cancellation import NEVER, CancelToken
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.device_discovery.network_scan import DiscoveredCamera, Login, SignIn
 from ax_devil.modules.settings.config_manager import ConfigManager
+from ax_devil.modules.thumbnails import sources
 from ax_devil.modules.workspace.core import LiveStreamItem
 from ax_devil.modules.workspace.ui.logins_editor import LoginsEditor
 from tests.helpers.live_view import Live, scan
@@ -118,6 +122,16 @@ def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that
 ) -> None:
     guest, operator = Login("guest", "guest"), Login("operator", "$OPERATOR_PASS")
     live.save_logins(tmp_path, monkeypatch, guest, operator)
+    monkeypatch.setenv("OPERATOR_PASS", "accepted-password")
+    picture = QImage(64, 48, QImage.Format.Format_RGB32)
+    picture.fill(0xFF336699)
+
+    def snapshot(connection: DeviceConnection, camera_head: int, token: CancelToken) -> QImage:
+        assert connection.host == "192.0.2.12"
+        assert (connection.username, connection.password) == ("operator", "accepted-password")
+        return picture
+
+    monkeypatch.setattr(sources, "read_snapshot", snapshot)
     assert live.sign_in_choice().isChecked()
 
     scan(
@@ -129,14 +143,21 @@ def test_trying_to_sign_in_scans_with_the_saved_logins_and_add_uses_the_one_that
 
     assert live.scanner.logins == (guest, operator)
     assert "Signed in" not in live.detail("192.0.2.12")
-    assert "Credentials refused" in live.row("192.0.2.13").toolTip()
+    assert "Credentials refused" in live.row("192.0.2.13").row.tooltip
     assert live.rows()["192.0.2.13"] == "", "a camera that did not accept a login cannot be added"
-    assert "Not signed in" in live.row("192.0.2.14").toolTip(), "a camera never tried says why"
-    assert "Not signed in" not in live.row("192.0.2.12").toolTip()
+    assert "Not signed in" in live.row("192.0.2.14").row.tooltip, "a camera never tried says why"
+    assert "Not signed in" not in live.row("192.0.2.12").row.tooltip
+    preview = live.row("192.0.2.12").row.thumbnail
+    assert preview is not None, "a signed-in camera can be previewed before Add"
+    assert preview.read(NEVER) == picture
+    assert not live.store.workspace.items, "previewing needs no workspace stream"
     live.press("192.0.2.12")
     [signed_in] = live.store.workspace.items
     assert isinstance(signed_in, LiveStreamItem)
     assert (signed_in.username, signed_in.password) == ("operator", "$OPERATOR_PASS"), "a reference stays one"
+    preview = live.row("192.0.2.12").row.thumbnail
+    assert preview is not None, "the workspace camera row keeps its preview"
+    assert preview.read(NEVER) == picture
 
 
 def test_a_found_camera_opens_its_information_and_hides_its_password(live: Live) -> None:
@@ -162,7 +183,7 @@ def test_a_found_camera_opens_its_information_and_hides_its_password(live: Live)
     assert live.detail("192.0.2.12") == (
         "AXIS P3265-LVE · 192.0.2.12 · Dome Camera · Firmware 12.6.85 · Serial ACCC8E000002 · Up 1d 2h"
     )
-    hover = live.row("192.0.2.12").toolTip()
+    hover = live.row("192.0.2.12").row.tooltip
     assert "aarch64" in hover and "Ambarella CV25" in hover
     assert "never-display-this" not in hover and "Signed in" not in hover
 

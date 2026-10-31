@@ -68,6 +68,8 @@ def live(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> Gen
         check=checker,
     )
     with patch(LIVE_VIEWER, DummyViewer):
-        yield Live(qtbot, view, store, center, scanner, jobs, resolutions, controller, checker, add_stream_requests)
+        yield Live(
+            qtbot, view, store, center, scanner, jobs, resolutions, controller, checker, workspace, add_stream_requests
+        )
     scanner.gate.set()
     checker.gate.set()
