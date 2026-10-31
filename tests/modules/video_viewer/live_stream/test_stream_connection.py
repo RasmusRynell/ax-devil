@@ -103,6 +103,7 @@ def test_live_controller_marks_silent_video_stalled_except_while_paused(
 
 
 def test_live_controller_retry_reopens_every_transport(
+    monkeypatch: pytest.MonkeyPatch,
     make_controller: MakeController,
     live_transports: LiveTransports,
     qtbot: QtBot,
@@ -128,6 +129,15 @@ def test_live_controller_retry_reopens_every_transport(
     pending_error.start()
     pending_error.join()
 
+    before_retirement = controller.connection_status
+    stop = videos[0].stop
+
+    def stop_with_pending_callback() -> None:
+        videos[0].sourceError.emit("error delivered during retirement")
+        assert controller.connection_status == before_retirement
+        stop()
+
+    monkeypatch.setattr(videos[0], "stop", stop_with_pending_callback)
     controller.retry()
 
     assert panel.events_page.count == 1

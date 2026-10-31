@@ -7,9 +7,13 @@ import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import quote
 
 import pytest
+from ax_devil_device_api.utils.errors import AuthenticationError, ConfigurationError
 from ax_devil_mqtt import MqttMessage
+from ax_devil_mqtt.core.manager import logger as dependency_logger
+from PySide6.QtCore import QTimer
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import OverlayData
@@ -65,6 +69,7 @@ class _Broker:
         if self.start_results:
             result = self.start_results.pop(0)
             if result is not None:
+                dependency_logger.error(f"Setup failed: {result}", exc_info=(type(result), result, None))
                 raise result
 
     def stop(self) -> None:
@@ -98,8 +103,8 @@ def _source(
     return MQTTOverlaySource(
         broker_host="broker.local",
         broker_port=1883,
-        broker_username="",
-        broker_password="",
+        broker_username="fake-broker-user",
+        broker_password="fake-secret /+?",
         device=DeviceConnection("camera.local", DeviceProtocol.HTTPS, 0, "root", "pass"),
         analytics_data_source_key=data_source_key,
         decoder=decoder or ADFFrameV1Decoder(),
@@ -143,6 +148,7 @@ def test_mqtt_delivery_recovers_after_malformed_payload(qtbot: QtBot, broker: _B
         qtbot.waitUntil(lambda: len(overlays) >= 1)
     finally:
         source.stop()
+        assert source.wait()
         source.deleteLater()
 
     assert len(overlays) == 1
@@ -211,9 +217,101 @@ def test_mqtt_source_reports_unavailable_data_source_and_stops_retrying(qtbot: Q
     assert broker.events == []
 
 
-def test_mqtt_source_retries_refused_broker_until_connected(qtbot: QtBot, broker: _Broker) -> None:
-    """A refused broker is retried, so it reports reconnecting rather than a terminal error."""
-    broker.start_results = [ConnectionRefusedError("Connection refused"), None]
+def test_mqtt_source_retries_refused_broker_until_connected(
+    qtbot: QtBot, broker: _Broker, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Repeated partial starts clean up before capped retries, with credential-safe reasons and logs."""
+    secret = "fake-secret /+?"
+    failure = f"Connection refused for root: {secret}, {quote(secret, safe='')}, code 4"
+    broker.start_results = [ConnectionRefusedError(failure) for _ in range(7)]
+    source = _source()
+    errors: list[str] = []
+    events: list[str] = []
+    delays: list[float] = []
+    token = source.worker._stop_token
+    wait = token.wait
+
+    def record_retry(seconds: float) -> None:
+        token.raise_if_cancelled()
+        if seconds > 0.01:
+            delays.append(seconds)
+        else:
+            wait(seconds)
+
+    monkeypatch.setattr(token, "wait", record_retry)
+    source.sourceError.connect(errors.append)
+    source.sourceReconnecting.connect(events.append)
+    source.sourceConnected.connect(lambda: events.append("connected"))
+    try:
+        assert source.play()
+        qtbot.waitUntil(lambda: "connected" in events)
+    finally:
+        source.stop()
+        assert source.wait()
+        source.deleteLater()
+
+    assert len(delays) == 7
+    assert delays == sorted(delays) and delays[0] < delays[-1] <= 8.0
+    assert events[-1] == "connected" and len(events) == 8
+    assert all("Connection refused for root" in reason and "code 4" in reason for reason in events[:-1])
+    assert broker.events == ["start", "started", "stop"] * 8
+    assert errors == []
+    for credential in (secret, quote(secret, safe="")):
+        assert credential not in caplog.text
+        assert all(credential not in reason for reason in events)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        AuthenticationError("authentication_failed", "Device rejected root and fake-secret /+?"),
+        ConfigurationError("invalid_port", "Invalid port number"),
+        ConnectionError("Failed to connect to MQTT broker with code 4"),
+        ConnectionError("Failed to connect to MQTT broker with code 5"),
+    ],
+)
+def test_mqtt_rejection_is_terminal(qtbot: QtBot, broker: _Broker, failure: Exception) -> None:
+    """Dependency rejections require manual Retry and release a partially started manager."""
+    wrapped = RuntimeError(f"Failed to configure analytics publisher: {failure}")
+    wrapped.__cause__ = failure
+    broker.start_results = [wrapped]
+    source = _source()
+    errors: list[str] = []
+    retries: list[str] = []
+    source.sourceError.connect(errors.append)
+    source.sourceReconnecting.connect(retries.append)
+    try:
+        assert source.play()
+        qtbot.waitUntil(lambda: bool(errors))
+        assert source.wait()
+        assert len(errors) == 1 and not retries
+        assert "Connection failed" in errors[0]
+        assert "fake-secret /+?" not in errors[0]
+        assert broker.events == ["start", "started", "stop"]
+    finally:
+        source.retire()
+
+
+def test_mqtt_retirement_interrupts_backoff(qtbot: QtBot, broker: _Broker, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A long retry wait is cancelled immediately, rather than keeping retired workers alive."""
+    monkeypatch.setattr(mqtt_overlay_source, "RETRY_INITIAL_DELAY_S", 60.0)
+    broker.start_results = [ConnectionRefusedError("Connection refused")]
+    source = _source()
+    retries: list[str] = []
+    destroyed: list[bool] = []
+    source.sourceReconnecting.connect(retries.append)
+    source.destroyed.connect(lambda: destroyed.append(True))
+    assert source.play()
+    qtbot.waitUntil(lambda: bool(retries))
+    source.retire()
+    qtbot.waitUntil(lambda: bool(destroyed))
+    assert broker.events == ["start", "started", "stop"]
+
+
+def test_mqtt_html_error_page_keeps_retrying(qtbot: QtBot, broker: _Broker, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A camera answering 503 with HTML fails JSON decoding, a ValueError, yet stays retryable."""
+    monkeypatch.setattr(mqtt_overlay_source, "RETRY_INITIAL_DELAY_S", 0.01)
+    broker.start_results = [json.JSONDecodeError("Expecting value", "<html>503</html>", 0), None]
     source = _source()
     errors: list[str] = []
     events: list[str] = []
@@ -224,27 +322,31 @@ def test_mqtt_source_retries_refused_broker_until_connected(qtbot: QtBot, broker
         assert source.play()
         qtbot.waitUntil(lambda: "connected" in events)
     finally:
-        source.stop()
-        source.deleteLater()
-
-    assert events == ["Connection failed: Connection refused", "connected"]
-    assert errors == []
+        source.retire()
+    assert len(events) == 2 and not errors
 
 
 def test_mqtt_stop_during_connection_setup_stops_the_client_after_start_returns(qtbot: QtBot, broker: _Broker) -> None:
-    """Stopping while the broker connection is starting never tears the client down underneath start()."""
+    """Retirement keeps the GUI live and defers cleanup and deletion until blocked setup returns."""
     broker.release_start.clear()
     source = _source()
+    destroyed: list[bool] = []
+    callbacks: list[bool] = []
+    connected: list[bool] = []
+    source.sourceConnected.connect(lambda: connected.append(True))
+    source.destroyed.connect(lambda: destroyed.append(True))
     try:
         assert source.play()
-        assert broker.start_entered.wait(5)
-        release = threading.Timer(0.1, broker.release_start.set)
-        release.start()
-        source.stop()
-        release.join()
+        qtbot.waitUntil(broker.start_entered.is_set)
+        source.retire()
+        QTimer.singleShot(0, lambda: callbacks.append(True))
+        qtbot.waitUntil(lambda: bool(callbacks))
+        assert broker.events == ["start"]
+        assert not destroyed
     finally:
         broker.release_start.set()
-        source.stop()
-        source.deleteLater()
+        assert source.wait()
 
+    qtbot.waitUntil(lambda: bool(destroyed))
     assert broker.events == ["start", "started", "stop"]
+    assert not connected

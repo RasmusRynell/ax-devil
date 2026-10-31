@@ -5,7 +5,8 @@ from __future__ import annotations
 import datetime as _dt
 import logging as _logging
 import logging.handlers as _handlers
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from ax_devil.modules.settings.paths import DEFAULT_PLAIN_LOG_FILENAME, LOGS_DIR
@@ -128,3 +129,34 @@ def _set_root_level_to_lowest_handler(root: _logging.Logger) -> None:
 def get_logger(name: str) -> _logging.Logger:  # noqa: D401
     """Return a child logger in the ax-devil namespace."""
     return _logging.getLogger(f"ax_devil.{name}")
+
+
+class _DependencyRedaction(_logging.Filter):
+    def __init__(self, redact: Callable[[str], str]) -> None:
+        super().__init__()
+        self._redact = redact
+
+    def filter(self, record: _logging.LogRecord) -> bool:
+        """Sanitize dependency messages and exceptions before any handler sees them."""
+        record.msg = self._redact(record.getMessage())
+        record.args = ()
+        if record.exc_info:
+            record.exc_text = _logging.Formatter().formatException(record.exc_info)
+            record.exc_info = None
+        if record.exc_text:
+            record.exc_text = self._redact(record.exc_text)
+        return True
+
+
+@contextmanager
+def redact_dependency_logs(names: tuple[str, ...], redact: Callable[[str], str]) -> Iterator[None]:
+    """Scope credential redaction to dependency loggers that report their own failures."""
+    redaction = _DependencyRedaction(redact)
+    dependencies = tuple(_logging.getLogger(name) for name in names)
+    for dependency in dependencies:
+        dependency.addFilter(redaction)
+    try:
+        yield
+    finally:
+        for dependency in dependencies:
+            dependency.removeFilter(redaction)

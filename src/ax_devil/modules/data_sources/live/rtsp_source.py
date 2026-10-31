@@ -186,7 +186,7 @@ class RTSPSource(FrameSource, OverlaySource):
         self._worker.pause()
 
     def stop(self) -> None:
-        """Stop RTSP stream and clean up."""
+        """Cancel the RTSP session and worker without waiting for completion."""
         logger.debug(f"Stopping {self.source_id}")
         self._stop_token.cancel()
 
@@ -198,8 +198,6 @@ class RTSPSource(FrameSource, OverlaySource):
         if session is not None:
             session.stop()
         self._worker.stop()
-        if not self._worker.wait(2000):
-            logger.warning(f"Worker thread did not exit within 2s for {self.source_id}")
 
         with self.buffer_lock:
             self.frame_buffer.clear()

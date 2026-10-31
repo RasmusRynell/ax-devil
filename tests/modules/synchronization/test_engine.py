@@ -14,57 +14,46 @@ from ax_devil.modules.video_viewer.overlay_persistence import (
 
 
 @pytest.mark.parametrize("fps", [60, 90])
-def test_live_buffer_reports_early_eviction_once(
+def test_live_buffer_delivers_under_capacity_pressure(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, fps: int
 ) -> None:
-    """Production buffering reports starvation without flooding logs or changing output."""
+    """An overlay stream never starves: a full queue releases its oldest frame early, and says so once."""
     now = 0.0
     monkeypatch.setattr("ax_devil.modules.synchronization.engine.time.monotonic", lambda: now)
     results: list[SyncResult[int, str]] = []
-    sync: StreamSync[int, str] = StreamSync(delay_ms=1500)
+    sync: StreamSync[int, str] = StreamSync()
     sync.set_output_callback(results.append)
     for frame in range(1000):
         now = frame / fps
         sync.push_frame(frame, capture_time_us=seconds_to_us(now))
 
-    errors = [record for record in caplog.records if record.levelname == "ERROR"]
-    if fps <= 60:
-        assert results
-        assert errors == []
-    else:
-        assert results == []
-        assert len(errors) == 1
-        assert "1500 ms delay, 100 frame capacity" in errors[0].message
-        assert "reduce the source frame rate" in errors[0].message
+    assert len(results) >= 900
+    assert [result.frame.data for result in results] == list(range(len(results)))
+    warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+    assert len(warnings) == (1 if fps == 90 else 0)
 
 
-def test_live_buffer_reports_bursts_again_after_reset(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Bursts trigger the diagnostic even without advancing capture timestamps or time."""
+def test_live_buffer_releases_bursts_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A burst delivers the oldest frames instead of evicting them."""
     monkeypatch.setattr("ax_devil.modules.synchronization.engine.time.monotonic", lambda: 0.0)
-    sync: StreamSync[int, str] = StreamSync(delay_ms=1500)
-    sync.set_output_callback(lambda _result: None)
-    for _ in range(2):
-        for frame in range(200):
-            sync.push_frame(frame, capture_time_us=0)
-        sync.reset()
-    assert len([record for record in caplog.records if record.levelname == "ERROR"]) == 2
+    sync: StreamSync[int, str] = StreamSync(max_queue_size=2)
+    results: list[SyncResult[int, str]] = []
+    sync.set_output_callback(results.append)
+    for frame in range(6):
+        sync.push_frame(frame, capture_time_us=0)
+    assert [result.frame.data for result in results] == [0, 1, 2, 3]
 
 
-def test_live_buffer_does_not_report_eviction_of_ready_frames(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A full queue alone is not evidence that the playback delay exceeds capacity."""
-    now = 0.0
-    monkeypatch.setattr("ax_devil.modules.synchronization.engine.time.monotonic", lambda: now)
-    sync: StreamSync[int, str] = StreamSync(delay_ms=1500, max_queue_size=2)
-    sync.set_output_callback(lambda _result: None)
+def test_video_only_frames_deliver_immediately(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A video-only stream needs neither an overlay arrival nor a later frame to display."""
+    monkeypatch.setattr("ax_devil.modules.synchronization.engine.time.monotonic", lambda: 0.0)
+    sync: StreamSync[int, str] = StreamSync(overlay_enabled=False)
+    results: list[SyncResult[int, str]] = []
+    sync.set_output_callback(results.append)
+    sync.push_overlay("unconfigured", capture_time_us=0)
     sync.push_frame(0, capture_time_us=0)
-    sync.push_frame(1, capture_time_us=0)
-    now = 1.5
-    sync.push_frame(2, capture_time_us=seconds_to_us(now))
-    assert not [record for record in caplog.records if record.levelname == "ERROR"]
+    assert [result.frame.data for result in results] == [0]
+    assert results[0].overlay is None
 
 
 @pytest.mark.parametrize("with_overlays", [False, True])

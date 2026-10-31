@@ -157,7 +157,8 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
   source in it until `release_media`. Worker threads never hold the last reference to objects they hand to the GUI
   thread.
 - Queued callbacks from replaced or cleaned-up live sources cannot affect the live viewer. Sources own their workers
-  and defer their own deletion until the worker finishes; the controller never inspects worker internals.
+  and defer their own deletion until the worker finishes; the controller never inspects worker internals. Quit waits
+  for retiring workers, bounded by a deadline, so transport cleanup such as restoring camera state completes.
 - Live sources report failures they retry themselves with `sourceReconnecting` and failures needing a manual retry
   with `sourceError`; the viewer shows both with their reason, never only in logs.
 - Automatic cyclic GC is disabled after startup; `app.py` freezes the startup heap and collects on a GUI-thread timer

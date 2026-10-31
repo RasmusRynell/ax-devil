@@ -283,11 +283,9 @@ class StreamMediaController:
         self._overlay_policy.update_settings(persistence_settings)
 
     def _init_synchronizer(self, frame_display: FrameDisplay) -> QtStreamSync:
-        delay_ms = 1500
-
         synchronizer = QtStreamSync(
             parent=frame_display,
-            delay_ms=delay_ms,
+            overlay_enabled=bool(self._content.overlays),
         )
         synchronizer.syncReady.connect(self._on_sync_result)
         return synchronizer
@@ -336,21 +334,13 @@ class StreamMediaController:
         self._source_slots = []
 
     def _release_sources(self) -> None:
-        """Disconnect, stop and delete every owned transport."""
+        """Invalidate delivery before requesting asynchronous transport retirement."""
+        sources, self._sources = self._sources, []
         self._disconnect_source_signals()
-        self._stop_and_wait_sources()
-        self._delete_source_objects()
         self.video_source = None
         self.overlay_source = None
-        self._sources = []
-
-    def _stop_and_wait_sources(self) -> None:
-        for source in self._sources:
-            source.stop()
-
-    def _delete_source_objects(self) -> None:
-        for source in self._sources:
-            source.deleteLater()
+        for source in sources:
+            source.retire()
 
     def _cleanup_synchronizer(self) -> None:
         if self.synchronizer is not None:

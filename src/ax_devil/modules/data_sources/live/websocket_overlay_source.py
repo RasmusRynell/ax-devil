@@ -237,12 +237,10 @@ class WebSocketOverlaySource(OverlaySource):
         self.worker.pause()
 
     def stop(self) -> None:
-        """Stop the worker and close its WebSocket before returning."""
+        """Cancel reception; the worker closes its WebSocket before finishing."""
         logger.debug(f"[{self.source_id}] Stopping DataHub WebSocket overlay source")
         self.worker.set_overlay_ready_signal(None)
         self.worker.request_stop()
-        if not self.worker.wait(2000):
-            logger.warning(f"[{self.source_id}] WebSocket worker did not stop within 2000 ms")
         self.cleanup_posted_events()
 
     def wait(self, timeout_ms: int = 2000) -> bool:
