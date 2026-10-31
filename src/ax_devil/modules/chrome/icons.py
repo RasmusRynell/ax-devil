@@ -87,14 +87,15 @@ def _svg(icon: Icon, stroke: float) -> str:
 def _render(icon: Icon, color: QColor, stroke: float, size: QSize, scale: float) -> QPixmap:
     """Render ``icon`` centered in ``size`` logical pixels, cached by icon, color, stroke, size and scale."""
     pixel_size = size * scale
-    # Qt asks for empty sizes when a button is squeezed; a null QPixmap has no paint engine, so return none.
-    if pixel_size.isEmpty():
-        return QPixmap()
     key = f"ax-devil-icon:{icon.name}:{color.rgba():08x}:{stroke:g}:{size.width()}x{size.height()}@{scale:g}"
     pixmap = QPixmap()
     if QPixmapCache.find(key, pixmap):
         return pixmap
     pixmap = QPixmap(pixel_size)
+    # Qt asks for empty sizes when a button is squeezed. A pixmap without a paint engine can't be drawn on: it is
+    # empty or too large to allocate, so draw nothing.
+    if pixmap.paintEngine() is None:
+        return pixmap
     pixmap.setDevicePixelRatio(scale)
     pixmap.fill(Qt.GlobalColor.transparent)
     side = min(size.width(), size.height())

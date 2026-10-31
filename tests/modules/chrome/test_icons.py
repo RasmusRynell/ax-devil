@@ -1,12 +1,14 @@
 """Bundled icons draw in the current palette; menu buttons keep their menus readable."""
 
+from typing import Any
+
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.icons import Icon, _render
 from ax_devil.modules.chrome.menu_button import MenuButton
 from ax_devil.modules.chrome.theme import apply_theme
 
@@ -35,6 +37,14 @@ def test_icon_without_color_follows_theme_changes(qapp: QApplication) -> None:
         apply_theme(mode)
         expected = qapp.palette().color(QPalette.ColorRole.WindowText)
         assert _same_color(_opaque_colors(icon), expected), mode
+
+
+def test_size_qt_cannot_allocate_draws_nothing(qapp: QApplication, qtlog: Any) -> None:
+    """A pixmap Qt cannot allocate has no paint engine; rendering it skips painting and logs no QPainter warnings."""
+    pixmap = _render(Icon.PLAY, QColor("#ffffff"), 1.5, QSize(16777215, 16777215), 1.0)
+
+    assert pixmap.paintEngine() is None
+    assert not qtlog.records
 
 
 def test_fixed_color_icon_dims_when_disabled(qapp: QApplication) -> None:
