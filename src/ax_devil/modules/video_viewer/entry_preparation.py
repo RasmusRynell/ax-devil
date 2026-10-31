@@ -67,14 +67,8 @@ def _same_overlay(first: FileOverlaySourceSpec, second: FileOverlaySourceSpec) -
     return first == second and first.decoder_kwargs == second.decoder_kwargs
 
 
-def entry_preparation(
-    entry: PlaylistEntry, lane_indices: tuple[int, ...], playing: tuple[FileOverlaySourceSpec, ...]
-) -> EntryPreparation | None:
-    """Describe the caches opening *entry*'s lanes at *lane_indices* would build, or None when there are no lanes.
-
-    An overlay cache is named after its file alone, so one that the *playing* overlays also read, but with other decoder
-    options, is left out: replacing it would change what the playing provider reads from it.
-    """
+def entry_preparation(entry: PlaylistEntry, lane_indices: tuple[int, ...]) -> EntryPreparation | None:
+    """Describe the caches opening *entry*'s lanes at *lane_indices* would build, or None when there are no lanes."""
     # Lanes showing the same video share one source, exactly as `open_entry_media` shares them.
     videos: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], tuple[str, ImageSequenceConfig | None]] = {}
     for lane_index in lane_indices:
@@ -83,15 +77,10 @@ def entry_preparation(
         videos.setdefault((video, image_sequence_config), (str(video.source_spec.path), image_sequence_config))
     if not videos:
         return None
-    overlays = tuple(
-        spec
-        for spec in overlay_specs(entry, lane_indices)
-        if all(_same_overlay(spec, shown) for shown in playing if shown.path == spec.path)
-    )
     config_manager = ConfigManager()
     return EntryPreparation(
         videos=tuple(videos.values()),
-        overlays=overlays,
+        overlays=overlay_specs(entry, lane_indices),
         config_path=config_manager.config_path,
         storage=config_manager.get("storage", {}),
     )
