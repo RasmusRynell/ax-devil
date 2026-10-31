@@ -22,7 +22,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Live/offline viewer workflows, media tools, offline entry opening (`open_entry_media`, `EntryMedia`), `OfflineSession`, `OfflinePlayback`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation | `src/ax_devil/modules/video_player/` |
 | Scene model, decoder helpers, inspection, filtering, draw recipes, `CachedSceneOverlay`, Scene-to-drawing preparation | `src/ax_devil/modules/scene/` |
-| The read-only fields tree and title row of an object, shared by the media tools and the render catalog viewer (neither imports the other's widgets) | `src/ax_devil/modules/object_inspection/` |
+| Read-only object fields tree and title row shared by media tools and the render catalog viewer | `src/ax_devil/modules/object_inspection/` |
 | Render catalog viewer: example sheets, the live viewer window, the `ax-devil catalog` commands and the generated language reference | `src/ax_devil/modules/catalog_viewer/` |
 | Frame sources, overlay sources, file providers, transport/runtime source plumbing | `src/ax_devil/modules/data_sources/` |
 | Network scanning that finds Axis devices on IP ranges by what they give without login, with optional HTTP Digest sign-in | `src/ax_devil/modules/device_discovery/` |
@@ -45,10 +45,8 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 remain in `data_sources/base.py`; file sources and providers remain outside `live/`.
 
 `workspace/ui/add_content/` groups the three add-content dialogs and their analytics discovery and playlist-selection
-helpers. The Workspace, its items, content descriptions, and intake validation live in `workspace/core/` because they
-also serve the CLI and any future UI. `workspace/ui` is the Qt interface on top; the Qt-free rule for `core/` is in
-[invariants](../domain/invariants.md#content-model), and the split is described in
-[Workspace](workspace.md). Tests mirror `core/`, `ui/`, and `ui/add_content/`.
+helpers. `workspace/core/` serves the CLI and future UIs; [Workspace](workspace.md) explains the split.
+[check_architecture.py](../../scripts/check_architecture.py) enforces import boundaries. Tests mirror `core/`, `ui/`, and `ui/add_content/`.
 
 ## Outside `modules/`
 

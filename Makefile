@@ -1,4 +1,4 @@
-.PHONY: sync lock check format shaders test test-integration run run-dev
+.PHONY: sync lock check check-fast format shaders test test-failed test-integration run run-dev
 
 TEST_WORKERS ?= auto
 
@@ -12,6 +12,12 @@ check:
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run python scripts/check_logging.py
+	uv run python scripts/check_architecture.py
+	uv run mypy src/ax_devil tests tools
+
+check-fast:
+	uv run python scripts/check_fast.py
+	uv run python scripts/check_architecture.py
 	uv run mypy src/ax_devil tests tools
 
 format:
@@ -27,6 +33,9 @@ shaders:
 
 test:
 	uv run pytest -n $(TEST_WORKERS) --maxprocesses=8 --dist=loadfile
+
+test-failed:
+	uv run pytest --lf -x --lfnf=none || test $$? -eq 5
 
 test-integration:
 	uv run pytest -m integration

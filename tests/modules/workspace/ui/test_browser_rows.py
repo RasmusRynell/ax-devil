@@ -236,8 +236,8 @@ def test_a_playlist_starts_expanded_unless_it_has_too_many_entries_to_list_at_on
         entry = PlaylistEntry(lanes=lanes, default_considered=True)
         return PlaylistContent(display_name="Suite", entries=(entry,) * entries)
 
-    short, _ = store_with(playlist(3))
-    long, _ = store_with(playlist(5000))
+    short, _ = store_with(playlist(200))
+    long, _ = store_with(playlist(201))
 
     assert item_rows(short)[0].expanded_at_first
     assert not item_rows(long)[0].expanded_at_first
