@@ -13,13 +13,6 @@ import click
 from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.catalog_viewer.cli import catalog
 from ax_devil.modules.plugin_installation.cli import plugins
-from ax_devil.modules.plugin_system import (
-    PLAYLIST_RESOLVER_PLUGIN_TYPE,
-    ApplicationPluginLoader,
-    PlaylistResolverPlugin,
-    PluginStatus,
-    RuntimePluginRegistry,
-)
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
@@ -33,9 +26,7 @@ from ax_devil.modules.workspace.core import (
     load_workspace,
     overlay_choice,
 )
-from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
-from .app import create_app
 from .cli_options import CONFIG_OPTION, apply_run_options
 
 
@@ -47,6 +38,8 @@ def _require_existing_config_path(config: Path | None) -> None:
 
 def _apply_cli_config_and_load_plugins(config: Path | None) -> None:
     """Apply the requested CLI config path, then load plugins (a no-op once they have been loaded)."""
+    from ax_devil.modules.plugin_system import ApplicationPluginLoader
+
     _require_existing_config_path(config)
 
     config_manager = ConfigManager()
@@ -66,6 +59,8 @@ def _run_app(
     _require_existing_config_path(config)
 
     try:
+        from ax_devil.app import create_app
+
         app = create_app(
             log_level=log_level,
             config_path=config,
@@ -133,6 +128,13 @@ def cli(
 
 def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click.Command:
     """Look up a resolver-provided playlist command after config has been applied."""
+    from ax_devil.modules.plugin_system import (
+        PLAYLIST_RESOLVER_PLUGIN_TYPE,
+        PlaylistResolverPlugin,
+        PluginStatus,
+        RuntimePluginRegistry,
+    )
+
     _apply_cli_config_and_load_plugins(config)
 
     try:
@@ -160,6 +162,8 @@ def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click
 
 def _list_available_playlist_resolvers(config: Path | None) -> list[str]:
     """Return sorted IDs of currently loadable playlist resolvers."""
+    from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PluginStatus, RuntimePluginRegistry
+
     _apply_cli_config_and_load_plugins(config)
     return sorted(
         plugin.definition.plugin_id
@@ -361,6 +365,8 @@ def _overlay_choices_by_extension(paths: Sequence[Path], config: Path | None) ->
     """Return *paths* with the only data handler that reads each, or fail naming the candidates when it is unclear."""
     if not paths:
         return []
+    from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
+
     _apply_cli_config_and_load_plugins(config)
     intake = default_workspace_intake()
     choices: list[OverlayChoice] = []

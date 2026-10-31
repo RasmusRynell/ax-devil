@@ -186,7 +186,7 @@ def build_lane(
 
 
 def open_catalog_viewer(parent: QWidget, render_catalog_selection: SceneRenderCatalogSelection) -> None:
-    from ax_devil.modules.catalog_viewer import show_catalog_viewer
+    from ax_devil.modules.catalog_viewer.viewer_registry import show_catalog_viewer
 
     show_catalog_viewer(
         render_catalog_selection.manager,

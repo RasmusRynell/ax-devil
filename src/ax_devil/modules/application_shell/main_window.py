@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.configuration_preferences import save_overlay_preference
 from ax_devil.modules.application_shell.restart import restart_application
-from ax_devil.modules.catalog_viewer import close_catalog_viewer, show_catalog_viewer
+from ax_devil.modules.catalog_viewer.viewer_registry import close_catalog_viewer, show_catalog_viewer
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.plugin_manager.plugins_view import PLUGINS_VIEW_ID, PluginsView
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager

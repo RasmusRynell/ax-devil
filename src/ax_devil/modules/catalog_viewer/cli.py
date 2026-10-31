@@ -10,13 +10,15 @@ import os
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 
 from ax_devil.cli_options import CONFIG_OPTION
-from ax_devil.modules.scene.rendering import SceneRenderCatalog, SceneRenderCatalogLoader, SceneRenderCatalogStore
 from ax_devil.modules.settings.config_manager import ConfigManager
+
+if TYPE_CHECKING:
+    from ax_devil.modules.scene.rendering import SceneRenderCatalog, SceneRenderCatalogStore
 
 _APPLICATION: list[object] = []
 """Keeps the Qt application of a command alive until the process ends."""
@@ -172,6 +174,8 @@ def new(name: str, base: Path | None, config: Path | None) -> None:
 
 def _store(config: Path | None) -> SceneRenderCatalogStore:
     """Return the catalog store of the app's configuration, or of *config*."""
+    from ax_devil.modules.scene.rendering import SceneRenderCatalogStore
+
     if config is not None:
         if not config.exists():
             raise click.ClickException(f"Config file does not exist: {config}")
@@ -181,6 +185,8 @@ def _store(config: Path | None) -> SceneRenderCatalogStore:
 
 def _load(path: Path | None, config: Path | None) -> tuple[Path, SceneRenderCatalog, Mapping[str, Any]]:
     """Return the catalog at *path*, or the default catalog, compiled and as a document; fail with its error."""
+    from ax_devil.modules.scene.rendering import SceneRenderCatalogLoader
+
     # The chosen default, even a broken one: checking the built-in instead would hide the error.
     catalog_path = path or _store(config).list_catalogs_with_errors().chosen_default_path
     try:

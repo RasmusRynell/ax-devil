@@ -277,7 +277,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._tools_panel = tools_panel
 
     def _open_catalog_viewer(self) -> None:
-        from ax_devil.modules.catalog_viewer import show_catalog_viewer
+        from ax_devil.modules.catalog_viewer.viewer_registry import show_catalog_viewer
 
         show_catalog_viewer(
             self._render_catalog_manager,

@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtGui import QImage
-
 if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
+
     from ax_devil.modules.scene.model import Scene
 
 

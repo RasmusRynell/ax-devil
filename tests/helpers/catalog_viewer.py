@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QLabel
 from pytestqt.qtbot import QtBot
 
-from ax_devil.modules.catalog_viewer import CatalogViewerWindow
+from ax_devil.modules.catalog_viewer.window import CatalogViewerWindow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from tests.catalog_helpers import wait_for_catalogs
 

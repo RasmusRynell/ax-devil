@@ -97,7 +97,7 @@ def startups(monkeypatch: pytest.MonkeyPatch, unloaded_plugins: None) -> _Launch
         opened.extend(kwargs["items"])
         return _App()
 
-    monkeypatch.setattr(cli_module, "create_app", create_app)
+    monkeypatch.setattr("ax_devil.app.create_app", create_app)
     monkeypatch.setattr(ENTRY_POINTS, lambda **_: [])
     return opened
 

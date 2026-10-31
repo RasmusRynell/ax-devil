@@ -12,10 +12,11 @@ from PySide6.QtWidgets import QLabel, QTabBar
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
-from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer, show_catalog_viewer
 from ax_devil.modules.catalog_viewer.inspector import ObjectInspector
 from ax_devil.modules.catalog_viewer.sheet_drawing import sheet_frame
 from ax_devil.modules.catalog_viewer.sheets import sheets
+from ax_devil.modules.catalog_viewer.viewer_registry import close_catalog_viewer, show_catalog_viewer
+from ax_devil.modules.catalog_viewer.window import CatalogViewerWindow
 from ax_devil.modules.object_inspection.fields_view import FieldsView
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogLoader,
