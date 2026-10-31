@@ -287,18 +287,28 @@ def _camera_answers(monkeypatch: pytest.MonkeyPatch, *answers: str | None) -> tu
     return gate, hosts
 
 
-def test_new_stream_starts_on_a_resolution_the_camera_offers(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The configured 1280x720 is not offered, so the stream starts on the camera's default for its camera head."""
+def test_discovery_lists_resolutions_without_replacing_the_camera_default(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discovery and camera-head changes preserve camera default and text being edited."""
     gate, _hosts = _camera_answers(monkeypatch, CAMERA)
     gate.set()
     dialog = AddLiveStreamDialog()
     qtbot.addWidget(dialog)
     field = form_field(dialog, "Resolution", ResolutionField)
     dialog.show()
-    qtbot.waitUntil(lambda: field.value() == "640x480")
+    qtbot.waitUntil(lambda: field.itemText(1) == "1920x1080")
+    assert field.value() == ""
 
     form_field(dialog, "Camera Head", QLineEdit).setText("2")
+    assert field.itemText(1) == "1024x768"
+    assert field.value() == ""
+    field.setCurrentIndex(2)
+    field.activated.emit(2)
     assert field.value() == "800x600"
+    field.setCurrentIndex(0)
+    field.activated.emit(0)
+    assert field.value() == ""
     dialog.cleanup()
 
     # A value typed before the camera answers is the user's.
@@ -312,7 +322,7 @@ def test_new_stream_starts_on_a_resolution_the_camera_offers(qtbot: QtBot, monke
     QTest.keyClicks(typed, "19")
     typed.setCursorPosition(1)
     gate.set()
-    qtbot.waitUntil(lambda: field.itemText(0) == "1920x1080")
+    qtbot.waitUntil(lambda: field.itemText(1) == "1920x1080")
     QTest.keyClicks(typed, "x")  # The answer neither replaces the text nor moves the caret.
     assert field.value() == "1x9"
     typing.cleanup()
@@ -329,31 +339,32 @@ def test_resolutions_are_read_again_for_a_changed_host_and_after_an_empty_answer
     qtbot.addWidget(dialog)
     field = form_field(dialog, "Resolution", ResolutionField)
     dialog.show()
-    qtbot.waitUntil(lambda: field.itemText(0) == "1920x1080")
+    qtbot.waitUntil(lambda: field.itemText(1) == "1920x1080")
 
     form_field(dialog, "Host", QLineEdit).setText("other.local")
-    qtbot.waitUntil(lambda: field.itemText(0) == "Camera lists no resolutions")
+    qtbot.waitUntil(lambda: field.itemText(1) == "Camera lists no resolutions")
     assert hosts == ["camera.local", "other.local"]
     field.showPopup()
-    qtbot.waitUntil(lambda: field.itemText(0) == "1920x1080")
+    qtbot.waitUntil(lambda: field.itemText(1) == "1920x1080")
     qtbot.waitUntil(lambda: field.view().height() >= 2 * field.view().sizeHintForRow(0))  # The open popup grew.
     field.hidePopup()
     dialog.cleanup()
 
 
 @pytest.mark.parametrize("answer", [CAMERA, None], ids=["listed", "unreachable"])
+@pytest.mark.parametrize("resolution", ["", "1280x720"])
 def test_saved_resolution_is_kept_whatever_the_camera_answers(
-    qtbot: QtBot, live_handler: None, monkeypatch: pytest.MonkeyPatch, answer: str | None
+    qtbot: QtBot, live_handler: None, monkeypatch: pytest.MonkeyPatch, answer: str | None, resolution: str
 ) -> None:
-    """A saved 1280x720 that is not offered stays, with or without an answer, and saving stays possible."""
+    """A saved camera default or explicit size survives discovery, even when the camera is unreachable."""
     _camera_answers(monkeypatch, answer)[0].set()
-    dialog = AddLiveStreamDialog(existing=LiveStreamItem(host="camera.local", resolution="1280x720"))
+    dialog = AddLiveStreamDialog(existing=LiveStreamItem(host="camera.local", resolution=resolution))
     qtbot.addWidget(dialog)
     field = form_field(dialog, "Resolution", ResolutionField)
     dialog.show()
-    qtbot.waitUntil(lambda: field.itemText(0) in ("1920x1080", "Could not read resolutions"))
+    qtbot.waitUntil(lambda: field.itemText(1) in ("1920x1080", "Could not read resolutions"))
 
-    assert field.value() == "1280x720"
+    assert field.value() == resolution
     assert next(button for button in dialog.findChildren(QPushButton) if button.text() == "Save").isEnabled()
     dialog.cleanup()
 
@@ -394,7 +405,7 @@ def test_edit_roundtrips_raw_and_inactive_values_without_config_fallback(
     dialog.accept()
 
     result = dialog.get_result()
-    expected = replace(item, camera_head=5, resolution="1280x720" if clear_resolution else item.resolution)
+    expected = replace(item, camera_head=5, resolution="" if clear_resolution else item.resolution)
     assert result is not None and result.item == expected
     assert result.contents[0].item_id == item.id
     dialog.cleanup()

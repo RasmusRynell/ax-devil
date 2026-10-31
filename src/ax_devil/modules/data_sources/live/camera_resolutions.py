@@ -1,6 +1,6 @@
 """The stream resolutions a camera offers per video channel, read from its VAPIX parameters.
 
-The lists come from ``Properties.Image`` and the default from ``Image.I<n>.Appearance.Resolution``; see
+The lists come from ``Properties.Image``; see
 https://developer.axis.com/vapix/network-video/parameter-management/image-api/ and
 https://developer.axis.com/video-streaming-and-recording/video-streaming/how-to-guides/lookup-channels/ .
 """
@@ -15,7 +15,7 @@ from ax_devil_device_api import Client
 from ax_devil_device_api.core.config import AuthMethod
 from ax_devil_device_api.features.device_info import DeviceInfoClient
 
-from ax_devil.core.device_connection import DeviceConnection
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -24,30 +24,12 @@ _RESOLUTION = re.compile(r"[1-9]\d*x[1-9]\d*")
 
 
 @dataclass(frozen=True)
-class ChannelResolutions:
-    """The resolutions one video channel offers, in the camera's order, and the one the camera starts it at."""
-
-    resolutions: tuple[str, ...]
-    default: str
-
-    def preferred(self, configured: str) -> str:
-        """Return the first of *configured* and the camera's default that the camera offers, else its first one.
-
-        With no list at all, *configured* is returned unchanged.
-        """
-        for candidate in (configured, self.default):
-            if candidate in self.resolutions:
-                return candidate
-        return self.resolutions[0] if self.resolutions else configured
-
-
-@dataclass(frozen=True)
 class CameraResolutions:
     """A camera's ``param.cgi`` values, keyed without the leading ``root.``."""
 
     params: Mapping[str, str]
 
-    def channel(self, camera_head: int) -> ChannelResolutions:
+    def channel(self, camera_head: int) -> tuple[str, ...]:
         """Return what the video channel of *camera_head* (counted from 1) offers."""
         n = camera_head - 1
         ladder = (
@@ -56,11 +38,9 @@ class CameraResolutions:
             "Properties.Image.Resolution",
         )
         listed = next((self.params[key] for key in ladder if self.params.get(key)), "")
-        resolutions = tuple(
+        return tuple(
             dict.fromkeys(token for token in map(str.strip, listed.split(",")) if _RESOLUTION.fullmatch(token))
         )
-        default = self.params.get(f"Image.I{n}.Appearance.Resolution", "").strip()
-        return ChannelResolutions(resolutions, default if default in resolutions else "")
 
 
 def parse_camera_resolutions(text: str) -> CameraResolutions:
@@ -78,14 +58,14 @@ def parse_camera_resolutions(text: str) -> CameraResolutions:
 def read_camera_resolutions(connection: DeviceConnection) -> CameraResolutions:
     """Ask the camera at *connection* for its image parameters in one request; raises when it does not answer 200.
 
-    Digest is forced: the automatic choice tries Basic first, which would send the password in the clear over HTTP.
+    HTTPS allows automatic authentication. HTTP forces Digest so Basic cannot expose credentials in clear text.
     """
     config = connection.device_config()
-    config.auth_method = AuthMethod.DIGEST
+    config.auth_method = AuthMethod.AUTO if connection.protocol is DeviceProtocol.HTTPS else AuthMethod.DIGEST
     with Client(config) as client:
         response = client.device.request(
             DeviceInfoClient.PARAMS_ENDPOINT,
-            params={"action": "list", "group": "Properties.Image,Image"},
+            params={"action": "list", "group": "Properties.Image"},
             headers={"Accept": "text/plain"},
         )
     if response.status_code != 200:

@@ -33,7 +33,6 @@ def _stub_live_stream_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
         "live_stream": {
             "rtsp": {
                 "camera_head": 1,
-                "resolution": "1280x720",
                 "data_stream_handler": "ONVIF_XML",
             },
             "analytics-mqtt": {

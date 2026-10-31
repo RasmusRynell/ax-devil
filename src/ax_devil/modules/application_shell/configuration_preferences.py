@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import os
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -68,8 +67,6 @@ class ConfigField:
             raise ValueError(f"{self.label}: choose a folder or use an environment reference.")
         if self.path.endswith(".ip_range"):
             parse_scan_targets(value)
-        if self.path.endswith(".resolution") and re.fullmatch(r"[1-9]\d*x[1-9]\d*", value) is None:
-            raise ValueError("Resolution: enter width x height, such as 1280x720.")
         return value
 
 
@@ -112,7 +109,6 @@ STREAM_SECTIONS = (
         "Video and overlay",
         (
             ConfigField("defaults.live_stream.rtsp.camera_head", "Camera head", minimum=1, maximum=9999),
-            ConfigField("defaults.live_stream.rtsp.resolution", "Resolution"),
             ConfigField(
                 "defaults.live_stream.overlay_source",
                 "Overlay mode",
