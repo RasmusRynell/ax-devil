@@ -31,7 +31,7 @@ the two pairing folders; Folder Pair scans their files and matches stems.
 Open the playlist:
 
 ```bash
-uv run ax-devil playlist folder_pair \
+ax-devil playlist folder_pair \
   downloads/uvg-vcm/videos downloads/uvg-vcm/overlays --handler-type UVG_VCM
 ```
 
@@ -39,7 +39,7 @@ Alternatively, use **File → Add Playlist**, choose **Folder Pair**, select the
 as the decoder. Entries are sorted by file name. For one sequence:
 
 ```bash
-uv run ax-devil local --video downloads/uvg-vcm/videos/VolleyballGame.mp4 \
+ax-devil local --video downloads/uvg-vcm/videos/VolleyballGame.mp4 \
   --overlay downloads/uvg-vcm/overlays/VolleyballGame.json --handler-type UVG_VCM
 ```
 
@@ -58,7 +58,7 @@ the visible labels and geometry, as they do for other decoders.
 ## Attribution and license
 
 The footage and annotations are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-The application's Python code remains MIT licensed. `downloads/` is ignored by Git; keep the dataset's attribution
+The application's code remains MIT licensed. `downloads/` is ignored by Git; keep the dataset's attribution
 with local copies and add it next to any published video or GIF:
 
 > Demo footage and annotations derived from the [UVG-VCM dataset](https://tie-ultravideo.rd.tuni.fi/UVG-VCM/index.html)

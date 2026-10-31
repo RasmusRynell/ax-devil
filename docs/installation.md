@@ -1,6 +1,6 @@
 # Installation
 
-ax-devil supports **Linux** and requires **Python 3.10+** (CI checks 3.10 and 3.12).
+ax-devil supports **Linux**. The language version and tooling are in the [toolchain](toolchain.md).
 
 ## Ubuntu 24.04 prerequisites
 
@@ -23,12 +23,12 @@ packages.
 ```bash
 git clone https://github.com/RasmusRynell/ax-devil.git
 cd ax-devil
-uv sync --locked
-uv run ax-devil
 ```
 
-This opens an empty workspace. To run the [README examples](../README.md#open-your-data) from source, prefix them
-with `uv run` in the repository directory.
+Then build and launch with the [toolchain](toolchain.md#install-and-launch) commands.
+
+The launch opens an empty workspace. To run the [README examples](../README.md#open-your-data) from source, use the
+same launch command in the repository directory.
 
 ## Install from PyPI
 
@@ -39,7 +39,7 @@ uv tool install ax-devil
 ax-devil
 ```
 
-`python -m pip install ax-devil` inside a virtual environment also works. Upgrade with `uv tool upgrade ax-devil`;
+Upgrade with `uv tool upgrade ax-devil`;
 installed plugins follow on the next launch. See [plugin upgrades and recovery](plugins.md#upgrades-and-recovery).
 
 ## Graphics startup problems
@@ -51,6 +51,6 @@ needs the Mesa DRI driver (`libgl1-mesa-dri`, installed by the prerequisites abo
 
 ## Developing
 
-`uv sync --locked` includes the development tools. Install optional Git hooks with `uv run pre-commit install`
-and fix formatting and lint issues with `make format`. See the [testing runbook](runbooks/testing.md) for checks,
-isolated GUI verification, and installation tests.
+The [toolchain](toolchain.md) lists the development setup and commands. Fix formatting and lint issues with
+`make format`. See the [testing runbook](runbooks/testing.md) for checks, isolated GUI verification, and installation
+tests.

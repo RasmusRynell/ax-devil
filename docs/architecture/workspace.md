@@ -34,7 +34,7 @@ Workspace file (JSON)  <->  Workspace + Workspace Items   ->  Content   ->  View
 
 ## Workspace Items
 
-Item kinds are open-ended: a kind is one `WorkspaceItem` subclass registered in `ITEM_KINDS`, and the Workspace, the
+Item kinds are open-ended: a kind is one `WorkspaceItem` kind registered in `ITEM_KINDS`, and the Workspace, the
 file format, and the store do not branch on kind.
 
 - Content identity is derived, never random: a playlist of item *x* has `content_id` `x/<playlist name>` (its numbered

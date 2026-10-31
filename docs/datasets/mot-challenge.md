@@ -22,7 +22,7 @@ on its own.
 Open the playlist:
 
 ```bash
-uv run ax-devil playlist mot_challenge downloads/mot/MOT17
+ax-devil playlist mot_challenge downloads/mot/MOT17
 ```
 
 Alternatively, use **File → Add Playlist**, choose **MOT Challenge**, and select the dataset folder.
@@ -58,7 +58,7 @@ training split, a **GT** lane. A sequence with neither file opens as plain video
 
 MOT Challenge sequences and annotations are licensed under
 [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/): non-commercial use only, with
-attribution, and derived material shared under the same license. The application's Python code remains MIT
+attribution, and derived material shared under the same license. The application's code remains MIT
 licensed. `downloads/` is ignored by Git; keep the dataset's license terms with local copies and credit the
 dataset next to any published video or GIF.
 

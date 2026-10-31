@@ -5,10 +5,10 @@ The code is organized around concept-owned modules. Workspace content describes 
 ## Layers
 
 ```
-CLI (`cli.py`)                 -> Click commands that build Workspace Items
+CLI (`cli.py`)                 -> commands that build Workspace Items
 Application (`app.py`)         -> logging, config, settings, plugins, Qt event loop
 Application Shell              -> MainWindow, menus, app-wide dialogs including Settings
-Workspace                      -> core: Workspace, items, content, intake (Qt-free); ui: store, browser rows, panes, viewers
+Workspace                      -> core: Workspace, items, content, intake (imports no UI toolkit); ui: store, browser rows, panes, viewers
 Video Viewer                   -> live/offline workflows, media tools, Scene presentation, catalog viewer
 Object Inspection              -> fields tree and title row of an object, used by media tools and the catalog viewer
 Video Player                   -> reusable frame display, viewport, drawing preparation
@@ -107,7 +107,7 @@ clients shared by Workspace discovery and the runtime sources.
 
 ## Synchronization
 
-Live viewing uses `StreamSync`, a pure Python engine wrapped by `QtStreamSync`. It buffers frames by arrival delay and
+Live viewing uses `StreamSync`, a pure-logic engine (no UI toolkit) wrapped by `QtStreamSync`. It buffers frames by arrival delay and
 pairs each with the newest overlay at or before it within a fixed tolerance; it is event-driven, with no wall-clock
 timer. The matching and persistence rules are in [Frame Identity](../domain/invariants.md#frame-identity).
 `StreamMediaController` wires the frame and overlay signals into the sync adapter and forwards synchronized results to
@@ -144,13 +144,13 @@ Plugins are discovered by `ApplicationPluginLoader` and stored in `RuntimePlugin
 contributes file-to-Scene and/or payload-to-Scene decoders; a playlist resolver plugin resolves user-selected datasets
 into `PlaylistContent`, and requires a settings widget. `ax-devil list-handlers` lists what is loaded.
 
-Built-in plugins are imported from ax-devil's package. External plugin distributions are discovered only through the
-`ax_devil.decoder_plugins` and `ax_devil.playlist_resolver_plugins` entry-point groups visible to the current Python
-environment. Plugin API version, class contract, plugin IDs, and decoder handler collisions are validated before
-registration. One invalid external entry point does not prevent other plugins or the application from loading.
+Built-in plugins are loaded from ax-devil's package. External plugin distributions are discovered only through the
+plugin discovery mechanism visible to the current runtime environment (see the
+[toolchain](../toolchain.md#plugin-packaging-current-plugin-api)). Plugin API version, class contract, plugin IDs, and decoder handler collisions are validated before
+registration. One invalid external plugin does not prevent other plugins or the application from loading.
 
-`launcher.py` selects the prepared plugin interpreter before Qt imports; management commands stay in the base
-interpreter. `modules/plugin_installation/` owns the separate locked uv project that holds installed plugins; its rules
+`launcher.py` selects the prepared plugin runtime before the UI toolkit loads; management commands stay in the base
+runtime. `modules/plugin_installation/` owns the separate locked uv project that holds installed plugins; its rules
 are in [Plugin System invariants](../domain/invariants.md#plugin-system).
 See [Installing and managing plugins](../plugins.md) for commands, upgrades, storage, and recovery, and the
 [write-plugin skill](../../.agents/skills/write-plugin/SKILL.md) for writing plugins. The UVG-VCM and MOT decoders are

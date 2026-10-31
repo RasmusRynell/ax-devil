@@ -13,7 +13,7 @@ recordings together with analytics overlays. Inspect objects frame by frame and 
 
 ## Install
 
-Requires Linux, **Python 3.10+**, and the [native dependencies](https://github.com/RasmusRynell/ax-devil/blob/main/docs/installation.md#ubuntu-2404-prerequisites).
+Requires Linux (runtime requirements: [toolchain](docs/toolchain.md)) and the [native dependencies](https://github.com/RasmusRynell/ax-devil/blob/main/docs/installation.md#ubuntu-2404-prerequisites).
 
 ```bash
 uv tool install ax-devil

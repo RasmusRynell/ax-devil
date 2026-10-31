@@ -1,7 +1,8 @@
 # Installing and managing plugins
 
 This guide covers installing, upgrading, and removing plugins. For what plugins can do, see the
-[README](../README.md#plugins). To write one, see the [write-plugin skill](../.agents/skills/write-plugin/SKILL.md).
+[README](../README.md#plugins). To write one, see the [write-plugin skill](../.agents/skills/write-plugin/SKILL.md); packaging mechanics of the current
+plugin API are in the [toolchain](toolchain.md#plugin-packaging-current-plugin-api).
 
 ## Install and run
 
@@ -15,12 +16,8 @@ ax-devil plugins list
 ax-devil
 ```
 
-During development, prefix these commands with `uv run` from the ax-devil checkout:
-
-```bash
-uv run ax-devil plugins install /absolute/path/to/example-plugin
-uv run ax-devil
-```
+From a source checkout, use the checkout's launch command ([toolchain](toolchain.md#install-and-launch)) for
+both commands.
 
 The **Plugins** view in the app does the same from the running app: **Add** is `plugins install`, **Update** is
 `plugins install --upgrade-package <package>`, which moves only that package and what it needs, and **Remove** is
@@ -34,9 +31,9 @@ plugins run on exactly the dependencies the app was installed and tested with. C
 plugin that needs other versions of those packages, fail installation without changing the active selection.
 Built-in plugins are included with ax-devil and need no installation.
 
-Plugin installation never changes the base app environment or a development checkout's `pyproject.toml` or `uv.lock`.
-The app depends on uv and invokes its installed Python module, so a separate uv executable on PATH is not required
-for plugin management, including when ax-devil was installed with pip.
+Plugin installation never changes the base app environment or a development checkout's dependency manifest or lockfile.
+The app carries its own installer, so a separate uv executable on PATH is not required for plugin management,
+however ax-devil was installed.
 
 Private indexes and credentials can come from uv's user configuration or environment. To scope a named index to
 one plugin installation and preserve it for subsequent updates, pass `--index NAME=URL` to `plugins install`.
@@ -47,7 +44,7 @@ declare real package dependencies and configure required indexes at the installa
 ## Trust
 
 Install only plugins and dependencies you trust. Installation/build steps and validation
-can execute arbitrary Python; loaded plugins run in the application process. The separate
+can execute arbitrary code; loaded plugins run in the application process. The separate
 environment isolates dependencies, not permissions, and is not a security sandbox.
 
 ## Upgrades and recovery
@@ -55,20 +52,20 @@ environment isolates dependencies, not permissions, and is not a security sandbo
 | Task | Standalone command | Behavior |
 |------|--------------------|----------|
 | Upgrade a uv-installed app | `uv tool upgrade ax-devil` | Updates the base app; plugins follow on the next launch. |
-| Upgrade a pip-installed app | `python -m pip install --upgrade ax-devil` | Run in the original app environment; plugins follow on the next launch. |
+| Upgrade an app installed another way | That package manager's upgrade command | Run in the original app environment; plugins follow on the next launch. |
 | Rebuild plugins for the current app | `ax-devil plugins update` | Runs automatically after app changes; run it to retry. Preserves locked versions where compatible. |
 | Upgrade plugin packages and dependencies | `ax-devil plugins update --upgrade` | Allows newer versions within selected requirements; keeps the app fixed. |
 | Replace a pinned requirement or wheel | `ax-devil plugins install 'example-plugin>=0.2'` | Replaces that distribution's previous selection. |
 | Remove a plugin | `ax-devil plugins remove example-plugin` | Rebuilds with the remaining selection. |
 | Start over: remove all plugins | `ax-devil plugins remove --all` | Removes every plugin and retained environment of this base app. |
 
-For development, the next launch rebuilds plugins after you pull app dependency changes or change Python. Run
-`uv run ax-devil plugins update` after editing a plugin's dependencies or entry points. Editable Python source changes
+For development, the next launch rebuilds plugins after you pull app dependency changes or change the language runtime. Run
+`plugins update` with the checkout's launch command after editing a plugin's dependencies or registration. Editable source changes
 appear on restart without a reinstall. `--upgrade` does not pull Git repositories; update their source yourself.
 A local wheel or exact version pin stays fixed even with `--upgrade`; install a new wheel or change the requirement
 to move it.
 
-When the app, its dependencies or Python change, the next launch rebuilds the same plugin selection, which may need
+When the app, its dependencies or the language runtime change, the next launch rebuilds the same plugin selection, which may need
 network access. If that fails, the app starts **without external plugins** and shows the `plugins update` command
 to retry. An incompatible plugin can block the rebuild: remove it, choose a compatible release, or retry with
 `--upgrade`. Plugin management commands run in the base app, so they stay available for repair.

@@ -93,7 +93,7 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 - `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
   not rendered.
 - `Observation.source_data` holds what the source supplied verbatim; `Observation.debug` holds what the decoder
-  computed. Both are free-form and picklable, and inspection shows and queries them under Debug, each field with its
+  computed. Both are free-form and JSON-serializable, and inspection shows and queries them under Debug, each field with its
   `FieldOrigin`. `Scene.debug` is free-form decoder-owned frame diagnostics, never displayed and without origin.
   Scene filtering, rendering, synchronization, and hit-testing never read any of them.
 - Changing the Scene contract requires bumping `SCENE_MODEL_VERSION`: major when breaking, including stricter value
@@ -150,7 +150,7 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 - Finite work that would block the GUI thread, such as a network scan, runs through `BackgroundJobs` in a `JobScope`
   that closes when its owner cleans up or is destroyed. Work that changes something outside the app, or streams, keeps
   its own runner; see the [background_jobs README](../../src/ax_devil/modules/background_jobs/README.md).
-- Cancellable work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled`; there is no other
+- Cancellable work polls a `CancelToken` (`core/cancellation.py`), which raises `Cancelled` (ordinary error handling must not swallow it); there is no other
   cancellation mechanism ([contract](../../src/ax_devil/modules/background_jobs/README.md#cancellation)).
 - The GUI thread never waits for offline file work and never spins the event loop to wait. `open_entry_media` opens an
   entry's sources on a worker thread and delivers `EntryMedia` on the GUI thread; whoever holds the media owns every
@@ -161,9 +161,10 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
   for retiring workers, bounded by a deadline, so transport cleanup such as restoring camera state completes.
 - Live sources report failures they retry themselves with `sourceReconnecting` and failures needing a manual retry
   with `sourceError`; the viewer shows both with their reason, never only in logs.
-- Automatic cyclic GC is disabled after startup; `app.py` freezes the startup heap and collects on a GUI-thread timer
-  so worker threads never finalize Qt objects held in reference cycles. Do not re-enable `gc`, call `gc.collect()` off
-  the GUI thread, or change thresholds to improve a benchmark. Keep long-lived Scene history light for the collector.
+- Automatic cyclic garbage collection is disabled after startup; the app freezes the startup heap and collects on a
+  GUI-thread timer so worker threads never finalize Qt objects held in reference cycles. Do not re-enable it, collect
+  off the GUI thread, or change thresholds to improve a benchmark; see the [toolchain](../toolchain.md#code-rules).
+  Keep long-lived Scene history light for the collector.
 
 ## Synchronization
 
@@ -175,20 +176,20 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 
 ## Plugin System
 
-- External plugins are installed distributions discovered only through the supported entry-point groups, and must
+- External plugins are installed distributions discovered only through the supported plugin discovery mechanism, and must
   declare the host's plugin API version. The base runtime never imports an external plugin merely because its source
   directory exists.
 - Plugin IDs are unique within each plugin type; decoder `handler_type` strings are unique across loaded decoders for
   each capability.
-- The launcher tells the plugin interpreter how to start the app again and where this installation keeps its plugin
+- The launcher tells the plugin runtime how to start the app again and where this installation keeps its plugin
   selection (`AX_DEVIL_LAUNCH_COMMAND`, `AX_DEVIL_PLUGIN_ROOT`). Restarting and changing plugins from the running app go
   through that command, so management stays in the base app and a restart picks up the current selection.
 - Plugin load failures must not stop the application. Load, validation and registration failures, including a
   built-in plugin that fails to import, are recorded in `RuntimePluginRegistry` and listed in the Plugins view.
-- `ax-devil` selects the prepared plugin interpreter before importing application code. Plugin dependencies live in a
+- `ax-devil` selects the prepared plugin runtime before importing application code. Plugin dependencies live in a
   separate locked uv project constrained to the app's exact dependency closure; plugin upgrades never upgrade the app,
   and installation activates a prepared project only after validation.
-- App, Python, installed-dependency, or editable-project metadata changes trigger a refresh on the next launch; a
+- App, language-runtime, installed-dependency, or editable-project metadata changes trigger a refresh on the next launch; a
   failed refresh starts the base app without external plugins and is not retried for the same fingerprint; a
   later metadata change or an explicit plugin change retries it.
 

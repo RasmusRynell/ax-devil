@@ -1,7 +1,7 @@
 # Usage reference
 
 Details behind the [README](../README.md) walkthrough. Commands are shown as `ax-devil`; from a source checkout,
-prefix them with `uv run`.
+use the checkout's launch command ([toolchain](toolchain.md#install-and-launch)).
 
 ## Workspaces
 

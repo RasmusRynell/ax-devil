@@ -16,7 +16,7 @@ this repository, install it, prove it decodes their real files, and tell them th
 | Decode live messages (RTSP metadata, MQTT, DataHub) | Decoder with a **payload** handler | `src/ax_devil/plugins/decoders/adf_v1/`, `onvif_xml/` |
 | Open many recordings with their overlays at once, or compare runs | **Playlist resolver** | `src/ax_devil/plugins/playlist_resolvers/folder_pair/`, `mot_challenge/` |
 
-First check that no built-in handler already reads the data: `uv run ax-devil list-handlers`. A dataset of a
+First check that no built-in handler already reads the data: `ax-devil list-handlers`. A dataset of a
 supported format only needs a resolver; a new format with a folder layout may need both, in one package.
 
 ## The loop
@@ -25,11 +25,13 @@ supported format only needs a resolver; a new format with a folder layout may ne
    frames are identified (frame number, timestamp), how geometry is expressed (pixels or normalized, xywh or corners,
    polygons), object ids, classes, scores or confidences, and any extra fields worth keeping as attributes. Ask about anything you
    cannot infer, such as the frame size for pixel coordinates.
-2. **Read the contract.** [reference.md](reference.md) has a minimal package and the packaging rules. Read the
+2. **Read the contract.** [reference.md](reference.md) has a minimal package and the contract of the current plugin API; packaging mechanics are
+   in the [toolchain](../../../docs/toolchain.md#plugin-packaging-current-plugin-api). Read the
    built-in model from the table above end to end, and `src/ax_devil/modules/scene/model.py` (and `model_values.py`,
    which it re-exports) for the Scene types (`Entity`, `Observation`, `BoundingBox`, `Classification`, `Attribute`).
 3. **Create the package outside this repository**, in a directory the user picks (default
-   `~/ax-devil-plugins/<name>/`): `pyproject.toml` with the entry point plus one module. Keep the user's data
+   `~/ax-devil-plugins/<name>/`): the packaging manifest with the plugin registration plus one module (current Python plugin API, see
+   [reference.md](reference.md)). Keep the user's data
    untouched and out of the package. A plugin meant to ship with ax-devil is development instead: it goes in
    `src/ax_devil/plugins/` next to its model, with tests, following `AGENTS.md`, and needs no install step.
 4. **Map their data to Scenes.** Normalize geometry to 0–1 of the frame. Keep stable object ids so tracking,
@@ -39,13 +41,13 @@ supported format only needs a resolver; a new format with a folder layout may ne
    `?<id>`, and the raw id stays in the `class_id` attribute. Pass the source's number as `score` (any finite range) and
    what it reports as a confidence as `confidence`, each only when the source has it: leave the other `None`, and never invent a value or
    drop the object because one is missing. Set `file_extensions` on file handlers.
-5. **Prove it on their data before installing.** Run a short script with `uv run python` from this repository, with
-   the package directory on `PYTHONPATH`, that decodes the user's sample and prints the frame count, objects on a
+5. **Prove it on their data before installing.** Run a short script in this repository's development environment, with
+   the package directory importable (see the [toolchain](../../../docs/toolchain.md)), that decodes the user's sample and prints the frame count, objects on a
    few frames and one decoded object with its attributes. Compare against the raw file. A resolver calls
    `resolve(settings, token)` on the user's folders and prints the resolved recordings and overlay pairings instead.
 6. **Install it with the command the user launches ax-devil with:** `ax-devil` for an installed app,
-   `uv run ax-devil` for this checkout. Each keeps its own plugins, so ask if unclear. Run
-   `<launch command> plugins install /absolute/path/to/package`; installation validates the entry point. Confirm with
+   the checkout's launch command for this checkout. Each keeps its own plugins, so ask if unclear. Run
+   `<launch command> plugins install /absolute/path/to/package`; installation validates the plugin registration. Confirm with
    `plugins list`, and for file handlers `list-handlers`.
 7. **Hand over.** Give the user the exact command that opens their data with their launch command, for example
    `ax-devil local --video <video> --overlay <file> --handler-type <HANDLER>` or

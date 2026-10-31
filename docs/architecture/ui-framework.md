@@ -9,7 +9,7 @@ flowchart TD
     App["Application / app.py"] --> MainWindow["MainWindow<br/>ChromeWindow"]
     MainWindow --> MenuHost["menu_host()<br/>TitleBar menu bar or native QMenuBar"]
     MainWindow --> WorkspaceSession["WorkspaceSession"]
-    MainWindow --> Dialogs["BaseDialog subclasses<br/>add video, live stream, playlist, settings, shortcuts, about"]
+    MainWindow --> Dialogs["BaseDialog dialogs<br/>add video, live stream, playlist, settings, shortcuts, about"]
     MainWindow --> PluginsView["PluginsView<br/>sidebar view"]
 
     WorkspaceSession --> WorkspaceStore["WorkspaceStore<br/>items, resolved Content, signals"]

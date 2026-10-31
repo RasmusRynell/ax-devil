@@ -7,20 +7,23 @@ description: Change how ax-devil draws overlays on video — boxes, labels, ids,
 
 Everything ax-devil draws over video comes from a **render catalog**, a JSON file. You change the look by editing
 that file. The user does not read the JSON: they describe what they want in their own words, and they watch the
-**catalog viewer** (`uv run ax-devil catalog`, or View → Render Catalogs in the app), which redraws the catalog on
+**catalog viewer** (`ax-devil catalog`, or View → Render Catalogs in the app), which redraws the catalog on
 example objects every time the file is saved; suggest it if they are not watching yet. Your job is to turn their words into a clean, minimal change to the file, check it, look at the result, and tell
 them in plain words what changed.
+
+Commands are written `ax-devil ...`; from a source checkout use its launch command
+([toolchain](../../../docs/toolchain.md#install-and-launch)).
 
 ## The loop
 
 1. **Find the file** the user is looking at (below).
 2. **Render it before you change it**, so you know what it looks like now:
-   `uv run ax-devil catalog render --out /tmp/catalog-before`
+   `ax-devil catalog render --out /tmp/catalog-before`
 3. **Read the parts that matter** and decide *where* the change belongs (see "Writing it well").
 4. **Edit the JSON** with a minimal diff. The viewer and every open video view pick it up on save.
-5. **Check it:** `uv run ax-devil catalog check` loads the file and draws every example sheet. Fix anything it reports;
+5. **Check it:** `ax-devil catalog check` loads the file and draws every example sheet. Fix anything it reports;
    errors name their place in the file, such as `$.templates.id_tab.parameters.font_size.default`.
-6. **Look at it:** `uv run ax-devil catalog render --out /tmp/catalog-after` and open the PNGs (use `--sheet` for one:
+6. **Look at it:** `ax-devil catalog render --out /tmp/catalog-after` and open the PNGs (use `--sheet` for one:
    `overview`, `street`, `crowd`, or an object type or relation id). Compare with the before images. Does it do what was
    asked, and nothing else? Is anything now unreadable, clipped or clashing?
 7. **Report** what changed as the user sees it ("ids are now 11 px on every object type; people keep their own green
@@ -30,7 +33,7 @@ Commands take the default catalog when no file is given; pass a path to work on 
 
 ## Which file
 
-`uv run ax-devil catalog list` lists every catalog and its file; `*` marks the default, which new views use. Users
+`ax-devil catalog list` lists every catalog and its file; `*` marks the default, which new views use. Users
 create and delete catalogs themselves in the viewer (**New copy**, **Delete**), which also shows the file of the
 catalog on screen.
 
@@ -41,15 +44,15 @@ catalog on screen.
   `(built-in, read-only)`): it ships with the app. For the user's own preferences, copy it, make the copy the default
   and edit the copy. The viewer switches to it on its own:
   ```
-  uv run ax-devil catalog new "My overlays" --from <built-in file>   # prints the new file's path
-  uv run ax-devil catalog use <that path>
+  ax-devil catalog new "My overlays" --from <built-in file>   # prints the new file's path
+  ax-devil catalog use <that path>
   ```
 - Edit a built-in file in `src/ax_devil/modules/scene/rendering/catalog_definitions/` only when the user asks to
   change what the app ships. Then also run `make test`, which checks the built-in catalogs.
 
 ## How a catalog is built
 
-Read `uv run ax-devil catalog reference` for every type, operation, primitive and input with its exact name, type and
+Read `ax-devil catalog reference` for every type, operation, primitive and input with its exact name, type and
 bounds. Read the built-in catalog the user's catalog came from as the model to imitate: its structure, naming and
 level of detail are the house style.
 
@@ -135,7 +138,7 @@ do not `coalesce` a score with a confidence.
 `{"source": "primary_classification_attribute", "attribute": "carries_bag", "value_shape": "bool", "picker": "value"}`.
 A binding is missing (null) when the detection lacks the attribute, so guard steps that use it with
 `"enabled": {"call": "is_present", "args": {"value": {"ref": ["bindings", "<name>"]}}}`. Attribute names come from the
-decoders: `git grep -n 'Attribute(name=' src/ax_devil/plugins/decoders`.
+decoders: read each decoder's declared attributes under `src/ax_devil/plugins/decoders`.
 
 ## Writing it well
 

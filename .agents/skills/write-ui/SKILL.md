@@ -26,12 +26,12 @@ choosing its own sizes and colors.
 | Button that opens a menu (`Filter ⌄`) | `MenuButton(text, menu)` | `modules/chrome/menu_button.py` |
 | Folder button beside a path field | `BrowseButton(what, browse)` | `modules/chrome/browse_button.py` |
 | Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
-| Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
-| Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
+| Top-level window | build on `ChromeWindow` | `modules/chrome/chrome_window.py` |
+| Dialog | build on `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
 | Pick one of two or three values in a form row or dialog | `ChoiceToggle(choices, current)`; `changed(value)`, `size_at(text_px)` | `modules/chrome/choice_toggle.py` |
 | Question with a few labeled answers | `ask(...)`, or `notify(...)` for a notice with OK; never `QMessageBox` | `modules/chrome/choice_dialog.py` |
 | Independent on/off options as chips that wrap onto more rows | `ToggleChips(items)`; `toggled(key, checked)`, `chip(key)`, `set_checked(key, checked)` | `modules/chrome/toggle_chip.py` |
-| Panel of controls that opens under a button, closes on Escape or an outside click | subclass `Popover`; call `open_below(button, width)`. Never `QMenu` with a `QWidgetAction` | `modules/chrome/popover.py` |
+| Panel of controls that opens under a button, closes on Escape or an outside click | build on `Popover`; call `open_below(button, width)`. Never `QMenu` with a `QWidgetAction` | `modules/chrome/popover.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 
@@ -40,6 +40,8 @@ Before writing UI, read the [UI Lifecycle invariants](../../../docs/domain/invar
 content, how dialogs get their size, and which pixels are exempt.
 
 ## Common patterns
+
+Example in the current implementation language (see the [toolchain](../../../docs/toolchain.md)):
 
 ```python
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -105,8 +107,8 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
 ## Check it
 
 1. Take screenshots before and after the change, on a private display and isolated from the user's settings:
-   `PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/ui-before uv run pytest -p tests.conftest tools/ui_screenshots.py -q`
-   (then again with `/tmp/ui-after`). Add the surface you changed to `tools/ui_screenshots.py` if it is missing.
+   the screenshot command in the [toolchain](../../../docs/toolchain.md#check-and-test) with
+   `AX_DEVIL_UI_SHOTS=/tmp/ui-before` (then again with `/tmp/ui-after`). Add the surface you changed to `tools/ui_screenshots.py` if it is missing.
    Shots are drawn at 2 device pixels per logical pixel; set `AX_DEVIL_UI_SHOTS_SCALE=1` for smaller files.
 2. Open the PNGs and compare dark and light, `medium` and `larger` text, wide and narrow windows. The change is done
    when nothing is clipped, overlapping or unreadable and the new UI matches its neighbours' sizes and spacing.
@@ -117,6 +119,6 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
    tab bar, and compare each field's width with its `sizeHint()`. Numbers catch a page that only just scrolls.
 3. Add the window or dialog to `SURFACES` in `tests/modules/chrome/test_surface_fit.py`, which checks that no button
    or label text is cut off in both themes at a small and a large text size. A guard test fails until a new
-   `BaseDialog` or `ChromeWindow` subclass is there or in `EXEMPT` with the reason it is covered elsewhere.
+   `BaseDialog` or `ChromeWindow` is there or in the exempt list with the reason it is covered elsewhere.
 4. Test behavior, and test cut-offs and overlaps that a size change could bring back. Leave fonts, colors and
    paddings untested; the screenshots cover them.

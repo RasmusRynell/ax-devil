@@ -17,7 +17,7 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | App bootstrap, config wiring, logging setup, plugin loading | `src/ax_devil/app.py` |
 | CLI commands and maintenance entry points | `src/ax_devil/cli.py` |
 | Main window menus, app-wide dialogs (including Settings and Quick Setup), exception reporting | `src/ax_devil/modules/application_shell/` |
-| Workspace model: the Workspace, Workspace Items and their resolution, file format, recent workspaces, content, intake, item information (Qt-free) | `src/ax_devil/modules/workspace/core/` |
+| Workspace model: the Workspace, Workspace Items and their resolution, file format, recent workspaces, content, intake, item information (imports no UI toolkit) | `src/ax_devil/modules/workspace/core/` |
 | Workspace interface: `WorkspaceStore`, plugin-backed background resolution, browser rows and the section tree that shows them, add-content and rename dialogs, workspace lifecycle and prompts, split-view hosting, `ViewerWidget`, viewer factory, session/controller, the activity bar, sidebar host and the Workspace, Live, Offline and Bookmarks views | `src/ax_devil/modules/workspace/ui/` |
 | Live/offline viewer workflows, media tools, offline entry opening (`open_entry_media`, `EntryMedia`), `OfflineSession`, `OfflinePlayback`, `OfflineLane`, source pooling, Scene presentation | `src/ax_devil/modules/video_viewer/` |
 | `FrameDisplay`, `FrameViewport`, control panels, viewport behavior, video transforms, drawing contract and preparation | `src/ax_devil/modules/video_player/` |
@@ -30,8 +30,8 @@ Use this guide when deciding where current code belongs under `src/ax_devil/`.
 | Session filtering, shared filter configs, state, predicates, and whole-file history filtering | `src/ax_devil/modules/filtering/` |
 | Plugin discovery, registry, contracts, handler lookup APIs | `src/ax_devil/modules/plugin_system/` |
 | The Plugins sidebar view: the plugin catalog, in-app install, update and remove | `src/ax_devil/modules/plugin_manager/` |
-| Locked plugin installation projects, install/update/remove commands, entry-point group names, and the subprocess that validates a prepared plugin environment | `src/ax_devil/modules/plugin_installation/` |
-| Selecting the application interpreter before Qt imports; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
+| Locked plugin installation projects, install/update/remove commands, plugin discovery names, and the subprocess that validates a prepared plugin environment | `src/ax_devil/modules/plugin_installation/` |
+| Selecting the application runtime before the UI toolkit loads; shared CLI options | `src/ax_devil/launcher.py`, `src/ax_devil/cli_options.py` |
 | Config, settings state and preference values, logging, paths | `src/ax_devil/modules/settings/` |
 | Shortcut definitions, the manager that installs them, override persistence, and the shortcuts dialog | `src/ax_devil/modules/shortcuts/` |
 | Shared window/dialog chrome, design tokens (type scale, spacing, radii, heights), icons, the sidebar view contract and list building blocks (view panel, section caption, list row, chip, small button, banner), menu buttons, browse buttons and key chips, screen-aware geometry, content scrolling, temporary dialog lifetime, and form layouts | `src/ax_devil/modules/chrome/` |
