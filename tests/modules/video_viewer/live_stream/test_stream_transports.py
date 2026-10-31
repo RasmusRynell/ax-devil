@@ -107,7 +107,7 @@ def test_live_frames_reach_the_display_with_the_matching_overlay(
     clock.now = 10.0
     videos[0].frameReady.emit(make_frame(2))
 
-    assert displayed_ids(displayed) == [1]
+    assert displayed_ids(displayed) == ([1, 2] if overlay_spec is None else [1])
     overlay = displayed[0].overlays
     if overlay_spec is None:
         assert overlay is None
@@ -119,7 +119,7 @@ def test_paused_stream_ignores_frames_and_resume_discards_frames_buffered_before
     make_controller: MakeController, live_transports: LiveTransports, clock: FakeClock
 ) -> None:
     displayed: list[VideoFrameWithOverlays] = []
-    controller = make_controller(make_live_content(), frame_displayed=displayed.append)
+    controller = make_controller(make_live_content(RTSP_OVERLAY), frame_displayed=displayed.append)
     (video,), _overlays = live_transports
     controller.start_playback()
     video.frameReady.emit(make_frame(1))

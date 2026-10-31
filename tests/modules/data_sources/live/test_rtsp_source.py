@@ -1,7 +1,6 @@
 """RTSP source behavior with an offline session and the real processing worker."""
 
 import threading
-import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -9,6 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 from ax_devil_rtsp import SceneMetadata, StartCancelledError, StreamConfig, StreamError, VideoSample
+from PySide6.QtCore import QTimer
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import FrameData, OverlayData
@@ -58,6 +58,8 @@ class _Session:
         self.failure_while_starting: Exception | None = None
         self.block_start = False
         self._stopped = threading.Event()
+        self.release_start = threading.Event()
+        self.release_start.set()
 
     @property
     def is_running(self) -> bool:
@@ -69,6 +71,7 @@ class _Session:
         self.start_calls += 1
         if self.block_start:
             self._stopped.wait(5)
+            self.release_start.wait(5)
             raise StartCancelledError("stopped while starting")
         if self.start_error is not None:
             raise self.start_error
@@ -234,19 +237,24 @@ def test_stop_cancels_a_slow_connection_promptly_without_error(qtbot: QtBot, ses
     """Stopping while the camera has not answered returns at once and ends the worker silently."""
     source = RTSPSource("rtsp://example", timeout_s=10)
     sessions[0].block_start = True
+    sessions[0].release_start.clear()
     errors: list[str] = []
+    callbacks: list[bool] = []
+    destroyed: list[bool] = []
+    source.destroyed.connect(lambda: destroyed.append(True))
     source.sourceError.connect(errors.append)
     try:
         assert source.play()
         qtbot.waitUntil(lambda: sessions[0].start_calls == 1)
-        started = time.monotonic()
-        source.stop()
-        assert time.monotonic() - started < 1.0, "stop() must not wait out the 2s worker join"
-        assert source.wait(0)
+        source.retire()
+        QTimer.singleShot(0, lambda: callbacks.append(True))
+        qtbot.waitUntil(lambda: bool(callbacks))
+        assert not destroyed
         assert errors == []
     finally:
-        source.stop()
-        source.deleteLater()
+        sessions[0].release_start.set()
+        assert source.wait()
+    qtbot.waitUntil(lambda: bool(destroyed))
 
 
 def test_failure_after_start_reconnects_embedded_metadata(

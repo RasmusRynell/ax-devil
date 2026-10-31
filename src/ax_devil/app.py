@@ -15,6 +15,7 @@ from ax_devil.modules.application_shell.exception_handler import install_excepti
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.restart import relaunch_if_requested
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme, setup_theme
+from ax_devil.modules.data_sources.base import DataSource
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
 from ax_devil.modules.scene.rendering import create_scene_render_catalog_manager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -110,6 +111,7 @@ class Application:
             _collect_garbage_on_gui_thread(self.app, self.logger)
 
             exit_code = int(self.app.exec() if self.app else 1)
+            DataSource.wait_for_retired()
 
             config_manager = ConfigManager()
             overrides = self._shortcut_manager.get_config_overrides()

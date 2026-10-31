@@ -9,6 +9,7 @@ from threading import Event
 from typing import Any, cast
 
 import pytest
+from PySide6.QtCore import QTimer
 from pytestqt.qtbot import QtBot
 
 from ax_devil.core.data_types import OverlayData
@@ -42,6 +43,9 @@ class _FakeClient:
         self.block_connect = block_connect
         self.waiting = Event()
         self.closed = False
+        self.closing = Event()
+        self.release_close = Event()
+        self.release_close.set()
 
     def __call__(self, **_kwargs: object) -> _FakeClient:
         return self
@@ -61,6 +65,8 @@ class _FakeClient:
         return item
 
     async def close(self) -> None:
+        self.closing.set()
+        self.release_close.wait(5)
         self.closed = True
 
 
@@ -130,18 +136,26 @@ def test_source_reports_connection_then_transport_failure(qtbot: QtBot) -> None:
 
 @pytest.mark.parametrize("block_connect", [True, False], ids=["connect", "receive_sample"])
 def test_source_stop_cancels_pending_io_and_closes_client(qtbot: QtBot, block_connect: bool) -> None:
-    """Stopping interrupts connection and idle receive waits, and returns only after the client is closed."""
+    """Retirement cancels pending IO without blocking the GUI on transport cleanup."""
     client = _FakeClient([], block_connect=block_connect)
+    client.release_close.clear()
     source = _source(client)
     errors: list[str] = []
+    callbacks: list[bool] = []
+    destroyed: list[bool] = []
+    source.destroyed.connect(lambda: destroyed.append(True))
     source.sourceError.connect(errors.append)
     try:
         assert source.play()
         qtbot.waitUntil(client.waiting.is_set)
-        source.stop()
-        assert client.closed
-        assert source.wait(0)
+        source.retire()
+        qtbot.waitUntil(client.closing.is_set)
+        QTimer.singleShot(0, lambda: callbacks.append(True))
+        qtbot.waitUntil(lambda: bool(callbacks))
+        assert not client.closed and not destroyed
         assert not errors
     finally:
-        source.stop()
-        source.deleteLater()
+        client.release_close.set()
+        assert source.wait()
+    qtbot.waitUntil(lambda: bool(destroyed))
+    assert client.closed
