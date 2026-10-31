@@ -39,7 +39,7 @@ def test_discovery_discards_stale_results_and_can_reload(qtbot: QtBot, fail: boo
         assert choice.refresh.isEnabled()
         assert not loader.loaded
         assert loader.choices == ()
-        assert loader.status == "Connection changed — refresh topics"
+        assert loader.status == "Refresh to load topics"
         choice.refresh.click()
         qtbot.waitUntil(lambda: not loader.loading)
         assert loader.loaded

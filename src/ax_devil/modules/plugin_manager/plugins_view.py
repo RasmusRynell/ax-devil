@@ -18,7 +18,7 @@ from ax_devil.modules.chrome.row_list import RowList
 from ax_devil.modules.chrome.section_caption import SectionCaption
 from ax_devil.modules.chrome.sidebar_view import SidebarView, ViewGroup
 from ax_devil.modules.chrome.small_button import SmallButton
-from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor
+from ax_devil.modules.chrome.theme import SEE_THROUGH, KindColor, StatusColor, show_status
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.chrome.view_panel import ViewPanel
 from ax_devil.modules.plugin_manager.add_plugin_dialog import AddPluginDialog
@@ -49,7 +49,7 @@ def _muted_line(text: str) -> ElidedLabel:
     """Return a small muted line that elides *text* to its width; the tooltip has it whole."""
     line = ElidedLabel(text, Qt.TextElideMode.ElideRight)
     TextRole.SMALL.apply(line)
-    line.setStyleSheet("color: palette(placeholder-text);")
+    line.setForegroundRole(QPalette.ColorRole.PlaceholderText)
     return line
 
 
@@ -174,11 +174,14 @@ class PluginsView(ViewPanel):
             button.setEnabled(running is None)
         self._banner_holder.setVisible(self._changes.restart_needed)
         install_status = ""
+        failed = False
         if running is not None and not running.name:
             install_status = running.kind.progress
         elif self._failure is not None and not self._failure[0].name:
             install_status = self._failure[1]
+            failed = True
         self._install_status.set_full_text(install_status)
+        show_status(self._install_status, StatusColor.ERROR if failed else None)
         self._install_status_holder.setVisible(bool(install_status))
 
     def _add_row(self, entry: PluginEntry) -> None:
@@ -237,8 +240,9 @@ class PluginsView(ViewPanel):
         return button
 
     def _failure_line(self, reason: str) -> QWidget:
-        """Return *reason* as a muted line under a row, lined up with the row's title."""
+        """Return *reason* as an error line under a row, lined up with the row's title."""
         line = _muted_line(reason)
+        show_status(line, StatusColor.ERROR)
         holder = QWidget()
         layout = QHBoxLayout(holder)
         layout.setContentsMargins(_ROW_EDGE_PX + Space.M + _ICON_PX + Space.M, 0, Space.M, Space.XS)

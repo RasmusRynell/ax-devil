@@ -77,13 +77,13 @@ DEFAULT_SHORTCUTS: tuple[ShortcutDefinition, ...] = (
     # View
     ShortcutDefinition("view.toggle_info", "Toggle Info Overlay", "View", QKeySequence("I"), acts_on_viewer=True),
     ShortcutDefinition(
-        "view.toggle_media_tools", "Media Tools Panel", "View", QKeySequence("Ctrl+B"), acts_on_viewer=True
+        "view.toggle_media_tools", "Toggle Media Tools Panel", "View", QKeySequence("Ctrl+B"), acts_on_viewer=True
     ),
     ShortcutDefinition("view.toggle_sidebar", "Sidebar", "View", QKeySequence("Ctrl+\\")),
     ShortcutDefinition(
         "view.toggle_lane_fullscreen", "Toggle Lane Fullscreen", "View", QKeySequence("F"), acts_on_viewer=True
     ),
-    ShortcutDefinition("view.toggle_fullscreen", "Toggle Fullscreen", "View", QKeySequence("F11")),
+    ShortcutDefinition("view.toggle_fullscreen", "Fullscreen", "View", QKeySequence("F11")),
     ShortcutDefinition("view.zoom_in", "Zoom In", "View", QKeySequence("Ctrl++"), acts_on_viewer=True),
     ShortcutDefinition("view.zoom_out", "Zoom Out", "View", QKeySequence("Ctrl+-"), acts_on_viewer=True),
     ShortcutDefinition("view.reset_zoom", "Reset Zoom", "View", QKeySequence("Ctrl+0"), acts_on_viewer=True),
@@ -231,8 +231,8 @@ class ShortcutManager(QObject):
         return self._definitions[action_id]
 
     def definitions(self) -> list[ShortcutDefinition]:
-        """Return all registered definitions, ordered by category then display name."""
-        return sorted(self._definitions.values(), key=lambda d: (d.category, d.display_name))
+        """Return all registered definitions in registration order, which ``DEFAULT_SHORTCUTS`` sets on purpose."""
+        return list(self._definitions.values())
 
     def current_key_sequence(self, action_id: str) -> QKeySequence | None:
         """Return the currently active key sequence for *action_id*."""

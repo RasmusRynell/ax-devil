@@ -69,6 +69,7 @@ class WorkspaceSession(QObject):
     """
 
     state_changed = Signal()  # The Workspace's name or modified flag changed.
+    focused_widget_changed = Signal(object)  # The focused ``ViewerWidget``, or ``None`` with no viewer open.
 
     def __init__(
         self,
@@ -90,6 +91,7 @@ class WorkspaceSession(QObject):
         self._start_panel = StartPanel()
         self._workspace_view = WorkspaceView(self._start_panel)
         self._center_area = SplitView()
+        self._center_area.focused_widget_changed.connect(self.focused_widget_changed)
         self._window = ApplicationWindow(
             sidebar=SidebarPanel(),
             center_area=self._center_area,
@@ -285,5 +287,6 @@ class WorkspaceSession(QObject):
         )
         activity_bar = self._window.activity_bar()
         for action_id, icon in (("view.render_catalogs", Icon.CATALOGS), ("app.settings", Icon.SETTINGS)):
-            button = activity_bar.add_action(icon, "", manager.get_action(action_id).trigger)
+            action = manager.get_action(action_id)
+            button = activity_bar.add_action(icon, action.text(), action.trigger)
             manager.bind_tooltip(button, action_id)

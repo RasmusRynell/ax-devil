@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
+from weakref import WeakMethod
 
 from PySide6.QtCore import QPoint, Qt, QThread, Signal
 from PySide6.QtGui import QAction
@@ -11,9 +12,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -23,7 +24,10 @@ from ax_devil.core.playback_speed import (
     step_playback_speed,
 )
 from ax_devil.modules.background_jobs import LatestRequest
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import StatusColor, show_status
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
@@ -118,6 +122,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._use_global_controls = False
         self._is_cleaned_up = False
         self._loading_indicator: LoadingIndicator | None = None
+        self._entry_error: QWidget | None = None
         self._playback_speed = DEFAULT_PLAYBACK_SPEED
         self._initial_entry_loaded = False
         self._lane_visibility: dict[int, OverlayVisibility] = {}
@@ -193,6 +198,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
             return
         self._initial_entry_loaded = True
         self._opening.cancel()
+        self._clear_entry_error()
         self._teardown_runtime()
         self._current_index = index
         self._update_nav_state()
@@ -233,9 +239,42 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 error = str(exc)
         if runtime is None:
             release_media(media)
-            QMessageBox.warning(self, "Offline Viewer", f"Failed to load entry {index + 1}: {error}")
+            what = f"entry {index + 1}" if self._entry_count() > 1 else "the video"
+            self._show_entry_error(f"Could not open {what}: {error}")
             return
         self._install_entry(runtime, start_frame)
+
+    def _show_entry_error(self, message: str) -> None:
+        """Show *message* with a Retry in place of the entry; a playlist keeps its Previous and Next controls."""
+        error = QWidget(self)
+        layout = QVBoxLayout(error)
+        layout.setContentsMargins(Space.XL, Space.XL, Space.XL, Space.XL)
+        layout.setSpacing(Space.M)
+        layout.addStretch(1)
+        label = ElidedLabel(message, Qt.TextElideMode.ElideMiddle)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        show_status(label, StatusColor.ERROR)
+        layout.addWidget(label)
+        retry = SmallButton("Retry", Icon.SCAN)
+        retry.clicked.connect(lambda: self._open_entry(self._current_index))
+        layout.addWidget(retry, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addStretch(1)
+        self._entry_error = error
+        if self._viewer_host is not None:
+            self._viewer_host.set_content(error)
+        if self._entry_count() > 1:
+            self._set_global_controls_enabled(True)
+            if self._global_controls is not None and self._global_control_visibility is not None:
+                self._global_controls.show_video(total_frames=0, frame_rate=0.0)
+                self._global_controls.set_hover_sink(self._global_control_visibility)
+
+    def _clear_entry_error(self) -> None:
+        error = self._entry_error
+        if error is None:
+            return
+        self._entry_error = None
+        error.hide()
+        error.deleteLater()
 
     def _show_loading_indicator(self) -> LoadingIndicator:
         if self._loading_indicator is None:
@@ -312,11 +351,18 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 controls.playbackSpeedChanged.connect(self.set_playback_speed)
                 controls.set_context_widget(self._navigation_controls)
                 self._global_controls = controls
+                # Weak: the controls hold the controller as their hover sink and outlive the viewer's Python object.
+                hide_when_idle = WeakMethod(self._hide_global_controls_when_idle)
+
+                def request_hide() -> None:
+                    if (hide := hide_when_idle()) is not None:
+                        hide()
+
                 self._global_control_visibility = ControlVisibilityController(
                     timer_parent=self,
                     idle_hide_delay_ms=MOUSE_IDLE_HIDE_DELAY,
                     request_show=controls.fade_in,
-                    request_hide=controls.start_auto_hide_timer,
+                    request_hide=request_hide,
                 )
                 if self._viewer_host is not None:
                     self._viewer_host.set_bottom_overlay(controls)
@@ -330,6 +376,11 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if self._global_controls is not None:
             self._global_controls.sync_playback_state(False)
             self._global_controls.hide()
+
+    def _hide_global_controls_when_idle(self) -> None:
+        """Auto-hide the shared controls, except beside an entry error, where no lane can bring them back."""
+        if self._global_controls is not None and self._entry_error is None:
+            self._global_controls.start_auto_hide_timer()
 
     def _connect_global_control_visibility(self, runtime: OfflineSession) -> None:
         """Let pointer activity in any lane control the shared transport overlay."""
@@ -553,6 +604,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._opening.close()
         self._opening_jobs.close()
         self._hide_loading_indicator()
+        self._clear_entry_error()
         self._teardown_runtime()
         self._nav_label = None
         self._prev_button = None

@@ -10,11 +10,12 @@ from typing import NamedTuple
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from ax_devil.core.data_types import FrameData
 from ax_devil.core.playback_speed import DEFAULT_PLAYBACK_SPEED, clamp_playback_speed
 from ax_devil.modules.background_jobs import BackgroundJobs, JobScope, LatestRequest, background_jobs
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
@@ -770,9 +771,7 @@ class OfflineSession(QObject):
             return
         catalogs = [lane.presenter.scene_render_catalog if lane.presenter is not None else None for lane in lanes]
         if any(catalog is None for catalog in catalogs):
-            QMessageBox.warning(
-                self.container, "Export video", "Render catalogs are still loading. Try again in a moment."
-            )
+            notify(self.container, "Export video", "Render catalogs are still loading. Try again in a moment.")
             return
 
         # Pause playback so the export has exclusive access to the decoder

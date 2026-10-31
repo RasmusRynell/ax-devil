@@ -327,6 +327,15 @@ def test_scene_updates_behind_an_open_object_page_do_not_rebuild_the_hidden_list
     assert _ids(panel) == ["a", "b"]
 
 
+def test_table_asks_for_the_room_its_fixed_columns_leave_the_stretch_column_without(qtbot: QtBot) -> None:
+    fixed = [Column(name, CellKind.NUMBER, str, width_chars=8) for name in "ABCD"]
+    view = RowTableView(RowTableModel([Column("Name", CellKind.TEXT, str, stretch=True), *fixed]))
+    qtbot.addWidget(view)
+
+    fixed_width = sum(view.header().sectionSize(section) for section in range(1, 5))
+    assert view.minimumSizeHint().width() > fixed_width
+
+
 def test_unchanged_rows_are_not_sorted_again(qtbot: QtBot) -> None:
     sorts: list[str] = []
 

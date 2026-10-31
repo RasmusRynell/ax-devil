@@ -13,6 +13,8 @@ from ax_devil.modules.chrome.window_frame_controller import WindowFrameControlle
 from ax_devil.modules.chrome.window_geometry import bounded_window_size, fit_window
 from ax_devil.modules.settings.window_state import window_state_settings
 
+_MINIMUM_SIZE = QSize(480, 320)
+
 
 def window_uses_custom_frame(window: QWidget) -> bool:
     """Return whether an app-owned window is using custom chrome."""
@@ -21,6 +23,8 @@ def window_uses_custom_frame(window: QWidget) -> bool:
 
 class ChromeWindow(QMainWindow):
     """QMainWindow base that optionally enables custom frameless chrome."""
+
+    fits_content_minimum = True  # False keeps the fixed shared floor, for content whose minimum is not trustworthy.
 
     def __init__(
         self,
@@ -37,7 +41,6 @@ class ChromeWindow(QMainWindow):
         self._positioned = False
         self._needs_default_size = False
         self._restored_size: QSize | None = None
-        self.setMinimumSize(480, 320)
         self._use_custom_frame = use_custom_frame
         self._show_custom_frame_border = show_custom_frame_border
         self._title_bar: TitleBar | None = None
@@ -48,6 +51,26 @@ class ChromeWindow(QMainWindow):
             self.setMenuWidget(self._title_bar)
             self._frame_controller = WindowFrameController(self, show_border=self._show_custom_frame_border)
             self._frame_controller.initialize()
+        self._fit_minimum_to_content()
+
+    def event(self, event: QEvent) -> bool:
+        """Keep the minimum size matching the content whenever the layout changes."""
+        handled = super().event(event)
+        if event.type() == QEvent.Type.LayoutRequest:
+            self._fit_minimum_to_content()
+        return handled
+
+    def _fit_minimum_to_content(self) -> None:
+        """Never let the window shrink below its content's minimum, nor grow the minimum past the screen."""
+        layout = self.layout()
+        assert layout is not None  # A QMainWindow always has its main-window layout.
+        minimum = _MINIMUM_SIZE.expandedTo(layout.totalMinimumSize()) if self.fits_content_minimum else _MINIMUM_SIZE
+        screen = self.screen()
+        if screen is not None:
+            decorations = (self.frameGeometry().size() - self.size()).expandedTo(QSize(0, 0))
+            minimum = minimum.boundedTo(screen.availableGeometry().size() - decorations)
+        if minimum != self.minimumSize():
+            self.setMinimumSize(minimum)
 
     def setVisible(self, visible: bool) -> None:
         """Prepare geometry before the desktop window manager first maps the window."""
@@ -60,6 +83,7 @@ class ChromeWindow(QMainWindow):
         """Size the window before it maps; a window with a parent opens centered over it, a top-level one is placed
         by the desktop."""
         self.ensurePolished()
+        self._fit_minimum_to_content()
         if self._remember_size:
             settings = window_state_settings()
             size = cast(QSize, settings.value(f"{self.objectName()}/size", QSize(), type=QSize))

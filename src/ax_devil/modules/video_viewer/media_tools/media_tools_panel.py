@@ -12,6 +12,7 @@ from PySide6.QtGui import QAction, QShowEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLayout,
     QMenu,
     QTabBar,
     QToolButton,
@@ -286,7 +287,19 @@ class MediaToolsPanel(QWidget):
         action = QWidgetAction(submenu)
         action.setDefaultWidget(container)
         submenu.addAction(action)
+        submenu.aboutToShow.connect(lambda: self._refit_submenu(submenu, action, container))
         return submenu
+
+    @staticmethod
+    def _refit_submenu(submenu: QMenu, action: QWidgetAction, container: QWidget) -> None:
+        """Measure a submenu's hidden content again before it opens, so it follows a text size changed since.
+
+        A hidden widget keeps its layouts' cached sizes through a font change, and the menu keeps the action's size.
+        """
+        for layout in container.findChildren(QLayout):
+            layout.invalidate()
+        submenu.removeAction(action)
+        submenu.addAction(action)
 
     def cleanup(self) -> None:
         """Disconnect persistent selection observers when the owning view closes."""

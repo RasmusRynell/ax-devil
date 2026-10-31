@@ -36,7 +36,8 @@ class SectionsView(ViewPanel):
     The search matches each row's search text. Sort appears with two or more orders and arranges the top-level rows of
     each section; the chosen order is kept while the sections change. The Filter appears when the rows listed have
     facets to choose from: it offers them, grouped, in each group that has a choice to make, and hides the rows with
-    a facet the user unchecked. With an *empty_page*, the view shows that page alone while it lists no section.
+    a facet the user unchecked. With an *empty_page*, the view shows that page alone while it lists no section;
+    without one it says *empty_text* there.
     """
 
     def __init__(
@@ -49,6 +50,7 @@ class SectionsView(ViewPanel):
         search_placeholder: str = "Search",
         editable_title: bool = False,
         empty_page: QWidget | None = None,
+        empty_text: str = "",
         parent: QWidget | None = None,
     ) -> None:
         self._summary = muted_label("")
@@ -85,9 +87,13 @@ class SectionsView(ViewPanel):
         tools.addWidget(self._filter)
         self._toolbar = self.add_padded(toolbar, top=Space.S, bottom=Space.XS)
 
+        self._notice_text = muted_label("")
+        self._notice = self.add_padded(self._notice_text, top=Space.S, bottom=0)
+        self._notice.hide()
         self.tree = SectionTree(self)
         self.add(self.tree, 1)
         self._empty_page = empty_page
+        self._empty_text = empty_text
         if empty_page is not None:
             self.add(empty_page, 1)
         self._empty = False
@@ -148,6 +154,7 @@ class SectionsView(ViewPanel):
         self._list()
         self._offer(sorted({facet for row in _rows(sections) for facet in row.facets}, key=_facet_order))
         self._show_page()
+        self._show_notice()
 
     def set_summary(self, text: str, tooltip: str = "") -> None:
         """Show *text* at the right of the header, with *tooltip* on hover, or nothing there when it is empty."""
@@ -206,6 +213,18 @@ class SectionsView(ViewPanel):
             lambda row: not any(self._is_hidden(facet) for facet in row.facets),
             (lambda row: query in row.search_text.casefold()) if query else None,
         )
+        self._show_notice()
+
+    def _show_notice(self) -> None:
+        """Say under the toolbar that a search matches nothing, or that the view lists nothing and has no empty page."""
+        if self._query and self.tree.has_rows() and not self.tree.shows_rows():
+            text = "No matches"
+        elif not self.tree.has_rows() and self._empty_page is None:
+            text = self._empty_text
+        else:
+            text = ""
+        self._notice_text.setText(text)
+        self._notice.setVisible(bool(text))
 
     def _show_page(self) -> None:
         """Show the empty page alone while no section is listed, if there is one."""

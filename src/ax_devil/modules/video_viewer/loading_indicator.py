@@ -6,6 +6,8 @@ from PySide6.QtCore import QObject, QRectF, Qt, QTimer
 from PySide6.QtGui import QPainter, QPaintEvent, QPalette, QPen, QResizeEvent
 from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.tokens import Space
+
 
 class LoadingIndicator(QWidget):
     """Animated spinner with status text, shown while content loads."""
@@ -69,7 +71,7 @@ class LoadingIndicator(QWidget):
             painter.drawText(
                 text_rect,
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                self._message,
+                self.fontMetrics().elidedText(self._message, Qt.TextElideMode.ElideMiddle, self.width() - 2 * Space.M),
             )
 
         painter.end()

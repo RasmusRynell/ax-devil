@@ -23,6 +23,7 @@ from pytestqt.qtbot import QtBot
 from ax_devil.core.cancellation import CancelToken
 from ax_devil.core.data_types import FrameData, FrameIdentifier, OverlayData
 from ax_devil.modules.background_jobs import BackgroundJobs
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.data_sources.base import SeekableFrameSource
 from ax_devil.modules.data_sources.scene_history import FrameEvent, ObjectHistory, SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
@@ -462,6 +463,18 @@ def _nav_label(widget: OfflineVideoViewerWidget) -> QLabel:
     return next(label for label in labels if label.text().startswith("Entry "))
 
 
+def _entry_errors(widget: OfflineVideoViewerWidget) -> list[ElidedLabel]:
+    """Return the error labels shown in place of an entry that failed to open."""
+
+    labels: list[ElidedLabel] = widget.findChildren(ElidedLabel)
+    return [label for label in labels if label.full_text().startswith("Could not open") and label.isVisibleTo(widget)]
+
+
+def _entry_error(widget: OfflineVideoViewerWidget) -> ElidedLabel:
+    (label,) = _entry_errors(widget)
+    return label
+
+
 def _session(widget: OfflineVideoViewerWidget) -> OfflineSession:
     """Return the shown entry's session, for lane state the viewer does not expose (presenters, overlay sources)."""
 
@@ -657,7 +670,7 @@ class TestOfflineVideoViewerWidget:
         widget.set_display_name("North gate")
 
         assert widget.get_display_name() == "North gate"
-        assert widget._title_label.text() == "North gate"
+        assert widget._title_label.full_text() == "North gate"
 
     def test_consideration_changes_after_cleanup_open_nothing(self, qtbot: QtBot) -> None:
         """A closed viewer ignores workspace consideration updates instead of reopening entries."""
@@ -826,14 +839,14 @@ class TestOfflineVideoViewerWidget:
         source.pause.assert_called()
         source.set_playback_speed.assert_any_call(1.1)
 
-    @patch("ax_devil.modules.video_viewer.offline_video_viewer.QMessageBox.warning")
-    def test_navigation_failure_warns_and_stays_on_failed_entry(self, mock_warning: MagicMock, qtbot: QtBot) -> None:
-        """A failed entry leaves the viewer empty on it, with its opened sources released, and stepping still works."""
+    def test_navigation_failure_shows_error_and_stays_on_failed_entry(self, qtbot: QtBot) -> None:
+        """A failed entry shows why on it, with its opened sources released, and stepping still works."""
         opened: list[_TrackedFrameSource] = []
 
         def broken_open() -> object:
             raise RuntimeError("broken entry")
 
+        v0 = _make_seekable_content("Z", frame_source_opener=broken_open)
         v1 = _make_local_content("A")
         v2 = _make_seekable_content("B", frame_source_opener=_make_tracked_frame_source_opener("B", opened))
         v3 = _make_seekable_content("C", frame_source_opener=broken_open)
@@ -843,23 +856,32 @@ class TestOfflineVideoViewerWidget:
         )
         playlist = PlaylistContent(
             display_name="Test",
-            entries=(PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True), entry_with_failure),
+            entries=(
+                PlaylistEntry(lanes=v0.standalone_lanes(), default_considered=True),
+                PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True),
+                entry_with_failure,
+            ),
         )
         widget = self._open(qtbot, playlist)
 
+        assert "entry 1" in _entry_error(widget).full_text()
+        assert _nav_button(widget, "Next entry").isEnabled()
+
+        widget.step_next_entry()
+        assert len(_displays(widget)) == 1
         widget.step_next_entry()
 
-        assert widget.current_on_screen_item().entry_index == 1
+        assert widget.current_on_screen_item().entry_index == 2
         assert _displays(widget) == []
-        mock_warning.assert_called_once()
-        assert "broken entry" in mock_warning.call_args.args[2]
+        assert "broken entry" in _entry_error(widget).full_text()
         assert len(opened) == 1
         _assert_frame_source_disposed(opened[0])
 
         widget.step_prev_entry()
 
-        assert widget.current_on_screen_item().entry_index == 0
+        assert widget.current_on_screen_item().entry_index == 1
         assert len(_displays(widget)) == 1
+        assert _entry_errors(widget) == []
 
     def test_navigating_while_loading_opens_the_newest_entry(
         self, qtbot: QtBot, deferred_background: _DeferredBackground
@@ -910,8 +932,7 @@ class TestOfflineVideoViewerWidget:
         assert _displays(widget) == []
         assert all(source.stop_calls == 1 for source in opened)
 
-    @patch("ax_devil.modules.video_viewer.offline_video_viewer.QMessageBox.warning")
-    def test_display_build_failure_warns_and_releases_the_entry(self, mock_warning: MagicMock, qtbot: QtBot) -> None:
+    def test_display_build_failure_shows_error_and_releases_the_entry(self, qtbot: QtBot) -> None:
         """A failure while building an entry's displays is reported like a failed open, with its sources released."""
         opened: list[_TrackedFrameSource] = []
         content = _make_seekable_content("A", frame_source_opener=_make_tracked_frame_source_opener("A", opened))
@@ -922,7 +943,7 @@ class TestOfflineVideoViewerWidget:
             widget.on_workspace_attached()
 
         assert _displays(widget) == []
-        assert "broken display" in mock_warning.call_args.args[2]
+        assert "broken display" in _entry_error(widget).full_text()
         assert len(opened) == 1
         _assert_frame_source_disposed(opened[0])
 
@@ -1521,7 +1542,7 @@ class TestOfflineVideoViewerWidget:
 
             with (
                 patch("ax_devil.modules.video_viewer.export.ExportDialog") as dialog_type,
-                patch("ax_devil.modules.video_viewer.offline_viewer_runtime.QMessageBox.warning") as told,
+                patch("ax_devil.modules.video_viewer.offline_viewer_runtime.notify") as told,
             ):
                 widget.export_video()
                 told.assert_called()

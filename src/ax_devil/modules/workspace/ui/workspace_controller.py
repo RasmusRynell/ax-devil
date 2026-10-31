@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, QPoint, Signal
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import ConsiderationItemRef, Content, ItemResolution, WorkspaceItem
 from ax_devil.modules.workspace.ui.browser_rows import (
@@ -183,7 +184,7 @@ class WorkspaceController(QObject):
     def _open_row(self, row: WorkspaceBrowserRow, *, to_side: bool = False) -> None:
         """Open what *row* opens, in a new split with *to_side*; a row that cannot open says why instead."""
         if row.unavailable_reason is not None:
-            QMessageBox.warning(self._window_parent(), "Open Content", f"{row.label}: {row.unavailable_reason}")
+            notify(self._window_parent(), "Open Content", f"{row.label}: {row.unavailable_reason}")
         elif row.activation_target is not None and self._workspace_store.workspace.has_item(
             row.activation_target[0].item_id
         ):
@@ -271,7 +272,7 @@ class WorkspaceController(QObject):
             f"{resolution.item.display_name}: {resolution.error}" for resolution in resolutions if resolution.error
         ]
         if failures:
-            QMessageBox.warning(self._window_parent(), "Open Content", "\n".join(failures))
+            notify(self._window_parent(), "Open Content", "\n".join(failures))
         contents = [content for resolution in resolutions for content in resolution.contents]
         if contents:
             self._logger.debug(f"New content added: {contents[0].display_name}")
@@ -321,7 +322,7 @@ class WorkspaceController(QObject):
         except Exception as exc:
             message = str(exc)
             self._logger.error(f"Failed to open content {content.display_name}: {message}")
-            QMessageBox.warning(self._window_parent(), "Open Content", message)
+            notify(self._window_parent(), "Open Content", message)
             return
 
         try:
@@ -334,7 +335,7 @@ class WorkspaceController(QObject):
         except Exception as exc:
             message = str(exc)
             self._logger.error(f"Failed to open content {content.display_name}: {message}")
-            QMessageBox.warning(self._window_parent(), "Open Content", message)
+            notify(self._window_parent(), "Open Content", message)
 
     def _open_widget(
         self,

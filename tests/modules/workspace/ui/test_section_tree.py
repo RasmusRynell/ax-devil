@@ -492,6 +492,18 @@ def test_camera_add_buttons_keep_their_width_when_rows_are_narrow(qtbot: QtBot) 
     assert all(button.width() == button.sizeHint().width() for button in buttons if button is not None)
 
 
+def test_a_wrapping_detail_shows_every_line_at_any_width(qtbot: QtBot) -> None:
+    """A row whose detail wraps is as high as the wrapped detail needs, after the tree is narrowed or widened."""
+    detail = " · ".join(f"Detail number {number}".replace(" ", "\u00a0") for number in range(1, 9))
+    camera = replace(_camera("10.0.0.1"), detail=detail, wrap_detail=True)
+    tree = _tree(qtbot, camera, kind=BrowserSection.NETWORK)
+    label = next(label for label in row(tree, camera.label).findChildren(QLabel) if label.wordWrap())
+    for width in (360, 220, 300):
+        tree.resize(width, 600)
+        qtbot.waitUntil(lambda: label.height() >= label.heightForWidth(label.width()), timeout=2000)
+        assert label.width() < width
+
+
 def test_keyboard_focus_stays_on_a_rows_action_when_cameras_are_found_around_it(qtbot: QtBot) -> None:
     tree = _tree(qtbot, _camera("10.0.0.2"), kind=BrowserSection.NETWORK)
     [button] = row(tree, "10.0.0.2").findChildren(SmallButton)

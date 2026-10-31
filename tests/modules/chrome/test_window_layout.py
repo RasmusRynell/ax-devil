@@ -290,6 +290,38 @@ def test_shared_minimum_prevents_unusable_windows(qtbot: QtBot, window_type: typ
     assert window.size() == window.minimumSize()
 
 
+@pytest.mark.parametrize(("content_width", "fits_screen"), [(700, True), (10000, False)])
+def test_window_minimum_follows_content_within_the_screen(qtbot: QtBot, content_width: int, fits_screen: bool) -> None:
+    """Content that cannot shrink raises the window minimum, but never past the available screen."""
+    window = ChromeWindow()
+    qtbot.addWidget(window)
+    content = QWidget()
+    content.setMinimumWidth(content_width)
+    window.setCentralWidget(content)
+    window.show()
+    QApplication.processEvents()
+    screen = window.screen()
+    assert screen is not None
+    assert window.minimumWidth() >= (content_width if fits_screen else 480)
+    assert window.minimumWidth() <= screen.availableGeometry().width()
+
+
+def test_opted_out_window_keeps_the_fixed_floor(qtbot: QtBot) -> None:
+    """A window that sets `fits_content_minimum = False` stays at the shared floor whatever its content asks."""
+
+    class _FixedFloorWindow(ChromeWindow):
+        fits_content_minimum = False
+
+    window = _FixedFloorWindow()
+    qtbot.addWidget(window)
+    content = QWidget()
+    content.setMinimumWidth(700)
+    window.setCentralWidget(content)
+    window.show()
+    QApplication.processEvents()
+    assert window.minimumSize() == QSize(480, 320)
+
+
 def test_secondary_windows_fit_the_available_screen(qtbot: QtBot) -> None:
     """Secondary windows open with usable dimensions within the available screen."""
     parent = QWidget()

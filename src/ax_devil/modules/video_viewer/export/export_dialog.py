@@ -5,26 +5,44 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
-    QLabel,
     QProgressBar,
     QVBoxLayout,
     QWidget,
 )
 
+from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.base_dialog import BaseDialog
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.theme import StatusColor, show_status
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_viewer.export.encoder import CompressionPreset
 from ax_devil.modules.video_viewer.export.export_job import ExportJob, ExportLane
 
 logger = get_logger(__name__)
+
+_LANE_NAME_CHARS = 60
+
+
+def _lane_check(name: str) -> QCheckBox:
+    """Return a checked box for the lane *name*, elided in the middle to a readable width, with the name on hover."""
+    check = QCheckBox()
+    check.setChecked(True)
+    check.setToolTip(name)
+
+    def elide() -> None:
+        room = _LANE_NAME_CHARS * check.fontMetrics().averageCharWidth()
+        check.setText(check.fontMetrics().elidedText(name, Qt.TextElideMode.ElideMiddle, room))
+
+    follow_appearance(check, elide)
+    return check
 
 
 class ExportDialog(BaseDialog):
@@ -53,8 +71,7 @@ class ExportDialog(BaseDialog):
             lanes_layout.setContentsMargins(0, 0, 0, 0)
             lanes_layout.setSpacing(Space.XS)
             for lane in self._lanes:
-                check = QCheckBox(lane.name)
-                check.setChecked(True)
+                check = _lane_check(lane.name)
                 check.toggled.connect(self._update_export_enabled)
                 lanes_layout.addWidget(check)
                 self._lane_checks.append(check)
@@ -79,8 +96,7 @@ class ExportDialog(BaseDialog):
         self._progress.setValue(0)
         progress_layout.addWidget(self._progress)
 
-        self._status_label = QLabel("Ready to export")
-        self._status_label.setWordWrap(True)
+        self._status_label = ElidedLabel("Ready to export", Qt.TextElideMode.ElideMiddle)
         progress_layout.addWidget(self._status_label)
         self.add_content_widget(self._progress_widget)
         self._progress_widget.hide()
@@ -119,14 +135,14 @@ class ExportDialog(BaseDialog):
         self._cancel_button.setEnabled(True)
         for check in self._lane_checks:
             check.setEnabled(False)
-        self._status_label.setText("Exporting…")
+        self._status_label.set_full_text("Exporting…")
 
         try:
             QApplication.processEvents()
             completed = job.run(self._update_progress)
         except Exception as e:
             logger.error(f"Export failed: {e}", exc_info=True)
-            self._show_done(f"Error: {e}", accept=False)
+            self._show_done(f"Error: {e}", accept=False, status=StatusColor.ERROR)
             return
         finally:
             self._job = None
@@ -140,12 +156,13 @@ class ExportDialog(BaseDialog):
         """Update progress bar and pump the event loop."""
         pct = int((current + 1) / total * 100)
         self._progress.setValue(pct)
-        self._status_label.setText(f"Frame {current + 1} / {total}")
+        self._status_label.set_full_text(f"Frame {current + 1} / {total}")
         QApplication.processEvents()
 
-    def _show_done(self, message: str, *, accept: bool) -> None:
-        """Switch UI to done state."""
-        self._status_label.setText(message)
+    def _show_done(self, message: str, *, accept: bool, status: StatusColor | None = None) -> None:
+        """Switch UI to done state, with *message* in the color of *status* when given."""
+        self._status_label.set_full_text(message)
+        show_status(self._status_label, status)
         self._cancel_button.setEnabled(False)
         self._export_button.setText("Close")
         self._export_button.setEnabled(True)

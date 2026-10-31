@@ -41,6 +41,20 @@ def test_every_resolver_form_fits_the_opening_size(qtbot: QtBot) -> None:
         assert scroll_area.verticalScrollBar().maximum() == 0
 
 
+def test_a_reason_that_arrives_late_grows_the_dialog_instead_of_scrolling(qtbot: QtBot) -> None:
+    """The reason a playlist did not load is shown whole under the form, not scrolled out of view."""
+    dialog = AddPlaylistDialog(inline_resolver())
+    qtbot.addWidget(dialog)
+    dialog.show()
+    QApplication.processEvents()
+    opening_height = dialog.height()
+    dialog._show_message(f"Folder not found: /videos/{'recordings/' * 20}")
+    qtbot.waitUntil(lambda: dialog.height() > opening_height)
+    scroll_area = dialog.findChild(QScrollArea)
+    assert scroll_area is not None
+    assert scroll_area.verticalScrollBar().maximum() == 0
+
+
 def test_broken_resolver_leaves_other_resolvers_available(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     """A resolver plugin that cannot build its form is left out instead of breaking the dialog."""
     records = RuntimePluginRegistry.get_plugins(PLAYLIST_RESOLVER_PLUGIN_TYPE)

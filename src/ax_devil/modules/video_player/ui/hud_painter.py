@@ -49,44 +49,65 @@ class HudPainter:
         painter.setFont(font)
         metrics = QFontMetrics(font)
         line_height = metrics.height() + Space.XS
-        sections = HudPainter._split_info_overlay_sections(stats)
         padding = Space.M
-
         tab_padding_x = Space.M
         tab_height = line_height + Space.S
         row_gap = Space.S
         section_gap = Space.M
-        content_width = 0
-        content_height = 0
-        for section in sections:
-            content_width = max(content_width, metrics.horizontalAdvance(section.title) + tab_padding_x * 2)
-            content_width = max(
-                content_width,
-                max(
-                    (metrics.horizontalAdvance(HudPainter._format_row(key, value)) for key, value in section.rows),
-                    default=0,
-                ),
-            )
-            content_height += tab_height + row_gap + line_height * len(section.rows) + section_gap
+        max_width = widget.width() - 2 * (Space.M + padding)
+        max_height = widget.height() - 2 * (Space.M + padding)
 
+        # Format and elide to the widget first; rows past its height are cut, the last one kept standing for them.
+        shown: list[tuple[str, list[str]]] = []
+        content_height = 0
+        cut = False
+        for section in HudPainter._split_info_overlay_sections(stats):
+            gap = section_gap if shown else 0
+            rows_top = content_height + gap + tab_height + row_gap
+            room = (max_height - rows_top) // line_height
+            if room < 1:
+                cut = True
+                break
+            rows = [
+                metrics.elidedText(HudPainter._format_row(key, value), Qt.TextElideMode.ElideRight, max_width)
+                for key, value in section.rows
+            ]
+            if len(rows) > room:
+                rows = rows[:room]
+                cut = True
+            title = metrics.elidedText(section.title, Qt.TextElideMode.ElideRight, max_width - 2 * tab_padding_x)
+            shown.append((title, rows))
+            content_height = rows_top + line_height * len(rows)
+            if cut:
+                break
+        if cut and shown:
+            shown[-1][1][-1] = "…"
+
+        content_width = max(
+            (
+                max(metrics.horizontalAdvance(title) + tab_padding_x * 2, *(metrics.horizontalAdvance(r) for r in rows))
+                for title, rows in shown
+            ),
+            default=0,
+        )
         rect_width = content_width + padding * 2
-        rect_height = max(tab_height, content_height - section_gap) + padding * 2
+        rect_height = max(tab_height, content_height) + padding * 2
         painter.fillRect(Space.M, Space.M, rect_width, rect_height, bg_color)
 
         x_offset = Space.M + padding
         y_offset = Space.M + padding
         painter.setPen(text_color)
-        for section in sections:
-            tab_width = metrics.horizontalAdvance(section.title) + tab_padding_x * 2
+        for title, rows in shown:
+            tab_width = metrics.horizontalAdvance(title) + tab_padding_x * 2
             painter.fillRect(x_offset, y_offset, tab_width, tab_height, tab_color)
             painter.setPen(border_color)
             painter.drawRect(x_offset, y_offset, tab_width, tab_height)
             painter.setPen(text_color)
-            painter.drawText(x_offset + tab_padding_x, y_offset + 3 + metrics.ascent(), section.title)
+            painter.drawText(x_offset + tab_padding_x, y_offset + 3 + metrics.ascent(), title)
             y_offset += tab_height + row_gap
 
-            for key, value in section.rows:
-                painter.drawText(x_offset, y_offset + metrics.ascent(), HudPainter._format_row(key, value))
+            for row in rows:
+                painter.drawText(x_offset, y_offset + metrics.ascent(), row)
                 y_offset += line_height
 
             y_offset += section_gap

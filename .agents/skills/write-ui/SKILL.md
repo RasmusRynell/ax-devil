@@ -20,7 +20,7 @@ choosing its own sizes and colors.
 | Restyle on theme or text-size change | `follow_appearance(widget, apply)` | `modules/chrome/appearance.py` |
 | Colors | `palette(...)` in stylesheets, `QPalette` roles when painting, `StatusColor` for success/warning/error | `modules/chrome/theme.py` |
 | Palette color with alpha in a stylesheet | `palette_color_css` | `modules/chrome/palette_css.py` |
-| Status-colored text | `StatusColor.<NAME>.css(palette)` | `modules/chrome/theme.py` |
+| Status-colored label text | `show_status(label, StatusColor.<NAME>)`; muted labels use `setForegroundRole(PlaceholderText)`, never a stylesheet color | `modules/chrome/theme.py` |
 | Icons | `Icon.<NAME>.icon()` follows the theme on its own; pass a color only for status or the video scrim. Add a Lucide SVG to `src/ax_devil/resources/icons/` for a new one | `modules/chrome/icons.py` |
 | Action button | `QPushButton`, or `SmallButton` for compact rows; appearance comes from the shared theme | `modules/chrome/theme.py`, `small_button.py` |
 | Button that opens a menu (`Filter ⌄`) | `MenuButton(text, menu)` | `modules/chrome/menu_button.py` |
@@ -28,7 +28,7 @@ choosing its own sizes and colors.
 | Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
 | Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
-| Question with a few labeled answers | `ask(...)`, never `QMessageBox` | `modules/chrome/choice_dialog.py` |
+| Question with a few labeled answers | `ask(...)`, or `notify(...)` for a notice with OK; never `QMessageBox` | `modules/chrome/choice_dialog.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 

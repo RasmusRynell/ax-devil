@@ -444,7 +444,7 @@ def test_forced_catalog_commands_show_the_revision_they_actually_loaded(
     source = create_catalog(qtbot, manager, "Review", base_catalog_path=small_catalog_path)
     window = _viewer(qtbot, manager, source.path)
     manager._watcher.blockSignals(True)
-    monkeypatch.setattr("ax_devil.modules.catalog_viewer.window.QMessageBox.warning", lambda *_args: None)
+    monkeypatch.setattr("ax_devil.modules.catalog_viewer.window.notify", lambda *_args: None)
     if valid:
         _relabel_person(source.path, "Pedestrian")
     else:
@@ -475,9 +475,7 @@ def test_a_default_persistence_failure_keeps_the_loaded_revision_live(
     window = _viewer(qtbot, manager, source.path)
     manager._watcher.blockSignals(True)
     warnings: list[object] = []
-    monkeypatch.setattr(
-        "ax_devil.modules.catalog_viewer.window.QMessageBox.warning", lambda *_args: warnings.append(True)
-    )
+    monkeypatch.setattr("ax_devil.modules.catalog_viewer.window.notify", lambda *_args: warnings.append(True))
 
     def cannot_save(_path: Path) -> None:
         raise OSError("Choice cannot be saved")
@@ -505,9 +503,7 @@ def test_a_late_apply_failure_does_not_mark_a_different_catalog_invalid(
     window = _viewer(qtbot, manager, first)
     manager._watcher.blockSignals(True)
     warnings: list[object] = []
-    monkeypatch.setattr(
-        "ax_devil.modules.catalog_viewer.window.QMessageBox.warning", lambda *_args: warnings.append(True)
-    )
+    monkeypatch.setattr("ax_devil.modules.catalog_viewer.window.notify", lambda *_args: warnings.append(True))
     first.write_text("{ broken", encoding="utf-8")
     prior_reads = loader.reads.count(first)
     release = loader.hold(first)

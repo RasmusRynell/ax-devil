@@ -154,7 +154,7 @@ def test_videos_are_listed_beside_the_playlists_and_both_are_counted(
     session = _session(qtbot, tmp_path, render_catalog_manager, folder_pair=_Folder(2))
     view = _view(session)
 
-    with patch(_OFFLINE_VIEWER, DummyViewer), patch("PySide6.QtWidgets.QMessageBox.warning"):
+    with patch(_OFFLINE_VIEWER, DummyViewer), patch("ax_devil.modules.workspace.ui.workspace_controller.notify"):
         session.add_items(
             [VideoItem(video=tmp_path / "gate.mp4"), PlaylistItem(label="Night shift", resolver="folder_pair")]
         )
@@ -249,7 +249,7 @@ def test_a_playlist_that_failed_says_why_on_hover_and_can_only_be_rescanned(
 ) -> None:
     session = _session(qtbot, tmp_path, render_catalog_manager)
     view = _view(session)
-    with patch("PySide6.QtWidgets.QMessageBox.warning"):
+    with patch("ax_devil.modules.workspace.ui.workspace_controller.notify"):
         session.add_items([PlaylistItem(label="Archive", resolver="folder_pair")])
 
     failed = row(view.tree, "Archive")

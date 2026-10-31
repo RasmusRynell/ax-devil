@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -38,6 +37,7 @@ from PySide6.QtWidgets import (
 from ax_devil.modules.application_shell.configuration_preferences import apply_preferences
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.chrome.theme import DARK_COLORS, LIGHT_COLORS
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole, body_px
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -356,5 +356,5 @@ class QuickSetupDialog(BaseDialog):
             apply_preferences(self._config, self._settings, snapshot, {})
         except (ValueError, OSError) as exc:
             logger.error(f"Could not save appearance choices: {exc}")
-            QMessageBox.warning(self, "Quick Setup", f"Could not save these choices: {exc}")
+            notify(self, "Quick Setup", f"Could not save these choices: {exc}")
         super().done(result)

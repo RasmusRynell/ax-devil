@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from ax_devil.core.cancellation import NEVER
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout, align_label_columns
+from ax_devil.modules.chrome.theme import StatusColor, show_status
 from ax_devil.modules.chrome.tokens import reserve_line
 from ax_devil.modules.settings.config_manager import (
     ConfigManager,
@@ -238,7 +239,7 @@ class AddLiveStreamDialog(BaseDialog):
 
         self._validation_label = QLabel()
         self._validation_label.setWordWrap(True)
-        self._validation_label.setStyleSheet("color: palette(placeholder-text);")
+        show_status(self._validation_label, StatusColor.ERROR)
         # Reserve the line up front so a message appearing later never makes the content scroll.
         reserve_line(self._validation_label)
         layout.addWidget(self._validation_label)

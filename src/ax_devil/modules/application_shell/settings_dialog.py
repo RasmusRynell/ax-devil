@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -32,6 +33,7 @@ from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.choice_dialog import ask
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.device_discovery.network_scan import Login
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
@@ -78,6 +80,13 @@ class SettingsDialog(BaseDialog):
         self._restart_values = self._saved_restart_values()
         self.restart_requested = False  # Set when the user chose to restart after saving.
         self._logger.debug("SettingsDialog initialized")
+
+    def opening_size_hint(self) -> QSize:
+        """Open with room for the Total allowance row, so choosing Manual caching never makes the page scroll."""
+        hint = super().opening_size_hint()
+        if self._video_cache_spin.isHidden():
+            hint += QSize(0, self._video_cache_spin.sizeHint().height() + Space.S)
+        return hint
 
     # ------------------------------------------------------------------
     # Layout

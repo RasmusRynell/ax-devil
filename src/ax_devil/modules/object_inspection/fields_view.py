@@ -336,6 +336,8 @@ class FieldsModel(QAbstractItemModel):
             return section or row
         if role == int(Qt.ItemDataRole.DisplayRole):
             return section.name if section is not None else row.copy_text() if row is not None else None
+        if role == int(Qt.ItemDataRole.ToolTipRole) and row is not None:
+            return row.copy_text()  # Rows elide long keys, values and labels; the tooltip has them whole.
         return None
 
 

@@ -206,7 +206,7 @@ def test_set_display_name_updates_the_name_header_and_render_diagnostics(
     widget.set_display_name("North gate cam")
 
     assert widget.get_display_name() == "North gate cam"
-    assert widget._title_label.text() == "North gate cam"
+    assert widget._title_label.full_text() == "North gate cam"
     labels = {viewer.label for viewer in get_render_metrics_store().snapshot()}
     assert "North gate cam" in labels
     assert "Gate cam" not in labels
@@ -288,3 +288,21 @@ def test_connection_status_shows_state_reasons_and_retry(
     assert controller.retries == 1
     assert not controller.is_paused
     assert "PAUSED" not in _label_texts(widget)
+
+
+def test_status_panel_grows_for_a_second_problem_line(
+    qtbot: QtBot, live_viewer: tuple[LiveVideoViewerWidget, _FakeStreamMediaController]
+) -> None:
+    """A problem added to an already shown problem line is not clipped by the panel."""
+    widget, controller = live_viewer
+    widget.show()
+    panel = widget.findChild(LiveStatusPanel)
+    assert panel is not None
+    status = controller.connection_status
+    controller.connection_changed(status.with_status(status.feed(LiveFeed.VIDEO).failed("RTSP Error: Unauthorized")))
+    qtbot.wait(50)
+    two = status.with_status(status.feed(LiveFeed.VIDEO).failed("RTSP Error: Unauthorized"))
+    controller.connection_changed(two.with_status(two.feed(LiveFeed.OVERLAY).failed("MQTT connection refused")))
+    qtbot.wait(50)
+
+    assert panel.height() >= panel.sizeHint().height()

@@ -103,6 +103,7 @@ _DEFAULT_CHARS = {
     CellKind.CHEVRON: 0,
 }
 _RIGHT_ALIGNED = frozenset({CellKind.NUMBER})
+_STRETCH_MIN_CHARS = 6  # Room a stretch column keeps before its table asks its container for more width.
 
 
 def _natural(text: str) -> tuple[tuple[int, str], ...]:
@@ -477,6 +478,7 @@ class RowTableView(QTreeView):
         header.setSectionsClickable(True)
         header.sectionClicked.connect(self._sort_by_section)
         self._saved_scroll = 0
+        self._minimum_width = 0
         model.modelAboutToBeReset.connect(self._save_scroll)
         model.modelReset.connect(self._restore_scroll)
         self.clicked.connect(self._activate_index)
@@ -559,6 +561,11 @@ class RowTableView(QTreeView):
         self.doItemsLayout()
         self.verticalScrollBar().setValue(self._saved_scroll)
 
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Return the width at which every column still fits, a stretch column at ``_STRETCH_MIN_CHARS`` characters."""
+        hint = super().minimumSizeHint()
+        return QSize(self._minimum_width + self.verticalScrollBar().sizeHint().width(), hint.height())
+
     def _apply_metrics(self) -> None:
         """Size rows, header and columns for the current text size."""
         self._delegate.load_metrics()
@@ -568,10 +575,8 @@ class RowTableView(QTreeView):
         caption = QFontMetrics(TextRole.CAPTION.font())
         columns = self._rows_model.columns
         stretch_any = any(column.stretch for column in columns)
+        self._minimum_width = 0
         for section, column in enumerate(columns):
-            if column.stretch or (not stretch_any and section == len(columns) - 1):
-                header.setSectionResizeMode(section, QHeaderView.ResizeMode.Stretch)
-                continue
             pad = (Space.M if section == 0 else Space.S) + Space.S
             if column.cell is CellKind.CHEVRON:
                 content = TextRole.SMALL.px
@@ -579,7 +584,16 @@ class RowTableView(QTreeView):
                 chars = column.width_chars if column.width_chars is not None else _DEFAULT_CHARS[column.cell]
                 content = chars * mono.averageCharWidth()
             title = caption.horizontalAdvance(column.title.upper()) + TextRole.CAPTION.px + Space.S
+            stretches = column.stretch or (not stretch_any and section == len(columns) - 1)
+            if stretches:
+                content = min(content, _STRETCH_MIN_CHARS * mono.averageCharWidth())
+            width = max(content, title) + pad
+            self._minimum_width += width
+            if stretches:
+                header.setSectionResizeMode(section, QHeaderView.ResizeMode.Stretch)
+                continue
             header.setSectionResizeMode(section, QHeaderView.ResizeMode.Fixed)
-            header.resizeSection(section, max(content, title) + pad)
+            header.resizeSection(section, width)
+        self.updateGeometry()
         self.doItemsLayout()
         self.viewport().update()

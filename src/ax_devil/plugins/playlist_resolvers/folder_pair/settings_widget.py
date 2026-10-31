@@ -51,8 +51,8 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
         form = FormLayout()
         layout.addLayout(form)
 
-        self._videos_input = self._add_directory_row(form, "Videos:", "Path to folder containing video files")
-        self._overlays_input = self._add_directory_row(form, "Overlays:", "Path to folder containing overlay files")
+        self._videos_input = self._add_directory_row(form, "Videos", "Video folder")
+        self._overlays_input = self._add_directory_row(form, "Overlays", "Overlay folder")
         self._videos_input.textChanged.connect(self._clear_matches)
         self._overlays_input.textChanged.connect(self._clear_matches)
 
@@ -107,7 +107,7 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
             self._status_label.setText("Select video and overlay folders.")
             return
 
-        self._status_label.setText("Scanning...")
+        self._status_label.setText("Scanning…")
         self._scan.submit(
             self.jobs,
             "scan folder pairs",

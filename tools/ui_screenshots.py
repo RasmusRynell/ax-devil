@@ -348,7 +348,7 @@ def test_screenshots(
 
     window.launch(workspace_file=workspace_path)
     viewer = _open_video(qtbot, window, "Tracked video")
-    _trigger(window, "Media Tools Panel")
+    _trigger(window, "Toggle Media Tools Panel")
     media_tools_tabs = viewer.findChild(QTabBar, "mediaToolsTabs")
     assert media_tools_tabs is not None
     for text_size in TEXT_SIZES:
@@ -656,7 +656,7 @@ def test_media_tools_screenshots(
     # One video: the SHOWN_FRAME has objects 1, 2, 4, 5, 7; object 6 ended earlier and 8 ends one frame before.
     window.resize(*WINDOW_SIZES["wide"])
     viewer = _open_video(qtbot, window, "Tracked video")
-    _trigger(window, "Media Tools Panel")
+    _trigger(window, "Toggle Media Tools Panel")
     qtbot.wait(500)
     panel = viewer.findChild(MediaToolsPanel)
     assert panel is not None

@@ -439,7 +439,7 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
         "live_stream": LiveStreamItem(label="Clip", host="camera.local", overlay_mode=LiveOverlayMode.RTSP),
     }
 
-    with patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
+    with patch("ax_devil.modules.workspace.ui.workspace_controller.notify") as warning:
         workspace_session.add_items([items[kind]])
 
     assert _store(workspace_session).workspace.items == (items[kind],)
@@ -451,7 +451,7 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
     row = _row(_required_item_row(workspace_session))
     assert (row.label, row.unavailable_reason) == ("Clip", message.removeprefix("Clip: "))
 
-    with patch("PySide6.QtWidgets.QMessageBox.warning") as again:
+    with patch("ax_devil.modules.workspace.ui.workspace_controller.notify") as again:
         _tree(workspace_session).itemDoubleClicked.emit(_required_item_row(workspace_session), 0)
 
     assert [call.args[1:] for call in again.call_args_list] == [("Open Content", message)], "a double click says why"
@@ -523,7 +523,7 @@ def test_open_failure_shows_error_and_keeps_existing_viewer(workspace_session: W
         if failure == "construct"
         else patch(_OFFLINE_VIEWER, _FailingAttachViewer)
     )
-    with broken_viewer, patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
+    with broken_viewer, patch("ax_devil.modules.workspace.ui.workspace_controller.notify") as warning:
         workspace_session.add_items([content_item(_make_video("broken"))])
 
     assert _center(workspace_session).get_widget_count() == 1
@@ -757,14 +757,14 @@ def test_renaming_an_item_updates_its_row_and_open_viewer(workspace_session: Wor
     with patch(_ENTERED_NAME, return_value="North gate"):
         _ask(workspace_session, clip.id, RowAction.RENAME)
 
-    assert viewer._title_label.text() == "North gate"
+    assert viewer._title_label.full_text() == "North gate"
     assert _row(_required_item_row(workspace_session)).label == "North gate"
     assert _store(workspace_session).is_modified
 
     with patch(_ENTERED_NAME, return_value=""):
         _ask(workspace_session, clip.id, RowAction.RENAME)
 
-    assert viewer._title_label.text() == "lot.mp4"
+    assert viewer._title_label.full_text() == "lot.mp4"
     assert _row(_required_item_row(workspace_session)).label == "lot.mp4"
 
 

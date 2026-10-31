@@ -5,8 +5,9 @@ from pathlib import Path
 from time import monotonic
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPushButton, QWidget
 
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.diagnostics.trace_recorder import TraceRecorder
 from ax_devil.modules.settings.logging_config import get_logger
 
@@ -54,7 +55,7 @@ class TraceControls(QWidget):
                 self._update_elapsed()
         except Exception as error:
             logger.exception(f"Trace recording failed: {error}")
-            QMessageBox.warning(self, "Trace recording", str(error))
+            notify(self, "Trace recording", str(error))
 
     def _update_elapsed(self) -> None:
         if self.recorder.failure is not None:
@@ -79,7 +80,7 @@ class TraceControls(QWidget):
             self.status.setToolTip(path)
         except Exception as error:
             logger.exception(f"Trace export failed: {error}")
-            QMessageBox.warning(self, "Trace export", f"{error}\nThe recording is retained; try Save trace again.")
+            notify(self, "Trace export", f"{error}\nThe recording is retained; try Save trace again.")
 
     def cleanup(self) -> None:
         """Release timers and stop capture when the owning window closes."""

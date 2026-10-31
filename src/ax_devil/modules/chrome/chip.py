@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from enum import Enum
 
 from PySide6.QtCore import QEvent, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPalette
+from PySide6.QtGui import QColor, QFontMetrics, QKeyEvent, QMouseEvent, QPainter, QPalette
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
@@ -14,6 +14,7 @@ from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Space, TextRole, body_px
 
 _HOVER_ALPHA = 0.14
+_ACTIVATE_KEYS = (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter)
 
 
 class ChipKind(Enum):
@@ -39,7 +40,8 @@ class ChipKind(Enum):
 class Chip(QWidget):
     """A one-line tag outlined in the color of its *kind*; it takes the room its text needs.
 
-    A *clickable* chip shows a pointing hand and a fill under the pointer, and emits ``clicked`` on a left click.
+    A *clickable* chip shows a pointing hand and a fill under the pointer, takes keyboard focus with an accent outline,
+    and emits ``clicked`` on a left click, Space or Enter.
     """
 
     clicked = Signal()
@@ -55,6 +57,8 @@ class Chip(QWidget):
         if clickable:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
             self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            self.setAccessibleName(text)
         follow_appearance(self, self._apply_appearance)
 
     def text(self) -> str:
@@ -76,9 +80,18 @@ class Chip(QWidget):
         self.update()
 
     def event(self, event: QEvent) -> bool:
-        """Repaint when the pointer enters or leaves a clickable chip."""
+        """Repaint when the pointer enters or leaves a clickable chip; its keys beat application shortcuts."""
         if event.type() in (QEvent.Type.HoverEnter, QEvent.Type.HoverLeave):
             self.update()
+        elif (
+            event.type() == QEvent.Type.ShortcutOverride
+            and self._clickable
+            and isinstance(event, QKeyEvent)
+            and event.key() in _ACTIVATE_KEYS
+            and not event.modifiers()
+        ):
+            event.accept()  # Space would otherwise play or pause the video instead of choosing the chip.
+            return True
         return super().event(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
@@ -91,6 +104,13 @@ class Chip(QWidget):
             self.clicked.emit()
         super().mouseReleaseEvent(event)
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        """Emit ``clicked`` for Space or Enter on a clickable chip, so the keyboard reaches what a click does."""
+        if self._clickable and event.key() in _ACTIVATE_KEYS:
+            self.clicked.emit()
+            return
+        super().keyPressEvent(event)
+
     def paintEvent(self, _event: object) -> None:  # noqa: N802
         """Draw the outline, a fill under the pointer when clickable, and the text."""
         painter = QPainter(self)
@@ -100,10 +120,11 @@ class Chip(QWidget):
             fill = QColor(color)
             fill.setAlphaF(_HOVER_ALPHA)
             painter.setBrush(fill)
-        painter.setPen(color)
+        painter.setPen(self.palette().color(QPalette.ColorRole.Highlight) if self.hasFocus() else color)
         painter.setFont(TextRole.SMALL.font())
         outline = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         painter.drawRoundedRect(outline, outline.height() / 2, outline.height() / 2)
+        painter.setPen(color)
         painter.drawText(self.rect(), int(Qt.AlignmentFlag.AlignCenter), self._text)
 
 

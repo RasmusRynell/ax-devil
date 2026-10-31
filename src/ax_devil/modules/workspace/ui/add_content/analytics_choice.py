@@ -2,6 +2,10 @@
 
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.theme import StatusColor
+
 from .analytics_discovery import AnalyticsChoiceLoader
 
 
@@ -20,14 +24,17 @@ class AnalyticsChoice(QWidget):
         layout.addWidget(self.refresh)
         self.refresh.clicked.connect(loader.load)
         loader.changed.connect(self._render)
-        self._render()
+        follow_appearance(self, self._render)  # The failure icon takes its color from the palette.
 
     def _render(self) -> None:
         selected = self.combo.currentData()
         if isinstance(selected, str):
             self._selection = selected
         self.combo.clear()
-        self.combo.addItem(self.loader.status, None)
+        if self.loader.failed:
+            self.combo.addItem(Icon.WARNING.icon(StatusColor.ERROR.color(self.palette())), self.loader.status, None)
+        else:
+            self.combo.addItem(self.loader.status, None)
         for choice in self.loader.choices:
             self.combo.addItem(choice, choice)
         index = self.combo.findData(self._selection)

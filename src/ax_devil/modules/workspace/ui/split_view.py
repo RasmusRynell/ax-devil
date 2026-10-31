@@ -192,6 +192,7 @@ class SplitView(QWidget):
     """Manages a dynamic split layout of viewer widgets using nested splitters."""
 
     widget_removed = Signal(object)
+    focused_widget_changed = Signal(object)  # The ``ViewerWidget`` now focused, or ``None``.
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -481,6 +482,7 @@ class SplitView(QWidget):
         if self._focused_widget is widget:
             return
         self._focused_widget = widget
+        self.focused_widget_changed.emit(widget)
 
     def get_focused_widget(self) -> ViewerWidget | None:
         """Return the currently focused widget."""

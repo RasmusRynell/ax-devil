@@ -107,6 +107,18 @@ def test_information_tree_sizes_to_rows_and_scrolls_large_payload(qtbot: QtBot) 
     assert heights[0] < heights[1] < heights[2]
 
 
+def test_information_ordinary_path_opens_on_one_line(qtbot: QtBot) -> None:
+    """A path of ordinary length is not wrapped by the width the dialog opens at."""
+    path = f"/home/user/recordings/{'a' * 43}/video.mp4"
+    dialog = WorkspaceItemInfoDialog(WorkspaceItemInfo("Video", (("path", path),)))
+    qtbot.addWidget(dialog)
+    dialog.show()
+    QApplication.processEvents()
+    label = next(label for label in dialog.findChildren(QLabel) if label.text() == path)
+    assert len(path) == 75
+    assert label.height() == label.heightForWidth(10**6)
+
+
 @pytest.mark.parametrize("value", ["Long descriptive metadata field " * 30, f"/videos/{'recordings/' * 100}video.mp4"])
 def test_information_wrapped_value_remains_reachable_after_resize(qtbot: QtBot, value: str) -> None:
     """Long metadata and paths wrap fully and can scroll even when one row exceeds the viewport."""

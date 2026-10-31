@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import cast
 
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeyEvent
 from PySide6.QtWidgets import QFrame, QMenu, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QWidget
 
@@ -36,6 +36,25 @@ _KEY_ACTIONS = {
     Qt.Key.Key_Delete: RowAction.REMOVE,
 }
 """The action each key asks of the selected row; Ctrl opens to the side."""
+
+
+def fit_row_height(tree: QTreeWidget, item: QTreeWidgetItem, column: int) -> bool:
+    """Make *item*'s row as high as its *column* widget needs at the width it will have; return whether that changed.
+
+    The tree sizes a row from its widget's ``sizeHint``, which gives a wrapping label no width to wrap at, so a
+    row whose text wraps would otherwise show only the lines that hint assumed.
+    """
+    widget = tree.itemWidget(item, column)
+    if widget is None or not widget.hasHeightForWidth():
+        return False
+    width = tree.visualRect(tree.indexFromItem(item, column)).width()
+    if width <= 0:  # Hidden or collapsed; showing it again queues another fit.
+        return False
+    hint = QSize(0, widget.heightForWidth(width))
+    if item.sizeHint(column) == hint:
+        return False
+    item.setSizeHint(column, hint)
+    return True
 
 
 class SectionTree(QTreeWidget):
@@ -74,6 +93,8 @@ class SectionTree(QTreeWidget):
         """The sections that held an open row at the last ``set_sections``."""
         self._folding = False
         """Whether the tree itself is folding or unfolding sections, so the change is not the user's."""
+        self._fit_pending = False
+        """Whether a fit of the wrapping rows is already queued."""
         self.setColumnCount(1)
         self.setHeaderHidden(True)
         self.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
@@ -98,6 +119,7 @@ class SectionTree(QTreeWidget):
         self.itemClicked.connect(self._toggle_section)
         self.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.customContextMenuRequested.connect(self._on_context_menu)
+        self.viewport().installEventFilter(self)
         follow_appearance(self, self._rebuild)
 
     def set_sections(self, sections: tuple[WorkspaceBrowserSection, ...]) -> None:
@@ -125,6 +147,14 @@ class SectionTree(QTreeWidget):
     def has_rows(self) -> bool:
         """Return whether any section is shown."""
         return bool(self._sections)
+
+    def shows_rows(self) -> bool:
+        """Return whether any section that has rows is on screen; a search that matches no row leaves none, whatever
+        a section with nothing to list says."""
+        return any(
+            section.rows and heading is not None and not heading.isHidden()
+            for section, heading in zip(self._sections, (self.topLevelItem(i) for i in range(self.topLevelItemCount())))
+        )
 
     def _rebuild(self) -> None:
         """Build the items and the widgets of the rows that can be seen, for the current palette and text size."""
@@ -211,6 +241,25 @@ class SectionTree(QTreeWidget):
             widget = SourceRow(_row_of(child))
             widget.action_requested.connect(self.row_action_requested)
             self.setItemWidget(child, 0, widget)
+            self._fit_soon()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        """Fit the rows whose detail wraps to the new width once the viewport has been resized and laid out."""
+        if watched is self.viewport() and event.type() == QEvent.Type.Resize:
+            self._fit_soon()
+        return super().eventFilter(watched, event)
+
+    def _fit_soon(self) -> None:
+        """Queue one fit of the wrapping rows, once the tree has been laid out; later requests join it."""
+        if not self._fit_pending:
+            self._fit_pending = True
+            QTimer.singleShot(0, self, self._fit_wrapping_rows)
+
+    def _fit_wrapping_rows(self) -> None:
+        """Fit every row whose detail wraps, and lay the rows out again if one changed height."""
+        self._fit_pending = False
+        if any([fit_row_height(self, item, 0) for item, _row in self._row_items()]):
+            self.doItemsLayout()
 
     def _row_items(self) -> Iterator[tuple[QTreeWidgetItem, WorkspaceBrowserRow]]:
         """Iterate over every row item with its row, hidden and collapsed ones included, depth first."""
@@ -263,6 +312,7 @@ class SectionTree(QTreeWidget):
 
     def _on_folded_or_unfolded(self, item: QTreeWidgetItem) -> None:
         """Turn a section's arrow, and remember a fold the user made, by click or keyboard."""
+        self._fit_soon()  # Rows under it that were folded away were not measured.
         if item.parent() is not None:
             return
         kind = self._section_of(item).kind
@@ -299,6 +349,7 @@ class SectionTree(QTreeWidget):
                 heading.setData(0, _HIDDEN_ROLE, hidden)
                 heading.setExpanded(expanded)
                 self._show_caption(heading)
+        self._fit_soon()  # Rows the filter shows again were not measured while hidden.
 
     def _filter_item(self, item: QTreeWidgetItem, *, ancestor_matches: bool) -> bool:
         """Show or hide *item* and its children, and return whether *item* is shown."""

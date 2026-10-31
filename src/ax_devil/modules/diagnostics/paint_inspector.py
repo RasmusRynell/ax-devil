@@ -47,7 +47,6 @@ def _table(headers: list[str]) -> QTableWidget:
     table.setAlternatingRowColors(True)
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-    table.horizontalHeader().setMinimumSectionSize(70)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
     show_all_rows(table)
@@ -55,9 +54,14 @@ def _table(headers: list[str]) -> QTableWidget:
 
 
 def show_all_rows(table: QTableWidget) -> None:
-    """Size *table* to show every row without scrolling, now and after text-size changes."""
+    """Size *table* to show every row without scrolling, now and after text-size changes; headers must be set first."""
 
     def fit_rows() -> None:
+        # Columns keep room for their header at this text size; a narrower table scrolls sideways.
+        header = table.horizontalHeader()
+        labels = (table.horizontalHeaderItem(column) for column in range(1, table.columnCount()))
+        widest = max((header.fontMetrics().horizontalAdvance(item.text()) for item in labels if item), default=0)
+        header.setMinimumSectionSize(widest + 2 * Space.M)
         table.verticalHeader().setDefaultSectionSize(Height.ROW.px + Space.S)
         _fit_height(table)
 

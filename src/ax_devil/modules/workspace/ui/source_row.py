@@ -74,6 +74,7 @@ def _action_button(action: RowAction) -> SmallButton:
     button = SmallButton(action.button_text, action.icon)
     button.setFixedWidth(button.sizeHint().width())
     button.setToolTip(action.tooltip)
+    button.setAccessibleName(action.menu_text)  # An icon-only button, such as Rescan, has no text to name it.
     return button
 
 

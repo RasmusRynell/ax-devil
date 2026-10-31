@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QTabBar,
     QVBoxLayout,
@@ -32,7 +31,7 @@ from ax_devil.modules.catalog_viewer.inspector import ObjectInspector
 from ax_devil.modules.catalog_viewer.sheets import Sheet, drawing_errors, sheet_frame, sheets
 from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.choice_dialog import ask
+from ax_devil.modules.chrome.choice_dialog import ask, notify
 from ax_devil.modules.chrome.chrome_window import ChromeWindow, window_uses_custom_frame
 from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.form_layout import FormLayout
@@ -276,6 +275,7 @@ class CatalogViewerWindow(ChromeWindow):
             self._catalogs.addItem(listing.label(path), path)
         self._catalogs.setCurrentIndex(paths.index(self._path))
         self._catalogs.blockSignals(False)
+        self._catalogs.setToolTip(listing.label(self._path))  # The closed box elides a long name.
         self._file.set_full_text(str(self._path))
 
     def _show_state(self) -> None:
@@ -395,7 +395,7 @@ class CatalogViewerWindow(ChromeWindow):
         self.show_catalog(created.path)
 
     def _warn_create(self, error: Exception) -> None:
-        QMessageBox.warning(self, "New Catalog", f"Could not create the catalog: {error}")
+        notify(self, "New Catalog", f"Could not create the catalog: {error}")
 
     def _apply_catalog_to_all(self) -> None:
         self._action_request.start(
@@ -408,7 +408,7 @@ class CatalogViewerWindow(ChromeWindow):
 
     def _warn_apply(self, error: Exception) -> None:
         self._on_load_failed(error)
-        QMessageBox.warning(self, "Apply to All", f"Could not use the catalog: {error}")
+        notify(self, "Apply to All", f"Could not use the catalog: {error}")
 
     def _use_catalog_as_default(self) -> None:
         self._action_request.start(
@@ -429,7 +429,7 @@ class CatalogViewerWindow(ChromeWindow):
         self._warn_default(error)
 
     def _warn_default(self, error: Exception) -> None:
-        QMessageBox.warning(self, "Use as Default", f"Could not make the catalog the default: {error}")
+        notify(self, "Use as Default", f"Could not make the catalog the default: {error}")
 
     def _action_done(self, _result: None) -> None:
         self._load()
@@ -453,7 +453,7 @@ class CatalogViewerWindow(ChromeWindow):
         try:
             self._manager.delete_catalog(self._path)
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Delete Catalog", f"Could not delete the catalog: {error}")
+            notify(self, "Delete Catalog", f"Could not delete the catalog: {error}")
             return
         self._action_request.start(
             lambda result, error: self._manager.refresh_catalogs(on_done=result, on_failed=error),

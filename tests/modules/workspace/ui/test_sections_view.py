@@ -240,6 +240,44 @@ def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
     assert _required_item_row(view).isExpanded()
 
 
+def _says(view: SectionsView, text: str) -> bool:
+    """Return whether the view shows a label with *text*."""
+    return any(label.isVisible() and label.text() == text for label in view.findChildren(QLabel))
+
+
+def test_a_view_says_what_is_missing_when_a_search_matches_nothing_or_nothing_is_listed(qtbot: QtBot) -> None:
+    view = SectionsView("test", "Test", Icon.WORKSPACE, empty_text="No videos")
+    qtbot.addWidget(view)
+    view.show()
+    view.set_sections(())
+    assert _says(view, "No videos")
+
+    _set_rows(view, (_video_row("clip"),))
+    assert not _says(view, "No videos")
+
+    _search(view).setText("zzz")
+    assert _says(view, "No matches")
+
+    _search(view).setText("cli")
+    assert not _says(view, "No matches")
+
+
+def test_a_search_matching_no_saved_row_says_so_beside_a_section_with_nothing_to_list(qtbot: QtBot) -> None:
+    view = _new_view()
+    qtbot.addWidget(view)
+    view.show()
+    view.set_sections(
+        (
+            WorkspaceBrowserSection(BrowserSection.VIDEOS, (_video_row("clip"),)),
+            WorkspaceBrowserSection(BrowserSection.NETWORK, ()),
+        )
+    )
+    assert _says(view, "No new cameras")
+
+    _search(view).setText("zzz")
+    assert _says(view, "No matches")
+
+
 def test_a_hidden_row_stays_listed_and_dimmed_also_in_a_search(qtbot: QtBot) -> None:
     hidden = _hidden("Warehouse door")
     view = _view_with(qtbot, hidden)

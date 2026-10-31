@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -39,8 +38,9 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
-from ax_devil.modules.chrome.tokens import Space, TextRole
+from ax_devil.modules.chrome.tokens import Space, TextRole, keep_minimum_chars
 from ax_devil.modules.diagnostics.dashboard_snapshot import DashboardSnapshot, DashboardSnapshotService
 from ax_devil.modules.diagnostics.history_chart import PaintHistoryChart
 from ax_devil.modules.diagnostics.metrics_store import get_metrics_store
@@ -108,6 +108,7 @@ class DebugWindow(ChromeWindow):
         self.status_label.setToolTip(
             f"Recent {HISTORY_SECONDS:g} seconds, limited to {HISTORY_LIMIT} paints per viewer."
         )
+        keep_minimum_chars(self.status_label, 18)
         controls.addWidget(self.status_label, 1)
         export = QPushButton("Export")
         export.setToolTip("Export rendering history, source observations, and full cache ranges as JSON.")
@@ -154,6 +155,8 @@ class DebugWindow(ChromeWindow):
         self.viewer_list = QListWidget()
         self.viewer_list.setSpacing(Space.XS)
         self.viewer_list.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        # Without this, items widen past the sidebar and scroll instead of eliding.
+        self.viewer_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.viewer_list.currentItemChanged.connect(self._show_selected_viewer)
         sidebar_layout.addWidget(self.viewer_list)
         rendering.addWidget(sidebar)
@@ -349,7 +352,6 @@ class DebugWindow(ChromeWindow):
         table.setAlternatingRowColors(True)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        table.horizontalHeader().setMinimumSectionSize(68)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         for row, stage in enumerate(stages):
@@ -692,7 +694,7 @@ class DebugWindow(ChromeWindow):
                     indent=2,
                 )
         except (OSError, TypeError, ValueError) as error:
-            QMessageBox.warning(self, "Export diagnostics", str(error))
+            notify(self, "Export diagnostics", str(error))
 
     def cleanup(self) -> None:
         """Stop refresh and release a running trace recorder."""

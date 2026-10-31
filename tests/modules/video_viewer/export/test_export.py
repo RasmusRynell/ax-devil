@@ -12,9 +12,10 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QProgressBar
+from PySide6.QtWidgets import QCheckBox, QComboBox, QProgressBar
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
@@ -70,9 +71,9 @@ def _progress_bar(dialog: ExportDialog) -> QProgressBar:
 def _status(dialog: ExportDialog) -> str:
     """Return the status line shown under the progress bar."""
     parent = _progress_bar(dialog).parentWidget()
-    label = parent.findChild(QLabel) if parent is not None else None
+    label = parent.findChild(ElidedLabel) if parent is not None else None
     assert label is not None
-    return label.text()
+    return label.full_text()
 
 
 def _shows_options(dialog: ExportDialog) -> bool:
