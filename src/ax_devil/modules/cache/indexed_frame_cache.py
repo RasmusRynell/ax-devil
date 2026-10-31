@@ -5,6 +5,8 @@ import json
 import mmap
 import os
 import pickle
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -169,26 +171,50 @@ class IndexedFrameCache:
         }
         header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
 
-        # Replace atomically: a reader may still have the old file open or mapped. Our own reader is a duplicate of
-        # the written file's descriptor, so a rebuild by another process landing later cannot pair this provider's
-        # catalog with a different file. Windows has no duplicate of a file that survives its rename, so there the
-        # reader is a second handle on the temporary file, opened to share deletion.
-        self.close()  # Windows cannot replace the file while this cache still has it open.
+        def write_payload(fh: BinaryIO) -> None:
+            for enc in encoded_frames:
+                fh.write(enc)
+
+        self._publish(header_bytes, write_payload)
+        logger.debug(f"Cached {len(items)} frames ({len(header_bytes) + 1 + offset} bytes) → {self.cache_file.name}")
+
+    def replace_metadata(self, meta: dict[str, Any]) -> None:
+        """Republish the cache with new metadata and the same frames."""
+        self._ensure_open()
+        assert self._header is not None
+        assert self._payload0 is not None
+        header_bytes = json.dumps({**self._header, "metadata": meta}, separators=(",", ":")).encode("utf-8")
+        payload0 = self._payload0
+        # Copy from the handle that supplied the header: the path may already name a newer file.
+        source = self._mmap_fh if self._mmap_fh is not None else self._fh
+        assert source is not None
+
+        def copy_payload(fh: BinaryIO) -> None:
+            source.seek(payload0)
+            shutil.copyfileobj(source, fh)
+
+        self._publish(header_bytes, copy_payload)
+
+    def _publish(self, header_bytes: bytes, write_payload: Callable[[BinaryIO], None]) -> None:
+        """Atomically replace the cache file with *header_bytes* and the payload *write_payload* writes, then read it.
+
+        A reader may still have the old file open or mapped. Our own reader is a duplicate of the written file's
+        descriptor, so a rebuild by another process landing later cannot pair this provider's catalog with a different
+        file. Windows has no duplicate of a file that survives its rename, so there the reader is a second handle on
+        the temporary file, opened to share deletion.
+        """
         reader: BinaryIO | None = None
         with write_atomically(self.cache_file, "wb") as fh:
             fh.write(header_bytes + b"\n")
-            for enc in encoded_frames:
-                fh.write(enc)
+            write_payload(fh)
             fh.flush()
             if os.name == "nt":
                 reader = open_replaceable(Path(fh.name))
             else:
                 reader = os.fdopen(os.dup(fh.fileno()), "rb")
                 reader.seek(0)
+            self.close()  # Windows cannot replace the file while this cache still has it open.
         assert reader is not None
-
-        logger.debug(f"Cached {len(items)} frames ({len(header_bytes) + 1 + offset} bytes) → {self.cache_file.name}")
-
         self._open(reader)
 
     # -- read ------------------------------------------------------------

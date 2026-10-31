@@ -75,7 +75,7 @@ _TAttributeItem = TypeVar("_TAttributeItem")
 
 # (major, minor). Bump major when a field is removed, renamed, or changes meaning; bump minor when a field is added.
 # Decoder plugins declare the version they build Scenes for, and derived caches are keyed on it.
-SCENE_MODEL_VERSION: tuple[int, int] = (3, 1)
+SCENE_MODEL_VERSION: tuple[int, int] = (3, 2)
 
 
 class OperationType(enum.Enum):
@@ -178,12 +178,16 @@ class Observation:
     velocity_in_world_space: WorldVelocity | None = None
     geographical_coordinates: GeographicCoordinates | None = None
     world_coordinates: SphericalCoordinates | None = None
-    # Decoder-owned, free-form, picklable; ax-devil only displays it.
+    # What the decoder computed: free-form, picklable; ax-devil only displays it.
     debug: dict[str, Any] = field(default_factory=dict)
+    # Values the source file or stream supplied verbatim: free-form, picklable; ax-devil only displays it.
+    source_data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.timestamp is None and self.frame_number is None:
             raise ValueError("Observation must have either a timestamp or frame number.")
+        if self.debug.keys() & self.source_data.keys():
+            raise ValueError("Observation debug and source_data keys must not overlap")
 
     @property
     def ranked_classifications(self) -> list[Classification]:

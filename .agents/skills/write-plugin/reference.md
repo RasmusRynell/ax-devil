@@ -66,8 +66,8 @@ files. `decode` must not depend on earlier calls: records are decoded in seek or
 A `Classification` carries `score` (`Score`, any finite number) and `confidence` (`Confidence`, any finite number) separately; emit
 each as the source provides it, or `None`.
 
-Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame-level) or `Observation.debug`
-(per object). For display behavior and ownership, see the [Scene Model invariants](../../../docs/domain/invariants.md#scene-model).
+Put values copied verbatim from the source in `Observation.source_data` and values your decoder computed in
+`Observation.debug`; both are shown under Debug. `Scene.debug` is free-form frame diagnostics that are not shown. For display behavior and ownership, see the [Scene Model invariants](../../../docs/domain/invariants.md#scene-model).
 
 ## Packaging requirements
 

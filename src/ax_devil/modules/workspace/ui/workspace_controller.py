@@ -13,6 +13,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.thumbnails import Thumbnails
 from ax_devil.modules.workspace.core import (
     ConsiderationItemRef,
     Content,
@@ -24,6 +25,7 @@ from ax_devil.modules.workspace.ui.browser_projection import build_browser_secti
 from ax_devil.modules.workspace.ui.browser_rows import RowAction, WorkspaceBrowserRow, WorkspaceBrowserSection
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.open_viewers import OpenViewers
+from ax_devil.modules.workspace.ui.row_hover import RowHover
 from ax_devil.modules.workspace.ui.row_menu import show_row_menu
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory, default_workspace_viewer_factory
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
@@ -60,6 +62,7 @@ class WorkspaceController(QObject):
         self._starting: set[str] = set()
         """The items to start streaming once they have resolved."""
         self._sections: tuple[WorkspaceBrowserSection, ...] = ()
+        self._refused_streams: frozenset[str] = frozenset()
         self._viewers = OpenViewers(
             center_area,
             workspace_store,
@@ -68,6 +71,8 @@ class WorkspaceController(QObject):
             on_changed=self._publish_sections,
             show_menu=self._show_viewer_menu,
         )
+        self._thumbnails = Thumbnails(self._viewers.latest_frame, parent=self)
+        self._row_hover = RowHover(self._thumbnails, parent=self)
         self._row_handlers: dict[RowAction, Callable[[WorkspaceBrowserRow], None]] = {
             RowAction.OPEN: self._open_row,
             RowAction.UNHIDE_AND_OPEN: self._unhide_and_open,
@@ -120,6 +125,7 @@ class WorkspaceController(QObject):
     def connect_tree(self, tree: SectionTree) -> None:
         """Carry out what the user asks of the rows of *tree*, however they asked: see ``perform_row_action``."""
         tree.row_action_requested.connect(self.perform_row_action)
+        self._row_hover.watch(tree)
 
     def perform_row_action(
         self, row: WorkspaceBrowserRow, action: RowAction, viewer: ViewerWidget | None = None
@@ -138,7 +144,9 @@ class WorkspaceController(QObject):
         self._viewers.set_shared_actions(actions)
 
     def cleanup(self) -> None:
-        """Close all open viewers."""
+        """Close all open viewers and stop reading thumbnails."""
+        self._row_hover.hide()
+        self._thumbnails.cleanup()
         self._viewers.close_all()
 
     def _connect_signals(self) -> None:
@@ -151,6 +159,13 @@ class WorkspaceController(QObject):
         self._workspace_store.item_renamed.connect(self._on_item_renamed)
         self._workspace_store.item_consideration_changed.connect(self._on_item_consideration_changed)
 
+    def set_refused_streams(self, item_ids: frozenset[str]) -> None:
+        """Give the streams of *item_ids*, whose cameras refuse the login saved with them, no thumbnail in any view, so
+        the camera is not asked again with that login."""
+        if item_ids != self._refused_streams:
+            self._refused_streams = item_ids
+            self._publish_sections()
+
     def _publish_sections(self, *_args: object) -> None:
         """Build the rows of the Workspace as it is now and report them."""
         open_items = frozenset(
@@ -161,6 +176,7 @@ class WorkspaceController(QObject):
             self._workspace_store.is_item_considered,
             open_items,
             stream_statuses=self._viewers.stream_statuses(),
+            refused_streams=self._refused_streams,
         )
         self.sections_changed.emit(self._sections)
 

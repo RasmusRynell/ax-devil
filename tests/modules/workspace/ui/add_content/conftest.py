@@ -88,6 +88,8 @@ def discovery(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> Generator[Discov
         on_progress: Callable[[Any], None] | None = None,
         on_discard: Callable[[Any], None] | None = None,
     ) -> Callable[[], None]:
+        if name == "load resolutions":  # Not one of the discovery requests whose order the tests steer.
+            return submit(scope, name, work, on_result=on_result, on_error=on_error, on_progress=on_progress)
         go, delivered = Event(), list[bool]()
         pending.jobs.append((go, delivered))
 

@@ -23,6 +23,7 @@ def test_observation_pickle_preserves_debug_and_classification_confidence() -> N
         classification=[Classification("car", Score(0.69), confidence=Confidence(0.8516))],
         timestamp=_TS,
         debug={"motion_debug": {"normalized_speed": 0.42}},
+        source_data={"vendor": {"id": 1}},
     )
 
     assert pickle.loads(pickle.dumps(observation)) == observation

@@ -104,7 +104,7 @@ def test_open_row_expands_its_parent(qtbot: QtBot) -> None:
     assert top_item.isExpanded()
     child_item = required_child(top_item, 0)
     assert _row(child_item).is_open
-    assert "Open in a viewer" in _row_widget(view, child_item).toolTip()
+    assert "Open in a viewer" in _row_widget(view, child_item).row.tooltip
 
 
 def test_a_section_row_is_not_selectable_or_openable_and_is_not_searchable(qtbot: QtBot) -> None:
@@ -215,7 +215,7 @@ def test_search_filters_workspace_rows_by_name_and_location(qtbot: QtBot) -> Non
     search = search_box(view)
     location_row = _required_item_row(view, 1)
     assert _row(location_row).label == "cam.mp4"
-    assert "/data/site_a/cam.mp4" in _row_widget(view, location_row).toolTip()
+    assert "/data/site_a/cam.mp4" in _row_widget(view, location_row).row.tooltip
 
     search.setText("parking")
     assert not _required_item_row(view, 0).isHidden()
@@ -357,7 +357,7 @@ def test_an_unavailable_row_shows_its_reason(qtbot: QtBot) -> None:
         ),
     )
 
-    assert "File not found: /missing/lot.mp4" in _row_widget(view, _required_item_row(view)).toolTip()
+    assert "File not found: /missing/lot.mp4" in _row_widget(view, _required_item_row(view)).row.tooltip
 
 
 def _hidden(label: str) -> WorkspaceBrowserRow:

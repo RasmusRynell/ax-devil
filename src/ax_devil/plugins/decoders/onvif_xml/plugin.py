@@ -21,6 +21,7 @@ class ONVIFXMLPlugin(LineDecoderPlugin):
         artifact_version=1,
         decoder_name="onvif_xml",
         supports_sequence_lookup=True,
+        independent_records=True,
         filter_factory=build_onvif_filter_config,
     )
 

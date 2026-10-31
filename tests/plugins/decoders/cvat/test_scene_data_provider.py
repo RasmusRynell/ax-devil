@@ -41,8 +41,8 @@ def _assert_serves_sample(provider: FrameIdentifierDataProvider) -> None:
     assert scene is not None
     assert set(scene.entities) == {"cvat_track_10", "cvat_track_11"}
     observation = scene.entities[EntityId("cvat_track_10")].observations[0]
-    assert observation.debug["cvat"]["track"]["@attributes"]["id"] == "10"
-    assert observation.debug["cvat"]["shape"]["@attributes"]["occluded"] == "1"
+    assert observation.source_data["cvat"]["track"]["@attributes"]["id"] == "10"
+    assert observation.source_data["cvat"]["shape"]["@attributes"]["occluded"] == "1"
 
 
 def test_registered_cvat_handler_serves_frames_and_label_filters(tmp_path: Path) -> None:

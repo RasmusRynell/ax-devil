@@ -12,6 +12,10 @@ Settings dialog does::
 ``<theme>-hover-chip.png`` and ``<theme>-selected-object.png`` shots of the media tools panel, its filter drawer,
 Appearance popover and menu, and of picking objects on the video; run it alone with ``-k media_tools``.
 
+``test_thumbnail_card_screenshots`` (in ``ui_shots_thumbnails.py``) adds ``<theme>-<text size>-hover-card-*.png``, the
+hover card beside sidebar rows; two of its pictures are stand-ins, as that file says. Run it alone with
+``-k thumbnail``.
+
 Shots go to ``AX_DEVIL_UI_SHOTS`` (default ``/tmp/ax-devil-ui-shots``) as ``<theme>-<text size>-<surface>.png``.
 They are rendered at ``AX_DEVIL_UI_SHOTS_SCALE`` device pixels per logical pixel (default 2, as on a high-DPI screen).
 Dialogs larger than a window size get an extra ``-wide`` or ``-narrow`` shot clamped to it. Each run first deletes
@@ -268,6 +272,21 @@ def test_media_tools_screenshots(
     from tools.ui_shots_media_panel import media_tools_screenshots
 
     media_tools_screenshots(qtbot, tmp_path, monkeypatch, qapp, video_file_factory, theme)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_thumbnail_card_screenshots(
+    qtbot: QtBot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    qapp: QApplication,
+    video_file_factory: Callable[[float, int], Path],
+    theme: str,
+) -> None:
+    """Save the hover card beside sidebar rows of files, lanes, an open stream and a loading one, and plain rows."""
+    from tools.ui_shots_thumbnails import thumbnail_card_screenshots
+
+    thumbnail_card_screenshots(qtbot, tmp_path, monkeypatch, qapp, video_file_factory, theme)
 
 
 @pytest.mark.parametrize("theme", ["dark", "light"])

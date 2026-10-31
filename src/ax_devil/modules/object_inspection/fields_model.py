@@ -40,6 +40,11 @@ class Section:
     folded_by_default: bool = False
     copy: Callable[[], str] | None = None
 
+    @property
+    def count(self) -> int:
+        """Return the number of the rows it counts, leaving out headings."""
+        return sum(row.counted for row in self.rows)
+
 
 def field_sections(entity: Entity) -> tuple[Section, ...]:
     """Return the entity's populated field groups as sections, in display order; Raw copies as JSON."""

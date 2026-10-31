@@ -59,6 +59,7 @@ def build_provider(
         tolerance_us=0,
     ),
     decoded: list[str] | None = None,
+    independent_records: bool = False,
 ) -> SceneDecoderFileProvider:
     """Build a provider; *decoded* collects every payload the decoder parses."""
 
@@ -77,6 +78,7 @@ def build_provider(
         supports_sequence_lookup=supports_sequence_lookup,
         storage_mode=storage_mode,
         timestamp_fallback_policy=timestamp_fallback_policy,
+        independent_records=independent_records,
     )
 
 

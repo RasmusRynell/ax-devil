@@ -85,3 +85,23 @@ def test_failed_save_keeps_previous_cache_and_leaves_no_temp_file(tmp_path: Path
         assert cache.load_frame(0) == "old"
         cache.close()
     assert list(tmp_path.iterdir()) == [cache_path]
+
+
+@pytest.mark.parametrize("use_mmap", [False, True])
+def test_replace_metadata_refreshes_the_generation_the_reader_opened(tmp_path: Path, use_mmap: bool) -> None:
+    """Refreshing metadata copies from the open file, never pairing its header with a newer file's payload."""
+    cache_path = tmp_path / "test.frames"
+    with patch.object(CacheManager, "get_cache_path", return_value=cache_path):
+        writer = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap)
+        reader = IndexedFrameCache(tmp_path / "source", use_mmap=use_mmap)
+        try:
+            writer.save({0: "old", 1: "kept"}, meta={"version": 1})
+            assert reader.load_frame(0) == "old"
+            writer.save({0: "new" * 1000}, meta={"version": 2})
+            reader.replace_metadata({"version": 3})
+            assert (reader.load_frame(0), reader.load_frame(1)) == ("old", "kept")
+            assert reader.load_metadata() == {"version": 3}
+            assert list(tmp_path.glob(".*")) == []
+        finally:
+            reader.close()
+            writer.close()

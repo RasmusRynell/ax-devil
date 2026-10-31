@@ -25,6 +25,7 @@ from ax_devil.modules.video_viewer.entry_preparation import (
     prepare_entry,
 )
 from ax_devil.modules.video_viewer.offline_entry_media import open_entry_media
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults
 from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
@@ -77,7 +78,7 @@ def test_entry_opens_from_caches_prepared_by_the_child_process(
     monkeypatch.setattr(SourceIndexedSceneStore, "_rebuild", rebuild)
     job = MagicMock(spec=JobContext)
     job.token = CancelToken()
-    media = open_entry_media(entry, (0,), QThread.currentThread(), job)
+    media = open_entry_media(entry, (0,), QThread.currentThread(), job, defaults=ViewDefaults())
     try:
         assert media.error is None
         assert len(media.overlay_sources()) == 1

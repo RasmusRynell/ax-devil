@@ -143,6 +143,7 @@ def test_built_in_indicators_remain_visible_on_small_boxes(classification: str |
     observation.velocity_in_image_space = ImageVelocity(vx=0.2, vy=0.1)
     calls = _record_512(scene)
     texts = [item.text for item in calls if isinstance(item, TextCall)]
+    texts += [run.text for item in calls if isinstance(item, LabelCall) for run in item.content.runs]
     boxes = [item for item in calls if isinstance(item, BoxCall)]
     assert {"entity", "▶"} <= set(texts)
     assert any(isinstance(item, LineCall) for item in calls)
@@ -166,19 +167,17 @@ def test_built_in_bag_marker_stays_clear_of_clothing_color_dots(width: int, heig
 
 
 def test_built_in_automatic_indicator_sizes_follow_the_box_while_labels_stay_fixed() -> None:
-    """Automatic dot and motion symbol sizes grow with the box and stay inside it; ids and classes do not scale."""
+    """Automatic dot sizes grow with the box and stay inside it; ids and classes do not scale."""
     upper_color = [Attribute("upper_clothing_colors", [ColorClassification("red", _RED, Score(0.75))])]
-    diameters, symbol_sizes, label_sizes = [], [], set()
+    diameters, label_sizes = [], set()
     for side in (8, 26, 60, 200):
         calls = _record_512(_human_scene((side, side * 2), attributes=upper_color))
         dot = next(item for item in calls if isinstance(item, CircleCall))
         texts = [item for item in calls if isinstance(item, TextCall)]
         diameters.append(dot.r * 2 * 512)
-        symbol_sizes.append(next(item for item in texts if item.text == "▶").style.font_size * 512)
         label_sizes |= {item.style.font_size for item in texts if item.text in ("entity", "human")}
         assert diameters[-1] < side
     assert diameters == sorted(diameters) and diameters[0] < diameters[-1]
-    assert symbol_sizes == sorted(symbol_sizes) and symbol_sizes[0] < symbol_sizes[-1]
     assert len(label_sizes) == 1
 
 
@@ -196,8 +195,8 @@ def test_built_in_explicit_indicator_sizes_stay_exact() -> None:
     calls = _record_512(scene, catalog)
     dot = next(item for item in calls if isinstance(item, CircleCall))
     assert dot.r * 2 * 512 == pytest.approx(3)
-    symbol = next(item for item in calls if isinstance(item, TextCall) and item.text == "▶")
-    assert symbol.style.font_size * 512 == pytest.approx(30)
+    symbol = next(item for item in calls if isinstance(item, LabelCall))
+    assert symbol.content.size * 512 == pytest.approx(30)
     bar = next(item for item in calls if isinstance(item, BoxCall) and item.w == pytest.approx(1 / 512))
     assert (bar.x * 512, bar.y * 512) == pytest.approx((0.1 * 512 + 7, 0.2 * 512 + 9))
     assert bar.h * 512 == pytest.approx(200 - 9 - 7)

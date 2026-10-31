@@ -274,6 +274,7 @@ class ADFFrameV1DataProvider(SceneDecoderFileProvider):
             artifact_version=1,
             filter_config_factory=build_adf_frame_v1_filter_config,
             storage_mode=StorageMode.SOURCE_INDEX,
+            independent_records=True,
         )
 
 

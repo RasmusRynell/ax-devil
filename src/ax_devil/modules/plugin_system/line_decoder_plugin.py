@@ -20,6 +20,7 @@ class DecoderSpec:
     """Registration and source-index settings; declare supported versions as literals.
 
     ``decoder_name`` defaults to the plugin id; keep it stable to retain existing cache paths and identities.
+    ``independent_records`` has the meaning documented on ``SceneDecoderFileProvider``.
     """
 
     id: str
@@ -31,6 +32,7 @@ class DecoderSpec:
     artifact_version: int
     decoder_name: str | None = None
     supports_sequence_lookup: bool = False
+    independent_records: bool = False
     filter_factory: FilterFactory | None = None
 
 
@@ -81,6 +83,7 @@ class LineDecoderPlugin(DecoderPlugin):
             decoder_name=cls.spec.decoder_name if cls.spec.decoder_name is not None else cls.spec.id,
             artifact_version=cls.spec.artifact_version,
             supports_sequence_lookup=cls.spec.supports_sequence_lookup,
+            independent_records=cls.spec.independent_records,
             filter_config_factory=cls.spec.filter_factory,
         )
 
