@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Runs a command the way tests must run: private home and XDG folders, no access to the user's desktop
+# session, and with --display a private X display of its own. Fails if the user's own ax-devil files changed.
+set -euo pipefail
+display=0
+if [[ ${1:-} == --display ]]; then
+  display=1
+  shift
+fi
+if (($# == 0)); then
+  echo "usage: scripts/isolated [--display] COMMAND [ARGS...]" >&2
+  exit 2
+fi
+if ((display)) && ! command -v xvfb-run >/dev/null; then
+  echo "xvfb-run not found: install Xvfb (Debian/Ubuntu: xvfb) to run GUI tests on a private display." >&2
+  exit 1
+fi
+
+user_home="$HOME"
+guarded=(
+  "$user_home/.ax_devil"
+  "${XDG_CONFIG_HOME:-$user_home/.config}/ax-devil"
+  "${XDG_DATA_HOME:-$user_home/.local/share}/ax-devil"
+  "${XDG_CACHE_HOME:-$user_home/.cache}/ax-devil"
+  "${XDG_STATE_HOME:-$user_home/.local/state}/ax-devil"
+)
+# Path, size and modification time of everything under the guarded paths (Node is portable; find -printf is not).
+fingerprint() {
+  node -e '
+    const fs = require("node:fs"), path = require("node:path"), lines = [];
+    const walk = (p) => {
+      let stat;
+      try { stat = fs.lstatSync(p); } catch { return; }
+      lines.push(`${p} ${stat.size} ${stat.mtimeMs}`);
+      if (stat.isDirectory()) for (const entry of fs.readdirSync(p)) walk(path.join(p, entry));
+    };
+    process.argv.slice(1).forEach(walk);
+    console.log(lines.sort().join("\n"));
+  ' "${guarded[@]}"
+}
+# Toolchains stay where they are installed; only the app-visible home moves.
+export CARGO_HOME="${CARGO_HOME:-$user_home/.cargo}"
+export RUSTUP_HOME="${RUSTUP_HOME:-$user_home/.rustup}"
+
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/ax-devil-test.XXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+mkdir -p "$scratch"/{home,config,data,cache,state,runtime}
+chmod 700 "$scratch/runtime"
+before="$(fingerprint)"
+export HOME="$scratch/home" XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data"
+export XDG_CACHE_HOME="$scratch/cache" XDG_STATE_HOME="$scratch/state" XDG_RUNTIME_DIR="$scratch/runtime"
+unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
+# Shells hosted in Electron apps export this, which would start Electron as plain Node.
+unset ELECTRON_RUN_AS_NODE
+
+status=0
+if ((display)); then
+  xvfb-run -a -s '-screen 0 1280x1000x24' "$@" || status=$?
+else
+  "$@" || status=$?
+fi
+after="$(fingerprint)"
+if [[ $before != "$after" ]]; then
+  echo "FAIL: this run changed the user's own ax-devil files:" >&2
+  diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") >&2 || true
+  exit 1
+fi
+exit "$status"

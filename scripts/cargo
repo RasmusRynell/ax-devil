@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Cargo through rustup, so rust-toolchain.toml selects the toolchain: the user's rustup when installed, else a
+# checkout-local one in .cargo-cache, installed on first use. A cargo without rustup (a distro package) is ignored.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+if rustup="$(command -v rustup)"; then
+  # The cargo proxy installed beside rustup; another cargo earlier on PATH may not honor the toolchain file.
+  exec "$(dirname "$rustup")/cargo" "$@"
+fi
+export CARGO_HOME="$ROOT/.cargo-cache"
+export RUSTUP_HOME="$ROOT/.toolchain/rustup"
+export PATH="$CARGO_HOME/bin:$PATH"
+if [[ ! -x "$CARGO_HOME/bin/rustup" ]]; then
+  echo "No rustup on PATH; installing a checkout-local rustup into .cargo-cache (once)." >&2
+  installer="$(mktemp)"
+  trap 'rm -f "$installer"' EXIT
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$installer"
+  sh "$installer" -y --quiet --no-modify-path --profile minimal --default-toolchain none
+  rustup toolchain install
+fi
+exec cargo "$@"

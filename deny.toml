@@ -1,0 +1,21 @@
+# License gate (make check). scripts/check-js-licenses.cjs applies this allow list to JavaScript packages too.
+# Before adding a license, check its distribution terms for the packaged app (docs/rebuild/13-security-packaging-ops.md).
+[licenses]
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BlueOak-1.0.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.9
+# The allow list is shared with JavaScript packages, so some entries match no crate.
+unused-allowed-license = "allow"

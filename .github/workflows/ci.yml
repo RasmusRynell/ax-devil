@@ -2,219 +2,83 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
-    tags: [ "v*" ]
+    branches: [main, rewrite]
+    tags: ["v*"]
   pull_request:
+    branches: [main, rewrite]
 
 permissions:
   contents: read
 
-# Superseded PR runs are disposable; every main commit and release keeps its verdict.
+# Superseded PR runs are disposable; every main and rewrite commit and every release keeps its verdict.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  quality:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.10.12"
-          python-version: "3.12"
-          enable-cache: true
+      - uses: pnpm/action-setup@v4
 
-      - name: Install system dependencies
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .tools
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install the private display
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            fonts-dejavu-core \
-            libegl1-mesa-dev \
-            libgl1-mesa-dev \
-            libgl1-mesa-dri \
-            libgles2-mesa-dev \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-render-util0 \
-            libxcb-xkb1 \
-            libxkbcommon-x11-0 \
-            xvfb
+          sudo apt-get install -y --no-install-recommends xauth xvfb
 
-      - name: Sync project environment
-        run: uv sync --locked
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
+      - name: Allow Electron's sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      - name: Check application
+      - name: Check and test
         run: make check
 
-      - name: Run tests
-        run: make test
+      - name: Fail on stale generated files
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
 
-      - name: Test packaged installation and plugin upgrades
-        run: make test-integration
-
-      - name: Check tag matches package version
+      - name: Check the tag matches the package version
         if: startsWith(github.ref, 'refs/tags/v')
-        run: test "${GITHUB_REF_NAME#v}" = "$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)"
-
-      - name: Build package
-        run: uv build
+        run: test "${GITHUB_REF_NAME#v}" = "$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 
       - uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: always()
         with:
-          name: dist
-          path: dist/
+          name: screenshots
+          path: artifacts/screenshots/
+          if-no-files-found: ignore
 
-  test:
-    name: test (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
+  test-macos:
+    runs-on: macos-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: ubuntu
-            os: ubuntu-latest
-            env: {}
-          # Hosted Windows runners have no GPU: WARP is Direct3D 11's software adapter.
-          - name: windows
-            os: windows-latest
-            env:
-              QSG_RHI_BACKEND: d3d11
-              QSG_RHI_PREFER_SOFTWARE_RENDERER: "1"
-          - name: macos
-            os: macos-latest
-            env:
-              QSG_RHI_BACKEND: metal
-    env: ${{ matrix.env }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
         with:
-          version: "0.10.12"
-          python-version: "3.10"
-          enable-cache: true
+          node-version: 24
+          cache: pnpm
 
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            fonts-dejavu-core \
-            libegl1-mesa-dev \
-            libgl1-mesa-dev \
-            libgl1-mesa-dri \
-            libgles2-mesa-dev \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-render-util0 \
-            libxcb-xkb1 \
-            libxkbcommon-x11-0 \
-            xvfb
-
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ffmpeg --no-progress -y
-
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg
-
-      - name: Sync project environment
-        run: uv sync --locked
-
-      - name: Run tests
-        # Serial: native desktops have no per-worker display, so parallel windows would fight over focus.
-        run: uv run pytest
-
-  lowest:
-    # Users installing from PyPI may get any version the dependency bounds allow; test the oldest.
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.10.12"
-          python-version: "3.10"
-          enable-cache: true
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            fonts-dejavu-core \
-            libegl1-mesa-dev \
-            libgl1-mesa-dev \
-            libgl1-mesa-dri \
-            libgles2-mesa-dev \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-render-util0 \
-            libxcb-xkb1 \
-            libxkbcommon-x11-0 \
-            xvfb
-
-      - name: Install oldest allowed dependencies
-        run: |
-          uv venv
-          uv pip install --resolution lowest-direct -e . --group dev
-
-      - name: Run tests
-        run: .venv/bin/python -m pytest
-
-  release-check:
-    # Install the release in clean Ubuntu containers, exactly as documented, before publishing.
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [quality, test, lowest]
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.10.12"
-          python-version: "3.12"
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Check clean installations of the artifacts to publish
-        run: DIST=dist tools/release-check/run.sh
-
-  publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: release-check
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Test frontend and backend
+        run: make tests-frontend tests-backend

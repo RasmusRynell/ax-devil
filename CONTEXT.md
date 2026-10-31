@@ -1,6 +1,7 @@
 # ax-devil
 
-Shared language for ax-devil's inspection workspace. This file names the current concepts in code; rules and invariants live in `docs/domain/invariants.md`.
+Shared language for ax-devil's inspection workspace. Code, docs and UI use these names; rules live in
+[the invariants](docs/domain/invariants.md).
 
 ## Language
 
@@ -13,24 +14,24 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Overlay Source Kind | The typed lane source identity: file, RTSP, MQTT, DataHub WebSocket, or none. | UI label switch, raw string |
 | Playlist Content | An ordered inspection sequence made from entries and lanes. | Playlist source, playlist viewer |
 | Entry Lane | One visible comparison panel inside a playlist entry or standalone video expansion. | Overlay row, panel config |
-| Hidden | A playlist entry or lane skipped in playback and omitted from sidebar lists by default. Revealing hidden items lists it dimmed without restoring playback. The code calls this consideration. | Left out, excluded, disabled |
-| Workspace | An ordered collection of Workspace Items, Untitled until named, and the name is saved in the file; see [Workspace](docs/architecture/workspace.md). Saved as a `.ax-devil.workspace` file; unsaved edits are kept as a recovery copy and restored on the next launch. Exclusions, open viewers, and browser rows are session state, not part of it. | Window, shell, content list, session |
+| Hidden | A playlist entry or lane skipped in playback and omitted from sidebar lists by default. Revealing hidden items lists it dimmed without restoring playback. | Left out, excluded, disabled |
+| Workspace | An ordered collection of Workspace Items, Untitled until named, and the name is saved in the file. Saved as a `.ax-devil.workspace` file; unsaved edits are kept as a recovery copy and restored on the next launch. Exclusions, open viewers, and browser rows are session state, not part of it. | Window, shell, content list, session |
 | Workspace Item | A recipe for one thing to work with, with a stable id and a kind; it resolves into Content. Without a label it is shown by its default name, derived from the recipe and never saved. | Startup request, entry, source |
 | Video Item | A Workspace Item for a video file with optional overlay files and decoders. | Video file request |
 | Live Stream Item | A Workspace Item for a camera stream with optional live overlay settings; credentials are kept as entered. | Live startup |
 | Playlist Item | A Workspace Item holding a playlist resolver id and that resolver's settings. | Resolved playlist |
 | Bookmark | A frame of a local video or playlist entry that the user marked while reviewing, with a kind and an optional note; saved in the Workspace with each Bookmark Target's reviewed mark. Never on live streams. | Marker, annotation, flag |
 | Bookmark Target | What is reviewed: a Video Item, or one entry of a Playlist Item named by its label. | Entry index, content id |
-| Sidebar View | What the sidebar shows, chosen from the activity bar: the Workspace or one part of it (top zone), or something about the application (bottom zone); see [UI Framework](docs/architecture/ui-framework.md#sidebar-views). Built from a `SidebarView` value. | Panel, tab, page |
+| Sidebar View | What the sidebar shows, chosen from the activity bar: the Workspace or one part of it (top zone), or something about the application (bottom zone). | Panel, tab, page |
 | Content | What a Workspace Item resolves to: Seekable Video, Live Video, or Playlist Content. Rebuilt on every resolution, never saved. | Startup content, resolved item |
 | Viewer | An open inspection surface hosted by the Workspace: the user-facing name for a Viewer Widget. | Player, pane, runtime bucket |
-| Viewer Widget | The `ViewerWidget` base class every Viewer extends: pane frame, header, pin and close, and the lifecycle contract. | Workspace widget, pane |
+| Viewer Widget | The contract every Viewer implements toward the Workspace host: pane frame, header, pin and close, and lifecycle. | Workspace widget, pane |
 | Video Viewer | The application workflow that composes media sources, sync, Scene tools, and frame display. | Player, pane |
 | Frame Display | A reusable shell that presents frames and overlays and exposes generic mount points. | Video player, playback widget, viewer |
 | Frame Viewport | The lower-level viewing area inside a Frame Display. | Video display widget, renderer |
 | Media Time | Integer microseconds on the clock frames and Scenes share. | monotime, wall time |
 | Timestamp Matching | Synchronization policy for choosing the overlay timestamp that corresponds to a video frame timestamp. | Provider lookup, sync result |
-| Overlay Lookup | File overlay provider behavior that loads a Scene for a FrameIdentifier and records whether timestamp, sequence, tolerance, or miss was used. | Timestamp matching, offline sync |
+| Overlay Lookup | File overlay provider behavior that loads a Scene for a frame identity and records whether timestamp, sequence, tolerance, or miss was used. | Timestamp matching, offline sync |
 | Scene | The world-model exchange format produced by decoders and consumed by filtering, inspection, and rendering. | Raw overlay payload |
 | Score | A decoder's own number for a classification, in any range, shown as a plain number such as `0.87`. Distinct from Confidence; either may be absent. | Confidence, probability |
 | Confidence | What a source reports as its confidence in a classification, any finite number, shown plain such as `0.87`. Distinct from Score; either may be absent. | Score, likelihood |
@@ -38,21 +39,20 @@ Shared language for ax-devil's inspection workspace. This file names the current
 | Built-in Catalog | The packaged, app-owned, read-only Scene Render Catalog. | Default catalog, packaged default |
 | Default Catalog | The Scene Render Catalog new views start from; the Built-in Catalog until the user picks another. | Active catalog, remembered selection |
 | Drawing Instruction | A catalog operation (box, circle, line, point, polygon, polyline, text or label) emitted directly to the drawing target. JSON still calls these `primitive` steps. | Intermediate drawable object |
-| Prepared Drawing | One stream of overlay quads for shapes, text and labels, with its glyph atlas page, ready for the Qt Quick item. | Primitive list |
+| Prepared Drawing | Drawing Instructions turned into an immutable value the renderer consumes as is, for shapes, text and labels. | Primitive list |
 | Draw Recipe | Catalog-owned entity or relation rendering logic that emits Drawing Instructions. | Object renderer, type switch |
-| Cached Scene Overlay | The adapter that keeps one Scene and provides prepared drawings and hover hits to the video player. | Render cache, Scene renderer |
+| Cached Scene Overlay | The adapter that keeps one Scene and provides Prepared Drawings and hover hits to the Frame Display. | Render cache, Scene renderer |
 
 ## Relationships
 
 - Video Content is either Seekable Video Content or Live Video Content.
 - Video Content, Overlay Content, and Playlist Content are descriptions. Runtime sources are created only when a viewer opens them.
-- How these concepts are built and routed is in `docs/architecture/overview.md`; their rules are in
-  `docs/domain/invariants.md`.
+- How these concepts fit together is in [the architecture overview](docs/architecture/overview.md).
 
 ## Usage Notes
 
-- Use **Seekable Video Content** for the Workspace description and `Seekable*Source` for runtime source capability.
+- Use **Seekable Video Content** for the Workspace description and "seekable source" only for the runtime source opened from it.
 - Use **Frame Display** for the reusable display shell and **Video Viewer** for the workflow that owns media behavior.
-- Use **Overlay Content** for companion data and **Drawing Instruction** for catalog operations and **Prepared Drawing** for the quads handed to the display.
+- Use **Overlay Content** for companion data and **Drawing Instruction** for catalog operations and **Prepared Drawing** for what the renderer consumes.
 - Use **Scene Render Catalog** for task-selected rendering setups that own templates and catalog-defined recipes.
 - Use **Draw Recipe** for catalog-owned entity rendering behavior. Classification strings are decoder evidence; recipe selection is Scene Render Catalog policy.
