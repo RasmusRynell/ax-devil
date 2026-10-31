@@ -1,0 +1,51 @@
+[package]
+name = "ax-devil"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "ax-devil"
+
+[package.metadata.ax-devil]
+layer = "entry"
+
+[workspace]
+members = ["crates/api-types"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ts-rs = "11"
+api-types = { path = "crates/api-types" }
+
+# App code logs through the logger; the readiness line in src/main.rs is the one allowed print.
+[workspace.lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
+
+[lints]
+workspace = true
+
+[features]
+default = ["embed-assets"]
+embed-assets = ["dep:rust-embed", "dep:mime_guess"]
+
+[dependencies]
+api-types.workspace = true
+axum = "0.8"
+mime_guess = { version = "2", optional = true }
+rust-embed = { version = "8", optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+tower = { version = "0.5", features = ["util"] }
