@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Cargo from PATH, else a checkout-local rustup in .cargo-cache, installed on first use.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+# Standard rustup installations use rust-toolchain.toml automatically.
+if command -v cargo >/dev/null; then
+  exec cargo "$@"
+fi
+export CARGO_HOME="$ROOT/.cargo-cache"
+export RUSTUP_HOME="$ROOT/.toolchain/rustup"
+export PATH="$CARGO_HOME/bin:$PATH"
+if [[ ! -x "$CARGO_HOME/bin/rustup" ]]; then
+  echo "No cargo on PATH; installing a checkout-local rustup into .cargo-cache (once)." >&2
+  installer="$(mktemp)"
+  trap 'rm -f "$installer"' EXIT
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$installer"
+  sh "$installer" -y --quiet --no-modify-path --profile minimal --default-toolchain none
+  rustup toolchain install
+fi
+exec cargo "$@"
