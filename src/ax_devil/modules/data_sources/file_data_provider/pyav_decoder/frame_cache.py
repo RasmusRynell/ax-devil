@@ -93,11 +93,8 @@ class FrameCache:
             if previous is not None:
                 self._reserved_bytes -= previous.reserved_bytes
                 self._remove_from_ranges_locked(frame_index)
-            for index in list(self._cache):
-                if self._reserved_bytes + frame_data.reserved_bytes <= self.budget_bytes:
-                    break
-                if index in keep:
-                    continue
+            while self._reserved_bytes + frame_data.reserved_bytes > self.budget_bytes:
+                index = next(index for index in self._cache if index not in keep)
                 evicted = self._cache.pop(index)
                 self._reserved_bytes -= evicted.reserved_bytes
                 self._remove_from_ranges_locked(index)
@@ -132,7 +129,9 @@ class FrameCache:
 
     def _kept_bytes_locked(self, frame_index: int, keep: range) -> int:
         return sum(
-            frame.reserved_bytes for index, frame in self._cache.items() if index in keep and index != frame_index
+            frame.reserved_bytes
+            for index in keep
+            if index != frame_index and (frame := self._cache.get(index)) is not None
         )
 
     def _add_to_ranges_locked(self, frame_index: int) -> None:

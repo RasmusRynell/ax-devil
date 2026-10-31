@@ -76,6 +76,10 @@ class Score:
         if not math.isfinite(self.value):
             raise ValueError(f"Score must be finite, got {self.value}")
 
+    def __getstate__(self) -> list[object]:
+        """Keep the dataclass cache format without per-instance field introspection."""
+        return [self.value]
+
     def __setstate__(self, state: list[object]) -> None:
         """Restore the dataclass cache format without per-instance field introspection."""
         object.__setattr__(self, "value", state[0])
@@ -123,6 +127,10 @@ class NormalizedPoint:
     x: float
     y: float
     allow_outside: bool = False  # Allow values outside [0, 1]
+
+    def __getstate__(self) -> list[object]:
+        """Keep the dataclass cache format without per-instance field introspection."""
+        return [self.x, self.y, self.allow_outside]
 
     def __setstate__(self, state: list[object]) -> None:
         """Restore the dataclass cache format without per-instance field introspection."""
@@ -195,6 +203,10 @@ class Attribute:
     name: str
     value: Any
 
+    def __getstate__(self) -> list[object]:
+        """Keep the dataclass cache format without per-instance field introspection."""
+        return [self.name, self.value]
+
     def __setstate__(self, state: list[object]) -> None:
         """Restore the dataclass cache format without per-instance field introspection."""
         object.__setattr__(self, "name", state[0])
@@ -223,6 +235,10 @@ class BoundingBox(Geometry):
 
     top_left: NormalizedPoint
     bottom_right: NormalizedPoint
+
+    def __getstate__(self) -> list[object]:
+        """Keep the dataclass cache format without per-instance field introspection."""
+        return [self.top_left, self.bottom_right]
 
     def __setstate__(self, state: list[object]) -> None:
         """Restore the dataclass cache format without per-instance field introspection."""

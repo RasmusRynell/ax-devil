@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol, TypeAlias, cast
+from typing import Any, Literal, Protocol, TypeAlias, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -186,7 +186,13 @@ def concatenate_columns(values: Sequence[object], counts: Sequence[int]) -> obje
     first = values[0]
     if all(type(value) is not np.ndarray and value == first for value in values):
         return first
-    return np.concatenate([np.broadcast_to(np.asarray(value), (count,)) for value, count in zip(values, counts)])
+    return np.concatenate([_rows(value, count) for value, count in zip(values, counts)])
+
+
+def _rows(value: object, count: int) -> NDArray[Any]:
+    if type(value) is np.ndarray and value.ndim:
+        return value if len(value) == count else np.broadcast_to(value, (count,))
+    return np.full(count, value)
 
 
 def _take(value: object, rows: NDArray[np.intp]) -> object:
