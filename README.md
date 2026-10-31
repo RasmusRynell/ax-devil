@@ -5,7 +5,7 @@
 **ax-devil** is a desktop app for viewing live Axis camera streams and offline recordings together with analytics
 overlays, inspecting objects frame by frame, and comparing results side by side.
 
-> **Being rebuilt.** This branch is the foundation of a from-scratch rewrite in Rust, React and Electron; it opens an
+> **Being rebuilt.** This branch is a from-scratch rewrite in Rust, React and Electron; it opens an
 > empty window and has no features yet. What it will do and in which order is in the
 > [rebuild playbook](docs/rebuild/README.md); progress is in [docs/parity.md](docs/parity.md). The Python app it replaces
 > is readable at commit `e31a7453`.

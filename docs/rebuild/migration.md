@@ -18,12 +18,12 @@ recreate for the new stack using the old as reference; Drop = do not bring over.
 | ONVIF sample payload | `tests/plugins/decoders/onvif_xml/data/sample_frame.xml` | Carried to new-tree `fixtures/decoders/onvif_xml/` | The only committed decoder sample file |
 | Other decoder sample inputs | inline in tests, e.g. `tests/plugins/decoders/cvat/sample_data.py` (CVAT, MOT, ADF, UVG-VCM) | Generate | Extract into small sample files |
 | Oracle fixtures | generated in a reference worktree | Generate | [09](09-testing.md#oracle-policy), [14](14-build-order.md#fixtures-from-the-reference-commit) |
-| Glossary, invariants | `CONTEXT.md`, `docs/domain/invariants.md` | Ported by the foundation PR | [04](04-domain-rules.md) |
+| Glossary, invariants | `CONTEXT.md`, `docs/domain/invariants.md` | Ported by the foundation | [04](04-domain-rules.md) |
 | Other docs, agent files, skills | see [11](11-docs-structure.md#docs-map), [12](12-agent-setup.md#inventory) | Per those tables | — |
 | Dataset docs | `docs/datasets/` | Port | Commands change |
 | `LICENSE` | root | Carried (kept) | Unchanged |
-| `CHANGELOG.md` | root | Ported by the foundation PR | Fresh Unreleased entry |
-| Task runner, CI, pre-commit, check scripts | `Makefile`, `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, `scripts/` | Ported by the foundation PR ([14](14-build-order.md#decisions-taken-for-the-foundation)) | Gates of [10](10-quality-gates.md) |
+| `CHANGELOG.md` | root | Ported by the foundation | Fresh Unreleased entry |
+| Task runner, CI, pre-commit, check scripts | `Makefile`, `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, `scripts/` | Ported by the foundation ([14](14-build-order.md#decisions-taken-for-the-foundation)) | Gates of [10](10-quality-gates.md) |
 | Developer tools | `tools/` | Port per DT row; drop `tools/show_timestamps.py` | DT-04 covers alignment |
 | Shaders, QML, packaging metadata, lockfile | `video_player/engine/quick/`, `pyproject.toml`, `uv.lock` | Drop | Stack-specific |
 | Demo media | `docs/media/` | Drop | Re-record with DT-06 |

@@ -5,7 +5,8 @@ rules to keep.
 
 ## Delivery
 
-The rebuild is one branch in this repository. Its foundation PR took the stack choice (D0) and deleted all existing
+The rebuild is one branch in this repository, `rewrite`, and one pull request that merges to `main` once parity is
+reached. Its first commits took the stack choice (D0) and deleted all existing
 code and everything tied to it (source, tests, tooling config, skills, docs describing the old implementation); the
 rewrite builds from there with this playbook, milestone by milestone ([14](14-build-order.md#milestones)). The new app reads no data written by the old one: no importers, upgrade paths or
 compatibility code; artifacts are carried over by hand ([migration.md](migration.md)).

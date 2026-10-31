@@ -39,5 +39,5 @@ triggers, tests worth merging, docs at their layer. Findings carry file and line
 
 ## CI
 
-Runs on PRs, `main` and release tags; required checks block merge; tag must match the package version; publish only
+Runs on PRs to and pushes on `main` and `rewrite`, and on release tags; required checks block merge; tag must match the package version; publish only
 from tags after all jobs and the clean-environment install check pass.

@@ -1,6 +1,6 @@
 # 11 Docs Structure and Day-One Scaffold
 
-Owns: the docs map of the new tree, the day-one scaffold checklist, what the rebuild PR deletes, and where this
+Owns: the docs map of the new tree, the day-one scaffold checklist, what the rewrite deletes, and where this
 playbook's content goes when `docs/rebuild/` retires. Agent files and skills: [12](12-agent-setup.md).
 
 ## Placement rule
@@ -38,7 +38,7 @@ decisions with lasting rules go to the doc that owns the rule.
 
 ## Day-one scaffold
 
-Done by the foundation PR on the prototype's stack, pending the owner's D0 signature
+Done by the foundation on the prototype's stack, pending the owner's D0 signature
 ([14](14-build-order.md#d0-stack-choice)); step 6 covers the main window only until M0 adds text sizes and the fit
 test. The scaffold, in this order:
 
@@ -56,7 +56,7 @@ Created as features land: `docs/usage.md`, `settings.md`, `plugins.md`, `install
 `docs/architecture/workspace.md` (M3), `draw-system.md` (M2), `ui-framework.md`, `catalog-viewer.md` (M6), module
 READMEs, the `render-catalog` skill (M2), the `write-plugin` skill (M7).
 
-## Deleted by the rebuild PR
+## Deleted by the rewrite
 
 `src/`, `tests/`, `tools/`, `scripts/`, `pyproject.toml`, `uv.lock`, `Makefile`, `.pre-commit-config.yaml`,
 `.github/workflows/ci.yml`, `.agents/skills/*`, every doc above marked Rewrite, Port or Drop (recreated from scratch
@@ -83,4 +83,4 @@ new home:
 | [12](12-agent-setup.md) | `AGENTS.md`, `.agents/skills/` |
 | [13](13-security-packaging-ops.md) | `docs/settings.md`, `docs/plugins.md#trust`, invariants, testing runbook (release) |
 | [14](14-build-order.md) | Nothing; decisions land in the docs that own their rules |
-| [migration.md](migration.md) | Nothing; done when the PR carries the artifacts |
+| [migration.md](migration.md) | Nothing; done when the branch carries the artifacts |

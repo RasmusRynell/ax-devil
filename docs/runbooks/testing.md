@@ -53,7 +53,7 @@ caches; nothing is shared between tests through the filesystem.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on pull requests, `main` and `v*` tags. `check` (Ubuntu 24.04) runs `make check`,
+`.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags. `check` (Ubuntu 24.04) runs `make check`,
 fails when generated files are stale, checks on tags that the tag matches the `Cargo.toml` version, and uploads the
 screenshots. `test-macos` runs the frontend and backend suites. A newer push to a pull request cancels its superseded
 run. Windows, the lowest-dependency job and the release check are not set up yet

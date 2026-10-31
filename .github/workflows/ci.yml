@@ -2,14 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, rewrite]
     tags: ["v*"]
   pull_request:
+    branches: [main, rewrite]
 
 permissions:
   contents: read
 
-# Superseded PR runs are disposable; every main commit and release keeps its verdict.
+# Superseded PR runs are disposable; every main and rewrite commit and every release keeps its verdict.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
