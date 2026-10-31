@@ -85,3 +85,11 @@ def test_failed_save_keeps_previous_cache_and_leaves_no_temp_file(tmp_path: Path
         assert cache.load_frame(0) == "old"
         cache.close()
     assert list(tmp_path.iterdir()) == [cache_path]
+
+
+def test_cache_filenames_fit_the_filesystem_byte_limit_for_multibyte_names() -> None:
+    """A long non-ASCII source name is capped by encoded bytes, leaving room for the atomic-write temp suffix."""
+    name = f"{'界' * 100}.jsonl"
+    filename = CacheManager().generate_cache_filename(Path("/videos") / name, f"-{'a' * 16}.scene-index.json", "b" * 32)
+
+    assert len(f"{filename}.12345678.tmp".encode()) <= 255 - 40

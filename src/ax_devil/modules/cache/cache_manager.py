@@ -73,9 +73,10 @@ class CacheManager:
         # Use absolute path for uniqueness across different directories
         abs_path = source_path.resolve()
         path_hash = hashlib.sha256(str(abs_path).encode()).hexdigest()[:16]
-        # Capped so name, hashes, suffix and atomic-write temp suffix stay within filesystem name limits; the path
-        # hash keeps truncated names distinct.
-        safe_name = source_path.name.replace("/", "_").replace("\\", "_")[:120]
+        # Capped in UTF-8 bytes (filesystems limit names to 255 bytes) so name, hashes, suffix and atomic-write temp
+        # suffix fit; the path hash keeps truncated names distinct.
+        flattened = source_path.name.replace("/", "_").replace("\\", "_")
+        safe_name = flattened.encode("utf-8")[:120].decode("utf-8", "ignore")
 
         # Add content hash if provided for cache invalidation
         if content_hash:
