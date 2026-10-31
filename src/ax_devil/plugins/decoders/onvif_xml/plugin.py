@@ -1,58 +1,32 @@
-from __future__ import annotations
+"""ONVIF XML decoder."""
 
-from ax_devil.modules.plugin_system import (
-    PLUGIN_API_VERSION,
-    DecoderPlugin,
-    FileToSceneDecoderDefinition,
-    PayloadToSceneDecoderDefinition,
-)
-from ax_devil.modules.scene.model import SCENE_MODEL_VERSION
+from ax_devil.modules.plugin_system import PLUGIN_API_VERSION, DecoderSpec, LineDecoderPlugin
+from ax_devil.modules.scene.model import SCENE_MODEL_VERSION, Scene
 
-from .decoder import build_onvif_filter_config
-from .provider import ONVIFDecoder, ONVIFXMLDataProvider
+from .decoder import build_onvif_filter_config, decode_onvif_xml
 
 ONVIF_XML = "ONVIF_XML"
 
 
-class ONVIFXMLPlugin(DecoderPlugin):
-    @classmethod
-    def plugin_id(cls) -> str:
-        return "axis-onvif-xml"
+class ONVIFXMLPlugin(LineDecoderPlugin):
+    """Expose ONVIF XML through the shared line decoder runtime."""
 
-    @classmethod
-    def display_name(cls) -> str:
-        return "Axis ONVIF XML"
+    spec = DecoderSpec(
+        id="axis-onvif-xml",
+        name="Axis ONVIF XML",
+        handler=ONVIF_XML,
+        api=PLUGIN_API_VERSION,
+        scene=SCENE_MODEL_VERSION,
+        extensions=(".xml",),
+        artifact_version=1,
+        decoder_name="onvif_xml",
+        supports_sequence_lookup=True,
+        filter_factory=build_onvif_filter_config,
+    )
 
-    @classmethod
-    def required_api_version(cls) -> int:
-        return PLUGIN_API_VERSION
-
-    @classmethod
-    def scene_model_version(cls) -> tuple[int, int]:
-        return SCENE_MODEL_VERSION
-
-    @classmethod
-    def file_to_scene_decoders(cls) -> tuple[FileToSceneDecoderDefinition, ...]:
-        return (
-            FileToSceneDecoderDefinition(
-                handler_type=ONVIF_XML,
-                factory=ONVIFXMLDataProvider,
-                display_name="Axis ONVIF XML",
-                filter_factory=build_onvif_filter_config,
-                file_extensions=(".xml",),
-            ),
-        )
-
-    @classmethod
-    def payload_to_scene_decoders(cls) -> tuple[PayloadToSceneDecoderDefinition, ...]:
-        return (
-            PayloadToSceneDecoderDefinition(
-                handler_type=ONVIF_XML,
-                decoder_factory=ONVIFDecoder,
-                display_name="Axis ONVIF XML",
-                filter_factory=build_onvif_filter_config,
-            ),
-        )
+    def decode(self, payload: str) -> Scene | None:
+        """Decode one ONVIF document, or no Scene for frameless metadata."""
+        return decode_onvif_xml(payload)
 
 
 PLUGIN_CLASS = ONVIFXMLPlugin

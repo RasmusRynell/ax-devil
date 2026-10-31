@@ -64,6 +64,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
 ax_devil = [
+    "py.typed",
     "resources/icons/*.svg",
     "resources/icons/LICENSE",
     "modules/video_player/engine/quick/*.qml",
