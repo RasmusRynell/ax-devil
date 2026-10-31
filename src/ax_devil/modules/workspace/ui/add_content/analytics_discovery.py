@@ -37,6 +37,7 @@ class AnalyticsChoiceLoader(QObject):
         self.label = label
         self.choices: tuple[str, ...] = ()
         self.loaded = False
+        self.failed = False
         self.status = f"Select overlay mode to load {label}"
         self._fetch = fetch
         self._connection = DeviceConnection("", DeviceProtocol.HTTPS)
@@ -56,8 +57,9 @@ class AnalyticsChoiceLoader(QObject):
         self._request.cancel()
         self._connection = connection
         self.loaded = False
+        self.failed = False
         self.choices = ()
-        self.status = f"Connection changed — refresh {self.label}"
+        self.status = f"Refresh to load {self.label}"
         self.connection_changed.emit()
         self.changed.emit()
 
@@ -71,6 +73,7 @@ class AnalyticsChoiceLoader(QObject):
             return
         connection = self._connection
         self.loaded = False
+        self.failed = False
         self.choices = ()
         self.status = f"Loading {self.label}…"
         self._request.submit(
@@ -84,11 +87,13 @@ class AnalyticsChoiceLoader(QObject):
 
     def _on_loaded(self, choices: tuple[str, ...]) -> None:
         self.loaded = True
+        self.failed = False
         self.choices = choices
         self.status = f"Select {self.label}" if choices else f"No {self.label} available"
         self.changed.emit()
 
     def _on_failed(self, _error: Exception) -> None:
+        self.failed = True
         self.status = f"Could not load {self.label}"
         self.changed.emit()
 

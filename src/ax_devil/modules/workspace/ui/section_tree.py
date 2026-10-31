@@ -122,6 +122,20 @@ class SectionTree(FirstLineBranchTree):
         """Return whether any section is shown."""
         return bool(self._sections)
 
+    def shows_rows(self) -> bool:
+        """Return whether a row is shown, or a section's count points to matches the filter leaves out; a search that
+        matches no row leaves neither, whatever a section kept for its own actions says."""
+        for index in range(self.topLevelItemCount()):
+            heading = self.topLevelItem(index)
+            if heading is None or heading.isHidden():
+                continue
+            if heading.data(0, _HIDDEN_ROLE) or any(
+                (child := heading.child(position)) is not None and not child.isHidden()
+                for position in range(heading.childCount())
+            ):
+                return True
+        return False
+
     def _rebuild(self) -> None:
         """Build the items and the widgets of the rows that can be seen, for the current palette and text size."""
         expansion = {row.row_id: (item.isExpanded(), row.is_open) for item, row in self._row_items()}

@@ -10,6 +10,62 @@ from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 
 
+def fit_row_height(tree: QTreeWidget, item: QTreeWidgetItem, column: int) -> bool:
+    """Make *item*'s row as high as its *column* widget needs at the width it will have; return whether that changed.
+
+    The tree sizes a row from its widget's ``sizeHint``, which gives a wrapping label no width to wrap at, so a
+    row whose text wraps would otherwise show only the lines that hint assumed.
+    """
+    widget = tree.itemWidget(item, column)
+    if widget is None or not widget.hasHeightForWidth():
+        return False
+    width = tree.visualRect(tree.indexFromItem(item, column)).width()
+    if width <= 0:  # Hidden or collapsed; showing it again queues another fit.
+        return False
+    hint = QSize(0, widget.heightForWidth(width))
+    if item.sizeHint(column) == hint:
+        return False
+    item.setSizeHint(column, hint)
+    return True
+
+
+_PREFERRED_VALUE_CHARS = 80
+"""How many characters of a long value a dialog opens wide enough to show on one line."""
+
+_UNBOUNDED_WIDTH = 100_000
+_MAX_CHROME_WIDTH = 64
+
+
+def _preferred_value_width(label: QLabel) -> int:
+    """Return the width at which *label* opens: its whole text on one line, up to a comfortable line length."""
+    label.ensurePolished()
+    metrics = label.fontMetrics()
+    margins = label.contentsMargins()
+    margin_width = margins.left() + margins.right()
+    long_width = metrics.averageCharWidth() * _PREFERRED_VALUE_CHARS
+    text_width = metrics.horizontalAdvance(label.text())
+    # A value of at most the preferred length always opens whole: the average glyph width is only an estimate, and
+    # a font with wide glyphs would otherwise wrap a value the dialog promises to show on one line.
+    if len(label.text()) > _PREFERRED_VALUE_CHARS and text_width > long_width:
+        return long_width + margin_width
+    # The label's frame and border take more than its margins, and a wrapping label breaks a line that only just
+    # fits; widen until the text sits on one line.
+    one_line = label.heightForWidth(_UNBOUNDED_WIDTH)
+    width = text_width + margin_width
+    while label.heightForWidth(width) > one_line and width < text_width + margin_width + _MAX_CHROME_WIDTH:
+        width += 1
+    return width
+
+
+class _ValueLabel(QLabel):
+    """A wrapping label that reports the size it opens at, so the tree row is not held to a narrower wrap."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        """Return the preferred width and the height the text takes at it."""
+        width = _preferred_value_width(self)
+        return QSize(width, self.heightForWidth(width))
+
+
 class _InformationTree(QTreeWidget):
     """Measure selectable value widgets at the width available in their column."""
 
@@ -24,7 +80,7 @@ class _InformationTree(QTreeWidget):
     def add_value(self, item: QTreeWidgetItem, value: str) -> None:
         """Install a selectable value whose row can grow as the column narrows."""
         item.setText(1, "")
-        label = QLabel(value)
+        label = _ValueLabel(value)
         label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard
         )
@@ -32,12 +88,12 @@ class _InformationTree(QTreeWidget):
         label.setContentsMargins(Space.XS, 0, Space.XS, 0)
         self.setItemWidget(item, 1, label)
         self._values.append((item, label))
-        item.setSizeHint(1, label.sizeHint())
+        item.setSizeHint(1, QSize(0, label.heightForWidth(_preferred_value_width(label))))
 
     def sizeHint(self) -> QSize:
         """Include the preferred width of values rather than Qt's default viewport width."""
         size = super().sizeHint()
-        value_width = max((label.sizeHint().width() for _, label in self._values), default=0)
+        value_width = max((_preferred_value_width(label) for _, label in self._values), default=0)
         size.setWidth(max(size.width(), self.columnWidth(0) + value_width + 2 * self.frameWidth()))
         return size
 
@@ -50,13 +106,8 @@ class _InformationTree(QTreeWidget):
         return super().sizeHint().height() + extra_height
 
     def _update_value_heights(self) -> None:
-        value_width = max(1, self.columnWidth(1))
-        for item, label in self._values:
-            height = label.heightForWidth(value_width)
-            hint = QSize(0, height)
-            if item.sizeHint(1) != hint:
-                item.setSizeHint(1, hint)
-        self.doItemsLayout()
+        if any([fit_row_height(self, item, 1) for item, _label in self._values]):
+            self.doItemsLayout()
 
 
 class WorkspaceItemInfoDialog(BaseDialog):

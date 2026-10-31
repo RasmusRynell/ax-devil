@@ -154,7 +154,7 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
         "live_stream": LiveStreamItem(label="Clip", host="camera.local", overlay_mode=LiveOverlayMode.RTSP),
     }
 
-    with patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
+    with patch("ax_devil.modules.workspace.ui.workspace_controller.notify") as warning:
         workspace_session.add_items([items[kind]])
 
     assert store_of(workspace_session).workspace.items == (items[kind],)
@@ -166,7 +166,7 @@ def test_an_item_that_cannot_open_stays_in_the_workspace_and_the_user_is_told(
     row = row_of(required_item_row(workspace_session))
     assert (row.label, row.unavailable_reason) == ("Clip", message.removeprefix("Clip: "))
 
-    with patch("PySide6.QtWidgets.QMessageBox.warning") as again:
+    with patch("ax_devil.modules.workspace.ui.workspace_controller.notify") as again:
         tree_of(workspace_session).itemDoubleClicked.emit(required_item_row(workspace_session), 0)
 
     assert [call.args[1:] for call in again.call_args_list] == [("Open Content", message)], "a double click says why"
@@ -238,7 +238,7 @@ def test_open_failure_shows_error_and_keeps_existing_viewer(workspace_session: W
         if failure == "construct"
         else patch(OFFLINE_VIEWER, _FailingAttachViewer)
     )
-    with broken_viewer, patch("PySide6.QtWidgets.QMessageBox.warning") as warning:
+    with broken_viewer, patch("ax_devil.modules.workspace.ui.open_viewers.notify") as warning:
         workspace_session.add_items([content_item(video_content("broken"))])
 
     assert center_of(workspace_session).get_widget_count() == 1

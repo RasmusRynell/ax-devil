@@ -10,6 +10,7 @@ from PySide6.QtCore import QCoreApplication, QPoint
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.banner import Banner
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
@@ -67,7 +68,7 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         widget.set_display_name("North gate")
 
         assert widget.get_display_name() == "North gate"
-        assert widget._title_label.text() == "North gate"
+        assert widget._title_label.full_text() == "North gate"
 
     def test_consideration_changes_after_cleanup_open_nothing(self, qtbot: QtBot) -> None:
         """A closed viewer ignores workspace consideration updates instead of reopening entries."""
@@ -298,6 +299,7 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         def broken_open() -> object:
             raise RuntimeError("broken entry")
 
+        v0 = make_seekable_content("Z", frame_source_opener=broken_open)
         v1 = make_local_content("A")
         v2 = make_seekable_content("B", frame_source_opener=make_tracked_frame_source_opener("B", opened))
         v3 = make_seekable_content("C", frame_source_opener=broken_open)
@@ -307,13 +309,26 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
         )
         playlist = PlaylistContent(
             display_name="Test",
-            entries=(PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True), entry_with_failure),
+            entries=(
+                PlaylistEntry(lanes=v0.standalone_lanes(), default_considered=True),
+                PlaylistEntry(lanes=v1.standalone_lanes(), default_considered=True),
+                entry_with_failure,
+            ),
         )
         widget = self._open(qtbot, playlist)
 
+        assert "entry 1" in warning_text(widget)
+        assert nav_button(widget, "Next entry").isEnabled(), "a first entry that fails still lets the user step on"
+
         widget.step_next_entry()
 
-        assert shown_entry_index(widget) == 1
+        assert len(lane_displays(widget)) == 1
+        banners: list[Banner] = widget.findChildren(Banner)
+        assert all(banner.isHidden() for banner in banners), "the failure of the entry left is not shown on the next"
+
+        widget.step_next_entry()
+
+        assert shown_entry_index(widget) == 2
         assert lane_displays(widget) == []
         assert "broken entry" in warning_text(widget)
         assert len(opened) == 1
@@ -321,7 +336,7 @@ class TestOfflineViewerNavigation(OfflineViewerTest):
 
         widget.step_prev_entry()
 
-        assert shown_entry_index(widget) == 0
+        assert shown_entry_index(widget) == 1
         assert len(lane_displays(widget)) == 1
 
     def test_navigating_while_loading_opens_the_newest_entry(

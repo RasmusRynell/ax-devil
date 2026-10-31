@@ -20,6 +20,7 @@ from ax_devil.modules.chrome import BaseDialog
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.content_scroll_area import ContentScrollArea
 from ax_devil.modules.chrome.key_chips import KeyChips
+from ax_devil.modules.chrome.list_row import muted_label
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space, TextRole
 from ax_devil.modules.shortcuts.shortcuts import ShortcutDefinition, ShortcutManager
@@ -183,7 +184,7 @@ class ShortcutsDialog(BaseDialog):
             scroll_content=False,
         )
         self._shortcut_manager = shortcut_manager
-        self._definitions = shortcut_manager.definitions()
+        self._definitions = sorted(shortcut_manager.definitions(), key=lambda d: (d.category, d.display_name))
         self._sections: list[_CategorySection] = []
         self._all_rows: list[_ShortcutRow] = []
 
@@ -251,6 +252,10 @@ class ShortcutsDialog(BaseDialog):
             self._sections.append(section)
             self._list_layout.addWidget(section)
 
+        self._no_match = muted_label("No shortcuts match", TextRole.BODY)
+        self._no_match.setContentsMargins(Space.XL, Space.M, Space.M, 0)
+        self._no_match.hide()
+        self._list_layout.addWidget(self._no_match)
         self._list_layout.addStretch()
         self._list_scroll = ContentScrollArea(scroll_content)
         self._content_layout.addWidget(self._list_scroll, 1)
@@ -282,8 +287,8 @@ class ShortcutsDialog(BaseDialog):
 
     def _on_search_changed(self, text: str) -> None:
         """Filter visible rows by search text."""
-        for section in self._sections:
-            section.apply_filter(text)
+        matches = [section.apply_filter(text) for section in self._sections]
+        self._no_match.setVisible(not any(matches))
 
     def _on_editing_finished(self, row: _ShortcutRow) -> None:
         """Check for conflicts after a shortcut edit."""
@@ -347,4 +352,4 @@ class ShortcutsDialog(BaseDialog):
     def _show_conflict(self, row: _ShortcutRow, conflict_id: str) -> None:
         """Show a conflict message for *row* against *conflict_id*."""
         name = self._shortcut_manager.get_definition(conflict_id).display_name
-        self._conflict_label.setText(f"⚠ '{row.key_sequence().toString()}' conflicts with '{name}'")
+        self._conflict_label.setText(f"'{row.key_sequence().toString()}' conflicts with '{name}'")

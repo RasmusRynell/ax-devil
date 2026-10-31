@@ -123,8 +123,8 @@ class FadingWidget(QWidget):
         self.hide_timer.start(self.auto_hide_delay_ms)
         self._logger.debug(f"Started auto-hide timer for {self.hover_element_name}")
 
-    def set_hover_sink(self, hover_sink: HoverSink) -> None:
-        """Register the target that receives hover enter/leave notifications."""
+    def set_hover_sink(self, hover_sink: HoverSink | None) -> None:
+        """Register the target that receives hover enter/leave notifications, or none."""
         self._hover_sink = hover_sink
 
     def enterEvent(self, event: QEnterEvent) -> None:

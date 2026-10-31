@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QAction, QImage
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import BookmarkTarget, Content, ItemResolution, find_entry
 from ax_devil.modules.workspace.ui.viewer_factory import WorkspaceViewerFactory
@@ -151,7 +152,7 @@ class OpenViewers:
         except Exception as exc:
             message = str(exc)
             logger.error(f"Failed to open content {content.display_name}: {message}")
-            QMessageBox.warning(self._window, "Open Content", message)
+            notify(self._window, "Open Content", message)
             return
 
         try:
@@ -166,7 +167,7 @@ class OpenViewers:
         except Exception as exc:
             message = str(exc)
             logger.error(f"Failed to open content {content.display_name}: {message}")
-            QMessageBox.warning(self._window, "Open Content", message)
+            notify(self._window, "Open Content", message)
 
     def _place(
         self,

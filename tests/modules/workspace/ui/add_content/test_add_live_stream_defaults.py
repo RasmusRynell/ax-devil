@@ -90,7 +90,7 @@ def test_add_live_stream_discards_stale_discovery_and_reloads_after_connection_r
         discovery.release_cancelled()
 
     assert data_source.currentData() is None
-    assert data_source.currentText() == "Connection changed — refresh data sources"
+    assert data_source.currentText() == "Refresh to load data sources"
 
     host.clear()
     set_overlay_mode(dialog, LiveOverlayMode.RTSP)

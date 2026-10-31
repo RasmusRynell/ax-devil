@@ -129,7 +129,7 @@ def test_screenshots(
 
     window.launch(workspace_file=workspace_path)
     viewer = open_video(qtbot, window, "Tracked video")
-    trigger(window, "Media Tools Panel")
+    trigger(window, "Toggle Media Tools Panel")
     media_tools_tabs = viewer.findChild(QTabBar, "mediaToolsTabs")
     assert media_tools_tabs is not None
     for text_size in TEXT_SIZES:

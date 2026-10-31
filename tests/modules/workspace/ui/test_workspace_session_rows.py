@@ -46,13 +46,13 @@ def test_editing_an_items_name_updates_its_row_and_open_viewer(
 
     store_of(workspace_session).edit_item(replace(clip, label="North gate"))
 
-    assert viewer._title_label.text() == "North gate"
+    assert viewer._title_label.full_text() == "North gate"
     assert row_of(required_item_row(workspace_session)).label == "North gate"
     assert store_of(workspace_session).is_modified
 
     store_of(workspace_session).edit_item(replace(clip, label=""))
 
-    assert viewer._title_label.text() == "lot.mp4"
+    assert viewer._title_label.full_text() == "lot.mp4"
     assert row_of(required_item_row(workspace_session)).label == "lot.mp4"
 
 

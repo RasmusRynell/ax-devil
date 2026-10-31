@@ -103,7 +103,7 @@ class LiveStatusPanel(QWidget):
         layout.addWidget(self._frame_label)
 
         self._problem_row = QWidget(self)
-        problem_layout = QHBoxLayout(self._problem_row)
+        problem_layout = self._problem_layout = QHBoxLayout(self._problem_row)
         problem_layout.setContentsMargins(0, 0, 0, 0)
         problem_layout.setSpacing(Space.M)
         self._problem_label = QLabel(self._problem_row)
@@ -139,6 +139,7 @@ class LiveStatusPanel(QWidget):
         self._problem_label.setToolTip(problems)
         self._problem_row.setVisible(bool(status.problems))
         self._retry_button.setVisible(status.needs_retry)
+        self._problem_layout.activate()  # Resize the row for the new lines before the panel is fitted to it.
         self.adjustSize()
 
     def display_frame_status(self, frame: VideoFrameWithOverlays) -> None:

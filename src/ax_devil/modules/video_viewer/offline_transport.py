@@ -86,6 +86,21 @@ class OfflineTransport:
             runtime.playback.set_speed(self.speed)
             runtime.playback.follow(controls)
 
+    def show_idle(self) -> None:
+        """Show the shared bar with nothing to play, for a playlist entry that could not open, so stepping works.
+
+        No lane is there to bring the bar back after it auto-hides, so it stays shown.
+        """
+        if self._wiring is None:
+            return
+        viewer, commands = self._wiring
+        self._use_shared(viewer, commands, True)
+        if self._panel is not None:
+            self._panel.show_video(total_frames=0, frame_rate=0.0)
+            self._panel.set_hover_sink(None)
+            if self._visibility is not None:
+                self._visibility.cleanup()  # Stops an idle timer that a hover on the entry left would hide the bar by.
+
     def set_speed(self, speed: float, runtime: OfflineSession | None) -> None:
         """Remember speed across entries and apply it to the active playback."""
         self.speed = clamp_playback_speed(speed)

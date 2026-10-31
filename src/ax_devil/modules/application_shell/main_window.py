@@ -4,15 +4,16 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.configuration_preferences import save_overlay_preference
 from ax_devil.modules.application_shell.restart import restart_application
 from ax_devil.modules.catalog_viewer.viewer_registry import close_catalog_viewer, show_catalog_viewer
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.plugin_manager.plugins_view import PLUGINS_VIEW_ID, PluginsView
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
@@ -69,6 +70,12 @@ class MainWindow(ChromeWindow):
     owns its lifetime; it loads no scene and renders no frames.
     """
 
+    # The sidebar stack's minimum is the maximum over its pages and goes stale for hidden ones, so the shell keeps the
+    # fixed floor instead of a content-driven minimum.
+    fits_content_minimum = False
+
+    _fullscreen_action: QAction | None = None  # Set once the shortcuts exist; window-state events can come earlier.
+
     def __init__(
         self,
         shortcut_manager: ShortcutManager,
@@ -106,14 +113,12 @@ class MainWindow(ChromeWindow):
         app = QApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self._workspace_session.lifecycle.keep_unsaved_changes)
-        self._lane_fullscreen = LaneFullscreenController(
-            self,
-            [
-                self._shortcut_manager.get_action(definition.action_id)
-                for definition in self._shortcut_manager.definitions()
-                if definition.acts_on_viewer
-            ],
-        )
+        self._viewer_actions = [
+            self._shortcut_manager.get_action(definition.action_id)
+            for definition in self._shortcut_manager.definitions()
+            if definition.acts_on_viewer
+        ]
+        self._lane_fullscreen = LaneFullscreenController(self, self._viewer_actions)
         self._connect_shortcut_actions()
 
         self._logger.debug("Main window initialization completed")
@@ -124,7 +129,7 @@ class MainWindow(ChromeWindow):
         except (ValueError, OSError) as exc:
             self._logger.error(f"Could not save {preference.value}: {exc}")
             self._overlay_actions[preference].setChecked(not enabled)
-            QMessageBox.warning(self, "Settings", f"Could not save this preference: {exc}")
+            notify(self, "Settings", f"Could not save this preference: {exc}")
 
     def _on_overlay_preference_changed(self, preference: OverlayPreference, enabled: bool) -> None:
         self._overlay_actions[preference].setChecked(enabled)
@@ -274,16 +279,41 @@ class MainWindow(ChromeWindow):
                 lambda _=False, command=command: self._route_to_focused_widget(command)
             )
         sm.get_action("view.add_bookmark").triggered.connect(lambda: self._workspace_session.bookmark_focused_viewer())
-        sm.get_action("view.toggle_fullscreen").triggered.connect(self._toggle_fullscreen)
-        sm.get_action("view.toggle_sidebar").triggered.connect(self._workspace_session.widget().toggle_sidebar)
         sm.get_action("view.toggle_lane_fullscreen").triggered.connect(self._lane_fullscreen.toggle)
 
-    def _toggle_fullscreen(self) -> None:
-        """Toggle between fullscreen and normal window mode."""
-        if self.isFullScreen():
-            self.showNormal()
-        else:
+        fullscreen_action = sm.get_action("view.toggle_fullscreen")
+        fullscreen_action.setCheckable(True)
+        fullscreen_action.setChecked(self.isFullScreen())
+        fullscreen_action.triggered.connect(self._set_fullscreen)
+        self._fullscreen_action = fullscreen_action
+
+        sidebar = self._workspace_session.widget()
+        sidebar_action = sm.get_action("view.toggle_sidebar")
+        sidebar_action.setCheckable(True)
+        sidebar_action.setChecked(sidebar.is_sidebar_shown())
+        sidebar_action.triggered.connect(sidebar.toggle_sidebar)
+        sidebar.sidebar_shown_changed.connect(sidebar_action.setChecked)
+
+        self._workspace_session.focused_widget_changed.connect(self._enable_viewer_actions)
+        self._enable_viewer_actions(self._workspace_session.focused_widget())
+
+    def _enable_viewer_actions(self, widget: ViewerWidget | None) -> None:
+        """Enable the actions that act on the focused viewer only while there is one."""
+        for action in self._viewer_actions:
+            action.setEnabled(widget is not None)
+
+    def _set_fullscreen(self, fullscreen: bool) -> None:
+        """Enter or leave fullscreen window mode."""
+        if fullscreen:
             self.showFullScreen()
+        else:
+            self.showNormal()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        """Keep the Fullscreen menu check in step with the window, however fullscreen was entered or left."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and self._fullscreen_action is not None:
+            self._fullscreen_action.setChecked(self.isFullScreen())
 
     def _route_to_focused_widget(self, action: Callable[[ViewerWidget], None]) -> None:
         """Run *action* against the focused viewer widget when one exists."""

@@ -2,6 +2,10 @@
 
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QWidget
 
+from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.theme import StatusColor
+
 from .analytics_discovery import AnalyticsChoiceLoader
 
 
@@ -22,7 +26,7 @@ class AnalyticsChoice(QWidget):
         self.refresh.clicked.connect(loader.load)
         loader.connection_changed.connect(self._forget_saved_selection)
         loader.changed.connect(self._render)
-        self._render()
+        follow_appearance(self, self._render)  # The failure icon takes its color from the palette.
 
     def restore_selection(self, selection: str) -> None:
         """Retain a saved choice even while discovery has not found it."""
@@ -42,7 +46,10 @@ class AnalyticsChoice(QWidget):
         if isinstance(selected, str):
             self._selection = selected
         self.combo.clear()
-        self.combo.addItem(self.loader.status, None)
+        if self.loader.failed:
+            self.combo.addItem(Icon.WARNING.icon(StatusColor.ERROR.color(self.palette())), self.loader.status, None)
+        else:
+            self.combo.addItem(self.loader.status, None)
         for choice in self.loader.choices:
             self.combo.addItem(choice, choice)
         if self._preserve_saved and self._selection and self._selection not in self.loader.choices:

@@ -99,7 +99,7 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
         self._load_btn = QPushButton("Load Playlist")
         self._load_btn.setEnabled(False)
         self._load_btn.clicked.connect(self._on_load)
-        layout.addWidget(self._load_btn)
+        layout.addWidget(self._load_btn, 0, Qt.AlignmentFlag.AlignRight)
 
     def _browse_root(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select MOT Dataset Root")
@@ -127,7 +127,7 @@ class MOTChallengeSettingsWidget(PlaylistResolverWidget):
             self._status_label.setText("Please enter a root directory path.")
             return
 
-        self._status_label.setText("Scanning...")
+        self._status_label.setText("Scanning…")
         self._scan.submit(
             self.jobs,
             "scan MOT sequences",

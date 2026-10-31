@@ -106,7 +106,14 @@ class OfflineView(SectionsView):
     add_playlist_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(OFFLINE_VIEW_ID, "Offline", Icon.VIDEO, search_placeholder="Search files", parent=parent)
+        super().__init__(
+            OFFLINE_VIEW_ID,
+            "Offline",
+            Icon.VIDEO,
+            search_placeholder="Search files",
+            empty_text="No videos or playlists",
+            parent=parent,
+        )
         self._add = AddPanel(self)
         self._add.add_video_requested.connect(self.add_video_requested)
         self._add.add_playlist_requested.connect(self.add_playlist_requested)

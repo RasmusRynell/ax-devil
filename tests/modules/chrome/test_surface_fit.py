@@ -98,7 +98,8 @@ def test_every_window_is_checked_or_exempt() -> None:
 
 
 def test_questions_use_the_choice_dialog() -> None:
-    """A `QMessageBox` squeezes its buttons under the theme's padding; questions are asked with `choice_dialog.ask`.
+    """A `QMessageBox` squeezes its buttons under the theme's padding; questions are asked with `choice_dialog.ask`
+    and notices with `choice_dialog.notify`.
 
     The last-resort error box in `exception_handler` stays a plain `QMessageBox` so it needs none of the app's chrome.
     """
@@ -114,7 +115,12 @@ def test_questions_use_the_choice_dialog() -> None:
             if isinstance(func, ast.Name):
                 banned = func.id == "QMessageBox"
             elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-                banned = func.value.id == "QMessageBox" and func.attr in {"question", "information", "critical"}
+                banned = func.value.id == "QMessageBox" and func.attr in {
+                    "question",
+                    "information",
+                    "critical",
+                    "warning",
+                }
             else:
                 banned = False
             if banned:

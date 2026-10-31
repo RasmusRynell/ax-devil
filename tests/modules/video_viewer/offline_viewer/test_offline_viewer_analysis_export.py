@@ -220,7 +220,7 @@ class TestOfflineViewerAnalysisExport(OfflineViewerTest):
 
             with (
                 patch("ax_devil.modules.video_viewer.export.ExportDialog") as dialog_type,
-                patch("ax_devil.modules.video_viewer.offline_export.QMessageBox.warning") as told,
+                patch("ax_devil.modules.video_viewer.offline_export.notify") as told,
             ):
                 widget.export_video()
                 told.assert_called()

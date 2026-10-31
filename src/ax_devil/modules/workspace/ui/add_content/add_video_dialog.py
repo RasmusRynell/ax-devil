@@ -7,7 +7,6 @@ from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -25,6 +24,7 @@ from ax_devil.modules.chrome.browse_button import BrowseButton
 from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import StatusColor, show_status
 from ax_devil.modules.chrome.tokens import Height, Space, keep_minimum_chars, reserve_line
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core.intake import VIDEO_FILE_SUFFIXES, WorkspaceIntake
@@ -207,7 +207,7 @@ class AddVideoDialog(BaseDialog):
 
         self._message_label = QLabel()
         self._message_label.setWordWrap(True)
-        self._message_label.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        show_status(self._message_label, StatusColor.ERROR)  # It only ever shows problems.
         reserve_line(self._message_label)
         form_layout.addRow(self._message_label)
 

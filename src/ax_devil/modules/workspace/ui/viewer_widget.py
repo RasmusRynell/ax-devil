@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolBut
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.banner import Banner
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.settings.logging_config import get_logger
@@ -59,7 +60,7 @@ class ViewerWidget(QFrame):
         # Allow subclasses to set up their specific UI
         self._setup_widget_ui()
 
-        self._title_label.setText(self.get_display_name())
+        self._show_title(self.get_display_name())
 
         widget_id = id(self)
         widget_class = self.__class__.__name__
@@ -83,8 +84,8 @@ class ViewerWidget(QFrame):
         self._header_layout.setContentsMargins(Space.M, 0, Space.XS, 0)
         self._header_layout.setSpacing(Space.XS)
 
-        # Title label on the left; italic while the pane is a replaceable preview
-        self._title_label = QLabel("")
+        # Title label on the left; italic while the pane is a replaceable preview, elided when the pane is narrow
+        self._title_label = ElidedLabel("", Qt.TextElideMode.ElideRight)
         self._header_layout.addWidget(self._title_label)
 
         # Muted facts about the shown content; hidden when the header is too narrow for them
@@ -183,7 +184,12 @@ class ViewerWidget(QFrame):
         Subclasses that store the name extend this to update their own copy and anything else showing it.
         ``get_display_name()`` must return *name* afterwards.
         """
-        self._title_label.setText(name)
+        self._show_title(name)
+
+    def _show_title(self, name: str) -> None:
+        """Show *name* in the header, elided when the pane is narrow."""
+        self._title_label.set_full_text(name)
+        self._update_title_tooltip()
         self._fit_header_details()
 
     def set_header_details(self, text: str) -> None:
@@ -196,12 +202,24 @@ class ViewerWidget(QFrame):
         return self._details_label.text() if not self._details_label.isHidden() else ""
 
     def _fit_header_details(self) -> None:
-        """Show the details only when they fit beside the title and buttons."""
-        text = self._details_label.text()
-        self._details_label.setVisible(bool(text))
-        # The layout's preferred width leaves out the details, whose size policy ignores their own.
-        if text and self._header_layout.sizeHint().width() + self._details_label.sizeHint().width() > self.width():
-            self._details_label.setVisible(False)
+        """Size the title and details to share the header, and show the details only when they fit beside the title.
+
+        Both labels ignore their own size so that neither widens the pane. Each takes its text's width at most, with a
+        stretch of that width, so they share what the buttons leave in proportion; the title elides when it is short.
+        """
+        title, details = self._title_label, self._details_label
+        details.setVisible(bool(details.text()))
+        metrics = title.fontMetrics()
+        # The label's own frame and indent come on top of its text.
+        title_width = metrics.horizontalAdvance(title.full_text()) + title.sizeHint().width()
+        title_width -= metrics.horizontalAdvance(title.text())
+        details_width = details.sizeHint().width()
+        # The layout's preferred width counts neither label.
+        if details.text() and self._header_layout.sizeHint().width() + title_width + details_width > self.width():
+            details.setVisible(False)
+        for label, width in ((title, title_width), (details, details_width)):
+            label.setMaximumWidth(width)
+            self._header_layout.setStretchFactor(label, width)
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
         """Ask for the pane's menu at a right click on the header or other chrome; a video lane asks for its own."""
@@ -273,15 +291,23 @@ class ViewerWidget(QFrame):
         if self._pinned:
             self._pin_button.setIcon(Icon.PINNED.icon())
             self._pin_button.setToolTip("Unpin: let opened content replace this pane")
-            self._title_label.setToolTip("Pinned: opened content will not replace this pane")
         else:
             self._pin_button.setIcon(Icon.PIN.icon())
             self._pin_button.setToolTip("Pin: keep this pane open when other content is opened")
-            self._title_label.setToolTip("Preview (italic): opened content replaces this pane while it is active")
+        self._update_title_tooltip()
         title_font = (TextRole.STRONG if self._pinned else TextRole.BODY).font()
         title_font.setItalic(not self._pinned)
         self._title_label.setFont(title_font)
         self._fit_header_details()
+
+    def _update_title_tooltip(self) -> None:
+        """Give the title tooltip the whole name, which the label may elide, and whether the pane is pinned."""
+        state = (
+            "Pinned: opened content will not replace this pane"
+            if self._pinned
+            else "Preview (italic): opened content replaces this pane while it is active"
+        )
+        self._title_label.setToolTip(f"{self._title_label.full_text()}\n{state}")
 
     def current_on_screen_item(self) -> OnScreenWorkspaceItem | None:
         """Return the workspace item currently visible in the widget."""

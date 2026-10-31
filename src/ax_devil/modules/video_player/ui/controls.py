@@ -68,6 +68,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
 
         self.timeline_slider = ClickableSlider(QtCore.Qt.Orientation.Horizontal, self)
         self.timeline_slider.setFixedHeight(TimelineSliderPainter.minimum_height())
+        self.timeline_slider.setAccessibleName("Timeline")
         self.timeline_slider.setAutoFillBackground(False)
         self.timeline_slider.valueChanged.connect(self._on_slider_changed)
         self.timeline_slider.sliderPressed.connect(self._on_scrub_started)
@@ -102,6 +103,7 @@ class SeekableVideoControlPanel(BaseVideoControlPanel):
         self.frame_spinbox.setMinimum(0)
         self.frame_spinbox.setStyleSheet(_READOUT_STYLE)
         self.frame_spinbox.setToolTip("Frame")
+        self.frame_spinbox.setAccessibleName("Frame")
         self.frame_spinbox.editingFinished.connect(self._on_spinbox_editing_finished)
         frame_layout.addWidget(self.frame_spinbox)
 

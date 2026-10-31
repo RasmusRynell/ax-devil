@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QProgressBar, Q
 from ax_devil.modules.chrome.appearance import follow_appearance
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.device_discovery.network_scan import Login
 from ax_devil.modules.workspace.ui.footer_panel import FooterPanel
@@ -28,6 +29,11 @@ class ScanStatus(Enum):
     SCANNING = "Scanning…"
     INVALID = "Invalid IP range"
     FAILED = "Scan failed"
+
+    @property
+    def color(self) -> StatusColor | None:
+        """Return the status color the text takes, or None for the muted look."""
+        return StatusColor.ERROR if self in (ScanStatus.INVALID, ScanStatus.FAILED) else None
 
 
 class ScanSettingsPanel(FooterPanel):
@@ -106,7 +112,7 @@ class ScanSettingsPanel(FooterPanel):
         scanning = status is ScanStatus.SCANNING
         self._scan_button.setEnabled(not scanning)
         self._scan_progress.setVisible(scanning)
-        self.caption.set_aside(status.value)
+        self.caption.set_aside(status.value, status.color)
         self.caption.setToolTip(reason)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
@@ -130,7 +136,9 @@ class LiveView(SectionsView):
     logins_edited = Signal(object)  # tuple[Login, ...]
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(LIVE_VIEW_ID, "Live", Icon.LIVE_VIDEO, search_placeholder="Search cameras", parent=parent)
+        super().__init__(
+            LIVE_VIEW_ID, "Live", Icon.LIVE_VIDEO, search_placeholder="Search", empty_text="No cameras", parent=parent
+        )
         self._scan = ScanSettingsPanel(self)
         self._scan.scan_requested.connect(self.scan_requested)
         self._scan.logins_edited.connect(self.logins_edited)

@@ -85,7 +85,9 @@ def test_add_playlist_dialog_stays_open_with_the_reason_when_settings_do_not_res
 
     assert playlist_dialog.result() != AddPlaylistDialog.DialogCode.Accepted
     assert playlist_dialog.get_result() is None
-    assert "Folder not found: /gone" in playlist_dialog._message_label.text()
+    message = playlist_dialog._message_label
+    assert "Folder not found: /gone" in message.text()
+    assert message.property("status") == "error"
 
 
 def test_closing_playlist_dialog_interrupts_its_resolution(

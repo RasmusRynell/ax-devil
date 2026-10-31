@@ -12,7 +12,7 @@ import qdarktheme
 import qdarktheme._main as qdarktheme_main
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from ax_devil.modules.chrome.appearance import notify_text_size_applied, notify_text_size_changed
 from ax_devil.modules.chrome.palette_css import palette_color_css
@@ -133,7 +133,11 @@ _TEXT_SIZE_RULES = "\n/* ax-devil: rules sized from the body text */\n"
 
 
 def _button_stylesheet(palette: QPalette) -> str:
-    """Keep action buttons quiet; reserve the accent for focus and checked state, including default buttons."""
+    """Keep action buttons quiet; reserve the accent for focus and checked state, including default buttons.
+
+    Check boxes and radio buttons show keyboard focus as the accent underline the theme gives them on hover; the
+    style sheet otherwise leaves them without a focus indicator.
+    """
     hover = palette_color_css(palette, QPalette.ColorRole.Text, alpha=0.08)
     pressed = palette_color_css(palette, QPalette.ColorRole.Text, alpha=0.14)
     disabled = palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name()
@@ -159,6 +163,9 @@ def _button_stylesheet(palette: QPalette) -> str:
         }}
         QPushButton:focus:enabled, QToolButton:focus:enabled {{
             border-color: palette(highlight);
+        }}
+        QCheckBox:focus, QRadioButton:focus {{
+            border-bottom-color: palette(highlight);
         }}
         QPushButton:disabled, QPushButton:default:disabled, QPushButton:default:checked:disabled,
         QToolButton:disabled, QToolButton:checked:disabled {{
@@ -188,7 +195,15 @@ def _install_stylesheet(app: QApplication) -> None:
             padding-bottom: {Space.XS}px;
         }}
     """
-    app.setStyleSheet(f"{theme_rules}{_TEXT_SIZE_RULES}{sized_rules}{_button_stylesheet(app.palette())}")
+    # A label muted through PlaceholderText would get the status color at half alpha from the color rule alone.
+    status_rules = "".join(
+        f'QLabel[status="{status.name.lower()}"] {{ {status.css(app.palette())} '
+        f"placeholder-text-color: {status.color(app.palette()).name()}; }}\n"
+        for status in StatusColor
+    )
+    app.setStyleSheet(
+        f"{theme_rules}{_TEXT_SIZE_RULES}{sized_rules}{_button_stylesheet(app.palette())}\n{status_rules}"
+    )
 
 
 def apply_theme(mode: str) -> None:
@@ -255,6 +270,18 @@ class StatusColor(Enum):
     def css(self, palette: QPalette) -> str:
         """Return the stylesheet declaration that colors text with this status on the surface's palette."""
         return f"color: {self.color(palette).name()};"
+
+
+def show_status(label: QLabel, status: StatusColor | None) -> None:
+    """Color *label*'s text with *status*, or leave it in its normal color when None.
+
+    The color comes from an application rule, so it follows the theme. A label's own stylesheet would beat that
+    rule: mute a label with ``setForegroundRole(PlaceholderText)`` instead.
+    """
+    label.setProperty("status", None if status is None else status.name.lower())
+    style = label.style()
+    style.unpolish(label)
+    style.polish(label)
 
 
 class KindColor(Enum):

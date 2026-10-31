@@ -9,9 +9,10 @@ from unittest.mock import Mock
 
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QAbstractButton, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
+from PySide6.QtWidgets import QAbstractButton, QLabel, QMenu, QTreeWidget, QTreeWidgetItem, QWidget
 from pytestqt.qtbot import QtBot
 
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.workspace.core import ConsiderationItemRef, FileVideoSourceSpec, SeekableVideoContent, VideoItem
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.browser_rows import (
@@ -19,6 +20,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
     OfferedAction,
     RowAction,
+    SectionAction,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
@@ -173,6 +175,63 @@ def test_search_reveals_matches_after_refresh(qtbot: QtBot) -> None:
     set_rows(view, rows)
 
     assert _required_item_row(view).isExpanded()
+
+
+def _says(view: SectionsView, text: str) -> bool:
+    """Return whether the view shows a label with *text*."""
+    return any(label.isVisible() and label.text() == text for label in view.findChildren(QLabel))
+
+
+def _clip_row() -> WorkspaceBrowserRow:
+    return WorkspaceBrowserRow(row_id="clip", label="clip", icon_kind="video")
+
+
+def test_a_view_says_what_is_missing_when_a_search_matches_nothing_or_nothing_is_listed(qtbot: QtBot) -> None:
+    view = SectionsView("test", "Test", Icon.WORKSPACE, empty_text="No videos")
+    qtbot.addWidget(view)
+    view.show()
+    view.set_sections(())
+    assert _says(view, "No videos")
+
+    set_rows(view, (_clip_row(),))
+    assert not _says(view, "No videos")
+
+    search_box(view).setText("zzz")
+    assert _says(view, "No matches")
+
+    search_box(view).setText("cli")
+    assert not _says(view, "No matches")
+
+
+def test_a_search_matching_no_saved_row_says_so_beside_a_section_with_nothing_to_list(qtbot: QtBot) -> None:
+    view = new_view()
+    qtbot.addWidget(view)
+    view.show()
+    view.set_sections(
+        (
+            WorkspaceBrowserSection(BrowserSection.VIDEOS, (_clip_row(),)),
+            WorkspaceBrowserSection(BrowserSection.NETWORK, ()),
+        )
+    )
+    assert _says(view, "No new cameras")
+
+    search_box(view).setText("zzz")
+    assert _says(view, "No matches")
+
+
+def test_a_search_matching_no_saved_camera_says_so_while_the_live_section_stays_for_its_add_stream(
+    qtbot: QtBot,
+) -> None:
+    view = new_view()
+    qtbot.addWidget(view)
+    view.show()
+    camera = WorkspaceBrowserRow(row_id="cam", label="Entrance", icon_kind="live_video")
+    add_stream = SectionAction("Add stream", Icon.ADD, lambda: None)
+    view.set_sections((WorkspaceBrowserSection(BrowserSection.LIVE, (camera,), add_stream),))
+    assert not _says(view, "No matches")
+
+    search_box(view).setText("zzz")
+    assert _says(view, "No matches")
 
 
 def test_hidden_rows_are_revealed_without_unhiding_and_stay_filtered_in_search(qtbot: QtBot) -> None:

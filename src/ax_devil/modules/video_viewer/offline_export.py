@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QWidget
 
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.video_viewer.offline_lane import OfflineLane
 
 
@@ -28,7 +29,7 @@ def run_lane_export(
         return
     inputs = [lane.export_lane() for lane in lanes]
     if any(lane is None for lane in inputs):
-        QMessageBox.warning(container, "Export video", "Render catalogs are still loading. Try again in a moment.")
+        notify(container, "Export video", "Render catalogs are still loading. Try again in a moment.")
         return
 
     # Pause playback so the export has exclusive access to the decoder

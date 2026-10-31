@@ -102,8 +102,6 @@ def test_failed_close_save_retains_preview_without_recording_completion(
     qtbot: QtBot, config: ConfigManager, settings: GlobalSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A failed save keeps the live choice but leaves setup pending and the saved document intact."""
-    from PySide6.QtWidgets import QMessageBox
-
     config.save()
     previous_document = config.config_path.read_bytes()
     previous_ui = config.get_raw("ui").copy()
@@ -112,7 +110,7 @@ def test_failed_close_save_retains_preview_without_recording_completion(
         raise OSError("Read-only configuration")
 
     monkeypatch.setattr(config, "save", fail_save)
-    monkeypatch.setattr(QMessageBox, "warning", lambda *_args: QMessageBox.StandardButton.Ok)
+    monkeypatch.setattr("ax_devil.modules.application_shell.quick_setup_dialog.notify", lambda *_args: None)
     with QuickSetupDialog() as dialog:
         qtbot.addWidget(dialog)
         dialog.theme_row.select(ThemeMode.DARK)

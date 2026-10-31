@@ -195,7 +195,9 @@ class BaseVideoControlPanel(FadingWidget):
 
     def _update_play_button(self) -> None:
         self.play_pause_btn.setIcon(video_control_icon(Icon.PAUSE if self._playing else Icon.PLAY))
-        self.play_pause_btn.setToolTip("Pause" if self._playing else "Play")
+        label = "Pause" if self._playing else "Play"
+        self.play_pause_btn.setToolTip(label)
+        self.play_pause_btn.setAccessibleName(label)
 
     def set_playing(self, playing: bool, *, emit_signals: bool = True) -> None:
         if playing == self._playing:

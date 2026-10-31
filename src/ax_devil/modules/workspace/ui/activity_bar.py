@@ -93,8 +93,9 @@ class ActivityBar(QWidget):
         return button
 
     def add_action(self, icon: Icon, tooltip: str, activate: Callable[[], None]) -> QToolButton:
-        """Add an action button below the earlier ones at the bottom."""
+        """Add an action button below the earlier ones at the bottom, named *tooltip* for screen readers."""
         button = self._new_button(icon, tooltip, activate)
+        button.setAccessibleName(tooltip)
         self._action_buttons.append(button)
         self._actions.addWidget(button)
         return button
@@ -124,6 +125,7 @@ class ActivityBar(QWidget):
 
     def _show_look(self, view: SidebarView, button: _BarButton) -> None:
         """Give *button* the view's title, with a warning badge and the warning while the view has one."""
+        button.setAccessibleName(view.title)
         warning = self._warnings.get(view.view_id, "")
         if warning:
             button.set_badge(Icon.WARNING.icon(StatusColor.WARNING.color(self.palette()), stroke=2.5))

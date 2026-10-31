@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 import pytest
@@ -25,8 +25,12 @@ from ax_devil.modules.workspace.core import (
 )
 from ax_devil.modules.workspace.ui.live_view import LiveView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
+from ax_devil.modules.workspace.ui.split_view import SplitView
 from tests.helpers.shortcuts import make_shortcut_manager
 from tests.helpers.workspace import DummyViewer, FakePrompts, recent_workspace_names
+
+if TYPE_CHECKING:
+    from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 
 class _FocusedWidget:
@@ -84,6 +88,12 @@ class _RoutingSession:
         """Match the workspace session teardown API."""
 
 
+def _route_through(window: MainWindow, session: _RoutingSession) -> None:
+    """Make *session* the window's session, as if its focused viewer had just been focused."""
+    window._workspace_session = cast(WorkspaceSession, session)
+    window._enable_viewer_actions(cast("ViewerWidget | None", session.focused_widget()))
+
+
 def test_play_pause_shortcut_routes_to_focused_workspace_widget(
     qtbot: QtBot,
     render_catalog_manager: SceneRenderCatalogManager,
@@ -92,7 +102,7 @@ def test_play_pause_shortcut_routes_to_focused_workspace_widget(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
+    _route_through(window, _RoutingSession(focused_widget))
 
     manager.get_action("playback.play_pause").trigger()
 
@@ -107,7 +117,7 @@ def test_playback_shortcuts_route_to_the_focused_viewer(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
+    _route_through(window, _RoutingSession(focused_widget))
 
     manager.get_action("playback.step_forward").trigger()
     manager.get_action("playback.step_backward_10").trigger()
@@ -126,7 +136,7 @@ def test_export_video_is_in_view_menu_on_ctrl_e_and_exports_the_focused_viewer(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
+    _route_through(window, _RoutingSession(focused_widget))
     action = manager.get_action("view.export_video")
 
     assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["View"]
@@ -145,7 +155,7 @@ def test_media_tools_action_is_in_view_menu_and_routes_to_focused_widget(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
+    _route_through(window, _RoutingSession(focused_widget))
     action = manager.get_action("view.toggle_media_tools")
     menus = [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)]
 
@@ -165,7 +175,7 @@ def test_add_bookmark_is_in_view_menu_on_m_and_bookmarks_the_focused_viewer(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     session = _RoutingSession(_FocusedWidget())
-    window._workspace_session = cast(WorkspaceSession, session)
+    _route_through(window, session)
     action = manager.get_action("view.add_bookmark")
 
     assert [menu.title() for menu in action.associatedObjects() if isinstance(menu, QMenu)] == ["View"]
@@ -174,6 +184,46 @@ def test_add_bookmark_is_in_view_menu_on_m_and_bookmarks_the_focused_viewer(
     action.trigger()
 
     assert session.bookmark_requests == 1
+
+
+def test_viewer_actions_follow_whether_a_viewer_is_open_and_sidebar_and_fullscreen_show_their_state(
+    qtbot: QtBot,
+    render_catalog_manager: SceneRenderCatalogManager,
+    tmp_path: Path,
+) -> None:
+    manager = make_shortcut_manager()
+    window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
+    qtbot.addWidget(window)
+    session = window._workspace_session
+    viewer_actions = [manager.get_action(action_id) for action_id in ("view.zoom_in", "view.export_video")]
+    assert not any(action.isEnabled() for action in viewer_actions)
+
+    video = tmp_path / "lot.mp4"
+    video.write_bytes(b"")
+    with patch("ax_devil.modules.video_viewer.offline_video_viewer.OfflineVideoViewerWidget", DummyViewer):
+        session.add_items([VideoItem(video=video)])
+        qtbot.waitUntil(lambda: session.focused_widget() is not None)  # Items resolve in the background.
+    assert all(action.isEnabled() for action in viewer_actions)
+
+    viewer = session.focused_widget()
+    assert viewer is not None
+    split_view = window.findChild(SplitView)
+    assert split_view is not None
+    split_view.remove_viewer_widget(viewer)
+    assert not any(action.isEnabled() for action in viewer_actions)
+
+    sidebar = manager.get_action("view.toggle_sidebar")
+    assert sidebar.isChecked()
+    sidebar.trigger()
+    assert not session.widget().is_sidebar_shown()
+    assert not sidebar.isChecked()
+    session.widget().toggle_sidebar()
+    assert sidebar.isChecked()
+
+    fullscreen = manager.get_action("view.toggle_fullscreen")
+    assert fullscreen.text() == "Fullscreen"
+    assert fullscreen.isCheckable()
+    assert not fullscreen.isChecked()
 
 
 def test_render_catalogs_action_is_in_view_menu_and_opens_the_catalog_viewer(
@@ -203,7 +253,7 @@ def test_zoom_actions_are_in_view_menu_and_route_to_focused_widget(
     window = MainWindow(shortcut_manager=manager, render_catalog_manager=render_catalog_manager)
     qtbot.addWidget(window)
     focused_widget = _FocusedWidget()
-    window._workspace_session = cast(WorkspaceSession, _RoutingSession(focused_widget))
+    _route_through(window, _RoutingSession(focused_widget))
     expected = {
         "view.zoom_in": ("Ctrl++", ZoomStep.IN),
         "view.zoom_out": ("Ctrl+-", ZoomStep.OUT),

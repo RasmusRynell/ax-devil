@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPalette
 from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QWidget
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
 
 _MARK_PX = 8
@@ -17,11 +18,18 @@ _RULE_ALPHA = 0.12
 
 
 def paint_section_caption(
-    painter: QPainter, rect: QRect, palette: QPalette, text: str, mark: QColor, aside: str = ""
+    painter: QPainter,
+    rect: QRect,
+    palette: QPalette,
+    text: str,
+    mark: QColor,
+    aside: str = "",
+    aside_color: QColor | None = None,
 ) -> None:
     """Draw a caption in *rect*: *mark* as a small square, *text*, and a rule from the text to the right edge.
 
-    A non-empty *aside* is drawn muted at the right edge, elided to the room the text leaves, with the rule between.
+    A non-empty *aside* is drawn at the right edge, muted unless given *aside_color*, elided to the room the text
+    leaves, with the rule between.
     """
     rect = rect.adjusted(Space.S, 0, -Space.S, 0)
     center_y = rect.center().y()
@@ -46,6 +54,8 @@ def paint_section_caption(
     if aside and rule_left < rect.right():
         aside_font = TextRole.SMALL.font()
         painter.setFont(aside_font)
+        if aside_color is not None:
+            painter.setPen(aside_color)
         shown = QFontMetrics(aside_font).elidedText(aside, Qt.TextElideMode.ElideRight, rect.right() - rule_left)
         painter.drawText(
             QRect(rule_left, rect.top(), rect.right() - rule_left + 1, rect.height()),
@@ -86,6 +96,7 @@ class SectionCaption(QWidget):
         self._folded = folded
         self._arrow_px = arrow_px
         self._aside = ""
+        self._aside_status: StatusColor | None = None
         if folded is not None:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         follow_appearance(self, lambda: self.setFixedHeight(Height.ROW.px))
@@ -94,10 +105,11 @@ class SectionCaption(QWidget):
         """Return the text the caption shows."""
         return self._text
 
-    def set_aside(self, text: str) -> None:
-        """Show *text* muted at the right end of the caption, elided to fit; the caption keeps its height when it is
-        empty."""
+    def set_aside(self, text: str, status: StatusColor | None = None) -> None:
+        """Show *text* at the right end of the caption, elided to fit, muted or in *status* color; the caption keeps
+        its height when it is empty."""
         self._aside = text
+        self._aside_status = status
         self.update()
 
     def aside(self) -> str:
@@ -119,4 +131,7 @@ class SectionCaption(QWidget):
             self.style().drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorBranch, arrow, painter, self)
             # The caption keeps its own inset before the mark; the arrow stands in most of it.
             rect = rect.adjusted(self._arrow_px - Space.S, 0, 0, 0)
-        paint_section_caption(painter, rect, self.palette(), self._text, self._mark(self.palette()), self._aside)
+        aside_color = None if self._aside_status is None else self._aside_status.color(self.palette())
+        paint_section_caption(
+            painter, rect, self.palette(), self._text, self._mark(self.palette()), self._aside, aside_color
+        )

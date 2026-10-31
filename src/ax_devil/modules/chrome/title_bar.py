@@ -160,6 +160,10 @@ class TitleBar(QWidget):
         btn.setAutoRaise(True)
         btn.setIcon(icon.icon())
         btn.setToolTip(tooltip)
+        btn.setAccessibleName(tooltip)
+        # Like the desktop's own title bar: the window controls stay out of the tab order, where an invisible focus
+        # would also take a dialog's initial focus from its own controls.
+        btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         return btn
 
@@ -171,7 +175,9 @@ class TitleBar(QWidget):
             return
         maximized = self._window.isMaximized()
         self._btn_max.setIcon((Icon.RESTORE if maximized else Icon.MAXIMIZE).icon())
-        self._btn_max.setToolTip("Restore" if maximized else "Maximize")
+        name = "Restore" if maximized else "Maximize"
+        self._btn_max.setToolTip(name)
+        self._btn_max.setAccessibleName(name)
 
     def _apply_appearance(self) -> None:
         """Size the bar and its buttons to the text, and color them from the current palette."""

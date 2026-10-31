@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QMessageBox
 
+from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import Bookmark, BookmarkKind, BookmarkPosition
 from ax_devil.modules.workspace.core.bookmark_csv import write_bookmarks_csv
@@ -79,7 +79,7 @@ class BookmarksViewController(QObject):
             write_bookmarks_csv(path, (row for group in self._groups for row in group.csv_rows()))
         except OSError as exc:
             logger.warning(f"Could not export bookmarks to {path}: {exc}")
-            QMessageBox.warning(self._view, "Export CSV", f"Could not write {path}: {exc}")
+            notify(self._view, "Export CSV", f"Could not write {path}: {exc}")
 
     def _on_bookmarks_changed(self) -> None:
         self._active_id = None

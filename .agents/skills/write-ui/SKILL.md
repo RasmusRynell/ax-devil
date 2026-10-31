@@ -20,7 +20,7 @@ choosing its own sizes and colors.
 | Restyle on theme or text-size change | `follow_appearance(widget, apply)` | `modules/chrome/appearance.py` |
 | Colors | `palette(...)` in stylesheets, `QPalette` roles when painting, `StatusColor` for success/warning/error | `modules/chrome/theme.py` |
 | Palette color with alpha in a stylesheet | `palette_color_css` | `modules/chrome/palette_css.py` |
-| Status-colored text | `StatusColor.<NAME>.css(palette)` | `modules/chrome/theme.py` |
+| Status-colored label text | `show_status(label, StatusColor.<NAME>)`; muted labels use `setForegroundRole(PlaceholderText)`, never a stylesheet color | `modules/chrome/theme.py` |
 | Icons | `Icon.<NAME>.icon()` follows the theme on its own; pass a color only for status or the video scrim. Add a Lucide SVG to `src/ax_devil/resources/icons/` for a new one | `modules/chrome/icons.py` |
 | Action button | `QPushButton`, or `SmallButton` for compact rows; appearance comes from the shared theme | `modules/chrome/theme.py`, `small_button.py` |
 | Button that opens a menu (`Filter ⌄`) | `MenuButton(text, menu)` | `modules/chrome/menu_button.py` |
@@ -29,7 +29,7 @@ choosing its own sizes and colors.
 | Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
 | Pick one of two or three values in a form row or dialog | `ChoiceToggle(choices, current)`; `changed(value)`, `size_at(text_px)` | `modules/chrome/choice_toggle.py` |
-| Question with a few labeled answers | `ask(...)`, never `QMessageBox` | `modules/chrome/choice_dialog.py` |
+| Question with a few labeled answers | `ask(...)`, or `notify(...)` for a notice with OK; never `QMessageBox` | `modules/chrome/choice_dialog.py` |
 | Independent on/off options as chips that wrap onto more rows | `ToggleChips(items)`; `toggled(key, checked)`, `chip(key)`, `set_checked(key, checked)` | `modules/chrome/toggle_chip.py` |
 | Panel of controls that opens under a button, closes on Escape or an outside click | subclass `Popover`; call `open_below(button, width)`. Never `QMenu` with a `QWidgetAction` | `modules/chrome/popover.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |

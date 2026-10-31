@@ -256,6 +256,7 @@ class CatalogViewerWindow(ChromeWindow):
             self._catalogs.addItem(listing.label(path), path)
         self._catalogs.setCurrentIndex(paths.index(self._path))
         self._catalogs.blockSignals(False)
+        self._catalogs.setToolTip(listing.label(self._path))  # The closed box elides a long name.
         self._file.set_full_text(str(self._path))
 
     def _show_state(self) -> None:

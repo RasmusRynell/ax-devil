@@ -34,6 +34,7 @@ class ApplicationWindow(QWidget):
     """
 
     files_dropped = Signal(list)
+    sidebar_shown_changed = Signal(bool)
 
     def __init__(
         self,
@@ -90,7 +91,8 @@ class ApplicationWindow(QWidget):
             self.show_view(view_id)
 
     def _show_current_view(self) -> None:
-        """Check the button of the view on screen, or none while the sidebar is hidden."""
+        """Check the button of the view on screen, or none while the sidebar is hidden, and announce the state."""
+        self.sidebar_shown_changed.emit(self.is_sidebar_shown())
         self._activity_bar.set_current_view(self._sidebar.current_view_id() if self.is_sidebar_shown() else None)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802

@@ -106,6 +106,7 @@ class LoginsEditor(QWidget):
             row_layout.addWidget(field, 1)
         remove = SmallButton("", Icon.REMOVE)
         remove.setToolTip("Remove this login")
+        remove.setAccessibleName("Remove login")
         remove.clicked.connect(lambda: self._remove(row))
         row_layout.addWidget(remove)
         self._list.insertWidget(len(self._rows), row)

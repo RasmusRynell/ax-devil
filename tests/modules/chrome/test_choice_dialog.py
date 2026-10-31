@@ -1,10 +1,11 @@
 """The question dialog returns the answer of the button the user pressed, and None when it is dismissed."""
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.choice_dialog import ChoiceDialog
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
+from tests.helpers.dialogs import content_scroll
 from tests.helpers.widgets import button
 
 
@@ -32,3 +33,15 @@ def test_only_a_button_ends_the_question(qtbot: QtBot) -> None:
     dialog.close()
     assert dialog.isVisible()
     assert dialog.answer is None
+
+
+def test_a_long_notice_scrolls_with_its_button_in_view(qtbot: QtBot) -> None:
+    """A notice taller than the screen scrolls instead of clipping, and OK stays visible."""
+    dialog = ChoiceDialog(
+        "Open Content", "\n".join(f"Clip {index}: could not open" for index in range(200)), {"OK": True}, True
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    QApplication.processEvents()
+    assert content_scroll(dialog).verticalScrollBar().maximum() > 0
+    assert dialog.rect().contains(button(dialog, "OK").geometry())

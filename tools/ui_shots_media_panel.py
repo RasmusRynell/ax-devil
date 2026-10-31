@@ -108,7 +108,7 @@ def media_tools_screenshots(
     # One video: the SHOWN_FRAME has objects 1, 2, 4, 5, 7; object 6 ended earlier and 8 ends one frame before.
     window.resize(*WINDOW_SIZES["wide"])
     viewer = open_video(qtbot, window, "Tracked video")
-    trigger(window, "Media Tools Panel")
+    trigger(window, "Toggle Media Tools Panel")
     qtbot.wait(500)
     panel = viewer.findChild(MediaToolsPanel)
     assert panel is not None

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QLabel, QLineEdit, QWidget
 
 from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.form_layout import FormLayout
+from ax_devil.modules.chrome.theme import StatusColor, show_status
 from ax_devil.modules.workspace.core import ItemResolution, PlaylistItem
 from ax_devil.modules.workspace.ui.add_content.playlist_settings import PlaylistSettingsUI
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
@@ -59,12 +61,23 @@ class AddPlaylistDialog(BaseDialog):
         self._message_label.setForegroundRole(QPalette.ColorRole.PlaceholderText)
         self.add_content_widget(self._message_label)
 
+    def _show_message(self, text: str, status: StatusColor | None = None) -> None:
+        """Show *text* under the form, colored by *status* when given, growing the open dialog to fit it so the
+        reason is never scrolled out of view."""
+        self._message_label.setText(text)
+        show_status(self._message_label, status)
+        QTimer.singleShot(0, self, self._fit_to_message)
+
+    def _fit_to_message(self) -> None:
+        self._scroll_area.updateGeometry()  # The scroll area's hint changed, which its dialog's layout cannot see.
+        self._refit_when_laid_out()
+
     def _on_item_ready(self, item: PlaylistItem) -> None:
         if self._resolution.pending:
             return
         item = replace(item, label=self._name_edit.text().strip())
         self._settings.setEnabled(False)
-        self._message_label.setText("Finding playlists…")
+        self._show_message("Finding playlists…")
         self._resolution.start(
             lambda result, _error: self._resolver.resolve(item, result),
             on_result=self._on_resolved,
@@ -81,7 +94,7 @@ class AddPlaylistDialog(BaseDialog):
 
     def _on_resolution_error(self, error: Exception) -> None:
         self._settings.setEnabled(True)
-        self._message_label.setText(str(error))
+        self._show_message(str(error), StatusColor.ERROR)
 
     def get_result(self) -> ItemResolution | None:
         """Return the resolved Playlist Item of the accepted dialog session, or None if it was cancelled."""

@@ -134,7 +134,23 @@ def test_header_details_hide_in_narrow_panes_without_widening_them(qtbot: QtBot)
     pane.show()
     QApplication.processEvents()
     assert pane.header_details() == "1920×1080 · 29.97 fps · 1:02:03"
+    assert pane._details_label.width() >= pane._details_label.sizeHint().width()  # Shown in full, not zero wide.
 
     pane.resize(narrowest + 40, 300)
     QApplication.processEvents()
     assert pane.header_details() == ""
+
+
+def test_long_pane_title_elides_instead_of_widening_the_pane(qtbot: QtBot) -> None:
+    """A long name is cut with an ellipsis and keeps its whole text in the tooltip; the pane stays narrow."""
+    pane = _Pane()
+    qtbot.addWidget(pane)
+    narrowest = pane.minimumSizeHint().width()
+    name = "Quarterly review of the north entrance cameras second pass final v2 night shift run"
+    pane.set_display_name(name)
+    pane.resize(300, 200)
+    pane.show()
+    QApplication.processEvents()
+    assert pane.minimumSizeHint().width() == narrowest
+    assert pane._title_label.text().endswith("…") and pane._title_label.full_text() == name
+    assert name in pane._title_label.toolTip()

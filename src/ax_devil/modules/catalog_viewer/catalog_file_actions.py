@@ -6,12 +6,12 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QWidget
 
 from ax_devil.modules.background_jobs import LatestRequest
 from ax_devil.modules.catalog_viewer.new_catalog_dialog import NewCatalogDialog
 from ax_devil.modules.chrome import BaseDialog
-from ax_devil.modules.chrome.choice_dialog import ask
+from ax_devil.modules.chrome.choice_dialog import ask, notify
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogFile,
     SceneRenderCatalogListing,
@@ -65,7 +65,7 @@ class CatalogFileActions:
         self._show_catalog(created.path)
 
     def _warn_create(self, error: Exception) -> None:
-        QMessageBox.warning(self._window, "New Catalog", f"Could not create the catalog: {error}")
+        notify(self._window, "New Catalog", f"Could not create the catalog: {error}")
 
     def apply_to_all(self) -> None:
         self._request.start(
@@ -78,7 +78,7 @@ class CatalogFileActions:
 
     def _warn_apply(self, error: Exception) -> None:
         self._load_failed(error)
-        QMessageBox.warning(self._window, "Apply to All", f"Could not use the catalog: {error}")
+        notify(self._window, "Apply to All", f"Could not use the catalog: {error}")
 
     def use_as_default(self) -> None:
         self._request.start(
@@ -99,7 +99,7 @@ class CatalogFileActions:
         self._warn_default(error)
 
     def _warn_default(self, error: Exception) -> None:
-        QMessageBox.warning(self._window, "Use as Default", f"Could not make the catalog the default: {error}")
+        notify(self._window, "Use as Default", f"Could not make the catalog the default: {error}")
 
     def _action_done(self, _result: None) -> None:
         self._reload()
@@ -124,7 +124,7 @@ class CatalogFileActions:
         try:
             self._manager.delete_catalog(self._path())
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self._window, "Delete Catalog", f"Could not delete the catalog: {error}")
+            notify(self._window, "Delete Catalog", f"Could not delete the catalog: {error}")
             return
         self._request.start(
             lambda result, error: self._manager.refresh_catalogs(on_done=result, on_failed=error),

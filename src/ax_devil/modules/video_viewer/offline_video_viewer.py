@@ -137,6 +137,7 @@ class OfflineVideoViewerWidget(ViewerWidget):
                 # Tearing down a focused display hands the focus to another widget, such as a search field.
                 self.setFocus(Qt.FocusReason.OtherFocusReason)
             self._teardown_runtime()
+            self._set_banner(None)  # What it said was about the entry left.
             self._current_index = index
             self._start_frame = start_frame
             self._update_nav_state()
@@ -221,6 +222,8 @@ class OfflineVideoViewerWidget(ViewerWidget):
         if runtime is None:
             self._pending_lane_focus = None
             release_media(media)
+            if self._runtime is None and len(self._navigation.get_entries()) > 1:
+                self._transport.show_idle()
             message = f"Could not {'reload' if keep_shown else 'load'} entry {index + 1}: {error}"
             if keep_shown and self._reload_offered():
                 logger.warning(message)  # The source changed again meanwhile: keep the offer to reload that data.

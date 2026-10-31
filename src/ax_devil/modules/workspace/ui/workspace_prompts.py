@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from PySide6.QtWidgets import QFileDialog, QWidget
 
-from ax_devil.modules.chrome.choice_dialog import ask
+from ax_devil.modules.chrome.choice_dialog import ask, notify
 from ax_devil.modules.workspace.core import WORKSPACE_FILE_SUFFIX
 
 _FILE_FILTER = f"Workspaces (*{WORKSPACE_FILE_SUFFIX})"
@@ -57,4 +57,4 @@ class DialogPrompts:
 
     def show_error(self, message: str) -> None:
         """Show *message* as a warning."""
-        QMessageBox.warning(self._parent, "Workspace", message)
+        notify(self._parent, "Workspace", message)

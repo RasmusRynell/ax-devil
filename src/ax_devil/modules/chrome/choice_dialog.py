@@ -27,7 +27,7 @@ class ChoiceDialog(BaseDialog, Generic[_AnswerT]):
         default: _AnswerT,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent, title=title, scroll_content=False, closable=False)
+        super().__init__(parent, title=title, closable=False)
         self.setMinimumHeight(0)
         self.answer: _AnswerT | None = None
         message = QLabel(text)
@@ -56,3 +56,8 @@ def ask(parent: QWidget | None, title: str, text: str, choices: Mapping[str, _An
         dialog.exec()
         assert dialog.answer is not None
         return dialog.answer
+
+
+def notify(parent: QWidget | None, title: str, text: str) -> None:
+    """Show a notice the user acknowledges with OK."""
+    ask(parent, title, text, {"OK": True}, True)

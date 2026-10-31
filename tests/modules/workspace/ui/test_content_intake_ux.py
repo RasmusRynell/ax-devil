@@ -123,6 +123,10 @@ def test_clicking_welcome_rows_triggers_shortcut_actions(qtbot: QtBot) -> None:
     welcome.set_shortcut_manager(manager)
     host.show()
 
+    order = ("Open Workspace", "Add Video", "Add Live Stream", "Add Playlist", "Keyboard Shortcuts", "Settings")
+    heights = [_row_center(welcome, label).y() for label in order]
+    assert heights == sorted(heights)
+
     triggered: list[bool] = []
     manager.get_action("app.add_video").triggered.connect(lambda: triggered.append(True))
 
