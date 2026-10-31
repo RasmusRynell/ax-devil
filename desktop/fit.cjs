@@ -11,11 +11,12 @@ module.exports = function fit() {
     rect.bottom <= box.bottom + 1;
   const viewport = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
 
-  // The title bar and activity bar controls are all on screen without scrolling, and nothing covers them.
+  // Every visible shell action fits without scrolling, and nothing covers it.
   for (const control of document.querySelectorAll(
-    "header button, nav[aria-label=Activity] button",
+    "header button, nav[aria-label=Activity] button, aside button, aside input, main button",
   )) {
     const rect = control.getBoundingClientRect();
+    if (!rect.width || !rect.height) continue;
     const name = control.ariaLabel || control.textContent;
     if (!inside(rect, viewport)) problems.push(`control outside the window: ${name}`);
     const top = document.elementFromPoint(

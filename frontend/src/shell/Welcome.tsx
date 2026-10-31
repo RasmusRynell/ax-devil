@@ -9,13 +9,21 @@ const GROUPS: readonly { heading: string; ids: readonly string[] }[] = [
 
 const row = (id: string): Row => {
   const { label, shortcut } = command(id);
-  return { id, label, trailing: shortcut && <KeyChips shortcut={shortcut} /> };
+  return {
+    id,
+    label,
+    trailing: shortcut && (
+      <span className="hidden sm:contents">
+        <KeyChips shortcut={shortcut} />
+      </span>
+    ),
+  };
 };
 
 /** The central welcome area: the main commands with their keys. */
 export function Welcome({ onRun }: { onRun: (id: string) => void }) {
   return (
-    <div className="flex w-welcome max-w-full flex-col gap-xl m-auto p-xl">
+    <div className="m-auto grid w-full max-w-full grid-cols-2 gap-m p-m sm:flex sm:w-welcome sm:flex-col sm:gap-xl sm:p-xl">
       {GROUPS.map(({ heading, ids }) => (
         <RowList key={heading} heading={heading} rows={ids.map(row)} onSelect={onRun} />
       ))}
