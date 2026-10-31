@@ -11,8 +11,8 @@ from PySide6.QtWidgets import QPushButton
 from pytestqt.qtbot import QtBot
 from shiboken6 import isValid
 
-from ax_devil.modules.catalog_viewer import CatalogViewerWindow
 from ax_devil.modules.catalog_viewer.new_catalog_dialog import NewCatalogDialog
+from ax_devil.modules.catalog_viewer.window import CatalogViewerWindow
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalogFile,
     SceneRenderCatalogManager,

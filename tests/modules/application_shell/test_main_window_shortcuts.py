@@ -10,7 +10,8 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
+from ax_devil.modules.catalog_viewer.viewer_registry import close_catalog_viewer
+from ax_devil.modules.catalog_viewer.window import CatalogViewerWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
