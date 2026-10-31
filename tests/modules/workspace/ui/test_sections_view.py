@@ -20,6 +20,7 @@ from ax_devil.modules.workspace.ui.browser_rows import (
     BrowserSection,
     OfferedAction,
     RowAction,
+    SectionAction,
     WorkspaceBrowserRow,
     WorkspaceBrowserSection,
 )
@@ -213,6 +214,21 @@ def test_a_search_matching_no_saved_row_says_so_beside_a_section_with_nothing_to
         )
     )
     assert _says(view, "No new cameras")
+
+    search_box(view).setText("zzz")
+    assert _says(view, "No matches")
+
+
+def test_a_search_matching_no_saved_camera_says_so_while_the_live_section_stays_for_its_add_stream(
+    qtbot: QtBot,
+) -> None:
+    view = new_view()
+    qtbot.addWidget(view)
+    view.show()
+    camera = WorkspaceBrowserRow(row_id="cam", label="Entrance", icon_kind="live_video")
+    add_stream = SectionAction("Add stream", Icon.ADD, lambda: None)
+    view.set_sections((WorkspaceBrowserSection(BrowserSection.LIVE, (camera,), add_stream),))
+    assert not _says(view, "No matches")
 
     search_box(view).setText("zzz")
     assert _says(view, "No matches")

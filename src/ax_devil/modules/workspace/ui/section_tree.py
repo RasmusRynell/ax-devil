@@ -123,12 +123,18 @@ class SectionTree(FirstLineBranchTree):
         return bool(self._sections)
 
     def shows_rows(self) -> bool:
-        """Return whether any section that has rows is on screen; a search that matches no row leaves none, whatever
-        a section with nothing to list says."""
-        return any(
-            section.rows and heading is not None and not heading.isHidden()
-            for section, heading in zip(self._sections, (self.topLevelItem(i) for i in range(self.topLevelItemCount())))
-        )
+        """Return whether a row is shown, or a section's count points to matches the filter leaves out; a search that
+        matches no row leaves neither, whatever a section kept for its own actions says."""
+        for index in range(self.topLevelItemCount()):
+            heading = self.topLevelItem(index)
+            if heading is None or heading.isHidden():
+                continue
+            if heading.data(0, _HIDDEN_ROLE) or any(
+                (child := heading.child(position)) is not None and not child.isHidden()
+                for position in range(heading.childCount())
+            ):
+                return True
+        return False
 
     def _rebuild(self) -> None:
         """Build the items and the widgets of the rows that can be seen, for the current palette and text size."""

@@ -98,6 +98,8 @@ class OfflineTransport:
         if self._panel is not None:
             self._panel.show_video(total_frames=0, frame_rate=0.0)
             self._panel.set_hover_sink(None)
+            if self._visibility is not None:
+                self._visibility.cleanup()  # Stops an idle timer that a hover on the entry left would hide the bar by.
 
     def set_speed(self, speed: float, runtime: OfflineSession | None) -> None:
         """Remember speed across entries and apply it to the active playback."""
