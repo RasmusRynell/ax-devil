@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 import re
-import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any, cast
 
+from ax_devil.core.atomic_file import open_replaceable_text, write_atomically
 from ax_devil.core.cancellation import NEVER, CancelToken
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATH, BUILT_IN_CATALOG_PATHS
+from ax_devil.modules.scene.rendering.catalog_loader import SceneRenderCatalogLoader, catalog_body_hash
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.paths import DEFAULT_RENDER_CATALOG_CHOICE_FILENAME, RENDER_CATALOGS_DIR
@@ -25,6 +26,21 @@ logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
+class SceneRenderCatalogOrigin:
+    """The built-in catalog a user catalog was copied from; information only, nothing acts on it."""
+
+    based_on: str
+    """The built-in catalog's name, or its id when that catalog no longer ships."""
+    modified: bool
+    """Whether the catalog's templates or recipes differ from the built-in catalog as it was when copied."""
+
+    @property
+    def note(self) -> str:
+        """Return the short text that tells where the catalog came from."""
+        return f"copy of {self.based_on}, modified" if self.modified else f"copy of {self.based_on}"
+
+
+@dataclass(frozen=True, slots=True)
 class SceneRenderCatalogFile:
     """One render catalog JSON file: a built-in catalog that comes with the app or a file in the user catalog store."""
 
@@ -32,6 +48,7 @@ class SceneRenderCatalogFile:
     name: str
     path: Path
     is_built_in: bool = False
+    origin: SceneRenderCatalogOrigin | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +158,8 @@ class SceneRenderCatalogStore:
         document = _read_catalog_document(base_path)
         slug = self._unique_slug(catalog_name)
         metadata = _catalog_metadata(document, base_path)
+        if base_path in self.built_in_catalog_paths:
+            metadata["origin"] = {"based_on": metadata.get("id"), "base_hash": catalog_body_hash(document)}
         metadata["description"] = f"Based on {metadata.get('name', base_path.stem)}."
         metadata["id"] = f"user.{slug}"
         metadata["name"] = catalog_name
@@ -216,7 +235,22 @@ def _catalog_file(path: Path, *, is_built_in: bool = False) -> SceneRenderCatalo
         raise TemplateRuntimeError(f"Scene render catalog file '{path}' must contain metadata.id.")
     if not isinstance(name, str) or not name:
         raise TemplateRuntimeError(f"Scene render catalog file '{path}' must contain metadata.name.")
-    return SceneRenderCatalogFile(catalog_id=catalog_id, name=name, path=path, is_built_in=is_built_in)
+    origin = None if is_built_in else _catalog_origin(document, path)
+    return SceneRenderCatalogFile(catalog_id=catalog_id, name=name, path=path, is_built_in=is_built_in, origin=origin)
+
+
+def _catalog_origin(document: Mapping[str, Any], path: Path) -> SceneRenderCatalogOrigin | None:
+    metadata = _catalog_metadata(document, path)
+    if "origin" not in metadata:
+        return None
+    origin = metadata["origin"]
+    if not isinstance(origin, dict) or not all(isinstance(origin.get(key), str) for key in ("based_on", "base_hash")):
+        raise TemplateRuntimeError(f"Scene render catalog file '{path}' has an invalid metadata.origin.")
+    based_on: str = origin["based_on"]
+    base_hash: str = origin["base_hash"]
+    names = {built_in.catalog_id: built_in.name for built_in in map(_built_in_catalog_file, BUILT_IN_CATALOG_PATHS)}
+    modified = catalog_body_hash(document) != base_hash
+    return SceneRenderCatalogOrigin(based_on=names.get(based_on, based_on), modified=modified)
 
 
 def _configured_render_catalogs_dir() -> Path:
@@ -237,28 +271,23 @@ def _write_catalog_document(destination: Path, document: Mapping[str, Any]) -> N
 
 def _write_text(destination: Path, text: str) -> None:
     """Replace *destination* atomically, keeping the previous file if writing fails."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent, delete=False) as output:
-            temporary_path = Path(output.name)
-            output.write(text)
-        temporary_path.replace(destination)
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
+    with write_atomically(destination) as output:
+        output.write(text)
+
+
+def _read_text(path: Path) -> str:
+    with open_replaceable_text(path) as stream:
+        return stream.read()
 
 
 def _read_catalog_document(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(_read_text(path))
     if not isinstance(value, dict):
         raise TemplateRuntimeError(f"Scene render catalog file '{path}' must contain an object.")
     return cast(dict[str, Any], value)
 
 
 def _validate_catalog_document(document: Mapping[str, Any]) -> None:
-    from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalogLoader
-
     SceneRenderCatalogLoader().validate_document(document)
 
 

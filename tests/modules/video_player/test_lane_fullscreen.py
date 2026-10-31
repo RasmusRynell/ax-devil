@@ -141,7 +141,7 @@ def test_zoom_in_fullscreen_matches_peer_after_escape(qtbot: QtBot) -> None:
     layout.addWidget(second)
     image = QImage(1920, 1080, QImage.Format.Format_RGB32)
     image.fill(0)
-    frame = VideoFrameWithOverlays(VideoFrame(image, 0.0, 0), None)
+    frame = VideoFrameWithOverlays(VideoFrame(image, 0, 0), None)
     first.display_frame(frame)
     second.display_frame(frame)
     first.viewportChanged.connect(second.set_viewport)

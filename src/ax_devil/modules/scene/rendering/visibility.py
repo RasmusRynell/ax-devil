@@ -10,6 +10,7 @@ class OverlayFeature(str, Enum):
     OUTLINES = "outlines"
     IDS = "ids"
     CLASS_NAMES = "class_names"
+    SCORE = "score"
     CONFIDENCE = "confidence"
     SPEED = "speed"
     MOVEMENT = "movement"
@@ -23,6 +24,7 @@ class OverlayFeature(str, Enum):
             self.OUTLINES: "Object outlines",
             self.IDS: "Object IDs",
             self.CLASS_NAMES: "Class names",
+            self.SCORE: "Scores",
             self.CONFIDENCE: "Confidence",
             self.SPEED: "Speed arrows",
             self.MOVEMENT: "Movement badges",
@@ -37,7 +39,8 @@ class OverlayFeature(str, Enum):
             self.OUTLINES: "Bounding boxes, polygons and their associated fills.",
             self.IDS: "Displayed object identifiers.",
             self.CLASS_NAMES: "Classification text.",
-            self.CONFIDENCE: "Confidence numbers, bars and their backgrounds.",
+            self.SCORE: "Score numbers and their backgrounds.",
+            self.CONFIDENCE: "Confidence numbers and their backgrounds.",
             self.SPEED: "Velocity arrows and their heads.",
             self.MOVEMENT: "Motion-state symbols.",
             self.ATTRIBUTES: "Attribute badges, color swatches and related indicators.",

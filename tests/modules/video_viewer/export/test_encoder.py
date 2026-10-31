@@ -9,6 +9,7 @@ import av
 import pytest
 from PySide6.QtGui import QImage
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.video_viewer.export.encoder import VideoEncoder
 
 
@@ -42,10 +43,10 @@ def test_preserves_variable_frame_timestamps_and_last_duration(tmp_path: Path) -
 
     with av.open(str(output)) as container:
         frames = list(container.decode(video=0))
-        assert [round(frame.time * 1_000_000) for frame in frames] == [0, 40_000, 240_000]
+        assert [seconds_to_us(frame.time) for frame in frames] == [0, 40_000, 240_000]
         time_base = frames[-1].time_base
         assert time_base is not None
-        assert round(frames[-1].duration * time_base * 1_000_000) == 80_000
+        assert seconds_to_us(frames[-1].duration * time_base) == 80_000
 
 
 def test_preserves_fractional_frame_rate(tmp_path: Path) -> None:
@@ -53,14 +54,14 @@ def test_preserves_fractional_frame_rate(tmp_path: Path) -> None:
     output = tmp_path / "fractional.mp4"
     fps = 30_000 / 1001
     encoder = VideoEncoder(output, width=100, height=80, fps=fps)
-    timestamps = [index * 1_000_000 / fps for index in range(30)]
+    timestamps = [seconds_to_us(index / fps) for index in range(30)]
     for timestamp in timestamps:
         encoder.write_frame(_make_frame(), timestamp_us=timestamp)
     encoder.finish()
 
     with av.open(str(output)) as container:
-        actual = [round(frame.time * 1_000_000) for frame in container.decode(video=0)]
-    assert actual == [round(timestamp) for timestamp in timestamps]
+        actual = [seconds_to_us(frame.time) for frame in container.decode(video=0)]
+    assert actual == timestamps
 
 
 def test_failed_encoder_initialization_closes_output(tmp_path: Path) -> None:

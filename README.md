@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/src/ax_devil/resources/ax-devil-banner.png" alt="ax-devil — Development Utilities for Axis Devices" width="100%" />
+  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/src/ax_devil/resources/ax-devil-banner.png" alt="ax-devil — Axis camera viewer with analytics overlays" width="100%" />
 </p>
 
-**ax-devil** is a Linux desktop app for viewing video together with analytics overlays. Open recordings with
-their metadata or connect to a live Axis camera, inspect objects frame by frame, and compare results side by side.
+**ax-devil** is a Linux desktop app for viewing live Axis camera streams (RTSP, with ONVIF analytics) and offline
+recordings together with analytics overlays. Inspect objects frame by frame and compare results side by side.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/docs/media/demo-catalogs.webp" alt="ax-devil playing a highway recording with a car selected in the inspector while the overlays switch between render catalogs" width="100%" />
@@ -86,7 +86,7 @@ arrive over RTSP, MQTT, or Axis DataHub WebSocket.
 - **Export** — save video with overlays drawn in.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/docs/media/demo-compare.webp" alt="Two comparison lanes on the same highway recording: a simulated detector run (DET) beside ground truth (GT)" width="100%" />
+  <img src="https://raw.githubusercontent.com/RasmusRynell/ax-devil/main/docs/media/demo-compare.webp" alt="Two comparison lanes on the same highway recording: a simulated detector run (DET (simulated)) beside ground truth (GT), drawn with the Tracking render catalog" width="100%" />
 </p>
 
 ## Change how overlays look
@@ -101,7 +101,7 @@ attributes. Built-in catalogs:
 | **Chunky** | Thick outlines and large labels for small previews |
 | **Glass** | Rounded boxes, dark labels, score meters, and attribute tags |
 | **Tracking** | High-contrast boxes colored per object ID, for spotting ID switches |
-| **Classic** | IDs above boxes, class names below, confidence bars, and movement symbols |
+| **Classic** | IDs above boxes, class names below, score bars, and movement symbols |
 
 To make your own, open **View → Render Catalogs** (`Ctrl+R`) or run `ax-devil catalog`, pick a catalog, and choose
 **New copy**. Edit the JSON yourself or ask a coding agent. Changes show up when you save. [Catalog format →](https://github.com/RasmusRynell/ax-devil/blob/main/.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built)
@@ -127,7 +127,7 @@ Plugins run with your user permissions.
 
 ```bash
 make check
-QT_QPA_PLATFORM=offscreen make test
+make test
 ```
 
 [Architecture](https://github.com/RasmusRynell/ax-devil/blob/main/docs/architecture/overview.md) ·
@@ -140,5 +140,5 @@ QT_QPA_PLATFORM=offscreen make test
 [MIT](https://github.com/RasmusRynell/ax-devil/blob/main/LICENSE)
 
 Demo footage and ground truth: HighwayDrive from [UVG-VCM](https://tie-ultravideo.rd.tuni.fi/UVG-VCM/index.html),
-Ultra Video Group, Tampere University, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The DET lane is
+Ultra Video Group, Tampere University, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The DET (simulated) lane is
 simulated from that ground truth.

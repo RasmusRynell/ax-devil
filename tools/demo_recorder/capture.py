@@ -10,13 +10,14 @@ import random
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.theme import setup_theme
 from ax_devil.modules.plugin_system import ApplicationPluginLoader
@@ -28,6 +29,7 @@ from ax_devil.modules.settings.playback_settings import VideoCacheBudget
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.shortcuts.shortcuts import ShortcutManager
 from ax_devil.modules.video_viewer.export.encoder import CompressionPreset, VideoEncoder
+from ax_devil.modules.video_viewer.media_tools.object_list_rows import FileRow, FrameRow
 from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 from ax_devil.modules.video_viewer.offline_video_viewer import OfflineVideoViewerWidget
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
@@ -40,7 +42,7 @@ def frame_schedule(timestamps: Sequence[int], start: float, count: int, fps: int
     """Sample the actual source timeline; refuse a take that would freeze beyond its end."""
     if not timestamps:
         raise ValueError("The source has no frames")
-    times = [round((start + index / fps) * 1_000_000) + timestamps[0] for index in range(count)]
+    times = [seconds_to_us(start + index / fps) + timestamps[0] for index in range(count)]
     if times[-1] > timestamps[-1]:
         raise ValueError("Take extends beyond the source; reduce --frames or --start")
     return [max(0, bisect.bisect_right(timestamps, timestamp) - 1) for timestamp in times]
@@ -85,6 +87,30 @@ def apply_catalog(catalogs: SceneRenderCatalogManager, path: Path) -> None:
     wait_until(lambda: not catalogs.is_loading, f"catalog {path.stem} to apply")
     if failures:
         raise failures[0]
+
+
+def select_object(objects_page: QWidget, entity_id: str | None) -> None:
+    """Open the page of object *entity_id* in the inspector, as a click would.
+
+    Without an id, open the first listed object, or do nothing when the inspector lists none (plain video, or a
+    frame without objects). A named object that never appears fails the take.
+    """
+    views = objects_page.findChildren(RowTableView)
+
+    def listing() -> RowTableView | None:
+        return next((view for view in views if view.isVisible() and view.rows_model.rowCount() > 0), None)
+
+    if entity_id is not None:
+        wait_until(lambda: listing() is not None, "the inspector to list objects")
+    view = listing()
+    if view is None:
+        return
+    rows = [cast(FrameRow | FileRow, view.rows_model.row_at(row)) for row in range(view.rows_model.rowCount())]
+    matching = [row for row in rows if entity_id is None or row.entity_id == entity_id]
+    if not matching:
+        raise ValueError(f"No object {entity_id!r} in the inspector; found {[row.entity_id for row in rows]}")
+    view.rowActivated.emit(matching[0])
+    QTest.qWait(250)
 
 
 def grab(window: MainWindow, runtime: OfflineSession) -> QImage:
@@ -137,7 +163,6 @@ def capture(args: argparse.Namespace) -> None:
     app = QApplication([])
     settings = GlobalSettings()
     settings.video_cache_budget = VideoCacheBudget.from_config(256)
-    settings.graphics_acceleration.configure()
     setup_theme(app, "dark", settings.text_size.body_px)
     shortcuts = ShortcutManager()
     shortcuts.register_defaults()
@@ -166,8 +191,8 @@ def capture(args: argparse.Namespace) -> None:
         wait_until(lambda: viewer._runtime is not None, "video and overlays to open")
         runtime = viewer._runtime
         assert runtime is not None
-        runtime.pause_playback()
-        source = runtime.get_primary_video_source()
+        runtime.playback.pause()
+        source = runtime.iter_video_sources()[0]
         assert source is not None
         schedule = frame_schedule(source.get_frame_timestamps_us(), args.start, args.frames, args.fps)
         first_lane = runtime.lanes[0]
@@ -182,7 +207,7 @@ def capture(args: argparse.Namespace) -> None:
         )
         active_catalog = catalog_paths[0]
         for index, frame in enumerate(schedule):
-            runtime.jump_to_frame(frame)
+            runtime.playback.seek(frame)
             wait_until(
                 lambda: all(
                     lane.display.viewport._video_frame is not None
@@ -200,10 +225,7 @@ def capture(args: argparse.Namespace) -> None:
                 first_lane.display.set_side_panel_open(True)
                 QTest.qWait(250)  # Let the opening animation finish; source-frame readiness is checked separately.
                 if first_lane.tools_panel is not None:
-                    view = first_lane.tools_panel.objects_page.findChild(RowTableView)
-                    if view is not None and view.model().rowCount() > 0:
-                        rectangle = view.visualRect(view.model().index(0, 0))
-                        QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=rectangle.center())
+                    select_object(first_lane.tools_panel.objects_page, args.select_object)
                 QTest.mouseMove(window, QPoint(10, 10))
                 inspector_open = True
             label = ""
@@ -226,13 +248,13 @@ def capture(args: argparse.Namespace) -> None:
                 apply_catalog(catalogs, selected)
             if label:
                 painter = QPainter(image)
-                painter.fillRect(QRect(20, args.height - 48, 210, 30), QColor("#101726"))
+                painter.fillRect(QRect(48, args.height - 90, 210, 30), QColor("#101726"))
                 painter.setPen(QColor("white"))
                 painter.drawText(
-                    QRect(30, args.height - 48, 190, 30), Qt.AlignmentFlag.AlignVCenter, f"Catalog: {label}"
+                    QRect(58, args.height - 90, 190, 30), Qt.AlignmentFlag.AlignVCenter, f"Catalog: {label}"
                 )
                 painter.end()
-            encoder.write_frame(image, timestamp_us=index * 1_000_000 / args.fps)
+            encoder.write_frame(image, timestamp_us=seconds_to_us(index / args.fps))
             if index == 0:
                 image.save(str(args.output / "raw-preview.png"))
             if index % args.fps == 0:

@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache import (
     FrameCache,
-    get_frame_cache_registry,
 )
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_cache_pool import FrameCachePool
 from tests.helpers.video import make_cached_frame
@@ -28,9 +27,6 @@ def test_join_leave_and_resize_evict_immediately() -> None:
             pool.set_budget_bytes(2 * 768)
             assert first.size() == second.size() == 1
             assert first.contains(5) and second.contains(2)
-            snapshot = get_frame_cache_registry().snapshot_details()
-            assert sum(snapshot[str(id(cache))]["reserved_bytes"] for cache in (first, second)) == 2 * 768
-            assert all(snapshot[str(id(cache))]["budget_bytes"] == 768 for cache in (first, second))
         finally:
             second.close()
         assert pool.source_count == 1

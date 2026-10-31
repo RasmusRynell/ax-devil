@@ -1,11 +1,12 @@
 """Exercise deferred source disposal using real Qt workers and ownership."""
 
 import gc
+import threading
 import weakref
 from threading import Event
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QTimer
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.data_sources.base import DataSource, Worker
@@ -40,12 +41,11 @@ class _Source(DataSource):
 
     def stop(self) -> None:
         """Request shutdown without waiting for the blocked operation."""
-        # Model a bounded stop returning before the worker exits.
         self.worker.stop()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for production to finish."""
-        return self.worker.wait(timeout)
+        return self.worker.wait(timeout_ms)
 
 
 @pytest.mark.parametrize("running", [False, True])
@@ -53,6 +53,8 @@ def test_source_disposal_releases_source_and_worker(qtbot: QtBot, running: bool)
     """Deletion survives late completion and retains neither Python nor Qt objects."""
     release = Event()
     source = _Source(release)
+    owner = QObject()
+    source.setParent(owner)
     destroyed: list[str] = []
     source.destroyed.connect(lambda: destroyed.append("source"))
     source.worker.destroyed.connect(lambda: destroyed.append("worker"))
@@ -62,11 +64,15 @@ def test_source_disposal_releases_source_and_worker(qtbot: QtBot, running: bool)
         if running:
             assert source.play()
             qtbot.waitUntil(source.worker.entered.is_set)
-        source.stop()
-        source.deleteLater()
-        source.deleteLater()
+        source.retire()
+        source.retire()
         if running:
+            owner.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            assert not destroyed
+            callbacks: list[bool] = []
+            QTimer.singleShot(0, lambda: callbacks.append(True))
+            qtbot.waitUntil(lambda: bool(callbacks))
             assert not destroyed
         del source
         gc.collect()
@@ -80,3 +86,27 @@ def test_source_disposal_releases_source_and_worker(qtbot: QtBot, running: bool)
         worker = worker_ref()
         if worker is not None:
             worker.wait(6000)
+
+
+def test_wait_for_retired_drains_cleanup_within_the_deadline(qtbot: QtBot, caplog: pytest.LogCaptureFixture) -> None:
+    """Quit waits for a retiring worker's cleanup, but never past the deadline for one that does not finish."""
+    slow, stuck = Event(), Event()
+    finishing = _Source(slow)
+    hung = _Source(stuck)
+    try:
+        for source in (finishing, hung):
+            assert source.play()
+            qtbot.waitUntil(source.worker.entered.is_set)
+            source.retire()
+        threading.Timer(0.2, slow.set).start()
+
+        DataSource.wait_for_retired(timeout_ms=600)
+
+        assert finishing.worker.isFinished()
+        assert hung.worker.isRunning()
+        assert "Sources still running" in caplog.text
+    finally:
+        slow.set()
+        stuck.set()
+        hung.worker.wait(6000)
+        finishing.worker.wait(6000)

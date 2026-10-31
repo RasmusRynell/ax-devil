@@ -33,7 +33,8 @@ entries when it loads, unless it has more than 200; expand a longer one with its
 
 - **Live**: a camera streams while its viewer is open, and starts only with **Start stream**, never by
   double-clicking it. It can start before ax-devil has checked its login. With sign-in on, a camera whose saved login
-  is refused loses **Start stream** and shows why on hover.
+  is refused loses **Start stream** and shows why on hover. Hovering a stream that isn't playing asks its camera
+  for one snapshot with the stream's login, at most every 10 s.
   - A background scan starts at launch; **Scan settings** takes addresses and ranges such as `192.168.1.0/24`, and an
     empty field searches this computer's `/24` network. Startup scanning and sign-in can each be turned off in
     [Settings → Network scan](settings.md).
@@ -41,8 +42,11 @@ entries when it loads, unless it has more than 200; expand a longer one with its
     Network scan**) on each camera until one works. Logins go only to devices that answered as Axis devices, and only
     as an HTTP Digest answer, never as a plain password.
   - **Add** puts a signed-in camera in the workspace with the **Settings → Stream defaults** and the login that worked,
-    and **Add manually** does the same for a camera you enter. Neither starts the stream.
-- **Offline**: **Rescan** reads a playlist's folders again; open viewers keep what they show.
+    and **Add stream** in the Live header does the same for a camera you enter. Both start the stream. A scanned camera
+    keeps the protocol it answered on; the default protocol is tried first.
+- **Offline**: videos and playlists follow their overlay files and a playlist's folders: when a tool regenerates or
+  adds files, the rows update by themselves and open viewers keep what they show. Known issue: changes on network
+  shares (NFS, SMB) are not noticed.
 - **Plugins**: installs, updates and removals apply after a restart, which a banner offers.
 
 ## Video and overlays
@@ -74,14 +78,14 @@ not RTSP or MQTT.
 
 ## Overlay appearance
 
-Built-in catalogs are read-only; make a copy before editing. A catalog choice applies to the current view; the
-**⋯** menu next to it applies it to all open views or makes it the default for new ones. For authoring, see the
+Built-in catalogs are read-only; make a copy before editing. A catalog choice applies to the current view until you
+apply it to all open views or make it the default for new ones. For authoring, see the
 [render-catalog skill](../.agents/skills/render-catalog/SKILL.md#how-a-catalog-is-built);
 `ax-devil catalog reference` prints the full language.
 
 ## Overlay details
 
-The **Overlay details** choices in the media tools panel only change what a view draws; hidden data stays in
+The overlay detail choices in the media tools panel only change what a view draws; hidden data stays in
 inspection and the hover chip. Each view or comparison lane keeps its own choices when changing catalogs, and offline
 playlists retain them by lane position across entries. Choices last until the viewer closes and are not saved across
 restarts. Export uses the choices selected when it starts.

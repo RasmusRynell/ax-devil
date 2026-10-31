@@ -69,8 +69,9 @@ def _rows(view: PluginsView) -> list[tuple[str, str]]:
     """Return each row's title and subtitle, top to bottom."""
     rows = []
     for row in view.findChildren(ListRow):
-        texts = [label.text() for label in row.findChildren(QLabel) if label.text()]
-        rows.append((texts[0], texts[1] if len(texts) > 1 else ""))
+        title = row.findChildren(ElidedLabel)[0].full_text()
+        subtitles = [label.text() for label in row.findChildren(QLabel) if label.wordWrap() and label.text()]
+        rows.append((title, subtitles[0] if subtitles else ""))
     return rows
 
 
@@ -215,8 +216,8 @@ def test_adding_a_plugin_installs_what_was_entered(
 def test_the_list_is_read_again_when_the_view_is_shown(qtbot: QtBot, records: list[PluginRecord]) -> None:
     view = _view(qtbot, records, FakeInstaller())
     view.hide()
-    records.append(plugin_record("late", "late-plugin", error="entry-point discovery failed: No module named 'x'"))
+    records.append(plugin_record("late", "late-plugin", error="missing dependency: No module named 'x'"))
 
     view.show()
 
-    assert ("late-plugin", "Entry-point discovery failed: No module named 'x'") in _rows(view)
+    assert ("late-plugin", "Missing dependency: No module named 'x'") in _rows(view)

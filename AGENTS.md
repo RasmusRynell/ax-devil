@@ -51,16 +51,19 @@ that task. `.claude/skills` links to the same folder for Claude Code.
 
 ```bash
 uv sync       # Create/update .venv with runtime + dev deps
-make check    # ruff format --check + ruff check + scripts/check_logging.py + mypy
+make check    # Full formatting, lint, logging, architecture and type checks
+make check-fast  # Changed-file formatting, lint and logging; full architecture and incremental types
 make format   # ruff check --fix + ruff format
-QT_QPA_PLATFORM=offscreen make test  # Regular offline pytest suite
-QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smoke test (may download packages)
+make test     # Regular offline pytest suite, on a private Xvfb display (docs/runbooks/testing.md)
+make test-failed  # Stop at the first cached failure; same private display, no tests if none failed
+make test-integration  # Run the real installation smoke test (may download packages)
 ```
 
 ### Code Rules
 
 - Ruff enforces `E`, `F`, `I` and a few pyupgrade (`UP`) rules, a 120-character line limit, and double quotes.
 - mypy strict mode applies: add type hints throughout and avoid `disallow_untyped_defs` violations.
+- Keep each file under 5,000 tokens (bytes / 4); the `file-token-limit` pre-commit hook rejects larger staged files and prints how to split them.
 - Use `from ax_devil.modules.settings.logging_config import get_logger` and `logger = get_logger(__name__)`. Do not use `print()`.
 - Use f-strings only. Do not use string concatenation or `%` formatting.
 - Add docstrings to public classes, methods, and functions.
@@ -79,8 +82,7 @@ QT_QPA_PLATFORM=offscreen make test-integration  # Run the real installation smo
 
 ### Done
 
-- For changes to code, tests, dependencies, or runtime/build configuration, run `make check` and
-  `QT_QPA_PLATFORM=offscreen make test`.
+- For changes to code, tests, dependencies, or runtime/build configuration, run `make check` and `make test`.
 - For prose-only documentation or agent-instruction changes, validate affected links, examples, and consistency,
   instead of running the application checks.
 - Tests: delete the tests of code you remove, merge or change before writing new ones. Add a test only for a deep
@@ -107,7 +109,7 @@ uv run ax-devil --help  # Every command; each has its own --help
 
 - Keep device credentials out of the repo — use `AX_DEVIL_TARGET_*` env vars or config overrides.
 - Tests must never read or write the user's real files. The suite runs in its own home folder and fails if the user's own configs, render catalogs or plugins under `~/.ax_devil`, or `ax-devil` under the XDG data home, change; a test that needs files uses `tmp_path` (see `docs/runbooks/testing.md`).
-- Agent verification runs offscreen or on a private display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
+- Agent verification runs on a private Xvfb display. Never use the user's desktop, focus, keyboard, mouse, or desktop screenshots for testing. Follow `docs/runbooks/testing.md`; report checks that cannot run in isolation.
 - When changing names, structure, or shared terminology, carry the change through code, tests and comments. Update a doc only where it states a rule the change affects.
 - Documentation follows the placement rule below. The default for a feature or fix is no documentation change.
 
@@ -137,4 +139,3 @@ Each fact has one home; link to it instead of repeating it. When a fact moves la
 - Architecture and data flows: `docs/architecture/overview.md`, `docs/architecture/ui-framework.md`
 - Rendering and render catalogs: `docs/architecture/draw-system.md`, `docs/architecture/catalog-viewer.md`
 - Testing workflow and patterns: `docs/runbooks/testing.md`
-- Diagnosing playback and rendering problems: `docs/runbooks/diagnostics.md`

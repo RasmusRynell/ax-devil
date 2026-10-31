@@ -8,9 +8,7 @@ edit keeps that file's last version that loaded on screen with the error above i
 from __future__ import annotations
 
 from datetime import datetime
-from functools import partial
 from pathlib import Path
-from weakref import ref
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent, QShowEvent
@@ -19,7 +17,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QTabBar,
     QVBoxLayout,
@@ -27,20 +24,18 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.background_jobs import LatestRequest
+from ax_devil.modules.catalog_viewer.catalog_file_actions import CatalogFileActions
 from ax_devil.modules.catalog_viewer.inspector import ObjectInspector
-from ax_devil.modules.catalog_viewer.sheets import Sheet, drawing_errors, sheet_frame, sheets
-from ax_devil.modules.chrome import BaseDialog
+from ax_devil.modules.catalog_viewer.sheet_drawing import Sheet, drawing_errors, sheet_frame
+from ax_devil.modules.catalog_viewer.sheets import sheets
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.choice_dialog import ask, notify
-from ax_devil.modules.chrome.chrome_window import ChromeWindow, window_uses_custom_frame
+from ax_devil.modules.chrome.chrome_window import ChromeWindow
 from ax_devil.modules.chrome.elided_label import ElidedLabel
-from ax_devil.modules.chrome.form_layout import FormLayout
 from ax_devil.modules.chrome.theme import StatusColor
 from ax_devil.modules.chrome.tokens import Radius, Space
 from ax_devil.modules.scene.model import EntityId
 from ax_devil.modules.scene.rendering import (
     SceneRenderCatalog,
-    SceneRenderCatalogFile,
     SceneRenderCatalogListing,
     SceneRenderCatalogManager,
     SceneRenderCatalogRevision,
@@ -49,30 +44,6 @@ from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.renderer import VideoFrameRenderer
 
 logger = get_logger(__name__)
-
-
-class NewCatalogDialog(BaseDialog):
-    """Ask for the name of a new catalog that starts as a copy of another."""
-
-    def __init__(self, source: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent=parent, title="New Catalog")
-        content = QWidget(self)
-        form = FormLayout(content)
-        self.name_edit = QLineEdit(f"{source} copy", content)
-        self.name_edit.setObjectName("newCatalogName")
-        self.name_edit.selectAll()
-        form.addRow("Name", self.name_edit)
-        note = QLabel(f"Starts as a copy of {source}.", content)
-        note.setWordWrap(True)
-        form.addRow("", note)
-        self.add_content_widget(content)
-        ok, _cancel = self.add_standard_buttons()
-        ok.setText("Create")
-        self.name_edit.textChanged.connect(lambda text: ok.setEnabled(bool(text.strip())))
-
-    def name(self) -> str:
-        """Return the entered name."""
-        return self.name_edit.text().strip()
 
 
 class CatalogViewerWindow(ChromeWindow):
@@ -150,10 +121,20 @@ class CatalogViewerWindow(ChromeWindow):
         self._catalogs.activated.connect(lambda index: self.show_catalog(self._catalogs.itemData(index)))
         self._tabs.currentChanged.connect(lambda _index: self._redraw())
         self._renderer.selectionChanged.connect(self._on_selected)
-        self._new.clicked.connect(self._create_copy)
-        self._delete.clicked.connect(self._delete_catalog)
-        self._apply_to_all.clicked.connect(self._apply_catalog_to_all)
-        self._use_as_default.clicked.connect(self._use_catalog_as_default)
+        # Kept alive by the buttons' connections; an attribute would make a reference cycle with this window.
+        actions = CatalogFileActions(
+            self,
+            manager,
+            self._action_request,
+            path=self.catalog_path,
+            show_catalog=self.show_catalog,
+            reload=self._load,
+            load_failed=self._on_load_failed,
+        )
+        self._new.clicked.connect(lambda: actions.create_copy())
+        self._delete.clicked.connect(lambda: actions.delete_catalog())
+        self._apply_to_all.clicked.connect(lambda: actions.apply_to_all())
+        self._use_as_default.clicked.connect(lambda: actions.use_as_default())
         manager.catalogFileChanged.connect(self._on_file_changed)
         manager.catalogListingChanged.connect(self._on_listing_changed)
         manager.catalogUsabilityChanged.connect(self._show_state)
@@ -306,7 +287,9 @@ class CatalogViewerWindow(ChromeWindow):
             self._banner.show()
             return
         updated = f" · updated {self._loaded_at:%H:%M:%S}" if self._changes and self._loaded_at is not None else ""
-        self._state.setText(f"● Live{updated}")
+        listed = self._manager.listing().catalog_for(self._path)
+        origin = f" · {listed.origin.note}" if listed is not None and listed.origin is not None else ""
+        self._state.setText(f"● Live{updated}{origin}")
         self._state.setToolTip("Redrawn every time the catalog file is saved")
         self._state.setStyleSheet(StatusColor.SUCCESS.css(self.palette()))
         self._banner.hide()
@@ -374,96 +357,6 @@ class CatalogViewerWindow(ChromeWindow):
                 self._renderer.select_target(None)
         self._inspector.show_entity(entity)
 
-    # Catalog files ---------------------------------------------------------------------------------------------
-
-    def _create_copy(self) -> None:
-        source = self._manager.listing().catalog_for(self._path)
-        with NewCatalogDialog(source.name if source is not None else self._path.stem, self) as dialog:
-            if dialog.exec() != BaseDialog.DialogCode.Accepted or not dialog.name():
-                return
-            name = dialog.name()
-        base_path = self._path
-        self._action_request.start(
-            lambda result, error: self._manager.create_catalog(
-                name, base_catalog_path=base_path, on_created=result, on_failed=error
-            ),
-            on_result=self._show_created,
-            on_error=self._warn_create,
-        )
-
-    def _show_created(self, created: SceneRenderCatalogFile) -> None:
-        self.show_catalog(created.path)
-
-    def _warn_create(self, error: Exception) -> None:
-        notify(self, "New Catalog", f"Could not create the catalog: {error}")
-
-    def _apply_catalog_to_all(self) -> None:
-        self._action_request.start(
-            lambda result, error: self._manager.apply_to_all(
-                self._path, on_done=partial(result, None), on_failed=error
-            ),
-            on_result=self._action_done,
-            on_error=self._warn_apply,
-        )
-
-    def _warn_apply(self, error: Exception) -> None:
-        self._on_load_failed(error)
-        notify(self, "Apply to All", f"Could not use the catalog: {error}")
-
-    def _use_catalog_as_default(self) -> None:
-        self._action_request.start(
-            lambda result, error: self._manager.use_as_default(
-                self._path, on_done=partial(result, None), on_failed=error, on_not_saved=result
-            ),
-            on_result=self._default_done,
-            on_error=self._default_load_failed,
-        )
-
-    def _default_done(self, persistence_error: Exception | None) -> None:
-        self._load()
-        if persistence_error is not None:
-            self._warn_default(persistence_error)
-
-    def _default_load_failed(self, error: Exception) -> None:
-        self._on_load_failed(error)
-        self._warn_default(error)
-
-    def _warn_default(self, error: Exception) -> None:
-        notify(self, "Use as Default", f"Could not make the catalog the default: {error}")
-
-    def _action_done(self, _result: None) -> None:
-        self._load()
-
-    def _delete_catalog(self) -> None:
-        listing = self._manager.listing()
-        default_note = (
-            "\n\nIt is the default catalog, so new views will start from the default built-in catalog."
-            if self._path == listing.default_path
-            else ""
-        )
-        answer = ask(
-            self,
-            "Delete Catalog",
-            f"Delete {listing.label(self._path)}?\n\n{self._path}\n\nThe file is deleted permanently.{default_note}",
-            {"Delete": True, "Cancel": False},
-            False,
-        )
-        if not answer:
-            return
-        try:
-            self._manager.delete_catalog(self._path)
-        except (OSError, ValueError) as error:
-            notify(self, "Delete Catalog", f"Could not delete the catalog: {error}")
-            return
-        self._action_request.start(
-            lambda result, error: self._manager.refresh_catalogs(on_done=result, on_failed=error),
-            on_result=self._show_default,
-            on_error=self._on_load_failed,
-        )
-
-    def _show_default(self, listing: SceneRenderCatalogListing) -> None:
-        self.show_catalog(listing.chosen_default_path)
-
     def _build(self) -> None:
         header = QHBoxLayout()
         header.setSpacing(Space.M)
@@ -491,45 +384,3 @@ class CatalogViewerWindow(ChromeWindow):
         layout.addLayout(body, 1)
         layout.addWidget(self._description)
         self.setCentralWidget(central)
-
-
-_OPEN_WINDOWS: dict[int, CatalogViewerWindow] = {}
-
-
-def close_catalog_viewer(manager: SceneRenderCatalogManager) -> None:
-    """Close the catalog viewer of *manager*, if open, so it cleans up before the window that owns it goes away."""
-    window = _OPEN_WINDOWS.pop(id(manager), None)
-    if window is not None:
-        window.close()
-
-
-def show_catalog_viewer(
-    manager: SceneRenderCatalogManager,
-    parent: QWidget | None = None,
-    *,
-    catalog_path: Path | None = None,
-) -> CatalogViewerWindow:
-    """Show the application's catalog viewer on *catalog_path*, or on the default catalog when it opens.
-
-    There is one viewer per catalog manager; showing it again raises the open window.
-    """
-    window = _OPEN_WINDOWS.get(id(manager))
-    if window is None:
-        owner = parent.window() if parent is not None else None
-        window = CatalogViewerWindow(
-            manager, owner, use_custom_frame=owner is not None and window_uses_custom_frame(owner)
-        )
-        _OPEN_WINDOWS[id(manager)] = window
-        key, window_ref = id(manager), ref(window)
-
-        def forget_window() -> None:
-            if _OPEN_WINDOWS.get(key) is window_ref():
-                _OPEN_WINDOWS.pop(key, None)
-
-        window.destroyed.connect(forget_window)
-    if catalog_path is not None:
-        window.show_catalog(catalog_path)
-    window.show()
-    window.raise_()
-    window.activateWindow()
-    return window

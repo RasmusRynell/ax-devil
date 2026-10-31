@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import ast
 from collections.abc import Iterable
 from pathlib import Path
@@ -145,7 +146,15 @@ def check_file(path: Path) -> list[Violation]:
 
 def main() -> int:
     """Run the logging convention check."""
-    violations = [violation for path in iter_python_files() for violation in check_file(path)]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("filenames", nargs="*", type=Path)
+    args = parser.parse_args()
+    paths = (
+        (path.resolve().relative_to(PROJECT_ROOT) for path in args.filenames if path.is_file() and path.suffix == ".py")
+        if args.filenames
+        else iter_python_files()
+    )
+    violations = [violation for path in paths for violation in check_file(path)]
     if not violations:
         return 0
 

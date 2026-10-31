@@ -10,7 +10,8 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-from ax_devil.modules.catalog_viewer import CatalogViewerWindow, close_catalog_viewer
+from ax_devil.modules.catalog_viewer.viewer_registry import close_catalog_viewer
+from ax_devil.modules.catalog_viewer.window import CatalogViewerWindow
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -343,7 +344,7 @@ def test_workspace_actions_are_in_the_file_menu_and_the_title_shows_the_workspac
     assert_titles("Parking lot", modified=False)
 
 
-def test_add_manually_in_the_live_view_opens_the_add_live_stream_dialog(
+def test_add_stream_in_the_live_view_opens_the_add_live_stream_dialog(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     window = MainWindow(shortcut_manager=make_shortcut_manager(), render_catalog_manager=render_catalog_manager)
@@ -358,7 +359,7 @@ def test_add_manually_in_the_live_view_opens_the_add_live_stream_dialog(
     window._workspace_session.show_sidebar_view("live")
     view = window.findChild(LiveView)
     assert view is not None
-    [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add manually"]
+    [button] = [button for button in view.findChildren(QPushButton) if button.text() == "Add stream"]
 
     button.click()
 

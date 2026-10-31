@@ -21,6 +21,23 @@
         },
         "design_notes": {
           "type": "object"
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "based_on": {
+              "type": "string",
+              "minLength": 1
+            },
+            "base_hash": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "based_on",
+            "base_hash"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -61,6 +78,7 @@
               "outlines",
               "ids",
               "class_names",
+              "score",
               "confidence",
               "speed",
               "movement",
@@ -484,6 +502,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -533,6 +552,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -586,6 +606,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -635,6 +656,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -684,6 +706,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -733,6 +756,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -786,6 +810,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -843,6 +868,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",
@@ -901,6 +927,7 @@
                 "outlines",
                 "ids",
                 "class_names",
+                "score",
                 "confidence",
                 "speed",
                 "movement",

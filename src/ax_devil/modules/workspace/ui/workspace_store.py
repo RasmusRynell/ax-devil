@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+from ax_devil.modules.background_jobs.request import Cancel
+from ax_devil.modules.file_watching import FileWatcher
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.workspace.core import (
     Bookmark,
@@ -21,45 +24,48 @@ from ax_devil.modules.workspace.core import (
     load_workspace,
     save_workspace,
 )
+from ax_devil.modules.workspace.ui.exclusions import Exclusions
 from ax_devil.modules.workspace.ui.item_resolver import ItemResolver
+from ax_devil.modules.workspace.ui.resolution_batch import ResolutionBatch
 
 logger = get_logger(__name__)
 
 
 class WorkspaceStore(QObject):
-    """Own the current and last saved Workspace, each item's resolution, and exclusions.
+    """Own the current/saved Workspace, resolution, exclusions and mutation signals.
 
-    Items are the truth. Every change to them applies at once; their Content follows when *resolver* finishes, and
-    until then an item's resolution is pending. A result arriving after its item was removed, or after another
-    Workspace replaced this one, is dropped; one arriving after a rename is named after the new label. Exclusions are
-    session state and are never part of the Workspace. Every successful mutation emits exactly one signal about the
-    items, then ``items_resolved`` when their results arrive, plus ``state_changed`` when it changes whether the
-    Workspace is modified or what it is called. A change to bookmarks or reviewed targets emits ``bookmarks_changed``
-    once, also when removing an item removed some of them and whenever another Workspace replaces this one. A rescan
-    emits ``item_rescanned`` when its result is applied.
+    Each mutation emits its item signal once, then ``items_resolved`` when results arrive; ``state_changed`` reports
+    modified/name/path changes. Source changes resolve again without modifying the Workspace or opening viewers.
+    Bookmarks and reviewed targets share ``bookmarks_changed``. See docs/architecture/workspace.md for resolution.
     """
 
     items_added = Signal(list)  # list[WorkspaceItem]; they may still be resolving
     items_resolved = Signal(list, bool)  # list[ItemResolution], and whether to open the first and report failures
     item_removed = Signal(object)  # WorkspaceItem
+    item_edited = Signal(object)  # WorkspaceItem; its recipe changed, before items_resolved
     item_renamed = Signal(object)  # WorkspaceItem, with its new label
     item_consideration_changed = Signal(object, bool)
-    item_rescanned = Signal(object)  # ItemResolution, the item's new result
+    sources_changed = Signal(object)  # frozenset[Path] of the watched paths that changed; their items resolve again
     workspace_replaced = Signal()  # another Workspace was opened or created; every item may be new
     bookmarks_changed = Signal()  # bookmarks or reviewed targets changed
     state_changed = Signal()  # is_modified, the name, or the path changed
 
-    def __init__(self, resolver: ItemResolver, parent: QObject | None = None) -> None:
+    def __init__(
+        self, resolver: ItemResolver, parent: QObject | None = None, *, watcher: FileWatcher | None = None
+    ) -> None:
         super().__init__(parent)
         self._resolver = resolver
+        self._watcher = FileWatcher(self) if watcher is None else watcher
+        self._watcher.changed.connect(self._on_sources_changed)
         self._workspace = Workspace()
         self._saved_workspace: Workspace | None = self._workspace
         self._resolutions: dict[str, ItemResolution] = {}
-        self._not_considered: set[ConsiderationItemRef] = set()
+        self._exclusions = Exclusions()
         self._generation = 0  # counts replaced Workspaces, so results for an earlier one are dropped
-        self._rescans: dict[str, Callable[[], None]] = {}  # cancel each rescanning item's newest request
+        self._reresolution_requests: dict[str, object] = {}
+        self._reresolving: dict[str, Cancel] = {}  # cancel each re-resolving item's newest request
         # Ordered GUI-side batches; each item has its own cancellable worker.
-        self._resolving: dict[int, _ResolutionBatch] = {}
+        self._resolving: dict[int, ResolutionBatch] = {}
         self._batch_count = 0
         self._announced_state = self._state()
 
@@ -91,19 +97,16 @@ class WorkspaceStore(QObject):
         self.replace_workspace(load_workspace(path))
 
     def replace_workspace(self, current: Workspace, *, unsaved: bool = False) -> None:
-        """Make *current* the Workspace and, unless *unsaved*, its saved state, and resolve every item again in the
-        background.
-
-        An *unsaved* Workspace, such as a restored recovery copy, counts as modified until it is saved. Exclusions
-        start from their defaults.
-        """
+        """Replace and resolve the Workspace; *unsaved* keeps it modified until saved. Exclusions reset."""
         self._workspace = current
         self._saved_workspace = None if unsaved else current
         self._resolutions = {item.id: ItemResolution.pending(item) for item in current.items}
-        self._not_considered = set()
+        self._exclusions = Exclusions()
         self._generation += 1
-        cancels = [*(batch.cancel for batch in self._resolving.values()), *self._rescans.values()]
-        self._resolving, self._rescans = {}, {}
+        cancels = [*(batch.cancel for batch in self._resolving.values()), *self._reresolving.values()]
+        self._resolving, self._reresolving = {}, {}
+        self._reresolution_requests.clear()
+        self._watcher.clear()
         for cancel in cancels:
             cancel()
         self.workspace_replaced.emit()
@@ -150,10 +153,11 @@ class WorkspaceStore(QObject):
         item = self._workspace.item(item_id)
         before = self._workspace
         self._workspace = self._workspace.remove_item(item_id)
-        removed_ids = {content.content_id for content in self._resolutions.pop(item_id).contents}
-        self._cancel_rescan(item_id)
+        del self._resolutions[item_id]
+        self._watcher.unwatch(item_id)
+        self._cancel_reresolving(item_id)
         self._cancel_resolving(item_id)
-        self._not_considered = {ref for ref in self._not_considered if ref.content_id not in removed_ids}
+        self._exclusions.remove_item(item_id)
         logger.debug(f"Item removed: {item.display_name} ({item_id})")
         self.item_removed.emit(item)
         if _bookmark_state(before) != _bookmark_state(self._workspace):
@@ -172,6 +176,34 @@ class WorkspaceStore(QObject):
         item = self._workspace.item(item_id)
         self._resolutions[item_id] = self._resolutions[item_id].renamed(item)
         self.item_renamed.emit(item)
+        self._announce_state()
+
+    def edit_item(self, item: WorkspaceItem, resolution: ItemResolution | None = None) -> None:
+        """Commit an edited recipe, preserving review data.
+
+        Equal saves do nothing; label-only changes use rename without reopening media. A supplied result must resolve
+        this recipe. Edits reset watches and exclusions.
+        """
+        current = self._workspace.item(item.id)
+        if item == current:
+            return
+        workspace = self._workspace.replace_item(item)
+        if resolution is not None and (resolution.item != item or resolution.error is not None):
+            raise ValueError("An edit needs a successful result for the edited item.")
+        if item.with_label("") == current.with_label(""):
+            self.rename_item(item.id, item.label)
+            return
+        self._cancel_resolving(item.id)
+        self._cancel_reresolving(item.id)
+        self._workspace = workspace
+        self._watcher.unwatch(item.id)
+        self._exclusions.remove_item(item.id)
+        self._resolutions[item.id] = ItemResolution.pending(item)
+        self.item_edited.emit(item)
+        if resolution is None:
+            self._resolve([item], open_first=False)
+        else:
+            self._commit(self._generation, (resolution,), open_first=False)
         self._announce_state()
 
     def add_bookmark(
@@ -218,30 +250,25 @@ class WorkspaceStore(QObject):
             return
         self._apply_bookmarks(workspace)
 
-    def rescan_item(self, item_id: str) -> None:
-        """Resolve the item with *item_id* again in the background and replace its result when the new one arrives.
-
-        The new result, an error included, applies only while the item and the Workspace are still current. Exclusions
-        of Content that still exists stay, those of Content that is gone are dropped, and newly appeared Content starts
-        from its defaults. Rescanning never opens a viewer and never changes what open viewers show, since they keep
-        the immutable Content they opened; nor does it make the Workspace modified, as results are never saved. An item
-        that is still resolving is left to that resolution. Rescanning an item again before the first rescan finishes
-        makes the latest request the one that counts: the earlier one is cancelled, so its result never arrives, and a
-        rescan still waiting its turn never runs.
-        """
+    def _on_sources_changed(self, item_id: str, paths: frozenset[Path]) -> None:
+        """Report changed paths and resolve again; only the newest request may publish its result."""
         if not self._workspace.has_item(item_id):
-            logger.warning(f"Attempted to rescan an item not in the workspace: {item_id}")
             return
-        if self._resolutions[item_id].is_pending:
-            return
-        self._cancel_rescan(item_id)
-        self._rescans[item_id] = self._resolver.resolve(
-            self._workspace.item(item_id), partial(self._apply_rescan, self._generation)
+        logger.debug(f"Sources of {self._workspace.item(item_id).display_name} changed: {sorted(paths)}")
+        self.sources_changed.emit(paths)
+        self._cancel_reresolving(item_id)
+        request = object()
+        self._reresolution_requests[item_id] = request
+        cancel = self._resolver.resolve(
+            self._workspace.item(item_id), partial(self._apply_reresolved, self._generation, request)
         )
+        if self._reresolution_requests.get(item_id) is request:
+            self._reresolving[item_id] = cancel
 
-    def _cancel_rescan(self, item_id: str) -> None:
-        """Cancel the rescan of the item with *item_id* that is still under way, if any."""
-        cancel = self._rescans.pop(item_id, None)
+    def _cancel_reresolving(self, item_id: str) -> None:
+        """Cancel the new resolution of the item with *item_id* that is still under way, if any."""
+        self._reresolution_requests.pop(item_id, None)
+        cancel = self._reresolving.pop(item_id, None)
         if cancel is not None:
             cancel()
 
@@ -264,7 +291,7 @@ class WorkspaceStore(QObject):
 
     def is_item_considered(self, item_ref: ConsiderationItemRef) -> bool:
         """Return whether the referenced item participates in navigation/layout."""
-        return item_ref not in self._not_considered
+        return self._exclusions.is_considered(item_ref)
 
     def set_item_considered(self, item_ref: ConsiderationItemRef, considered: bool) -> None:
         """Update consideration state and emit a change signal when it changes."""
@@ -273,10 +300,7 @@ class WorkspaceStore(QObject):
             return
         if self.is_item_considered(item_ref) == considered:
             return
-        if considered:
-            self._not_considered.discard(item_ref)
-        else:
-            self._not_considered.add(item_ref)
+        self._exclusions.set_considered(item_ref, considered)
         logger.debug(f"Item consideration changed: {item_ref} considered={considered}")
         self.item_consideration_changed.emit(item_ref, considered)
 
@@ -321,7 +345,7 @@ class WorkspaceStore(QObject):
                 self._batch_count += 1
                 number = self._batch_count
                 done = partial(self._batch_resolved, number, generation, open_first=open_first)
-                pending = _ResolutionBatch(batch, done)
+                pending = ResolutionBatch(batch, done)
                 self._resolving[number] = pending
                 pending.start(self._resolver)
 
@@ -339,119 +363,46 @@ class WorkspaceStore(QObject):
         committed = []
         for resolution in resolutions:
             waiting = self._resolutions.get(resolution.item.id)
-            if waiting is None or not waiting.is_pending:
+            if (
+                waiting is None
+                or not waiting.is_pending
+                or waiting.item.with_label("") != resolution.item.with_label("")
+            ):
                 continue
-            current = resolution.renamed(waiting.item)
-            if current.error is not None:
-                logger.warning(f"Could not open {current.item.display_name}: {current.error}")
-            self._resolutions[current.item.id] = current
-            self._not_considered.update(ref for ref, considered in _defaults(current).items() if not considered)
-            committed.append(current)
+            committed.append(self._take(resolution.renamed(waiting.item), waiting))
         if committed:
             self.items_resolved.emit(committed, open_first)
 
-    def _apply_rescan(self, generation: int, resolution: ItemResolution) -> None:
-        """Replace an item's result with its rescanned one, unless its Workspace was replaced; a removed item's or a
-        superseded rescan was cancelled and never arrives."""
-        item_id = resolution.item.id
+    def _apply_reresolved(self, generation: int, request: object, resolution: ItemResolution) -> None:
+        """Accept only the current request, Workspace and recipe, even if cancellation delivered a callback."""
         if generation != self._generation:
             return
-        self._rescans.pop(item_id, None)
-        current = resolution.renamed(self._workspace.item(item_id))
+        item_id = resolution.item.id
+        if self._reresolution_requests.get(item_id) is not request:
+            return
+        self._reresolution_requests.pop(item_id)
+        self._reresolving.pop(item_id, None)
+        item = self._workspace.item(item_id)
+        if item.with_label("") != resolution.item.with_label(""):
+            return
+        current = self._take(resolution.renamed(item), self._resolutions[item_id])
+        self.items_resolved.emit([current], False)
+
+    def _take(self, current: ItemResolution, previous: ItemResolution) -> ItemResolution:
+        """Store *current* as the item's result in place of *previous*, watch what it was read from, and return it.
+
+        An item keeps watching everything it was ever read from while it lives: viewers
+        may still show what an earlier result named, and restoring those files is what makes it resolve again.
+        """
         if current.error is not None:
             logger.warning(f"Could not open {current.item.display_name}: {current.error}")
-        previous = self._resolutions[item_id]
-        self._resolutions[item_id] = current
-        self._not_considered = _carried_exclusions(self._not_considered, previous, current)
-        self.item_rescanned.emit(current)
-
-
-class _ResolutionBatch:
-    """Publish independent item jobs together in input order; all state belongs to the GUI thread."""
-
-    def __init__(self, items: Sequence[WorkspaceItem], done: Callable[[tuple[ItemResolution, ...]], None]) -> None:
-        self._items = tuple(items)
-        self._results: dict[str, ItemResolution | None] = dict.fromkeys(item.id for item in items)
-        self._cancels: dict[str, Callable[[], None]] = {}
-        self._done = done
-
-    def start(self, resolver: ItemResolver) -> None:
-        """Start one cancellable job per item, including resolvers that finish inline."""
-        for item in self._items:
-            cancel = resolver.resolve(item, self._resolved)
-            if item.id in self._results and self._results[item.id] is None:
-                self._cancels[item.id] = cancel
-
-    def remove(self, item_id: str) -> None:
-        """Drop a removed item, interrupting its worker even if the rest of the batch is still wanted."""
-        if item_id not in self._results:
-            return
-        cancel = self._cancels.pop(item_id, None)
-        if cancel is not None:
-            cancel()
-        del self._results[item_id]
-        self._publish_if_ready()
-
-    def cancel(self) -> None:
-        """Cancel the entire batch without publishing it."""
-        for cancel in self._cancels.values():
-            cancel()
-        self._cancels.clear()
-
-    def _resolved(self, result: ItemResolution) -> None:
-        self._cancels.pop(result.item.id, None)
-        self._results[result.item.id] = result
-        self._publish_if_ready()
-
-    def _publish_if_ready(self) -> None:
-        completed = tuple(result for result in self._results.values() if result is not None)
-        if len(completed) == len(self._results):
-            self._done(completed)
+        current = replace(current, sources=current.sources | previous.sources)
+        self._resolutions[current.item.id] = current
+        self._exclusions.follow(previous, current)
+        self._watcher.watch(current.item.id, current.sources)
+        return current
 
 
 def _bookmark_state(workspace: Workspace) -> tuple[tuple[Bookmark, ...], frozenset[BookmarkTarget]]:
     """Return what ``bookmarks_changed`` reports on: the Workspace's bookmarks and reviewed targets."""
     return workspace.bookmarks, workspace.reviewed
-
-
-def _defaults(resolution: ItemResolution) -> dict[ConsiderationItemRef, bool]:
-    """Return whether each consideration item of *resolution*'s Content is considered by default, by its ref."""
-    return {
-        consideration.ref: consideration.default_considered
-        for content in resolution.contents
-        for consideration in content.consideration_items()
-    }
-
-
-def _identities(resolution: ItemResolution) -> dict[ConsiderationItemRef, tuple[object, ...]]:
-    """Return what names each consideration item of *resolution*'s Content across rescans, by its ref.
-
-    A ref's entry index shifts when a rescan inserts or removes entries, so an entry is named by its Bookmark Target
-    entry instead, and a lane by its index within that entry.
-    """
-    return {
-        consideration.ref: (
-            consideration.ref.kind,
-            consideration.ref.content_id,
-            content.bookmark_entries[consideration.ref.entry_index],
-            consideration.ref.lane_index,
-        )
-        for content in resolution.contents
-        for consideration in content.consideration_items()
-    }
-
-
-def _carried_exclusions(
-    not_considered: set[ConsiderationItemRef], previous: ItemResolution, current: ItemResolution
-) -> set[ConsiderationItemRef]:
-    """Return *not_considered* with the exclusions of *previous* moved to the same items of *current*.
-
-    An item that is gone loses its exclusion, and one that is new starts at its default.
-    """
-    before, after = _identities(previous), _identities(current)
-    excluded = {before[ref] for ref in not_considered if ref in before}
-    known = set(before.values())
-    defaults = _defaults(current)
-    return {ref for ref in not_considered if ref not in before} | {
-        ref for ref, identity in after.items() if identity in excluded or (identity not in known and not defaults[ref])
-    }

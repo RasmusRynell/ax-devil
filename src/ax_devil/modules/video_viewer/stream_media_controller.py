@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import time
-import uuid
 from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
-    from ax_devil.modules.scene.rendering.catalog_manager import SceneRenderCatalogSelection
+    from ax_devil.modules.scene.rendering.catalog_selection import SceneRenderCatalogSelection
     from ax_devil.modules.video_viewer.scene_inspection import SceneInspectorSink
 
 
@@ -18,34 +17,22 @@ from PySide6.QtCore import QTimer, SignalInstance
 
 from ax_devil.core.data_types import FrameData, OverlayData
 from ax_devil.modules.data_sources.base import DataSource, FrameSource, OverlaySource
-from ax_devil.modules.data_sources.live.rtsp_source import RTSPOverlayDecoder, RTSPSource, rtsp_stream_config
-from ax_devil.modules.diagnostics.metrics_store import (
-    get_metrics_store,
-    metrics_enabled,
-    remove_instance,
-    set_metric,
-    source_identity,
-)
+from ax_devil.modules.data_sources.live.rtsp_source import RTSPSource
 from ax_devil.modules.filtering import FilterConfig
 from ax_devil.modules.filtering.session_filter import SessionFilter
-from ax_devil.modules.plugin_system import get_payload_decoder, get_payload_filter_factory
+from ax_devil.modules.settings.config_manager import ConfigManager, device_timeout_s
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.synchronization import SyncResult
 from ax_devil.modules.synchronization.qt_adapter import QtStreamSync
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
-from ax_devil.modules.workspace.core import (
-    LiveMQTTOverlaySourceSpec,
-    LiveRTSPOverlaySourceSpec,
-    LiveRTSPStreamSpec,
-    LiveVideoContent,
-    LiveWebSocketOverlaySourceSpec,
-)
+from ax_devil.modules.workspace.core import LiveVideoContent
 
 from .live_connection import LiveConnectionStatus, LiveFeed, LiveFeedStatus
+from .live_transports import build_rtsp_url, open_overlay_transport
 from .overlay_persistence import OverlayPersistencePolicy, OverlayPersistenceSettings
-from .scene_frame_presenter import SceneFramePresenter, describe_frame_id, describe_overlay_data
-from .scene_inspection import schedule_scene_inspection_update
+from .scene_frame_presenter import SceneFramePresenter
+from .scene_inspection import deliver_scene_inspection_update
 
 logger = get_logger(__name__)
 
@@ -62,6 +49,7 @@ class StreamMediaController:
         content: LiveVideoContent,
         *,
         render_catalog_selection: SceneRenderCatalogSelection,
+        overlay_persistence: OverlayPersistenceSettings,
         frame_displayed: Callable[[VideoFrameWithOverlays], None] | None = None,
         connection_changed: Callable[[LiveConnectionStatus], None] | None = None,
     ) -> None:
@@ -76,13 +64,11 @@ class StreamMediaController:
         self._presenter = SceneFramePresenter(
             scene_render_catalog=self._render_catalog_selection.active_catalog(), await_catalog=True
         )
-        self._overlay_persistence = OverlayPersistenceSettings.default_enabled()
-        self._overlay_policy = OverlayPersistencePolicy(self._overlay_persistence.copy())
-        self._metrics_id = source_identity(self)
+        self._overlay_policy = OverlayPersistencePolicy(overlay_persistence)
         self._paused: bool = False
         self._connection_changed = connection_changed
         self._source_slots: list[tuple[SignalInstance, Callable[..., None]]] = []
-        self._last_video_data_s = time.monotonic()
+        self._last_video_data_at = time.monotonic()
         self._stall_timer = QTimer()
         self._stall_timer.setInterval(1000)
         self._stall_timer.timeout.connect(self._check_video_stall)
@@ -95,17 +81,17 @@ class StreamMediaController:
         self._connection = LiveConnectionStatus.connecting(self._feeds())
 
         self._render_catalog_selection.activeCatalogChanged.connect(self.attach_scene_render_catalog)
-        get_metrics_store().register(self._metrics_id, f"Live stream · {content.display_name}")
-        get_metrics_store().register(self._sync_metrics_id, f"Synchronization · {content.display_name}")
         self._connect_sources()
 
     def _open_sources(self) -> None:
         """Create the video transport and any separate overlay transport for the content."""
         content = self._content
-        embedded_overlay, separate_overlay = self._open_overlay_transport(content)
+        timeout_s = device_timeout_s(ConfigManager())  # Read on every open, so Retry picks up a changed setting.
+        embedded_overlay, separate_overlay = open_overlay_transport(content, timeout_s)
         rtsp_source = RTSPSource(
-            self._build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None),
+            build_rtsp_url(content.source_spec, metadata=embedded_overlay is not None, timeout_s=timeout_s),
             overlay=embedded_overlay,
+            timeout_s=timeout_s,
         )
         self.video_source = rtsp_source
         self.overlay_source = rtsp_source if embedded_overlay is not None else separate_overlay
@@ -136,7 +122,7 @@ class StreamMediaController:
     def _mark_live(self, feed: LiveFeed) -> None:
         """Mark a feed live; video connection or frames also restart the stall clock."""
         if feed is LiveFeed.VIDEO:
-            self._last_video_data_s = time.monotonic()
+            self._last_video_data_at = time.monotonic()
         self._update_feed(feed, LiveFeedStatus.live)
 
     def _on_source_reconnecting(self, feed: LiveFeed, message: str) -> None:
@@ -150,48 +136,38 @@ class StreamMediaController:
     def _check_video_stall(self) -> None:
         if self._paused or not self._sources:
             return
-        silent_s = time.monotonic() - self._last_video_data_s
+        silent_s = time.monotonic() - self._last_video_data_at
         if silent_s < VIDEO_STALL_TIMEOUT_S:
             return
-        self._update_feed(LiveFeed.VIDEO, lambda status: status.stalled(silent_s))
+        self._update_feed(LiveFeed.VIDEO, lambda status: status.stalled(VIDEO_STALL_TIMEOUT_S))
 
     def _add_frame(self, frame_data: FrameData) -> None:
         if self._paused:
             return
         assert self.synchronizer is not None
         self._mark_live(LiveFeed.VIDEO)
-        capture_time_s = frame_data.frame_id.timestamp_monotime_us / 1000000.0
-        self._record_metric("Last decoded frame", lambda: describe_frame_id(frame_data.frame_id))
-        self.synchronizer.push_frame(frame_data, capture_time_s)
+        self.synchronizer.push_frame(frame_data, frame_data.frame_id.timestamp_us)
 
     def _add_overlay(self, overlay_data: OverlayData) -> None:
         if self._paused:
             return
         assert self.synchronizer is not None
-        capture_time_s = overlay_data.frame_id.timestamp_monotime_us / 1000000.0
-        self._record_metric("Last decoded overlay", lambda: describe_overlay_data(overlay_data))
-        self.synchronizer.push_overlay(overlay_data, capture_time_s)
+        self.synchronizer.push_overlay(overlay_data, overlay_data.frame_id.timestamp_us)
 
     def _on_sync_result(self, result: SyncResult[Any, Any]) -> None:
         if self.frame_display is None:
             return
 
-        frame_id = result.frame.data.frame_id
         candidate_overlay = result.overlay.data if result.overlay else None
-        self._record_metric("Last synced frame", lambda: describe_frame_id(frame_id))
-        self._record_metric("Last synced overlay", lambda: describe_overlay_data(candidate_overlay))
         presentation = self._presenter.prepare_frame(
             result.frame.data, candidate_overlay, overlay_policy=self._overlay_policy
         )
 
-        if presentation.overlay_reused:
-            overlay_opacity = presentation.metadata.get("overlay_opacity", 1.0)
-            self._logger.debug(f"Reusing cached overlay (opacity={overlay_opacity:.2f})")
         display_frame = presentation.display_frame
         self.frame_display.display_frame(display_frame)
         if self._frame_displayed is not None:
             self._frame_displayed(display_frame)
-        schedule_scene_inspection_update(self._scene_inspector, presentation.inspection)
+        deliver_scene_inspection_update(self._scene_inspector, presentation.inspection)
 
     def _on_filter_changed(self) -> None:
         if self.frame_display is None:
@@ -202,7 +178,9 @@ class StreamMediaController:
         """Start every live transport and watch the video feed for stalls."""
         self._logger.debug("Starting live stream playback")
         self._overlay_policy.reset()
-        self._last_video_data_s = time.monotonic()
+        if self._scene_inspector is not None:
+            self._scene_inspector.set_playing(True)
+        self._last_video_data_at = time.monotonic()
         self._stall_timer.start()
         for source in self._sources:
             source.play()
@@ -236,6 +214,8 @@ class StreamMediaController:
         """Pause live stream sources. Connections stay alive."""
         self._logger.debug("Pausing live stream playback")
         self._paused = True
+        if self._scene_inspector is not None:
+            self._scene_inspector.set_playing(False)
         for source in self._sources:
             source.pause()
 
@@ -245,7 +225,9 @@ class StreamMediaController:
         if self.synchronizer is not None:
             self.synchronizer.reset()
         self._paused = False
-        self._last_video_data_s = time.monotonic()
+        if self._scene_inspector is not None:
+            self._scene_inspector.set_playing(True)
+        self._last_video_data_at = time.monotonic()
         for source in self._sources:
             source.play()
 
@@ -264,7 +246,6 @@ class StreamMediaController:
         self._release_sources()
         self._cleanup_synchronizer()
         self._clear_references()
-        self._clear_metrics()
 
     def get_filter_config(self) -> FilterConfig | None:
         return self.overlay_source.get_filter_config() if self.overlay_source else None
@@ -290,6 +271,7 @@ class StreamMediaController:
         if scene_inspector is None:
             return
         scene_inspector.clear()
+        scene_inspector.set_playing(not self._paused)
 
     def attach_scene_render_catalog(self, scene_render_catalog: "SceneRenderCatalog") -> None:
         """Set the Scene Render Catalog used for future overlay presentation."""
@@ -298,85 +280,15 @@ class StreamMediaController:
 
     def set_overlay_persistence(self, persistence_settings: OverlayPersistenceSettings) -> None:
         """Update sticky overlay configuration at runtime."""
-        snapshot = persistence_settings.copy()
-        self._overlay_persistence = snapshot
-        self._overlay_policy.update_settings(snapshot)
+        self._overlay_policy.update_settings(persistence_settings)
 
     def _init_synchronizer(self, frame_display: FrameDisplay) -> QtStreamSync:
-        delay_ms = 1500
-
-        sync_id = f"sync:{uuid.uuid4()}"
-        self._sync_metrics_id = sync_id
-        frame_display.viewport.set_diagnostics_sources((self._metrics_id, sync_id))
         synchronizer = QtStreamSync(
-            object_name=sync_id,
             parent=frame_display,
-            delay_ms=delay_ms,
+            overlay_enabled=bool(self._content.overlays),
         )
         synchronizer.syncReady.connect(self._on_sync_result)
         return synchronizer
-
-    def _open_overlay_transport(
-        self, content: LiveVideoContent
-    ) -> tuple[RTSPOverlayDecoder | None, OverlaySource | None]:
-        """Return the decoder for overlays embedded in RTSP, or the separate overlay transport, for *content*."""
-        from ax_devil.modules.data_sources.live.mqtt_overlay_source import MQTTOverlaySource
-        from ax_devil.modules.data_sources.live.websocket_overlay_source import WebSocketOverlaySource
-
-        source_spec = content.overlay_spec
-        if source_spec is None:
-            return None, None
-        decoder = get_payload_decoder(source_spec.handler_type)
-        filter_factory = get_payload_filter_factory(source_spec.handler_type)
-        match source_spec:
-            case LiveRTSPOverlaySourceSpec():
-                embedded = RTSPOverlayDecoder(
-                    decoder=decoder, handler_type=source_spec.handler_type, filter_factory=filter_factory
-                )
-                return embedded, None
-            case LiveMQTTOverlaySourceSpec():
-                return None, MQTTOverlaySource(
-                    broker_host=source_spec.broker_host,
-                    broker_port=source_spec.broker_port,
-                    broker_username=source_spec.broker_username,
-                    broker_password=source_spec.broker_password,
-                    device_host=content.source_spec.host,
-                    device_username=content.source_spec.username,
-                    device_password=content.source_spec.password,
-                    device_api_protocol=source_spec.device_api_protocol,
-                    analytics_data_source_key=source_spec.analytics_data_source_key,
-                    decoder=decoder,
-                    handler_type=source_spec.handler_type,
-                    filter_factory=filter_factory,
-                )
-            case LiveWebSocketOverlaySourceSpec():
-                return None, WebSocketOverlaySource(
-                    topic=source_spec.topic,
-                    channel_id=source_spec.channel_id,
-                    device_host=content.source_spec.host,
-                    device_username=content.source_spec.username,
-                    device_password=content.source_spec.password,
-                    device_api_protocol=source_spec.device_api_protocol,
-                    decoder=decoder,
-                    handler_type=source_spec.handler_type,
-                    filter_factory=filter_factory,
-                )
-
-    def _build_rtsp_url(self, source_spec: LiveRTSPStreamSpec, *, metadata: bool) -> str:
-        from ax_devil_rtsp import build_axis_rtsp_url
-
-        if source_spec.stream_url:
-            return source_spec.stream_url
-        return str(
-            build_axis_rtsp_url(
-                source_spec.host,
-                rtsp_stream_config(metadata=metadata),
-                username=source_spec.username,
-                password=source_spec.password,
-                camera=source_spec.camera_head,
-                resolution=source_spec.resolution,
-            )
-        )
 
     def _connect_sources(self) -> None:
         assert self.video_source is not None
@@ -422,21 +334,13 @@ class StreamMediaController:
         self._source_slots = []
 
     def _release_sources(self) -> None:
-        """Disconnect, stop and delete every owned transport."""
+        """Invalidate delivery before requesting asynchronous transport retirement."""
+        sources, self._sources = self._sources, []
         self._disconnect_source_signals()
-        self._stop_and_wait_sources()
-        self._delete_source_objects()
         self.video_source = None
         self.overlay_source = None
-        self._sources = []
-
-    def _stop_and_wait_sources(self) -> None:
-        for source in self._sources:
-            source.stop()
-
-    def _delete_source_objects(self) -> None:
-        for source in self._sources:
-            source.deleteLater()
+        for source in sources:
+            source.retire()
 
     def _cleanup_synchronizer(self) -> None:
         if self.synchronizer is not None:
@@ -453,12 +357,3 @@ class StreamMediaController:
         self._scene_filter = None
         self._scene_inspector = None
         self._presenter = SceneFramePresenter()
-
-    def _clear_metrics(self) -> None:
-        remove_instance(self._metrics_id)
-
-    def _record_metric(self, key: str, value: str | Callable[[], str]) -> None:
-        if not metrics_enabled():
-            return
-        resolved = value() if callable(value) else value
-        set_metric(self._metrics_id, key, resolved)

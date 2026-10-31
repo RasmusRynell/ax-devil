@@ -9,8 +9,10 @@ from PySide6.QtGui import QImage
 
 from ax_devil.core.data_types import FrameData, FrameIdentifier
 from ax_devil.core.playback_speed import clamp_playback_speed
+from ax_devil.core.time_units import us_to_seconds
 from ax_devil.modules.cache import CacheManager
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.decoded_frame import DecodedFrame
+from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.frame_index import FrameIndex
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, VideoTimingProfile
 from ax_devil.modules.data_sources.video_analyzer import VideoAnalyzer
@@ -29,6 +31,32 @@ FFMPEG_PATH = "ffmpeg"
 VIDEO_DEEP_SCAN_ARGS = ("-probesize", "500M", "-analyzeduration", "500M")
 
 logger = get_logger(__name__)
+
+
+def frame_index_cache_path(file_path: str) -> Path:
+    """Return the on-disk frame index cache path for *file_path*."""
+    return CacheManager().get_cache_path(cache_type="frame_index", source_path=Path(file_path), suffix=".ptsidx")
+
+
+def create_video_analyzer() -> VideoAnalyzer:
+    """Create the analyzer that reads and caches a regular video file's metadata."""
+    return VideoAnalyzer(
+        ffprobe=FFPROBE_PATH,
+        ffmpeg=FFMPEG_PATH,
+        cache_suffix=VIDEO_CACHE_SUFFIX,
+        deep_args=VIDEO_DEEP_SCAN_ARGS,
+    )
+
+
+def warm_file_caches(file_path: str, image_sequence_config: ImageSequenceConfig | None, *, thread_count: int) -> None:
+    """Write the frame index and metadata caches a later open of *file_path* reads, without opening a source.
+
+    *thread_count* caps the decoder threads used to build the frame index.
+    """
+    open_config = image_sequence_config.to_video_open_config() if image_sequence_config is not None else None
+    FrameIndex(Path(file_path), frame_index_cache_path(file_path), open_config).load_or_build(thread_count)
+    if image_sequence_config is None:
+        create_video_analyzer().analyze(Path(file_path))
 
 
 class FileFrameSource(SeekableFrameSource):
@@ -86,17 +114,13 @@ class FileFrameSource(SeekableFrameSource):
             )
 
         try:
-            cache_manager = CacheManager()
-            cache_path = cache_manager.get_cache_path(
-                cache_type="frame_index", source_path=Path(self.file_path), suffix=".ptsidx"
-            )
             self._frame_delivery = FileFrameDelivery.create(
                 video_path=self.file_path,
                 fps=1.0,
                 source_id=self.source_id,
                 cache_pool=get_video_cache_pool(),
                 prefetch_count=50,
-                cache_path=cache_path,
+                cache_path=frame_index_cache_path(self.file_path),
                 open_config=open_config,
                 on_playback_frame=self.emit_decoded_frame,
                 on_playback_finished=self._on_delivery_finished,
@@ -141,12 +165,7 @@ class FileFrameSource(SeekableFrameSource):
     def _probe_video_metadata(self) -> None:
         """Extract metadata from a regular video file via ``VideoAnalyzer``."""
         if self._video_analyzer is None:
-            self._video_analyzer = VideoAnalyzer(
-                ffprobe=FFPROBE_PATH,
-                ffmpeg=FFMPEG_PATH,
-                cache_suffix=VIDEO_CACHE_SUFFIX,
-                deep_args=VIDEO_DEEP_SCAN_ARGS,
-            )
+            self._video_analyzer = create_video_analyzer()
 
         metadata = self._video_analyzer.analyze(Path(self.file_path))
         width_raw = metadata.get("width")
@@ -183,12 +202,12 @@ class FileFrameSource(SeekableFrameSource):
         self.cleanup_posted_events()
         logger.debug(f"Stopped {self.source_id} (done)")
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for delivery shutdown."""
         delivery = self._closing_delivery or self._frame_delivery
         if delivery is None:
             return True
-        if not delivery.wait(timeout):
+        if not delivery.wait(timeout_ms):
             return False
         self._closing_delivery = None
         return True
@@ -253,7 +272,7 @@ class FileFrameSource(SeekableFrameSource):
         except (IndexError, RuntimeError, ValueError) as exc:
             logger.debug(f"Failed to read the last frame time of {self.source_id}: {exc}")
             return None
-        return last_time_us / 1_000_000 + self.get_frame_period_after_s(last)
+        return us_to_seconds(last_time_us) + self.get_frame_period_after_s(last)
 
     def peek_frame_seconds(self, frame_number: int) -> float | None:
         """Return a frame's time in seconds from the first frame, or None when unknown or the decoder is busy.
@@ -266,7 +285,7 @@ class FileFrameSource(SeekableFrameSource):
             time_us = self._frame_delivery.try_frame_time_us(frame_number)
         except (IndexError, RuntimeError, ValueError):
             return None
-        return None if time_us is None else time_us / 1_000_000
+        return None if time_us is None else us_to_seconds(time_us)
 
     def get_frame_size(self) -> tuple[int, int] | None:
         """Return the video's width and height in pixels, or None when the file does not say."""
@@ -303,14 +322,13 @@ class FileFrameSource(SeekableFrameSource):
         position_generation: int | None = None,
     ) -> FrameData:
         """Convert a decoded reader frame into ``FrameData``."""
-        frame_rgb = decoded_frame.pixels
-        height, width, _ = frame_rgb.shape
-        bytes_per_line = 3 * width
-        frame_rgb = np.ascontiguousarray(frame_rgb)
-        qimage = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+        pixels = np.ascontiguousarray(decoded_frame.pixels)
+        height, width, _ = pixels.shape
+        # The QImage keeps the buffer alive and shares it without copying; alpha is always 255.
+        qimage = QImage(pixels.data, width, height, 4 * width, QImage.Format.Format_RGBX8888)
         frame_id = FrameIdentifier(
             sequence_id=decoded_frame.frame_index,
-            timestamp_monotime_us=decoded_frame.timestamp_us,
+            timestamp_us=decoded_frame.timestamp_us,
         )
         metadata = dict(decoded_frame.source_timing_metadata)
         if decoded_frame.period_after_s is not None:

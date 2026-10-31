@@ -4,26 +4,27 @@ Real-time overlay streaming via MQTT with device connection support. Uses Worker
 lifecycle management.
 """
 
-import time
+from threading import Lock
 from typing import Any
 
 from ax_devil_device_api import DeviceConfig
 from ax_devil_mqtt import AxisAnalyticsMqttClient, MqttMessage
 from PySide6.QtCore import QObject
 
+from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.filtering import FilterConfig, FilterFactory, build_default_filter_config
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
-from ax_devil.modules.settings.logging_config import get_logger
+from ax_devil.modules.settings.logging_config import get_logger, redact_dependency_logs
 
 from ..base import OverlaySource, Worker
+from .mqtt_diagnostics import MqttDiagnostics, UnsupportedAnalyticsDataSourceError, terminal_mqtt_failure
 from .mqtt_discovery import list_mqtt_data_source_keys
 
 logger = get_logger(__name__)
-
-
-class UnsupportedAnalyticsDataSourceError(ValueError):
-    """Raised when a configured analytics source is not available on the device."""
+RETRY_INITIAL_DELAY_S = 0.25
+RETRY_MAX_DELAY_S = 8.0
 
 
 class MQTTWorker(Worker):
@@ -35,32 +36,30 @@ class MQTTWorker(Worker):
         broker_port: int,
         broker_username: str,
         broker_password: str,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         analytics_data_source_key: str,
         decoder: PayloadToSceneDecoder,
         source_id: str = "mqtt_overlay",
-    ):
+    ) -> None:
         super().__init__(source_id)
 
         self.broker_host = broker_host
         self.broker_port = broker_port
         self.broker_username = broker_username
         self.broker_password = broker_password
-        self.device_host = device_host
-        self.device_username = device_username
-        self.device_password = device_password
-        self.device_api_protocol = device_api_protocol
+        self.device = device
         self.analytics_data_source_key = analytics_data_source_key
         self.decoder = decoder
 
         self.analytics_manager: AxisAnalyticsMqttClient | None = None
         self.device_config: DeviceConfig | None = None
         self.latest_message: MqttMessage | None = None
+        self._message_lock = Lock()
         self.message_count = 0
         self._connected = False
+        self._stop_token = CancelToken()
+        self._retry_delay_s = RETRY_INITIAL_DELAY_S
+        self._diagnostics = MqttDiagnostics((broker_password, device.password))
 
         # Signal to parent overlay source
         self.overlay_ready_signal: Any | None = None
@@ -69,24 +68,60 @@ class MQTTWorker(Worker):
         """Set the signal to emit when overlay is ready."""
         self.overlay_ready_signal = signal
 
+    def run(self) -> None:
+        """Keep transport cleanup on the worker, after any pending setup returns."""
+        # The dependency logs setup/cleanup exceptions before handing them back to us.
+        with redact_dependency_logs(
+            ("ax_devil_mqtt.core.manager", "ax_devil_mqtt.core.temporary_analytics_mqtt_publisher"),
+            self._diagnostics.redact,
+        ):
+            try:
+                super().run()
+            finally:
+                self._cleanup_connection()
+                self._running = False
+
     def run_loop(self) -> bool:
-        """Main processing loop - called by Worker base class."""
-        if not self._connected:
-            self._connect()
-
-        if not self._connected:
-            time.sleep(0.1)  # Wait before retry
+        """Run one cancellable setup attempt or message-processing iteration."""
+        try:
+            self._stop_token.raise_if_cancelled()
+            if not self._connected:
+                try:
+                    self._connect()
+                except Exception as exc:
+                    self._stop_token.raise_if_cancelled()
+                    reason = self._diagnostics.redact(f"Connection failed: {exc}")
+                    if terminal_mqtt_failure(exc):
+                        logger.error(reason)
+                        self.sourceError.emit(reason)
+                        return False
+                    logger.warning(reason)
+                    self.sourceReconnecting.emit(reason)
+                    self._stop_token.wait(self._retry_delay_s)
+                    self._retry_delay_s = min(self._retry_delay_s * 2, RETRY_MAX_DELAY_S)
+                    return True
+            self._process_message()
+            self._stop_token.wait(0.01)
             return True
+        except Cancelled:
+            return False
 
-        # Process latest MQTT message if available
-        if self.latest_message and self.overlay_ready_signal:
+    def _process_message(self) -> None:
+        overlay_ready_signal = self.overlay_ready_signal
+        with self._message_lock:
+            message = self.latest_message if overlay_ready_signal else None
+            if message is not None:
+                self.latest_message = None
+        if message is not None and overlay_ready_signal is not None:
             try:
                 self.message_count += 1
-                scene = self.decoder.decode(self.latest_message.payload)
+                scene = self.decoder.decode(message.payload)
                 if scene is None:
-                    logger.debug("Decoder returned no scene for latest MQTT payload.")
-                    self.latest_message = None
-                    return True
+                    logger.warning(
+                        f"No scene emitted for MQTT message: decoder returned None; "
+                        f"source={self.source_id!r}, topic={message.topic!r}"
+                    )
+                    return
 
                 if not scene.time_slice.is_instant:
                     logger.warning(
@@ -94,56 +129,36 @@ class MQTTWorker(Worker):
                               things might not work correctly! be careful"
                     )
 
-                if isinstance(scene.time_slice.start, int):
+                capture_time_us = scene.time_slice.start_timestamp_us
+                if capture_time_us is None:
                     raise ValueError("Streamed data with ints as timestamps is not supported at this moment")
 
-                capture_timestamp = scene.time_slice.start.timestamp()
-
                 # Create FrameIdentifier using device-provided timestamp from MQTT
-                frame_id = FrameIdentifier(
-                    sequence_id=self.message_count,
-                    timestamp_monotime_us=capture_timestamp * 1000000.0,  # Convert seconds to microseconds
-                )
+                frame_id = FrameIdentifier(sequence_id=self.message_count, timestamp_us=capture_time_us)
 
                 overlay_data = OverlayData(
                     content=scene,
                     frame_id=frame_id,
                     source_id=self.source_id,
-                    metadata={"mqtt_message": self.latest_message},
+                    metadata={"mqtt_message": message},
                 )
 
-                self.overlay_ready_signal.emit(overlay_data)
-                self.latest_message = None  # Clear processed message
+                overlay_ready_signal.emit(overlay_data)
 
             except Exception as e:
-                import traceback
-
-                logger.debug(traceback.format_exc())
-                logger.error(f"Error decoding MQTT message: {e}")
-
-        # Small sleep to prevent busy waiting
-        time.sleep(0.01)  # 10ms poll rate
-        return True
+                logger.error(
+                    f"Dropping MQTT message after processing failed: source={self.source_id!r}, "
+                    f"topic={message.topic!r}, error={type(e).__name__}. Sparse decoder state may be incomplete.",
+                    exc_info=True,
+                )
 
     def _connect(self) -> None:
         """Establish connection to device and MQTT broker."""
         try:
-            logger.info(f"Connecting to device at {self.device_host}")
-
-            if self.device_api_protocol == "https":
-                self.device_config = DeviceConfig.https(
-                    host=self.device_host,
-                    username=self.device_username,
-                    password=self.device_password,
-                )
-            else:
-                self.device_config = DeviceConfig.http(
-                    host=self.device_host,
-                    username=self.device_username,
-                    password=self.device_password,
-                )
-
+            self._stop_token.raise_if_cancelled()
+            self.device_config = self.device.device_config()
             self._validate_analytics_data_source()
+            self._stop_token.raise_if_cancelled()
 
             self.analytics_manager = AxisAnalyticsMqttClient(
                 broker_host=self.broker_host,
@@ -154,21 +169,17 @@ class MQTTWorker(Worker):
                 broker_username=self.broker_username,
                 broker_password=self.broker_password,
             )
-
+            self._stop_token.raise_if_cancelled()
             self.analytics_manager.start()  # Raise exception on failure
+            self._stop_token.raise_if_cancelled()
             self._connected = True
+            self._retry_delay_s = RETRY_INITIAL_DELAY_S
             logger.info("MQTT connection established")
             self.sourceConnected.emit()
 
-        except UnsupportedAnalyticsDataSourceError as e:
-            logger.error(str(e))
-            self.sourceError.emit(str(e))
-            self._connected = False
-            super().stop()
-        except Exception as e:
-            logger.error(f"Failed to connect: {e}")
-            self.sourceReconnecting.emit(f"Connection failed: {str(e)}")
-            self._connected = False
+        finally:
+            if not self._connected:
+                self._cleanup_connection()
 
     def _validate_analytics_data_source(self) -> None:
         """Reject unavailable data sources before publisher creation with an actionable error."""
@@ -190,32 +201,41 @@ class MQTTWorker(Worker):
 
         raise UnsupportedAnalyticsDataSourceError(
             f"Analytics data source '{self.analytics_data_source_key}' is not available on device "
-            f"{self.device_host}. Available sources: {available_text}. Choose a source in Add Live Stream, or pass "
+            f"{self.device.host}. Available sources: {available_text}. Choose a source in Add Live Stream, or pass "
             "--data-source with a matching --handler-type."
         )
 
     def _on_message_received(self, message: MqttMessage) -> None:
         """Callback for new MQTT messages."""
-        # Store latest message for processing in thread
-        self.latest_message = message
+        with self._message_lock:
+            dropped = self.latest_message
+            self.latest_message = message
+        if dropped is not None:
+            logger.warning(
+                f"Dropping undecoded MQTT message: replaced by newer message; "
+                f"source={self.source_id!r}, topic={dropped.topic!r}. Sparse decoder state may be incomplete."
+            )
 
     def request_stop(self) -> None:
         """Request worker-thread termination without racing connection setup cleanup."""
+        self._stop_token.cancel()
         super().stop()
 
-    def stop(self) -> None:
-        """Stop and cleanup MQTT connection."""
-        self.request_stop()
-
-        if self.analytics_manager:
+    def _cleanup_connection(self) -> None:
+        manager, self.analytics_manager = self.analytics_manager, None
+        self.device_config = None
+        self._connected = False
+        if manager is not None:
             try:
-                self.analytics_manager.stop()
+                manager.stop()
             except Exception as e:
-                logger.error(f"Error stopping analytics manager: {e}")
-            finally:
-                self.analytics_manager = None
-                self.device_config = None
-                self._connected = False
+                logger.error(self._diagnostics.redact(f"Error stopping analytics manager: {e}"))
+        with self._message_lock:
+            dropped, self.latest_message = self.latest_message, None
+        if dropped is not None:
+            logger.warning(
+                f"Dropping undecoded MQTT message on stop: source={self.source_id!r}, topic={dropped.topic!r}"
+            )
 
 
 class MQTTOverlaySource(OverlaySource):
@@ -227,17 +247,14 @@ class MQTTOverlaySource(OverlaySource):
         broker_port: int,
         broker_username: str,
         broker_password: str,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         analytics_data_source_key: str,
         decoder: PayloadToSceneDecoder,
         handler_type: str,
         source_id: str = "mqtt_overlay",
         parent: QObject | None = None,
         filter_factory: FilterFactory | None = None,
-    ):
+    ) -> None:
         super().__init__(parent)
         self.source_id = source_id
         self._handler_type = handler_type
@@ -250,10 +267,7 @@ class MQTTOverlaySource(OverlaySource):
             broker_port=broker_port,
             broker_username=broker_username,
             broker_password=broker_password,
-            device_host=device_host,
-            device_username=device_username,
-            device_password=device_password,
-            device_api_protocol=device_api_protocol,
+            device=device,
             analytics_data_source_key=analytics_data_source_key,
             decoder=self.decoder,
             source_id=source_id,
@@ -269,11 +283,14 @@ class MQTTOverlaySource(OverlaySource):
 
     @property
     def handler_type(self) -> str:
+        """Return the configured overlay decoder handler."""
         return self._handler_type
 
     def play(self) -> bool:
         """Start overlay production."""
         logger.debug(f"[{self.source_id}] Starting MQTT overlay source")
+        if self._delete_requested:
+            return False
         return self.worker.play()
 
     def pause(self) -> None:
@@ -282,19 +299,15 @@ class MQTTOverlaySource(OverlaySource):
         self.worker.pause()
 
     def stop(self) -> None:
-        """Stop overlay production."""
+        """Request cancellation; the worker closes the transport before finishing."""
         logger.debug(f"[{self.source_id}] Stopping MQTT overlay source")
         self.worker.set_overlay_ready_signal(None)
         self.worker.request_stop()
-        self.worker.wait()
-
-        # Connection setup has finished, so manager cleanup cannot race start().
-        self.worker.stop()
         self.cleanup_posted_events()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for overlay production to complete."""
-        return bool(self.worker.wait(timeout))
+        return bool(self.worker.wait(timeout_ms))
 
     def get_filter_config(self) -> FilterConfig:
         """Return the filter configuration for this overlay source."""

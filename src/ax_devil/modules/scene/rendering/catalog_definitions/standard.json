@@ -411,7 +411,7 @@
     },
     "score_tab": {
       "label": "Score tab",
-      "feature": "confidence",
+      "feature": "score",
       "description": "The detection score, such as 0.87, on a tab flush with the box's bottom-left corner.",
       "parameters": {
         "geometry": {
@@ -680,6 +680,277 @@
         }
       ]
     },
+    "confidence_tab": {
+      "label": "Confidence tab",
+      "feature": "confidence",
+      "description": "The detection confidence, such as 0.87, on a tab flush with the box's bottom-right corner.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Tab color",
+          "required": true
+        },
+        "ink": {
+          "type": "rgb",
+          "label": "Text color",
+          "description": "Black or white, whichever contrasts.",
+          "required": true
+        },
+        "confidence": {
+          "type": "number",
+          "label": "Confidence",
+          "required": true
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 11,
+            "unit": "px"
+          }
+        },
+        "shift": {
+          "type": "length",
+          "label": "Shift",
+          "description": "Moves the tab right to line up with the outside of the box line.",
+          "default": {
+            "value": 0.75,
+            "unit": "px"
+          }
+        }
+      },
+      "values": {
+        "room": {
+          "call": "gt",
+          "args": {
+            "left": {
+              "call": "sub",
+              "args": {
+                "left": 1,
+                "right": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "y"
+                        ]
+                      },
+                      {
+                        "ref": [
+                          "parameters",
+                          "geometry",
+                          "h"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "right": {
+              "call": "div",
+              "args": {
+                "numerator": {
+                  "call": "add",
+                  "args": {
+                    "values": [
+                      {
+                        "value": 17,
+                        "unit": "px"
+                      },
+                      {
+                        "value": -0.75,
+                        "unit": "px"
+                      }
+                    ]
+                  }
+                },
+                "denominator": {
+                  "value": 1,
+                  "unit": "image_height"
+                }
+              }
+            }
+          }
+        },
+        "position": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "value": -0.75,
+                  "unit": "px"
+                }
+              }
+            },
+            "else": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "bottom-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "value": -0.75,
+                        "unit": "px"
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "anchor": {
+          "call": "if",
+          "args": {
+            "condition": {
+              "ref": [
+                "values",
+                "room"
+              ]
+            },
+            "then": "top-right",
+            "else": "bottom-right"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "ref": [
+                "values",
+                "position"
+              ]
+            },
+            "anchor": {
+              "ref": [
+                "values",
+                "anchor"
+              ]
+            },
+            "runs": [
+              {
+                "text": {
+                  "call": "number_text",
+                  "args": {
+                    "value": {
+                      "ref": [
+                        "parameters",
+                        "confidence"
+                      ]
+                    },
+                    "precision": 2,
+                    "hide_zero": false
+                  }
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "ink"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "alpha": 255
+              },
+              "padding_x": {
+                "value": 4,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 1,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
     "speed_arrow": {
       "label": "Speed arrow",
       "feature": "speed",
@@ -855,6 +1126,172 @@
                 ]
               },
               "alpha": 255
+            }
+          }
+        }
+      ]
+    },
+    "movement_badge": {
+      "label": "Movement badge",
+      "feature": "movement",
+      "description": "A small tab in the class color just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Tab color",
+          "required": true
+        },
+        "ink": {
+          "type": "rgb",
+          "label": "Text color",
+          "description": "Black or white, whichever contrasts.",
+          "required": true
+        },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "required": true
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 11,
+            "unit": "px"
+          }
+        },
+        "shift": {
+          "type": "length",
+          "label": "Shift",
+          "description": "Moves the tab to line up with the outside of the box line.",
+          "default": {
+            "value": 0.75,
+            "unit": "px"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "shift"
+                        ]
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
+            },
+            "anchor": "top-left",
+            "runs": [
+              {
+                "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "ink"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "alpha": 255
+              },
+              "padding_x": {
+                "value": 3,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 1,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
             }
           }
         }
@@ -1112,6 +1549,48 @@
             }
           },
           {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                130,
+                139,
+                150
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          {
             "label": "Id",
             "template": "id_tab",
             "inputs": {
@@ -1233,6 +1712,48 @@
             }
           },
           {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          {
             "label": "Id",
             "template": "id_tab",
             "inputs": {
@@ -1274,6 +1795,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1297,6 +1830,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -1401,6 +1976,48 @@
             }
           },
           {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          {
             "label": "Id",
             "template": "id_tab",
             "inputs": {
@@ -1442,6 +2059,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1465,6 +2094,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -1573,6 +2244,48 @@
             }
           },
           {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "ink": [
+                17,
+                17,
+                17
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          {
             "label": "Id",
             "template": "id_tab",
             "inputs": {
@@ -1614,6 +2327,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1637,6 +2362,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "ink": [
+                17,
+                17,
+                17
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }
@@ -1733,6 +2500,48 @@
             }
           },
           {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          {
             "label": "Id",
             "template": "id_tab",
             "inputs": {
@@ -1775,6 +2584,18 @@
           {
             "label": "Score",
             "template": "score_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "score"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1798,6 +2619,48 @@
                   "scene",
                   "classification",
                   "score"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Confidence",
+            "template": "confidence_tab",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "classification",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "confidence": {
+                "ref": [
+                  "scene",
+                  "classification",
+                  "confidence"
                 ]
               }
             }

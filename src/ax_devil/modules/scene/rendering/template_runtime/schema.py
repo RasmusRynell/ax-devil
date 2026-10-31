@@ -137,6 +137,10 @@ def catalog_schema() -> dict[str, Any]:
                         "schema_version": {"const": 3},
                         "description": {"type": "string"},
                         "design_notes": {"type": "object"},
+                        "origin": _object(
+                            {"based_on": {"type": "string", "minLength": 1}, "base_hash": {"type": "string"}},
+                            ["based_on", "base_hash"],
+                        ),
                     },
                     ["id", "name", "schema_version"],
                 ),

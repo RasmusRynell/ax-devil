@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QInputMethodEvent, QPalette, QTextCharFormat
 from PySide6.QtWidgets import (
     QApplication,
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -19,8 +18,10 @@ from PySide6.QtWidgets import (
 )
 
 from ax_devil.modules.chrome.appearance import follow_appearance
+from ax_devil.modules.chrome.elided_label import ElidedLabel
 from ax_devil.modules.chrome.icons import Icon
-from ax_devil.modules.chrome.tokens import Height, Radius, Space, TextRole
+from ax_devil.modules.chrome.popover import Popover
+from ax_devil.modules.chrome.tokens import Height, Space, TextRole
 from ax_devil.modules.scene.query import Query, QueryToken, TokenKind, compile_query, tokenize
 
 _DEBOUNCE_MS = 150
@@ -31,18 +32,11 @@ _PLACEHOLDER = "Search objects"
 _SYNTAX = (
     ("human 17", "text in id, class or state"),
     ("class:human", "field equals value"),
-    ("conf>0.7", "compare with > < >= <= ="),
+    ("score>0.7", "compare with > < >= <= ="),
     ("-state:parked", "exclude matches"),
     ("a OR b", "either term"),
     ("a b", "both terms (default)"),
 )
-_POPUP_STYLE = f"""
-QFrame#QuerySyntax {{
-    background-color: palette(base);
-    border: 1px solid palette(mid);
-    border-radius: {Radius.POPUP}px;
-}}
-"""
 _MUTED = "color: palette(placeholder-text);"
 
 
@@ -81,8 +75,8 @@ class QueryBar(QWidget):
         self._help.setToolTip("Query syntax")
         self._help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        self._note = QLabel(self)
-        self._note.setWordWrap(True)
+        # One line that never widens the page: a long field path is cut in the middle, whole in the tooltip.
+        self._note = ElidedLabel("", Qt.TextElideMode.ElideMiddle, self)
         self._note.setStyleSheet(_MUTED)
         TextRole.SMALL.apply(self._note)
         self._note.hide()
@@ -122,7 +116,7 @@ class QueryBar(QWidget):
 
     def set_note(self, note: str) -> None:
         """Show ``note`` as a muted line beneath the field; an empty note hides the line."""
-        self._note.setText(note)
+        self._note.set_full_text(note)
         self._note.setVisible(bool(note))
 
     def _apply_appearance(self) -> None:
@@ -166,11 +160,7 @@ class QueryBar(QWidget):
     def _show_syntax(self) -> None:
         if self._syntax is None:
             self._syntax = _SyntaxPopup(self, self._syntax_rows)
-        popup = self._syntax
-        popup.adjustSize()
-        below = self._help.mapToGlobal(QPoint(self._help.width(), self._help.height() + Space.XS))
-        popup.move(below - QPoint(popup.width(), 0))
-        popup.show()
+        self._syntax.open_below(self._help)
 
 
 def _token_format(token: QueryToken, palette: QPalette) -> QTextCharFormat:
@@ -190,13 +180,11 @@ def _token_format(token: QueryToken, palette: QPalette) -> QTextCharFormat:
     return fmt
 
 
-class _SyntaxPopup(QFrame):
+class _SyntaxPopup(Popover):
     """The static syntax sheet: what to type and what it does."""
 
     def __init__(self, owner: QWidget, rows: Sequence[tuple[str, str]]) -> None:
-        super().__init__(owner, Qt.WindowType.Popup)
-        self.setObjectName("QuerySyntax")
-        self.setStyleSheet(_POPUP_STYLE)
+        super().__init__(owner)
         grid = QGridLayout(self)
         grid.setContentsMargins(Space.M, Space.M, Space.M, Space.M)
         grid.setHorizontalSpacing(Space.L)

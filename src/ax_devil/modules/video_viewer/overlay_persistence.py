@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
+from ax_devil.core.time_units import ms_to_us
 from ax_devil.modules.data_sources.base import OverlayLookup
 
+MAX_TIMEOUT_MS = 100000
 
-@dataclass(slots=True)
+
+@dataclass(frozen=True, slots=True)
 class OverlayPersistenceSettings:
     """Configuration used when deciding whether to reuse previous overlays."""
 
@@ -16,14 +20,29 @@ class OverlayPersistenceSettings:
     timeout_ms: int | None = 2050
     opacity: float = 1.0
 
-    def copy(self) -> "OverlayPersistenceSettings":
-        """Return a shallow copy of the current settings."""
-        return replace(self)
-
     @classmethod
     def default_enabled(cls) -> "OverlayPersistenceSettings":
         """Return settings with sticky overlays enabled."""
         return cls(enabled=True)
+
+    @classmethod
+    def from_config(cls, value: object) -> "OverlayPersistenceSettings":
+        """Return the settings saved as *value*; raise ValueError when it is malformed."""
+        if isinstance(value, dict):
+            enabled, timeout_ms, opacity = value.get("enabled"), value.get("timeout_ms"), value.get("opacity")
+            if (
+                isinstance(enabled, bool)
+                and _is_valid_timeout(timeout_ms)
+                and isinstance(opacity, (int, float))
+                and not isinstance(opacity, bool)
+                and math.isfinite(opacity)
+            ):
+                return cls(enabled=enabled, timeout_ms=timeout_ms, opacity=_clamp_opacity(float(opacity)))
+        raise ValueError(f"Invalid sticky overlay settings {value!r}")
+
+    def config_value(self) -> dict[str, object]:
+        """Return the settings as the JSON object saved under ``settings.view_defaults``."""
+        return {"enabled": self.enabled, "timeout_ms": self.timeout_ms, "opacity": self.opacity}
 
 
 @dataclass(slots=True)
@@ -40,6 +59,13 @@ class OverlaySelection:
             "overlay_reused": self.reused,
             "overlay_opacity": self.effective_opacity,
         }
+
+
+def _is_valid_timeout(value: object) -> bool:
+    """Return whether *value* is no timeout or a whole number of ms the timeout control can show."""
+    if value is None:
+        return True
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_TIMEOUT_MS
 
 
 def _clamp_opacity(value: float) -> float:
@@ -59,9 +85,8 @@ class OverlayPersistencePolicy:
         self,
         settings: OverlayPersistenceSettings | None = None,
     ) -> None:
-        initial = replace(settings) if settings is not None else OverlayPersistenceSettings()
-        initial.opacity = _clamp_opacity(initial.opacity)
-        self._settings = initial
+        initial = settings if settings is not None else OverlayPersistenceSettings()
+        self._settings = replace(initial, opacity=_clamp_opacity(initial.opacity))
         self._cached_overlay: OverlayData | None = None
 
     @property
@@ -71,9 +96,7 @@ class OverlayPersistencePolicy:
 
     def update_settings(self, new_settings: OverlayPersistenceSettings) -> None:
         """Replace settings in preparation for configurable behaviour."""
-        updated = replace(new_settings)
-        updated.opacity = _clamp_opacity(updated.opacity)
-        self._settings = updated
+        self._settings = replace(new_settings, opacity=_clamp_opacity(new_settings.opacity))
         if not self._settings.enabled:
             self.reset()
 
@@ -83,8 +106,7 @@ class OverlayPersistencePolicy:
 
     def sample_selection(self) -> tuple[bool, int | None]:
         """Return whether offline lookup may retain earlier samples, and the oldest sample age it shows in µs."""
-        timeout_ms = self._settings.timeout_ms if self._settings.enabled else None
-        return self._settings.enabled, timeout_ms * 1000 if timeout_ms is not None else None
+        return self._settings.enabled, self._timeout_us()
 
     def select_from_source(self, source: OverlayLookup, frame_id: FrameIdentifier) -> OverlaySelection:
         """Select offline data by sample time, independent of previously displayed frames."""
@@ -117,7 +139,7 @@ class OverlayPersistencePolicy:
             self.reset()
             cached = None
         if candidate is not None and (
-            cached is None or candidate.frame_id.timestamp_monotime_us >= cached.frame_id.timestamp_monotime_us
+            cached is None or candidate.frame_id.timestamp_us >= cached.frame_id.timestamp_us
         ):
             self._cached_overlay = candidate
         cached = self._cached_overlay
@@ -127,6 +149,11 @@ class OverlayPersistencePolicy:
         return OverlaySelection(cached, reused, self._settings.opacity if reused else 1.0)
 
     def _is_eligible(self, frame_id: FrameIdentifier, overlay: OverlayData) -> bool:
-        age_us = frame_id.timestamp_monotime_us - overlay.frame_id.timestamp_monotime_us
+        age_us = frame_id.timestamp_us - overlay.frame_id.timestamp_us
+        timeout_us = self._timeout_us()
+        return age_us >= 0 and (timeout_us is None or age_us <= timeout_us)
+
+    def _timeout_us(self) -> int | None:
+        """Return the oldest sample age to show in µs, or None when samples never expire."""
         timeout_ms = self._settings.timeout_ms if self._settings.enabled else None
-        return age_us >= 0 and (timeout_ms is None or age_us <= timeout_ms * 1000)
+        return ms_to_us(timeout_ms) if timeout_ms is not None else None

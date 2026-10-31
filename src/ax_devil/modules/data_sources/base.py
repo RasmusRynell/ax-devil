@@ -5,6 +5,7 @@ Clean separation of Worker (threading/execution) from DataSource (capability) in
 
 from __future__ import annotations
 
+import time
 from abc import ABC, ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
@@ -50,10 +51,6 @@ class Worker(QThread):
         self._paused = False
         self._pause_condition = QWaitCondition()
         self._mutex = QMutex()
-        _id = id(self)
-        self.destroyed.connect(
-            lambda _=None, _id=_id, _sid=source_id: logger.debug(f"Worker.destroyed id={_id} source_id={_sid}")
-        )
 
     def play(self) -> bool:
         """Start the worker."""
@@ -151,11 +148,6 @@ class DataSource(QObject, metaclass=QObjectABCMeta):
         super().__init__(parent)
         self._owned_worker: Worker | None = None
         self._delete_requested = False
-        _id = id(self)
-        _cls = self.__class__.__name__
-        self.destroyed.connect(
-            lambda _=None, _id=_id, _cls=_cls: logger.debug(f"{_cls}.destroyed id={_id} class={_cls}")
-        )
 
     def _own_worker(self, worker: Worker) -> None:
         worker.setParent(self)
@@ -167,6 +159,7 @@ class DataSource(QObject, metaclass=QObjectABCMeta):
         if self._delete_requested:
             return
         self._delete_requested = True
+        self.setParent(None)
         self._retiring.add(self)
         if self._owned_worker is None or not self._owned_worker.isRunning():
             self._finish_delete()
@@ -176,6 +169,29 @@ class DataSource(QObject, metaclass=QObjectABCMeta):
         if self._delete_requested:
             super().deleteLater()
             self._retiring.discard(self)
+
+    def retire(self) -> None:
+        """Request cancellation now and retain ownership until the worker finishes."""
+        if self._delete_requested:
+            return
+        self.stop()
+        self.deleteLater()
+
+    @classmethod
+    def wait_for_retired(cls, timeout_ms: int = 3000) -> None:
+        """Wait, within one overall deadline, for retiring workers to finish their transport cleanup.
+
+        Call once after the Qt event loop returns, so that quitting neither destroys running threads nor skips
+        cleanup such as restoring camera state.
+        """
+        deadline = time.monotonic() + timeout_ms / 1000
+        unfinished: list[str] = []
+        for source in tuple(cls._retiring):
+            worker = source._owned_worker
+            if worker is not None and not worker.wait(max(0, int((deadline - time.monotonic()) * 1000))):
+                unfinished.append(worker.source_id)
+        if unfinished:
+            logger.warning(f"Sources still running {timeout_ms} ms after quit: {', '.join(unfinished)}")
 
     @abstractmethod
     def play(self) -> bool:
@@ -187,10 +203,10 @@ class DataSource(QObject, metaclass=QObjectABCMeta):
 
     @abstractmethod
     def stop(self) -> None:
-        """Stop source production."""
+        """Request cancellation without waiting for production or transport cleanup."""
 
     @abstractmethod
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for source production to complete."""
 
     def cleanup_posted_events(self) -> None:

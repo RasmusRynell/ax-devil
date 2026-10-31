@@ -1,6 +1,6 @@
 ---
 name: render-catalog
-description: Change how ax-devil draws overlays on video — boxes, labels, ids, class names, font sizes, colors, line styles, confidence bars, speed arrows, badges, swatches, relation lines — by editing a render catalog JSON file. Use whenever the user asks to change, add, hide or restyle anything drawn over the video, for all objects or one type (people, vehicles, heads...), or asks why an overlay looks the way it does.
+description: Change how ax-devil draws overlays on video — boxes, labels, ids, class names, font sizes, colors, line styles, score bars, speed arrows, badges, swatches, relation lines — by editing a render catalog JSON file. Use whenever the user asks to change, add, hide or restyle anything drawn over the video, for all objects or one type (people, vehicles, heads...), or asks why an overlay looks the way it does.
 ---
 
 # Changing how overlays look: render catalogs
@@ -69,11 +69,11 @@ level of detail are the house style.
 
 **Routing.** An object uses the classification recipe whose `selector.types` contains its class (`"human"`, `"car"`,
 ...); otherwise the `classified` fallback; with no class at all, the `unclassified` fallback. A class may belong to
-only one recipe. Known classes are in `KnownClassificationType` in `src/ax_devil/modules/scene/model.py`.
+only one recipe. Known classes are in `KnownClassificationType` in `src/ax_devil/modules/scene/model_values.py`.
 
 **Recipes** (object types and relations) have `id`, `label`, `description`, `selector`, optionally `enabled`,
-`bindings` and `values`, and `steps`. **Drawing order is by layer, not by step**: shapes, then text, then labels.
-Within a layer the renderer may draw in any order, so a shape never reliably covers another shape. Put a fill and its
+`bindings` and `values`, and `steps`. **Drawing order is by kind, not by step**: shapes, then text, then labels.
+Within a kind the renderer may draw in any order, so a shape never reliably covers another shape. Put a fill and its
 outline in one primitive, keep shapes that must stay visible from overlapping, and put anything that sits on a
 background in a label. A step is either
 
@@ -84,7 +84,7 @@ and may have `"feature": "confidence"` (the view's Details control gates this co
 `"enabled": <bool expression>` (draw only when true) and `"visible": false` (kept but not drawn).
 
 **User visibility.** Schema v3 templates and steps may declare `feature`: `outlines`, `ids`, `class_names`,
-`confidence`, `speed`, `movement`, `attributes`, or `relations`. Tag shared semantic templates once; tag individual
+`score`, `confidence`, `speed`, `movement`, `attributes`, or `relations`. Tag shared semantic templates once; tag individual
 steps for generic helpers. Both gates apply on an invocation, and untagged components remain permitted. Give all
 parts of one presentation the same feature, including backgrounds and arrowheads. Split mixed components into
 separate tagged steps when independent visibility is needed. Details preferences belong to the view, not the JSON;
@@ -117,9 +117,16 @@ line widths long. A text style is `{"text": {"color", "size", "family"?}}`.
 text, so there is nothing to measure. Fields are `position`, `anchor` (which point of the background sits on
 `position`) and `runs`, a list of `{"text", "color", "weight": "regular"|"medium"|"semibold"|"bold"}` laid out left to
 right; a run whose text is null or empty is left out. A run with `"bar": <number 0–1>` instead of `text` is a small
-meter, such as a confidence bar, filled that much in its color over a faint track of the same color. The style is
+meter, such as a score bar, filled that much in its color over a faint track of the same color. The style is
 `{"label": {"size", "family", "background": {"color", "alpha"} | null, "padding_x", "padding_y", "radius", "gap"}}`.
 A colored dot is a run with the text `●`.
+
+**Score and confidence** are two separate inputs, `scene.classification.score` (a raw model output, any number) and
+`scene.classification.confidence` (only what a source reports as a confidence). Show either with `number_text`, such as
+`0.87`. A decoder may give either, both or neither, and neither is ever invented, so each is
+null when missing: guard every step that uses one with `enabled` and `is_present`, and gate numbers with the `score`
+and `confidence` features. A `bar` is only a display hint for a value from 0 to 1; draw each from its own input and
+do not `coalesce` a score with a confidence.
 
 **Long ids**: `trim_text` with `"elide": "middle"` keeps both ends of text longer than `max_length`, so
 `3f2a9c1e-7b4d-…-1a2b3c4d5e6f` shows as `3f2a9…d5e6f` and `track-000412` as `track…00412`.

@@ -9,19 +9,26 @@ documented by `ax-devil catalog reference`, generated from the runtime definitio
 ## Quick map
 
 - `cache.py`: `CachedSceneOverlay`, the per-Scene adapter that caches the filtered Scene and prepared drawing, indexes
-  hover targets and reports preparation metrics; `ReportedCatalogErrors` limits repeated catalog error logs.
-- `catalog.py`: `SceneRenderCatalog` recipe routing and per-recipe row-column execution, and
-  `SceneRenderCatalogLoader` validation and compilation.
+  hover targets; `ReportedCatalogErrors` limits repeated catalog error logs.
+- `catalog.py`: `SceneRenderCatalog` recipe routing and per-recipe row-column execution; `catalog_tables.py`: the Scene
+  columns a recipe reads, with its typed bindings; `catalog_loader.py`: `SceneRenderCatalogLoader` validation and
+  compilation, and `SceneRenderCatalogRevision`.
 - `catalog_store.py`: `SceneRenderCatalogStore`, the user-store file lifecycle, the listing with the packaged built-in
   catalogs first, and the default catalog choice.
-- `catalog_manager.py`: `SceneRenderCatalogManager` (discovery, compiled reuse, file watching, default catalog, apply
-  to all) and `SceneRenderCatalogSelection` (one consumer's active catalog and visibility choices).
+- `catalog_manager.py`: `SceneRenderCatalogManager` (discovery, file watching, default catalog, apply to all) with the
+  worker jobs, waiting consumers and compiled-revision cache (`CatalogRevisions`) it uses in `catalog_jobs.py`;
+  `catalog_selection.py`:
+  `SceneRenderCatalogSelection` (one consumer's active catalog and visibility choices; its `cleanup()` also removes it
+  from the open views that Apply to all counts); `catalogs_in_use.py`: `CatalogsInUse`, the catalog each open view shows.
 - `visibility.py`: the typed `OverlayFeature` groups a view can hide, and immutable per-view visibility.
 - `catalog_definitions/`: the packaged built-in catalogs (schema version 3) and their generated JSON Schema.
 - `template_runtime/`: the catalog language. `definitions.py` is the closed set of value types, operations and
-  primitives with their limits as data; `schema.py` derives the JSON Schema from it; `compiler.py` checks scope,
-  types, references and expansion limits; `program.py` and `executable.py` lower validated plans to one Python
-  function per recipe that evaluates every routed row at once over NumPy columns; `kernels.py` is that runtime.
+  primitives with their limits as data; `validation.py` checks values against them; `schema.py` derives the JSON Schema
+  from it; `compiler.py` and `program_compiler.py` check scope, types, references and expansion limits (`coercion.py`
+  and `structure.py` hold their type and shape rules); `program.py`, `plan.py`, the `lowering_*.py` layers and
+  `executable.py` lower validated plans to one
+  Python function per recipe that evaluates every routed row at once over NumPy columns; `kernels.py`,
+  `colormaps.py` and `emission.py` are that runtime.
 
 ## How it runs
 
@@ -41,7 +48,7 @@ filtered Scene; hit testing picks the smallest box containing the cursor.
 
 ## Rules
 
-- Keep Scene semantics here; the video player receives only prepared drawings, hover hits and metrics.
+- Keep Scene semantics here; the video player receives only prepared drawings and hover hits.
 - Prefer adding or replacing draw recipes in catalog JSON over adding render-wrapper layers. Presentation choices
   such as motion symbols belong in JSON (`lookup_text`), not in Python.
 - Validation and compilation never run on the frame-drawing path, and widgets never read, validate or compile
@@ -85,14 +92,14 @@ only by a newer command or select, so a file change or another view's apply neve
 across views wins. A selection created before the first listing waits for it, and its owner calls `cleanup()` when it
 ends, since pending requests keep their callbacks alive. Overlays of selection-backed presenters draw nothing until a
 catalog arrives, so the GUI thread never compiles the built-in catalog.
-The manager caches a compiled catalog with the file's modification time and size taken just before it was read. A
+The manager caches a compiled catalog with the file's fingerprint (inode, size, modification time) taken just before it was read. A
 listing that finds a file changed drops the entry, restarts a load of that file still running, compiles cached
 catalogs that changed again in the background and emits `catalogUsabilityChanged`; a read that fails drops its entry
 the same way. **Apply to all** and **Use as
 default** are enabled only for a listed catalog the manager holds compiled, so one never loaded is not eligible
 and asking never reads a file.
-The manager watches every listed file, invalid ones included, and their directories and, after 150 ms of quiet,
-lists again and reloads each selection whose
+The manager gives every listed file, invalid ones included, and the catalogs folder to a shared `FileWatcher` and, after
+150 ms of quiet, lists again and reloads each selection whose
 active path changed; other selections are untouched. Live viewers share one selection between controller and media
 tools; offline lanes each own one.
 
@@ -100,8 +107,11 @@ tools; offline lanes each own one.
 
 - Catalog loading, validation and schema: `tests/modules/scene/rendering/test_catalog_loader.py`,
   `test_template_schema.py`.
-- Compiler and language semantics: `tests/modules/scene/rendering/test_template_runtime_compiler.py`.
-- Recipe output for the built-in catalog: `tests/modules/scene/rendering/test_scene_rendering_runtime.py`.
-- Overlay caching, hover and metrics: `tests/modules/scene/rendering/test_cache.py`.
+- Compiler and language semantics: `tests/modules/scene/rendering/test_template_runtime_compiler.py`, `_kernels.py`
+  and `_labels.py`.
+- Recipe output: `tests/modules/scene/rendering/test_scene_rendering_runtime.py`, `test_scene_rendering_row_isolation.py`
+  and, for the built-in catalogs, `test_built_in_catalog_rendering.py`.
+- Overlay caching and hover: `tests/modules/scene/rendering/test_cache.py`.
 - Visibility specialization and retained inputs: `tests/modules/scene/rendering/test_overlay_visibility.py`.
-- Catalog manager and selection: `tests/modules/scene/rendering/test_catalog_manager.py`.
+- Catalog manager and selection: `tests/modules/scene/rendering/test_catalog_manager.py`, `test_catalog_manager_*.py`,
+  `test_catalog_selection.py` and `test_catalog_file_following.py`.

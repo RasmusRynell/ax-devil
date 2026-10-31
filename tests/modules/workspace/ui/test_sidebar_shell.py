@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QLineEdit, QSplitter, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.chrome.menu_button import MenuButton
@@ -24,8 +24,6 @@ from ax_devil.modules.workspace.ui.sections_view import SectionsView
 from ax_devil.modules.workspace.ui.session import WorkspaceSession
 from tests.helpers.clipping import clipped_text_widgets
 from tests.helpers.workspace import FakePrompts, FakeResolutionContext
-
-_FIRST_FOOTER_BUTTON = {"live": "Add manually", "offline": None, "workspace": None}
 
 
 def _row(name: str, kind: str) -> WorkspaceBrowserRow:
@@ -63,16 +61,6 @@ def _y(widget: QWidget, view: QWidget) -> int:
     return widget.mapTo(view, QPoint(0, 0)).y()
 
 
-def _footer_buttons(view: SectionsView) -> list[QPushButton]:
-    """Return the shown buttons outside the tree, from top to bottom."""
-    buttons = [
-        button
-        for button in view.findChildren(QPushButton)
-        if button.isVisibleTo(view) and not view.tree.isAncestorOf(button)
-    ]
-    return sorted(buttons, key=lambda button: _y(button, view))
-
-
 @pytest.mark.parametrize("view_id", ["workspace", "live", "offline"])
 def test_every_view_has_search_sort_and_filter_in_that_order_over_the_tree(
     session: WorkspaceSession, view_id: str
@@ -88,22 +76,6 @@ def test_every_view_has_search_sort_and_filter_in_that_order_over_the_tree(
     assert _y(search, view) < _y(view.tree, view)
 
 
-@pytest.mark.parametrize("view_id", ["workspace", "live", "offline"])
-def test_the_footer_buttons_sit_directly_under_the_tree(session: WorkspaceSession, view_id: str) -> None:
-    view = _show(session, view_id)
-
-    buttons = _footer_buttons(view)
-
-    expected = _FIRST_FOOTER_BUTTON[view_id]
-    if expected is None:
-        assert buttons == []
-        return
-    first = buttons[0]
-    assert first.text() == expected
-    gap = _y(first, view) - (_y(view.tree, view) + view.tree.height())
-    assert 0 <= gap < first.height(), "nothing sits between the tree and the footer buttons"
-
-
 @pytest.mark.usefixtures("restore_app_appearance")
 @pytest.mark.parametrize("size", [13, 21])
 @pytest.mark.parametrize("view_id", ["workspace", "live", "offline"])
@@ -114,3 +86,23 @@ def test_the_view_shows_its_text_in_full_at_small_and_large_text(
     view = _show(session, view_id)
 
     assert clipped_text_widgets(view) == []
+
+
+def test_the_sidebar_narrows_to_each_views_minimum_and_leaves_the_viewers_half(session: WorkspaceSession) -> None:
+    """Each view can be dragged to its own minimum with its text in full; dragged wide, the viewers keep half."""
+    splitter = session.widget().findChild(QSplitter, "WorkspaceSidebarSplitter")
+    assert splitter is not None
+    sidebar = splitter.widget(0)
+    assert sidebar is not None
+    widths = {}
+    for view_id in ("workspace", "live", "offline"):
+        view = _show(session, view_id)
+        splitter.moveSplitter(view.minimumSizeHint().width(), 1)
+        QApplication.processEvents()
+        widths[view_id] = splitter.sizes()[0]
+        assert widths[view_id] == view.minimumSizeHint().width() + sidebar.contentsMargins().left() + (
+            sidebar.contentsMargins().right()
+        )
+        assert clipped_text_widgets(view) == []
+    splitter.moveSplitter(splitter.width(), 1)
+    assert splitter.sizes()[1] >= splitter.sizes()[0] > max(widths.values())

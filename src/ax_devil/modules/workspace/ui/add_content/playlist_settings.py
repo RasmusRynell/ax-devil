@@ -8,6 +8,8 @@ the panel emits a Playlist Item for that resolver and those settings.
 from __future__ import annotations
 
 from contextlib import suppress
+from copy import deepcopy
+from dataclasses import replace
 from typing import cast
 
 from PySide6.QtCore import Qt, Signal
@@ -61,12 +63,33 @@ class PlaylistSettingsUI(QWidget):
 
     item_ready = Signal(object)  # PlaylistItem
 
-    def __init__(self, parent: QWidget | None = None, *, resolver_id: str | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, resolver_id: str | None = None, existing: PlaylistItem | None = None
+    ) -> None:
         super().__init__(parent)
+        self._existing = existing
+        self._can_submit = existing is None
         # Each resolver form, with its resolver's plugin id and display name.
         self._resolver_by_widget: dict[PlaylistResolverWidget, str] = {}
         self._setup_ui()
-        if resolver_id is not None:
+        if existing is not None:
+            self._select_resolver(existing.resolver)
+            self._resolver_combo.setEnabled(False)
+            widget = self._resolver_combo.currentData()
+            try:
+                self._can_submit = widget is not None and widget.restore_settings(deepcopy(existing.settings))
+            except Exception as exc:
+                logger.warning(f"Could not restore {existing.resolver} settings: {exc}")
+            if not self._can_submit:
+                message = "This playlist source cannot restore saved settings for editing."
+                if widget is None:
+                    message = f"Playlist source '{existing.resolver}' is unavailable."
+                for form in self._resolver_by_widget:
+                    form.setEnabled(False)
+                page = QVBoxLayout()
+                page.addWidget(_wrapped_label(message))
+                self._resolver_pages.setCurrentIndex(self._resolver_pages.addWidget(_page(page)))
+        elif resolver_id is not None:
             self._select_resolver(resolver_id)
 
     def _setup_ui(self) -> None:
@@ -132,10 +155,13 @@ class PlaylistSettingsUI(QWidget):
     def _on_settings_submitted(self, settings: PlaylistSettings) -> None:
         # A resolver the user switched away from may still submit; only the selected one supplies the playlist.
         widget = self._resolver_combo.currentData()
-        if widget is None or self.sender() is not widget:
+        if not self._can_submit or widget is None or self.sender() is not widget:
             return
         resolver_id = self._resolver_by_widget[cast(PlaylistResolverWidget, widget)]
-        self.item_ready.emit(PlaylistItem(resolver=resolver_id, settings=settings))
+        item = PlaylistItem(resolver=resolver_id, settings=settings)
+        if self._existing is not None:
+            item = replace(item, id=self._existing.id, label=self._existing.label)
+        self.item_ready.emit(item)
 
     def cleanup(self) -> None:
         """Disconnect and release every resolver form."""

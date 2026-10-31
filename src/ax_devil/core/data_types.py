@@ -5,32 +5,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtGui import QImage
-
 if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
+
     from ax_devil.modules.scene.model import Scene
 
 
 @dataclass(frozen=True, slots=True)
 class FrameIdentifier:
-    """Frame identifier containing both sequence ID and monotime timestamp.
+    """Frame identifier containing both sequence ID and media timestamp.
 
-    Provides dual identification for frames: sequence_id (frame index) and
-    timestamp_monotime_us (microseconds since first frame). This enables
-    overlay sources to use either identifier for lookup.
+    ``timestamp_us`` is integer microseconds on the media clock, a Scene datetime's time since the Unix epoch.
+    Live frames carry capture time; an offline video's first frame is 0. Overlays use the same clock:
+    nothing is shifted anywhere.
     """
 
     sequence_id: int  # Frame index (0, 1, 2, ...)
-    timestamp_monotime_us: float  # Timestamp represented as microseconds since:
-    # * start of video if offline
-    # * since 1970-01-01 if live stream)
+    timestamp_us: int
 
 
 @dataclass(frozen=True, slots=True)
 class TimestampedData:
     """Base class for timestamped data with proper timestamp semantics."""
 
-    frame_id: FrameIdentifier  # Frame identifier with sequence_id and monotime
+    frame_id: FrameIdentifier  # Frame identifier with sequence_id and media timestamp
     content: Any  # The actual data content
     source_id: str = "Unknown"
     metadata: dict[str, Any] | None = None

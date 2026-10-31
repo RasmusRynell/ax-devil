@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.background_jobs import BackgroundJobs
-from ax_devil.modules.diagnostics.render_metrics import get_render_metrics_store
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager, SceneRenderCatalogStore
 from ax_devil.modules.video_player import VideoFrame, VideoFrameWithOverlays, VideoOverlayData
 from ax_devil.modules.video_player.engine.quick.preparation import PreparedDrawing
@@ -20,6 +19,7 @@ from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.live_video_viewer import LiveStatusPanel, LiveVideoViewerWidget
 from ax_devil.modules.workspace.core import LiveRTSPStreamSpec, LiveVideoContent
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from tests.catalog_helpers import GatedCatalogLoader, create_catalog, create_ready_catalog_manager, wait_for_catalogs
 
 
@@ -36,10 +36,10 @@ def _make_display_frame() -> VideoFrameWithOverlays:
     image.fill(0)
     overlays = VideoOverlayData(
         drawing_generator=lambda _context, _settings: PreparedDrawing(),
-        timestamp=10.0,
+        timestamp_us=10_000_000,
     )
     return VideoFrameWithOverlays(
-        frame=VideoFrame(image=image, timestamp=10.25, frame_id=42),
+        frame=VideoFrame(image=image, timestamp_us=10_250_000, frame_id=42),
         overlays=overlays,
     )
 
@@ -55,6 +55,7 @@ class _FakeStreamMediaController:
         content: LiveVideoContent,
         *,
         render_catalog_selection: object,
+        overlay_persistence: object,
         frame_displayed: Callable[[VideoFrameWithOverlays], None],
         connection_changed: Callable[[LiveConnectionStatus], None],
     ) -> None:
@@ -196,7 +197,7 @@ def test_closing_a_live_viewer_ends_its_pending_use_as_default(
         loader.release_all()
 
 
-def test_set_display_name_updates_the_name_header_and_render_diagnostics(
+def test_set_display_name_updates_the_name_header(
     qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
 ) -> None:
     with patch(_CONTROLLER, _FakeStreamMediaController):
@@ -207,9 +208,6 @@ def test_set_display_name_updates_the_name_header_and_render_diagnostics(
 
     assert widget.get_display_name() == "North gate cam"
     assert widget._title_label.full_text() == "North gate cam"
-    labels = {viewer.label for viewer in get_render_metrics_store().snapshot()}
-    assert "North gate cam" in labels
-    assert "Gate cam" not in labels
     widget.cleanup()
 
 
@@ -248,6 +246,7 @@ def test_pause_button_pauses_and_resumes_with_visible_status(
 
 
 def test_connection_status_shows_state_reasons_and_retry(
+    qtbot: QtBot,
     live_viewer: tuple[LiveVideoViewerWidget, _FakeStreamMediaController],
 ) -> None:
     """Failures are visible in the pane with their reason, per feed, and Retry reopens the stream."""
@@ -266,14 +265,18 @@ def test_connection_status_shows_state_reasons_and_retry(
     status = controller.connection_status
     status = status.with_status(status.feed(LiveFeed.VIDEO).live())
     status = status.with_status(status.feed(LiveFeed.OVERLAY).reconnecting("Connection refused"))
+    controller.connection_status = status
     controller.connection_changed(status)
 
+    assert widget.stream_status().state is LiveStreamState.LIVE, "the row follows the video feed"
     assert "Connection refused" in problem_text()
     assert retry.isHidden()
 
     status = status.with_status(status.feed(LiveFeed.VIDEO).failed("RTSP Error: Unauthorized"))
+    controller.connection_status = status
     controller.connection_changed(status)
 
+    assert widget.stream_status() == LiveStreamStatus(LiveStreamState.FAILED, "RTSP Error: Unauthorized")
     assert "RTSP Error: Unauthorized" in problem_text()
     assert "Connection refused" in problem_text()
     assert "RTSP Error: Unauthorized" in viewport._background_text  # noqa: SLF001 - only painted, no accessor
@@ -282,7 +285,9 @@ def test_connection_status_shows_state_reasons_and_retry(
     assert panel.height() >= panel.sizeHint().height()
     assert panel.geometry().bottom() == viewport.height() - 1
 
-    widget.pause_playback()
+    with qtbot.waitSignal(widget.stream_status_changed):
+        widget.pause_playback()
+    assert widget.stream_status() == LiveStreamStatus(LiveStreamState.PAUSED)
     retry.click()
 
     assert controller.retries == 1

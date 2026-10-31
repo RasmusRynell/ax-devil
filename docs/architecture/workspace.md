@@ -27,8 +27,8 @@ Workspace file (JSON)  <->  Workspace + Workspace Items   ->  Content   ->  View
 - Items are the saved truth. Content is derived from items and is never written to disk. Runtime sources are created
   only when a viewer opens Content.
 - Session state — open panes, splits, current frame, play state, exclusions, window geometry — is not part of the
-  Workspace, and a Workspace never depends on it. Exclusions are therefore not saved and need no keys that survive a
-  resolver re-run. Bookmarks are saved, and pay that cost; see [Bookmarks](#bookmarks).
+  Workspace, and a Workspace never depends on it. Exclusions are not saved; they name entries by their Bookmark Target
+  entry, so they survive a re-run. Bookmarks are saved; see [Bookmarks](#bookmarks).
 - `workspace/core` holds the model and the file format; `workspace/ui` is one Qt interface on top of it. The import
   rule between them is in [invariants](../domain/invariants.md#content-model).
 
@@ -37,14 +37,15 @@ Workspace file (JSON)  <->  Workspace + Workspace Items   ->  Content   ->  View
 Item kinds are open-ended: a kind is one `WorkspaceItem` subclass registered in `ITEM_KINDS`, and the Workspace, the
 file format, and the store do not branch on kind.
 
-- Content identity is derived, never random: the Content at position *i* of item *x* has `content_id` `x/i`, so
-  resolving the same item again yields the same ids, and the UI can group and remove an item's Content as a whole.
+- Content identity is derived, never random: a playlist of item *x* has `content_id` `x/<playlist name>` (its numbered
+  `source_name`), other Content `x/0`, so resolving the same item again yields the same ids even when a resolver
+  returns a different set of playlists.
 - An item shows its `label`, or its default name when the label is empty: a video's file name, a stream's host with
   any `$VARIABLE` expanded, a playlist's names from its resolver. The default name is derived when shown and never
-  saved. Renaming an item to an empty name, or to the name its row already shows while unlabeled, empties its label.
+  saved. An empty name empties its label.
 - A Live Stream Item keeps hosts, usernames, and passwords as entered; a `$VARIABLE` reference is expanded with the
   config's rule only while resolving.
-- `UnreadableItem` stands in for an item this version cannot read. It never resolves, cannot be renamed, and is
+- `UnreadableItem` stands in for an item this version cannot read. It never resolves, cannot be edited, and is
   written back unchanged, so saving never loses it.
 
 ## Bookmarks
@@ -60,8 +61,9 @@ the Workspace, beside the items, so they are saved and make the Workspace modifi
   share one. A renamed or removed entry leaves its target orphaned. Orphaned targets and their bookmarks are kept;
   only removing their item removes them.
 - A viewer reports the frame on screen as a `BookmarkPosition`, and opening a bookmark opens the Content at its entry
-  and frame through `open_content(..., start_frame=)`, paused. Building the groups the Bookmarks view shows, their
-  order, orphan detection and filtering are pure functions in `bookmark_rows.py`.
+  and frame, paused, through `WorkspaceController.show_frame`, which reuses a viewer already showing that entry. Building
+  the groups the Bookmarks view shows, their order, orphan detection and filtering are pure functions in
+  `bookmark_rows.py`.
 - Only an item whose `bookmarkable` is true takes new bookmarks or review changes (never a live stream; see
   [Sidebar](../domain/invariants.md#sidebar)). Bookmarks a file already holds load whatever their item, so ones on
   an `UnreadableItem` are saved back.
@@ -74,11 +76,12 @@ its row opens nothing. A result for an item removed meanwhile, or for a Workspac
 for an item renamed meanwhile is named after the new label. Renaming never resolves again: `ItemResolution` keeps the
 Content as named without a label and names it after the item.
 
-`WorkspaceStore.rescan_item` resolves an item again on request, for example after files were added to a playlist's
-folder. The new result, an error included, replaces the old one only while the item and Workspace are still current.
-Exclusions stay for Content that still exists and are dropped for Content that is gone. A rescan never opens a viewer,
-never changes what open viewers show, since they keep the Content they opened, and never makes the Workspace
-modified, since results are never saved.
+The store watches what each item was read from (`WorkspaceItem.source_paths`, plus the overlay files its Content
+names, never video files) and resolves the item again when the
+[`FileWatcher`](../../src/ax_devil/modules/file_watching/README.md) reports a change, so rows follow regenerated files.
+Sources are fingerprinted before they are read, so a change made while resolving is still noticed. A new result, an
+error included, replaces the old one and never opens a viewer or makes the Workspace modified. An open viewer
+showing a changed overlay file is offered a reload and is never reloaded by itself.
 
 An item that fails to resolve stays in the Workspace with its reason, shown as one unavailable row; when the user added
 it, they are also told at once. The Add Live Stream and Add Playlist dialogs resolve their item first and stay open
@@ -154,7 +157,8 @@ Recipes need resolvers that run without a widget:
 - `resolve(settings, token) -> list[PlaylistContent]` — headless, and run away from the GUI thread; `settings` is a
   JSON-serializable mapping. Settings that are invalid or point at nothing raise `ValueError` or `OSError` with a
   user-facing message.
-- `create_settings_widget()` — edits settings and calls `submit_settings(settings)`.
+- `create_settings_widget()` — edits settings and calls `submit_settings(settings)`; its optional restoration hook is
+  defined on [`PlaylistResolverWidget`](../../src/ax_devil/modules/plugin_system/playlist_resolvers.py).
 - `create_cli_command()` — builds settings from CLI arguments and passes a `PlaylistItem` to
   `ctx.obj["run_with_items"]`.
 

@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from ax_devil.core.cancellation import NEVER
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.workspace.core import (
     Bookmark,
     BookmarkKind,
@@ -42,7 +43,8 @@ def _written(path: Path) -> dict[str, Any]:
     return document
 
 
-def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path) -> None:
+@pytest.mark.parametrize("resolution", ["", "640x480"])
+def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path, resolution: str) -> None:
     items = (
         VideoItem(
             label="Lot",
@@ -55,7 +57,7 @@ def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path)
             username="root",
             password="$AX_DEVIL_TARGET_PASS",
             camera_head=2,
-            resolution="640x480",
+            resolution=resolution,
             stream_url="rtsp://camera/stream",
             overlay_mode=LiveOverlayMode.NONE,
             handler_type="MQTT",
@@ -64,9 +66,11 @@ def test_every_kind_round_trips_with_ids_labels_order_and_fields(tmp_path: Path)
             mqtt_username="user",
             mqtt_password="secret",
             analytics_data_source_key="com.axis.scene",
-            device_api_protocol="http",
+            device_api_protocol=DeviceProtocol.HTTP,
             websocket_topic="topic",
             websocket_channel_id=3,
+            device_port=8080,
+            rtsp_port=8554,
         ),
         PlaylistItem(label="Exp 3", resolver="mot_challenge", settings={"root": "runs/exp3", "sequences": ["a", "b"]}),
     )

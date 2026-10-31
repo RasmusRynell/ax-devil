@@ -18,7 +18,7 @@ import ax_devil
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.quick_setup_dialog import QuickSetupDialog
 from ax_devil.modules.application_shell.settings_dialog import SettingsDialog
-from ax_devil.modules.catalog_viewer.window import NewCatalogDialog
+from ax_devil.modules.catalog_viewer.new_catalog_dialog import NewCatalogDialog
 from ax_devil.modules.chrome import BaseDialog, ChromeWindow
 from ax_devil.modules.chrome.choice_dialog import ChoiceDialog
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
@@ -26,16 +26,19 @@ from ax_devil.modules.plugin_manager.add_plugin_dialog import AddPluginDialog
 from ax_devil.modules.shortcuts.shortcuts_dialog import ShortcutsDialog
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
 from ax_devil.modules.workspace.ui.add_content.add_live_stream_dialog import AddLiveStreamDialog
+from ax_devil.modules.workspace.ui.add_content.add_playlist_dialog import AddPlaylistDialog
 from ax_devil.modules.workspace.ui.add_content.add_video_dialog import AddVideoDialog
 from ax_devil.modules.workspace.ui.item_info_dialog import WorkspaceItemInfoDialog
 from ax_devil.modules.workspace.ui.rename_dialog import RenameDialog
 from tests.helpers.clipping import clipped_text_on_every_page
 from tests.helpers.shortcuts import make_shortcut_manager
+from tests.helpers.workspace import inline_resolver
 
 SURFACES: dict[type[QWidget], Callable[[], QWidget]] = {
     AboutDialog: AboutDialog,
     AddLiveStreamDialog: AddLiveStreamDialog,
     AddPluginDialog: AddPluginDialog,
+    AddPlaylistDialog: lambda: AddPlaylistDialog(inline_resolver()),
     AddVideoDialog: AddVideoDialog,
     NewCatalogDialog: lambda: NewCatalogDialog("Source"),
     QuickSetupDialog: QuickSetupDialog,
@@ -52,9 +55,7 @@ SURFACES: dict[type[QWidget], Callable[[], QWidget]] = {
 }
 
 EXEMPT = {
-    "AddPlaylistDialog": "needs a playlist resolver; its fields are covered in the add-content tests",
     "CatalogViewerWindow": "needs a catalog manager; covered in test_catalog_viewer_window",
-    "DebugWindow": "covered in test_debug_window",
     "ExportDialog": "needs export lanes; sized and fitted in test_export",
     "MainWindow": "needs the whole application; covered by the UI screenshots",
     "_FullscreenWindow": "only exists around a playing video",

@@ -17,6 +17,7 @@ from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.settings.text_size import TextSize
 from ax_devil.modules.settings.theme_mode import ThemeMode
 from tests.helpers.clipping import clipped_text_on_every_page
+from tests.helpers.widgets import button
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +56,7 @@ def test_choices_apply_live_and_are_saved_on_close(
         qtbot.addWidget(dialog)
         dialog.theme_row.select(ThemeMode.DARK)
         dialog.text_size_row.select(TextSize.LARGE)
+        button(dialog, "HTTP").click()
         assert settings.theme is ThemeMode.DARK
         assert settings.text_size is TextSize.LARGE
         assert _saved_ui(config)["theme"] == "auto"
@@ -62,6 +64,7 @@ def test_choices_apply_live_and_are_saved_on_close(
 
     saved = _saved_ui(config)
     assert (saved["theme"], saved["text_size"], saved["quick_setup_done"]) == ("dark", "large", True)
+    assert json.loads(config.config_path.read_text(encoding="utf-8"))["defaults"]["device"]["protocol"] == "http"
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

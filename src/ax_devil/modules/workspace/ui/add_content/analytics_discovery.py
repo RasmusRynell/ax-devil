@@ -6,19 +6,18 @@ import asyncio
 from collections.abc import Callable
 from functools import partial
 
-from ax_devil_device_api import DeviceConfig
 from PySide6.QtCore import QObject, Signal
 
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.background_jobs import BackgroundJobs, JobContext, LatestRequest, background_jobs
 from ax_devil.modules.data_sources.live.datahub_client import discover_datahub_topics
 from ax_devil.modules.data_sources.live.mqtt_discovery import list_mqtt_data_source_keys
 
-DeviceConnection = tuple[str, str, str, str]
-FetchChoices = Callable[[str, str, str, str], tuple[str, ...]]
+FetchChoices = Callable[[DeviceConnection], tuple[str, ...]]
 
 
 def _fetch_choices(fetch: FetchChoices, connection: DeviceConnection, _job: JobContext[None]) -> tuple[str, ...]:
-    return fetch(*connection)
+    return fetch(connection)
 
 
 class AnalyticsChoiceLoader(QObject):
@@ -29,6 +28,7 @@ class AnalyticsChoiceLoader(QObject):
     """
 
     changed = Signal()
+    connection_changed = Signal()
 
     def __init__(
         self, fetch: FetchChoices, label: str, parent: QObject | None = None, *, jobs: BackgroundJobs | None = None
@@ -40,7 +40,7 @@ class AnalyticsChoiceLoader(QObject):
         self.failed = False
         self.status = f"Select overlay mode to load {label}"
         self._fetch = fetch
-        self._connection: DeviceConnection = ("", "", "", "https")
+        self._connection = DeviceConnection("", DeviceProtocol.HTTPS)
         self._request = LatestRequest(self)
         self._jobs = (jobs or background_jobs("discovery")).scope(self)
         self._closed = False
@@ -60,13 +60,14 @@ class AnalyticsChoiceLoader(QObject):
         self.failed = False
         self.choices = ()
         self.status = f"Refresh to load {self.label}"
+        self.connection_changed.emit()
         self.changed.emit()
 
     def load(self) -> None:
         """Fetch choices for the current connection without blocking the UI."""
         if self.loading or self._closed:
             return
-        if not self._connection[0]:
+        if not self._connection.host:
             self.status = f"Enter a device host to load {self.label}"
             self.changed.emit()
             return
@@ -103,20 +104,11 @@ class AnalyticsChoiceLoader(QObject):
         self._jobs.close()
 
 
-def list_datahub_topics(host: str, username: str, password: str, protocol: str) -> tuple[str, ...]:
+def list_datahub_topics(connection: DeviceConnection) -> tuple[str, ...]:
     """Return available DataHub topic names from a device."""
-    return asyncio.run(
-        discover_datahub_topics(
-            host=host,
-            username=username,
-            password=password,
-            protocol=protocol,
-        )
-    )
+    return asyncio.run(discover_datahub_topics(device=connection))
 
 
-def list_analytics_data_source_keys(host: str, username: str, password: str, protocol: str) -> tuple[str, ...]:
+def list_analytics_data_source_keys(connection: DeviceConnection) -> tuple[str, ...]:
     """Return available analytics data-source keys from a device."""
-    config_factory = DeviceConfig.https if protocol == "https" else DeviceConfig.http
-    config = config_factory(host=host, username=username, password=password)
-    return list_mqtt_data_source_keys(config)
+    return list_mqtt_data_source_keys(connection.device_config())

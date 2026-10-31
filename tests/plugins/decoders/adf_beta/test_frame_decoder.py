@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ax_devil.modules.scene.model import ColorClassification, EntityId
+from ax_devil.modules.scene.model import ColorClassification, EntityId, Score
 from ax_devil.plugins.decoders.adf_beta.frame import ADFBetaFrameDecoder
 
 
@@ -34,6 +34,6 @@ def test_frame_preserves_observation_geometry_time_and_classification() -> None:
     assert observation.geometry.as_xywh() == pytest.approx((0.1, 0.2, 0.3, 0.4))
     classification = observation.classification[0]
     assert classification.type == "car"
-    assert classification.score.value == 0.8
+    assert classification.score == Score(0.8)
     colors = classification.attribute_items("vehicle_colors", ColorClassification)
     assert [(color.name, color.score.value) for color in colors] == [("Blue", 0.7)]

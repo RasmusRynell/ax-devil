@@ -1,26 +1,18 @@
-"""Cache-backed scene overlay for prepared drawings, hover, and metrics."""
+"""Cache-backed scene overlay for prepared drawings and hover."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass
-from time import perf_counter
 from typing import Protocol
 
-from ax_devil.modules.diagnostics.metrics_gate import is_metrics_enabled
 from ax_devil.modules.scene.inspection import EntitySummary, entity_summary
 from ax_devil.modules.scene.model import Entity, Scene
-from ax_devil.modules.scene.rendering.catalog import (
-    SceneRenderCatalog,
-    get_built_in_scene_render_catalog,
-)
+from ax_devil.modules.scene.rendering.catalog import SceneRenderCatalog
+from ax_devil.modules.scene.rendering.catalog_loader import get_built_in_scene_render_catalog
 from ax_devil.modules.scene.rendering.template_runtime.values import CatalogDiagnostic
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.video_player.engine.data_types import (
-    DrawingBuildReason,
-    DrawingPreparationMetrics,
-    HoverHit,
-)
+from ax_devil.modules.video_player.engine.data_types import HoverHit
 from ax_devil.modules.video_player.engine.quick.preparation import (
     EMPTY_DRAWING,
     DrawingBuffer,
@@ -32,11 +24,7 @@ from ax_devil.modules.video_player.engine.render_context import RenderContext
 logger = get_logger(__name__)
 
 FilteredSceneKey = Hashable | None
-RenderCacheKey = tuple[
-    FilteredSceneKey,
-    tuple[int, int, DrawingSettings],
-    tuple[str, str],
-]
+RenderCacheKey = tuple[FilteredSceneKey, tuple[str, str], tuple[int, int]]
 SceneRenderCatalogProvider = Callable[[], SceneRenderCatalog | None]
 CatalogErrorIdentity = tuple[str, str, str]
 
@@ -106,69 +94,34 @@ class CachedSceneOverlay:
         self._hover_hits: list[_IndexedHit] | None = None
         self._hover_hits_by_id: dict[str, _IndexedHit] = {}
         self._render_key: RenderCacheKey | None = None
+        self._settings: DrawingSettings | None = None
         self._drawing: PreparedDrawing | None = None
-        self.latest_metrics = DrawingPreparationMetrics()
-        self._pending_filter_time_ms: float | None = None
-        self.diagnostics: tuple[CatalogDiagnostic, ...] = ()
         self._reported_errors = reported_errors if reported_errors is not None else ReportedCatalogErrors()
         self._hover_hits_by_target: dict[str, HoverHit] = {}
 
     def prepare_drawing(self, context: RenderContext, buffer: DrawingBuffer) -> PreparedDrawing:
-        """Return final backend data for this overlay and exact drawing settings."""
+        """Return the prepared quads for this overlay and exact drawing settings."""
         catalog = self._current_catalog()
         if catalog is None:
             return EMPTY_DRAWING
         filtered_scene = self.filtered_scene()
-        render_key = self._render_cache_key(context, buffer.settings, catalog)
-        cache_hit = self._render_key == render_key and self._drawing is not None
-        capture = is_metrics_enabled()
-        generation_time_ms = None
-        reasons: tuple[DrawingBuildReason, ...] = ()
+        render_key = (self._filtered_scene_key(), catalog.rendering_identity, (context.width, context.height))
+        covered = self._settings is not None and self._settings.covers(buffer.settings)
+        cache_hit = self._render_key == render_key and self._drawing is not None and covered
         if cache_hit:
             assert self._drawing is not None
             drawing = self._drawing
         else:
-            if capture and self._render_key is None:
-                reasons = (DrawingBuildReason.INITIAL,)
-            elif capture and self._render_key is not None:
-                reasons = tuple(
-                    reason
-                    for old, new, reason in zip(
-                        self._render_key,
-                        render_key,
-                        (
-                            DrawingBuildReason.FILTER,
-                            DrawingBuildReason.TARGET,
-                            DrawingBuildReason.CATALOG,
-                        ),
-                    )
-                    if old != new
-                )
-            start = perf_counter() if capture else 0.0
             diagnostics: list[CatalogDiagnostic] = []
             catalog.render_scene(filtered_scene, context, buffer, diagnostics=diagnostics)
             drawing = buffer.finish()
-            self.diagnostics = tuple(diagnostics)
             for diagnostic in diagnostics:
                 identity = (catalog.content_hash, diagnostic.code, diagnostic.location)
                 if self._reported_errors.is_new(identity):
                     logger.warning(f"Render catalog {catalog.catalog_id}: {diagnostic.location}: {diagnostic.message}")
-            if capture:
-                generation_time_ms = (perf_counter() - start) * 1000
             self._render_key = render_key
+            self._settings = buffer.settings
             self._drawing = drawing
-        if capture:
-            self.latest_metrics = DrawingPreparationMetrics(
-                filter_time_ms=self._pending_filter_time_ms,
-                generation_time_ms=generation_time_ms,
-                filter_cache_hit=self._pending_filter_time_ms is None,
-                drawing_cache_hit=cache_hit,
-                build_reasons=reasons,
-                input_entity_count=len(self._scene.entities),
-                filtered_entity_count=len(filtered_scene.entities),
-                primitive_counts=drawing.counts,
-            )
-        self._pending_filter_time_ms = None
         return drawing
 
     def hit_test(self, nx: float, ny: float) -> HoverHit | None:
@@ -199,18 +152,12 @@ class CachedSceneOverlay:
             return None
         return self._hover_hit_from_indexed(indexed)
 
-    def latest_drawing_preparation_metrics(self) -> DrawingPreparationMetrics:
-        """Return metrics from the most recent drawing preparation."""
-        return self.latest_metrics
-
     def filtered_scene(self) -> Scene:
         """Return the cached Scene projection for the current filter state."""
         key = self._filtered_scene_key()
         if self._filtered_key == key and self._filtered_scene is not None:
             return self._filtered_scene
 
-        capture = is_metrics_enabled()
-        start = perf_counter() if capture else 0.0
         filtered_scene = self._scene
         if self._scene_filter is not None:
             try:
@@ -218,7 +165,6 @@ class CachedSceneOverlay:
             except RuntimeError:
                 logger.debug("Scene filtering failed during drawing preparation", exc_info=True)
 
-        self._pending_filter_time_ms = (perf_counter() - start) * 1000 if capture else None
         self._filtered_key = key
         self._filtered_scene = filtered_scene
         return filtered_scene
@@ -263,15 +209,6 @@ class CachedSceneOverlay:
             self._catalog = get_built_in_scene_render_catalog()
         return self._catalog
 
-    def _render_cache_key(
-        self, context: RenderContext, settings: DrawingSettings, catalog: SceneRenderCatalog
-    ) -> RenderCacheKey:
-        return (
-            self._filtered_scene_key(),
-            (context.width, context.height, settings),
-            catalog.rendering_identity,
-        )
-
     def _hover_hit_from_indexed(self, indexed: _IndexedHit) -> HoverHit:
         hit = self._hover_hits_by_target.get(indexed.target_id)
         if hit is None:
@@ -290,8 +227,10 @@ class CachedSceneOverlay:
 def _hover_detail(summary: EntitySummary) -> str:
     """Return the facts the decoder reported for the entity in one line, leaving out those it did not."""
     parts: list[str] = []
-    if summary.conf is not None:
-        parts.append(f"conf {summary.conf:.2f}")
+    if summary.score is not None:
+        parts.append(f"score {summary.score.text}")
+    if summary.confidence is not None:
+        parts.append(f"confidence {summary.confidence.text}")
     if summary.speed is not None:
         parts.append(f"speed {summary.speed:.1f}")
     return " · ".join(parts)

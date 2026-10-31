@@ -81,9 +81,8 @@ def _make_observation(obs: dict[str, Any]) -> tuple[Observation, Image | None]:
     cls: list[Classification] = []
     if c_raw is not None:
         c_type = c_raw["type"]
-        c_score: Score | None = c_raw.get("score")
-        if c_score is None:
-            raise ValueError(f"Classification score missing for type {c_type} in observation")
+        score_raw = c_raw.get("score")
+        c_score = Score(float(score_raw)) if score_raw is not None else None
         attrs = _parse_class_attributes(c_type, c_raw, obs)
         if c_type:
             cls.append(
@@ -218,6 +217,7 @@ class ADFBetaFrameJSONLDataProvider(SceneDecoderFileProvider):
             artifact_version=1,
             filter_config_factory=build_adf_beta_filter_config,
             storage_mode=StorageMode.SOURCE_INDEX,
+            independent_records=True,
         )
 
 

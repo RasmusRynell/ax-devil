@@ -3,7 +3,7 @@
     "id": "built-in.classic",
     "name": "Classic",
     "schema_version": 3,
-    "description": "The original ax-devil look: the id above each box and the class below it, a confidence bar, a movement symbol, color swatches and badges inside the box.",
+    "description": "The original ax-devil look: the id above each box and the class below it, a score bar, a movement symbol, color swatches and badges inside the box.",
     "design_notes": {
       "purpose": "These notes describe the language semantics of the schema version 3 runtime; they are not per-catalog runtime settings. Descriptive metadata is excluded from rendering identity; metadata.schema_version is semantic and must be included.",
       "expressions": "Strings are always literal text, including strings starting with $. A reference is exactly {\"ref\": [\"scope\", \"name\", \"field\"]}; path segments are exact record keys, never Python attributes. An operation is exactly {\"call\": \"name\", \"args\": {\"argument\": expression}}. Arrays and ordinary records recursively contain expressions. {\"literal\": any JSON value} returns its payload unchanged, including objects containing ref, call, or literal keys. Reserved expression keys in an unescaped record are rejected, never guessed. Parameter defaults are literal data, not expressions.",
@@ -18,7 +18,7 @@
       "literal_examples": "Literal text: \"$values.price\". Literal reserved-key object: {\"literal\": {\"call\": \"customer data\", \"ref\": [\"arbitrary\", \"keys\"]}}. Constructed geometry: {\"x\": {\"ref\": [\"parameters\", \"origin\", \"x\"]}, \"y\": 0.2, \"w\": 0.1, \"h\": 0.1}. Typed records may be constructed from expressions; geometry helpers are conveniences, not the only way to author shapes.",
       "optional_operations": "trim_text has overloads string -> string and null -> null; a nullable string input therefore returns string|null. number_text accepts number|null and returns string|null; it returns null for null input, and for zero only when hide_zero is true. is_not_empty accepts string|list|null and returns false for null or an empty value. is_present returns false only for null; zero, false and empty strings are present. Guard narrowing applies to explicit immutable reference paths: in the successful branch, is_present(ref) or is_not_empty(ref) proves that path non-null. A guarded parent makes its declared descendants accessible, but does not make independently nullable child fields non-null. Recipe-level enabled guards apply to recipe values and steps. Step guards apply to fields, styles and template inputs. Bind computed expressions into values before guarding them; no general expression-equivalence analysis is required.",
       "color_ramps": "color_ramp accepts a finite number and a nonempty list of {at: finite number, color: rgb} stops in strictly increasing at order; duplicate or unsorted stops are errors. One stop returns its color. Values outside the stop range use the nearest endpoint color. Between stops, interpolate each encoded RGB channel linearly (no implicit gamma conversion), then round nonnegative channel values to the nearest integer with halves upward using floor(channel+0.5). Stop colors are validated integer RGB, and an exact stop position returns its exact color. Prevalidate and retain constant stops during compilation without executing guarded runtime arithmetic.",
-      "text_layout": "Text supports explicit line breaks but no automatic wrapping or clipping to its layout rectangle. Treat CRLF, CR, LF and Unicode line/paragraph separators as line breaks, retaining empty lines. Each line is shaped independently and placed left-aligned within the block. The layout rectangle width is the maximum shaped horizontal advance; height is ascent+descent+(line_count-1)*line_spacing. The first baseline is ascent below its top. top/bottom/left/right/center select points on that rectangle, not tight glyph ink bounds; overhangs may extend outside it. baseline places the start of the first layout baseline at the requested position. Use the same resolved font, shaping and metrics in preview and export for an equivalent render context. An omitted font family uses the backend-defined default; resolved-font identity participates in any text-layout cache.",
+      "text_layout": "Text supports explicit line breaks but no automatic wrapping or clipping to its layout rectangle. Treat CRLF, CR, LF and Unicode line/paragraph separators as line breaks, retaining empty lines. Each line is shaped independently and placed left-aligned within the block. The text box is the ink of its lines: the extent of the drawn glyphs, with the first line's origin and the maximum shaped horizontal advance included. top/bottom/left/right/center select points on that box. baseline places the first line's baseline at the requested y and the left of the box at the requested x. Use the same resolved font, shaping and metrics in preview and export for an equivalent render context. An omitted font family uses the backend-defined default; resolved-font identity participates in any text-layout cache.",
       "bounded_execution": "The backend owns finite limits for template nesting and worst-case expanded invocations plus primitive steps per recipe, and exposes the limits in its authoring definitions. Before activation, calculate worst-case work over the acyclic template-call graph using saturating arithmetic, counting every call site and both potential conditional outcomes conservatively; never materialize the expansion just to count it. Reject catalogs exceeding a limit with a located diagnostic. A depth limit alone is insufficient. Expression depth, document size and runtime collection sizes also have explicit backend-owned limits. No unrestricted iteration or scripting is implied by this format."
     }
   },
@@ -113,25 +113,24 @@
         }
       ]
     },
-    "confidence_bar": {
-      "label": "Confidence bar",
-      "feature": "confidence",
-      "description": "A vertical confidence bar inside the box, with spacing that adapts to small detections.",
+    "bar": {
+      "label": "Bar",
+      "description": "A vertical bar inside the box for a value from 0 to 1, with spacing that adapts to small detections.",
       "parameters": {
         "geometry": {
           "type": "image_box",
           "label": "Object box",
           "required": true
         },
-        "confidence": {
+        "value": {
           "type": "number",
-          "label": "Confidence",
+          "label": "Value",
           "required": true
         },
         "colors": {
           "type": "color_stops",
           "label": "Colors",
-          "description": "Bar color by confidence, from 0 to 1.",
+          "description": "Bar color by value, from 0 to 1.",
           "default": [
             {
               "at": 0,
@@ -401,7 +400,7 @@
             "value": {
               "ref": [
                 "parameters",
-                "confidence"
+                "value"
               ]
             },
             "stops": {
@@ -427,7 +426,7 @@
             "progress": {
               "ref": [
                 "parameters",
-                "confidence"
+                "value"
               ]
             },
             "color": {
@@ -471,7 +470,7 @@
     "movement_badge": {
       "label": "Movement badge",
       "feature": "movement",
-      "description": "Symbol inside the top-left of the box, above the confidence bar: ▶ moving, Ⅱ stationary, ? unknown.",
+      "description": "A small dark tag just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
       "parameters": {
         "geometry": {
           "type": "image_box",
@@ -487,9 +486,10 @@
           "type": "length",
           "exclusive_minimum": 0,
           "label": "Font size",
-          "default": null,
-          "nullable": true,
-          "description": "Exact font size. Null selects 25% of the shorter side, bounded to 8–12 px."
+          "default": {
+            "value": 11,
+            "unit": "px"
+          }
         },
         "color": {
           "type": "rgb",
@@ -500,19 +500,21 @@
             255
           ]
         },
-        "inset": {
+        "margin": {
           "type": "length",
-          "label": "Inset",
-          "description": "Distance from the left edge. Null selects 10% of the shorter side, capped at 4 px, matching the confidence bar.",
-          "default": null,
-          "minimum": 0,
-          "nullable": true
+          "label": "Margin",
+          "description": "Gap between the box and the tag.",
+          "default": {
+            "value": 3,
+            "unit": "px"
+          },
+          "minimum": 0
         }
       },
       "steps": [
         {
-          "label": "Text",
-          "primitive": "text",
+          "label": "Tag",
+          "primitive": "label",
           "fields": {
             "position": {
               "call": "offset_point",
@@ -526,13 +528,13 @@
                         "geometry"
                       ]
                     },
-                    "anchor": "top-left"
+                    "anchor": "top-right"
                   }
                 },
                 "dx": {
                   "ref": [
-                    "values",
-                    "inset"
+                    "parameters",
+                    "margin"
                   ]
                 },
                 "dy": {
@@ -541,142 +543,82 @@
                 }
               }
             },
-            "text": {
-              "call": "lookup_text",
-              "args": {
+            "anchor": "top-left",
+            "runs": [
+              {
                 "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": {
                   "ref": [
                     "parameters",
-                    "motion_state"
+                    "color"
                   ]
                 },
-                "mapping": [
-                  {
-                    "key": "moving",
-                    "text": "▶"
-                  },
-                  {
-                    "key": "stationary",
-                    "text": "Ⅱ"
-                  },
-                  {
-                    "key": "unknown",
-                    "text": "?"
-                  }
-                ],
-                "default": "?"
+                "weight": "medium"
               }
-            },
-            "anchor": "top-left"
+            ]
           },
           "style": {
-            "text": {
-              "color": {
-                "ref": [
-                  "parameters",
-                  "color"
-                ]
-              },
+            "label": {
               "size": {
                 "ref": [
-                  "values",
+                  "parameters",
                   "font_size"
                 ]
+              },
+              "family": null,
+              "background": {
+                "color": [
+                  14,
+                  16,
+                  20
+                ],
+                "alpha": 170
+              },
+              "padding_x": {
+                "value": 3,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 1,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 2,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
               }
             }
           }
         }
-      ],
-      "values": {
-        "font_size": {
-          "call": "coalesce",
-          "args": {
-            "values": [
-              {
-                "ref": [
-                  "parameters",
-                  "font_size"
-                ]
-              },
-              {
-                "call": "clamp",
-                "args": {
-                  "value": {
-                    "call": "mul",
-                    "args": {
-                      "values": [
-                        {
-                          "call": "box_min_size",
-                          "args": {
-                            "geometry": {
-                              "ref": [
-                                "parameters",
-                                "geometry"
-                              ]
-                            }
-                          }
-                        },
-                        0.25
-                      ]
-                    }
-                  },
-                  "minimum": {
-                    "value": 8,
-                    "unit": "px"
-                  },
-                  "maximum": {
-                    "value": 12,
-                    "unit": "px"
-                  }
-                }
-              }
-            ]
-          }
-        },
-        "inset": {
-          "call": "coalesce",
-          "args": {
-            "values": [
-              {
-                "ref": [
-                  "parameters",
-                  "inset"
-                ]
-              },
-              {
-                "call": "min",
-                "args": {
-                  "values": [
-                    {
-                      "call": "mul",
-                      "args": {
-                        "values": [
-                          {
-                            "call": "box_min_size",
-                            "args": {
-                              "geometry": {
-                                "ref": [
-                                  "parameters",
-                                  "geometry"
-                                ]
-                              }
-                            }
-                          },
-                          0.1
-                        ]
-                      }
-                    },
-                    {
-                      "value": 4,
-                      "unit": "px"
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      }
+      ]
     },
     "object_box": {
       "label": "Object box",
@@ -1805,11 +1747,19 @@
             "call": "color_ramp",
             "args": {
               "value": {
-                "ref": [
-                  "scene",
-                  "classification",
-                  "score"
-                ]
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "score"
+                      ]
+                    },
+                    0.5
+                  ]
+                }
               },
               "stops": [
                 {
@@ -1854,6 +1804,13 @@
                 }
               ]
             }
+          },
+          "bar_value": {
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
           }
         },
         "steps": [
@@ -1905,8 +1862,20 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -1915,11 +1884,10 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }
@@ -2085,8 +2053,20 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2095,11 +2075,10 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }
@@ -2214,7 +2193,16 @@
               }
             }
           }
-        ]
+        ],
+        "values": {
+          "bar_value": {
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
+          }
+        }
       },
       {
         "id": "human",
@@ -2257,11 +2245,19 @@
             "call": "color_ramp",
             "args": {
               "value": {
-                "ref": [
-                  "scene",
-                  "classification",
-                  "score"
-                ]
+                "call": "coalesce",
+                "args": {
+                  "values": [
+                    {
+                      "ref": [
+                        "scene",
+                        "classification",
+                        "score"
+                      ]
+                    },
+                    0.5
+                  ]
+                }
               },
               "stops": [
                 {
@@ -2306,6 +2302,13 @@
                 }
               ]
             }
+          },
+          "bar_value": {
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
           }
         },
         "steps": [
@@ -2357,8 +2360,20 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2367,11 +2382,10 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }
@@ -2590,6 +2604,13 @@
               },
               "fraction": 0.2
             }
+          },
+          "bar_value": {
+            "ref": [
+              "scene",
+              "classification",
+              "score"
+            ]
           }
         },
         "steps": [
@@ -2640,8 +2661,20 @@
             }
           },
           {
-            "label": "Confidence bar",
-            "template": "confidence_bar",
+            "label": "Score bar",
+            "feature": "score",
+            "template": "bar",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "values",
+                    "bar_value"
+                  ]
+                }
+              }
+            },
             "inputs": {
               "geometry": {
                 "ref": [
@@ -2650,11 +2683,10 @@
                   "geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
-                  "scene",
-                  "classification",
-                  "score"
+                  "values",
+                  "bar_value"
                 ]
               }
             }
@@ -2718,7 +2750,7 @@
           {
             "label": "Face visibility",
             "feature": "attributes",
-            "template": "confidence_bar",
+            "template": "bar",
             "enabled": {
               "call": "is_present",
               "args": {
@@ -2737,7 +2769,7 @@
                   "face_geometry"
                 ]
               },
-              "confidence": {
+              "value": {
                 "ref": [
                   "bindings",
                   "face_visible"

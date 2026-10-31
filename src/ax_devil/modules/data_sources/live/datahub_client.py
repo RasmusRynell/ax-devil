@@ -15,6 +15,7 @@ from urllib.request import parse_http_list
 import aiohttp
 from aiohttp import WSMsgType
 
+from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.modules.settings.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -102,21 +103,15 @@ class DataHubWebSocketClient:
 
     _topic_sample_method = "data-hub_v1:topicSample"
     _list_topics_method = "data-hub_v1:listTopics"
-    _request_timeout = 10.0
 
     def __init__(
         self,
         *,
-        host: str,
-        username: str,
-        password: str,
-        protocol: str,
+        device: DeviceConnection,
         topic: str | None,
         channel_id: int | None,
         session_factory: SessionFactory | None = None,
     ) -> None:
-        if protocol not in {"https", "http"}:
-            raise ValueError("Device API protocol must be http or https.")
         if (topic is None) != (channel_id is None):
             raise ValueError("DataHub topic and channel_id must be provided together.")
         if topic is not None and not topic:
@@ -124,10 +119,7 @@ class DataHubWebSocketClient:
         if channel_id is not None and channel_id < 1:
             raise ValueError("DataHub channel_id must be a positive integer.")
 
-        self._host = host
-        self._username = username
-        self._password = password
-        self._protocol = protocol
+        self._device = device
         self._topic = topic
         self._channel_id = channel_id
         self._session_factory = session_factory or self._create_session
@@ -137,8 +129,9 @@ class DataHubWebSocketClient:
         self._pending_samples: deque[DataHubTopicSample] = deque(maxlen=64)
 
     def _create_session(self) -> aiohttp.ClientSession:
+        seconds = self._device.timeout_s
         return aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=None, connect=10, sock_connect=10, sock_read=10),
+            timeout=aiohttp.ClientTimeout(total=None, connect=seconds, sock_connect=seconds, sock_read=seconds),
             middlewares=(_reject_redirects,),
         )
 
@@ -150,19 +143,18 @@ class DataHubWebSocketClient:
         session = self._session_factory()
         self._session = session
         try:
-            if self._protocol == "https":
+            if self._device.protocol is DeviceProtocol.HTTPS:
                 logger.info(
                     "DataHub HTTPS/WSS certificate verification is disabled; use this tool only on trusted networks."
                 )
-            token_url = f"{self._protocol}://{self._host}/axis-cgi/wssession.cgi"
+            token_url = self._device.url("/axis-cgi/wssession.cgi")
             session_token = await self._request_session_token(session, token_url)
 
             if not session_token:
                 raise DataHubWebSocketError("DataHub session request returned an empty token.")
 
-            websocket_scheme = "wss" if self._protocol == "https" else "ws"
             query = urlencode({"wssession": session_token, "apis": "data-hub"})
-            websocket_url = f"{websocket_scheme}://{self._host}/vapix/ws/v1?{query}"
+            websocket_url = self._device.url(f"/vapix/ws/v1?{query}", websocket=True)
             self._websocket = await session.ws_connect(
                 websocket_url,
                 heartbeat=30,
@@ -189,12 +181,12 @@ class DataHubWebSocketClient:
         except Exception as exc:
             await self.close()
             raise DataHubWebSocketError(
-                f"DataHub WebSocket connection failed for {self._host} ({type(exc).__name__})."
+                f"DataHub WebSocket connection failed for {self._device.host} ({type(exc).__name__})."
             ) from exc
 
     async def _request_session_token(self, session: Any, token_url: str) -> str:
         """Request a session token using the device's advertised auth scheme."""
-        timeout = aiohttp.ClientTimeout(total=10, sock_read=10)
+        timeout = aiohttp.ClientTimeout(total=self._device.timeout_s, sock_read=self._device.timeout_s)
         async with session.get(
             token_url,
             ssl=False,
@@ -211,13 +203,14 @@ class DataHubWebSocketClient:
                 if challenge.strip()
             }
 
+        device = self._device
         auth_options: dict[str, Any]
         if "digest" in schemes:
             auth_options = {
-                "middlewares": (_reject_redirects, aiohttp.DigestAuthMiddleware(self._username, self._password))
+                "middlewares": (_reject_redirects, aiohttp.DigestAuthMiddleware(device.username, device.password))
             }
         elif "basic" in schemes:
-            auth_options = {"headers": {"Authorization": aiohttp.encode_basic_auth(self._username, self._password)}}
+            auth_options = {"headers": {"Authorization": aiohttp.encode_basic_auth(device.username, device.password)}}
         else:
             raise DataHubWebSocketError("DataHub session request returned no supported authentication challenge.")
 
@@ -278,6 +271,11 @@ class DataHubWebSocketClient:
             except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
                 logger.debug(f"DataHub HTTP session close failed: {type(exc).__name__}")
 
+        if self._pending_samples:
+            logger.warning(
+                f"Dropping {len(self._pending_samples)} undecoded DataHub samples on close: "
+                f"topic={self._topic!r}, channel={self._channel_id}"
+            )
         self._pending_samples.clear()
 
     async def _request(self, *, method: str, params: JsonObject) -> JsonObject:
@@ -294,7 +292,15 @@ class DataHubWebSocketClient:
             while True:
                 message = await self._receive_json()
                 if message.get("method") == self._topic_sample_method:
-                    self._pending_samples.append(parse_topic_sample(message))
+                    sample = parse_topic_sample(message)
+                    if len(self._pending_samples) == self._pending_samples.maxlen:
+                        dropped = self._pending_samples[0]
+                        logger.warning(
+                            f"Dropping oldest undecoded DataHub sample: subscription buffer full; "
+                            f"topic={dropped.topic!r}, channel={dropped.channel_id}, "
+                            f"timestamp={dropped.timestamp!r}. Sparse decoder state may be incomplete."
+                        )
+                    self._pending_samples.append(sample)
                     continue
                 if message.get("id") != request_id:
                     if "method" in message:
@@ -310,7 +316,7 @@ class DataHubWebSocketClient:
                 return message
 
         try:
-            return await asyncio.wait_for(exchange(), timeout=self._request_timeout)
+            return await asyncio.wait_for(exchange(), timeout=self._device.timeout_s)
         except asyncio.TimeoutError as exc:
             message = f"Timed out waiting for DataHub response to {method}."
             if last_notification is not None:
@@ -344,18 +350,12 @@ class DataHubWebSocketClient:
 
 async def discover_datahub_topics(
     *,
-    host: str,
-    username: str,
-    password: str,
-    protocol: str,
+    device: DeviceConnection,
     session_factory: SessionFactory | None = None,
 ) -> tuple[str, ...]:
     """Open a discovery-only DataHub session and return its available topics."""
     client = DataHubWebSocketClient(
-        host=host,
-        username=username,
-        password=password,
-        protocol=protocol,
+        device=device,
         topic=None,
         channel_id=None,
         session_factory=session_factory,

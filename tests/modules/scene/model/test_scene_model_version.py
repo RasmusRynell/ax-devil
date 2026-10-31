@@ -7,13 +7,14 @@ import inspect
 
 from ax_devil.modules.scene import model
 
-# Snapshot for SCENE_MODEL_VERSION (1, 1). Update together with the version.
-EXPECTED_VERSION = (1, 1)
+# Snapshot for SCENE_MODEL_VERSION (3, 2). Update together with the version.
+EXPECTED_VERSION = (3, 2)
 EXPECTED_FIELDS = {
     "Attribute": ("name", "value"),
     "BoundingBox": ("top_left", "bottom_right"),
     "Classification": ("type", "score", "attributes", "confidence"),
     "ColorClassification": ("name", "rgb", "score"),
+    "Confidence": ("value",),
     "Delete": ("timestamp", "entity_id"),
     "Entity": ("id", "observations", "images", "end_reason", "motion_state"),
     "EntityRelation": ("type", "source_entity_id", "target_entity_id"),
@@ -29,12 +30,12 @@ EXPECTED_FIELDS = {
         "classification",
         "timestamp",
         "frame_number",
-        "confidence",
         "velocity_in_image_space",
         "velocity_in_world_space",
         "geographical_coordinates",
         "world_coordinates",
         "debug",
+        "source_data",
     ),
     "Operation": ("timestamp",),
     "Polygon": ("points",),
@@ -54,7 +55,7 @@ def test_scene_model_fields_match_version_snapshot() -> None:
     actual = {
         name: tuple(f.name for f in dataclasses.fields(cls))
         for name, cls in vars(model).items()
-        if inspect.isclass(cls) and cls.__module__ == model.__name__ and dataclasses.is_dataclass(cls)
+        if inspect.isclass(cls) and cls.__module__.startswith(model.__name__) and dataclasses.is_dataclass(cls)
     }
     assert (model.SCENE_MODEL_VERSION, actual) == (EXPECTED_VERSION, EXPECTED_FIELDS), (
         "Scene model changed: bump SCENE_MODEL_VERSION (major if breaking, minor if additive), "

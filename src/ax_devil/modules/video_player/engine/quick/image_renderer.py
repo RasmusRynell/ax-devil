@@ -10,6 +10,10 @@ from ..render_context import RenderContext
 from .surface import QuickSurface
 
 
+class NoGraphicsApiError(RuntimeError):
+    """Qt Quick fell back to software rendering, which cannot draw overlays."""
+
+
 class FrameImageRenderer(QuickSurface):
     """Render export frames on the GUI thread without displaying a window."""
 
@@ -31,6 +35,9 @@ class FrameImageRenderer(QuickSurface):
         self.set_frame_image(image, target)
         self.set_overlays(drawing, opacity, target, context.scale_factor / ratio, None)
         rendered = self.grabFramebuffer()
+        if not self.draws_overlays:
+            api = self.quickWindow().rendererInterface().graphicsApi().name
+            raise NoGraphicsApiError(f"Qt Quick fell back to {api}, which cannot draw overlays")
         if rendered.width() < width or rendered.height() < height:
             raise RuntimeError(f"Quick export produced {rendered.size()} for a {width}x{height} frame")
         rendered.setDevicePixelRatio(1)

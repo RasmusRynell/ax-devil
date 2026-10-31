@@ -2,24 +2,33 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from typing import Any
 
 from ax_devil.modules.scene.model import (
     RGB,
+    Attribute,
     BoundingBox,
+    Classification,
     ColorClassification,
+    Confidence,
     NormalizedPoint,
     Score,
 )
 
 __all__: list[str] = [
+    "UNMAPPED_CLASS",
+    "classification_for_id",
+    "is_unmapped_class",
     "parse_timestamp",
     "rgb_from_map",
     "parse_colors_webcolors",
     "parse_bounding_box",
 ]
+
+UNMAPPED_CLASS = "?"
+"""Name prefix of a class id missing from its name table; list it in a filter policy's types to match all of them."""
 
 _COLOR_RGB_MAP = {
     "red": RGB(255, 0, 0),
@@ -39,6 +48,26 @@ _COLOR_RGB_MAP = {
     "magenta": RGB(255, 0, 255),
     "beige": RGB(245, 245, 220),
 }
+
+
+def classification_for_id(
+    class_id: int,
+    names: Mapping[int, str],
+    score: Score | None,
+    attributes: Iterable[Attribute] = (),
+    confidence: Confidence | None = None,
+) -> Classification:
+    """Return the named classification for ``class_id``, or ``?<id>`` if ``names`` lacks it.
+
+    The raw ``class_id`` is always kept as an attribute.
+    """
+    name = names.get(class_id, f"{UNMAPPED_CLASS}{class_id}")
+    return Classification(name, score, [Attribute("class_id", class_id), *attributes], confidence)
+
+
+def is_unmapped_class(classification_type: str) -> bool:
+    """Return whether the classification type names a class id missing from its name table."""
+    return classification_type.startswith(UNMAPPED_CLASS)
 
 
 def parse_timestamp(timestamp_str: str | None) -> datetime:
@@ -68,9 +97,11 @@ def parse_colors_webcolors(raw: list[dict[str, Any]] | None) -> list[ColorClassi
         raise ValueError("Color data is None")
     colors = []
     for item in raw:
-        colors.append(
-            ColorClassification(name=item["name"], rgb=rgb_from_map(item["name"]), score=Score(item["score"]))
-        )
+        name = item.get("name")
+        score = item.get("score")
+        if name is None or score is None:
+            raise ValueError("Color missing name or score")
+        colors.append(ColorClassification(name=name, rgb=rgb_from_map(name), score=Score(score)))
     return colors
 
 

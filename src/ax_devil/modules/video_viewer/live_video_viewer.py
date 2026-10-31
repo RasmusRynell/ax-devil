@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import traceback
-from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
+from ax_devil.core.time_units import us_to_datetime
 from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.filtering.session_filter import SessionFilter
@@ -15,18 +16,27 @@ from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.video_player.engine.data_types import VideoFrameWithOverlays
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-from ax_devil.modules.video_player.ui.controls import video_control_icon
+from ax_devil.modules.video_player.ui.control_panel import video_control_icon
 from ax_devil.modules.video_player.ui.frame_display import FrameDisplay
 from ax_devil.modules.video_player.ui.overlay_layout import OverlayPosition
-from ax_devil.modules.video_viewer.live_connection import LiveConnectionStatus, LiveFeed
+from ax_devil.modules.video_viewer.live_connection import LiveConnectionState, LiveConnectionStatus, LiveFeed
 from ax_devil.modules.video_viewer.media_tools import MediaToolsPanel
-from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistenceSettings
 from ax_devil.modules.video_viewer.stream_media_controller import StreamMediaController
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults, view_defaults
 from ax_devil.modules.workspace.core import LiveVideoContent
-from ax_devil.modules.workspace.core.content import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.core.consideration import OnScreenWorkspaceItem
+from ax_devil.modules.workspace.ui.live_stream_status import LiveStreamState, LiveStreamStatus
 from ax_devil.modules.workspace.ui.viewer_widget import ViewerWidget
 
 logger = get_logger(__name__)
+
+_STREAM_STATES = {
+    LiveConnectionState.CONNECTING: LiveStreamState.CONNECTING,
+    LiveConnectionState.LIVE: LiveStreamState.LIVE,
+    LiveConnectionState.STALLED: LiveStreamState.STALLED,
+    LiveConnectionState.RECONNECTING: LiveStreamState.RECONNECTING,
+    LiveConnectionState.FAILED: LiveStreamState.FAILED,
+}
 
 
 class LiveStatusPanel(QWidget):
@@ -134,12 +144,8 @@ class LiveStatusPanel(QWidget):
 
     def display_frame_status(self, frame: VideoFrameWithOverlays) -> None:
         """Update status labels from the displayed live frame."""
-        timestamp = frame.frame.timestamp
-        if timestamp is not None:
-            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-            self._timestamp_label.setText(f"{dt:%H:%M:%S}.{dt.microsecond:06d}")
-        else:
-            logger.warning("Frame has no timestamp")
+        dt = us_to_datetime(frame.frame.timestamp_us)
+        self._timestamp_label.setText(f"{dt:%H:%M:%S}.{dt.microsecond:06d}")
 
         frame_id = frame.frame.frame_id
         if frame_id is not None:
@@ -165,6 +171,8 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._tools_panel: MediaToolsPanel | None = None
         self._frame_display: FrameDisplay | None = None
         self._status_panel: LiveStatusPanel | None = None
+        self._stream_status: LiveStreamStatus | None = None  # Set up while the base class builds the UI.
+        self._latest_frame: QImage | None = QImage()  # Null until the first frame.
         super().__init__(parent)
 
     def _setup_widget_ui(self) -> None:
@@ -172,7 +180,6 @@ class LiveVideoViewerWidget(ViewerWidget):
         layout = self.get_content_layout()
 
         display = FrameDisplay()
-        display.viewport.set_diagnostics_label(self.get_display_name())
         status_panel = LiveStatusPanel(display)
         status_panel.pauseToggled.connect(self.toggle_playback)
         status_panel.retryRequested.connect(self.retry_connection)
@@ -185,16 +192,19 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._show_connection_status(LiveConnectionStatus.connecting([LiveFeed.VIDEO]))
 
         try:
+            defaults = view_defaults()
             controller = StreamMediaController(
                 display,
                 self._content,
                 render_catalog_selection=self._render_catalog_selection,
-                frame_displayed=status_panel.display_frame_status,
+                overlay_persistence=defaults.sticky,
+                frame_displayed=self._show_frame,
                 connection_changed=self._show_connection_status,
             )
             self._controller = controller
-            self._attach_tools_panel(display, controller)
+            self._attach_tools_panel(display, controller, defaults)
             controller.start_playback()
+            self._publish_stream_status()  # Statuses the controller reported before it was set read as connecting.
         except Exception as e:
             self.cleanup()
             logger.debug(traceback.format_exc())
@@ -208,6 +218,33 @@ class LiveVideoViewerWidget(ViewerWidget):
         if self._frame_display is not None:
             self._frame_display.viewport.set_background_text(status.placeholder_text)
             self._frame_display.viewport.position_overlays()
+        self._publish_stream_status()
+
+    def _show_frame(self, frame: VideoFrameWithOverlays) -> None:
+        """Keep the newest frame for hover cards and update the status panel from it."""
+        self._latest_frame = frame.frame.image
+        if self._status_panel is not None:
+            self._status_panel.display_frame_status(frame)
+
+    def latest_frame(self) -> QImage | None:
+        """Return the newest frame shown, a null image before the first, or None once the viewer is cleaned up."""
+        return self._latest_frame
+
+    def stream_status(self) -> LiveStreamStatus:
+        """Return how the stream is doing: paused, else the state of the video feed."""
+        if self._controller is None:
+            return LiveStreamStatus(LiveStreamState.CONNECTING)
+        if self._controller.is_paused:
+            return LiveStreamStatus(LiveStreamState.PAUSED)
+        video = self._controller.connection_status.headline
+        return LiveStreamStatus(_STREAM_STATES[video.state], video.reason, video.attempts)
+
+    def _publish_stream_status(self) -> None:
+        """Tell the sidebar when ``stream_status()`` changed."""
+        status = self.stream_status()
+        if status != self._stream_status:
+            self._stream_status = status
+            self.stream_status_changed.emit()
 
     def retry_connection(self) -> None:
         """Reopen the live stream after a failure; playback resumes."""
@@ -216,18 +253,21 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._controller.retry()
         if self._status_panel is not None:
             self._status_panel.set_paused(False)
+        self._publish_stream_status()
 
     def _attach_tools_panel(
         self,
         display: FrameDisplay,
         controller: StreamMediaController,
+        defaults: ViewDefaults,
     ) -> None:
         """Create and wire a MediaToolsPanel to the display and controller."""
         filter_model = SessionFilter(controller.get_filter_config())
+        filter_model.apply_choice(defaults.object_filter)
         tools_panel = MediaToolsPanel(
             self._render_catalog_selection,
             filter_model=filter_model,
-            overlay_settings=OverlayPersistenceSettings.default_enabled(),
+            overlay_settings=defaults.sticky,
         )
         display.set_side_panel_widget(tools_panel)
         tools_panel.link_selection(display)
@@ -238,7 +278,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._tools_panel = tools_panel
 
     def _open_catalog_viewer(self) -> None:
-        from ax_devil.modules.catalog_viewer import show_catalog_viewer
+        from ax_devil.modules.catalog_viewer.viewer_registry import show_catalog_viewer
 
         show_catalog_viewer(
             self._render_catalog_manager,
@@ -247,14 +287,12 @@ class LiveVideoViewerWidget(ViewerWidget):
         )
 
     def get_display_name(self) -> str:
-        """Return the name shown in the header and in the render diagnostics."""
+        """Return the name shown in the header."""
         return self._display_name
 
     def set_display_name(self, name: str) -> None:
-        """Show *name* in the header and in the render diagnostics, after the item is renamed."""
+        """Show *name* in the header after the item is renamed."""
         self._display_name = name
-        if self._frame_display is not None:
-            self._frame_display.viewport.set_diagnostics_label(name)
         super().set_display_name(name)
 
     def pause_playback(self) -> None:
@@ -264,6 +302,7 @@ class LiveVideoViewerWidget(ViewerWidget):
         self._controller.pause_playback()
         if self._status_panel is not None:
             self._status_panel.set_paused(True)
+        self._publish_stream_status()
 
     def toggle_playback(self) -> None:
         """Toggle between playing and paused states for the live stream."""
@@ -275,6 +314,7 @@ class LiveVideoViewerWidget(ViewerWidget):
             self._controller.pause_playback()
         if self._status_panel is not None:
             self._status_panel.set_paused(self._controller.is_paused)
+        self._publish_stream_status()
 
     def toggle_media_tools(self) -> None:
         """Show or hide the media tools panel."""
@@ -292,6 +332,7 @@ class LiveVideoViewerWidget(ViewerWidget):
 
     def cleanup(self) -> None:
         """Tear down controller, display, and tools panel."""
+        self._latest_frame = None
         if self._controller:
             try:
                 self._controller.cleanup()

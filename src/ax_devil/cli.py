@@ -10,15 +10,9 @@ from typing import Any, cast
 
 import click
 
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.catalog_viewer.cli import catalog
 from ax_devil.modules.plugin_installation.cli import plugins
-from ax_devil.modules.plugin_system import (
-    PLAYLIST_RESOLVER_PLUGIN_TYPE,
-    ApplicationPluginLoader,
-    PlaylistResolverPlugin,
-    PluginStatus,
-    RuntimePluginRegistry,
-)
 from ax_devil.modules.settings.config_manager import ConfigManager
 from ax_devil.modules.settings.logging_config import setup_logging
 from ax_devil.modules.settings.paths import DEFAULT_CONFIG_PATH
@@ -32,9 +26,7 @@ from ax_devil.modules.workspace.core import (
     load_workspace,
     overlay_choice,
 )
-from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
 
-from .app import create_app
 from .cli_options import CONFIG_OPTION, apply_run_options
 
 
@@ -46,6 +38,8 @@ def _require_existing_config_path(config: Path | None) -> None:
 
 def _apply_cli_config_and_load_plugins(config: Path | None) -> None:
     """Apply the requested CLI config path, then load plugins (a no-op once they have been loaded)."""
+    from ax_devil.modules.plugin_system import ApplicationPluginLoader
+
     _require_existing_config_path(config)
 
     config_manager = ConfigManager()
@@ -57,7 +51,6 @@ def _apply_cli_config_and_load_plugins(config: Path | None) -> None:
 def _run_app(
     log_level: str,
     config: Path | None,
-    debug: bool,
     items: Sequence[WorkspaceItem] = (),
     workspace_file: Path | None = None,
     open_catalog_viewer: bool = False,
@@ -66,10 +59,11 @@ def _run_app(
     _require_existing_config_path(config)
 
     try:
+        from ax_devil.app import create_app
+
         app = create_app(
             log_level=log_level,
             config_path=config,
-            debug=debug,
             items=items,
             workspace_file=workspace_file,
             open_catalog_viewer=open_catalog_viewer,
@@ -83,27 +77,24 @@ def _run_app(
         sys.exit(130)
     except Exception as e:
         click.echo(f"Application failed to start: {e}", err=True)
-        if debug or log_level == "DEBUG":
+        if log_level == "DEBUG":
             traceback.print_exc()
         sys.exit(1)
 
 
-def _build_runtime_context(log_level: str, config: Path | None, debug: bool) -> dict[str, Any]:
+def _build_runtime_context(log_level: str, config: Path | None) -> dict[str, Any]:
     """Build shared runtime context for CLI commands."""
     return {
         "log_level": log_level,
         "config": config,
-        "debug": debug,
         "run_with_items": lambda items: _run_app(
             log_level=log_level,
             config=config,
-            debug=debug,
             items=items,
         ),
         "run_catalog_viewer": lambda: _run_app(
             log_level=log_level,
             config=config,
-            debug=debug,
             open_catalog_viewer=True,
         ),
     }
@@ -124,20 +115,26 @@ def cli(
     ctx: click.Context,
     log_level: str,
     config: Path | None,
-    debug: bool,
 ) -> None:
     """View video, live Axis cameras, and analytics overlays.
 
     Run without a command to open the start panel.
     """
     setup_logging(console_log_level="WARNING", console_only=True)
-    ctx.obj = _build_runtime_context(log_level=log_level, config=config, debug=debug)
+    ctx.obj = _build_runtime_context(log_level=log_level, config=config)
     if ctx.invoked_subcommand is None:
-        _run_app(log_level, config, debug)
+        _run_app(log_level, config)
 
 
 def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click.Command:
     """Look up a resolver-provided playlist command after config has been applied."""
+    from ax_devil.modules.plugin_system import (
+        PLAYLIST_RESOLVER_PLUGIN_TYPE,
+        PlaylistResolverPlugin,
+        PluginStatus,
+        RuntimePluginRegistry,
+    )
+
     _apply_cli_config_and_load_plugins(config)
 
     try:
@@ -165,6 +162,8 @@ def _get_playlist_plugin_command(config: Path | None, resolver_id: str) -> click
 
 def _list_available_playlist_resolvers(config: Path | None) -> list[str]:
     """Return sorted IDs of currently loadable playlist resolvers."""
+    from ax_devil.modules.plugin_system import PLAYLIST_RESOLVER_PLUGIN_TYPE, PluginStatus, RuntimePluginRegistry
+
     _apply_cli_config_and_load_plugins(config)
     return sorted(
         plugin.definition.plugin_id
@@ -359,13 +358,15 @@ def local(
         choices = _overlay_choices_by_extension([path.resolve() for path in overlays], runtime["config"])
 
     item = VideoFileSelection(video.resolve(), tuple(choices)).to_item()
-    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], items=[item])
 
 
 def _overlay_choices_by_extension(paths: Sequence[Path], config: Path | None) -> list[OverlayChoice]:
     """Return *paths* with the only data handler that reads each, or fail naming the candidates when it is unclear."""
     if not paths:
         return []
+    from ax_devil.modules.workspace.ui.plugin_intake import default_workspace_intake
+
     _apply_cli_config_and_load_plugins(config)
     intake = default_workspace_intake()
     choices: list[OverlayChoice] = []
@@ -396,7 +397,6 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
     _run_app(
         log_level=runtime["log_level"],
         config=runtime["config"],
-        debug=runtime["debug"],
         workspace_file=workspace_file.absolute(),
     )
 
@@ -406,7 +406,7 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
 @click.option("--username", default=None, help="Device username (default: config/env)")
 @click.option("--password", default=None, help="Device password (default: config/env)")
 @click.option("--camera-head", type=int, default=None, help="Camera head number (default: config)")
-@click.option("--resolution", default=None, help="Video resolution e.g. 1280x720 (default: config)")
+@click.option("--resolution", default=None, help="Video resolution e.g. 1280x720 (default: camera default)")
 @click.option(
     "--overlay",
     type=click.Choice(["none", "rtsp", "mqtt", "websocket"]),
@@ -426,7 +426,7 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
 )
 @click.option(
     "--device-api-protocol",
-    type=click.Choice(["https", "http"]),
+    type=click.Choice(DeviceProtocol, case_sensitive=False),
     default=None,
     help="Device API protocol (default: config)",
 )
@@ -449,7 +449,7 @@ def live(
     mqtt_username: str | None,
     mqtt_password: str | None,
     analytics_data_source_key: str | None,
-    device_api_protocol: str | None,
+    device_api_protocol: DeviceProtocol | None,
     websocket_topic: str | None,
     websocket_channel_id: int | None,
 ) -> None:
@@ -520,7 +520,7 @@ def live(
         if values.websocket_channel_id < 1:
             raise click.ClickException("--channel-id must be a positive integer.")
 
-    _run_app(log_level=runtime["log_level"], config=runtime["config"], debug=runtime["debug"], items=[item])
+    _run_app(log_level=runtime["log_level"], config=runtime["config"], items=[item])
 
 
 # Listed for --help; the launcher runs `plugins` in the base app before this CLI loads.

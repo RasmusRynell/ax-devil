@@ -7,14 +7,12 @@ and emit Qt signals on change so consumers can react without polling.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, replace
 from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
 from ax_devil.modules.settings.config_manager import ConfigManager
-from ax_devil.modules.settings.graphics_acceleration import GraphicsAcceleration
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.overlay_preferences import OverlayPreference
 from ax_devil.modules.settings.playback_settings import VideoCacheBudget, detect_available_memory_bytes
@@ -30,13 +28,13 @@ class SettingsState:
 
     video_cache_budget: VideoCacheBudget = VideoCacheBudget()
     enabled_overlays: frozenset[OverlayPreference] = frozenset(OverlayPreference)
-    graphics_acceleration: GraphicsAcceleration = GraphicsAcceleration.AUTO
     theme: ThemeMode = ThemeMode.AUTO
     text_size: TextSize = TextSize.SYSTEM
     custom_frame: bool = True
     quick_setup_done: bool = False
     scan_on_startup: bool = True
     scan_sign_in: bool = True
+    prepare_next_video: bool = False
 
 
 class GlobalSettings(QObject):
@@ -53,6 +51,7 @@ class GlobalSettings(QObject):
     # Per-setting signals
     overlay_preference_changed = Signal(object, bool)  # OverlayPreference, enabled
     video_cache_budget_changed = Signal(object)
+    prepare_next_video_changed = Signal(bool)
     theme_changed = Signal(str)
     text_size_changed = Signal(object)  # TextSize
 
@@ -71,8 +70,6 @@ class GlobalSettings(QObject):
         self._initialized = True
         self.available_memory_bytes = detect_available_memory_bytes()
         self._state = SettingsState()
-        # Capture the inherited override before startup applies our own presentation default.
-        self.graphics_acceleration_override = os.environ.get("QT_WIDGETS_RHI")
 
     # ------------------------------------------------------------------
     # Properties
@@ -90,6 +87,19 @@ class GlobalSettings(QObject):
         self._state = replace(self._state, video_cache_budget=value)
         self.video_cache_budget_changed.emit(value)
         self.setting_changed.emit("playback.video_cache_total_mib", value.config_value)
+
+    @property
+    def prepare_next_video(self) -> bool:
+        """Return whether a background process warms the caches of the video playback steps to next."""
+        return self._state.prepare_next_video
+
+    @prepare_next_video.setter
+    def prepare_next_video(self, value: bool) -> None:
+        if value == self._state.prepare_next_video:
+            return
+        self._state = replace(self._state, prepare_next_video=value)
+        self.prepare_next_video_changed.emit(value)
+        self.setting_changed.emit("playback.prepare_next_video", value)
 
     def is_overlay_enabled(self, preference: OverlayPreference) -> bool:
         """Return whether viewers show *preference*."""
@@ -181,18 +191,6 @@ class GlobalSettings(QObject):
         self._state = replace(self._state, quick_setup_done=value)
         self.setting_changed.emit("quick_setup_done", value)
 
-    @property
-    def graphics_acceleration(self) -> GraphicsAcceleration:
-        """Return the saved presentation preference, applied on the next startup."""
-        return self._state.graphics_acceleration
-
-    @graphics_acceleration.setter
-    def graphics_acceleration(self, value: GraphicsAcceleration) -> None:
-        if value == self._state.graphics_acceleration:
-            return
-        self._state = replace(self._state, graphics_acceleration=value)
-        self.setting_changed.emit("appearance.graphics_acceleration", value.value)
-
     # ------------------------------------------------------------------
     # Config round-trip
     # ------------------------------------------------------------------
@@ -203,7 +201,6 @@ class GlobalSettings(QObject):
         ui = config_manager.get("ui", {}) or {}
         playback = settings.get("playback", {}) or {}
         overlay = settings.get("overlay_interaction", {}) or {}
-        appearance = settings.get("appearance", {}) or {}
         network_scan = settings.get("network_scan", {}) or {}
         self._state = SettingsState(
             theme=ThemeMode.from_config(ui.get("theme", "auto")),
@@ -213,8 +210,8 @@ class GlobalSettings(QObject):
             scan_on_startup=bool(network_scan.get("on_startup", True)),
             scan_sign_in=bool(network_scan.get("sign_in", True)),
             video_cache_budget=VideoCacheBudget.from_config(playback.get("video_cache_total_mib")),
+            prepare_next_video=bool(playback.get("prepare_next_video", False)),
             enabled_overlays=OverlayPreference.from_config(overlay),
-            graphics_acceleration=GraphicsAcceleration.from_config(appearance.get("graphics_acceleration", "auto")),
         )
         logger.debug(f"GlobalSettings loaded: overlays={self._state.enabled_overlays}")
 
@@ -233,11 +230,9 @@ class GlobalSettings(QObject):
         overlay = settings.get("overlay_interaction", {}) or {}
         overlay.update(OverlayPreference.config_value(values.enabled_overlays))
         settings["overlay_interaction"] = overlay
-        appearance = settings.get("appearance", {}) or {}
-        appearance["graphics_acceleration"] = values.graphics_acceleration.value
-        settings["appearance"] = appearance
         playback = settings.get("playback", {}) or {}
         playback["video_cache_total_mib"] = values.video_cache_budget.config_value
+        playback["prepare_next_video"] = values.prepare_next_video
         settings["playback"] = playback
         network_scan = settings.get("network_scan", {}) or {}
         network_scan.update(on_startup=values.scan_on_startup, sign_in=values.scan_sign_in)
@@ -252,12 +247,12 @@ class GlobalSettings(QObject):
     def apply_snapshot(self, snapshot: SettingsState) -> None:
         """Apply complete typed preferences, emitting signals only for changed values."""
         self.video_cache_budget = snapshot.video_cache_budget
+        self.prepare_next_video = snapshot.prepare_next_video
         for preference in OverlayPreference:
             self.set_overlay_enabled(preference, preference in snapshot.enabled_overlays)
         self.theme = snapshot.theme
         self.text_size = snapshot.text_size
         self.custom_frame = snapshot.custom_frame
-        self.graphics_acceleration = snapshot.graphics_acceleration
         self.quick_setup_done = snapshot.quick_setup_done
         self.scan_on_startup = snapshot.scan_on_startup
         self.scan_sign_in = snapshot.scan_sign_in

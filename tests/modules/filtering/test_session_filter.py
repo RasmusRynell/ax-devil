@@ -1,8 +1,20 @@
 """Session filtering behavior shared by display and export."""
 
 from ax_devil.modules.filtering import FilterConfig, FilterOption
+from ax_devil.modules.filtering.filter_choice import FilterChoice
+from ax_devil.modules.filtering.measure_range import Measure, MeasureRange
 from ax_devil.modules.filtering.session_filter import SessionFilter
-from ax_devil.modules.scene.model import Entity, EntityId, Scene, TimeSlice
+from ax_devil.modules.scene.model import (
+    BoundingBox,
+    Classification,
+    Confidence,
+    Entity,
+    EntityId,
+    Observation,
+    Scene,
+    Score,
+    TimeSlice,
+)
 
 
 def test_detached_snapshot_keeps_decoder_predicates_after_session_edits() -> None:
@@ -29,6 +41,86 @@ def test_detached_snapshot_keeps_decoder_predicates_after_session_edits() -> Non
     assert list(snapshot.process_scene(scene).entities) == ["other-A"]
     assert not snapshot.supports_history_filtering
 
-    model.toggle_all()
+    model.set_all_enabled(False)
     assert not model.process_scene(scene).entities
     assert list(snapshot.process_scene(scene).entities) == ["other-A"]
+
+
+def test_ranges_judge_only_reported_values_and_change_what_is_cached() -> None:
+    def entity(name: str, score: float | None, confidence: float | None) -> Entity:
+        classification = Classification(
+            "human",
+            Score(score) if score is not None else None,
+            confidence=Confidence(confidence) if confidence is not None else None,
+        )
+        geometry = BoundingBox.from_xywh(0.1, 0.1, 0.2, 0.2)
+        result = Entity(EntityId(name))
+        result.add_observation(Observation(frame_number=0, geometry=geometry, classification=[classification]))
+        return result
+
+    scene = Scene(time_slice=TimeSlice(start=0, end=1))
+    for item in (entity("low", 0.3, 0.3), entity("high", 0.9, 0.9), entity("silent", None, None)):
+        scene.add_entity(item)
+    model = SessionFilter()
+    unfiltered = model.cache_identity
+
+    model.set_range(Measure.SCORE, MeasureRange(minimum=0.5))
+    assert list(model.process_scene(scene).entities) == ["high", "silent"]  # A missing value is not read as 0.
+    assert model.cache_identity != unfiltered
+    model.set_range(Measure.CONFIDENCE, MeasureRange(maximum=0.5))
+    assert list(model.process_scene(scene).entities) == ["silent"]
+    assert list(model.snapshot().process_scene(scene).entities) == ["silent"]
+
+    model.set_range(Measure.SCORE, MeasureRange())
+    model.set_range(Measure.CONFIDENCE, MeasureRange())
+    assert model.cache_identity == unfiltered
+
+
+def test_reset_restores_the_decoders_defaults_in_one_notification() -> None:
+    config = FilterConfig(
+        options=(
+            FilterOption(id="shown", label="Shown", predicate=lambda _entity, _state: True),
+            FilterOption(id="hidden", label="Hidden", predicate=lambda _entity, _state: True, default_enabled=False),
+        )
+    )
+    model = SessionFilter(config)
+    assert model.changed_count == 0
+    notifications: list[int] = []
+    model.changed.connect(lambda: notifications.append(model.changed_count))
+
+    model.set_enabled("hidden", True)
+    model.set_range(Measure.SCORE, MeasureRange(minimum=0.5))
+    model.set_enabled("shown", False)
+    assert model.changed_count == 3
+
+    notifications.clear()
+    model.reset()
+    assert notifications == [0]
+    assert (model.is_enabled("shown"), model.is_enabled("hidden")) == (True, False)
+    assert model.range(Measure.SCORE) == MeasureRange()
+    model.reset()
+    assert notifications == [0]
+
+
+def test_a_choice_moves_to_another_decoder_and_reset_clears_it() -> None:
+    def option(option_id: str) -> FilterOption:
+        return FilterOption(id=option_id, label=option_id, predicate=lambda _entity, _state: True)
+
+    first, second = (
+        SessionFilter(FilterConfig((option("a"), option("b")))),
+        SessionFilter(FilterConfig((option("b"), option("c")))),
+    )
+    first.set_enabled("a", False)
+    first.set_enabled("b", False)
+    first.set_range(Measure.SCORE, MeasureRange(minimum=0.5))
+    chosen = first.choice()
+
+    second.apply_choice(chosen)
+
+    assert not second.is_enabled("b") and second.is_enabled("c")
+    assert second.range(Measure.SCORE) == MeasureRange(minimum=0.5)
+    assert second.choice() == chosen  # "a" is not in this decoder but travels on
+
+    second.reset()
+
+    assert second.choice() == FilterChoice() and second.is_enabled("b")

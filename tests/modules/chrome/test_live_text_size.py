@@ -12,7 +12,6 @@ from pytestqt.qtbot import QtBot
 
 from ax_devil.modules.application_shell.main_window import MainWindow
 from ax_devil.modules.chrome.theme import apply_text_size, apply_theme
-from ax_devil.modules.diagnostics.debug_window import DebugWindow
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.video_player.ui.controls import SeekableVideoControlPanel
 from tests.helpers.clipping import clipped_text_on_every_page
@@ -21,6 +20,7 @@ from tests.modules.chrome.test_surface_fit import SURFACES
 
 SMALL, LARGE = 13, 21
 QWIDGETSIZE_MAX = 16777215
+WINDOW_SIZE = (1600, 900)
 STABLE_POLLS = 20  # Consecutive unchanged readings, about 200 ms, before a window that builds views is settled.
 
 Constraint = tuple[str, int, int, int, int]
@@ -92,20 +92,26 @@ def test_dialog_follows_a_text_size_change(qtbot: QtBot, surface: type[QWidget],
 
 
 @pytest.mark.usefixtures("restore_app_appearance")
-def test_windows_follow_a_text_size_change(qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager) -> None:
-    """The main window and the debug window match a fresh one after the text size grows under them."""
+def test_main_window_follows_a_text_size_change(
+    qtbot: QtBot, render_catalog_manager: SceneRenderCatalogManager
+) -> None:
+    """The main window matches a fresh one after its text size grows."""
     apply_theme("dark")
-    builders: dict[str, Callable[[], QWidget]] = {
-        "main": lambda: MainWindow(make_shortcut_manager(), render_catalog_manager),
-        "debug": DebugWindow,
-    }
-    for name, build in builders.items():
-        window = _open_at(qtbot, build, SMALL, builds_views=True)
-        apply_text_size(LARGE)
-        _settle(qtbot, window, builds_views=True)
-        changed = _size_constraints(window)
-        window.close()
-        assert changed == _size_constraints(_open_at(qtbot, build, LARGE, builds_views=True)), name
+
+    def build() -> QWidget:
+        return MainWindow(make_shortcut_manager(), render_catalog_manager)
+
+    window = _open_at(qtbot, build, SMALL, builds_views=True)
+    apply_text_size(LARGE)
+    _settle(qtbot, window, builds_views=True)
+    window.resize(*WINDOW_SIZE)  # The sidebar's maximum width follows the window width, so compare at one size.
+    _settle(qtbot, window, builds_views=True)
+    changed = _size_constraints(window)
+    window.close()
+    fresh = _open_at(qtbot, build, LARGE, builds_views=True)
+    fresh.resize(*WINDOW_SIZE)
+    _settle(qtbot, fresh, builds_views=True)
+    assert changed == _size_constraints(fresh)
 
 
 @pytest.mark.usefixtures("restore_app_appearance")

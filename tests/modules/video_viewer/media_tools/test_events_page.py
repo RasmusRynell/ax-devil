@@ -18,7 +18,7 @@ from ax_devil.modules.video_viewer.media_tools.row_table import RowTableView
 
 
 def _frame_id(frame: int) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=frame, timestamp_monotime_us=frame * 40_000.0)
+    return FrameIdentifier(sequence_id=frame, timestamp_us=frame * 40_000)
 
 
 def _event(frame: int, label: str, *entity_ids: str) -> FrameEvent:
@@ -137,6 +137,6 @@ def test_queries_search_event_kind_involved_objects_and_label_text(qtbot: QtBot)
 
 
 def test_frame_times_use_clock_parts() -> None:
-    assert format_frame_time(3_723_456_789.0) == "01:02:03.456"
-    assert format_frame_time(1_700_000_000_123_000.0) == "22:13:20.123"  # Live times are UTC clock time.
-    assert format_short_frame_time(83_000_000.0) == "1:23"
+    assert format_frame_time(3_723_456_789) == "01:02:03.456"
+    assert format_frame_time(1_700_000_000_123_000) == "22:13:20.123"  # Live times are UTC clock time.
+    assert format_short_frame_time(83_000_000) == "1:23"

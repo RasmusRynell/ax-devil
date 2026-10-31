@@ -9,6 +9,7 @@ from typing import Any
 from PySide6.QtCore import QObject
 
 from ax_devil.core.data_types import FrameIdentifier, OverlayData
+from ax_devil.core.device_connection import DeviceConnection
 from ax_devil.modules.filtering import FilterConfig, FilterFactory, build_default_filter_config
 from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
 from ax_devil.modules.settings.logging_config import get_logger
@@ -27,10 +28,7 @@ class WebSocketWorker(Worker):
         *,
         topic: str,
         channel_id: int,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         decoder: PayloadToSceneDecoder,
         source_id: str = "websocket_overlay",
         client_factory: Callable[..., DataHubWebSocketClient] | None = None,
@@ -38,10 +36,7 @@ class WebSocketWorker(Worker):
         super().__init__(source_id)
         self.topic = topic
         self.channel_id = channel_id
-        self.device_host = device_host
-        self.device_username = device_username
-        self.device_password = device_password
-        self.device_api_protocol = device_api_protocol
+        self.device = device
         self.decoder = decoder
         self.client_factory = client_factory or DataHubWebSocketClient
         self.client: DataHubWebSocketClient | None = None
@@ -85,10 +80,7 @@ class WebSocketWorker(Worker):
             if not self._is_running():
                 return
             self.client = self.client_factory(
-                host=self.device_host,
-                username=self.device_username,
-                password=self.device_password,
-                protocol=self.device_api_protocol,
+                device=self.device,
                 topic=self.topic,
                 channel_id=self.channel_id,
             )
@@ -103,6 +95,11 @@ class WebSocketWorker(Worker):
                 sample = await self.client.receive_sample()
                 first_sample_warning.cancel()
                 if self._is_paused():
+                    logger.warning(
+                        f"Dropping DataHub sample before decoding while paused: topic={sample.topic!r}, "
+                        f"channel={sample.channel_id}, timestamp={sample.timestamp!r}. "
+                        "Sparse decoder state may be incomplete after resume."
+                    )
                     continue
                 self._decode_sample(sample)
         except asyncio.CancelledError:
@@ -128,13 +125,20 @@ class WebSocketWorker(Worker):
 
     def _decode_sample(self, sample: DataHubTopicSample) -> None:
         if self.overlay_ready_signal is None:
+            logger.warning(
+                f"Dropping DataHub sample before decoding because no output signal is configured: "
+                f"topic={sample.topic!r}, channel={sample.channel_id}, timestamp={sample.timestamp!r}"
+            )
             return
 
         try:
             self.message_count += 1
             scene = self.decoder.decode(sample.data)
             if scene is None:
-                logger.debug("Decoder returned no scene for DataHub WebSocket payload.")
+                logger.warning(
+                    f"No scene emitted for DataHub sample: decoder returned None; topic={sample.topic!r}, "
+                    f"channel={sample.channel_id}, timestamp={sample.timestamp!r}"
+                )
                 return
 
             if not scene.time_slice.is_instant:
@@ -143,14 +147,11 @@ class WebSocketWorker(Worker):
                     "things might not work correctly! be careful"
                 )
 
-            if isinstance(scene.time_slice.start, int):
+            capture_time_us = scene.time_slice.start_timestamp_us
+            if capture_time_us is None:
                 raise ValueError("Streamed data with ints as timestamps is not supported at this moment")
 
-            capture_timestamp = scene.time_slice.start.timestamp()
-            frame_id = FrameIdentifier(
-                sequence_id=self.message_count,
-                timestamp_monotime_us=capture_timestamp * 1000000.0,
-            )
+            frame_id = FrameIdentifier(sequence_id=self.message_count, timestamp_us=capture_time_us)
             overlay_data = OverlayData(
                 content=scene,
                 frame_id=frame_id,
@@ -164,7 +165,12 @@ class WebSocketWorker(Worker):
             )
             self.overlay_ready_signal.emit(overlay_data)
         except Exception as exc:
-            logger.error(f"Error decoding DataHub WebSocket message: {type(exc).__name__}")
+            logger.error(
+                f"Dropping DataHub sample after processing failed: topic={sample.topic!r}, "
+                f"channel={sample.channel_id}, timestamp={sample.timestamp!r}, error={type(exc).__name__}. "
+                "Sparse decoder state may be incomplete.",
+                exc_info=True,
+            )
 
     def _is_running(self) -> bool:
         self._mutex.lock()
@@ -189,10 +195,7 @@ class WebSocketOverlaySource(OverlaySource):
         *,
         topic: str,
         channel_id: int,
-        device_host: str,
-        device_username: str,
-        device_password: str,
-        device_api_protocol: str,
+        device: DeviceConnection,
         decoder: PayloadToSceneDecoder,
         handler_type: str,
         source_id: str = "websocket_overlay",
@@ -207,10 +210,7 @@ class WebSocketOverlaySource(OverlaySource):
         self.worker = WebSocketWorker(
             topic=topic,
             channel_id=channel_id,
-            device_host=device_host,
-            device_username=device_username,
-            device_password=device_password,
-            device_api_protocol=device_api_protocol,
+            device=device,
             decoder=decoder,
             source_id=source_id,
             client_factory=client_factory,
@@ -237,17 +237,15 @@ class WebSocketOverlaySource(OverlaySource):
         self.worker.pause()
 
     def stop(self) -> None:
-        """Stop the worker and close its WebSocket before returning."""
+        """Cancel reception; the worker closes its WebSocket before finishing."""
         logger.debug(f"[{self.source_id}] Stopping DataHub WebSocket overlay source")
         self.worker.set_overlay_ready_signal(None)
         self.worker.request_stop()
-        if not self.worker.wait(2000):
-            logger.warning(f"[{self.source_id}] WebSocket worker did not stop within 2000 ms")
         self.cleanup_posted_events()
 
-    def wait(self, timeout: int = 2000) -> bool:
+    def wait(self, timeout_ms: int = 2000) -> bool:
         """Wait for overlay production to complete."""
-        return bool(self.worker.wait(timeout))
+        return bool(self.worker.wait(timeout_ms))
 
     def get_filter_config(self) -> FilterConfig:
         """Return the filter configuration for this overlay source."""

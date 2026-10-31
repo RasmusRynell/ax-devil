@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable
 from typing import TypedDict
 
 from ax_devil.core.load_warning import LoadWarning, SkippedRecords
 from ax_devil.modules.filtering.filter_config import FilterConfig, FilterOption
 from ax_devil.modules.filtering.predicate_utils import make_classification_predicate
+from ax_devil.modules.scene.decoding import UNMAPPED_CLASS, classification_for_id
 from ax_devil.modules.scene.model import (
     Attribute,
     BoundingBox,
-    Classification,
     Entity,
     EntityId,
     Observation,
@@ -40,8 +41,8 @@ class MOTBoundingBoxPayload(TypedDict):
 class MOTDetectionPayload(TypedDict):
     track_id: int
     class_id: int
-    confidence: float | None
-    raw_score: float
+    score: float | None
+    gt_mark: int | None
     visibility: float
     source: str
     bbox: MOTBoundingBoxPayload
@@ -120,9 +121,9 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
         try:
             track_id = int(raw_detection["track_id"])
             class_id = int(raw_detection.get("class_id", -1))
-            raw_score = float(raw_detection.get("raw_score", 0.0))
-            confidence_payload = raw_detection.get("confidence")
-            confidence = float(confidence_payload) if confidence_payload is not None else None
+            score_payload = raw_detection.get("score")
+            score = Score(float(score_payload)) if score_payload is not None else None
+            gt_mark = raw_detection.get("gt_mark")
             visibility = float(raw_detection.get("visibility", 0.0))
             source = str(raw_detection.get("source", "unknown"))
             bbox_payload = raw_detection["bbox"]
@@ -151,26 +152,14 @@ def decode_mot_frame(payload: MOTDecoderPayload) -> Scene:
             allow_outside=True,
         )
 
-        label = MOT_CLASSES.get(class_id, "unknown")
-
-        attributes = [
-            Attribute("source", source),
-            Attribute("raw_score", raw_score),
-            Attribute("visibility_ratio", visibility),
-        ]
-        if source == "gt":
-            attributes.append(Attribute("gt_mark", int(raw_score)))
-        if confidence is not None:
-            attributes.append(Attribute("confidence", confidence))
-
-        class_score = Score(_classification_score_for_source(source, confidence))
-        observation_confidence = Score(confidence) if confidence is not None else None
+        attributes = [Attribute("source", source), Attribute("visibility_ratio", visibility)]
+        if gt_mark is not None:
+            attributes.append(Attribute("gt_mark", int(gt_mark)))
 
         observation = Observation(
             frame_number=frame_index,
             geometry=normalized_bbox,
-            confidence=observation_confidence,
-            classification=[Classification(label, class_score, attributes)],
+            classification=[classification_for_id(class_id, MOT_CLASSES, score, attributes)],
         )
 
         entity_id = _entity_id_for_detection(track_id, frame_index, detection_index)
@@ -187,14 +176,6 @@ def _entity_id_for_detection(track_id: int, frame_index: int, detection_index: i
     if track_id >= 0:
         return EntityId(str(track_id))
     return EntityId(f"untracked:{frame_index}:{detection_index}")
-
-
-def _classification_score_for_source(source: str, confidence: float | None) -> float:
-    if confidence is not None:
-        return confidence
-    if source == "gt":
-        return 1.0
-    return 0.0
 
 
 def prepare_mot_frame_payloads(
@@ -231,22 +212,26 @@ def prepare_mot_frame_payloads(
             bb_top = float(parts[3])
             bb_width = float(parts[4])
             bb_height = float(parts[5])
-            raw_score = float(parts[6])
+            column_7 = float(parts[6])
+            if not math.isfinite(column_7):
+                raise ValueError(f"non-finite value {parts[6]!r} in column 7")
 
             if num_parts in (7, 10):
                 # DET format variants:
-                # - 7 columns: frame, id, x, y, w, h, confidence
-                # - 10 columns: frame, id, x, y, w, h, confidence, -1, -1, -1
+                # - 7 columns: frame, id, x, y, w, h, score
+                # - 10 columns: frame, id, x, y, w, h, score, -1, -1, -1
                 class_id = 1  # Default to pedestrian
                 visibility_ratio = 1.0
                 source = "det"
-                confidence = raw_score if 0.0 <= raw_score <= 1.0 else None
+                score: float | None = column_7
+                gt_mark: int | None = None
             else:
                 # GT format: frame, id, x, y, w, h, mark, class_id, visibility.
                 class_id = int(parts[7])
                 visibility_ratio = float(parts[8])
                 source = "gt"
-                confidence = None
+                score = None
+                gt_mark = int(column_7)
         except (ValueError, TypeError) as exc:
             skipped.add(f"line {line_number}: {exc}")
             continue
@@ -268,8 +253,8 @@ def prepare_mot_frame_payloads(
         detection: MOTDetectionPayload = {
             "track_id": track_id,
             "class_id": class_id,
-            "confidence": confidence,
-            "raw_score": raw_score,
+            "score": score,
+            "gt_mark": gt_mark,
             "visibility": visibility_ratio,
             "source": source,
             "bbox": bbox_payload,
@@ -310,14 +295,13 @@ def build_mot_filter_config() -> FilterConfig:
             )
         )
 
-    if "unknown" not in labels:
-        options.append(
-            make_classification_predicate(("unknown",)).build_option(
-                id="show_unknown",
-                label="Unknown",
-                default_enabled=True,
-                sort_key=len(options),
-            )
+    options.append(
+        make_classification_predicate((UNMAPPED_CLASS,)).build_option(
+            id="show_unmapped",
+            label="Unmapped",
+            default_enabled=True,
+            sort_key=len(options),
         )
+    )
 
     return FilterConfig(options=tuple(options), name="mot")

@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QApplication
@@ -12,11 +12,9 @@ from PySide6.QtWidgets import QApplication
 from ax_devil.modules.application_shell.about_dialog import AboutDialog
 from ax_devil.modules.application_shell.configuration_preferences import save_overlay_preference
 from ax_devil.modules.application_shell.restart import restart_application
-from ax_devil.modules.catalog_viewer import close_catalog_viewer, show_catalog_viewer
+from ax_devil.modules.catalog_viewer.viewer_registry import close_catalog_viewer, show_catalog_viewer
 from ax_devil.modules.chrome.choice_dialog import notify
 from ax_devil.modules.chrome.chrome_window import ChromeWindow
-from ax_devil.modules.diagnostics.debug_window import DebugWindow
-from ax_devil.modules.diagnostics.metrics_store import metrics_enabled, set_metrics_enabled
 from ax_devil.modules.plugin_manager.plugins_view import PLUGINS_VIEW_ID, PluginsView
 from ax_devil.modules.scene.rendering import SceneRenderCatalogManager
 from ax_devil.modules.settings.config_manager import ConfigManager
@@ -98,7 +96,6 @@ class MainWindow(ChromeWindow):
         self._shortcut_manager = shortcut_manager
         self._render_catalog_manager = render_catalog_manager
 
-        self._debug_window: DebugWindow | None = None
         self._about_dialog: AboutDialog | None = None
         self._workspace_session = WorkspaceSession(self, render_catalog_manager=self._render_catalog_manager)
         self._plugins_view = PluginsView()
@@ -242,25 +239,10 @@ class MainWindow(ChromeWindow):
         render_catalogs_action.triggered.connect(self.show_catalog_viewer)
         view_menu.addAction(render_catalogs_action)
 
-        # Debug menu
-        debug_menu = menu_bar.addMenu("Debug")
-        assert debug_menu is not None
-
-        open_debug_action = sm.get_action("app.debug_metrics")
-        open_debug_action.triggered.connect(self.show_debug_window)
-        debug_menu.addAction(open_debug_action)
-
+        view_menu.addSeparator()
         plugins_action = sm.get_action("app.plugins")
         plugins_action.triggered.connect(self.show_plugins)
-        debug_menu.addAction(plugins_action)
-
-        debug_menu.addSeparator()
-
-        self._metrics_action = QAction("Collect Debug Metrics", self)
-        self._metrics_action.setCheckable(True)
-        self._metrics_action.setChecked(metrics_enabled())
-        self._metrics_action.toggled.connect(self._on_metrics_toggled)
-        debug_menu.addAction(self._metrics_action)
+        view_menu.addAction(plugins_action)
 
         # Help menu
         help_menu = menu_bar.addMenu("Help")
@@ -398,9 +380,6 @@ class MainWindow(ChromeWindow):
         self._lane_fullscreen.exit()
         self._workspace_session.cleanup()
 
-        if self._debug_window is not None:
-            self._debug_window.close()
-            self._debug_window = None
         if self._about_dialog is not None:
             self._about_dialog.close()
             self._about_dialog = None
@@ -410,25 +389,6 @@ class MainWindow(ChromeWindow):
             super().closeEvent(event)
         self._logger.debug("Main window closed")
 
-    def show_debug_window(self) -> None:
-        """Show the metrics debug window."""
-        if self._debug_window is None:
-            self._debug_window = DebugWindow(parent=self, use_custom_frame=self.uses_custom_frame)
-            self._debug_window.destroyed.connect(self._on_debug_window_destroyed)
-
-        self._debug_window.show()
-        self._debug_window.raise_()
-        self._debug_window.activateWindow()
-
-    def _on_debug_window_destroyed(self, _obj: QObject | None = None) -> None:
-        """Reset reference when the debug window is closed."""
-        self._debug_window = None
-
     def show_plugins(self) -> None:
         """Show the Plugins view in the sidebar."""
         self._workspace_session.show_sidebar_view(PLUGINS_VIEW_ID)
-
-    def _on_metrics_toggled(self, enabled: bool) -> None:
-        """Turn debug metrics collection on or off."""
-        set_metrics_enabled(enabled)
-        self._logger.info(f"Debug metrics collection {'enabled' if enabled else 'disabled'}")

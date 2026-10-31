@@ -40,6 +40,21 @@ from .common import build_adf_frame_v1_filter_config, decode_scene_payload
 
 logger = get_logger(__name__)
 
+_CLASSIFICATION_TYPES = {
+    "human": KnownClassificationType.Human.value,
+    "person": KnownClassificationType.Human.value,
+    "vehicle": KnownClassificationType.Vehicle.value,
+    "car": KnownClassificationType.Car.value,
+    "bus": KnownClassificationType.Bus.value,
+    "truck": KnownClassificationType.Truck.value,
+    "bike": KnownClassificationType.Bike.value,
+    "bicycle": KnownClassificationType.Bicycle.value,
+    "vehicleother": KnownClassificationType.VehicleOther.value,
+    "animal": KnownClassificationType.Animal.value,
+    "head": KnownClassificationType.Head.value,
+    "licenseplate": KnownClassificationType.LicensePlate.value,
+}
+
 
 def _parse_class_attributes(class_type: str, class_data: dict[str, Any]) -> list[Attribute]:
     attributes: list[Attribute] = []
@@ -78,27 +93,11 @@ def _create_classification(class_data: dict[str, Any]) -> list[Classification]:
     if class_type_raw is None:
         raise ValueError("Classification missing type")
     score_raw = class_data.get("score")
-    if score_raw is None:
-        raise ValueError("Classification missing score")
 
     class_type = str(class_type_raw).lower()
-    score = Score(float(score_raw))
+    score = Score(float(score_raw)) if score_raw is not None else None
 
-    type_mapping = {
-        "human": KnownClassificationType.Human.value,
-        "person": KnownClassificationType.Human.value,
-        "vehicle": KnownClassificationType.Vehicle.value,
-        "car": KnownClassificationType.Car.value,
-        "bus": KnownClassificationType.Bus.value,
-        "truck": KnownClassificationType.Truck.value,
-        "bike": KnownClassificationType.Bike.value,
-        "bicycle": KnownClassificationType.Bicycle.value,
-        "vehicleother": KnownClassificationType.VehicleOther.value,
-        "animal": KnownClassificationType.Animal.value,
-        "head": KnownClassificationType.Head.value,
-        "licenseplate": KnownClassificationType.LicensePlate.value,
-    }
-    mapped_type = type_mapping.get(class_type)
+    mapped_type = _CLASSIFICATION_TYPES.get(class_type)
     if mapped_type is None:
         raise ValueError(f"Unknown classification type '{class_type_raw}'")
 
@@ -276,6 +275,7 @@ class ADFFrameV1DataProvider(SceneDecoderFileProvider):
             artifact_version=1,
             filter_config_factory=build_adf_frame_v1_filter_config,
             storage_mode=StorageMode.SOURCE_INDEX,
+            independent_records=True,
         )
 
 

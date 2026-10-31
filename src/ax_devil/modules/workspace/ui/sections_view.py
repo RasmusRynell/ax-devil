@@ -1,5 +1,5 @@
 """The frame every workspace view shares: a header with a summary, a toolbar with Search, Sort and Filter, one section
-tree, a row of footer buttons, and an optional footer panel."""
+tree, and an optional footer panel."""
 
 from __future__ import annotations
 
@@ -28,11 +28,10 @@ from ax_devil.modules.workspace.ui.section_tree import SectionTree
 
 class SectionsView(ViewPanel):
     """A sidebar view of the workspace titled *title*, laid out the same for every view: a summary at the right of its
-    header, a toolbar with Search, Sort and Filter, ``tree``, a row of footer buttons directly under it, and a footer
-    panel below that.
+    header, a toolbar with Search, Sort and Filter, ``tree``, and a footer panel under it.
 
     The view decides only which rows its search, Sort and Filter show: its controller gives it sections, a summary,
-    the orders, the footer buttons and the footer panel, and hands ``tree`` to ``WorkspaceController.connect_tree``.
+    the orders and the footer panel, and hands ``tree`` to ``WorkspaceController.connect_tree``.
     The search matches each row's search text. Sort appears with two or more orders and arranges the top-level rows of
     each section; the chosen order is kept while the sections change. The Filter appears when the rows listed have
     facets to choose from: it offers them, grouped, in each group that has a choice to make, and hides the rows with
@@ -78,6 +77,11 @@ class SectionsView(ViewPanel):
         self._sort = MenuButton("Sort", self._order_menu)
         self._sort.setToolTip("The order of the rows")
         self._sort.hide()
+        self._show_hidden = SmallButton("", Icon.EYE, self)
+        self._show_hidden.setCheckable(True)
+        self._show_hidden.setToolTip("Show hidden items")
+        self._show_hidden.setAccessibleName("Show hidden items")
+        self._show_hidden.toggled.connect(self._apply_filter)
         toolbar = QWidget(self)
         tools = QHBoxLayout(toolbar)
         tools.setContentsMargins(0, 0, 0, 0)
@@ -85,6 +89,7 @@ class SectionsView(ViewPanel):
         tools.addWidget(self._search, 1)
         tools.addWidget(self._sort)
         tools.addWidget(self._filter)
+        tools.addWidget(self._show_hidden)
         self._toolbar = self.add_padded(toolbar, top=Space.S, bottom=Space.XS)
 
         self._notice_text = muted_label("")
@@ -97,13 +102,6 @@ class SectionsView(ViewPanel):
         if empty_page is not None:
             self.add(empty_page, 1)
         self._empty = False
-        buttons = QWidget(self)
-        self._footer_buttons = QHBoxLayout(buttons)
-        self._footer_buttons.setContentsMargins(0, 0, 0, 0)
-        self._footer_buttons.setSpacing(Space.S)
-        self._footer_buttons.addStretch(1)
-        self._footer_button_row = self.add_padded(buttons, top=Space.S, bottom=Space.S)
-        self._footer_button_row.hide()
         self._footer_panel = QWidget(self)
         self._footer_panel.setStyleSheet(
             SEE_THROUGH
@@ -136,15 +134,8 @@ class SectionsView(ViewPanel):
         self._sort.setVisible(len(orders) > 1)
         self._list()
 
-    def add_footer_button(self, text: str, icon: Icon) -> SmallButton:
-        """Add a button to the row directly under the tree, after the ones added before it, and return it."""
-        button = SmallButton(text, icon)
-        self._footer_buttons.insertWidget(self._footer_buttons.count() - 1, button)
-        self._show_footer()
-        return button
-
     def set_footer_panel(self, widget: QWidget) -> None:
-        """Show *widget* below the footer buttons."""
+        """Show *widget* below the tree."""
         self._footer_panel_layout.addWidget(widget)
         self._show_footer()
 
@@ -209,8 +200,9 @@ class SectionsView(ViewPanel):
 
     def _apply_filter(self) -> None:
         query = self._query
+        show_hidden = self._show_hidden.isChecked()
         self.tree.set_filter(
-            lambda row: not any(self._is_hidden(facet) for facet in row.facets),
+            lambda row: (show_hidden or row.is_considered) and not any(self._is_hidden(facet) for facet in row.facets),
             (lambda row: query in row.search_text.casefold()) if query else None,
         )
         self._show_notice()
@@ -237,9 +229,7 @@ class SectionsView(ViewPanel):
         self._show_footer()
 
     def _show_footer(self) -> None:
-        """Show the footer buttons and the footer panel, each only if it holds something and the empty page is not
-        showing."""
-        self._footer_button_row.setVisible(self._footer_buttons.count() > 1 and not self._empty)
+        """Show the footer panel, only if it holds something and the empty page is not showing."""
         self._footer_panel.setVisible(self._footer_panel_layout.count() > 0 and not self._empty)
 
 

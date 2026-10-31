@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from typing import NamedTuple
@@ -17,6 +18,7 @@ from ax_devil.modules.plugin_system import (
     PlaylistResolverWidget,
     get_file_decoder_definitions,
 )
+from ax_devil.modules.workspace.core import PlaylistSettings
 
 from .resolver import FolderPairMatch, discover_folder_pairs
 
@@ -39,10 +41,22 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._restored: PlaylistSettings = {}
         self._scanned: _Scanned | None = None  # Set only when the scan found pairs.
         self._scan_came_up_empty = False  # The scan of the current folders found no pairs or failed.
         self._scan = LatestRequest(self)
         self._setup_ui()
+
+    def restore_settings(self, settings: PlaylistSettings) -> bool:
+        """Restore folders and decoder, retaining settings this form does not own."""
+        self._restored = deepcopy(settings)
+        self._videos_input.setText(str(settings.get("videos_dir", "")))
+        self._overlays_input.setText(str(settings.get("overlays_dir", "")))
+        handler = settings.get("handler_type")
+        index = self._decoder_combo.findData(handler)
+        self._decoder_combo.setCurrentIndex(max(0, index))
+        self._load_btn.setText("Save")
+        return True
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -166,8 +180,17 @@ class FolderPairSettingsWidget(PlaylistResolverWidget):
     def _submit(self, scanned: _Scanned, handler_type: str) -> None:
         self.submit_settings(
             {
-                "videos_dir": str(scanned.videos_dir),
-                "overlays_dir": str(scanned.overlays_dir),
+                **self._restored,
+                "videos_dir": (
+                    self._restored["videos_dir"]
+                    if self._videos_input.text() == self._restored.get("videos_dir")
+                    else str(scanned.videos_dir)
+                ),
+                "overlays_dir": (
+                    self._restored["overlays_dir"]
+                    if self._overlays_input.text() == self._restored.get("overlays_dir")
+                    else str(scanned.overlays_dir)
+                ),
                 "handler_type": handler_type,
             }
         )

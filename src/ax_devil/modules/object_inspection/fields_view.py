@@ -1,21 +1,19 @@
 """A foldable key/value tree for an object's fields and events, painted by one delegate with no widget per row.
 
 ``Section`` groups ``Row`` objects under a caption. ``FieldsModel`` holds the sections, so a frame's new values repaint
-the rows in place while the structure stays; ``FieldsView`` remembers which sections the user folded.
+the rows in place while the structure stays; ``FieldsView`` remembers which sections the user folded. Rows without a
+section (the object's id) come first. Every row ends in the copy column shared with the lists, and the label column is
+as wide as the longest label of the whole view, so values line up across sections.
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from collections.abc import Hashable, Sequence
-from dataclasses import dataclass
-from typing import Any
+from collections.abc import Sequence
 
 from PySide6.QtCore import (
-    QAbstractItemModel,
     QEvent,
+    QItemSelectionModel,
     QModelIndex,
-    QObject,
     QPersistentModelIndex,
     QRect,
     QSize,
@@ -23,10 +21,9 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import (
-    QColor,
-    QFont,
-    QFontMetrics,
+    QContextMenuEvent,
     QGuiApplication,
+    QHelpEvent,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
@@ -36,322 +33,61 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QMenu,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
+    QToolTip,
     QTreeView,
     QWidget,
 )
 
 from ax_devil.modules.chrome.appearance import follow_appearance
-from ax_devil.modules.chrome.chip import paint_tag
+from ax_devil.modules.chrome.copy_cell import (
+    COPY_TOOLTIP,
+    CopiedMark,
+    copy_column_px,
+    copy_icon_px,
+    paint_copy_icon,
+)
+from ax_devil.modules.chrome.icons import Icon
 from ax_devil.modules.chrome.list_row import paint_row_background
 from ax_devil.modules.chrome.section_caption import paint_section_caption
-from ax_devil.modules.chrome.theme import category_color
-from ax_devil.modules.chrome.tokens import Height, Space, TextRole
-from ax_devil.modules.data_sources.scene_history import FrameEvent
-from ax_devil.modules.object_inspection.frame_labels import format_frame_time
-from ax_devil.modules.scene.inspection import InspectionField, entity_fields
-from ax_devil.modules.scene.model import Entity
+from ax_devil.modules.chrome.theme import FLUSH_VIEW, category_color
+from ax_devil.modules.chrome.tokens import Height, Space
+from ax_devil.modules.object_inspection.fields_model import FieldsModel, Section
+from ax_devil.modules.object_inspection.pinned_fields import FieldId, PinnedFields
+from ax_devil.modules.object_inspection.rows import Row, RowFonts
 
-EVENTS_SECTION = "Events"
-
-_ITEM_ROLE = int(Qt.ItemDataRole.UserRole) + 1
-_ARROW_PX = Space.L
-_KEY_SHARE_PERCENT = 45
-_BAR_CHARS = 10
-_TIME_CHARS = len("00:00:00.000")
+_ARROW_PX = Space.M  # Rows and captions start here, so their text lines up with other content at Space.M plus this.
+_VALUE_CHARS = 14  # The characters of a value, such as an id, that stay visible however narrow the view is.
+_ID_CHARS = 20  # The characters of a long value, such as an id, that the label column leaves where it can.
+_LABEL_CHARS = 14  # The characters of a label that stay visible; a longer label is cut in the middle at the narrowest.
 
 
-@dataclass(frozen=True, slots=True)
-class RowFonts:
-    """The fonts and their metrics a row paints with, for the current text size."""
-
-    body: QFont
-    mono: QFont
-    mono_metrics: QFontMetrics
-
-    @classmethod
-    def current(cls) -> RowFonts:
-        """Return the fonts for the current text size."""
-        mono = TextRole.MONO.font()
-        return cls(TextRole.BODY.font(), mono, QFontMetrics(mono))
-
-
-def _draw_text(
-    painter: QPainter,
-    rect: QRect,
-    font: QFont,
-    color: QColor,
-    text: str,
-    elide: Qt.TextElideMode = Qt.TextElideMode.ElideRight,
-) -> None:
-    painter.setFont(font)
-    painter.setPen(color)
-    shown = QFontMetrics(font).elidedText(text, elide, rect.width())
-    painter.drawText(rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), shown)
-
-
-class Row(ABC):
-    """One line under a section: it has a *key* that identifies it across updates, paints itself and says what
-    copying it puts on the clipboard. A row that is an event carries it in *event*."""
-
-    event: FrameEvent | None = None
-
-    @property
-    @abstractmethod
-    def key(self) -> Hashable:
-        """Return what identifies this row when the same section is shown again with new values."""
-
-    @abstractmethod
-    def paint(self, painter: QPainter, rect: QRect, palette: QPalette, fonts: RowFonts) -> None:
-        """Draw the row inside *rect*."""
-
-    @abstractmethod
-    def copy_text(self) -> str:
-        """Return the text Ctrl+C copies."""
-
-
-def format_field_value(value: str | int | float | bool) -> str:
-    """Return *value* as the tree shows it: booleans lowercase, floats to four significant digits."""
-    if isinstance(value, bool):
-        return str(value).lower()
-    if isinstance(value, float):
-        return f"{value:.1f}" if abs(value) >= 1e4 else f"{value:.4g}"
-    return str(value)
-
-
-class FieldRow(Row):
-    """An entity field: its dotted path in muted text, its value in monospace, and a thin bar for a score."""
-
-    def __init__(self, field: InspectionField) -> None:
-        self._key = ".".join(field.path)
-        self._text = format_field_value(field.value)
-        self._fraction = field.fraction
-
-    @property
-    def key(self) -> Hashable:
-        """Return the dotted path."""
-        return self._key
-
-    def paint(self, painter: QPainter, rect: QRect, palette: QPalette, fonts: RowFonts) -> None:
-        """Draw the key, then the value with its bar at the right edge when it has one."""
-        key_width = rect.width() * _KEY_SHARE_PERCENT // 100
-        key_rect = QRect(rect.left(), rect.top(), key_width, rect.height())
-        value_rect = QRect(
-            rect.left() + key_width + Space.M, rect.top(), rect.width() - key_width - Space.M, rect.height()
-        )
-        _draw_text(
-            painter,
-            key_rect,
-            fonts.body,
-            palette.color(QPalette.ColorRole.PlaceholderText),
-            self._key,
-            Qt.TextElideMode.ElideMiddle,
-        )
-        bar_width = _BAR_CHARS * fonts.mono_metrics.averageCharWidth()
-        if self._fraction is not None and value_rect.width() >= 2 * bar_width:
-            groove = QRect(
-                value_rect.right() - bar_width + 1,
-                value_rect.top() + (value_rect.height() - Space.S) // 2,
-                bar_width,
-                Space.S,
-            )
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(palette.color(QPalette.ColorRole.Mid))
-            painter.drawRoundedRect(groove, Space.XS, Space.XS)
-            painter.setBrush(palette.color(QPalette.ColorRole.Highlight))
-            filled = QRect(groove.left(), groove.top(), round(bar_width * self._fraction), groove.height())
-            painter.drawRoundedRect(filled, Space.XS, Space.XS)
-            value_rect.setRight(groove.left() - Space.M)
-        _draw_text(painter, value_rect, fonts.mono, palette.color(QPalette.ColorRole.Text), self._text)
-
-    def copy_text(self) -> str:
-        """Return ``key: value``."""
-        return f"{self._key}: {self._text}"
-
-
-class EventRow(Row):
-    """An event involving the object: its time in monospace, its kind as a colored tag and its label."""
-
-    def __init__(self, event: FrameEvent) -> None:
-        self.event = event
-        self._time = format_frame_time(event.frame_id.timestamp_monotime_us)
-
-    @property
-    def key(self) -> Hashable:
-        """Return the event's frame, kind and label."""
-        event = self.event
-        assert event is not None
-        return (event.frame_id.sequence_id, event.kind, event.label)
-
-    def paint(self, painter: QPainter, rect: QRect, palette: QPalette, fonts: RowFonts) -> None:
-        """Draw time, kind tag and label from left to right."""
-        event = self.event
-        assert event is not None
-        time_width = fonts.mono_metrics.horizontalAdvance("0" * _TIME_CHARS) + Space.S
-        _draw_text(
-            painter,
-            QRect(rect.left(), rect.top(), time_width, rect.height()),
-            fonts.mono,
-            palette.color(QPalette.ColorRole.PlaceholderText),
-            self._time,
-        )
-        tag_left = rect.left() + time_width + Space.M
-        tag_width = paint_tag(
-            painter,
-            QRect(tag_left, rect.top(), rect.right() - tag_left + 1, rect.height()),
-            event.kind,
-            category_color(event.kind, palette),
-        )
-        label_left = tag_left + tag_width + Space.M
-        if label_left < rect.right():
-            _draw_text(
-                painter,
-                QRect(label_left, rect.top(), rect.right() - label_left + 1, rect.height()),
-                fonts.body,
-                palette.color(QPalette.ColorRole.Text),
-                event.label,
-            )
-
-    def copy_text(self) -> str:
-        """Return time, kind and label."""
-        event = self.event
-        assert event is not None
-        return f"{self._time} {event.kind} {event.label}"
-
-
-@dataclass(frozen=True, slots=True)
-class Section:
-    """A captioned, foldable run of rows; *name* is the caption and the key its fold state is remembered by."""
-
-    name: str
-    rows: tuple[Row, ...]
-    folded_by_default: bool = False
-
-
-def field_sections(entity: Entity) -> tuple[Section, ...]:
-    """Return the entity's populated field groups as sections, in display order."""
-    return tuple(
-        Section(group.title, tuple(FieldRow(item) for item in items), group.folded_by_default)
-        for group, items in entity_fields(entity)
-    )
-
-
-def event_section(events: Sequence[FrameEvent]) -> Section:
-    """Return *events* as the Events section."""
-    return Section(EVENTS_SECTION, tuple(EventRow(event) for event in events))
-
-
-class FieldsModel(QAbstractItemModel):
-    """Sections as top-level rows and their rows as children, in one column."""
-
-    def __init__(self, parent: QObject | None = None) -> None:
-        super().__init__(parent)
-        self._sections: list[Section] = []
-
-    def sections(self) -> tuple[Section, ...]:
-        """Return the sections."""
-        return tuple(self._sections)
-
-    def set_sections(self, sections: Sequence[Section]) -> bool:
-        """Show *sections*; return whether the model reset, which collapses every section in a view.
-
-        The same sections with the same row keys only repaint. A section whose rows changed swaps just its own rows.
-        """
-        new = list(sections)
-        if [section.name for section in new] != [section.name for section in self._sections]:
-            self.beginResetModel()
-            self._sections = new
-            self.endResetModel()
-            return True
-        for position, section in enumerate(new):
-            self._update_section(position, section)
-        return False
-
-    def _update_section(self, position: int, section: Section) -> None:
-        old = self._sections[position]
-        parent = self.index(position, 0)
-        if [row.key for row in old.rows] == [row.key for row in section.rows]:
-            self._sections[position] = section
-            if section.rows:
-                self.dataChanged.emit(self.index(0, 0, parent), self.index(len(section.rows) - 1, 0, parent))
-            return
-        if old.rows:
-            self.beginRemoveRows(parent, 0, len(old.rows) - 1)
-            self._sections[position] = Section(old.name, (), old.folded_by_default)
-            self.endRemoveRows()
-        if section.rows:
-            self.beginInsertRows(parent, 0, len(section.rows) - 1)
-            self._sections[position] = section
-            self.endInsertRows()
-        else:
-            self._sections[position] = section
-        self.dataChanged.emit(parent, parent)
-
-    def section_at(self, index: QModelIndex | QPersistentModelIndex) -> Section | None:
-        """Return the section whose caption is at *index*, or ``None`` if *index* is not a caption."""
-        return self._sections[index.row()] if index.isValid() and index.internalId() == 0 else None
-
-    def row_at(self, index: QModelIndex | QPersistentModelIndex) -> Row | None:
-        """Return the row at *index*, or ``None`` if *index* is not a row."""
-        if not index.isValid() or index.internalId() == 0:
-            return None
-        return self._sections[index.internalId() - 1].rows[index.row()]
-
-    def index(  # noqa: D102
-        self, row: int, column: int, parent: QModelIndex | QPersistentModelIndex | None = None
-    ) -> QModelIndex:
-        if column != 0 or row < 0:
-            return QModelIndex()
-        if parent is None or not parent.isValid():
-            return self.createIndex(row, 0, 0) if row < len(self._sections) else QModelIndex()
-        if parent.internalId() != 0 or row >= len(self._sections[parent.row()].rows):
-            return QModelIndex()
-        return self.createIndex(row, 0, parent.row() + 1)
-
-    def parent(self, child: QModelIndex | QPersistentModelIndex | None = None) -> Any:  # noqa: D102
-        if child is None:
-            return super().parent()
-        if not child.isValid() or child.internalId() == 0:
-            return QModelIndex()
-        return self.createIndex(child.internalId() - 1, 0, 0)
-
-    def rowCount(self, parent: QModelIndex | QPersistentModelIndex | None = None) -> int:  # noqa: N802, D102
-        if parent is None or not parent.isValid():
-            return len(self._sections)
-        return len(self._sections[parent.row()].rows) if parent.internalId() == 0 else 0
-
-    def columnCount(self, parent: QModelIndex | QPersistentModelIndex | None = None) -> int:  # noqa: N802, D102
-        return 1
-
-    def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:  # noqa: D102
-        flags = Qt.ItemFlag.ItemIsEnabled
-        return flags | Qt.ItemFlag.ItemIsSelectable if index.isValid() and index.internalId() != 0 else flags
-
-    def data(self, index: QModelIndex | QPersistentModelIndex, role: int = int(Qt.ItemDataRole.DisplayRole)) -> Any:  # noqa: D102
-        section, row = self.section_at(index), self.row_at(index)
-        if role == _ITEM_ROLE:
-            return section or row
-        if role == int(Qt.ItemDataRole.DisplayRole):
-            return section.name if section is not None else row.copy_text() if row is not None else None
-        if role == int(Qt.ItemDataRole.ToolTipRole) and row is not None:
-            return row.copy_text()  # Rows elide long keys, values and labels; the tooltip has them whole.
-        return None
+def _row_area(rect: QRect, pin_px: int = 0) -> QRect:
+    """Return the part of a row's *rect* its content gets: after the fold arrow's indent and before the copy column,
+    and before the pin column of *pin_px* if the row has one."""
+    return rect.adjusted(_ARROW_PX, 0, -(copy_column_px() + pin_px + Space.S), 0)
 
 
 class _Delegate(QStyledItemDelegate):
-    """Paints section captions and asks each row to paint itself."""
+    """Paints section captions and asks each row to paint itself, then adds the pin and copy columns."""
 
-    def __init__(self, view: QTreeView) -> None:
+    def __init__(self, view: QTreeView, model: FieldsModel, pins: PinnedFields | None) -> None:
         super().__init__(view)
         self._view = view
+        self._fields = model
+        self._pins = pins
+        # What the view tells about the pointer, the last copy and the label column.
+        self.hover = QPersistentModelIndex()
+        self.copied: CopiedMark | None = None
+        self.label_width = 0
         self.load_metrics()
 
     def load_metrics(self) -> None:
         """Read the fonts and row height for the current text size."""
-        self._fonts = RowFonts.current()
+        self.fonts = RowFonts.current()
         self._height = Height.ROW.px
 
     def sizeHint(  # noqa: N802
@@ -360,24 +96,97 @@ class _Delegate(QStyledItemDelegate):
         """Return the uniform row height."""
         return QSize(option.rect.width(), self._height)
 
+    def pin_px(self, index: QModelIndex | QPersistentModelIndex) -> int:
+        """Return the width of the pin column of the row at *index*, 0 if it cannot be pinned."""
+        row = self._fields.row_at(index)
+        return copy_column_px() if self._pins is not None and row is not None and row.field_id is not None else 0
+
+    def pin_column_at(self, index: QModelIndex | QPersistentModelIndex, x: int, width: int) -> FieldId | None:
+        """Return the field of the row at *index* if *x*, in a row *width* wide, is over its pin column."""
+        row, pin_px = self._fields.row_at(index), self.pin_px(index)
+        if row is None or not pin_px:
+            return None
+        right = width - copy_column_px()
+        return row.field_id if right - pin_px <= x < right else None
+
+    def helpEvent(  # noqa: N802
+        self,
+        event: QHelpEvent,
+        view: QAbstractItemView,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> bool:
+        """Show the full text of a row with something cut off, or ``Copy`` over the copy icon."""
+        if event.type() != QEvent.Type.ToolTip:
+            return super().helpEvent(event, view, option, index)
+        text = None
+        row = self._fields.row_at(index)
+        pinned = self.pin_column_at(index, event.pos().x(), option.rect.right() + 1)
+        if self._fields.has_copy_at(index) and event.pos().x() > option.rect.right() - copy_column_px():
+            text = COPY_TOOLTIP
+        elif pinned is not None and self._pins is not None:
+            text = "Unpin field" if pinned in self._pins else "Pin field"
+        elif row is not None:
+            text = row.cut_text(_row_area(option.rect, self.pin_px(index)), self.fonts, self.label_width)
+        if text is None:
+            QToolTip.hideText()
+        else:
+            QToolTip.showText(event.globalPos(), text, view)
+        return True
+
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
     ) -> None:
-        """Paint a section's caption with its fold arrow, or a row inside the caption's indent."""
-        item = index.data(_ITEM_ROLE)
+        """Paint a section's caption with its fold arrow, or a row inside the caption's indent; both end in the copy
+        column.
+        """
+        row, section = self._fields.row_at(index), self._fields.section_at(index)
         palette = QGuiApplication.palette()  # The view's own palette has the theme's selection colors.
+        has_copy = self._fields.has_copy_at(index)
+        copy_px = copy_column_px()
         painter.save()
         painter.setClipRect(option.rect)
-        if index.parent().isValid():
-            item.paint(painter, option.rect.adjusted(_ARROW_PX, 0, -Space.M, 0), palette, self._fonts)
-        else:
-            self._paint_section(painter, option, palette, item, self._view.isExpanded(index))
+        body = option.rect.adjusted(0, 0, -copy_px if has_copy else 0, 0)
+        if row is not None:
+            row.paint(painter, _row_area(option.rect, self.pin_px(index)), palette, self.fonts, self.label_width)
+            self._paint_pin(painter, option, index, row, palette)
+        elif section is not None:
+            self._paint_section(painter, option, body, palette, section, self._view.isExpanded(index))
+        if has_copy:
+            copied = self.copied is not None and self.copied.key == self._fields.copy_key_at(index)
+            copy_rect = QRect(option.rect.right() - copy_px + 1, option.rect.top(), copy_px, option.rect.height())
+            paint_copy_icon(painter, copy_rect, palette, bright=index == self.hover, copied=copied)
         painter.restore()
 
-    def _paint_section(
-        self, painter: QPainter, option: QStyleOptionViewItem, palette: QPalette, section: Section, expanded: bool
+    def _paint_pin(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+        row: Row,
+        palette: QPalette,
     ) -> None:
-        rect = option.rect
+        """Draw the pin of a row that can be pinned: always for a pinned one, else only while the row is hovered."""
+        pinned = self._pins is not None and row.field_id in self._pins
+        if not self.pin_px(index) or not (pinned or index == self.hover):
+            return
+        color = palette.color(QPalette.ColorRole.Highlight if pinned else QPalette.ColorRole.PlaceholderText)
+        size = copy_icon_px()
+        column = copy_column_px()
+        left = option.rect.right() + 1 - 2 * column + (column - size) // 2
+        (Icon.PINNED if pinned else Icon.PIN).icon(color).paint(
+            painter, QRect(left, option.rect.top() + (option.rect.height() - size) // 2, size, size)
+        )
+
+    def _paint_section(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        rect: QRect,
+        palette: QPalette,
+        section: Section,
+        expanded: bool,
+    ) -> None:
         arrow = QStyleOptionViewItem()
         arrow.palette = palette
         arrow.rect = QRect(rect.left(), rect.top(), _ARROW_PX, rect.height())
@@ -391,7 +200,7 @@ class _Delegate(QStyledItemDelegate):
             painter,
             rect.adjusted(_ARROW_PX - Space.S, 0, 0, 0),
             palette,
-            f"{section.name}  {len(section.rows)}",
+            f"{section.name}  {section.count}",
             category_color(section.name, palette),
         )
 
@@ -400,19 +209,40 @@ class FieldsView(QTreeView):
     """``Section`` rows as a tree of uniform rows; clicking a caption folds its section.
 
     Which sections are folded is kept by section name in the dictionary the owner passes in, so pages for different
-    objects fold alike. Sections start as their ``folded_by_default`` says until the user folds one. Ctrl+C copies
-    the selected row, and a click on an event row emits ``eventActivated``.
+    objects fold alike. Sections start as their ``folded_by_default`` says until the user folds one. A click on a row's
+    copy icon, or Ctrl+C on the current row, copies it, and a click on an event row emits ``eventActivated``.
+
+    With *pins*, a row that has a field id also gets a pin: its icon, or a right-click on the row, emits
+    ``pinToggled`` with the field for the owner to pin or unpin. With *max_rows* the view is only as tall as its rows,
+    up to that many including captions, so it can sit above another view.
     """
 
     eventActivated = Signal(object)  # FrameEvent
+    pinToggled = Signal(object)  # FieldId
 
-    def __init__(self, fold_state: dict[str, bool], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        fold_state: dict[str, bool],
+        parent: QWidget | None = None,
+        *,
+        pins: PinnedFields | None = None,
+        max_rows: int | None = None,
+    ) -> None:
         super().__init__(parent)
         self._fold_state = fold_state
+        self._pins = pins
+        self._max_rows = max_rows
         self._syncing = False
         self._hover = QPersistentModelIndex()
         self._fields_model = FieldsModel(self)
-        self._delegate = _Delegate(self)
+        self._delegate = _Delegate(self, self._fields_model, pins)
+        self._longest_label = 0
+        self._widest_value = 0
+        self._widest_event = 0
+        self._measured_for = -1  # The model structure the label width was measured for.
+        self._values_measured = False
+        self._copied = CopiedMark(self, lambda: self.viewport().update())
+        self._delegate.copied = self._copied
         self.setModel(self._fields_model)
         self.setItemDelegate(self._delegate)
         self.setHeaderHidden(True)
@@ -430,29 +260,26 @@ class FieldsView(QTreeView):
         self.setMouseTracking(True)
         self.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         # The rows paint their own background and focus mark; the theme's item rules would draw another.
-        self.setStyleSheet("QTreeView, QTreeView::item { background: transparent; border: none; }")
+        self.setStyleSheet(f"QTreeView, QTreeView::item {{ background: transparent; border: none; }} {FLUSH_VIEW}")
         self.viewport().setAutoFillBackground(False)
         self.clicked.connect(self._on_clicked)
         self.expanded.connect(lambda index: self._remember_fold(index, folded=False))
         self.collapsed.connect(lambda index: self._remember_fold(index, folded=True))
+        self.expanded.connect(self._fit_height)
+        self.collapsed.connect(self._fit_height)
         follow_appearance(self, self._apply_metrics)
 
-    def set_sections(self, sections: Sequence[Section]) -> None:
-        """Show *sections*, keeping the scroll position and the sections' fold state."""
+    def set_sections(self, sections: Sequence[Section], lead: Sequence[Row] = ()) -> None:
+        """Show *sections* under the *lead* rows, keeping the scroll position and the sections' fold state."""
         scroll = self.verticalScrollBar().value()
-        was_reset = self._fields_model.set_sections(sections)
+        was_reset = self._fields_model.set_sections(sections, lead)
+        self._values_measured = False
+        self._fit_labels()
         self._sync_folds()
+        self._fit_height()
         if was_reset:
             self.doItemsLayout()
             self.verticalScrollBar().setValue(scroll)
-
-    def selected_text(self) -> str | None:
-        """Return the copy text of the selected row, or ``None`` if no row is selected."""
-        for index in self.selectionModel().selectedIndexes():
-            row = self._fields_model.row_at(index)
-            if row is not None:
-                return row.copy_text()
-        return None
 
     def drawRow(  # noqa: N802
         self, painter: QPainter, options: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -473,11 +300,9 @@ class FieldsView(QTreeView):
         super().drawRow(painter, plain, index)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        """Copy the selected row on Ctrl+C; fold a section or open an event on Enter and Space."""
+        """Copy the current row on Ctrl+C; fold a section or open an event on Enter and Space."""
         if event.matches(QKeySequence.StandardKey.Copy):
-            text = self.selected_text()
-            if text is not None:
-                QGuiApplication.clipboard().setText(text)
+            self._copy(self.currentIndex())
             event.accept()
             return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space) and self.currentIndex().isValid():
@@ -485,6 +310,38 @@ class FieldsView(QTreeView):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Pin on a press in the pin column and copy on one in the copy column, before it selects or folds anything."""
+        position = event.position().toPoint()
+        index = self.indexAt(position)
+        field_id = self._delegate.pin_column_at(index, position.x(), self.viewport().width())
+        if event.button() == Qt.MouseButton.LeftButton and field_id is not None:
+            self.pinToggled.emit(field_id)
+            event.accept()
+            return
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and position.x() >= self.viewport().width() - copy_column_px()
+            and self._copy(index)
+        ):
+            self.selectionModel().setCurrentIndex(index, QItemSelectionModel.SelectionFlag.NoUpdate)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """Offer to pin or unpin the field of the row under the pointer."""
+        row = self._fields_model.row_at(self.indexAt(event.pos()))
+        if self._pins is None or row is None or row.field_id is None:
+            super().contextMenuEvent(event)
+            return
+        field_id = row.field_id
+        menu = QMenu(self)
+        action = menu.addAction("Unpin field" if field_id in self._pins else "Pin field")
+        action.triggered.connect(lambda: self.pinToggled.emit(field_id))
+        menu.exec(event.globalPos())
+        event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Follow the row under the pointer."""
@@ -496,9 +353,23 @@ class FieldsView(QTreeView):
         self._set_hover(QModelIndex())
         super().leaveEvent(event)
 
+    def viewportEvent(self, event: QEvent) -> bool:  # noqa: N802
+        """Refit the label column when the viewport is resized."""
+        if event.type() == QEvent.Type.Resize:
+            self._fit_labels()
+        return super().viewportEvent(event)
+
+    def _copy(self, index: QModelIndex | QPersistentModelIndex) -> bool:
+        """Copy the row or caption at *index* and show the check for a moment; return whether it has anything."""
+        text = self._fields_model.copy_text_at(index)
+        if text is None:
+            return False
+        self._copied.copy(text, self._fields_model.copy_key_at(index))
+        return True
+
     def _set_hover(self, index: QModelIndex) -> None:
         if index != self._hover:
-            self._hover = QPersistentModelIndex(index)
+            self._hover = self._delegate.hover = QPersistentModelIndex(index)
             self.viewport().update()
 
     def _on_clicked(self, index: QModelIndex | QPersistentModelIndex) -> None:
@@ -517,14 +388,84 @@ class FieldsView(QTreeView):
         self._syncing = True
         try:
             for position, section in enumerate(self._fields_model.sections()):
-                index = self._fields_model.index(position, 0)
+                index = self._fields_model.section_index(position)
                 folded = self._fold_state.get(section.name, section.folded_by_default)
                 if self.isExpanded(index) == folded:
                     self.setExpanded(index, not folded)
         finally:
             self._syncing = False
 
+    def _measure(self) -> tuple[int, int]:
+        """Return the width of the longest label and of the widest value. Labels and event rows are measured again only
+        when the rows or the fonts change, since an event never changes; field values whenever rows are set, since an
+        object with the same fields has other values.
+        """
+        fonts = self._delegate.fonts
+        if self._measured_for != self._fields_model.structure:
+            rows = self._fields_model.rows()
+            self._longest_label = max((row.label_px(fonts) for row in rows), default=0)
+            self._widest_event = max((row.value_px(fonts) for row in rows if row.event is not None), default=0)
+            self._measured_for = self._fields_model.structure
+        if not self._values_measured:
+            fields = max((row.value_px(fonts) for row in self._fields_model.rows() if row.event is None), default=0)
+            self._widest_value = max(fields, self._widest_event)
+            self._values_measured = True
+        return self._longest_label, self._widest_value
+
+    def _pin_px(self) -> int:
+        """Return the width of the pin column, 0 when the view has no pins."""
+        return copy_column_px() if self._pins is not None else 0
+
+    def _fit_height(self) -> None:
+        """Make a view with *max_rows* as tall as the rows it shows now."""
+        if self._max_rows is None:
+            return
+        rows = sum(
+            1 + (len(section.rows) if self.isExpanded(self._fields_model.section_index(position)) else 0)
+            for position, section in enumerate(self._fields_model.sections())
+        )
+        self.setFixedHeight(min(rows, self._max_rows) * Height.ROW.px + 2 * self.frameWidth())
+
+    def _fit_labels(self) -> None:
+        """Make the label column as wide as the longest label, but leave a long value such as an id its room where
+        it can, and the label at least a third of the row; a cut label is cut in the middle.
+        """
+        fonts = self._delegate.fonts
+        longest, widest = self._measure()
+        inner = _row_area(QRect(0, 0, self.viewport().width(), 1), self._pin_px()).width()
+        value_room = min(widest, _ID_CHARS * fonts.mono_metrics.averageCharWidth())
+        width = min(longest, max(inner // 3, inner - Space.M - value_room))
+        if width != self._delegate.label_width:
+            self._delegate.label_width = width
+            self.viewport().update()
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Return a width that does not depend on the rows: some of every label, the start of a value and the scroll
+        bar if there may be one, so the panel does not change width from one object to the next.
+        """
+        fonts = self._delegate.fonts
+        # What a row spends on the arrow and the columns.
+        around = -_row_area(QRect(0, 0, 0, 1), self._pin_px()).width()
+        bar = (
+            0
+            if self.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            else self.verticalScrollBar().sizeHint().width()
+        )
+        width = (
+            _LABEL_CHARS * fonts.body_metrics.averageCharWidth()
+            + Space.M
+            + _VALUE_CHARS * fonts.mono_metrics.averageCharWidth()
+            + around
+            + bar
+        )
+        return QSize(width, super().minimumSizeHint().height())
+
     def _apply_metrics(self) -> None:
+        self._measured_for = -1
+        self._values_measured = False
         self._delegate.load_metrics()
+        self._fit_labels()
+        self._fit_height()
+        self.updateGeometry()
         self.doItemsLayout()
         self.viewport().update()

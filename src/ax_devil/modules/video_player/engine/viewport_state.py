@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import NamedTuple
 
-from PySide6.QtCore import QPointF, QRectF
+from PySide6.QtCore import QPointF, QRect, QRectF, QSize
+
+from .video_transforms import calculate_aspect_preserving_fit
 
 
 class NormalizedViewport(NamedTuple):
@@ -23,6 +25,16 @@ class ZoomStep(Enum):
     IN = 1
     OUT = -1
     RESET = 0
+
+
+def fit_frame_rect(image_size: QSize, container: QRect | QRectF) -> QRectF:
+    """Return the rectangle of an image of *image_size* fitted and centered within *container*."""
+    content_size = (image_size.width(), image_size.height())
+    container_size = (round(container.width()), round(container.height()))
+    transform = calculate_aspect_preserving_fit(content_size, container_size)
+    fitted_w, fitted_h = transform.fitted_size
+    offset_x, offset_y = transform.center_offset
+    return QRectF(container.left() + offset_x, container.top() + offset_y, fitted_w, fitted_h)
 
 
 @dataclass(slots=True)
@@ -153,3 +165,25 @@ class ViewportState:
         """Apply a full normalized viewport snapshot (zoom + pan), clamped to valid bounds."""
         self.zoom_level = max(self.zoom_min, min(viewport.zoom, self.zoom_max))
         self.apply_normalized_pan(viewport.pan_x, viewport.pan_y, base, widget_rect)
+
+    def follow_resize(
+        self, stable: NormalizedViewport | None, image_size: QSize, old_size: QSize, new_size: QSize
+    ) -> NormalizedViewport | None:
+        """Keep the same part of the image in view when the widget resizes; return the viewport to remember."""
+        if self.zoom_level <= self.zoom_min or new_size.isEmpty():
+            return stable
+
+        new_rect = QRectF(0.0, 0.0, float(new_size.width()), float(new_size.height()))
+        new_base = fit_frame_rect(image_size, new_rect)
+        if new_base.isEmpty():
+            return stable
+        if stable is None:
+            if not old_size.isValid() or old_size.isEmpty():
+                return stable
+            old_rect = QRectF(0.0, 0.0, float(old_size.width()), float(old_size.height()))
+            old_base = fit_frame_rect(image_size, old_rect)
+            if old_base.isEmpty():
+                return stable
+            stable = self.to_normalized(old_base)
+        self.apply_normalized(stable, new_base, new_rect)
+        return stable

@@ -8,7 +8,26 @@ from PySide6.QtWidgets import QAbstractScrollArea, QHeaderView, QLabel, QTreeWid
 from ax_devil.modules.chrome.base_dialog import BaseDialog
 from ax_devil.modules.chrome.tokens import Space
 from ax_devil.modules.workspace.core.item_info import WorkspaceItemInfo
-from ax_devil.modules.workspace.ui.section_tree import fit_row_height
+
+
+def fit_row_height(tree: QTreeWidget, item: QTreeWidgetItem, column: int) -> bool:
+    """Make *item*'s row as high as its *column* widget needs at the width it will have; return whether that changed.
+
+    The tree sizes a row from its widget's ``sizeHint``, which gives a wrapping label no width to wrap at, so a
+    row whose text wraps would otherwise show only the lines that hint assumed.
+    """
+    widget = tree.itemWidget(item, column)
+    if widget is None or not widget.hasHeightForWidth():
+        return False
+    width = tree.visualRect(tree.indexFromItem(item, column)).width()
+    if width <= 0:  # Hidden or collapsed; showing it again queues another fit.
+        return False
+    hint = QSize(0, widget.heightForWidth(width))
+    if item.sizeHint(column) == hint:
+        return False
+    item.setSizeHint(column, hint)
+    return True
+
 
 _PREFERRED_VALUE_CHARS = 80
 """How many characters of a long value a dialog opens wide enough to show on one line."""

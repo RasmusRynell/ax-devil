@@ -3,7 +3,6 @@
 import hashlib
 import re
 import struct
-import tempfile
 from collections import Counter
 from fractions import Fraction
 from pathlib import Path
@@ -11,6 +10,9 @@ from typing import Any
 
 import av
 
+from ax_devil.core.atomic_file import write_atomically
+from ax_devil.core.source_paths import Fingerprint
+from ax_devil.core.time_units import seconds_to_us
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import VideoOpenConfig
 from ax_devil.modules.data_sources.timing_reports import VideoTimingProfile
 from ax_devil.modules.settings.logging_config import get_logger
@@ -42,8 +44,9 @@ class FrameIndex:
         self.is_key_list: list[bool] = []
         self.pts_to_index: dict[int, int] = {}
         self._keyframe_indices: list[int] | None = None
+        self._built_from: Fingerprint | None = None  # The source identity before `build` read it.
 
-    def _fingerprint(self) -> tuple[int, int, int]:
+    def _fingerprint(self) -> Fingerprint:
         if self.video_path.exists():
             return self._file_fingerprint()
         if self._open_config is not None and self._open_config.av_format == "image2":
@@ -51,11 +54,10 @@ class FrameIndex:
 
         return self._file_fingerprint()
 
-    def _file_fingerprint(self) -> tuple[int, int, int]:
-        st = self.video_path.stat()
-        return (st.st_ino, st.st_size, st.st_mtime_ns)
+    def _file_fingerprint(self) -> Fingerprint:
+        return Fingerprint.of_stat(self.video_path.stat())
 
-    def _image_sequence_fingerprint(self) -> tuple[int, int, int]:
+    def _image_sequence_fingerprint(self) -> Fingerprint:
         if self._open_config is None:
             raise RuntimeError("Image sequence fingerprinting requires a video open config")
 
@@ -78,7 +80,7 @@ class FrameIndex:
             digest.update(str(stat_result.st_mtime_ns).encode("ascii"))
 
         source_hash = int.from_bytes(digest.digest(), byteorder="little", signed=False)
-        return (source_hash, total_size, latest_mtime_ns)
+        return Fingerprint(source_hash, total_size, latest_mtime_ns)
 
     def _matching_image_sequence_files(self) -> list[Path]:
         match = re.search(r"%0?\d*d", self.video_path.name)
@@ -106,24 +108,28 @@ class FrameIndex:
         if not (0 <= frame_index < len(self.pts_list)):
             raise IndexError(f"Frame index {frame_index} out of bounds (0-{len(self.pts_list) - 1})")
 
-    def build(self) -> None:
+    def build(self, thread_count: int = 0) -> None:
         """Build frame index in decoded presentation order.
 
         Packet order can differ from display order for videos with B-frames or
         reordered timestamps. Frame numbers in the app must follow decoded
         presentation order because that is what users see during playback.
+
+        *thread_count* caps the decoder threads; 0 lets PyAV choose.
         """
         logger.debug(f"Building frame index by decoded frame scan → {self.video_path.name}")
 
         self.pts_list.clear()
         self.is_key_list.clear()
         self.time_base = None
+        self._built_from = self._fingerprint()  # Before decoding, so a source replaced meanwhile reads as changed.
 
         fmt = self._open_config.av_format if self._open_config else None
         opts = self._open_config.av_options if self._open_config else None
         with av.open(str(self.video_path), mode="r", format=fmt, options=opts) as container:
             stream = container.streams.video[0]
             stream.thread_type = "AUTO"
+            stream.thread_count = thread_count
             self.time_base = Fraction(stream.time_base) if stream.time_base is not None else None
             for frame in container.decode(stream):
                 if frame.pts is None:
@@ -134,6 +140,14 @@ class FrameIndex:
         self.pts_to_index = {pts: i for i, pts in enumerate(self.pts_list)}
         self._keyframe_indices = None  # Reset cache
         logger.debug(f"Built frame index via decoded frame scan: {len(self.pts_list)} frames")
+
+    def load_or_build(self, thread_count: int = 0) -> None:
+        """Load the cached index, or build it and save it to the cache when none is usable."""
+        if self.load_from_file():
+            return
+        logger.debug(f"Building frame index for {self.video_path.name} (this may take a moment...)")
+        self.build(thread_count)
+        self.save_to_file()
 
     def save_to_file(self) -> None:
         """Save frame index to cache file (if cache_path provided)."""
@@ -149,14 +163,12 @@ class FrameIndex:
             logger.warning("Cannot save frame index without video time base")
             return
 
-        # Ensure cache directory exists
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-
-        temporary_path: Path | None = None
         try:
-            inode, size, mtime_ns = self._fingerprint()
-            with tempfile.NamedTemporaryFile(dir=self.cache_path.parent, delete=False) as fh:
-                temporary_path = Path(fh.name)
+            fingerprint = self._built_from or self._fingerprint()
+            if fingerprint != self._fingerprint():
+                logger.debug(f"Source changed while it was indexed, not caching → {self.video_path.name}")
+                return
+            with write_atomically(self.cache_path, "wb") as fh:
                 fh.write(
                     struct.pack(
                         _HEADER_FMT,
@@ -164,22 +176,16 @@ class FrameIndex:
                         _CACHE_VERSION,
                         self.time_base.numerator,
                         self.time_base.denominator,
-                        inode,
-                        size,
-                        mtime_ns,
+                        *fingerprint,
                         len(self.pts_list),
                     )
                 )
                 for pts, is_key in zip(self.pts_list, self.is_key_list, strict=True):
                     fh.write(struct.pack(_STRUCT_FMT, pts, is_key))
-            temporary_path.replace(self.cache_path)
             logger.debug(f"Frame index written to cache → {self.cache_path.name}")
         except OSError as e:
             logger.error(f"Failed to write cache file {self.cache_path.name}: {e}")
             raise
-        finally:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
 
     def load_from_file(self) -> bool:
         """Load frame index from cache file (if cache_path provided). Returns True if successful."""
@@ -204,7 +210,7 @@ class FrameIndex:
                     logger.warning(f"Frame index cache has no valid header: {self.cache_path.name}")
                     return False
 
-                magic, version, numerator, denominator, inode, size, mtime_ns, frame_count = struct.unpack(
+                magic, version, numerator, denominator, *cached_fingerprint, frame_count = struct.unpack(
                     _HEADER_FMT, header
                 )
                 if magic != _CACHE_MAGIC or version != _CACHE_VERSION:
@@ -215,7 +221,7 @@ class FrameIndex:
                     logger.warning(f"Frame index cache has invalid time base: {self.cache_path.name}")
                     return False
 
-                if (inode, size, mtime_ns) != self._fingerprint():
+                if Fingerprint(*cached_fingerprint) != self._fingerprint():
                     logger.debug(f"Frame index cache fingerprint mismatch: {self.cache_path.name}")
                     return False
 
@@ -246,24 +252,27 @@ class FrameIndex:
         self._validate_frame_index(frame_index)
         return self.pts_list[frame_index]
 
-    def pts_to_seconds(self, pts: int) -> float:
-        """Convert raw PTS to seconds using the video stream time base."""
+    def _pts_to_exact_seconds(self, pts: int) -> Fraction:
         if self.time_base is None:
             raise ValueError(f"Frame index has no time base for {self.video_path}")
-        return float(pts * self.time_base)
+        return pts * self.time_base
 
-    def get_frame_time_us(self, frame_index: int) -> float:
+    def pts_to_seconds(self, pts: int) -> float:
+        """Convert raw PTS to seconds using the video stream time base."""
+        return float(self._pts_to_exact_seconds(pts))
+
+    def get_frame_time_us(self, frame_index: int) -> int:
         """Get frame presentation time in microseconds since the first indexed frame."""
         pts = self.get_frame_pts(frame_index)
         first_pts = self.pts_list[0]
-        return self.pts_to_seconds(pts - first_pts) * 1_000_000.0
+        return seconds_to_us(self._pts_to_exact_seconds(pts - first_pts))
 
     def get_frame_times_us(self) -> tuple[int, ...]:
         """Return all frame presentation times in microseconds since the first indexed frame."""
         if not self.pts_list:
             return ()
         first_pts = self.pts_list[0]
-        return tuple(int(self.pts_to_seconds(pts - first_pts) * 1_000_000.0) for pts in self.pts_list)
+        return tuple(seconds_to_us(self._pts_to_exact_seconds(pts - first_pts)) for pts in self.pts_list)
 
     def get_frame_period_after_s(self, frame_index: int) -> float | None:
         """Get presentation delay from this frame to the next frame, or nearest valid fallback."""
@@ -290,13 +299,7 @@ class FrameIndex:
             "video_pts_delta": pts - first_pts,
         }
         if self.time_base is not None:
-            metadata.update(
-                {
-                    "video_time_base": f"{self.time_base.numerator}/{self.time_base.denominator}",
-                    "video_time_base_numerator": self.time_base.numerator,
-                    "video_time_base_denominator": self.time_base.denominator,
-                }
-            )
+            metadata["video_time_base"] = f"{self.time_base.numerator}/{self.time_base.denominator}"
         return metadata
 
     def analyze_timing_profile(self) -> VideoTimingProfile:
@@ -307,7 +310,7 @@ class FrameIndex:
         for frame_index in range(max(0, total_frames - 1)):
             period_s = self.get_frame_period_after_s(frame_index)
             if period_s is not None and period_s > 0:
-                periods_us.append(round(period_s * 1_000_000.0))
+                periods_us.append(seconds_to_us(period_s))
 
         return VideoTimingProfile(
             total_frames=total_frames,

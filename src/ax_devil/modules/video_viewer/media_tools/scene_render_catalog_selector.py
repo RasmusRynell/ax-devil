@@ -4,80 +4,69 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, Signal
-from PySide6.QtWidgets import (
-    QComboBox,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QMenu,
-    QPushButton,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from ax_devil.modules.chrome.icons import Icon
+from ax_devil.modules.chrome.elided_label import ElidedLabel
+from ax_devil.modules.chrome.small_button import SmallButton
+from ax_devil.modules.chrome.tokens import Space, TextRole
 from ax_devil.modules.scene.rendering import SceneRenderCatalog, SceneRenderCatalogSelection
 
+_MUTED = "color: palette(placeholder-text);"
+_COMBO_CHARS = 8
 
-class SceneRenderCatalogSelector(QGroupBox):
+
+class SceneRenderCatalogSelector(QWidget):
     """Display and command one Scene Render Catalog selection.
 
     The widget is redrawn entirely from the selection and the shared listing whenever the selection changes, which
-    includes every listing change.
+    includes every listing change and every change in which catalogs other open views use. It says whether this
+    catalog is the default for new views, and names the catalogs other open views show when they differ.
     """
 
     catalogViewerRequested = Signal()
 
-    def __init__(
-        self,
-        render_catalog_selection: SceneRenderCatalogSelection,
-        parent: QWidget | None = None,
-        *,
-        show_title: bool = True,
-    ) -> None:
-        super().__init__("Select Render Catalog" if show_title else "", parent)
+    def __init__(self, render_catalog_selection: SceneRenderCatalogSelection, parent: QWidget | None = None) -> None:
+        """Create the selector for *render_catalog_selection*."""
+        super().__init__(parent)
         self._render_catalog_selection = render_catalog_selection
         self._render_catalog_manager = render_catalog_selection.manager
-        self._show_title = show_title
 
         self._catalog_combo = QComboBox(self)
         self._catalog_combo.setObjectName("renderCatalogCombo")
+        self._catalog_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._catalog_combo.setMinimumContentsLength(_COMBO_CHARS)
 
-        self._open_catalogs_button = QToolButton(self)
+        self._open_catalogs_button = SmallButton("View", parent=self)
         self._open_catalogs_button.setObjectName("openRenderCatalogsButton")
-        self._open_catalogs_button.setText("View")
         self._open_catalogs_button.setToolTip("Show this catalog on example objects in the catalog viewer")
         self._open_catalogs_button.clicked.connect(self.catalogViewerRequested.emit)
 
-        self._reload_button = QPushButton("Reload", self)
+        self._reload_button = SmallButton("Reload", parent=self)
         self._reload_button.setObjectName("reloadRenderCatalogButton")
         self._reload_button.clicked.connect(self._render_catalog_selection.reload_active_catalog)
 
-        self._catalog_actions_menu = QMenu(self)
-        self._apply_to_all_action = self._catalog_actions_menu.addAction("Apply to all")
-        self._apply_to_all_action.setObjectName("applyRenderCatalogToAllAction")
-        self._apply_to_all_action.setToolTip("Use this catalog in every open viewer and lane.")
-        self._apply_to_all_action.triggered.connect(self._render_catalog_selection.apply_to_all)
-        self._use_as_default_action = self._catalog_actions_menu.addAction("Use as default")
-        self._use_as_default_action.setObjectName("useRenderCatalogAsDefaultAction")
-        self._use_as_default_action.setToolTip("Start new viewers and lanes with this catalog.")
-        self._use_as_default_action.triggered.connect(self._render_catalog_selection.use_as_default)
-        self._catalog_actions_menu.setToolTipsVisible(True)
-
-        self._catalog_actions_button = QToolButton(self)
-        self._catalog_actions_button.setObjectName("renderCatalogActionsButton")
-        self._catalog_actions_button.setIcon(Icon.MORE.icon())
-        self._catalog_actions_button.setToolTip("More catalog actions")
-        self._catalog_actions_button.setAccessibleName("More catalog actions")
-        self._catalog_actions_button.setMenu(self._catalog_actions_menu)
-        self._catalog_actions_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self._catalog_actions_button.setStyleSheet("QToolButton::menu-indicator { image: none; }")
-
-        self._status_label = QLabel(self)
+        # One line that never widens the popover: a long name or error is cut in the middle, whole in the tooltip.
+        self._status_label = ElidedLabel("", Qt.TextElideMode.ElideMiddle, self)
         self._status_label.setObjectName("renderCatalogStatus")
-        self._status_label.setWordWrap(True)
+
+        self._default_label = QLabel("Default for new views", self)
+        self._default_label.setObjectName("renderCatalogDefaultLabel")
+        self._make_default_button = SmallButton("Make default", parent=self)
+        self._make_default_button.setObjectName("useRenderCatalogAsDefaultButton")
+        self._make_default_button.setToolTip("Start new viewers and lanes with this catalog.")
+        self._make_default_button.clicked.connect(self._render_catalog_selection.use_as_default)
+
+        self._others_label = ElidedLabel("", Qt.TextElideMode.ElideRight, self)
+        self._others_label.setObjectName("renderCatalogOthersLabel")
+        self._apply_to_all_button = SmallButton("Apply to all", parent=self)
+        self._apply_to_all_button.setObjectName("applyRenderCatalogToAllButton")
+        self._apply_to_all_button.setToolTip("Use this catalog in every open viewer and lane.")
+        self._apply_to_all_button.clicked.connect(self._render_catalog_selection.apply_to_all)
+
+        for muted in (self._status_label, self._default_label, self._others_label):
+            muted.setStyleSheet(_MUTED)
+            TextRole.SMALL.apply(muted)
 
         self._setup_layout()
         self._render_catalog_selection.selectionChanged.connect(self._render)
@@ -98,20 +87,32 @@ class SceneRenderCatalogSelector(QGroupBox):
         self._render_catalog_selection.reload_active_catalog()
 
     def _setup_layout(self) -> None:
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self._catalog_combo, 1)
-        row.addWidget(self._open_catalogs_button)
-        row.addWidget(self._reload_button)
-        row.addWidget(self._catalog_actions_button)
+        catalog_row = QHBoxLayout()
+        catalog_row.setContentsMargins(0, 0, 0, 0)
+        catalog_row.setSpacing(Space.S)
+        catalog_row.addWidget(self._catalog_combo, 1)
+        catalog_row.addWidget(self._open_catalogs_button)
+        catalog_row.addWidget(self._reload_button)
+
+        default_row = QHBoxLayout()
+        default_row.setContentsMargins(0, 0, 0, 0)
+        default_row.addWidget(self._default_label)
+        default_row.addWidget(self._make_default_button)
+        default_row.addStretch(1)
+
+        others_row = QHBoxLayout()
+        others_row.setContentsMargins(0, 0, 0, 0)
+        others_row.setSpacing(Space.S)
+        others_row.addWidget(self._others_label, 1)
+        others_row.addWidget(self._apply_to_all_button)
 
         layout = QVBoxLayout(self)
-        if not self._show_title:
-            layout.setContentsMargins(0, 0, 0, 0)
-            self.setFlat(True)
-            self.setStyleSheet("QGroupBox { border: none; margin-top: 0; padding: 0; }")
-        layout.addLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Space.S)
+        layout.addLayout(catalog_row)
         layout.addWidget(self._status_label)
+        layout.addLayout(default_row)
+        layout.addLayout(others_row)
 
     def _render(self) -> None:
         listing = self._render_catalog_manager.listing()
@@ -124,9 +125,18 @@ class SceneRenderCatalogSelector(QGroupBox):
             self._catalog_combo.setCurrentIndex(self._catalog_combo.findData(str(active_path)))
         # Only a catalog this view shows can be passed on; a failed load stays failed here until reloaded.
         shown = self._render_catalog_selection.active_catalog_loaded()
-        self._apply_to_all_action.setEnabled(shown and self._render_catalog_manager.can_apply_to_all(active_path))
-        self._use_as_default_action.setEnabled(shown and self._render_catalog_manager.can_use_as_default(active_path))
-        self._status_label.setText(self._render_catalog_selection.status())
+        is_default = active_path == listing.chosen_default_path
+        self._default_label.setVisible(is_default)
+        self._make_default_button.setVisible(not is_default)
+        self._make_default_button.setEnabled(shown and self._render_catalog_manager.can_use_as_default(active_path))
+        open_views = self._render_catalog_manager.catalogs_in_use.paths()
+        others = list(dict.fromkeys(path for path in open_views if path != active_path))
+        self._others_label.set_full_text(f"Other views use: {', '.join(listing.label(path) for path in others)}")
+        self._others_label.setVisible(bool(others))
+        self._apply_to_all_button.setText(f"Apply to all {len(open_views)}")
+        self._apply_to_all_button.setVisible(bool(others))
+        self._apply_to_all_button.setEnabled(shown and self._render_catalog_manager.can_apply_to_all(active_path))
+        self._status_label.set_full_text(self._render_catalog_selection.status())
 
     def _select_current_catalog(self, *_args: object) -> None:
         catalog_path = self._selected_catalog_path()

@@ -13,6 +13,7 @@ from PySide6.QtCore import QObject, QThread, QTimer
 
 from ax_devil.core.cancellation import Cancelled, CancelToken
 from ax_devil.modules.background_jobs import JobContext, JobScope, background_jobs
+from ax_devil.modules.data_sources.file_data_provider.base import FileDataProviderFactory
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
 from ax_devil.modules.data_sources.file_frame_source import FileFrameSource
 from ax_devil.modules.data_sources.file_overlay_source import FileOverlaySource
@@ -20,10 +21,8 @@ from ax_devil.modules.data_sources.scene_history import SceneHistory
 from ax_devil.modules.data_sources.timing_reports import FrameTimeline, OverlayAlignmentReport
 from ax_devil.modules.plugin_system import get_file_decoder_factory
 from ax_devil.modules.settings.logging_config import get_logger
-from ax_devil.modules.video_viewer.overlay_persistence import (
-    OverlayPersistencePolicy,
-    OverlayPersistenceSettings,
-)
+from ax_devil.modules.video_viewer.overlay_persistence import OverlayPersistencePolicy
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults
 from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
@@ -42,6 +41,14 @@ def entry_opening_scope(owner: QObject) -> JobScope:
 
 
 @dataclass(slots=True)
+class LaneOverlay:
+    """An opened overlay and the selection policy used for presentation, analysis and export."""
+
+    source: FileOverlaySource
+    policy: OverlayPersistencePolicy
+
+
+@dataclass(slots=True)
 class OpenedLane:
     """One considered entry lane with its opened overlay source and the file-derived data it shows first."""
 
@@ -49,8 +56,7 @@ class OpenedLane:
     lane_index: int
     video: SeekableVideoContent
     source_index: int
-    overlay_source: FileOverlaySource | None = None
-    overlay_policy: OverlayPersistencePolicy | None = None
+    overlay: LaneOverlay | None = None
     scene_history: SceneHistory | None = None
     alignment_report: OverlayAlignmentReport | None = None
 
@@ -66,10 +72,11 @@ class EntryMedia:
     video_sources: list[FileFrameSource] = field(default_factory=list)
     lanes: list[OpenedLane] = field(default_factory=list)
     error: str | None = None
+    defaults: ViewDefaults = field(default_factory=ViewDefaults)
 
     def overlay_sources(self) -> list[FileOverlaySource]:
         """Return the overlay sources of all lanes."""
-        return [lane.overlay_source for lane in self.lanes if lane.overlay_source is not None]
+        return [lane.overlay.source for lane in self.lanes if lane.overlay is not None]
 
     def close(self) -> None:
         """Request shutdown of every source. Blocks for bounded decoder joins; run on a worker.
@@ -104,49 +111,53 @@ def create_frame_source(video: SeekableVideoContent) -> FileFrameSource:
     )
 
 
+def overlay_provider_factory(spec: FileOverlaySourceSpec) -> FileDataProviderFactory:
+    """Return the provider factory that opens *spec*'s overlay file; calling it builds the overlay cache."""
+    factory = get_file_decoder_factory(spec.handler_type)
+    return partial(factory, **spec.decoder_kwargs) if spec.decoder_kwargs else factory
+
+
 def create_overlay_source(
     overlay: OverlayContent,
     *,
     frame_timeline: FrameTimeline,
-) -> tuple[FileOverlaySource, OverlayPersistencePolicy]:
+    defaults: ViewDefaults,
+) -> LaneOverlay:
     """Open the file overlay source for *overlay*. Blocks while the decoder reads the file."""
     if not isinstance(overlay.source_spec, FileOverlaySourceSpec):
         raise RuntimeError(f"Offline overlay '{overlay.display_name}' requires a file overlay source spec.")
 
     try:
         source_spec = overlay.source_spec
-        decoder_factory = get_file_decoder_factory(source_spec.handler_type)
-        if source_spec.decoder_kwargs:
-            decoder_factory = partial(decoder_factory, **source_spec.decoder_kwargs)
         overlay_source = FileOverlaySource(
             source_spec.path,
-            decoder_factory,
+            overlay_provider_factory(source_spec),
             source_spec.handler_type,
-            timestamp_fallback_policy=source_spec.timestamp_fallback_policy,
+            timestamp_fallback_policy=defaults.overlay_sync,
             frame_timeline=frame_timeline,
         )
     except Exception as exc:
         raise RuntimeError(f"Failed to create overlay source for {overlay.display_name}: {exc}") from exc
 
-    return overlay_source, OverlayPersistencePolicy(OverlayPersistenceSettings.default_enabled())
+    return LaneOverlay(overlay_source, OverlayPersistencePolicy(defaults.sticky))
 
 
 def place_scene_history(
-    overlay_source: FileOverlaySource | None,
-    overlay_policy: OverlayPersistencePolicy | None,
+    overlay: LaneOverlay | None,
     frame_timeline: FrameTimeline,
     token: CancelToken,
 ) -> SceneHistory | None:
     """Place an overlay's history on the video as the lane's lookup and sticky selection show it; polls *token*."""
-    if overlay_source is None or overlay_policy is None:
+    if overlay is None:
         return None
-    allow_previous, max_sample_age_us = overlay_policy.sample_selection()
-    return overlay_source.scene_history(
+    allow_previous, max_sample_age_us = overlay.policy.sample_selection()
+    return overlay.source.scene_history(
         frame_timeline, allow_previous=allow_previous, max_sample_age_us=max_sample_age_us, token=token
     )
 
 
-def _require_seekable_video(video: SeekableVideoContent | LiveVideoContent) -> SeekableVideoContent:
+def require_seekable_video(video: SeekableVideoContent | LiveVideoContent) -> SeekableVideoContent:
+    """Return *video* if it is seekable; offline entries cannot hold anything else."""
     if isinstance(video, SeekableVideoContent):
         return video
     raise TypeError("Offline viewer requires seekable video content.")
@@ -168,7 +179,7 @@ def _open_lanes(
     source_index_by_video: dict[tuple[SeekableVideoContent, ImageSequenceConfig | None], int] = {}
     for position, lane_index in token.polled(enumerate(lane_indices)):
         lane = entry.lanes[lane_index]
-        video = _require_seekable_video(lane.video)
+        video = require_seekable_video(lane.video)
         video_key = (video, video.source_spec.image_sequence_config)
         source_index = source_index_by_video.get(video_key)
         if source_index is None:
@@ -189,13 +200,11 @@ def _open_lanes(
         else:
             report(f"Parsing overlay data ({position + 1}/{len(lane_indices)}): {lane.overlay.display_name}")
         frame_timeline = media.video_sources[source_index].get_frame_timeline()
-        opened.overlay_source, opened.overlay_policy = create_overlay_source(
-            lane.overlay, frame_timeline=frame_timeline
-        )
+        opened.overlay = create_overlay_source(lane.overlay, frame_timeline=frame_timeline, defaults=media.defaults)
         token.raise_if_cancelled()
-        opened.scene_history = place_scene_history(opened.overlay_source, opened.overlay_policy, frame_timeline, token)
+        opened.scene_history = place_scene_history(opened.overlay, frame_timeline, token)
         token.raise_if_cancelled()
-        opened.alignment_report = opened.overlay_source.analyze_alignment(frame_timeline, token)
+        opened.alignment_report = opened.overlay.source.analyze_alignment(frame_timeline, token)
 
 
 def open_entry_media(
@@ -203,15 +212,18 @@ def open_entry_media(
     lane_indices: tuple[int, ...],
     gui_thread: QThread,
     job: JobContext[str],
+    *,
+    defaults: ViewDefaults,
 ) -> EntryMedia:
     """Open the sources of *entry*'s lanes at *lane_indices* and move them to *gui_thread*.
 
-    Blocks; run it as a background job. *job* receives progress messages. Never raises: a failure or cancellation is
-    recorded in `EntryMedia.error`, and every source opened before it is still in the returned media. The sources can
-    only be freed on the GUI thread, so they go back to the job as a result: delivered to the viewer, or, for a
-    cancelled job, to `on_discard`, which releases them off the opening queue.
+    Blocks; run it as a background job. *job* receives progress messages. *defaults* are the settings every
+    lane starts with, read on the GUI thread. Never raises: a failure or cancellation is recorded in
+    `EntryMedia.error`, and every source opened before it is still in the returned media. The sources can only be
+    freed on the GUI thread, so they go back to the job as a result: delivered to the viewer, or, for a cancelled job,
+    to `on_discard`, which releases them off the opening queue.
     """
-    media = EntryMedia()
+    media = EntryMedia(defaults=defaults)
     try:
         _open_lanes(media, entry, lane_indices, job)
     except Cancelled:

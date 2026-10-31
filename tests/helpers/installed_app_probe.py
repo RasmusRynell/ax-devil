@@ -29,7 +29,7 @@ def main() -> None:
     if plugin_version != "none":
         assert importlib.metadata.version("ax-devil-smoke-plugin") == plugin_version
         validate_plugins(["ax-devil-smoke-plugin"])
-        assert get_payload_decoder("EXAMPLE_FRAME").decode({"frame": 42}).time_slice.start == 42
+        assert get_payload_decoder("EXAMPLE_FRAME").decode("42").time_slice.start == 42
     else:
         try:
             importlib.metadata.distribution("ax-devil-smoke-plugin")

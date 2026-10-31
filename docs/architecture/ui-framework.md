@@ -10,7 +10,6 @@ flowchart TD
     MainWindow --> MenuHost["menu_host()<br/>TitleBar menu bar or native QMenuBar"]
     MainWindow --> WorkspaceSession["WorkspaceSession"]
     MainWindow --> Dialogs["BaseDialog subclasses<br/>add video, live stream, playlist, settings, shortcuts, about"]
-    MainWindow --> DebugWindows["DebugWindow"]
     MainWindow --> PluginsView["PluginsView<br/>sidebar view"]
 
     WorkspaceSession --> WorkspaceStore["WorkspaceStore<br/>items, resolved Content, signals"]
@@ -94,13 +93,13 @@ theme follow the rest of the app.
 The Workspace, Live and Offline views are one `SectionsView` each, fed by one `SectionsViewController`: a view is the
 Workspace's sections of the kinds it is about, plus what its concept adds. Workspace shows every section the Workspace
 holds (`HELD_SECTIONS`) and nothing it does not hold. `LiveViewController` composes what is its own into its sections:
-cameras a scan found and what the scan learned about held cameras. Live's scan settings and Offline's Add list are
+a row per camera with its streams under it, what the scan learned about those cameras, and cameras a scan found. Live's scan settings and Offline's Add list are
 `FooterPanel`s pinned at the bottom of their view.
 
 `SectionsView` is also the one shell, with a fixed layout that views fill rather than change; see the
 [workspace module README](../../src/ax_devil/modules/workspace/README.md#sidebar-view-shell).
 
-Every view shows a browser row the same way. The projection (`browser_rows.py`) decides a row's look and the
+Every view shows a browser row the same way. The projection (`browser_projection.py`) decides a row's look and the
 `RowAction`s it offers, each disabled with a reason where it cannot be done yet (Export until the row is open). A row's
 menu lists them in groups split by separators: Open, Inspect, Hide or Unhide, and Edit.
 `SectionTree` has one outgoing request for a row, `row_action_requested(row, RowAction)`, whichever gesture asked. It
@@ -111,20 +110,21 @@ view (`connect_tree`).
 
 `WorkspaceController` coordinates the sidebar views, `WorkspaceStore`, `SplitView` and open `ViewerWidget`s. It owns the
 rows: Workspace mutations publish the rows projected by `build_browser_sections` through `sections_changed`, and row
-intents are routed back to Workspace state or viewer behavior. It also tracks which item each open viewer's Content
-came from, closes every widget of a removed item, and tells the user which newly added items could not resolve.
+intents are routed back to Workspace state or viewer behavior. Through `OpenViewers` it also tracks which item each
+open viewer's Content came from, closes every widget of a removed item, and tells the user which newly added items
+could not resolve.
 
 A row can be older than the Workspace, such as when a menu was open as its item was removed, so every action handler
-does nothing for an item that is gone. **Rename** and **Remove** act on the whole item.
+does nothing for an item that is gone. **Edit** and **Remove** act on the whole item.
 
 ## Center Area
 
 `SplitView` owns the nested splitter structure, drag/drop splitting, focused widget tracking and removal/collapse
-behavior; `WorkspaceController` owns viewer selection and registration. Each `LeafContainer` hosts at most one
+behavior; `OpenViewers` owns viewer selection and registration. Each `LeafContainer` hosts at most one
 `ViewerWidget`; dropping onto an occupied leaf splits it.
 
-Unpinned panes are previews, and `replace_or_open` replaces the first one with newly opened content. Pinned panes are
-never replaced; when every pane is pinned, new content opens in a new split. `open_to_side` always adds a pinned pane
+Unpinned panes are previews: `replace_or_open` replaces the active pane if unpinned, otherwise opens beside it.
+Without an active pane, opening adds a pane without replacing another. `open_to_side` always adds a pinned pane
 to the right of the focused pane.
 
 ## Viewer Widgets
@@ -153,11 +153,12 @@ respectively.
 
 ## Ownership Boundaries
 
-- `MainWindow` owns application-wide actions, menus, shortcuts, dialogs and diagnostics windows.
+- `MainWindow` owns application-wide actions, menus, shortcuts and dialogs.
 - `WorkspaceSession` owns Workspace composition, adding content, focused-viewer lookup and teardown.
 - `WorkspaceLifecycle` owns the workspace file lifecycle; it builds no widgets.
 - `ApplicationWindow` owns the static central layout.
-- `WorkspaceController` owns browser synchronization, viewer-to-item tracking and lifecycle side effects.
+- `WorkspaceController` owns browser synchronization and lifecycle side effects.
+- `OpenViewers` owns opening, placing and tracking viewers per item.
 - `SplitView` owns pane layout, focus tracking, drag/drop splitting and widget removal.
 - Video Viewer workflows own media orchestration, playlist navigation, comparison layout, filtering tools and workflow
   actions.

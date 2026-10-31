@@ -14,6 +14,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from ax_devil import cli as cli_module
+from ax_devil.core.device_connection import DeviceProtocol
 from ax_devil.modules.settings.config_manager import DEFAULT_CONFIG, ConfigManager
 from ax_devil.modules.workspace.core import OverlayFile
 
@@ -96,7 +97,7 @@ def startups(monkeypatch: pytest.MonkeyPatch, unloaded_plugins: None) -> _Launch
         opened.extend(kwargs["items"])
         return _App()
 
-    monkeypatch.setattr(cli_module, "create_app", create_app)
+    monkeypatch.setattr("ax_devil.app.create_app", create_app)
     monkeypatch.setattr(ENTRY_POINTS, lambda **_: [])
     return opened
 
@@ -240,8 +241,9 @@ def test_group_resolver_subcommand_opens_its_playlists(
     assert (item.resolver, item.settings) == ("external_group", {"root": str(tmp_path), "select": ["alpha"]})
 
 
+@pytest.mark.parametrize("resolution", [None, "", "1920x1080"])
 def test_live_keeps_configured_credential_references_in_the_item(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, startups: _Launches, resolution: str | None
 ) -> None:
     monkeypatch.setenv("AX_DEVIL_TARGET_ADDR", "camera.example")
     monkeypatch.setenv("AX_DEVIL_TARGET_USER", "operator")
@@ -250,10 +252,12 @@ def test_live_keeps_configured_credential_references_in_the_item(
     monkeypatch.setenv("AX_DEVIL_MQTT_BROKER_USER", "mqtt-user")
     monkeypatch.setenv("AX_DEVIL_MQTT_BROKER_PASS", "mqtt-pass")
 
-    result = _invoke("--config", _write_config(tmp_path, _default_config()), "live", "--overlay", "mqtt")
+    args = [] if resolution is None else ["--resolution", resolution]
+    result = _invoke("--config", _write_config(tmp_path, _default_config()), "live", "--overlay", "mqtt", *args)
 
     assert result.exit_code == 0, result.output
     [item] = startups
+    assert item.resolution == (resolution or "")
     assert (item.label, item.display_name) == ("", "camera.example"), "the shown host is expanded, never stored"
     assert (item.host, item.username, item.password) == (
         "$AX_DEVIL_TARGET_ADDR",
@@ -289,7 +293,7 @@ _WEBSOCKET_FROM_CONFIG = {
     "handler_type": "ADF_V1_FRAME",
     "websocket_topic": "configured.topic",
     "websocket_channel_id": 2,
-    "device_api_protocol": "http",
+    "device_api_protocol": DeviceProtocol.HTTP,
 }
 
 
@@ -316,7 +320,7 @@ _WEBSOCKET_FROM_CONFIG = {
                 **_WEBSOCKET_FROM_CONFIG,
                 "websocket_topic": "override.topic",
                 "websocket_channel_id": 4,
-                "device_api_protocol": "https",
+                "device_api_protocol": DeviceProtocol.HTTPS,
             },
             id="websocket-cli-overrides",
         ),
@@ -332,15 +336,13 @@ def test_live_selects_handler_and_transport_settings(
 ) -> None:
     """The live command normalizes the configured mode and applies transport overrides."""
     config = _default_config()
-    config["defaults"]["device"]["host"] = "camera.example"
+    config["defaults"]["device"].update(host="camera.example", protocol="http")
     live = config["defaults"]["live_stream"]
     live["overlay_source"] = configured_mode
     live["analytics-mqtt"].update(
         data_stream_handler="ADF_BETA_FRAME", broker_host="mqtt.example", data_source_key="analytics/source"
     )
-    live["analytics-websocket"].update(
-        data_stream_handler="ADF_V1_FRAME", topic="configured.topic", channel_id=2, device_api_protocol="http"
-    )
+    live["analytics-websocket"].update(data_stream_handler="ADF_V1_FRAME", topic="configured.topic", channel_id=2)
 
     result = _invoke("--config", _write_config(tmp_path, config), "live", *arguments)
 
@@ -513,8 +515,8 @@ def test_group_options_reach_the_app_launched_by_a_command(tmp_path: Path, start
     target.write_text('{"version": 1, "name": "Lot", "items": []}', encoding="utf-8")
     arguments = ["--video", str(target)] if command == "local" else [str(target)]
 
-    result = _invoke("--debug", "--log-level", "DEBUG", "--config", str(config_path), command, *arguments)
+    result = _invoke("--log-level", "DEBUG", "--config", str(config_path), command, *arguments)
 
     assert result.exit_code == 0, result.output
     kwargs = startups.kwargs
-    assert (kwargs["debug"], kwargs["log_level"], kwargs["config_path"]) == (True, "DEBUG", config_path)
+    assert (kwargs["log_level"], kwargs["config_path"]) == ("DEBUG", config_path)

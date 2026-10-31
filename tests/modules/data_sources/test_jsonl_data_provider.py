@@ -1,95 +1,21 @@
 """Tests for the JSONL scene file provider."""
 
 import json
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 from ax_devil.core.data_types import FrameIdentifier
-from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import (
-    SceneDecoderFileProvider,
-    StorageMode,
-)
-from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
-from ax_devil.modules.scene.model import (
-    BoundingBox,
-    Classification,
-    Entity,
-    EntityId,
-    Observation,
-    Scene,
-    Score,
-    TimeSlice,
-)
+from ax_devil.modules.data_sources.file_data_provider.scene_decoder_file_provider import StorageMode
+from ax_devil.modules.scene.model import EntityId
 from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackMode, TimestampFallbackPolicy
+from tests.helpers.jsonl import build_provider as _build_provider
+from tests.helpers.jsonl import frame_at as _frame
+from tests.helpers.jsonl import jsonl_record as _record
 from tests.helpers.jsonl import write_jsonl
 
 pytestmark = pytest.mark.usefixtures("isolated_cache")
-
-
-def simple_test_decoder(json_string: str) -> Scene:
-    """Decode one ``{"timestamp", "detections": [{"id", "class", "confidence", "bbox"}]}`` record."""
-    data = json.loads(json_string)
-    timestamp = datetime.fromisoformat(data.get("timestamp", "2024-01-01T12:00:00Z").replace("Z", "+00:00"))
-
-    entities = {}
-    for detection in data.get("detections", []):
-        entity_id = EntityId(detection["id"])
-        bbox = BoundingBox.from_xywh(*detection["bbox"])
-        classification = Classification(type=detection["class"], score=Score(detection["confidence"]))
-        observation = Observation(timestamp=timestamp, geometry=bbox, classification=[classification])
-        entities[entity_id] = Entity(id=entity_id, observations=[observation])
-
-    return Scene(time_slice=TimeSlice(start=timestamp, end=timestamp), entities=entities)
-
-
-def _build_provider(
-    file_path: str | Path,
-    *,
-    supports_sequence_lookup: bool = False,
-    storage_mode: StorageMode = StorageMode.SOURCE_INDEX,
-    artifact_version: int = 1,
-    decode_options: dict[str, Any] | None = None,
-    timestamp_fallback_policy: TimestampFallbackPolicy = TimestampFallbackPolicy(
-        tolerance_us=0,
-    ),
-    decoded: list[str] | None = None,
-) -> SceneDecoderFileProvider:
-    """Build a provider; *decoded* collects every payload the decoder parses."""
-
-    class _TestDecoder(PayloadToSceneDecoder):
-        def decode(self, payload: Any) -> Scene:
-            if decoded is not None:
-                decoded.append(payload)
-            return simple_test_decoder(payload)
-
-    return SceneDecoderFileProvider(
-        file_path=file_path,
-        decoder_factory=_TestDecoder,
-        decoder_name="test_decoder",
-        artifact_version=artifact_version,
-        decode_options=decode_options,
-        supports_sequence_lookup=supports_sequence_lookup,
-        storage_mode=storage_mode,
-        timestamp_fallback_policy=timestamp_fallback_policy,
-    )
-
-
-def _record(second: int, *entity_ids: str) -> dict[str, Any]:
-    return {
-        "timestamp": f"2024-01-01T12:00:{second:02d}Z",
-        "detections": [
-            {"id": entity_id, "class": "person", "confidence": 0.9, "bbox": [0.1, 0.2, 0.3, 0.4]}
-            for entity_id in entity_ids
-        ],
-    }
-
-
-def _frame(timestamp_us: int, sequence_id: int = 0) -> FrameIdentifier:
-    return FrameIdentifier(sequence_id=sequence_id, timestamp_monotime_us=float(timestamp_us))
 
 
 def test_records_are_indexed_by_timestamp_and_load_their_scenes(tmp_path: Path) -> None:
@@ -198,81 +124,6 @@ def test_source_index_decode_failure_returns_missing_scene(tmp_path: Path) -> No
 
 
 @pytest.mark.parametrize("storage_mode", list(StorageMode))
-def test_persisted_scenes_are_reused_only_for_an_unchanged_source_and_identity(
-    tmp_path: Path, storage_mode: StorageMode
-) -> None:
-    """Reopening reuses the persisted artifact; changed options, version, or source contents rebuild it."""
-    path = write_jsonl(tmp_path / "scenes.jsonl", [_record(0, "a"), _record(1, "b")])
-    options = {"profile": "initial"}
-
-    def open_provider(decoded: list[str], **kwargs: Any) -> SceneDecoderFileProvider:
-        provider = _build_provider(path, storage_mode=storage_mode, decoded=decoded, **kwargs)
-        provider.close()
-        return provider
-
-    cold: list[str] = []
-    cold_frames = open_provider(cold, decode_options=options).get_available_frames()
-    assert len(cold) == 2
-
-    warm: list[str] = []
-    warm_provider = _build_provider(path, storage_mode=storage_mode, decoded=warm, decode_options=options)
-    try:
-        assert warm == []
-        assert warm_provider.get_available_frames() == cold_frames
-        assert all(warm_provider.load_by_frame_id(_frame(timestamp)) is not None for timestamp in cold_frames)
-    finally:
-        warm_provider.close()
-
-    changed_options: list[str] = []
-    open_provider(changed_options, decode_options={"profile": "changed"})
-    assert len(changed_options) == 2
-
-    new_version: list[str] = []
-    open_provider(new_version, decode_options={"profile": "changed"}, artifact_version=2)
-    assert len(new_version) == 2
-
-    with path.open("a", encoding="utf-8") as file_obj:
-        file_obj.write(f"{json.dumps(_record(2))}\n")
-    changed_source: list[str] = []
-    rebuilt = open_provider(changed_source, decode_options={"profile": "changed"}, artifact_version=2)
-    assert len(changed_source) == 3
-    assert rebuilt.get_total_frames() == 3
-
-
-def test_lookup_diagnostics_count_unique_timestamps_across_policy_changes(temp_dir: Path) -> None:
-    """Repeated lookups are not calls, and changing fallback policy does not double-count a timestamp."""
-    from ax_devil.modules.diagnostics.metrics_store import get_metrics_store, set_metrics_enabled, source_identity
-
-    set_metrics_enabled(True)
-    path = temp_dir / "diagnostics.jsonl"
-    path.write_text(json.dumps({"timestamp": "2024-01-01T12:00:00Z", "detections": []}), encoding="utf-8")
-    first = _build_provider(path)
-    second = _build_provider(path)
-    store = get_metrics_store()
-    try:
-        timestamp = next(iter(first.get_available_frames()))
-        requested = FrameIdentifier(sequence_id=100, timestamp_monotime_us=timestamp + 5_000)
-        first.lookup_by_frame_id(requested)
-        first.lookup_by_frame_id(requested)
-        metrics = store.snapshot()[source_identity(first)]
-        assert metrics.observations["Unique requested timestamps"].value == 1
-        assert metrics.observations["Unique missing timestamps"].value == 1
-        first.set_timestamp_fallback_policy(TimestampFallbackPolicy(tolerance_us=10_000))
-        first.lookup_by_frame_id(requested)
-        metrics = store.snapshot()[source_identity(first)]
-        assert metrics.observations["Unique requested timestamps"].value == 1
-        assert metrics.observations["Unique fallback matches"].value == 1
-        second.lookup_by_frame_id(requested)
-        assert source_identity(first) != source_identity(second)
-        first.close()
-        assert source_identity(first) not in store.snapshot()
-        assert source_identity(second) in store.snapshot()
-    finally:
-        first.close()
-        second.close()
-
-
-@pytest.mark.parametrize("storage_mode", list(StorageMode))
 def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode, tmp_path: Path) -> None:
     """Reuse two resolved scenes, preserve them across misses, and reload evicted history."""
     records = [
@@ -292,7 +143,7 @@ def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode,
         timestamp_fallback_policy=TimestampFallbackPolicy(tolerance_us=10_000),
     )
     timestamps = sorted(provider.get_available_frames())
-    frames = [FrameIdentifier(sequence_id=index, timestamp_monotime_us=ts) for index, ts in enumerate(timestamps)]
+    frames = [FrameIdentifier(sequence_id=index, timestamp_us=ts) for index, ts in enumerate(timestamps)]
     try:
         with patch.object(provider._store, "load_scene", wraps=provider._store.load_scene) as load:
             first = provider.load_by_frame_id(frames[0])
@@ -301,9 +152,9 @@ def test_decoded_scene_working_set_reuses_and_reloads(storage_mode: StorageMode,
             assert provider.load_by_frame_id(frames[0]) is first
             assert provider.load_by_frame_id(frames[1]) is second
 
-            missing = FrameIdentifier(sequence_id=99, timestamp_monotime_us=timestamps[-1] + 1_000_000)
+            missing = FrameIdentifier(sequence_id=99, timestamp_us=timestamps[-1] + 1_000_000)
             assert provider.load_by_frame_id(missing) is None
-            fallback = FrameIdentifier(sequence_id=99, timestamp_monotime_us=timestamps[0] + 1_000)
+            fallback = FrameIdentifier(sequence_id=99, timestamp_us=timestamps[0] + 1_000)
             assert provider.load_by_frame_id(fallback) is first
             assert load.call_count == 2
 
@@ -345,7 +196,7 @@ def test_sticky_selection_is_independent_of_navigation(tmp_path: Path) -> None:
         ]:
             selection = policy.select_from_source(source, FrameIdentifier(1, timestamp))
             assert selection.overlay is not None
-            assert selection.overlay.frame_id.timestamp_monotime_us == expected
+            assert selection.overlay.frame_id.timestamp_us == expected
             assert selection.reused is (timestamp != expected)
             assert selection.effective_opacity == (0.4 if selection.reused else 1.0)
             assert bool(selection.overlay.content.entities) is (expected == first)

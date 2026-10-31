@@ -127,7 +127,6 @@ DEFAULT_SHORTCUTS: tuple[ShortcutDefinition, ...] = (
         welcome_group="Open",
     ),
     ShortcutDefinition("app.exit", "Exit", "Application", QKeySequence("Ctrl+Q")),
-    ShortcutDefinition("app.debug_metrics", "Debug Metrics", "Application", QKeySequence("Ctrl+D")),
     ShortcutDefinition("app.plugins", "Plugins", "Application"),
     ShortcutDefinition("app.quick_setup", "Quick Setup", "Application"),
     ShortcutDefinition("app.about", "About", "Application"),

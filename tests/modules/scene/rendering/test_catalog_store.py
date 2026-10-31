@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -9,30 +10,10 @@ import pytest
 from ax_devil.core.cancellation import NEVER, Cancelled, CancelToken
 from ax_devil.modules.scene.rendering.catalog import BUILT_IN_CATALOG_PATHS
 from ax_devil.modules.scene.rendering.catalog_manager import create_scene_render_catalog_manager
-from ax_devil.modules.scene.rendering.catalog_store import SceneRenderCatalogStore
+from ax_devil.modules.scene.rendering.catalog_store import SceneRenderCatalogOrigin, SceneRenderCatalogStore
 from ax_devil.modules.scene.rendering.template_runtime.values import TemplateRuntimeError
 from ax_devil.modules.settings.paths import DEFAULT_RENDER_CATALOG_CHOICE_FILENAME
 from tests.catalog_helpers import CLASSIC_CATALOG_PATH, catalog_document
-
-
-def test_failed_catalog_store_write_preserves_original_and_cleans_temporary_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, small_catalog_path: Path
-) -> None:
-    store = SceneRenderCatalogStore(tmp_path)
-    first_catalog = store.create_catalog("First", base_catalog_path=small_catalog_path)
-    second_catalog = store.create_catalog("Second", base_catalog_path=small_catalog_path)
-    store.set_default_catalog(first_catalog.path)
-    files_before = sorted(tmp_path.iterdir())
-
-    def fail_replace(source: Path, target: Path) -> Path:
-        raise OSError("Replacement failed")
-
-    monkeypatch.setattr(Path, "replace", fail_replace)
-    with pytest.raises(OSError, match="Replacement failed"):
-        store.set_default_catalog(second_catalog.path)
-
-    assert store.list_catalogs_with_errors().default_path == first_catalog.path
-    assert sorted(tmp_path.iterdir()) == files_before
 
 
 def test_catalog_store_creates_user_catalog_file_from_default(tmp_path: Path) -> None:
@@ -47,6 +28,31 @@ def test_catalog_store_creates_user_catalog_file_from_default(tmp_path: Path) ->
     assert document["metadata"]["id"] == "user.vehicle-review"
     assert document["metadata"]["name"] == "Vehicle Review"
     assert "templates" in document
+
+
+def test_a_copy_remembers_its_built_in_catalog_and_whether_the_body_was_edited(tmp_path: Path) -> None:
+    store = SceneRenderCatalogStore(tmp_path)
+    copy = store.create_catalog("Mine")
+    assert copy.origin == SceneRenderCatalogOrigin("Standard", modified=False)
+
+    document = json.loads(copy.path.read_text(encoding="utf-8"))
+    document["metadata"].update({"name": "Renamed", "description": "Described."})
+    copy.path.write_text(json.dumps(document), encoding="utf-8")
+    assert store.create_catalog("Again", copy.path).origin == SceneRenderCatalogOrigin("Standard", modified=False)
+
+    document["templates"]["object_box"]["description"] = "Edited by the user."
+    copy.path.write_text(json.dumps(document), encoding="utf-8")
+    copied_again = store.create_catalog("Third", copy.path)
+    listing = store.list_catalogs_with_errors()
+
+    assert all(built_in.origin is None for built_in in listing.catalogs if built_in.is_built_in)
+    edited = listing.catalog_for(copy.path)
+    assert edited is not None and edited.origin == SceneRenderCatalogOrigin("Standard", modified=True)
+    assert copied_again.origin == SceneRenderCatalogOrigin("Standard", modified=True)
+
+    document["metadata"]["origin"] = {"based_on": "standard"}
+    copy.path.write_text(json.dumps(document), encoding="utf-8")
+    assert store.list_catalogs_with_errors().error_for(copy.path) is not None
 
 
 @pytest.mark.parametrize("filename", ["built-in.json", "default.json", "catalog.json"])
@@ -124,6 +130,7 @@ def test_catalog_store_recovers_from_invalid_built_in_choices(tmp_path: Path, na
     assert len(listing.catalogs) == len(BUILT_IN_CATALOG_PATHS)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="A colon cannot be part of a Windows filename")
 def test_catalog_store_distinguishes_user_filenames_from_built_in_choices(
     tmp_path: Path, small_catalog_path: Path
 ) -> None:

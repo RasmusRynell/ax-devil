@@ -28,7 +28,10 @@ choosing its own sizes and colors.
 | Keyboard keys shown as chips (`[Ctrl] [N]`) | `KeyChips` widget, or `draw_key_chips` when painting | `modules/chrome/key_chips.py` |
 | Top-level window | subclass `ChromeWindow` | `modules/chrome/chrome_window.py` |
 | Dialog | subclass `BaseDialog`; add content with `add_content_widget` | `modules/chrome/base_dialog.py` |
+| Pick one of two or three values in a form row or dialog | `ChoiceToggle(choices, current)`; `changed(value)`, `size_at(text_px)` | `modules/chrome/choice_toggle.py` |
 | Question with a few labeled answers | `ask(...)`, or `notify(...)` for a notice with OK; never `QMessageBox` | `modules/chrome/choice_dialog.py` |
+| Independent on/off options as chips that wrap onto more rows | `ToggleChips(items)`; `toggled(key, checked)`, `chip(key)`, `set_checked(key, checked)` | `modules/chrome/toggle_chip.py` |
+| Panel of controls that opens under a button, closes on Escape or an outside click | subclass `Popover`; call `open_below(button, width)`. Never `QMenu` with a `QWidgetAction` | `modules/chrome/popover.py` |
 | Labeled input form | `FormLayout` | `modules/chrome/form_layout.py` |
 | Scrolling page | `ContentScrollArea` | `modules/chrome/content_scroll_area.py` |
 
@@ -101,7 +104,7 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
 
 ## Check it
 
-1. Take screenshots before and after the change, offscreen and isolated from the user's settings:
+1. Take screenshots before and after the change, on a private display and isolated from the user's settings:
    `PYTHONPATH=. AX_DEVIL_UI_SHOTS=/tmp/ui-before uv run pytest -p tests.conftest tools/ui_screenshots.py -q`
    (then again with `/tmp/ui-after`). Add the surface you changed to `tools/ui_screenshots.py` if it is missing.
    Shots are drawn at 2 device pixels per logical pixel; set `AX_DEVIL_UI_SHOTS_SCALE=1` for smaller files.
@@ -109,7 +112,7 @@ card_label.setText(f'<span style="font-weight:600;">{escape(name)}</span> {escap
    when nothing is clipped, overlapping or unreadable and the new UI matches its neighbours' sizes and spacing.
    To read one image instead of two, join a before and after shot with ImageMagick:
    `montage /tmp/ui-before/X.png /tmp/ui-after/X.png -tile 2x1 -geometry +4+0 /tmp/X-compare.png`.
-   Also measure the fit, offscreen with `HOME` set to a temporary folder, at text sizes 13 and 21: show the window,
+   Also measure the fit, on a private display (`tools/private_display.py`) with `HOME` set to a temporary folder, at text sizes 13 and 21: show the window,
    and for each page compare its content's `sizeHint()` with the scroll area's viewport, check the scroll bars and
    tab bar, and compare each field's width with its `sizeHint()`. Numbers catch a page that only just scrolls.
 3. Add the window or dialog to `SURFACES` in `tests/modules/chrome/test_surface_fit.py`, which checks that no button
