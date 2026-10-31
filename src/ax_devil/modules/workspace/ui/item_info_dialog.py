@@ -44,7 +44,9 @@ def _preferred_value_width(label: QLabel) -> int:
     margin_width = margins.left() + margins.right()
     long_width = metrics.averageCharWidth() * _PREFERRED_VALUE_CHARS
     text_width = metrics.horizontalAdvance(label.text())
-    if text_width > long_width:
+    # A value of at most the preferred length always opens whole: the average glyph width is only an estimate, and
+    # a font with wide glyphs would otherwise wrap a value the dialog promises to show on one line.
+    if len(label.text()) > _PREFERRED_VALUE_CHARS and text_width > long_width:
         return long_width + margin_width
     # The label's frame and border take more than its margins, and a wrapping label breaks a line that only just
     # fits; widen until the text sits on one line.
