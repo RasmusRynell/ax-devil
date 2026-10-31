@@ -93,6 +93,44 @@ module.exports = async (window) => {
     );
     await wait("!document.querySelector('dialog')");
   }
+
+  // A real video through the real backend: the canvas shows a picture, and stepping changes it.
+  const video = path.resolve(__dirname, "../fixtures/video/long_gop_h264.mp4");
+  window.setSize(1100, 720);
+  window.webContents.setZoomFactor(1);
+  assert.equal(
+    await js(`fetch("/api/workspace/items", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ items: [{ type: "Video", path: ${JSON.stringify(video)} }], open: true }),
+    }).then((response) => response.ok)`),
+    true,
+  );
+  const shownFrame = `Number.parseInt(document.querySelector("output[aria-label=Frame]")?.textContent ?? "")`;
+  await wait(`${shownFrame} === 0`);
+  // Frame N of this video is flat with luma 7 N, so frame 0 is black and frame 12 a visible grey.
+  const centre = async () => {
+    await frame();
+    const image = await window.webContents.capturePage();
+    const [x, y, w, h] = await js(
+      "(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; })()",
+    );
+    const scale = image.getSize().width / (await js("innerWidth"));
+    const bitmap = image.toBitmap();
+    const at =
+      (Math.round((y + h / 2) * scale) * image.getSize().width + Math.round((x + w / 2) * scale)) *
+      4;
+    return Math.max(bitmap[at], bitmap[at + 1], bitmap[at + 2]);
+  };
+  await js("document.querySelector('[aria-label=Pause]')?.click()");
+  const black = await centre();
+  for (let step = 1; step <= 12; step++) {
+    await js("document.querySelector('[aria-label=\"Forward 1 frame\"]').click()");
+    await wait(`${shownFrame} === ${step}`);
+  }
+  const grey = await centre();
+  assert.ok(black < 16, `Frame 0 of the video is black, got ${black}`);
+  assert.ok(grey > 40, `Frame 12 must be a visible grey, got ${grey}: the canvas is still black`);
   console.log(
     `PASS: app shell loaded; screenshots in ${path.relative(path.resolve(__dirname, ".."), SCREENSHOTS)}`,
   );

@@ -80,14 +80,14 @@ not an error (`data_sources/README.md#live-transports`).
   `docs/settings.md#video-cache-memory`, `data_sources/README.md#offline-frame-cache`,
   `#file-overlay-providers` (*current:* two most recent decoded Scenes per provider, sized for Python GC pauses;
   re-derive for the new runtime).
-- Cache pressure never changes frame identity or timing; a frame larger than the budget is delivered uncached.
 - Cache identity and invalidation: `docs/domain/invariants.md#data-pipeline`. Caches are private, versioned and
   rebuildable; never load caches from other users.
 
 ## Performance
 
-The repo measures (DT-03) rather than stating budgets; D9 sets them. Proposal, not a repo fact: offline 1080p30 with
-four lanes and Standard, and live 1080p30 with one overlay, at full rate; overlay preparation under 4 ms for 100 objects.
+The repo measures (DT-03) rather than stating budgets; D9 sets them. The offline video budgets are taken
+([14](14-build-order.md#decisions-taken-for-offline-video)). Proposal, not a repo fact: offline 1080p30 with four lanes
+and Standard, and live 1080p30 with one overlay, at full rate; overlay preparation under 4 ms for 100 objects.
 
 ## Error model (MUST)
 

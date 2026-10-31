@@ -4,7 +4,7 @@
 //! The config file is nested JSON (`ui.theme` is `{"ui": {"theme": ...}}`). Keys this version does not declare are
 //! logged at load and kept when the file is saved, so another version's settings survive.
 //!
-//! TODO: notify subscribers when the state is replaced, once something consumes it.
+//! A change reaches subscribers as the new state, replaced whole; a subscriber that is busy sees only the newest.
 
 mod table;
 
@@ -16,6 +16,7 @@ use std::{
     sync::{Arc, Mutex, PoisonError},
 };
 pub use table::{Kind, Setting, TABLE};
+use tokio::sync::watch;
 
 /// Why settings could not be loaded, validated or saved; the reason is meant for the user.
 #[derive(Debug)]
@@ -58,7 +59,9 @@ impl State {
 /// The settings service for one config file.
 pub struct Settings {
     path: PathBuf,
-    state: Mutex<Arc<State>>,
+    state: watch::Sender<Arc<State>>,
+    /// Held while a change is validated, saved and published, so changes apply one at a time.
+    writing: Mutex<()>,
 }
 
 impl Settings {
@@ -106,16 +109,19 @@ impl Settings {
         }
         Ok(Self {
             path: path.to_owned(),
-            state: Mutex::new(Arc::new(State { document })),
+            state: watch::Sender::new(Arc::new(State { document })),
+            writing: Mutex::new(()),
         })
     }
 
     /// The current state.
     pub fn state(&self) -> Arc<State> {
-        self.state
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.state.borrow().clone()
+    }
+
+    /// A receiver that holds the current state and is woken by every successful [`replace`](Self::replace).
+    pub fn subscribe(&self) -> watch::Receiver<Arc<State>> {
+        self.state.subscribe()
     }
 
     /// Replaces every declared setting with `values`, which must hold exactly the declared keys. Validates all,
@@ -132,8 +138,8 @@ impl Settings {
         {
             return Err(invalid(key, "unknown setting"));
         }
-        let mut guard = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut document = guard.document.clone();
+        let _writing = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut document = self.state().document.clone();
         for setting in TABLE {
             let value = values
                 .get(setting.key)
@@ -148,8 +154,9 @@ impl Settings {
             reason: error.to_string(),
             invalid: false,
         })?;
-        *guard = Arc::new(State { document });
-        Ok(guard.clone())
+        let state = Arc::new(State { document });
+        self.state.send_replace(Arc::clone(&state));
+        Ok(state)
     }
 }
 
@@ -215,6 +222,7 @@ mod tests {
         BTreeMap::from([
             ("ui.theme".into(), json!(theme)),
             ("ui.quick_setup_done".into(), json!(true)),
+            ("playback.video_cache".into(), json!("auto")),
         ])
     }
 
@@ -306,6 +314,55 @@ mod tests {
 
         assert_eq!(settings.state().values()["ui.theme"], "auto");
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn the_video_cache_is_auto_or_whole_mib_in_range_and_a_saved_number_survives_a_restart() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("default.json");
+        let settings = Settings::load(&path).unwrap();
+        assert_eq!(settings.state().values()["playback.video_cache"], "auto");
+        let with = |cache: Value| {
+            let mut all = values("dark");
+            all.insert("playback.video_cache".into(), cache);
+            all
+        };
+
+        for rejected in [
+            json!(255),
+            json!(1048577),
+            json!(512.5),
+            json!("512"),
+            json!(true),
+        ] {
+            let error = settings.replace(&with(rejected)).unwrap_err();
+            assert_eq!(error.location, "playback.video_cache");
+        }
+        settings.replace(&with(json!(512))).unwrap();
+        assert_eq!(
+            Settings::load(&path).unwrap().state().values()["playback.video_cache"],
+            512
+        );
+        settings.replace(&with(json!("auto"))).unwrap();
+        assert_eq!(settings.state().values()["playback.video_cache"], "auto");
+    }
+
+    #[test]
+    fn subscribers_see_each_saved_change_and_nothing_for_a_rejected_one() {
+        let folder = tempfile::tempdir().unwrap();
+        let settings = Settings::load(&folder.path().join("default.json")).unwrap();
+        let mut changes = settings.subscribe();
+        assert!(!changes.has_changed().unwrap());
+
+        settings.replace(&values("neon")).unwrap_err();
+        assert!(
+            !changes.has_changed().unwrap(),
+            "a rejected change is not announced"
+        );
+
+        settings.replace(&values("dark")).unwrap();
+        assert!(changes.has_changed().unwrap());
+        assert_eq!(changes.borrow_and_update().values()["ui.theme"], "dark");
     }
 
     #[test]

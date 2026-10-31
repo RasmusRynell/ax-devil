@@ -6,16 +6,19 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"
   icon: IconName;
   /** The accessible name and tooltip. */
   label: string;
+  /** White on the near-black video scrim, instead of the theme's text color. */
+  onCanvas?: boolean;
 }
 
 /** An icon-only button with a neutral hover tint; the caller sizes it. */
-export function IconButton({ icon, label, className = "", ...rest }: Props) {
+export function IconButton({ icon, label, onCanvas = false, className = "", ...rest }: Props) {
+  const tone = onCanvas ? "text-on-canvas hover:bg-canvas-hover" : "text-fg hover:bg-hover";
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
-      className={`flex shrink-0 items-center justify-center bg-transparent text-fg hover:bg-hover focus-ring-inset ${className}`}
+      className={`flex shrink-0 items-center justify-center bg-transparent focus-ring-inset ${tone} ${className}`}
       {...rest}
     >
       <Icon name={icon} />

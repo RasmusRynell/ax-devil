@@ -1,5 +1,8 @@
 //! Types the backend sends to the frontend, exported to TypeScript by `export-types`.
 
+pub mod playback;
+pub mod workspace;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
@@ -27,7 +30,8 @@ pub struct AppInfo {
 /// allowed values are declared once, in the settings crate.
 #[derive(Serialize, Deserialize, TS)]
 pub struct Settings(
-    #[ts(type = "Record<string, string | boolean>")] pub BTreeMap<String, serde_json::Value>,
+    #[ts(type = "Record<string, string | boolean | number>")]
+    pub  BTreeMap<String, serde_json::Value>,
 );
 
 /// What a failed request returns: the reason, shown where the user acted, and what it is about.

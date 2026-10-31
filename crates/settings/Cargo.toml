@@ -15,4 +15,5 @@ workspace = true
 [dependencies]
 serde_json.workspace = true
 tempfile = "3"
+tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true

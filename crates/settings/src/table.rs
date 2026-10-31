@@ -16,6 +16,13 @@ pub enum Kind {
         /// The value when the config has none; one of `options`.
         default: &'static str,
     },
+    /// The name `auto` (the default), or a whole number from `min` to `max`.
+    AutoOrWhole {
+        /// The smallest accepted number.
+        min: u64,
+        /// The largest accepted number.
+        max: u64,
+    },
 }
 
 /// One declared setting.
@@ -47,6 +54,16 @@ pub const TABLE: &[Setting] = &[
         live: true,
         label: "Quick Setup done",
     },
+    Setting {
+        key: "playback.video_cache",
+        // Auto, or MiB shared by every open video. The upper bound is 1 TiB.
+        kind: Kind::AutoOrWhole {
+            min: 256,
+            max: 1024 * 1024,
+        },
+        live: true,
+        label: "Memory for video caching (MiB)",
+    },
 ];
 
 impl Setting {
@@ -55,6 +72,7 @@ impl Setting {
         match self.kind {
             Kind::Bool { default } => Value::Bool(default),
             Kind::Choice { default, .. } => Value::String(default.into()),
+            Kind::AutoOrWhole { .. } => Value::String("auto".into()),
         }
     }
 
@@ -71,6 +89,13 @@ impl Setting {
             (Kind::Choice { options, .. }, _) => {
                 Err(format!("expected one of {}", options.join(", ")))
             }
+            (Kind::AutoOrWhole { .. }, Value::String(name)) if name == "auto" => Ok(()),
+            (Kind::AutoOrWhole { min, max }, value) => match value.as_u64() {
+                Some(number) if (*min..=*max).contains(&number) => Ok(()),
+                _ => Err(format!(
+                    "expected auto or a whole number from {min} to {max}"
+                )),
+            },
         }
     }
 }

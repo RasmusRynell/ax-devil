@@ -1,11 +1,12 @@
 import type { MenuCommand, MenuEntry } from "./kit/Menu";
 
 const SEPARATOR: MenuEntry = { kind: "separator" };
-const action = (id: string, label: string, shortcut?: string): MenuEntry => ({
+const action = (id: string, label: string, shortcut?: string, repeats = false): MenuEntry => ({
   kind: "action",
   id,
   label,
   shortcut,
+  repeats,
 });
 const check = (id: string, label: string, shortcut?: string): MenuEntry => ({
   kind: "check",
@@ -49,6 +50,21 @@ export const MENUS: readonly { label: string; entries: readonly MenuEntry[] }[] 
       action("lane-fullscreen", "Toggle Lane Fullscreen", "F"),
       action("media-tools", "Media Tools Panel", "Ctrl+B"),
       action("sidebar", "Sidebar", "Ctrl+\\"),
+      {
+        kind: "submenu",
+        label: "Playback",
+        items: [
+          action("play-pause", "Play / Pause", "Space"),
+          SEPARATOR,
+          action("step-forward", "Step Forward 1 Frame", ".", true),
+          action("step-back", "Step Back 1 Frame", ",", true),
+          action("step-forward-10", "Step Forward 10 Frames", "Right", true),
+          action("step-back-10", "Step Back 10 Frames", "Left", true),
+          SEPARATOR,
+          action("speed-up", "Playback Speed Up", "]", true),
+          action("speed-down", "Playback Speed Down", "[", true),
+        ],
+      },
       SEPARATOR,
       check("lane-names", "Show Lane Names"),
       check("object-details", "Object Hover and Click Details"),

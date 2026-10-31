@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "./App";
 import type { Settings } from "./generated/api";
@@ -8,6 +8,16 @@ beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function showModal() {
     this.setAttribute("open", "");
   };
+});
+
+beforeEach(() => {
+  // The workspace's event stream, which this suite leaves silent.
+  vi.stubGlobal(
+    "EventSource",
+    class {
+      close() {}
+    },
+  );
 });
 
 afterEach(() => {

@@ -1,4 +1,6 @@
 # License gate (make check). scripts/check-js-licenses.cjs applies this allow list to JavaScript packages too.
+# WTFPL is for ffmpeg-next, the FFmpeg binding of the media crate: it permits any use and redistribution, with no
+# conditions to meet in the packaged app. FFmpeg's own license is a separate question (docs/rebuild/13).
 # Before adding a license, check its distribution terms for the packaged app (docs/rebuild/13-security-packaging-ops.md).
 [licenses]
 allow = [
@@ -14,6 +16,7 @@ allow = [
   "MIT-0",
   "MPL-2.0",
   "Unicode-3.0",
+  "WTFPL",
   "Zlib",
 ]
 confidence-threshold = 0.9

@@ -16,7 +16,10 @@ Until parity, the layer contents, seams and runtime guarantees are specified in
 | Desktop shell (Electron) | Windows and the backend process's lifetime; no application features |
 
 The frontend talks to the backend over HTTP and WebSockets on `127.0.0.1`. Types that cross that boundary are Rust
-types in `crates/api-types`, exported to TypeScript; the frontend never declares its own copy.
+types in `crates/api-types`, exported to TypeScript; the frontend never declares its own copy. The one hand-parsed
+format is the binary playback envelope: its constants are exported and its layout is in `api_types::playback`.
+
+How offline playback divides its work between them is in the [invariants](../domain/invariants.md#offline-delivery).
 
 Electron supplies Chromium, so rendering and media behave the same on every desktop instead of depending on the
 system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).
@@ -30,12 +33,13 @@ Dependencies point down only. Numbers are the layers of [02](../rebuild/02-archi
 | 1 | Foundation | Rust crates, `layer = "foundation"` | Workspace crates only; no server crates |
 | 2 | Domain and contracts | Rust crates, `layer = "domain"` | same |
 | 3 | Runtime services | Rust crates, `layer = "services"` | same |
-| 3a | Event-loop adapters: routes, WebSocket notifications, wire types | `crates/api-types` (`layer = "adapters"`) and the routes in `src/lib.rs` | May use the server crates |
+| 3a | Event-loop adapters: routes, WebSocket notifications, wire types | `crates/api-types` (`layer = "adapters"`) and the routes in `src/lib.rs` and `src/routes/` | May use the server crates |
 | 4–7 | UI support, generic display, workflows, shell | `frontend/src/` | — |
 | 8 | Entry and bootstrap | `src/main.rs` (backend), `desktop/` (window and backend lifetime) | The root crate holds the routes and `main.rs`, so it declares `layer = "entry"` |
 
 Every crate declares its layer in `[package.metadata.ax-devil]`; `scripts/check-architecture.cjs` (part of
-`make check`) rejects a crate that depends on a higher layer, or a layer 1–3 crate that depends on the HTTP server.
+`make check`) rejects a crate that depends on a higher layer, a layer 1–3 crate that depends on the HTTP server, and the
+pairs it lists (for example `playback` on `media`).
 The frontend's layers 4–7 get their import rules when the first of those modules land.
 
 ## Runtime

@@ -39,10 +39,12 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Makefile') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      - name: Install the private display
+      # The media crate links the system FFmpeg (6.1 on this image) and generates its bindings with clang.
+      - name: Install the private display and the FFmpeg libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xauth xvfb
+          sudo apt-get install -y --no-install-recommends xauth xvfb pkg-config clang libclang-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
 
       # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
       - name: Allow Electron's sandbox
@@ -79,6 +81,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+
+      - name: Install the FFmpeg libraries
+        run: brew install ffmpeg pkg-config
 
       - name: Test frontend and backend
         run: make tests-frontend tests-backend

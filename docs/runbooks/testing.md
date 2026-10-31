@@ -9,7 +9,7 @@ test policy being ported is [09](../rebuild/09-testing.md).
 make tests                         # Every suite
 make tests-frontend TEST=App       # React component tests (Vitest, jsdom); TEST filters by name or file
 make tests-backend TEST=info       # Rust tests, without and with the embedded frontend
-make tests-integration             # Development supervisor: starts the services and stops the whole tree
+make tests-integration             # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
 make tests-desktop                 # Electron app on a private display; screenshots in artifacts/screenshots/
 make check                         # Every static check, then every suite
 make check-fast                    # Static checks only, file-size check on changed files only
@@ -19,7 +19,8 @@ Targets install what they need and exit after one run. The first run downloads t
 `.cargo-cache/` and `.toolchain/` when no `rustup` is on `PATH`), crates, npm packages, Watchexec and cargo-deny
 (both built into `.tools/`) and the Electron binary (into the user's download cache). After that, every target runs
 offline as long as `Cargo.lock`, `pnpm-lock.yaml`, `rust-toolchain.toml` and the pinned tool versions in the
-Makefile are unchanged. Test output and evidence go in `artifacts/`.
+Makefile are unchanged. Test output and evidence go in `artifacts/`. The system FFmpeg libraries and clang that the
+`media` crate builds against are prerequisites no target installs ([README](../../README.md#build-from-source)).
 
 ## Tests never touch the user's files or session
 
@@ -44,7 +45,8 @@ not run.
 window: it waits for the app shell, then switches the theme to light and dark and saves
 `artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
 the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
-minimum, at normal zoom and 200%. New windows join the harness as they land
+minimum, at normal zoom and 200%, then opens a fixture video through the backend and asserts the canvas shows a
+picture and that stepping changes it. New windows join the harness as they land
 ([DT-02](../parity.md#developer-tooling)).
 
 ## Fixtures
@@ -56,6 +58,7 @@ caches; nothing is shared between tests through the filesystem.
 
 `.github/workflows/ci.yml` runs on pull requests to and pushes on `main` and `rewrite`, and on `v*` tags. `check` (Ubuntu 24.04) runs `make check`,
 fails when generated files are stale, checks on tags that the tag matches the `Cargo.toml` version, and uploads the
-screenshots. `test-macos` runs the frontend and backend suites. A newer push to a pull request cancels its superseded
-run. Windows, the lowest-dependency job and the release check are not set up yet
+screenshots. `test-macos` runs the frontend and backend suites. Both jobs install the FFmpeg development libraries
+and clang that the `media` crate builds against (`pkg-config` finds FFmpeg). A newer push to a pull request cancels
+its superseded run. Windows, the lowest-dependency job and the release check are not set up yet
 ([14](../rebuild/14-build-order.md#decisions-taken-for-the-foundation)).

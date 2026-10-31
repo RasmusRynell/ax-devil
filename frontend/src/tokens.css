@@ -13,6 +13,12 @@
   --color-accent: light-dark(#23678d, #3994bc);
   --color-hover: light-dark(#26344514, #cccccc14);
   --color-scrim: light-dark(#f6f8fb99, #12131499);
+  /* The video surface and the controls over it look the same in both themes: near-black with white controls. */
+  --color-canvas: #0a0a0a;
+  --color-on-canvas: #ffffff;
+  --color-on-canvas-muted: #b8bec6;
+  --color-canvas-hover: #ffffff24;
+  --color-canvas-scrim: #000000cc;
 
   --spacing-xs: 2px;
   --spacing-s: 4px;

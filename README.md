@@ -5,16 +5,18 @@
 **ax-devil** is a desktop app for viewing live Axis camera streams and offline recordings together with analytics
 overlays, inspecting objects frame by frame, and comparing results side by side.
 
-> **Being rebuilt.** This branch is a from-scratch rewrite in Rust, React and Electron; it opens an
-> empty window and has no features yet. What it will do and in which order is in the
-> [rebuild playbook](docs/rebuild/README.md); progress is in [docs/parity.md](docs/parity.md). The Python app it replaces
-> is readable at commit `e31a7453`.
+> **Being rebuilt.** This branch is a from-scratch rewrite in Rust, React and Electron; it plays a local video
+> (`ax-devil local --video PATH` or File > Add Video) and has few other features yet. What it will do and in which
+> order is in the [rebuild playbook](docs/rebuild/README.md); progress is in [docs/parity.md](docs/parity.md). The
+> Python app it replaces is readable at commit `e31a7453`.
 
 ## Build from source
 
-Requirements: Linux, Make, Node 22.18+, 24.11+ or 26+, pnpm 12.14.0, curl, a C toolchain (`cc`), and Xvfb for the
-desktop tests. Rust comes from [rustup](https://rustup.rs) if installed; otherwise `make` installs the pinned
-toolchain inside the checkout on first use.
+Requirements: Linux, Make, Node 22.18+, 24.11+ or 26+, pnpm 12.14.0, curl, a C toolchain (`cc`) with clang and
+`pkg-config`, the FFmpeg 6.1+ development libraries (`libavcodec`, `libavformat`, `libavutil`, `libswscale`;
+Debian/Ubuntu: `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev`, macOS: `brew install ffmpeg`), and
+Xvfb for the desktop tests. Rust comes from [rustup](https://rustup.rs) if installed; otherwise `make` installs the
+pinned toolchain inside the checkout on first use.
 
 ```bash
 make desktop   # The app in an Electron window, with live reload

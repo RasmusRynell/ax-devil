@@ -30,7 +30,7 @@ pid: number, };
  * Every setting by dotted key, such as `"ui.theme"`. `PUT /api/settings` replaces all of them; the keys and their
  * allowed values are declared once, in the settings crate.
  */
-export type Settings = Record<string, string | boolean>;
+export type Settings = Record<string, string | boolean | number>;
 
 /**
  * What a failed request returns: the reason, shown where the user acted, and what it is about.
@@ -44,3 +44,251 @@ reason: string,
  * The setting key or file the reason is about.
  */
 location: string, };
+
+/**
+ * The workspace and what is known about each item: the body of `GET /api/workspace` and of every `Workspace` event.
+ */
+export type WorkspaceState = { 
+/**
+ * The user's name for the workspace; `null` is Untitled.
+ */
+name: string | null, 
+/**
+ * Every item in the order it was added.
+ */
+items: Array<ItemState>, };
+
+/**
+ * One workspace item and how far it has resolved.
+ */
+export type ItemState = { 
+/**
+ * Names the item.
+ */
+id: string, 
+/**
+ * The name the item's row shows.
+ */
+label: string, 
+/**
+ * Whether a viewer should open for the item once it resolves. Stays set; the frontend remembers which
+ * viewers it has opened.
+ */
+open: boolean, 
+/**
+ * Whether the item has Content yet.
+ */
+resolution: ResolutionState, };
+
+/**
+ * How far an item has resolved.
+ */
+export type ResolutionState = { "status": "Pending" } | { "status": "Resolved", 
+/**
+ * What the item resolved to.
+ */
+content: ContentInfo, } | { "status": "Failed", 
+/**
+ * What is wrong, in words for the user.
+ */
+reason: string, 
+/**
+ * What it is about, such as the file path.
+ */
+location: string, };
+
+/**
+ * Content by kind. Viewers register by kind.
+ */
+export type ContentInfo = { "kind": "SeekableVideo", 
+/**
+ * Names the Content; the playback socket opens it by this id.
+ */
+id: string, 
+/**
+ * The name the viewer shows.
+ */
+display_name: string, };
+
+/**
+ * What the user asked to add; the intake turns each into an item.
+ */
+export type NewItem = { "type": "Video", 
+/**
+ * The file; a relative path is relative to the backend's working folder.
+ */
+path: string, };
+
+/**
+ * The body of `POST /api/workspace/items`. The intake checks every entry first: if any is refused, nothing is added.
+ */
+export type AddItemsRequest = { 
+/**
+ * What to add, in order.
+ */
+items: Array<NewItem>, 
+/**
+ * Whether a viewer should open for each item once it resolves.
+ */
+open: boolean, };
+
+/**
+ * What `GET /api/events` streams, one per server-sent event, starting with the current state on connect.
+ */
+export type ServerEvent = { "type": "Workspace" } & WorkspaceState;
+
+/**
+ * How a viewer steps through the video.
+ */
+export type Direction = "forward" | "backward";
+
+/**
+ * The frames a viewer holds or wants: its window around the playhead. Each want replaces the viewer's previous one;
+ * the backend works on what is nearest the newest playhead first.
+ */
+export type Want = { 
+/**
+ * The sequence id the viewer shows or is about to.
+ */
+playhead: number, 
+/**
+ * How many frames after the playhead the viewer keeps.
+ */
+ahead: number, 
+/**
+ * How many frames before the playhead the viewer keeps.
+ */
+behind: number, 
+/**
+ * Which way the viewer is travelling, which decides what to prefetch first.
+ */
+direction: Direction, };
+
+/**
+ * What the frontend sends.
+ */
+export type ClientMessage = { "type": "Open", 
+/**
+ * The Content to open, by the id the workspace gave it.
+ */
+content_id: string, 
+/**
+ * The frame to show, paused; the first frame when absent.
+ */
+start_frame?: number, } | { "type": "Want" } & Want | { "type": "Close" };
+
+/**
+ * What the backend sends as text. `Opened` is followed by a Timeline envelope.
+ */
+export type ServerMessage = { "type": "Indexing", 
+/**
+ * How far along it is, from 0 to 1.
+ */
+progress: number, } | { "type": "Opened", 
+/**
+ * The protocol version, to compare with `PLAYBACK_PROTOCOL`.
+ */
+protocol: number, 
+/**
+ * How many frames the video has.
+ */
+frame_count: number, 
+/**
+ * Video length in microseconds.
+ */
+duration_us: number, 
+/**
+ * Total payload bytes of one frame: the sum of its plane lengths (planes are tightly packed).
+ */
+frame_bytes: number, } | { "type": "FrameError", 
+/**
+ * The frame that failed.
+ */
+sequence_id: number, 
+/**
+ * What went wrong, in words for the user.
+ */
+reason: string, } | { "type": "Error", 
+/**
+ * What went wrong, in words for the user.
+ */
+reason: string, 
+/**
+ * What it is about, such as the file path.
+ */
+location: string, };
+
+/**
+ * Raised when the messages or the envelope change in a way an older frontend cannot read.
+ */
+export const PLAYBACK_PROTOCOL = 1;
+
+/**
+ * "AXDV" read as a little-endian u32.
+ */
+export const ENVELOPE_MAGIC = 1447319617;
+
+/**
+ * The envelope format version, byte 4.
+ */
+export const ENVELOPE_VERSION = 1;
+
+/**
+ * Bytes of the fixed envelope head.
+ */
+export const ENVELOPE_HEAD_BYTES = 32;
+
+/**
+ * Where the planes of a VideoFrame start, at least; the head plus the video header.
+ */
+export const VIDEO_FRAME_HEADER_BYTES = 68;
+
+/**
+ * Envelope kind: one decoded video frame.
+ */
+export const KIND_VIDEO_FRAME = 1;
+
+/**
+ * Envelope kind: overlay data for a frame; reserved for M2, receivers ignore it.
+ */
+export const KIND_OVERLAY = 2;
+
+/**
+ * Envelope kind: the presentation time of every frame.
+ */
+export const KIND_TIMELINE = 3;
+
+/**
+ * Flag bit 0: the frame is a keyframe.
+ */
+export const FLAG_KEYFRAME = 1;
+
+/**
+ * Flag bit 1: the frame is the last of the video.
+ */
+export const FLAG_LAST_FRAME = 2;
+
+/**
+ * Video header layout byte: planar Y, U, V with 4:2:0 subsampling.
+ */
+export const LAYOUT_I420 = 1;
+
+/**
+ * Video header layout byte: planar Y, then interleaved U and V.
+ */
+export const LAYOUT_NV12 = 2;
+
+/**
+ * Video header layout byte: one interleaved RGBA plane.
+ */
+export const LAYOUT_RGBA = 3;
+
+/**
+ * Video header matrix byte: BT.601 YUV to RGB.
+ */
+export const MATRIX_BT601 = 0;
+
+/**
+ * Video header matrix byte: BT.709 YUV to RGB.
+ */
+export const MATRIX_BT709 = 1;

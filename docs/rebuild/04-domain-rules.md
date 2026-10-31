@@ -43,10 +43,8 @@
 
 ## Neutral types to fix early
 
-- Media Time: signed 64-bit integer microseconds. Offline frames take it from container presentation timestamps
-  (*current:* PTS frame index in `data_sources/file_data_provider/pyav_decoder/frame_index.py`); variable frame rate
-  works; never synthesize timestamps from FPS. Live frames take device capture time (LV-04, [14](14-build-order.md#stack-criteria)).
-- Frame identity: `(sequence_id, timestamp_us)`.
+- Media Time and frame identity are `foundation::MediaTime` and `FrameId`; the offline rules are in the invariants.
+  Live frames take device capture time (LV-04, [14](14-build-order.md#stack-criteria)).
 - Scene: one serialization schema from M2 on ([05](05-formats-and-extensions.md#scene-serialization)).
 
 ## Rules implied by the code but not stated as invariants

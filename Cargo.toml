@@ -11,7 +11,16 @@ default-run = "ax-devil"
 layer = "entry"
 
 [workspace]
-members = ["crates/api-types", "crates/logging", "crates/settings"]
+members = [
+  "crates/api-types",
+  "crates/foundation",
+  "crates/logging",
+  "crates/media",
+  "crates/playback",
+  "crates/settings",
+  "crates/workspace",
+  "crates/workspace-store",
+]
 resolver = "3"
 
 [workspace.package]
@@ -21,14 +30,21 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
+bytes = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = "1"
 ts-rs = "11"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 api-types = { path = "crates/api-types" }
+foundation = { path = "crates/foundation" }
 logging = { path = "crates/logging" }
+media = { path = "crates/media" }
+playback = { path = "crates/playback" }
 settings = { path = "crates/settings" }
+workspace = { path = "crates/workspace" }
+workspace-store = { path = "crates/workspace-store" }
 
 [workspace.lints.rust]
 missing_docs = "warn"
@@ -48,16 +64,25 @@ embed-assets = ["dep:rust-embed", "dep:mime_guess"]
 
 [dependencies]
 api-types.workspace = true
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
+bytes.workspace = true
 clap = { version = "4", features = ["derive"] }
+foundation.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 logging.workspace = true
+media.workspace = true
+playback.workspace = true
+serde_json.workspace = true
 settings.workspace = true
+tokio-stream = { version = "0.1", features = ["sync"] }
 tracing.workspace = true
+workspace.workspace = true
+workspace-store.workspace = true
 mime_guess = { version = "2", optional = true }
 rust-embed = { version = "8", optional = true }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 
 [dev-dependencies]
-serde_json.workspace = true
 tempfile = "3"
+tokio-tungstenite = "0.29"
 tower = { version = "0.5", features = ["util"] }

@@ -9,6 +9,13 @@ use axum::{
 };
 use std::sync::Arc;
 
+mod routes;
+pub mod runtime;
+#[cfg(test)]
+mod test_support;
+pub mod video_cache;
+pub mod video_sources;
+
 #[cfg(feature = "embed-assets")]
 #[derive(rust_embed::RustEmbed)]
 #[folder = "frontend/dist/"]
@@ -16,22 +23,37 @@ use std::sync::Arc;
 #[allow_missing = true]
 struct Assets;
 
-/// Builds the backend's routes around the settings service.
-pub fn app(settings: Arc<settings::Settings>) -> Router {
+/// The services the routes are adapters over, created once at startup.
+#[derive(Clone)]
+pub struct AppState {
+    /// The settings service.
+    pub settings: Arc<settings::Settings>,
+    /// The workspace store.
+    pub store: workspace_store::Store,
+    /// The open videos, which the playback socket draws its viewers from.
+    pub videos: Arc<video_sources::VideoSources>,
+    /// Turns true when the backend is stopping: long-lived connections, such as the playback sockets, end.
+    pub stopping: tokio::sync::watch::Receiver<bool>,
+}
+
+/// Builds the backend's routes around the services.
+pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/api/info", get(info))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .merge(routes::workspace::router())
+        .merge(routes::playback::router())
         .fallback(asset)
-        .with_state(settings)
+        .with_state(state)
 }
 
-async fn get_settings(State(settings): State<Arc<settings::Settings>>) -> Json<SettingsBody> {
-    Json(SettingsBody(settings.state().values()))
+async fn get_settings(State(state): State<AppState>) -> Json<SettingsBody> {
+    Json(SettingsBody(state.settings.state().values()))
 }
 
 /// Replaces every setting; a rejected or unsaved change leaves the stored state as it was.
 async fn put_settings(
-    State(settings): State<Arc<settings::Settings>>,
+    State(AppState { settings, .. }): State<AppState>,
     Json(body): Json<SettingsBody>,
 ) -> Result<Json<SettingsBody>, (StatusCode, Json<ApiError>)> {
     // The file write blocks, so it stays off the async workers.
@@ -58,7 +80,11 @@ async fn put_settings(
     }
 }
 
-fn failure(status: StatusCode, location: &str, reason: String) -> (StatusCode, Json<ApiError>) {
+pub(crate) fn failure(
+    status: StatusCode,
+    location: &str,
+    reason: String,
+) -> (StatusCode, Json<ApiError>) {
     (
         status,
         Json(ApiError {
@@ -103,41 +129,13 @@ async fn asset() -> StatusCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{
-        body::{Body, to_bytes},
-        http::Request,
-    };
-    use tower::ServiceExt;
-
-    fn test_app() -> (Router, tempfile::TempDir) {
-        let folder = tempfile::tempdir().unwrap();
-        let settings = settings::Settings::load(&folder.path().join("default.json")).unwrap();
-        (app(Arc::new(settings)), folder)
-    }
-
-    async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Vec<u8>) {
-        let response = app.clone().oneshot(request).await.unwrap();
-        let status = response.status();
-        (
-            status,
-            to_bytes(response.into_body(), 1 << 20)
-                .await
-                .unwrap()
-                .to_vec(),
-        )
-    }
+    use crate::test_support::{TestApp, json};
+    use axum::{body::Body, http::Request};
 
     async fn get(path: &str) -> (StatusCode, Vec<u8>) {
-        let (app, _folder) = test_app();
-        send(
-            &app,
-            Request::builder().uri(path).body(Body::empty()).unwrap(),
-        )
-        .await
-    }
-
-    fn json(bytes: &[u8]) -> serde_json::Value {
-        serde_json::from_slice(bytes).unwrap()
+        let test = TestApp::new();
+        test.send(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
     }
 
     fn put(body: &str) -> Request<Body> {
@@ -174,25 +172,29 @@ mod tests {
 
     #[tokio::test]
     async fn settings_are_replaced_whole_and_a_rejected_change_leaves_them_as_they_were() {
-        let (app, _folder) = test_app();
-        let all = |theme: &str| format!(r#"{{"ui.theme":"{theme}","ui.quick_setup_done":true}}"#);
+        let test = TestApp::new();
+        let all = |theme: &str| {
+            format!(
+                r#"{{"ui.theme":"{theme}","ui.quick_setup_done":true,"playback.video_cache":"auto"}}"#
+            )
+        };
 
-        let (status, body) = send(&app, put(&all("dark"))).await;
+        let (status, body) = test.send(put(&all("dark"))).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json(&body), json(all("dark").as_bytes()));
 
-        let (status, body) = send(&app, put(&all("neon"))).await;
+        let (status, body) = test.send(put(&all("neon"))).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(json(&body)["location"], "ui.theme");
 
-        let (_, body) = send(
-            &app,
-            Request::builder()
-                .uri("/api/settings")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await;
+        let (_, body) = test
+            .send(
+                Request::builder()
+                    .uri("/api/settings")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
         assert_eq!(json(&body), json(all("dark").as_bytes()));
     }
 }

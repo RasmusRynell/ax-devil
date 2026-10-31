@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AppInfo } from "./generated/api";
 import { SettingsProvider } from "./settings";
 import { Shell } from "./shell/Shell";
+import { WorkspaceProvider } from "./workspace/WorkspaceProvider";
 
 type Backend =
   | { state: "connecting" }
@@ -30,7 +31,9 @@ export function App() {
   if (backend.state === "ready")
     return (
       <SettingsProvider>
-        <Shell />
+        <WorkspaceProvider>
+          <Shell />
+        </WorkspaceProvider>
       </SettingsProvider>
     );
   return (

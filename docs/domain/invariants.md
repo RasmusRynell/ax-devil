@@ -45,11 +45,20 @@ the module that implements it adds one.
   latest pair. Offline delivery presents only the newest frame queued for the UI; seeks and frame steps still present
   the requested frame.
 - Offline playback follows the clock: delivery that falls behind skips to the frame due now instead of slowing down;
-  the video's final frame is always delivered.
+  the video's final frame is always delivered. The viewer owns that clock; the backend supplies frames and never reads
+  a clock for playback.
 - Scene and catalog interpretation happen before the renderer boundary; renderer callbacks consume prepared immutable
   data only. GPU resources are created and released only in the renderer's resource phase.
 - Display and export share rendering semantics: the same instructions, order, colors and geometry, without Scene
   knowledge in the renderer. Pixels differ only by documented renderer tolerances.
+
+## Offline Delivery
+
+- A viewer keeps exactly the frames inside the window of its last report and evicts the rest. The window size is
+  `floor(buffer budget / frame bytes)`, fixed per video, so a viewer never evicts inside its own window.
+- The backend applies every window report to its record of what a viewer holds, in order, never coalesced; only
+  scheduling uses the newest. A frame that leaves the window and returns is sent again.
+- A frame's bytes depend only on its identity, so a viewer keeps any arrival inside its window.
 
 ## Frame Identity
 

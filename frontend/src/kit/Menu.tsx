@@ -3,7 +3,15 @@ import { Icon } from "./Icon";
 
 export type MenuEntry =
   | { kind: "separator" }
-  | { kind: "action" | "check"; id: string; label: string; shortcut?: string; disabled?: boolean }
+  | {
+      kind: "action" | "check";
+      id: string;
+      label: string;
+      shortcut?: string;
+      disabled?: boolean;
+      /** Whether holding the key repeats the command. */
+      repeats?: boolean;
+    }
   | { kind: "submenu"; label: string; items: readonly MenuEntry[] };
 
 export type MenuCommand = Extract<MenuEntry, { id: string }>;

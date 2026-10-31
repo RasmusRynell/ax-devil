@@ -3,12 +3,15 @@ const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline");
 const path = require("node:path");
 
+const { backendArgs, userArgs } = require("./args.cjs");
 const { apiVersion } = require("./generated/api.json");
 
 const smoke = process.argv.includes("--smoke-test");
 // The smoke test always starts its own release backend and never attaches to a running session.
 const port = smoke ? "0" : process.env.PORT || "7330";
 const devUrl = smoke ? undefined : process.env.DESKTOP_DEV_URL;
+// Video files the Add Video dialog offers; the backend's intake takes any path, the viewer judges the media.
+const VIDEO_EXTENSIONS = ["mp4", "avi", "mkv", "mov"];
 // Electron's own data (Chromium profile, crash dumps) is browser state, not ax-devil data: the backend owns the
 // app's folders, so keep Electron out of them.
 app.setPath("userData", path.join(app.getPath("cache"), "ax-devil-chromium"));
@@ -16,6 +19,7 @@ let backend;
 let stopping = false;
 let stopped = false;
 let exitCode = 0;
+const args = backendArgs(userArgs(process.argv, process.defaultApp));
 
 // Reuses a compatible backend already on the port; otherwise starts the release build and owns it.
 async function startBackend() {
@@ -32,13 +36,15 @@ async function startBackend() {
         throw new Error(
           `Port ${port} runs a development backend; use make desktop or another PORT.`,
         );
+      if (args.length)
+        console.error(`Ignoring the command line: the backend on port ${port} is already running.`);
       return `http://127.0.0.1:${port}`;
     } catch (error) {
       if (error.cause?.code !== "ECONNREFUSED") throw error;
     }
   }
   const executable = path.resolve(__dirname, "../target/release/ax-devil");
-  backend = spawn(executable, [], {
+  backend = spawn(executable, args, {
     env: { ...process.env, PORT: port },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -124,6 +130,16 @@ app
     );
     ipcMain.on("window:close", () => window.close());
     ipcMain.handle("window:is-maximized", () => window.isMaximized());
+    // Only the native dialog: the page sends the chosen paths to the backend itself. Resolves to the absolute paths,
+    // none when the dialog is cancelled.
+    ipcMain.handle("workspace:pick-videos", async () => {
+      const chosen = await dialog.showOpenDialog(window, {
+        title: "Add Video",
+        properties: ["openFile", "multiSelections"],
+        filters: [{ name: "Video files", extensions: VIDEO_EXTENSIONS }],
+      });
+      return chosen.canceled ? [] : chosen.filePaths;
+    });
     // There is no application menu, so zoom is handled here; Chromium remembers it per host.
     window.webContents.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || !input.control || input.alt) return;

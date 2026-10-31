@@ -9,11 +9,11 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| WS-01 | Ordered items (video, live stream, playlist); Untitled until named | M | todo |  |  |
+| WS-01 | Ordered items (video, live stream, playlist); Untitled until named | M | in progress | `crates/workspace/src/intake.rs`, `crates/workspace-store` tests, `tests/local_video.rs` | Video items only, in memory; no naming or saving (M3) |
 | WS-02 | New, Open, Save, Save As, recent workspaces | M | todo |  |  |
 | WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | todo |  |  |
 | WS-04 | Unreadable items preserved | M | todo |  |  |
-| WS-05 | Background resolution; pending and unavailable rows | M | todo |  |  |
+| WS-05 | Background resolution; pending and unavailable rows | M | in progress | `crates/workspace-store` tests, `frontend/src/viewer/ViewerHost.test.tsx`, `tests/local_video.rs` | Items resolve in the background and a failed one stays with its reason, shown in the viewer area; no sidebar rows yet |
 | WS-06 | Re-resolve on file change; reload offered to open viewers | M | todo |  |  |
 | WS-07 | Rename, Edit, Remove, item information | M | todo |  |  |
 | WS-08 | Hide/Unhide entries and lanes | M | todo |  |  |
@@ -29,11 +29,11 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | todo |  |  |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `tests/local_video.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | Video only, no overlays (M2). `local --video` and File > Add Video (the shell shows the file dialog, the frontend posts the paths) share the intake; the native dialog itself has no automated test |
 | AC-02 | Drop video files on the window | M | todo |  |  |
 | AC-03 | Add Live Stream with analytics discovery | M | todo |  |  |
 | AC-04 | Add Playlist through a resolver form | M | todo |  |  |
-| AC-05 | One intake validation for dialogs, CLI and drops | M | todo |  |  |
+| AC-05 | One intake validation for dialogs, CLI and drops | M | in progress | `crates/workspace/src/intake.rs`, `tests/local_video.rs` | The dialog and the CLI use `workspace::intake`; drops are not built |
 
 ## Live
 
@@ -52,14 +52,30 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | todo |  |  |
+| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `frontend/src/playback/{clock,direction,session,FrameBuffer,protocol,wire}.test.ts`, `Transport.test.tsx`, `VideoViewer.test.tsx`, `tests/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/decode.rs`, `make tests-desktop` | Video only: no overlays (M2), lanes (OF-02) or reverse play. Variable frame rate, open at a frame and per-frame errors included. The desktop test plays a fixture on Xvfb; playback on a real GPU was measured in the D0 spike, not by a committed test |
 | OF-02 | Comparison lanes: several overlays on one video, or lanes with different videos (playlist entries) | M | todo |  |  |
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | todo |  |  |
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | todo |  |  |
 | OF-05 | Timing and alignment diagnostics per lane | M | todo |  |  |
-| OF-06 | Decoded-frame cache under one memory allowance | M | todo |  |  |
+| OF-06 | Decoded-frame cache under one memory allowance | M | in progress | `crates/playback/src/tests/{cache,planner,decode,delivery}.rs`, `tests/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize and uncached oversized frames work. Left: the cache marks on the timeline (M4) and a field for `playback.video_cache` in the Settings dialog; next-entry warm-up is OF-07 |
 | OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
 | OF-08 | Export with overlays: lane selection, quality presets, cancellable | M | todo |  |  |
+
+### Offline playback: deviations from the reference
+
+The decisions taken with the owner, with their reasons, are in
+[14](rebuild/14-build-order.md#decisions-taken-for-offline-video). The rest:
+
+| Row | Deviation | Reason |
+|-----|-----------|--------|
+| OF-06 | The frame cache lives in `playback`, not `media` | Eviction follows playback windows; export, thumbnails and live never use the cache |
+| OF-06 | Eviction takes the frame farthest from the playhead outside the protected windows; the reference was LRU | It suits scrubbing: after a jump, the frames around the old position are the least likely to be wanted |
+| OF-06 | Auto is never below 256 MiB; the reference had no floor | It is the smallest value the setting accepts, so a machine with little free memory still gets a working cache |
+| OF-01 | The index is built by scanning packets; the reference decoded the whole video. The decode scan is the fallback | The spike: 1.1 s against 36 s for 10 minutes of 1080p30, with identical results on every fixture |
+| OF-01 | The index is valid by a stat fingerprint plus a digest of the first and last 64 KiB, not a full content hash; the reference used the stat fingerprint alone | Hashing a multi-gigabyte video would defeat instant reopen |
+| OF-01 | Walking back through a group longer than the budget decodes a block of half the budget at a time | A keyframe group is never decoded again to keep one more frame |
+| OF-01 | The client compares the protocol version in `Opened` with its own and ends the session on a mismatch | A stale window stops with a message instead of misparsing frames |
+| OF-01 | Playback commands sit in a View > Playback submenu; the keys, including Left and Right for 10 frames, are the reference's | The menus are File, View, Debug and Help; there is no Playback menu |
 
 ## Inspection and display
 
@@ -102,7 +118,7 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| ST-01 | Settings dialog pages; restart marker | M | in progress | `App.test.tsx` | General page only (theme); the table declares `live` and `label` |
+| ST-01 | Settings dialog pages; restart marker | M | in progress | `App.test.tsx` | General page only (theme); the table declares `live` and `label`, and `playback.video_cache` has no field yet |
 | ST-02 | Quick Setup on first start | M | todo |  |  |
 | ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | done | `crates/settings` tests, `App.test.tsx` | Stored through `/api/settings`; the frontend applies the theme live |
 | ST-04 | `$VARIABLE` references | M | todo |  |  |
