@@ -32,6 +32,12 @@
           "default": null,
           "nullable": true
         },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "default": null,
+          "nullable": true
+        },
         "occluded": {
           "type": "bool",
           "label": "Partly hidden",
@@ -260,6 +266,41 @@
               "ref": [
                 "parameters",
                 "velocity"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Movement badge",
+          "template": "movement_badge",
+          "enabled": {
+            "call": "is_present",
+            "args": {
+              "value": {
+                "ref": [
+                  "parameters",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          "inputs": {
+            "geometry": {
+              "ref": [
+                "parameters",
+                "geometry"
+              ]
+            },
+            "color": {
+              "ref": [
+                "values",
+                "color"
+              ]
+            },
+            "motion_state": {
+              "ref": [
+                "parameters",
+                "motion_state"
               ]
             }
           }
@@ -1019,6 +1060,155 @@
         }
       ]
     },
+    "movement_badge": {
+      "label": "Movement badge",
+      "feature": "movement",
+      "description": "The motion state as a symbol in the track color on a dark tag, just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Text color",
+          "required": true
+        },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "required": true
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 10,
+            "unit": "px"
+          }
+        },
+        "background_opacity": {
+          "type": "integer",
+          "label": "Tag opacity",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 200
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-right"
+                  }
+                },
+                "dx": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "dy": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            },
+            "anchor": "top-left",
+            "runs": [
+              {
+                "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": [
+                  0,
+                  0,
+                  0
+                ],
+                "alpha": {
+                  "ref": [
+                    "parameters",
+                    "background_opacity"
+                  ]
+                }
+              },
+              "padding_x": {
+                "value": 3,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 0,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
     "part_link": {
       "label": "Part link",
       "feature": "relations",
@@ -1251,6 +1441,13 @@
                   "observation",
                   "velocity"
                 ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
               }
             }
           }
@@ -1302,6 +1499,13 @@
                   "scene",
                   "observation",
                   "velocity"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               },
               "occluded": {
@@ -1381,6 +1585,13 @@
                   "velocity"
                 ]
               },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              },
               "occluded": {
                 "call": "coalesce",
                 "args": {
@@ -1450,6 +1661,13 @@
                   "velocity"
                 ]
               },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              },
               "occluded": {
                 "call": "coalesce",
                 "args": {
@@ -1517,6 +1735,13 @@
                   "scene",
                   "observation",
                   "velocity"
+                ]
+              },
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               },
               "occluded": {

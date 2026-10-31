@@ -33,6 +33,7 @@ from ax_devil.modules.workspace.ui.add_content.live_transport_pages import (
     apply_env_hint,
     configured_overlay,
 )
+from ax_devil.modules.workspace.ui.add_content.resolution_field import ResolutionField
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 
 
@@ -81,7 +82,6 @@ class AddLiveStreamDialog(BaseDialog):
             (self._username_edit, item.username),
             (self._password_edit, item.password),
             (self._camera_head_edit, str(item.camera_head)),
-            (self._resolution_edit, item.resolution),
             (self._stream_url_edit, item.stream_url or ""),
             (self._transports.mqtt_host_edit, item.mqtt_host),
             (self._transports.mqtt_username_edit, item.mqtt_username),
@@ -89,6 +89,7 @@ class AddLiveStreamDialog(BaseDialog):
         ):
             edit.setPlaceholderText("")
             edit.setText(value)
+        self._resolution.restore(item.resolution)
         self._transports.mqtt_port_edit.setText(str(item.mqtt_port))
         self._transports.websocket_channel_id_edit.setText(str(item.websocket_channel_id))
         self._device_port_edit.setText(str(item.device_port or ""))
@@ -192,9 +193,8 @@ class AddLiveStreamDialog(BaseDialog):
         connection_layout.addRow("Camera Head", self._camera_head_edit)
         connection_layout.addRow("RTSP Port", self._rtsp_port_edit)
 
-        self._resolution_edit = QLineEdit()
-        self._resolution_edit.setText(rtsp_defaults.get("resolution", "1280x720"))
-        connection_layout.addRow("Resolution", self._resolution_edit)
+        self._resolution = ResolutionField(self._camera_head_edit, self)
+        connection_layout.addRow("Resolution", self._resolution)
 
         self._stream_url_edit = QLineEdit()
         self._stream_url_edit.setPlaceholderText("Optional — overrides auto-built URL")
@@ -213,7 +213,8 @@ class AddLiveStreamDialog(BaseDialog):
 
         self._handler_combo = QComboBox()
         self._handler_combo.addItem("(None)", None)
-        self._populate_handler_types()
+        for decoder in self._intake.live_overlay_decoder_options():
+            self._handler_combo.addItem(decoder.display_name, decoder.handler_type)
         overlay_layout.addRow("Handler Type", self._handler_combo)
 
         self._transports = TransportPages(raw_mqtt_defaults, mqtt_defaults, websocket_defaults, self)
@@ -313,11 +314,7 @@ class AddLiveStreamDialog(BaseDialog):
         connection = self._current_device_connection()
         self._transports.data_source_choice.loader.set_connection(connection)
         self._transports.websocket_topic_choice.loader.set_connection(connection)
-
-    def _populate_handler_types(self) -> None:
-        """Populate handler combo from Workspace live overlay decoder options."""
-        for decoder in self._intake.live_overlay_decoder_options():
-            self._handler_combo.addItem(decoder.display_name, decoder.handler_type)
+        self._resolution.set_connection(connection)
 
     def _connect_validation(self) -> None:
         """Re-check the form whenever any field changes."""
@@ -375,7 +372,7 @@ class AddLiveStreamDialog(BaseDialog):
             username=self._text_or_default(self._username_edit, str(raw_device_defaults.get("username") or "")),
             password=self._text_or_default(self._password_edit, str(raw_device_defaults.get("password") or "")),
             camera_head=int(camera_head),
-            resolution=self._resolution_edit.text().strip() or "1280x720",
+            resolution=self._resolution.value(),
             stream_url=stream_url if stream_url or saved_empty_url else None,
             overlay_mode=mode,
             handler_type=handler_type,
@@ -422,3 +419,4 @@ class AddLiveStreamDialog(BaseDialog):
         """Release asynchronous dialog resources."""
         self._transports.data_source_choice.cleanup()
         self._transports.websocket_topic_choice.cleanup()
+        self._resolution.cleanup()

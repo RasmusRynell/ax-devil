@@ -7,8 +7,8 @@ import inspect
 
 from ax_devil.modules.scene import model
 
-# Snapshot for SCENE_MODEL_VERSION (3, 1). Update together with the version.
-EXPECTED_VERSION = (3, 1)
+# Snapshot for SCENE_MODEL_VERSION (3, 2). Update together with the version.
+EXPECTED_VERSION = (3, 2)
 EXPECTED_FIELDS = {
     "Attribute": ("name", "value"),
     "BoundingBox": ("top_left", "bottom_right"),
@@ -35,6 +35,7 @@ EXPECTED_FIELDS = {
         "geographical_coordinates",
         "world_coordinates",
         "debug",
+        "source_data",
     ),
     "Operation": ("timestamp",),
     "Polygon": ("points",),

@@ -17,6 +17,7 @@ from .decoder_plugins import (
     get_payload_decoder,
     get_payload_filter_factory,
 )
+from .line_decoder_plugin import DecoderSpec, LineDecoderPlugin
 from .loader import ApplicationPluginLoader
 from .playlist_resolvers import (
     PLAYLIST_RESOLVER_PLUGIN_TYPE,
@@ -32,11 +33,13 @@ __all__ = [
     "DECODER_PLUGIN_TYPE",
     "DecoderPlugin",
     "DecoderPluginDefinition",
+    "DecoderSpec",
     "FileToSceneDecoderDefinition",
     "HandlerTypeName",
     "JobContext",
     "JobScope",
     "LatestRequest",
+    "LineDecoderPlugin",
     "LoadWarning",
     "PLUGIN_API_VERSION",
     "PLAYLIST_RESOLVER_PLUGIN_TYPE",

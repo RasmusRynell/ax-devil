@@ -152,6 +152,22 @@ def test_clothing_colors_are_listed_under_a_heading_per_attribute() -> None:
     assert rows[3].field_id != rows[6].field_id
 
 
+def test_debug_lists_fields_the_source_supplied_first_under_captions() -> None:
+    def debug_rows(debug: dict[str, Any], source_data: dict[str, Any]) -> Section:
+        entity = Entity(EntityId("a"))
+        entity.add_observation(Observation(frame_number=0, geometry=_BOX, debug=debug, source_data=source_data))
+        return {section.name: section for section in field_sections(entity)}["Debug"]
+
+    mixed = debug_rows({"latency": 12}, {"vendor": {"track_id": 9}})
+    assert [row.label for row in mixed.rows] == ["Source", "vendor.track_id", "Computed", "latency"]
+    assert mixed.count == 2
+    assert [row.label for row in debug_rows({}, {"uvg_vcm": {"track_id": 9}}).rows] == [
+        "Source",
+        "uvg_vcm.track_id",
+    ]
+    assert [row.label for row in debug_rows({"latency": 12}, {}).rows] == ["latency"]
+
+
 def test_a_pinned_field_shows_the_same_field_of_whichever_object_is_shown(qtbot: QtBot) -> None:
     pins = PinnedFields()
     first, scene = _page_of(qtbot, pins, "a", {"moving": True, "idle_s": 3.5})

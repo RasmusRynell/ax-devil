@@ -28,14 +28,12 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
     OpenedLane,
 )
 from ax_devil.modules.video_viewer.offline_lane import OfflineLane
-from ax_devil.modules.video_viewer.overlay_persistence import (
-    OverlayPersistenceSettings,
-)
 from ax_devil.modules.video_viewer.scene_frame_presenter import SceneFramePresenter
 from ax_devil.modules.video_viewer.timing_diagnostics_widget import (
     OverlayAlignmentIndicator,
     TimingDiagnosticsWidget,
 )
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults
 from ax_devil.modules.workspace.core import EntryLane
 
 
@@ -109,6 +107,7 @@ def build_lane(
     use_lane_controls: bool,
     lane_visibility: dict[int, OverlayVisibility],
     pane_title: str,
+    defaults: ViewDefaults,
     rollback: ExitStack,
 ) -> OfflineLane:
     lane_content = opened.lane
@@ -125,6 +124,7 @@ def build_lane(
 
     overlay_source = opened.overlay.source if opened.overlay else None
     timing_controls = TimingDiagnosticsWidget()
+    rollback.callback(timing_controls.cleanup)
     render_catalog_selection = render_catalog_manager.create_selection(
         visibility=lane_visibility.get(opened.lane_index, OverlayVisibility()), parent=container
     )
@@ -137,15 +137,18 @@ def build_lane(
 
     render_catalog_selection.selectionChanged.connect(remember_visibility)
     filter_model = SessionFilter(overlay_source.get_filter_config() if overlay_source is not None else None)
+    filter_model.apply_choice(defaults.object_filter)
+    timing_controls.set_timestamp_fallback_policy(defaults.overlay_sync)
     export_action = QAction(Icon.EXPORT.icon(), "Export video", display)
     tools_panel = MediaToolsPanel(
         render_catalog_selection,
         filter_model=filter_model,
-        overlay_settings=OverlayPersistenceSettings.default_enabled(),
+        overlay_settings=defaults.sticky,
         export_action=export_action,
         scene_history=opened.scene_history,
         timing_controls=timing_controls,
     )
+    rollback.callback(tools_panel.cleanup)
     presenter = SceneFramePresenter(
         scene_filter=filter_model,
         scene_render_catalog=render_catalog_selection.active_catalog(),

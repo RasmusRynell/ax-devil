@@ -406,7 +406,7 @@ def open_workspace(ctx: click.Context, workspace_file: Path) -> None:
 @click.option("--username", default=None, help="Device username (default: config/env)")
 @click.option("--password", default=None, help="Device password (default: config/env)")
 @click.option("--camera-head", type=int, default=None, help="Camera head number (default: config)")
-@click.option("--resolution", default=None, help="Video resolution e.g. 1280x720 (default: config)")
+@click.option("--resolution", default=None, help="Video resolution e.g. 1280x720 (default: camera default)")
 @click.option(
     "--overlay",
     type=click.Choice(["none", "rtsp", "mqtt", "websocket"]),

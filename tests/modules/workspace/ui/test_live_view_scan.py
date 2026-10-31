@@ -60,8 +60,8 @@ def test_a_scan_lists_only_cameras_the_workspace_does_not_hold(live: Live, monke
     assert live.cameras()[2:] == ["192.0.2.12"]
     assert live.rows()["192.0.2.12"] == "Add"
     assert "AXIS P3265-LVE" in live.detail("192.0.2.12")
-    assert "ACCC8E000002" in live.row("192.0.2.12").toolTip()
-    assert "12.6.85" in live.row("192.0.2.12").toolTip()
+    assert "ACCC8E000002" in live.row("192.0.2.12").row.tooltip
+    assert "12.6.85" in live.row("192.0.2.12").row.tooltip
 
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", ""))
 
@@ -74,9 +74,9 @@ def test_a_held_camera_the_scan_found_shows_and_is_found_by_what_the_scan_learne
 
     scan(live, DiscoveredCamera("192.0.2.10", "AXIS Q1656", "ACCC8E000001", "11.11.73"))
 
-    hover = live.row("Entrance").toolTip()
+    hover = live.row("Entrance").row.tooltip
     assert all(fact in hover for fact in ("AXIS Q1656", "ACCC8E000001", "11.11.73"))
-    assert "AXIS Q1656" not in live.row("192.0.2.11").toolTip()
+    assert "AXIS Q1656" not in live.row("192.0.2.11").row.tooltip
     live.search("q1656")
     assert list(live.rows()) == ["Entrance", "Entrance/Video only"]
 
@@ -90,9 +90,7 @@ def test_add_puts_the_camera_in_the_workspace_and_starts_its_stream(
     config.set("storage", {key: str(tmp_path / key) for key in config.get_raw("storage")})
     defaults = config.get_raw("defaults")
     defaults["device"].update({"host": "$AX_DEVIL_TARGET_ADDR", "username": "$CAMERA_USER", "password": "$CAMERA_PASS"})
-    defaults["live_stream"]["rtsp"].update(
-        {"camera_head": 2, "resolution": "640x480", "data_stream_handler": "ONVIF_XML"}
-    )
+    defaults["live_stream"]["rtsp"].update({"camera_head": 2, "data_stream_handler": "ONVIF_XML"})
     defaults["live_stream"]["overlay_source"] = "rtsp"
     config.set("defaults", defaults)
     scan(
@@ -111,7 +109,7 @@ def test_add_puts_the_camera_in_the_workspace_and_starts_its_stream(
         "$CAMERA_USER",
         "$CAMERA_PASS",
     )
-    assert (item.camera_head, item.resolution, item.overlay_mode) == (2, "640x480", LiveOverlayMode.RTSP)
+    assert (item.camera_head, item.resolution, item.overlay_mode) == (2, "", LiveOverlayMode.RTSP)
     assert live.streams() == {"192.0.2.34/ONVIF_XML": "Stop stream"}
     assert live.center.get_widget_count() == 1
     assert live.checker.calls == [], "the scan has just shown the login works"

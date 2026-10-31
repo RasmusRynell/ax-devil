@@ -15,7 +15,7 @@ from ax_devil.modules.scene.rendering import OverlayVisibility, SceneRenderCatal
 from ax_devil.modules.settings.logging_config import get_logger
 from ax_devil.modules.settings.settings import GlobalSettings
 from ax_devil.modules.video_player.engine.viewport_state import ZoomStep
-from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, overlay_specs, prepare_entry
+from ax_devil.modules.video_viewer.entry_preparation import entry_preparation, prepare_entry
 from ax_devil.modules.video_viewer.loading_indicator import LoadingIndicator
 from ax_devil.modules.video_viewer.offline_entry_media import (
     EntryMedia,
@@ -28,6 +28,7 @@ from ax_devil.modules.video_viewer.offline_transport import OfflineTransport, Tr
 from ax_devil.modules.video_viewer.offline_viewer_navigation import OfflineViewerNavigation
 from ax_devil.modules.video_viewer.offline_viewer_runtime import OfflineSession
 from ax_devil.modules.video_viewer.offline_viewer_widgets import EntryNavigationBar, ViewerOverlayHost, exec_lane_menu
+from ax_devil.modules.video_viewer.view_settings import view_defaults
 from ax_devil.modules.workspace.core import (
     BookmarkPosition,
     BookmarkTarget,
@@ -148,7 +149,13 @@ class OfflineVideoViewerWidget(ViewerWidget):
         self._opening.submit(
             self._opening_jobs,
             "open offline entry",
-            partial(open_entry_media, entry, lane_indices, QThread.currentThread()),
+            partial(
+                open_entry_media,
+                entry,
+                lane_indices,
+                QThread.currentThread(),
+                defaults=view_defaults(),
+            ),
             on_result=partial(self._on_entry_opened, index, start_frame, keep_shown),
             on_error=lambda error: self._on_entry_opened(index, start_frame, keep_shown, EntryMedia(error=str(error))),
             on_progress=indicator.set_message,
@@ -174,7 +181,6 @@ class OfflineVideoViewerWidget(ViewerWidget):
             entry_preparation(
                 entries[next_index],
                 self._considered_lanes(next_index),
-                overlay_specs(entries[self._current_index], self._considered_lanes(self._current_index)),
             )
             if next_index is not None
             else None

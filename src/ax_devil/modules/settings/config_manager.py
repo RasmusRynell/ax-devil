@@ -46,6 +46,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "network_scan": {"on_startup": True, "sign_in": True},
         "playback": {"video_cache_total_mib": VideoCacheBudget().config_value, "prepare_next_video": False},
         "overlay_interaction": OverlayPreference.config_value(OverlayPreference.from_config(None)),
+        "view_defaults": {"sticky_overlays": None, "overlay_sync": None, "object_filter": None},
     },
     "defaults": {
         "device": {
@@ -59,7 +60,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "live_stream": {
             "rtsp": {
                 "camera_head": 1,
-                "resolution": "1280x720",
                 "data_stream_handler": "ONVIF_XML",
             },
             "analytics-mqtt": {

@@ -69,7 +69,7 @@ check_app() {
 from ax_devil.modules.plugin_system import get_payload_decoder
 from ax_devil.modules.plugin_installation.validate import validate_plugins
 validate_plugins(['example-plugin'])
-assert get_payload_decoder('EXAMPLE_FRAME').decode({'frame': 42}).time_slice.start == 42
+assert get_payload_decoder('EXAMPLE_FRAME').decode('42').time_slice.start == 42
 "
     step "Play a local video with plugins loaded"
     status=0

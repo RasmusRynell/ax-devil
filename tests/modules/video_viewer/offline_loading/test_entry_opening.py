@@ -24,6 +24,7 @@ from ax_devil.modules.video_viewer.offline_entry_media import (
     open_entry_media,
     release_media,
 )
+from ax_devil.modules.video_viewer.view_settings import ViewDefaults
 from ax_devil.modules.workspace.core import (
     EntryLane,
     FileOverlaySourceSpec,
@@ -35,6 +36,9 @@ from ax_devil.modules.workspace.core import (
 from tests.helpers.offline_viewer import playlist_entry
 
 _T = TypeVar("_T")
+
+
+DEFAULTS = ViewDefaults()
 
 
 def _all_lanes(entry: PlaylistEntry) -> tuple[int, ...]:
@@ -50,7 +54,7 @@ def _job(token: CancelToken | None = None) -> MagicMock:
 
 
 def _open_now(entry: PlaylistEntry) -> EntryMedia:
-    return open_entry_media(entry, _all_lanes(entry), QThread.currentThread(), _job())
+    return open_entry_media(entry, _all_lanes(entry), QThread.currentThread(), _job(), defaults=DEFAULTS)
 
 
 def _start_opening(owner: QObject, entry: PlaylistEntry, delivered: list[EntryMedia]) -> LatestRequest:
@@ -59,7 +63,7 @@ def _start_opening(owner: QObject, entry: PlaylistEntry, delivered: list[EntryMe
     request.submit(
         entry_opening_scope(owner),
         "open test entry",
-        partial(open_entry_media, entry, _all_lanes(entry), QThread.currentThread()),
+        partial(open_entry_media, entry, _all_lanes(entry), QThread.currentThread(), defaults=DEFAULTS),
         on_result=delivered.append,
         on_error=lambda error: pytest.fail(str(error)),
         on_discard=release_media,
@@ -215,7 +219,7 @@ class _StagedOpen:
         monkeypatch.setattr(
             offline_entry_media,
             "create_overlay_source",
-            lambda _overlay, *, frame_timeline: self._run(
+            lambda _overlay, *, frame_timeline, defaults: self._run(
                 "overlay open", offline_entry_media.LaneOverlay(self.overlay_source, policy)
             ),
         )
@@ -252,7 +256,7 @@ def test_cancelled_open_skips_every_later_step_and_returns_what_it_opened(
     job = _job()
     opening = _StagedOpen(monkeypatch, lambda stage: job.token.cancel() if stage == cancel_during else None)
 
-    media = open_entry_media(opening.entry, _all_lanes(opening.entry), QThread.currentThread(), job)
+    media = open_entry_media(opening.entry, _all_lanes(opening.entry), QThread.currentThread(), job, defaults=DEFAULTS)
 
     assert opening.reached == opening.expected_reached(cancel_during)
     assert media.error is not None
@@ -265,7 +269,7 @@ def test_opening_cancelled_before_it_starts_opens_nothing(monkeypatch: pytest.Mo
     job.token.cancel()
     opening = _StagedOpen(monkeypatch, lambda _stage: None)
 
-    media = open_entry_media(opening.entry, _all_lanes(opening.entry), QThread.currentThread(), job)
+    media = open_entry_media(opening.entry, _all_lanes(opening.entry), QThread.currentThread(), job, defaults=DEFAULTS)
 
     assert opening.reached == []
     assert media.error is not None
@@ -282,7 +286,7 @@ def test_cancelling_between_lanes_returns_the_lane_already_opened_and_opens_no_m
     monkeypatch.setattr(offline_entry_media, "create_frame_source", lambda _video: sources.pop(0))
     entry = playlist_entry(Path("first"), Path("second"))
 
-    media = open_entry_media(entry, _all_lanes(entry), QThread.currentThread(), job)
+    media = open_entry_media(entry, _all_lanes(entry), QThread.currentThread(), job, defaults=DEFAULTS)
 
     assert media.video_sources == [first]
     assert len(sources) == 1  # The second video was never opened.

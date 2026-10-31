@@ -10,7 +10,6 @@ from typing import Any, ClassVar, cast
 from ax_devil.core.device_connection import DeviceConnection, DeviceProtocol
 from ax_devil.core.source_paths import SourcePaths
 from ax_devil.modules.data_sources.file_data_provider.pyav_decoder.video_open_config import ImageSequenceConfig
-from ax_devil.modules.synchronization.timestamp_matching import TimestampFallbackPolicy
 
 
 class OverlaySourceKind(Enum):
@@ -100,7 +99,6 @@ class FileOverlaySourceSpec:
     path: Path
     handler_type: str
     source_kind: ClassVar[OverlaySourceKind] = OverlaySourceKind.FILE_SOURCE
-    timestamp_fallback_policy: TimestampFallbackPolicy = field(default_factory=TimestampFallbackPolicy)
     decoder_kwargs: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
 
     @property
@@ -126,7 +124,7 @@ class LiveRTSPStreamSpec:
     username: str = field(repr=False)
     password: str = field(repr=False)
     camera_head: int = 1
-    resolution: str = "1280x720"
+    resolution: str = ""
     stream_url: str | None = field(default=None, repr=False)
     device_api_protocol: DeviceProtocol = DeviceProtocol.HTTPS
     device_port: int = 0

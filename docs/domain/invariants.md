@@ -92,9 +92,10 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
   before unscored, then by score, then by confidence.
 - `EntityRelation` is a directed link between entity IDs. A relation with a missing endpoint is valid Scene data but is
   not rendered.
-- `Scene.debug` and `Observation.debug` are decoder-owned, free-form, and picklable. Inspection shows and queries
-  `Observation.debug`; `Scene.debug` is kept for diagnostics only. Scene filtering, rendering, synchronization, and
-  hit-testing never read either.
+- `Observation.source_data` holds what the source supplied verbatim; `Observation.debug` holds what the decoder
+  computed. Both are free-form and picklable, and inspection shows and queries them under Debug, each field with its
+  `FieldOrigin`. `Scene.debug` is free-form decoder-owned frame diagnostics, never displayed and without origin.
+  Scene filtering, rendering, synchronization, and hit-testing never read any of them.
 - Changing the Scene contract requires bumping `SCENE_MODEL_VERSION`: major when breaking, including stricter value
   requirements, minor when additive. Scene datetimes must be timezone-aware. Decoder plugins declaring another major,
   or a newer minor, fail to load.
@@ -156,7 +157,8 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
   source in it until `release_media`. Worker threads never hold the last reference to objects they hand to the GUI
   thread.
 - Queued callbacks from replaced or cleaned-up live sources cannot affect the live viewer. Sources own their workers
-  and defer their own deletion until the worker finishes; the controller never inspects worker internals.
+  and defer their own deletion until the worker finishes; the controller never inspects worker internals. Quit waits
+  for retiring workers, bounded by a deadline, so transport cleanup such as restoring camera state completes.
 - Live sources report failures they retry themselves with `sourceReconnecting` and failures needing a manual retry
   with `sourceError`; the viewer shows both with their reason, never only in logs.
 - Automatic cyclic GC is disabled after startup; `app.py` freezes the startup heap and collects on a GUI-thread timer
@@ -193,12 +195,15 @@ rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs).
 ## Data Pipeline
 
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
-- Scene file provider artifacts invalidate unless their complete identity matches: source fingerprint, decoder name,
-  explicit artifact version, Scene model version, and provider-owned decode options. Cache files can always be rebuilt.
-  The source fingerprint is taken from the held handle before the source is read, so a file written during indexing
-  reads as changed on the next open; cache files are replaced atomically and read through the handle that wrote them. An
-  open source-indexed store holds its source file open, and stops serving once that file is rewritten in place, since
-  its byte offsets no longer match; a replaced file leaves it valid.
+- Scene file provider artifacts invalidate unless their complete identity matches: source content digest (the stat
+  fingerprint only spares hashing an unchanged file, and never on Windows, where ctime is not a change time), decoder
+  name, explicit artifact version, Scene model version, provider-owned decode options, and store format version. When
+  only the stat fingerprint differs, the artifact is accepted and republished with the new one. The fingerprint is
+  taken from the held handle before the source is read. If the source changed during the build, a source-indexed store
+  skips persisting and a derived one persists without a digest, so a file written during indexing reads as changed on
+  the next open (except where the platform has no change time, Windows, and the original is restored); cache files are replaced atomically and read through the handle that wrote them.
+  Cache files can always be rebuilt. An open source-indexed store holds its source file open, and stops serving once
+  that file is rewritten in place, since its byte offsets no longer match; a replaced file leaves it valid.
 - Both storage modes persist Scene history records built from the sample lookup serves for each timestamp. Offline
   history places a timestamp-keyed event on the first video frame at or after its sample and a frame-keyed one on its
   sequence frame, and omits events outside the video; an object is present on exactly the frames whose looked-up sample

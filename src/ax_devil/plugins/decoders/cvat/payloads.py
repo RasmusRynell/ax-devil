@@ -23,7 +23,7 @@ class CVATBaseShapePayload(TypedDict, total=False):
     z_order: int | None
     group: int | None
     source: str
-    debug: dict[str, Any]
+    source_data: dict[str, Any]
 
 
 class CVATBoxPayload(CVATBaseShapePayload):

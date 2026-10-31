@@ -202,7 +202,7 @@ class UVGVCMFrameDecoder(PayloadToSceneDecoder):
                 frame_number=frame_index,
                 geometry=_geometry(detection, context),
                 classification=[Classification(class_name, attributes=attributes)],
-                debug={"uvg_vcm": detection},
+                source_data={"uvg_vcm": detection},
             )
             scene.add_entity(Entity(entity_id, observations=[observation]))
         return scene

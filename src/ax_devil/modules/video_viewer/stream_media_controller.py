@@ -49,6 +49,7 @@ class StreamMediaController:
         content: LiveVideoContent,
         *,
         render_catalog_selection: SceneRenderCatalogSelection,
+        overlay_persistence: OverlayPersistenceSettings,
         frame_displayed: Callable[[VideoFrameWithOverlays], None] | None = None,
         connection_changed: Callable[[LiveConnectionStatus], None] | None = None,
     ) -> None:
@@ -63,8 +64,7 @@ class StreamMediaController:
         self._presenter = SceneFramePresenter(
             scene_render_catalog=self._render_catalog_selection.active_catalog(), await_catalog=True
         )
-        self._overlay_persistence = OverlayPersistenceSettings.default_enabled()
-        self._overlay_policy = OverlayPersistencePolicy(self._overlay_persistence.copy())
+        self._overlay_policy = OverlayPersistencePolicy(overlay_persistence)
         self._paused: bool = False
         self._connection_changed = connection_changed
         self._source_slots: list[tuple[SignalInstance, Callable[..., None]]] = []
@@ -280,16 +280,12 @@ class StreamMediaController:
 
     def set_overlay_persistence(self, persistence_settings: OverlayPersistenceSettings) -> None:
         """Update sticky overlay configuration at runtime."""
-        snapshot = persistence_settings.copy()
-        self._overlay_persistence = snapshot
-        self._overlay_policy.update_settings(snapshot)
+        self._overlay_policy.update_settings(persistence_settings)
 
     def _init_synchronizer(self, frame_display: FrameDisplay) -> QtStreamSync:
-        delay_ms = 1500
-
         synchronizer = QtStreamSync(
             parent=frame_display,
-            delay_ms=delay_ms,
+            overlay_enabled=bool(self._content.overlays),
         )
         synchronizer.syncReady.connect(self._on_sync_result)
         return synchronizer
@@ -338,21 +334,13 @@ class StreamMediaController:
         self._source_slots = []
 
     def _release_sources(self) -> None:
-        """Disconnect, stop and delete every owned transport."""
+        """Invalidate delivery before requesting asynchronous transport retirement."""
+        sources, self._sources = self._sources, []
         self._disconnect_source_signals()
-        self._stop_and_wait_sources()
-        self._delete_source_objects()
         self.video_source = None
         self.overlay_source = None
-        self._sources = []
-
-    def _stop_and_wait_sources(self) -> None:
-        for source in self._sources:
-            source.stop()
-
-    def _delete_source_objects(self) -> None:
-        for source in self._sources:
-            source.deleteLater()
+        for source in sources:
+            source.retire()
 
     def _cleanup_synchronizer(self) -> None:
         if self.synchronizer is not None:

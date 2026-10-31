@@ -36,66 +36,38 @@ py-modules = ["example_plugin"]
 ### example_plugin.py
 
 ```python
-from typing import Any
-
-from ax_devil.modules.plugin_system import DecoderPlugin, PayloadToSceneDecoderDefinition
-from ax_devil.modules.scene.decoding import PayloadToSceneDecoder
+from ax_devil.modules.plugin_system import DecoderSpec, LineDecoderPlugin
 from ax_devil.modules.scene.model import Scene, TimeSlice
 
 
-class ExampleDecoder(PayloadToSceneDecoder):
-    """Decode a frame number into an empty scene for that frame."""
+class ExamplePlugin(LineDecoderPlugin):
+    """Decode one frame number per text record, read from a file."""
 
-    def decode(self, payload: Any) -> Scene:
-        """Accept a payload such as {\"frame\": 42}."""
-        frame = int(payload["frame"])
+    spec = DecoderSpec(
+        id="example",
+        name="Example decoder",
+        handler="EXAMPLE_FRAME",
+        api=3,
+        scene=(3, 1),
+        extensions=(".jsonl",),
+        artifact_version=1,
+        supports_sequence_lookup=True,
+    )
+
+    def decode(self, payload: str) -> Scene:
+        """Accept a record such as '42'; the base handles bytes, blanks and whitespace."""
+        frame = int(payload)
         return Scene(time_slice=TimeSlice(start=frame, end=frame))
-
-
-class ExamplePlugin(DecoderPlugin):
-    """Expose the example payload decoder to ax-devil."""
-
-    @classmethod
-    def required_api_version(cls) -> int:
-        """Declare the plugin API this implementation supports."""
-        return 3
-
-    @classmethod
-    def scene_model_version(cls) -> tuple[int, int]:
-        """Declare the Scene model version this decoder builds Scenes for."""
-        return (3, 1)
-
-    @classmethod
-    def plugin_id(cls) -> str:
-        """Return a unique identifier within the decoder family."""
-        return "example"
-
-    @classmethod
-    def display_name(cls) -> str:
-        """Return the name shown by ax-devil."""
-        return "Example decoder"
-
-    @classmethod
-    def payload_to_scene_decoders(cls) -> tuple[PayloadToSceneDecoderDefinition, ...]:
-        """Publish the handler and a decoder factory for each session."""
-        return (
-            PayloadToSceneDecoderDefinition(
-                handler_type="EXAMPLE_FRAME",
-                decoder_factory=ExampleDecoder,
-                display_name="Example frame payload",
-            ),
-        )
 ```
 
-Installation checks that the entry point imports and registers successfully. This example contributes a **payload**
-handler, for decoded streaming messages; it does not contribute a file handler to `list-handlers` or draw any
-objects yet. Add entities to the returned Scene to implement your format.
+Installation checks that the entry point imports and registers successfully. This example decodes text records from
+files. `decode` must not depend on earlier calls: records are decoded in seek order by one reused instance. Add entities to the returned Scene to implement your format.
 
 A `Classification` carries `score` (`Score`, any finite number) and `confidence` (`Confidence`, any finite number) separately; emit
 each as the source provides it, or `None`.
 
-Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame-level) or `Observation.debug`
-(per object). For display behavior and ownership, see the [Scene Model invariants](../../../docs/domain/invariants.md#scene-model).
+Put values copied verbatim from the source in `Observation.source_data` and values your decoder computed in
+`Observation.debug`; both are shown under Debug. `Scene.debug` is free-form frame diagnostics that are not shown. For display behavior and ownership, see the [Scene Model invariants](../../../docs/domain/invariants.md#scene-model).
 
 ## Packaging requirements
 
@@ -104,19 +76,19 @@ Decoders may put any picklable debug data, in any shape, in `Scene.debug` (frame
   Include `"ax-devil"` with any required version constraints. The installer supplies the editable app checkout
   in development, or pins the exact base app release for standalone installations. Plugins cannot upgrade the app.
 - Declare supported Python versions honestly. The installation uses the Python version running ax-devil.
-- Point an entry point at your plugin class or `PLUGIN_CLASS`. Declare `required_api_version()` explicitly. The host's
-  version is `PLUGIN_API_VERSION` in `ax_devil.modules.plugin_system.base` (currently 3). A plugin built for an
+- Point an entry point at your plugin class or `PLUGIN_CLASS`. Declare supported versions as literals in `DecoderSpec`
+  (or the methods on `DecoderPlugin`). The host's API is `PLUGIN_API_VERSION` in `ax_devil.modules.plugin_system.base`
+  (currently 3). A plugin built for an
   earlier version is rejected at load; there is no compatibility path, so rebuild it against the current version.
-- Decoder plugins must declare `scene_model_version()` as `(major, minor)`. ax-devil exposes its own as
+- Declare the Scene version as `(major, minor)`. ax-devil exposes its own as
   `ax_devil.modules.scene.model.SCENE_MODEL_VERSION`. A plugin loads when the major matches and its minor is not
   newer. Breaking changes, including stricter requirements on Scene values, bump the major; additive fields bump the
   minor. Scene datetimes must be timezone-aware. Plugins that fail to load are listed in the Plugins view. Derived caches rebuild automatically when
-  the Scene model version changes; bump the `artifact_version` argument to `SceneDecoderFileProvider` (see `decoders/mot/provider.py`) only when your
-  own decoded output changes.
+  the Scene model version changes; bump `artifact_version` only when your decoded output changes.
 - Keep plugin IDs and handler types unique. Duplicate or incompatible registrations fail installation.
-- For file decoders, override `file_to_scene_decoders()` and return `FileToSceneDecoderDefinition` objects. Set
-  `file_extensions` (lowercase, such as `(".txt",)`) so the app can pick your decoder when it is the only one that reads
-  a chosen overlay file; leaving it empty keeps the decoder available for every file.
+- Use `LineDecoderPlugin` for independent text records. Whole-file parsing, aggregation or non-text payloads use
+  `DecoderPlugin` with explicit handler definitions (see `decoders/mot/`). Declare lowercase extensions so the app
+  can select the sole matching decoder; empty means any file.
 - For playlist resolvers, use the `ax_devil.playlist_resolver_plugins` entry-point group and subclass
   `PlaylistResolverPlugin`. A workspace saves a resolver's id and settings and runs it again on every open, so:
   - `resolve(settings, token)` is required and headless: it turns a JSON-serializable settings dict (strings, numbers,

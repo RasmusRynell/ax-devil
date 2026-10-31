@@ -1131,6 +1131,172 @@
         }
       ]
     },
+    "movement_badge": {
+      "label": "Movement badge",
+      "feature": "movement",
+      "description": "A small tab in the class color just right of the box's top-right corner: ▶ moving, Ⅱ stationary, ? unknown.",
+      "parameters": {
+        "geometry": {
+          "type": "image_box",
+          "label": "Object box",
+          "required": true
+        },
+        "color": {
+          "type": "rgb",
+          "label": "Tab color",
+          "required": true
+        },
+        "ink": {
+          "type": "rgb",
+          "label": "Text color",
+          "description": "Black or white, whichever contrasts.",
+          "required": true
+        },
+        "motion_state": {
+          "type": "string",
+          "label": "Motion state",
+          "required": true
+        },
+        "font_size": {
+          "type": "length",
+          "label": "Font size",
+          "minimum": 0,
+          "exclusive_minimum": 0,
+          "default": {
+            "value": 11,
+            "unit": "px"
+          }
+        },
+        "shift": {
+          "type": "length",
+          "label": "Shift",
+          "description": "Moves the tab to line up with the outside of the box line.",
+          "default": {
+            "value": 0.75,
+            "unit": "px"
+          }
+        }
+      },
+      "steps": [
+        {
+          "label": "Label",
+          "primitive": "label",
+          "fields": {
+            "position": {
+              "call": "offset_point",
+              "args": {
+                "point": {
+                  "call": "box_anchor",
+                  "args": {
+                    "geometry": {
+                      "ref": [
+                        "parameters",
+                        "geometry"
+                      ]
+                    },
+                    "anchor": "top-right"
+                  }
+                },
+                "dx": {
+                  "ref": [
+                    "parameters",
+                    "shift"
+                  ]
+                },
+                "dy": {
+                  "call": "mul",
+                  "args": {
+                    "values": [
+                      {
+                        "ref": [
+                          "parameters",
+                          "shift"
+                        ]
+                      },
+                      -1
+                    ]
+                  }
+                }
+              }
+            },
+            "anchor": "top-left",
+            "runs": [
+              {
+                "text": {
+                  "call": "lookup_text",
+                  "args": {
+                    "text": {
+                      "ref": [
+                        "parameters",
+                        "motion_state"
+                      ]
+                    },
+                    "mapping": [
+                      {
+                        "key": "moving",
+                        "text": "▶"
+                      },
+                      {
+                        "key": "stationary",
+                        "text": "Ⅱ"
+                      },
+                      {
+                        "key": "unknown",
+                        "text": "?"
+                      }
+                    ],
+                    "default": "?"
+                  }
+                },
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "ink"
+                  ]
+                },
+                "weight": "medium"
+              }
+            ]
+          },
+          "style": {
+            "label": {
+              "size": {
+                "ref": [
+                  "parameters",
+                  "font_size"
+                ]
+              },
+              "family": null,
+              "background": {
+                "color": {
+                  "ref": [
+                    "parameters",
+                    "color"
+                  ]
+                },
+                "alpha": 255
+              },
+              "padding_x": {
+                "value": 3,
+                "unit": "px"
+              },
+              "padding_y": {
+                "value": 1,
+                "unit": "px"
+              },
+              "radius": {
+                "value": 0,
+                "unit": "px"
+              },
+              "gap": {
+                "value": 0,
+                "unit": "px"
+              }
+            }
+          }
+        }
+      ]
+    },
     "part_link": {
       "label": "Part link",
       "feature": "relations",
@@ -1383,6 +1549,48 @@
             }
           },
           {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                130,
+                139,
+                150
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          {
             "label": "Id",
             "template": "id_tab",
             "inputs": {
@@ -1499,6 +1707,48 @@
                   "scene",
                   "observation",
                   "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                39,
+                174,
+                96
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               }
             }
@@ -1721,6 +1971,48 @@
                   "scene",
                   "observation",
                   "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                47,
+                128,
+                237
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               }
             }
@@ -1952,6 +2244,48 @@
             }
           },
           {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                242,
+                161,
+                0
+              ],
+              "ink": [
+                17,
+                17,
+                17
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
+                ]
+              }
+            }
+          },
+          {
             "label": "Id",
             "template": "id_tab",
             "inputs": {
@@ -2161,6 +2495,48 @@
                   "scene",
                   "observation",
                   "velocity"
+                ]
+              }
+            }
+          },
+          {
+            "label": "Movement badge",
+            "template": "movement_badge",
+            "enabled": {
+              "call": "is_present",
+              "args": {
+                "value": {
+                  "ref": [
+                    "scene",
+                    "entity",
+                    "motion_state"
+                  ]
+                }
+              }
+            },
+            "inputs": {
+              "geometry": {
+                "ref": [
+                  "scene",
+                  "observation",
+                  "geometry"
+                ]
+              },
+              "color": [
+                155,
+                81,
+                224
+              ],
+              "ink": [
+                255,
+                255,
+                255
+              ],
+              "motion_state": {
+                "ref": [
+                  "scene",
+                  "entity",
+                  "motion_state"
                 ]
               }
             }

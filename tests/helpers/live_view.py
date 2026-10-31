@@ -27,6 +27,7 @@ from ax_devil.modules.workspace.ui.live_view_controller import LiveViewControlle
 from ax_devil.modules.workspace.ui.plugin_intake import default_resolution_context
 from ax_devil.modules.workspace.ui.source_row import SourceRow
 from ax_devil.modules.workspace.ui.split_view import SplitView
+from ax_devil.modules.workspace.ui.workspace_controller import WorkspaceController
 from ax_devil.modules.workspace.ui.workspace_store import WorkspaceStore
 from tests.helpers.section_tree import row_action, row_texts, shown_rows, texts
 
@@ -134,6 +135,7 @@ class Live:
     resolutions: HeldResolver
     controller: LiveViewController
     checker: Checker
+    workspace: WorkspaceController
     add_stream_requests: list[LiveStreamItem | None]
     """What each request to add a stream came with: the stream of the camera to add from, or None from the button."""
 
