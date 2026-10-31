@@ -116,7 +116,8 @@ def test_information_ordinary_path_opens_on_one_line(qtbot: QtBot) -> None:
     QApplication.processEvents()
     label = next(label for label in dialog.findChildren(QLabel) if label.text() == path)
     assert len(path) == 75
-    assert label.height() == label.heightForWidth(10**6)
+    # The row may be taller than the text on a native style; what matters is that the text needs only one line.
+    assert label.heightForWidth(label.width()) == label.heightForWidth(10**6)
 
 
 @pytest.mark.parametrize("value", ["Long descriptive metadata field " * 30, f"/videos/{'recordings/' * 100}video.mp4"])
