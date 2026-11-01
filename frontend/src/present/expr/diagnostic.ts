@@ -15,7 +15,9 @@ export type DiagnosticCode =
   | "schema" // A document that is not catalog schema 4.
   | "unknown-key" // A key the closed object does not have.
   | "missing-key" // A required key that is absent.
-  | "value"; // A well-typed value outside its allowed set.
+  | "value" // A well-typed value outside its allowed set.
+  | "limit" // An expression or catalog larger or more deeply nested than compiling accepts.
+  | "internal"; // A failure of the compiler itself; reported instead of thrown.
 
 /** One compile problem, located by the JSON pointer of the string and the span inside it. */
 export interface Diagnostic {
@@ -72,6 +74,17 @@ export class Diagnostics {
       throw error;
     }
   }
+}
+
+/** The diagnostic for a compile that failed unexpectedly, so no entry point throws at its caller. */
+export function internalError(error: unknown, pointer = ""): Diagnostic {
+  const detail = error instanceof Error ? `: ${error.message}` : "";
+  return {
+    severity: "error",
+    code: "internal",
+    pointer,
+    message: `internal error compiling${detail}`,
+  };
 }
 
 function distance(a: string, b: string): number {

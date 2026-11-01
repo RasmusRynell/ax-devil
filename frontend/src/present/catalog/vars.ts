@@ -3,6 +3,7 @@ import type { BasisValue, Compiled } from "../expr/compiled";
 import type { EvalContext } from "../expr/context";
 import type { Span } from "../expr/diagnostic";
 import type { VarSlot } from "../expr/lower";
+import { MAX_DEPTH } from "../expr/parse";
 import { type ExprType, type TypeVar, kindOf } from "../expr/types";
 import type { Checked, Parsed, Session } from "./session";
 import type { Setter, VarProgram } from "./types";
@@ -56,6 +57,12 @@ export function orderVars(decls: ReadonlyMap<string, VarDecl>, session: Session)
   const ordered: VarDecl[] = [];
   const state = new Map<string, "visiting" | "done">();
   const visit = (decl: VarDecl, path: string[]): void => {
+    if (path.length > MAX_DEPTH) {
+      const at = { pointer: decl.pointer, spans: false };
+      session.diag.add("limit", at, null, `variables read each other more than ${MAX_DEPTH} deep`);
+      state.set(decl.name, "done");
+      return;
+    }
     state.set(decl.name, "visiting");
     const expressions = [decl.initial, ...decl.assignments.map((a) => a.parsed)].filter(
       (p): p is Parsed => p !== null,

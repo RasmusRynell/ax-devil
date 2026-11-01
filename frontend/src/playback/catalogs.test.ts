@@ -63,6 +63,21 @@ describe("catalogs", () => {
     expect(mended.state === "ready" && mended.problem).toBeUndefined();
   });
 
+  it("keeps the last compile when a document is hostile instead of throwing", () => {
+    const { catalogs } = held();
+    catalogs.get("user:a.json");
+    catalogs.receive("user:a.json", 1, catalogDocument(), null);
+    const good = catalogs.get("user:a.json");
+    if (good.state !== "ready" || !good.catalog) throw new Error("no compile");
+    const document = JSON.parse(catalogDocument());
+    document.rules = [{ when: `${"(".repeat(1000)}true${")".repeat(1000)}`, set: {} }];
+    expect(catalogs.receive("user:a.json", 2, JSON.stringify(document), null)).toBe(true);
+    expect(catalogs.get("user:a.json")).toMatchObject({
+      catalog: good.catalog,
+      problem: expect.stringContaining("/rules/0/when"),
+    });
+  });
+
   it("asks again for every catalog it holds when a connection opens, and lists what the backend offers", () => {
     const { asked, catalogs } = held();
     catalogs.get("built-in:standard");

@@ -138,7 +138,7 @@ describe("inspections", () => {
     expect(inspections.view.state).toBe("absent");
   });
 
-  it("says unavailable once for a sample the backend will not answer for", () => {
+  it("says unavailable for a sample the backend will not answer for, and asks again only when it is shown anew", () => {
     const { inspections, samples } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
@@ -148,7 +148,47 @@ describe("inspections", () => {
     expect(samples()).toEqual([0]);
     inspections.follow([frame(1)]);
     inspections.follow([frame(0)]);
-    expect(samples()).toEqual([0, 1]);
+    expect(samples()).toEqual([0, 1, 0]);
+    // The sample held anew, as after the viewer's set of samples changed, is asked for again.
+    inspections.receive(reply(0, { state: "Unavailable" }));
+    expect(inspections.follow([frame(0, fullSample([{ id: "7", class: "car" }]))])).toBe(true);
+    expect(samples()).toEqual([0, 1, 0, 0]);
+  });
+
+  it("asks again for a sample whose reply was dropped, when it is shown again or has waited too long", () => {
+    const { inspections, samples } = setup();
+    inspections.follow([frame(0)]);
+    inspections.select(SELECTION);
+    // Another frame shows no such object, so nothing else is asked; the reply for sample 0 never comes.
+    inspections.follow([frame(1, withoutCar)]);
+    inspections.follow([frame(0)]);
+    expect(samples()).toEqual([0, 0]);
+    // Drawn again and again with no reply: asked once more, not at every draw.
+    for (let draw = 0; draw < 130; draw++) inspections.follow([frame(0)]);
+    expect(samples()).toEqual([0, 0, 0]);
+    inspections.receive(reply(0, found(CLASS)));
+    for (let draw = 0; draw < 130; draw++) inspections.follow([frame(0)]);
+    expect(samples()).toEqual([0, 0, 0]);
+  });
+
+  it("keeps nothing of another source's object that has the same id", () => {
+    const { inspections, sent } = setup();
+    inspections.follow([frame(0), frame(0, withCar, 1, 1)]);
+    inspections.select(SELECTION);
+    inspections.receive(reply(0, found(CLASS)));
+    inspections.select({ lane: 1, source: 1, entity: "7" });
+    expect(inspections.view).toMatchObject({
+      state: "loading",
+      selection: { source: 1 },
+      fields: [],
+    });
+    const asked = sent.at(-1);
+    expect(asked).toMatchObject({ type: "Inspect", source: 1, entity: "7" });
+    // The first source's reply is a different request.
+    inspections.receive(reply(0, found({ ...CLASS, value: "bus" })));
+    expect(inspections.view).toMatchObject({ state: "loading", fields: [] });
+    inspections.receive({ ...reply(0, { state: "Unavailable" }), source: 1 });
+    expect(inspections.view).toMatchObject({ state: "unavailable", fields: [] });
   });
 
   it("inspects the sample of the lane the object was clicked in", () => {
@@ -158,14 +198,18 @@ describe("inspections", () => {
     expect(samples()).toEqual([8]);
   });
 
-  it("asks again on a new connection", () => {
+  it("asks again on a new connection, once its data has a frame drawn", () => {
     const { inspections, samples } = setup();
     inspections.follow([frame(0)]);
     inspections.select(SELECTION);
     inspections.reconnect();
+    expect(samples()).toEqual([0]);
+    expect(inspections.view.state).toBe("loading");
+    inspections.follow([frame(0)]);
     expect(samples()).toEqual([0, 0]);
     inspections.receive(reply(0, found(CLASS)));
     inspections.reconnect();
+    inspections.follow([frame(0)]);
     expect(samples()).toEqual([0, 0, 0]);
   });
 

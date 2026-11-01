@@ -303,3 +303,38 @@ describe("every compile error is located in the document", () => {
     expect(locate(found as NonNullable<typeof found>, text)?.column).toBe(text.indexOf("scor") + 1);
   });
 });
+
+describe("hostile documents", () => {
+  const standard = JSON.parse(builtIn("standard"));
+  const problems = (text: string) => {
+    const result = compileCatalog(text);
+    if (result.ok) throw new Error("compiled");
+    return result.diagnostics;
+  };
+
+  it("reports a deeply nested rule condition where it is, instead of throwing", () => {
+    const when = `${"(".repeat(1000)}true${")".repeat(1000)}`;
+    const rules = [{ ...standard.rules[0], when }, ...standard.rules.slice(1)];
+    expect(problems(JSON.stringify({ ...standard, rules }))).toMatchObject([
+      { code: "limit", pointer: "/rules/0/when", span: [64, 65] },
+    ]);
+  });
+
+  it("reports variables that read each other too deep to walk", () => {
+    const vars: Record<string, string> = { ...standard.vars };
+    for (let i = 500; i >= 1; i--) vars[`v${i}`] = `v${i - 1} + 1`;
+    vars.v0 = "1";
+    expect(problems(JSON.stringify({ ...standard, vars })).map((d) => d.code)).toContain("limit");
+  });
+
+  it("turns a failure of the compiler itself into a diagnostic", () => {
+    const document = {
+      ...standard,
+      get layers(): never {
+        throw new RangeError("boom");
+      },
+    };
+    const result = compileCatalogDocument(document);
+    expect(result).toMatchObject({ ok: false, diagnostics: [{ code: "internal" }] });
+  });
+});

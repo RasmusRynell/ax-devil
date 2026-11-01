@@ -1,5 +1,5 @@
 import { CONDITION, CONSTANT, ENTITY, RELATION } from "../expr/check";
-import { didYouMean } from "../expr/diagnostic";
+import { didYouMean, internalError } from "../expr/diagnostic";
 import type { Diagnostic } from "../expr/diagnostic";
 import type { Scalar } from "../expr/compiled";
 import { FIELDS } from "../expr/fields";
@@ -283,7 +283,11 @@ class CatalogCompiler {
 
 /** Compile a catalog document that was already parsed from JSON. */
 export function compileCatalogDocument(document: unknown): CatalogResult {
-  return new CatalogCompiler().compile(document);
+  try {
+    return new CatalogCompiler().compile(document);
+  } catch (error) {
+    return { ok: false, diagnostics: [internalError(error)] };
+  }
 }
 
 /** Compile catalog JSON text; a text that is not JSON is one problem at the root. */

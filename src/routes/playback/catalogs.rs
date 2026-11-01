@@ -5,10 +5,10 @@
 use super::{Outgoing, text};
 use api_types::{catalogs::CatalogInfoWire, playback::ServerMessage};
 use catalogs::{CatalogId, Library, Served};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 use tokio::sync::watch;
 
-/// How many distinct catalogs a viewer may ask for; the rest are not answered.
+/// How many distinct catalogs a viewer is kept up to date with; asking for one more drops the one asked for longest ago.
 const MAX_ASKED: usize = 64;
 
 /// What one viewer has been told of the catalogs.
@@ -17,8 +17,9 @@ pub(super) struct CatalogFeed {
     changes: watch::Receiver<u64>,
     /// The list the viewer was last told.
     listing: Vec<CatalogInfoWire>,
-    /// The catalogs the viewer asked for, each with the revision it was last answered with.
-    asked: BTreeMap<String, u32>,
+    /// The catalogs the viewer asked for, the one asked for longest ago first, each with the revision it was last
+    /// answered with.
+    asked: Vec<(String, u32)>,
     /// The ids the viewer asked for and has not been answered.
     unanswered: BTreeSet<String>,
     /// The ids whose document changed since the viewer was answered, in the order to push them.
@@ -34,7 +35,7 @@ impl CatalogFeed {
             listing: infos(library),
             library: library.clone(),
             changes,
-            asked: BTreeMap::new(),
+            asked: Vec::new(),
             unanswered: BTreeSet::new(),
             stale: VecDeque::new(),
         }
@@ -46,12 +47,20 @@ impl CatalogFeed {
     }
 
     /// Queues the answer to a request for the catalog `id`, after which the viewer is sent every change of it. Asking
-    /// again before the answer collapses; ids beyond [`MAX_ASKED`] are not answered.
+    /// again before the answer collapses. Past [`MAX_ASKED`] catalogs the one asked for longest ago is no longer
+    /// followed, so the catalogs in use keep updating.
     pub(super) fn ask(&mut self, id: String) {
-        if self.asked.len() < MAX_ASKED || self.asked.contains_key(&id) {
-            self.asked.entry(id.clone()).or_insert(0);
-            self.unanswered.insert(id);
+        let revision = match self.asked.iter().position(|(asked, _)| *asked == id) {
+            Some(at) => self.asked.remove(at).1,
+            None => 0,
+        };
+        if self.asked.len() == MAX_ASKED {
+            let (dropped, _) = self.asked.remove(0);
+            self.unanswered.remove(&dropped);
+            self.stale.retain(|stale| *stale != dropped);
         }
+        self.asked.push((id.clone(), revision));
+        self.unanswered.insert(id);
     }
 
     /// The next thing to send: answers, then the list when it changed, then the catalogs that changed. Waits while
@@ -75,7 +84,7 @@ impl CatalogFeed {
             self.stale = self
                 .asked
                 .iter()
-                .filter(|(id, revision)| served(&self.library, id).revision() != **revision)
+                .filter(|(id, revision)| served(&self.library, id).revision() != *revision)
                 .map(|(id, _)| id.clone())
                 .collect();
             if let Some(listed) = listed {
@@ -87,7 +96,9 @@ impl CatalogFeed {
     /// The message about the catalog `id`, which the viewer is then up to date with.
     fn reply(&mut self, id: String) -> Outgoing {
         let served = served(&self.library, &id);
-        self.asked.insert(id.clone(), served.revision());
+        if let Some((_, revision)) = self.asked.iter_mut().find(|(asked, _)| *asked == id) {
+            *revision = served.revision();
+        }
         let (revision, document, problem) = match served {
             Served::Document { revision, text } => (revision, Some(text.to_string()), None),
             Served::Unreadable { revision, problem } => (revision, None, Some(problem)),
@@ -120,4 +131,41 @@ fn infos(library: &Library) -> Vec<CatalogInfoWire> {
             description: info.description,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::ws::Message;
+
+    /// The id of the catalog the next message answers.
+    async fn answered(feed: &mut CatalogFeed) -> String {
+        let Message::Text(message) = feed.next().await.message else {
+            panic!("a catalog is a text message");
+        };
+        let ServerMessage::Catalog { id, .. } = serde_json::from_str(message.as_str()).unwrap()
+        else {
+            panic!("expected a catalog");
+        };
+        id
+    }
+
+    #[tokio::test]
+    async fn asking_for_a_65th_catalog_is_answered_and_drops_the_one_asked_for_longest_ago() {
+        let mut feed = CatalogFeed::new(&Library::built_in());
+        for number in 0..MAX_ASKED {
+            feed.ask(format!("user:{number}.json"));
+            answered(&mut feed).await;
+        }
+        feed.ask("user:0.json".into());
+        answered(&mut feed).await;
+
+        feed.ask("user:new.json".into());
+
+        assert_eq!(answered(&mut feed).await, "user:new.json");
+        let held: Vec<&str> = feed.asked.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(held.len(), MAX_ASKED);
+        assert!(held.contains(&"user:0.json") && held.contains(&"user:new.json"));
+        assert!(!held.contains(&"user:1.json"));
+    }
 }

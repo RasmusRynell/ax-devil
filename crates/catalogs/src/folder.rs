@@ -1,17 +1,24 @@
 //! The user's catalog folder, read one poll at a time. A file is read only once it looked the same on two polls in a
 //! row, and a file counts as gone only once it was missing on two polls in a row, so an editor's half-written save or
-//! its rename-then-write never reaches a lane.
+//! its rename-then-write never reaches a lane. Only regular files are read, opened without following links and
+//! without blocking, and checked on the opened handle: a link, a pipe or a device inside the folder is reported, never
+//! followed, so nothing outside the folder is served and nothing can stall the poll.
 
 use std::{
     collections::BTreeMap,
-    fs::{self, Metadata},
-    io::Read,
+    fs::{self, File, Metadata},
+    io::{self, Read as _},
     path::{Path, PathBuf},
     sync::Arc,
     time::SystemTime,
 };
 
-use crate::{MAX_CATALOG_BYTES, MAX_USER_CATALOGS};
+use crate::{MAX_CATALOG_BYTES, MAX_USER_CATALOGS, id::is_file_name};
+
+/// Why an entry that is not a regular file is listed but never read.
+const NOT_REGULAR: &str = "The catalog is not a regular file (links and special files are ignored)";
+/// Why a file whose name is no catalog id is listed but never read.
+const ODD_NAME: &str = "The file name has a control character, a backslash or bytes that are not UTF-8; rename the file";
 
 /// What a catalog file held when it was read.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +65,23 @@ fn inode(_: &Metadata) -> u64 {
     0
 }
 
+/// A `.json` entry of the folder as a poll listed it.
+struct Found {
+    fingerprint: Fingerprint,
+    /// Set when the entry is not to be read, and why.
+    refusal: Option<&'static str>,
+}
+
+/// What reading one file came to.
+enum Read {
+    /// The file was read: this is what it holds.
+    Done(Content),
+    /// The file could not be read; the problem is served until a later poll reads it.
+    Failed(Content),
+    /// The file changed after the poll listed it, so nothing is served from this read and the next poll reads again.
+    Changed,
+}
+
 /// What the polls saw of one file.
 struct Tracked {
     /// The last poll's fingerprint.
@@ -92,7 +116,8 @@ impl Folder {
             return Vec::new();
         };
         let mut changes = Vec::new();
-        for (name, fingerprint) in &listed {
+        for (name, found) in &listed {
+            let fingerprint = &found.fingerprint;
             let tracked = self.tracked.entry(name.clone()).or_insert(Tracked {
                 seen: None,
                 read: None,
@@ -102,9 +127,21 @@ impl Folder {
             let stable = first || tracked.seen == Some(*fingerprint);
             tracked.seen = Some(*fingerprint);
             if tracked.read != Some(*fingerprint) && stable {
-                let (content, retry) = read(&self.path.join(name), fingerprint.len);
-                tracked.read = (!retry).then_some(*fingerprint);
-                changes.push(Change::Set(name.clone(), content));
+                let content = match found.refusal {
+                    Some(refusal) => Read::Done(Content::Problem(refusal.into())),
+                    None => read(&self.path.join(name), fingerprint),
+                };
+                match content {
+                    Read::Done(content) => {
+                        tracked.read = Some(*fingerprint);
+                        changes.push(Change::Set(name.clone(), content));
+                    }
+                    Read::Failed(content) => {
+                        tracked.read = None;
+                        changes.push(Change::Set(name.clone(), content));
+                    }
+                    Read::Changed => tracked.read = None,
+                }
             }
         }
         self.tracked.retain(|name, tracked| {
@@ -126,32 +163,61 @@ impl Folder {
 
     /// The catalog files in the folder by name, at most [`MAX_USER_CATALOGS`]; `None` when the folder cannot be read
     /// for a reason other than not existing, which leaves what is served as it is.
-    fn list(&mut self) -> Option<Vec<(String, Fingerprint)>> {
-        let mut found = Vec::new();
+    fn list(&mut self) -> Option<Vec<(String, Found)>> {
+        let mut found = BTreeMap::new();
         match fs::read_dir(&self.path) {
             Ok(entries) => {
                 for entry in entries.flatten() {
-                    let Ok(name) = entry.file_name().into_string() else {
-                        continue;
-                    };
-                    if !name.ends_with(".json") {
+                    let file_name = entry.file_name();
+                    let lossy = file_name.to_string_lossy();
+                    if !lossy.ends_with(".json") {
                         continue;
                     }
-                    // `metadata` follows links, so a link to a file is a file and a dangling one is nothing.
-                    if let Ok(metadata) = fs::metadata(entry.path())
-                        && metadata.is_file()
-                    {
-                        found.push((name, Fingerprint::of(&metadata)));
+                    // `DirEntry` reports the entry itself, not what a link points at.
+                    let (Ok(kind), Ok(metadata)) = (entry.file_type(), entry.metadata()) else {
+                        continue;
+                    };
+                    if kind.is_dir() {
+                        continue;
+                    }
+                    let fingerprint = Fingerprint::of(&metadata);
+                    let refusal = (!kind.is_file()).then_some(NOT_REGULAR);
+                    match file_name.to_str().filter(|name| is_file_name(name)) {
+                        Some(name) => {
+                            found.insert(
+                                name.to_owned(),
+                                Found {
+                                    fingerprint,
+                                    refusal,
+                                },
+                            );
+                        }
+                        None => {
+                            // Listed under a name made safe, which no file has, unless one does: that one wins.
+                            let name = lossy
+                                .chars()
+                                .map(|c| {
+                                    if c.is_control() || c == '\\' {
+                                        '\u{fffd}'
+                                    } else {
+                                        c
+                                    }
+                                })
+                                .collect();
+                            found.entry(name).or_insert(Found {
+                                fingerprint,
+                                refusal: Some(ODD_NAME),
+                            });
+                        }
                     }
                 }
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => {
                 tracing::debug!("Cannot list {}: {error}", self.path.display());
                 return None;
             }
         }
-        found.sort_by(|(a, _), (b, _)| a.cmp(b));
         let capped = found.len() > MAX_USER_CATALOGS;
         if capped && !self.capped {
             tracing::warn!(
@@ -161,38 +227,71 @@ impl Folder {
             );
         }
         self.capped = capped;
-        found.truncate(MAX_USER_CATALOGS);
-        Some(found)
+        Some(found.into_iter().take(MAX_USER_CATALOGS).collect())
     }
 }
 
-/// Reads the file; the flag says the failure may pass, so the next poll reads again.
-fn read(path: &Path, len: u64) -> (Content, bool) {
-    let too_large = |bytes: u64| {
-        Content::Problem(format!(
-            "The catalog is {bytes} bytes; at most {MAX_CATALOG_BYTES} are read"
-        ))
+/// Opens `path` for reading without following a link at the end of it and, on Unix, without waiting for a pipe or a
+/// device to have something to give.
+fn open(path: &Path) -> io::Result<File> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(
+        &mut options,
+        libc::O_NOFOLLOW | libc::O_NONBLOCK,
+    );
+    options.open(path)
+}
+
+/// Reads the file the poll listed as `seen`. Everything is judged on the opened handle, so a file replaced after the
+/// listing by a link, a pipe or other content is never served; the name has no separator, so the open stays inside
+/// the folder.
+fn read(path: &Path, seen: &Fingerprint) -> Read {
+    let failed = |error: io::Error| {
+        Read::Failed(Content::Problem(format!(
+            "Cannot read the catalog: {error}"
+        )))
     };
-    if len > MAX_CATALOG_BYTES {
-        return (too_large(len), false);
+    let too_large = |bytes: u64| {
+        Read::Done(Content::Problem(format!(
+            "The catalog is {bytes} bytes; at most {MAX_CATALOG_BYTES} are read"
+        )))
+    };
+    let file = match open(path) {
+        Ok(file) => file,
+        Err(error) => return failed(error),
+    };
+    let opened = match file.metadata() {
+        Ok(opened) => opened,
+        Err(error) => return failed(error),
+    };
+    if !opened.is_file() {
+        return Read::Done(Content::Problem(NOT_REGULAR.into()));
+    }
+    if Fingerprint::of(&opened) != *seen {
+        return Read::Changed;
+    }
+    if opened.len() > MAX_CATALOG_BYTES {
+        return too_large(opened.len());
     }
     let mut bytes = Vec::new();
-    let read = fs::File::open(path)
-        .and_then(|file| file.take(MAX_CATALOG_BYTES + 1).read_to_end(&mut bytes));
-    if let Err(error) = read {
-        return (
-            Content::Problem(format!("Cannot read the catalog: {error}")),
-            true,
-        );
+    if let Err(error) = (&file).take(MAX_CATALOG_BYTES + 1).read_to_end(&mut bytes) {
+        return failed(error);
+    }
+    match file.metadata() {
+        Ok(after) if Fingerprint::of(&after) == *seen => {}
+        Ok(_) => return Read::Changed,
+        Err(error) => return failed(error),
     }
     if bytes.len() as u64 > MAX_CATALOG_BYTES {
-        return (too_large(bytes.len() as u64), false);
+        return too_large(bytes.len() as u64);
     }
-    match String::from_utf8(bytes) {
-        Ok(text) => (Content::Text(text.into()), false),
-        Err(_) => (
-            Content::Problem("The catalog is not UTF-8 text".into()),
-            false,
-        ),
-    }
+    Read::Done(match String::from_utf8(bytes) {
+        Ok(text) => Content::Text(text.into()),
+        Err(_) => Content::Problem("The catalog is not UTF-8 text".into()),
+    })
 }
+
+#[cfg(all(test, unix))]
+mod tests;

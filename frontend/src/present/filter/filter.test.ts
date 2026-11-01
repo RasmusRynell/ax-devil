@@ -83,6 +83,11 @@ describe("filtering rows", () => {
     expect(set.count).toBe(2);
   });
 
+  it("refuses an expression nested too deep to compile, with a diagnostic", () => {
+    const result = compileFilter(`${"(".repeat(1000)}true${")".repeat(1000)}`);
+    expect(result).toMatchObject({ ok: false, diagnostics: [{ code: "limit" }] });
+  });
+
   it("refuses expressions that do not belong in a filter", () => {
     for (const bad of ["box.w > 1px", "foo", "score +", "score"])
       expect(compileFilter(bad).ok).toBe(false);

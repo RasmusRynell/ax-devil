@@ -15,7 +15,7 @@ pub enum CatalogId {
 
 impl CatalogId {
     /// Reads `built-in:<name>` or `user:<file>`. `None` for anything else, for a built-in the app does not ship, and
-    /// for a user file name that is empty or names a path.
+    /// for a user file name that is empty, names a path or has a control character.
     pub fn parse(text: &str) -> Option<Self> {
         match text.split_once(':')? {
             ("built-in", name) => DOCUMENTS
@@ -28,9 +28,10 @@ impl CatalogId {
     }
 }
 
-/// A plain file name: something the catalog folder can hold, never a way out of it.
-fn is_file_name(file: &str) -> bool {
-    !matches!(file, "" | "." | "..") && !file.contains(['/', '\\', '\0'])
+/// A plain file name: something the catalog folder can hold, never a way out of it, and printable.
+pub(crate) fn is_file_name(file: &str) -> bool {
+    !matches!(file, "" | "." | "..")
+        && !file.contains(|c: char| c.is_control() || matches!(c, '/' | '\\'))
 }
 
 impl fmt::Display for CatalogId {
@@ -67,6 +68,7 @@ mod tests {
             "user:..",
             "user:a/b.json",
             "user:a\\b.json",
+            "user:a\u{1b}b.json",
             "other:standard",
         ] {
             assert_eq!(CatalogId::parse(refused), None, "{refused}");

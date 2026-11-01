@@ -200,6 +200,44 @@ describe("lanes", () => {
     expect(session.getSnapshot()).toMatchObject({ selection: null, inspection: { state: "none" } });
   });
 
+  it("asks about the selected object again only once the new connection holds its sample, whatever was refused before it", async () => {
+    const { session, server, sent, drawn, retries, refresh } = await shown();
+    const columns = drawn.at(-1)?.lanes[0]?.columns as SampleView;
+    const entity = columns.strings.string(columns.entityId[0]);
+    const inspected = (state: "Found" | "Unavailable") =>
+      server.say({
+        type: "Inspected",
+        source: 0,
+        data_revision: 1,
+        sample: 0,
+        entity,
+        inspection:
+          state === "Found" ? { state, fields: [], truncated: false } : { state: "Unavailable" },
+      });
+    const asks = () => sent.filter((message) => message.type === "Inspect").length;
+    session.select({ lane: 0, source: 0, entity });
+    inspected("Found");
+
+    server.drop();
+    retries[0].run();
+    await flush();
+    server.open(10, [DPM]);
+    server.catalog();
+    server.status(0, READY);
+    // The new connection does not yet hold the sample, so nothing is asked of it.
+    expect(asks()).toBe(1);
+    inspected("Unavailable");
+    server.frames(0, 1, 2, 3);
+    refresh();
+    server.window(0, 9);
+    server.map({ policyRevision: 2, cells: [0, 0, NONE, EMPTY], kinds: [0, 2, 0, 0] });
+    server.sample();
+    refresh();
+    expect(asks()).toBe(2);
+    inspected("Found");
+    expect(session.getSnapshot().inspection.state).toBe("ready");
+  });
+
   it("sizes the data window of a Want from what the shown lanes' items weigh", async () => {
     const { session, server, wants, refresh } = await setup();
     server.open(10, TWO_LANES);

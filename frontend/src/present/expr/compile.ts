@@ -1,7 +1,7 @@
 import { type Scope, Checker } from "./check";
 import type { Compiled } from "./compiled";
 import type { EvalContext } from "./context";
-import type { Diagnostic, Source } from "./diagnostic";
+import { type Diagnostic, type Source, internalError } from "./diagnostic";
 import { Lowerer } from "./lower";
 import { parseExpr } from "./parse";
 import type { ExprType } from "./types";
@@ -31,10 +31,13 @@ export function compileExpression(
   pointer = "",
 ): CompileResult {
   const unit = new ExprUnit();
-  const src = sourceOf(text, pointer);
-  const compiled = compileIn(unit, src, scope, expected);
-  if (compiled === null) return { ok: false, diagnostics: unit.diag.list };
-  return { ok: true, expression: { compiled, ctx: unit.ctx } };
+  try {
+    const compiled = compileIn(unit, sourceOf(text, pointer), scope, expected);
+    if (compiled === null) return { ok: false, diagnostics: unit.diag.list };
+    return { ok: true, expression: { compiled, ctx: unit.ctx } };
+  } catch (error) {
+    return { ok: false, diagnostics: [...unit.diag.list, internalError(error, pointer)] };
+  }
 }
 
 function compileIn(unit: ExprUnit, src: Source, scope: Scope, expected: ExprType): Compiled | null {
