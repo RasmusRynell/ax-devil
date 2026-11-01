@@ -3,7 +3,7 @@ use crate::session::Pull;
 use crate::testing::{Fixture, Log, block_on, deliveries, factory, poll_now, spec, want};
 use crate::worker::Step;
 use crate::{CachePool, DecoderFactory, Delivery, Registry, Session};
-use foundation::{CancelToken, UserError};
+use foundation::{CancelToken, ErrorCode, HostPath, UserError};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
@@ -286,8 +286,12 @@ fn the_decoder_gets_the_sources_token_and_a_thread_budget_and_closing_cancels_th
 
 #[test]
 fn a_decoder_that_cannot_open_ends_every_session_once_instead_of_failing_frame_by_frame() {
-    let failing: DecoderFactory =
-        Arc::new(|_, _| Err(UserError::new("the video was replaced", "video.mp4")));
+    let failing: DecoderFactory = Arc::new(|_, _| {
+        Err(
+            UserError::new(ErrorCode::FileChanged, "the video was replaced")
+                .at(HostPath::new("video.mp4")),
+        )
+    });
     let mut fx = Fixture::with_factory(60, 10, 24, failing);
     let mut first = fx.session();
     let mut second = fx.session();
@@ -298,7 +302,7 @@ fn a_decoder_that_cannot_open_ends_every_session_once_instead_of_failing_frame_b
     for session in [&mut first, &mut second] {
         let told = poll_now(session.next_delivery());
         assert!(
-            matches!(&told, Some(Some(Delivery::Failed(error))) if error.reason == "the video was replaced" && error.location == "video.mp4"),
+            matches!(&told, Some(Some(Delivery::Failed(error))) if error.reason == "the video was replaced" && error.location == Some(HostPath::new("video.mp4").into())),
             "{told:?}"
         );
         assert!(
@@ -334,7 +338,8 @@ fn errors_playback_raises_name_the_file_and_only_the_cause() {
     assert!(!failures.is_empty());
     for failure in failures {
         assert_eq!(
-            failure.error.location, "video.mp4",
+            failure.error.location,
+            Some(HostPath::new("video.mp4").into()),
             "the file, not a subsystem"
         );
         assert!(

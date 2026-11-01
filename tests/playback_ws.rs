@@ -4,11 +4,18 @@
 
 mod common;
 
-use api_types::playback::{ClientMessage, Direction, ServerMessage};
+use api_types::{
+    ErrorCode,
+    playback::{ClientMessage, Direction, ServerMessage},
+};
 use common::{Backend, Event, MIB, fixture, luma};
-use foundation::{CancelToken, Interrupt};
+use foundation::{CancelToken, HostPath, Interrupt};
 use playback::DECODE_WORKERS;
 use playback::{Delivery, Want};
+use sessions::{
+    CursorOptions,
+    session::{Access, Command, Control, Reply},
+};
 use std::{collections::BTreeSet, time::Duration};
 
 #[tokio::test]
@@ -17,7 +24,7 @@ async fn opening_a_video_describes_it_then_sends_its_timeline_and_the_first_fram
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut viewer = backend.viewer().await;
 
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     let video = viewer.opened().await;
 
     assert_eq!(video.frame_count, 90);
@@ -45,7 +52,7 @@ async fn a_window_fills_with_the_right_frames_starting_at_the_playhead() {
     let backend = Backend::start().await;
     let id = backend.add(&fixture("open_gop_h264.mkv")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
 
     viewer.want(0, 25, 0, Direction::Forward).await;
@@ -61,7 +68,7 @@ async fn a_jump_far_away_and_back_delivers_each_new_window_with_the_right_frames
     let backend = Backend::start().await;
     let id = backend.add(&fixture("long_gop_h264.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
 
     viewer.want(170, 3, 3, Direction::Forward).await;
@@ -77,7 +84,7 @@ async fn a_video_opens_on_the_requested_frame_and_the_last_frame_says_so() {
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
 
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, Some(45)).await;
+    viewer.open(&id.ticket(), Some(45)).await;
     viewer.opened().await;
     // Frames of its group that decode before it may come first; nothing far from it does.
     let arrived = viewer.frames(45..=45).await;
@@ -87,7 +94,7 @@ async fn a_video_opens_on_the_requested_frame_and_the_last_frame_says_so() {
     );
 
     let mut past_the_end = backend.viewer().await;
-    past_the_end.open(&id, Some(1000)).await;
+    past_the_end.open(&id.ticket(), Some(1000)).await;
     past_the_end.opened().await;
     let last = loop {
         let Event::Frame(frame) = past_the_end.next().await else {
@@ -107,7 +114,7 @@ async fn a_failed_frame_is_reported_by_itself_and_its_neighbours_still_arrive() 
     let backend = Backend::start().await;
     let id = backend.add(&fixture("truncated.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     let video = viewer.opened().await;
     let last = video.frame_count - 1;
 
@@ -125,11 +132,8 @@ async fn a_failed_frame_is_reported_by_itself_and_its_neighbours_still_arrive() 
                 assert_eq!(frame.flat_luma(), luma(frame.sequence_id));
                 shown.insert(frame.sequence_id);
             }
-            Event::Message(ServerMessage::FrameError {
-                sequence_id,
-                reason,
-            }) => {
-                assert!(!reason.is_empty());
+            Event::Message(ServerMessage::FrameError { sequence_id, error }) => {
+                assert!(!error.reason.unwrap().is_empty());
                 failed.insert(sequence_id);
             }
             _ => panic!("expected frames or frame errors"),
@@ -145,7 +149,7 @@ async fn closing_or_dropping_the_viewer_releases_the_source() {
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
 
     let mut closing = backend.viewer().await;
-    closing.open(&id, None).await;
+    closing.open(&id.ticket(), None).await;
     closing.opened().await;
     closing.frames(0..=0).await;
     assert_eq!(backend.videos.registry().running_workers(), DECODE_WORKERS);
@@ -153,7 +157,7 @@ async fn closing_or_dropping_the_viewer_releases_the_source() {
     backend.wait_for_workers(0).await;
 
     let mut leaving = backend.viewer().await;
-    leaving.open(&id, None).await;
+    leaving.open(&id.ticket(), None).await;
     leaving.opened().await;
     leaving.frames(0..=0).await;
     assert_eq!(backend.videos.registry().running_workers(), DECODE_WORKERS);
@@ -166,12 +170,12 @@ async fn two_viewers_of_one_file_share_one_source_until_the_last_leaves() {
     let backend = Backend::start().await;
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut first = backend.viewer().await;
-    first.open(&id, None).await;
+    first.open(&id.ticket(), None).await;
     first.opened().await;
     first.frames(0..=0).await;
 
     let mut second = backend.viewer().await;
-    second.open(&id, Some(30)).await;
+    second.open(&id.ticket(), Some(30)).await;
     let video = second.opened().await;
     assert_eq!(video.frame_count, 90);
     second.frames(30..=30).await;
@@ -198,7 +202,7 @@ async fn a_cache_that_shrinks_to_nothing_and_grows_back_never_changes_what_is_de
     let backend = Backend::start().await;
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
     viewer.want(0, 20, 0, Direction::Forward).await;
     viewer.frames(0..=20).await;
@@ -221,7 +225,7 @@ async fn windows_far_larger_than_the_video_are_served_whole() {
     let backend = Backend::start().await;
     let id = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
 
     viewer.want(40, 500_000, 500_000, Direction::Forward).await;
@@ -232,34 +236,30 @@ async fn windows_far_larger_than_the_video_are_served_whole() {
 async fn what_cannot_be_opened_ends_the_session_with_a_reason_and_where() {
     let backend = Backend::start().await;
 
-    let mut unknown = backend.viewer().await;
-    unknown.open("no-such-content", None).await;
-    let (reason, location) = unknown.error().await;
-    assert!(!reason.is_empty());
-    assert_eq!(location, "no-such-content");
-
     let not_video = fixture("not_video.mp4");
     let mut text = backend.viewer().await;
-    text.open(&backend.add(&not_video).await, None).await;
-    let (reason, location) = text.error().await;
-    assert!(!reason.is_empty());
-    assert_eq!(location, not_video.display().to_string());
+    text.open(&backend.add(&not_video).await.ticket(), None)
+        .await;
+    let error = text.error().await;
+    assert_eq!(error.code, ErrorCode::NotAVideo);
+    assert!(!error.reason.unwrap().is_empty());
+    assert_eq!(error.location, Some(not_video.display().to_string()));
 
     let gone = backend.folder.path().join("gone.mp4");
     std::fs::copy(fixture("cfr_h264_gop10_bf2.mp4"), &gone).unwrap();
     let id = backend.add(&gone).await;
     std::fs::remove_file(&gone).unwrap();
     let mut deleted = backend.viewer().await;
-    deleted.open(&id, None).await;
-    let (reason, location) = deleted.error().await;
-    assert!(!reason.is_empty());
-    assert_eq!(location, gone.display().to_string());
+    deleted.open(&id.ticket(), None).await;
+    let error = deleted.error().await;
+    assert!(!error.reason.unwrap().is_empty());
+    assert_eq!(error.location, Some(gone.display().to_string()));
 
     let mut early = backend.viewer().await;
     early.want(0, 1, 1, Direction::Forward).await;
-    let (_, location) = early.error().await;
     assert_eq!(
-        location, "playback",
+        early.error().await.code,
+        ErrorCode::ProtocolViolation,
         "a window before Open is a protocol error"
     );
     backend.wait_for_workers(0).await;
@@ -296,7 +296,7 @@ async fn a_viewer_that_stops_reading_and_then_misbehaves_loses_its_socket_and_it
     };
     let idle = tasks();
     let mut viewer = backend.viewer().await;
-    viewer.open(&id, None).await;
+    viewer.open(&id.ticket(), None).await;
     viewer.opened().await;
     // The window is far more than the two sockets hold. From here the viewer reads nothing, so the backend is
     // stuck writing a frame with the next one waiting behind it.
@@ -344,6 +344,7 @@ async fn a_file_that_changed_while_it_was_indexed_fails_the_whole_source_naming_
         ahead: 4,
         behind: 0,
         direction: playback::Direction::Forward,
+        priority: playback::Priority::default(),
     });
 
     let delivery = tokio::time::timeout(Duration::from_secs(20), session.next_delivery())
@@ -353,7 +354,7 @@ async fn a_file_that_changed_while_it_was_indexed_fails_the_whole_source_naming_
         panic!("expected the source to fail, got {delivery:?}");
     };
     assert!(!error.reason.is_empty());
-    assert_eq!(error.location, video.display().to_string());
+    assert_eq!(error.location, Some(HostPath::new(&video).into()));
     assert!(
         session.next_delivery().await.is_none(),
         "nothing follows it"
@@ -369,17 +370,62 @@ async fn opening_again_after_the_recording_changed_describes_the_recording_now_a
     std::fs::copy(fixture("cfr_h264_gop10_bf2.mp4"), &video).unwrap();
     let id = backend.add(&video).await;
     let mut first = backend.viewer().await;
-    first.open(&id, None).await;
+    first.open(&id.ticket(), None).await;
     assert_eq!(first.opened().await.frame_count, 90);
     first.send(&ClientMessage::Close).await;
     backend.wait_for_workers(0).await;
 
     std::fs::copy(fixture("long_gop_h264.mp4"), &video).unwrap();
     let mut second = backend.viewer().await;
-    second.open(&id, None).await;
+    second.open(&id.ticket(), None).await;
     let described = second.opened().await;
 
     assert_eq!(described.frame_count, 180);
     assert_eq!(described.times.len(), 180);
     second.frames(0..=0).await;
+}
+
+#[tokio::test]
+async fn a_ticket_opens_one_stream_and_a_watchers_stream_ends_when_sharing_stops() {
+    let backend = Backend::start().await;
+    let video = backend.add(&fixture("cfr_h264_gop10_bf2.mp4")).await;
+    let ticket = video.ticket();
+    let mut owner = backend.viewer().await;
+    owner.open(&ticket, None).await;
+    owner.opened().await;
+    owner.frames(0..=0).await;
+
+    // A ticket works once, and one that was never issued works never; neither says why.
+    for presented in [ticket.as_str(), "not-a-ticket"] {
+        let mut refused = backend.viewer().await;
+        refused.open(presented, None).await;
+        assert!(matches!(refused.next().await, Event::Closed));
+        assert_eq!(refused.close_code, Some(4401), "{presented}");
+    }
+
+    let share = Command::Control(Control::Share(Access::Watch));
+    video.owner.command(share).unwrap();
+    let link = video.owner.state().sharing.as_ref().unwrap().link.clone();
+    let seat = backend
+        .state
+        .sessions
+        .join(&link, CursorOptions::default())
+        .unwrap();
+    let Ok(Reply::Ticket(ticket)) = seat.command(Command::RequestTicket(video.key.clone())) else {
+        panic!("a watcher may stream what the owner has open");
+    };
+    let mut watcher = backend.viewer().await;
+    watcher.open(&ticket.to_string(), None).await;
+    watcher.opened().await;
+    watcher.frames(0..=0).await;
+
+    video
+        .owner
+        .command(Command::Control(Control::Stop))
+        .unwrap();
+    while !matches!(watcher.next().await, Event::Closed) {}
+    assert_eq!(watcher.close_code, Some(4403));
+    // The owner's own stream goes on.
+    owner.want(30, 3, 0, Direction::Forward).await;
+    owner.frames(30..=33).await;
 }

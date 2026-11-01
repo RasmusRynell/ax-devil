@@ -15,6 +15,19 @@ pub enum Direction {
     Backward,
 }
 
+/// How urgent a viewer's frames are against the other viewers of the same source when the decode workers are busy.
+/// Declared most urgent first, so the derived order is the planner's: lower is more urgent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Priority {
+    /// Served before everyone else.
+    High,
+    /// Served after `High` and before `Low`.
+    #[default]
+    Normal,
+    /// Served after everyone else.
+    Low,
+}
+
 /// What one viewer needs around its playhead.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Want {
@@ -26,6 +39,8 @@ pub struct Want {
     pub behind: u32,
     /// The direction of travel.
     pub direction: Direction,
+    /// How urgent this viewer's spans are against other viewers of the source.
+    pub priority: Priority,
 }
 
 /// One decode job: start at `keyframe` (or read on from the decoder's position), cache the frames of `keep`.
@@ -39,6 +54,9 @@ pub(crate) struct Span {
 
 /// Lower is more urgent: the playhead, then the direction of travel nearest first, then the other side.
 pub(crate) type Rank = (u8, u64);
+
+/// Lower is more urgent: the viewer's priority first, then its [`Rank`].
+type Urgency = (Priority, Rank);
 
 pub(crate) fn rank(direction: Direction, playhead: u64, frame: u64) -> Rank {
     let distance = frame.abs_diff(playhead);
@@ -76,14 +94,15 @@ pub(crate) fn reads_on(keyframes: &Keyframes, position: Option<u64>, first: u64)
 struct Group {
     first: u64,
     last: u64,
-    rank: Rank,
+    urgency: Urgency,
 }
 
 /// The spans that should exist now, most urgent first. For every want, the uncached frames of its prefetch window
 /// (the send window scaled to `budget_frames`, shared equally among the wants) are grouped by keyframe group; each
 /// group with missing frames gives one span from its first to its last missing frame, so a group is never decoded
-/// twice for one pass. `held` is every frame that needs no decoding (cached, failed or already delivered).
-/// `in_flight` spans win ties, so equal work is never swapped between workers.
+/// twice for one pass; a group several wants need is as urgent as its most urgent want. `held` is every frame that
+/// needs no decoding (cached, failed or already delivered). `in_flight` spans win ties, so equal work is never
+/// swapped between workers.
 pub(crate) fn plan(
     spec: &SourceSpec,
     wants: &[Want],
@@ -103,18 +122,21 @@ pub(crate) fn plan(
             while start <= *gap.end() {
                 let keyframe = spec.keyframes.at_or_before(start);
                 let end = (*gap.end()).min(spec.keyframes.group_end(keyframe));
-                let rank = rank(want.direction, playhead, nearest(&(start..=end), playhead));
+                let urgency = (
+                    want.priority,
+                    rank(want.direction, playhead, nearest(&(start..=end), playhead)),
+                );
                 groups
                     .entry(keyframe)
                     .and_modify(|group| {
                         group.first = group.first.min(start);
                         group.last = group.last.max(end);
-                        group.rank = group.rank.min(rank);
+                        group.urgency = group.urgency.min(urgency);
                     })
                     .or_insert(Group {
                         first: start,
                         last: end,
-                        rank,
+                        urgency,
                     });
                 start = end + 1;
             }
@@ -124,7 +146,7 @@ pub(crate) fn plan(
         .into_iter()
         .map(|(keyframe, group)| {
             let flying = in_flight.iter().any(|span| span.keyframe == keyframe);
-            let key = (group.rank, !flying, keyframe);
+            let key = (group.urgency, !flying, keyframe);
             let span = Span {
                 keyframe,
                 keep: group.first..=group.last,

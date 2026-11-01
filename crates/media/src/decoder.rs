@@ -9,7 +9,7 @@ use ffmpeg_next::decoder;
 use ffmpeg_next::error::EAGAIN;
 use ffmpeg_next::format::context::Input;
 use ffmpeg_next::frame::Video;
-use foundation::{CancelToken, FrameFailure, Interrupt, UserError, VideoFrame};
+use foundation::{CancelToken, ErrorCode, FrameFailure, Interrupt, UserError, VideoFrame};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, warn};
@@ -67,6 +67,7 @@ impl Decoder {
     ) -> Result<Decoder, Interrupt<UserError>> {
         if !index.describes(path) {
             return Err(Interrupt::Failed(source::error(
+                ErrorCode::FileChanged,
                 "The video changed after it was indexed; open it again",
                 path,
             )));
@@ -74,6 +75,7 @@ impl Decoder {
         let opened = source::open(path, &cancel)?;
         if opened.stream != index.stream() {
             return Err(Interrupt::Failed(source::error(
+                ErrorCode::FileChanged,
                 "The video's streams changed after it was indexed",
                 path,
             )));
@@ -263,6 +265,6 @@ impl Decoder {
     }
 
     fn error(&self, reason: String) -> UserError {
-        source::error(reason, &self.path)
+        source::error(ErrorCode::DecodeFailed, reason, &self.path)
     }
 }

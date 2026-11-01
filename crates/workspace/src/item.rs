@@ -1,27 +1,9 @@
 use crate::content::{Content, ContentId, FileVideoSource, SeekableVideoContent};
-use foundation::UserError;
+use foundation::{ErrorCode, HostPath, ItemId, UserError};
 use std::{
-    fmt, fs, io,
+    fs, io,
     path::{Path, PathBuf},
 };
-use uuid::Uuid;
-
-/// Names one workspace item for as long as it exists.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ItemId(Uuid);
-
-impl ItemId {
-    /// A new random id.
-    pub fn generate() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl fmt::Display for ItemId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
 
 /// A video file to open.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,13 +60,16 @@ pub(crate) fn file_name(path: &Path) -> String {
 }
 
 fn check_readable_file(path: &Path) -> Result<(), UserError> {
-    let fail = |reason: String| UserError::new(reason, path.display().to_string());
+    let fail = |code, reason: String| UserError::new(code, reason).at(HostPath::new(path));
     let unreadable = |error: io::Error| match error.kind() {
-        io::ErrorKind::NotFound => fail("File not found".into()),
-        _ => fail(format!("Cannot read the file: {error}")),
+        io::ErrorKind::NotFound => fail(ErrorCode::FileNotFound, "File not found".into()),
+        _ => fail(
+            ErrorCode::FileUnreadable,
+            format!("Cannot read the file: {error}"),
+        ),
     };
     if !fs::metadata(path).map_err(unreadable)?.is_file() {
-        return Err(fail("Not a file".into()));
+        return Err(fail(ErrorCode::FileUnreadable, "Not a file".into()));
     }
     fs::File::open(path).map_err(unreadable)?;
     Ok(())

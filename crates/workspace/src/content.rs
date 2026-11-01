@@ -1,4 +1,4 @@
-use crate::item::ItemId;
+use foundation::ItemId;
 use std::{fmt, path::PathBuf};
 
 /// Names one Content for as long as its item exists. Derived from the item id, so it names the same Content after
@@ -10,6 +10,12 @@ impl ContentId {
     /// The id of the Content a single-Content item resolves to.
     pub fn of_item(item: &ItemId) -> Self {
         Self(item.to_string())
+    }
+
+    /// The id a client names as text: the Content of the item with that id. `None` when the text is not an item id,
+    /// so nothing a client sends can name a Content no item could have.
+    pub fn parse(text: &str) -> Option<Self> {
+        ItemId::parse(text).map(|item| Self::of_item(&item))
     }
 
     /// The id as text, the form that crosses the wire.
