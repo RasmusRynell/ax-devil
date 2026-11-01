@@ -8,7 +8,7 @@ UI_PORT ?= 7331
 TEST ?=
 ROOT_FILES := desktop/*.cjs scripts/*.cjs vite.config.ts package.json pnpm-workspace.yaml
 .PHONY: help web desktop build check check-fast format tests tests-frontend tests-backend tests-integration \
-	tests-desktop _types _frontend-build _static _licenses _dev _dev-rust
+	tests-desktop bench _types _frontend-build _static _licenses _dev _dev-rust
 
 help:
 	@printf '%s\n' \
@@ -18,6 +18,7 @@ help:
 	  '  build       Build the release app with the frontend embedded; do not launch' \
 	  '  tests       Run all test suites' \
 	  '  check       Run every static check and all test suites' \
+	  '  bench       Run the Rust benchmarks (catalog render, lane frame); numbers on stdout' \
 	  '  check-fast  Run the static checks, file-size check on changed files only; no tests' \
 	  '  format      Format Rust and TypeScript/JavaScript, and apply lint fixes' \
 	  '' \
@@ -82,6 +83,10 @@ tests-desktop: build desktop/node_modules/.electron-ready
 	timeout 60s $(ISOLATED) --display pnpm --dir desktop exec electron . --ozone-platform=x11 --smoke-test
 
 tests: tests-frontend tests-backend tests-integration tests-desktop
+
+# Timed with std::time::Instant on a MOT20-like frame; numbers go to stdout, nothing is asserted.
+bench:
+	$(ISOLATED) $(CARGO) bench --locked -p render-catalog -p overlays
 
 # File size, architecture, formatting, lint and types. CHANGED=--changed limits the file-size check.
 _static: node_modules/.installed _types

@@ -7,18 +7,31 @@ Where code and files belong. Layers and the dependency rule are in the [overview
 | `src/main.rs`, `src/runtime.rs` | Backend startup and shutdown; prints the readiness line the shell and supervisor wait for |
 | `src/paths.rs` | Where the settings file, caches, logs and window state live: the XDG folders, or the command-line overrides |
 | `src/lib.rs` | Backend routes and serving the embedded frontend |
-| `src/routes/` | The workspace routes and events, and the playback WebSocket: adapters over the services, no logic |
+| `src/cli.rs`, `src/cli/` | The command line, generated from the registry: a `playlist` subcommand per resolver, `list-handlers`, `catalog list/check` |
+| `src/routes/` | The workspace, handler and scan, and catalog routes, the workspace events, and the playback WebSocket with its lane overlays: adapters over the services, no logic |
 | `src/video_sources.rs`, `src/video_cache.rs` | Where `media` meets `playback` (the decoder adapter, opening viewers on files) and how the `playback.video_cache` setting sizes the cache |
 | `crates/<name>/` | One owning concept per crate (Scene model, catalog compiler, workspace, sources, ...), with its layer declared |
 | `crates/foundation/` | Layer 1: Media Time, frame identity, the frame index types, decoded frames, cancellation and the user-facing error. No I/O |
-| `crates/workspace/` | Layer 2: workspace items, recipes, Content and the intake. Resolving checks the file only; opening media is the viewer's job |
-| `crates/media/` | Layer 3: video file to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
+| `crates/workspace/` | Layer 2: workspace items, recipes, Content (videos and playlists of entries and lanes) and the intake. Resolving checks the files only; opening media is the viewer's job |
+| `crates/scene/` | Layer 2: the Scene model decoders produce and the class filter policy |
+| `crates/scene-decoders/` | Layer 2: built-in decoders from overlay files and records to Scenes (MOT, UVG-VCM, ONVIF XML, CVAT) |
+| `crates/playlist-resolvers/` | Layer 2: built-in resolvers from settings to playlists of videos and overlay files (folder pair, MOT Challenge), each declaring the settings schema its form and command are generated from |
+| `crates/handlers/` | Layer 2: the one registry of file decoders, record decoders and playlist resolvers; the built-ins now, a plugin runtime later |
+| `crates/drawing/` | Layer 2: the Drawing Instruction contract between catalogs and the renderer; knows no Scene |
+| `crates/render-catalog/` | Layer 2: the render catalog language: parse, validate, compile, and evaluate a Scene into Drawing Instructions |
+| `crates/overlay-sync/` | Layer 2: Overlay Lookup, the pure choice of the sample that belongs to a frame (matching, coverage, sticky) |
+| `crates/media/` | Layer 3: video file or image sequence to frame index and frames (FFmpeg); the only crate that links it ([README](../../crates/media/README.md)) |
 | `crates/playback/` | Layer 3: what to decode and cache around each viewer's playhead, and its delivery; never depends on `media` ([README](../../crates/playback/README.md)) |
-| `crates/workspace-store/` | Layer 3: the in-memory workspace, resolving items in the background and notifying subscribers |
+| `crates/workspace-store/` | Layer 3: the in-memory workspace, resolving items in the background, the hidden refs, the sidebar row projection, and notifying subscribers |
+| `crates/scene-store/` | Layer 3: an overlay file decoded once into an on-disk artifact, shared by every viewer, with Scenes served from a bounded cache ([README](../../crates/scene-store/README.md)) |
+| `crates/catalogs/` | Layer 3: the catalogs the app offers (the six built-ins), checking a catalog file, and each catalog compiled once |
+| `crates/overlays/` | Layer 3: a viewer's lane pipeline: per lane and frame of the playback window, lookup, filter and draw; `prepare_lane_frame` is the same step for export |
 | `crates/settings/` | Layer 3: the settings file, its declared settings and shortcuts, and the window-state file ([README](../../crates/settings/README.md)) |
 | `crates/api-types/` | Rust types sent to the frontend and the API version; `export-types` writes them and the settings and command tables to `frontend/src/generated/`, and the version and reserved keys to `desktop/generated/api.json` |
 | `frontend/src/` | The UI. Components and their tests sit side by side |
-| `frontend/src/playback/`, `viewer/`, `workspace/`, `viewers.ts` | The playback session (clock, frame buffer, renderer), the viewer host, the workspace client, and the viewer registry keyed by Content kind |
+| `frontend/src/playback/`, `viewer/`, `workspace/`, `viewers.ts` | The playback session (clock, frame buffer, renderer, lanes), the viewer host and playlist viewer, the workspace client, and the viewer registry keyed by Content kind |
+| `frontend/src/overlay/` | Drawing Instructions to a Prepared Drawing (quads, text atlas) and its WebGL painting |
+| `frontend/src/resolvers/` | The resolver settings form, generated from the schema the backend sends, and the cancellable scan |
 | `desktop/` | The Electron shell: windows, backend lifetime, and the smoke test and screenshot harness (`smoke.cjs`) |
 | `assets/` | Packaged built-in resources: render catalogs, icons, banner. The app reads them in place and never writes them |
 | `fixtures/` | Committed test inputs with their provenance and license ([README](../../fixtures/README.md)) |

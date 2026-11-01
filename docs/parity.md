@@ -9,17 +9,17 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| WS-01 | Ordered items (video, live stream, playlist); Untitled until named | M | in progress | `crates/workspace/src/intake.rs`, `crates/workspace-store` tests, `tests/local_video.rs` | Video items only, in memory; no naming or saving (M3) |
+| WS-01 | Ordered items (video, live stream, playlist); Untitled until named | M | in progress | `crates/workspace/src/intake.rs`, `crates/workspace-store` tests, `src/routes/workspace.rs`, `tests/local_video.rs`, `tests/mot_playlist.rs` | Video and playlist items, in memory; no live streams, naming or saving (M3) |
 | WS-02 | New, Open, Save, Save As, recent workspaces | M | todo |  |  |
 | WS-03 | No prompts; recovery copy, restore banner, per-instance lock | M | todo |  |  |
 | WS-04 | Unreadable items preserved | M | todo |  |  |
-| WS-05 | Background resolution; pending and unavailable rows | M | in progress | `crates/workspace-store` tests, `frontend/src/viewer/ViewerHost.test.tsx`, `tests/local_video.rs` | Items resolve in the background and a failed one stays with its reason, shown in the viewer area; no sidebar rows yet |
+| WS-05 | Background resolution; pending and unavailable rows | M | in progress | `crates/workspace-store` tests, `frontend/src/viewer/ViewerHost.test.tsx`, `frontend/src/shell/WorkspaceTree.test.tsx`, `tests/local_video.rs` | Items resolve in the background; a pending or failed one has its sidebar row and a failed one keeps its reason. Left: the invariant says an unavailable row never opens, but its row opens a viewer that shows the reason |
 | WS-06 | Re-resolve on file change; reload offered to open viewers | M | todo |  |  |
 | WS-07 | Rename, Edit, Remove, item information | M | todo |  |  |
-| WS-08 | Hide/Unhide entries and lanes | M | todo |  |  |
+| WS-08 | Hide/Unhide entries and lanes | M | done | `crates/workspace-store` tests, `src/routes/workspace.rs`, `frontend/src/shell/WorkspaceTree.test.tsx`, `frontend/src/viewer/{PlaylistViewer,hidden}.test.*`, `frontend/src/playback/{LaneGrid,VideoViewer}.test.tsx` | Session state, never saved ([CONTEXT](../CONTEXT.md)). The row menu and the lane menu hide; "Show hidden" lists hidden rows dimmed; next/previous skip hidden entries and hidden lanes are not drawn |
 | WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | todo |  |  |
 | WS-10 | Bookmarks to CSV | S | todo |  |  |
-| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/Shell.test.tsx` | Views and search fields are placeholders; no items, sort or filter |
+| WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceTree.test.tsx` | The Workspace view is a tree of items, entries and lanes from the backend's rows. The other views and the search fields are placeholders; no sort or filter |
 | WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx` | Layout only; the buttons and rows do nothing yet and recent workspaces are empty |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
@@ -29,11 +29,11 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `tests/local_video.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | Video only, no overlays (M2). `local --video` and File > Add Video (the shell shows the file dialog, the frontend posts the paths) share the intake; the native dialog itself has no automated test |
+| AC-01 | Add Video with any number of overlays; decoder picked by extension | M | in progress | `crates/workspace/src/intake.rs`, `src/cli/tests.rs`, `tests/playback_ws.rs`, `tests/local_video.rs`, `desktop/args.test.cjs`, `frontend/src/shell/Shell.test.tsx` | `local --video V [--overlay P]... [--handler-type H]...` and the intake take any number of overlays, each lane with its decoder (by extension when none is named). File > Add Video (the shell shows the file dialog, the frontend posts the paths) takes no overlays yet; the native dialog itself has no automated test |
 | AC-02 | Drop video files on the window | M | todo |  |  |
 | AC-03 | Add Live Stream with analytics discovery | M | todo |  |  |
-| AC-04 | Add Playlist through a resolver form | M | todo |  |  |
-| AC-05 | One intake validation for dialogs, CLI and drops | M | in progress | `crates/workspace/src/intake.rs`, `tests/local_video.rs` | The dialog and the CLI use `workspace::intake`; drops are not built |
+| AC-04 | Add Playlist through a resolver form | M | done | `frontend/src/shell/AddPlaylistDialog.test.tsx`, `frontend/src/resolvers/*.test.*`, `crates/playlist-resolvers/tests/schema.rs`, `src/routes/{handlers,workspace}.rs`, `src/cli/tests.rs`, `tests/mot_playlist.rs`, `make tests-desktop` | The form and the `playlist <resolver>` command are generated from the resolver's declared schema; scan is cancellable and the dialog stays open with the refusal |
+| AC-05 | One intake validation for dialogs, CLI and drops | M | in progress | `crates/workspace/src/intake.rs`, `tests/local_video.rs`, `tests/mot_playlist.rs` | The dialogs and the CLI use `workspace::intake`, for videos with overlays and for playlists; drops are not built |
 
 ## Live
 
@@ -52,10 +52,10 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `frontend/src/playback/{clock,direction,session,FrameBuffer,protocol,wire}.test.ts`, `Transport.test.tsx`, `VideoViewer.test.tsx`, `tests/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/decode.rs`, `make tests-desktop` | Video only: no overlays (M2), lanes (OF-02) or reverse play. Variable frame rate, open at a frame and per-frame errors included. The desktop test plays a fixture on Xvfb; playback on a real GPU was measured in the D0 spike, not by a committed test |
-| OF-02 | Comparison lanes: several overlays on one video; a playlist entry switches the video, and two recordings side by side are two viewers with no shared clock (out of scope) | M | todo |  |  |
-| OF-03 | Playlists of entries and lanes; next/previous entry | M | todo |  |  |
-| OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | todo |  |  |
+| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `frontend/src/playback/{clock,direction,session,FrameBuffer,protocol,wire}.test.ts`, `Transport.test.tsx`, `VideoViewer.test.tsx`, `tests/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/decode.rs`, `make tests-desktop` | No reverse play. Image sequences play through the same path (`crates/media/tests/sequence.rs`). Variable frame rate, open at a frame and per-frame errors included. The desktop test plays a fixture on Xvfb; playback on a real GPU was measured in the D0 spike, not by a committed test |
+| OF-02 | Comparison lanes: several overlays on one video; a playlist entry switches the video, and two recordings side by side are two viewers with no shared clock (out of scope) | M | done | `tests/mot_playlist.rs`, `tests/playback_ws.rs`, `crates/overlays/src/tests/`, `frontend/src/playback/{LaneGrid,lanes,session,OverlayBuffer}.test.*` | Lanes of one entry share the video's frames and clock; see the deviation below |
+| OF-03 | Playlists of entries and lanes; next/previous entry | M | done | `crates/playlist-resolvers/tests/`, `crates/workspace/src/intake.rs`, `tests/mot_playlist.rs`, `frontend/src/viewer/PlaylistViewer.test.tsx`, `make tests-desktop` | MOT Challenge and folder-pair playlists; one lane per overlay file |
+| OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | done | `crates/overlay-sync/src/select/tests.rs`, `crates/overlays/src/tests/views.rs`, `tests/mot_playlist.rs` | Per lane, session only; dense and sparse coverage in [invariants](domain/invariants.md#frame-identity) |
 | OF-05 | Timing and alignment diagnostics per lane | M | todo |  |  |
 | OF-06 | Decoded-frame cache under one memory allowance | M | in progress | `crates/playback/src/tests/{cache,planner,decode,delivery}.rs`, `tests/playback_ws.rs`, `src/video_cache.rs`, `crates/settings` tests | Allowance, equal shares, eviction, live resize and uncached oversized frames work. Left: the cache marks on the timeline (M4); next-entry warm-up is OF-07 |
 | OF-07 | Prepare next playlist entry in the background | S | todo |  |  |
@@ -68,6 +68,7 @@ The decisions taken with the owner, with their reasons, are in
 
 | Row | Deviation | Reason |
 |-----|-----------|--------|
+| OF-02 | Lanes share one video: the reference let a secondary lane have its own video, length and frame rate, aligned to the primary lane's frame index | D19: a viewer shows one video; two recordings side by side are two viewers |
 | OF-06 | The frame cache lives in `playback`, not `media` | Eviction follows playback windows; export, thumbnails and live never use the cache |
 | OF-06 | Eviction takes the frame farthest from the playhead outside the protected windows; the reference was LRU | It suits scrubbing: after a jump, the frames around the old position are the least likely to be wanted |
 | OF-06 | Auto is never below 256 MiB; the reference had no floor | It is the smallest value the setting accepts, so a machine with little free memory still gets a working cache |
@@ -82,12 +83,12 @@ The decisions taken with the owner, with their reasons, are in
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | IN-01 | Media tools panel per lane with Objects and Events lists, object and event pages | M | todo |  |  |
-| IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | todo |  |  |
+| IN-02 | Object filters by type and score/confidence range; whole-file filtering with declared policies | M | in progress | `crates/scene/src/filter.rs`, `frontend/src/playback/LaneMenu.test.tsx`, `tests/mot_playlist.rs` | Class toggles per lane from the decoder's declared policy. Left: score and confidence ranges, whole-file filtering |
 | IN-03 | Hover chip and click selection; can be turned off | M | todo |  |  |
-| IN-04 | Frame info HUD, lane names | M | todo |  |  |
+| IN-04 | Frame info HUD, lane names | M | in progress | `frontend/src/playback/VideoViewer.test.tsx`, `make tests-desktop` | Each lane's name is on its tag. Left: the frame info HUD |
 | IN-05 | Zoom, pan, reset, synced across lanes; lane and app fullscreen | M | todo |  |  |
 | IN-06 | Per-view overlay detail visibility | M | todo |  |  |
-| IN-07 | Per-view sticky/sync/filter settings, Apply to all, defaults for new views | S | todo |  |  |
+| IN-07 | Per-view sticky/sync/filter settings, Apply to all, defaults for new views | S | in progress | `frontend/src/playback/{LaneMenu,lanes}.test.*`, `crates/overlays/src/tests/views.rs` | Sticky, sync and class filters are set per lane and kept while the entry is open. Left: Apply to all, defaults for new views |
 | IN-08 | Structured query search in Objects and Events lists | M | todo |  |  |
 | IN-09 | Frame vs File scope for objects | M | todo |  |  |
 | IN-10 | Pinned fields kept across object pages | S | todo |  |  |
@@ -99,17 +100,17 @@ The decisions taken with the owner, with their reasons, are in
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| RC-01 | Catalog language (schema v3) and the six built-ins | M | todo |  |  |
-| RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | todo |  |  |
+| RC-01 | Catalog language (schema v3) and the six built-ins | M | done | `crates/render-catalog/tests/{compile.rs,render/}`, `crates/catalogs` tests | All six built-ins compile and match the reference's Drawing Instructions on the oracle sheets (`fixtures/oracle`) |
+| RC-02 | Per-view selection, Apply to all, Use as default, hot reload | M | in progress | `frontend/src/playback/LaneMenu.test.tsx`, `src/routes/catalogs.rs`, `crates/overlays/src/tests/views.rs` | A lane picks one of the built-ins from its menu; a catalog that fails keeps the last one. Left: Apply to all, Use as default, user catalogs and hot reload |
 | RC-03 | Catalog viewer window with seeded sheets, New copy, Delete | M | todo |  |  |
-| RC-04 | `catalog list/check/render/new/use/reference` | M | todo |  |  |
+| RC-04 | `catalog list/check/render/new/use/reference` | M | in progress | `src/cli/tests.rs`, `crates/catalogs/src/check.rs` | `catalog list` and `catalog check`; the others are not built |
 
 ## Plugins
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | todo |  |  |
-| PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | todo |  |  |
+| PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/handlers`, `crates/scene-decoders/tests/registry.rs` | The built-ins sit behind `Handlers`, the one registry a plugin runtime will extend (M7); no plugin loads yet |
+| PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | done | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests | `playlist --help` lists the subcommands the CLI generates from the registry; no test renders the help text |
 | PL-03 | Install, update, remove, list from CLI and Plugins view | M | todo |  |  |
 | PL-04 | Load failures never stop the app and are listed | M | todo |  |  |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
@@ -142,8 +143,8 @@ The decisions taken with the owner, with their reasons, are in
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | DT-01 | Isolated GUI test environment for agents and CI | M | in progress | `make tests-desktop` | `scripts/isolated`: private home and display, user-file guard; Linux |
-| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, View menu, Quick Setup, and the Settings (including Storage) and Shortcuts dialogs in light and dark, at the window minimum and 200% zoom; other windows land with M8 |
-| DT-03 | Rendering benchmarks with A/B against a ref | S | todo |  |  |
+| DT-02 | UI screenshot harness | M | in progress | `make tests-desktop` | `desktop/smoke.cjs`: main window, View menu, Quick Setup, the Settings (including Storage) and Shortcuts dialogs, the Add Playlist dialog, and the fixture playlist's lanes (overlay pixels asserted) in light and dark, at the window minimum and 200% zoom; other windows land with M8 |
+| DT-03 | Rendering benchmarks with A/B against a ref | S | in progress | `make bench` | `render-catalog` and `overlays` benches on a 650-box frame; numbers on stdout, nothing asserted and no A/B against a ref |
 | DT-04 | Timestamp alignment report | S | todo |  |  |
 | DT-05 | Release check in clean environments | S | todo |  |  |
 | DT-06 | Demo recorder | S | todo |  |  |

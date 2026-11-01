@@ -11,6 +11,7 @@ make tests-frontend TEST=App       # React component tests (Vitest, jsdom); TEST
 make tests-backend TEST=info       # Rust tests, without and with the embedded frontend
 make tests-integration             # Development supervisor (starts the services, stops the whole tree) and the desktop's argument forwarding
 make tests-desktop                 # Electron app on a private display; screenshots in artifacts/screenshots/
+make bench                         # Rust benchmarks (catalog render, lane frame); numbers on stdout, nothing asserted
 make check                         # Every static check, then every suite
 make check-fast                    # Static checks only, file-size check on changed files only
 ```
@@ -46,7 +47,9 @@ window: it waits for the app shell, then switches the theme to light and dark an
 `artifacts/screenshots/main-<theme>.png`. Screenshots are captured only after the compositor has drawn a frame for
 the current state; capturing earlier fails. It also captures the View menu and Settings dialog at the window
 minimum, at normal zoom and 200%, then opens a fixture video through the backend and asserts the canvas shows a
-picture and that stepping changes it. New windows join the harness as they land
+picture and that stepping changes it. Last it adds the fixture playlist (`fixtures/datasets/mot`) through the Add
+Playlist dialog, which it also captures, and asserts that each lane cell shows overlay pixels on frames with boxes
+and none on the frame without. New windows join the harness as they land
 ([DT-02](../parity.md#developer-tooling)).
 
 ## Fixtures

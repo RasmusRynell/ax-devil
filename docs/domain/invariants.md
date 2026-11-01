@@ -1,12 +1,12 @@
 # Domain Invariants
 
 Rules that code in more than one module must keep, and that no type, validation or test enforces on its own. Each
-holds whenever its feature exists. Read the sections for the area you change. Terms are defined in
+holds whenever its feature exists. Terms are defined in
 [CONTEXT.md](../../CONTEXT.md); how things fit together is in the [architecture overview](../architecture/overview.md).
 
-Not here: user-visible behavior, rules one module keeps to itself, workarounds and measurements. See the placement
-rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs). While a rule has no test guarding it, it is a test gap;
-the module that implements it adds one.
+Not here: user-visible behavior, rules one module keeps to itself, workarounds and measurements (see the placement
+rule in [AGENTS.md](../../AGENTS.md#where-a-fact-belongs)). A rule with no test guarding it is a test gap that the
+implementing module closes.
 
 ## Content Model
 
@@ -21,8 +21,8 @@ the module that implements it adds one.
   under the host binding rule of [13](../rebuild/13-security-packaging-ops.md#threat-model). A camera property
   (protocol, ports) is stored on the item and editable when adding it; changed defaults only prefill new items. An
   environment preference (connection timeout) is never stored; it is read when the stream connects.
-- An item's label is what the user named it, or empty. An empty label shows a default name derived from the recipe
-  when displayed; derived names such as an expanded host are never stored or saved.
+- An item's label is what the user named it, or empty; empty shows a default name derived from the recipe. Derived
+  names such as an expanded host are never stored or saved.
 - An item that fails to resolve stays in the Workspace with its resolution error recorded. An item the file format
   cannot read always fails to resolve and is saved back unchanged.
 - Each overlay source spec owns its overlay source kind; overlay content and lanes derive the kind from the spec.
@@ -31,7 +31,6 @@ the module that implements it adds one.
 - Every playlist lane references Seekable Video Content. Playlists are offline workflows.
 - One intake validates decoder selections and live connection settings for every video and live stream opened through
   a dialog, the CLI or a file drop. Playlists from a resolver enter as built; the resolver owns their validity.
-- Layers 1–3 never depend on the UI or on how the UI reaches them; the architecture check enforces it.
 
 ## Coordinates
 
@@ -47,10 +46,10 @@ the module that implements it adds one.
 - Offline playback follows the clock: delivery that falls behind skips to the frame due now instead of slowing down;
   the video's final frame is always delivered. The viewer owns that clock; the backend supplies frames and never reads
   a clock for playback.
-- Scene and catalog interpretation happen before the renderer boundary; renderer callbacks consume prepared immutable
-  data only. GPU resources are created and released only in the renderer's resource phase.
-- Display and export share rendering semantics: the same instructions, order, colors and geometry, without Scene
-  knowledge in the renderer. Pixels differ only by documented renderer tolerances.
+- Renderer callbacks consume prepared immutable data only. GPU resources are created and released only in the
+  renderer's resource phase.
+- Display and export share rendering semantics: the same instructions, order, colors and geometry. Pixels differ only
+  by documented renderer tolerances.
 
 ## Offline Delivery
 
@@ -61,6 +60,8 @@ the module that implements it adds one.
 - A frame's bytes depend only on its identity, so a viewer keeps any arrival inside its window.
 - A viewer shows exactly one video: its lanes share that video's frames and clock, frames travel once per viewer, and
   only overlay data is per lane.
+- A frame is shown only when its bytes are held and every visible lane that loaded holds an overlay for its sequence
+  id (the newest revision is drawn). A loading, failed or hidden lane never holds a frame back.
 
 ## Frame Identity
 
@@ -71,12 +72,13 @@ the module that implements it adds one.
 - Timestamp Matching: exact timestamp first, then the latest previous overlay timestamp within the configured
   tolerance. Future overlay timestamps are never selected early.
 - Frame-keyed files (MOT/CVAT) match annotation sequence ids and resolve sample age through the video's actual frame
-  timeline, never synthetic keys or FPS.
+  timeline, never synthetic keys or FPS. A decoder declares coverage: in a Dense file a frame without a sample is
+  empty and sticky never crosses it; a Sparse one says nothing about it.
 - With sticky overlays enabled, offline playback and export select the latest sample at or before the requested time,
   regardless of navigation history. Age is measured from the original sample timestamp, never the last matched frame.
   The timeout includes its boundary; no timeout means unlimited retention. Matching tolerance separates normal matches
-  from retained samples, which are drawn at the retained opacity; it does not limit retention. With sticky disabled,
-  unmatched frames have no overlay. Empty scene updates replace previous geometry; missing updates may retain it.
+  from retained samples, drawn at the retained opacity; it does not limit retention. With sticky disabled, unmatched
+  frames have no overlay. Empty scene updates replace previous geometry; missing updates may retain it.
 - Live synchronization consumes the newest queued sample at or before the frame within an inclusive, fixed 10 ms
   tolerance, independent of FPS. Stale samples are discarded before persistence; late older samples cannot replace
   newer state.
@@ -143,11 +145,8 @@ the module that implements it adds one.
   the concept, and building a component never rebuilds shared runtime state as a side effect.
 - Work that discovers files, reads disk, validates, compiles, builds indexes, opens sources or creates shared caches
   belongs behind the owning runtime boundary, never in UI construction.
-- Text sizes, spacing, radii, heights and colors come from the design tokens, never literals, and a theme change
-  applies live. Zoom is the browser's; there is no app text-size setting. Pixels inside rendered frames
-  (catalogs, sheets, export burn-ins) follow the frame instead.
-- The video surface and its letterbox stay near-black (one canvas token) in both themes, with white playback controls
-  on that scrim, not on a theme-dependent panel.
+- Pixels inside rendered frames (catalogs, sheets, export burn-ins) follow the frame, not the design tokens or theme
+  (UI tokens, zoom and the near-black video surface: [write-ui skill](../../.agents/skills/write-ui/SKILL.md)).
 - Components that own runtime resources have an explicit cleanup contract, and their owner calls it.
 - The UI never blocks on file, network, decode, compile or index work, and never waits by nesting its event loop.
   Finite work runs as cancellable tasks owned by a scope that closes when its owner cleans up; a cancelled task
@@ -194,9 +193,9 @@ the module that implements it adds one.
 - Pausing RTSP keeps its connection alive. Stopping is terminal; reopening creates a new source.
 - Scene file artifacts are invalid unless their complete identity matches: source content digest (a stat fingerprint
   only spares hashing an unchanged file; where the platform has no change time, the digest decides), decoder name,
-  artifact version, Scene version, decode options and store format version. When only the stat fingerprint differs,
-  the artifact is accepted and republished with the new one. The fingerprint is taken from the held handle before the
-  source is read. If the source changed during the build, a source-indexed store skips persisting and a derived one
+  artifact version, Scene version, decode options, frame size and store format version. When only the stat
+  fingerprint differs, the artifact is accepted and republished with the new one. The fingerprint is taken from the
+  held handle before the source is read. If the source changed during the build, a source-indexed store skips persisting and a derived one
   persists without a digest, so a file written during indexing reads as changed on the next open. Cache files are
   replaced atomically, read through the handle that wrote them, private to the user and always rebuildable. An open
   source-indexed store stops serving once its source is rewritten in place; a replaced file leaves it valid.

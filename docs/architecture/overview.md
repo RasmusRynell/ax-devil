@@ -24,6 +24,16 @@ How offline playback divides its work between them is in the [invariants](../dom
 Electron supplies Chromium, so rendering and media behave the same on every desktop instead of depending on the
 system webview ([D0](../rebuild/14-build-order.md#d0-stack-choice)).
 
+## Overlays
+
+An overlay file is decoded once into an on-disk artifact that every viewer opening it shares (`scene-store`); memory
+holds the sample keys and a bounded cache of Scenes, not the file. For each lane and each frame of a viewer's
+playback window, `overlays` asks `overlay-sync` which sample belongs to the frame, filters its Scene with the lane's
+class choices and draws it with the lane's catalog (`catalogs`, `render-catalog`) into Drawing Instructions
+(`drawing`). They travel beside the frame as a message per lane, and the frontend turns them into pixels; the backend
+never rasterizes. Catalog lengths in pixels resolve against the lane's displayed size, so a resize or zoom sends the
+backend a new view and it redraws the window.
+
 ## Layers
 
 Dependencies point down only. Numbers are the layers of [02](../rebuild/02-architecture.md#layers-and-dependency-direction).
