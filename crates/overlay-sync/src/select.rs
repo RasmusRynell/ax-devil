@@ -1,0 +1,131 @@
+use foundation::{FrameId, MediaTime, Timeline};
+use scene::Coverage;
+
+use crate::{MatchKind, MatchPolicy, SampleKeys, Selection, Sticky, Tolerance};
+
+/// Selects the sample of an overlay file that belongs to `frame`.
+///
+/// A sample is never selected for a frame before its own key, whatever the tolerance: metadata does not appear
+/// before the video reaches it. Nothing is interpolated or matched to the nearest neighbour. The function reads
+/// only its arguments, allocates nothing and costs one binary search, so it is fit for the playback hot path.
+///
+/// # Time-keyed files ([`SampleKeys::Times`])
+///
+/// 1. A sample at exactly `frame.timestamp` is [`MatchKind::Exact`].
+/// 2. Otherwise the latest earlier sample is [`MatchKind::Tolerated`] when the policy is
+///    [`Tolerance::PreviousWithin`] and it is at most that far back (inclusive).
+/// 3. Otherwise the same latest earlier sample is [`MatchKind::Retained`] when sticky keeps it, see below.
+/// 4. Otherwise [`Selection::None`], also when the frame is before the first sample.
+///
+/// A tolerated sample is drawn fully opaque and is not limited by the sticky timeout. `coverage` is ignored: a
+/// time-keyed file says nothing about frames it has no sample for.
+///
+/// # Frame-keyed files ([`SampleKeys::Frames`])
+///
+/// 1. The key equal to `frame.sequence_id` is [`MatchKind::Exact`]. The tolerance does not apply; frame numbers are
+///    not times.
+/// 2. Otherwise, for [`Coverage::Dense`], [`Selection::Empty`]: the file covers every frame and has nothing here.
+///    Sticky never retains a sample across such a frame, so an empty frame shows no stale boxes.
+/// 3. Otherwise ([`Coverage::Sparse`]) the latest earlier key is [`MatchKind::Retained`] when sticky keeps it.
+/// 4. Otherwise [`Selection::None`].
+///
+/// # Sticky
+///
+/// With [`Sticky::enabled`], the latest sample before the frame stays on screen while its age is within
+/// [`Sticky::timeout`] (inclusive; no limit for `None`), drawn at [`Sticky::opacity`] clamped to 0 to 1. The age is
+/// `frame.timestamp` minus the sample's time: the key itself for a time-keyed file, and the time the video's
+/// `timeline` gives the key's frame for a frame-keyed one, never a frame number read as a time. A key the timeline
+/// does not reach is rejected. The age is measured from the sample, so the result does not depend on which frames
+/// were selected before. Tolerance does not limit sticky.
+pub fn select(
+    keys: &SampleKeys,
+    coverage: Coverage,
+    frame: FrameId,
+    timeline: &Timeline,
+    policy: &MatchPolicy,
+) -> Selection {
+    match keys {
+        SampleKeys::Frames(keys) => by_frame(keys, coverage, frame, timeline, policy.sticky),
+        SampleKeys::Times(keys) => by_time(keys, frame.timestamp, policy),
+    }
+}
+
+fn by_frame(
+    keys: &[u64],
+    coverage: Coverage,
+    frame: FrameId,
+    timeline: &Timeline,
+    sticky: Sticky,
+) -> Selection {
+    // The latest key at or before the frame, if any.
+    let latest = keys
+        .partition_point(|&key| key <= frame.sequence_id)
+        .checked_sub(1);
+    let Some(index) = latest else {
+        return missing(coverage);
+    };
+    if keys[index] == frame.sequence_id {
+        return sample(index, MatchKind::Exact, 1.0);
+    }
+    if coverage == Coverage::Dense {
+        return Selection::Empty;
+    }
+    match timeline.time(keys[index]) {
+        Some(time) => retain(sticky, index, age(frame.timestamp, time)),
+        None => Selection::None,
+    }
+}
+
+fn by_time(keys: &[MediaTime], time: MediaTime, policy: &MatchPolicy) -> Selection {
+    let Some(index) = keys.partition_point(|&key| key <= time).checked_sub(1) else {
+        return Selection::None;
+    };
+    let age = age(time, keys[index]);
+    if age == 0 {
+        return sample(index, MatchKind::Exact, 1.0);
+    }
+    if let Tolerance::PreviousWithin(tolerance) = policy.tolerance
+        && age <= tolerance.0
+    {
+        return sample(index, MatchKind::Tolerated, 1.0);
+    }
+    retain(policy.sticky, index, age)
+}
+
+/// What a frame with no sample of its own shows when the file does not cover it.
+fn missing(coverage: Coverage) -> Selection {
+    match coverage {
+        Coverage::Dense => Selection::Empty,
+        Coverage::Sparse => Selection::None,
+    }
+}
+
+/// The sample at `index`, `age` microseconds old, kept by sticky if it is on and the sample is young enough.
+fn retain(sticky: Sticky, index: usize, age: i64) -> Selection {
+    let young = age >= 0 && sticky.timeout.is_none_or(|timeout| age <= timeout.0);
+    if !sticky.enabled || !young {
+        return Selection::None;
+    }
+    let opacity = if sticky.opacity.is_nan() {
+        0.0
+    } else {
+        sticky.opacity.clamp(0.0, 1.0)
+    };
+    sample(index, MatchKind::Retained, opacity)
+}
+
+fn sample(index: usize, kind: MatchKind, opacity: f32) -> Selection {
+    Selection::Sample {
+        index,
+        kind,
+        opacity,
+    }
+}
+
+/// Microseconds from `then` to `now`, saturating.
+fn age(now: MediaTime, then: MediaTime) -> i64 {
+    now.0.saturating_sub(then.0)
+}
+
+#[cfg(test)]
+mod tests;

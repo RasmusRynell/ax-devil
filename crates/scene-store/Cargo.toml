@@ -1,0 +1,28 @@
+[package]
+name = "scene-store"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.ax-devil]
+layer = "services"
+
+[lints]
+workspace = true
+
+[dependencies]
+crc32fast.workspace = true
+foundation.workspace = true
+handlers.workspace = true
+overlay-sync.workspace = true
+playlist-resolvers.workspace = true
+postcard.workspace = true
+scene.workspace = true
+scene-decoders.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile = "3"
+tracing.workspace = true
