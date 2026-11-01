@@ -126,7 +126,7 @@ minimal one from source (macOS). Linux needs `patchelf` on the build machine.
 closes or loses its standard input.
 
 The Release workflow builds and smoke-tests all three packages for packaging changes in a pull request and for a manual
-run, which keeps them as artifacts; pushing a `v*` tag also drafts a GitHub release with checksums and the FFmpeg notice.
+run, which keeps them as artifacts; pushing a `v*` tag also drafts a GitHub release with checksums, the FFmpeg notice and the FFmpeg source.
 
 Builds are unsigned. Linux: `chmod +x` the AppImage; where FUSE is missing run it with `--appimage-extract-and-run`;
 on Ubuntu 24.04+ the Chromium sandbox may need `--no-sandbox`. Windows: SmartScreen "More info", then "Run anyway".

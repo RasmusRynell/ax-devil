@@ -3,6 +3,7 @@
 # app and its test fixtures use, no TLS, nothing GPL or non-free.
 #
 #   scripts/ffmpeg-build-mac.sh PREFIX      installs include/ and lib/ under PREFIX, an empty or missing folder
+#   scripts/ffmpeg-build-mac.sh source DIR  puts the source tarball it builds from, ffmpeg-source-macos-<version>.tar.xz, in DIR
 #   scripts/ffmpeg-build-mac.sh notice      prints the license notice for this build
 set -euo pipefail
 
@@ -22,14 +23,32 @@ CONFIGURE=(
   --enable-parser=h264,hevc,mjpeg,png,vp9
 )
 
+# Downloads $1 to $2 and fails unless it has the SHA-256 $3.
+download() {
+  curl --proto '=https' --tlsv1.2 -sSfL -o "$2" "$1"
+  if command -v sha256sum >/dev/null; then
+    echo "$3  $2" | sha256sum -c -
+  else
+    echo "$3  $2" | shasum -a 256 -c -
+  fi
+}
+
 if [[ ${1:-} == notice ]]; then
   cat <<NOTICE
-The macOS build uses FFmpeg $VERSION, built from $URL
-and linked dynamically (libavcodec, libavformat, libavutil, libswscale, libswresample), so each library can be
-replaced by a build of the same version. FFmpeg is licensed under the LGPL version 2.1 or later; the configure options
-were:
+FFmpeg for macOS
+The macOS build uses FFmpeg $VERSION, LGPL version 2.1 or later, built from the official source $URL
+(attached as ffmpeg-source-macos-$VERSION.tar.xz) by scripts/ffmpeg-build-mac.sh with
 ./configure ${CONFIGURE[*]}
+The libraries in Contents/Resources/bin (libavcodec, libavformat, libavutil, libswscale and libswresample) are linked
+dynamically: replace them with libraries of the same version and install name.
 NOTICE
+  exit 0
+fi
+
+if [[ ${1:-} == source ]]; then
+  dir="${2:?usage: scripts/ffmpeg-build-mac.sh source DIR}"
+  mkdir -p "$dir"
+  download "$URL" "$dir/ffmpeg-source-macos-$VERSION.tar.xz" "$SHA256"
   exit 0
 fi
 
@@ -43,8 +62,7 @@ prefix="$(cd "$prefix" && pwd)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-curl --proto '=https' --tlsv1.2 -sSfL -o "$work/ffmpeg.tar.xz" "$URL"
-echo "$SHA256  $work/ffmpeg.tar.xz" | shasum -a 256 -c -
+download "$URL" "$work/ffmpeg.tar.xz" "$SHA256"
 mkdir "$work/src"
 tar -xf "$work/ffmpeg.tar.xz" -C "$work/src" --strip-components=1
 
