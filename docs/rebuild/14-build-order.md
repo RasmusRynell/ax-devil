@@ -106,27 +106,22 @@ when selected by the owner.
 | M8 | Settings dialog, Quick Setup, Shortcuts dialog, accessibility pass, polish | Fit test for every window at the window minimum and at 200% zoom |
 | M9 | Packaging and release; owner-selected S rows (benchmarks, release check, soak) | Every M row done or dropped by the owner in writing |
 
-## Fixtures from the reference commit
+## Next delivery priorities
 
-Generated and committed as the oracle policy says ([09](09-testing.md#oracle-policy)); exports add timing references.
+Status follows `docs/parity.md`, not milestone order: the current offline slice already includes lanes, both
+resolvers, image sequences and catalog execution, while persistence and inspection remain unfinished. Next, close
+remaining intake/playback gaps and establish durable workspace recovery; then complete inspection, bookmarks,
+diagnostics and safe export. Bring ADF payload decoders forward for live work. External plugin execution and
+packaging feasibility still need decisions before their consumers.
 
-## Parity tracking
-
-`docs/parity.md`: one line per row from [01](01-product-scope.md) with status (todo, in progress, done, dropped), test
-reference and notes. Dropping an M row needs the owner's written decision. New features get a row in 01 first.
-
-## Risks
-
-| Risk | Mitigation |
-|------|------------|
-| Frame-accurate seeking and caching on long-GOP video | D0 spike; frame-identity and cache tests first |
-| Overlay drawing cost | D0 spike; measurement against D9 in M2 |
-| Matching and sticky semantics drift | Frame Identity rules as tests before code; oracle TSVs |
-| Live transports have no equivalent in the new language (`ax-devil-rtsp`, `ax-devil-mqtt`, `ax-devil-device-api` in `pyproject.toml`) | D14 in the D0 spikes |
+Every new slice extends SH-01–04: decide what follows the presenter, what stays private, and how removal or
+permission changes revoke access. Replacement acceptance covers user workflows; existing S capabilities need an
+explicit disposition before claiming all Python use cases are restored. Installation and upgrade of the actual
+release artifact are release gates even though the reusable DT-05 tooling is S.
 
 ## Open decisions
 
-None of these blocks the current work. Each is settled when its milestone arrives, and the recommended answer applies unless the owner objects. The settled ones are in the tables above. D5 and D16 are withdrawn; D13 became parity row AP-06; D20 is a task of M2.
+Settle each before its consumer; recommendations apply unless the owner objects. D5/D16 are withdrawn, D13 is AP-06, and D20 belongs to M2.
 
 ### Stack sign-off, by M9
 

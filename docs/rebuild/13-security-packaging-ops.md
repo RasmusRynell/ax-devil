@@ -83,12 +83,15 @@ Documented, not fixed.
 - **The machine is the trust boundary.** Any process that can reach the Local listener, other OS users included, is
   the local owner: it can drive the owner's Sessions and read the files the app can. The Host and Origin checks defend
   against browsers and DNS rebinding; they do not authenticate a person. A per-launch credential is the known fix and
-  is not implemented. The launch queue is likewise not tied to a launch, so a second `local --video` reaches
-  whichever Local Session takes it first.
+  is not implemented. Startup content is consumed by the first new Local owner Session, not bound to a
+  requesting window. Video/playlist arguments are not forwarded when reusing an existing shell or backend.
 - **Remote video is raw.** A remote watcher receives raw frames, about 93 MB/s per 1080p30 viewer, so remote watching
   suits the same machine or a fast LAN and a few watchers. Compressed delivery is future work.
 - **Edit access has no UI.** The backend supports an `Edit` access row for editing together, but nothing exposes it,
-  and an Edit watcher sees only the Owner's open items, so it cannot reopen one the Owner closed.
+  and its projection lists only the Owner's open items. This is not a command-authorization guarantee that a
+  retained item id cannot be reopened; settle that policy before exposing editing.
+- **LAN hosting failures lack a distinct UI reason.** A bind failure is logged and sharing may remain local; the
+  missing-link message currently suggests a release build even when the port is occupied.
 - **Snapshot cost is unmeasured** at 32 seats under 30 Hz scrubbing.
 
 ## Plugin trust (MUST)

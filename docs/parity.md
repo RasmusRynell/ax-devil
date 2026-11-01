@@ -20,7 +20,7 @@ with the test that proves it.
 | WS-09 | Bookmarks and reviewed marks; Bookmarks view; open at frame | M | todo |  |  |
 | WS-10 | Bookmarks to CSV | S | todo |  |  |
 | WS-11 | Sidebar views Workspace, Live, Offline, Bookmarks, Plugins; search, sort, filter | M | in progress | `shell/Shell.test.tsx`, `shell/WorkspaceTree.test.tsx` | The Workspace view is a tree of items, entries and lanes from the backend's rows. The other views and the search fields are placeholders; no sort or filter |
-| WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx` | Layout only; the buttons and rows do nothing yet and recent workspaces are empty |
+| WS-12 | Start panel and welcome area | M | in progress | `shell/Shell.test.tsx` | Add Video and Add Playlist are wired; workspace open, live intake and recent workspaces remain unfinished |
 | WS-13 | Split viewer area: drag to split, preview vs pinned panes | M | todo |  |  |
 | WS-14 | Long playlists load collapsed | S | todo |  |  |
 | WS-15 | Hover cards with thumbnails | S | todo |  |  |
@@ -52,7 +52,7 @@ with the test that proves it.
 
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
-| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | done | `frontend/src/playback/{clock,direction,session,FrameBuffer,protocol,wire}.test.ts`, `Transport.test.tsx`, `VideoViewer.test.tsx`, `tests/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/decode.rs`, `make tests-desktop` | No reverse play. Image sequences play through the same path (`crates/media/tests/sequence.rs`). Variable frame rate, open at a frame and per-frame errors included. The desktop test plays a fixture on Xvfb; playback on a real GPU was measured in the D0 spike, not by a committed test |
+| OF-01 | Play/pause, step, speed, seek; clock-following playback | M | in progress | `frontend/src/playback/{clock,direction,session,FrameBuffer,protocol,wire}.test.ts`, `Transport.test.tsx`, `VideoViewer.test.tsx`, `tests/playback_ws.rs`, `crates/foundation` time tests, `crates/media/tests/decode.rs`, `make tests-desktop` | Exact-frame number entry is still missing (the frame readout is not editable); seek/step work. No reverse play. Image sequences play through the same path (`crates/media/tests/sequence.rs`). Variable frame rate, open at a frame and per-frame errors included. The desktop test plays a fixture on Xvfb; playback on a real GPU was measured in the D0 spike, not by a committed test |
 | OF-02 | Comparison lanes: several overlays on one video; a playlist entry switches the video, and two recordings side by side are two viewers with no shared clock (out of scope) | M | done | `tests/mot_playlist.rs`, `tests/playback_lanes.rs`, `crates/overlays/src/tests/`, `frontend/src/playback/{LaneGrid,lanes,session,OverlayBuffer}.test.*` | Lanes of one entry share the video's frames and clock; see the deviation below |
 | OF-03 | Playlists of entries and lanes; next/previous entry | M | done | `crates/playlist-resolvers/tests/`, `crates/workspace/src/intake.rs`, `tests/mot_playlist.rs`, `frontend/src/viewer/{PlaylistViewer,PlaylistFollower}.test.tsx`, `crates/sessions/tests/session/revocation.rs`, `make tests-desktop` | MOT Challenge and folder-pair playlists; one lane per overlay file. A following window moves with the presenter's entry |
 | OF-04 | Timestamp matching, sequence-keyed files, sticky overlays | M | done | `crates/overlay-sync/src/select/tests.rs`, `crates/overlays/src/tests/views.rs`, `tests/mot_playlist.rs` | Per lane, session only; dense and sparse coverage in [invariants](domain/invariants.md#frame-identity) |
@@ -110,7 +110,7 @@ The decisions taken with the owner, with their reasons, are in
 | ID | Feature | P | Status | Test | Notes |
 |----|---------|---|--------|------|-------|
 | PL-01 | Decoder plugins (file, payload) and playlist resolver plugins | M | in progress | `crates/handlers`, `crates/scene-decoders/tests/registry.rs` | The built-ins sit behind `Handlers`, the one registry a plugin runtime will extend (M7); no plugin loads yet |
-| PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | done | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests | `playlist --help` lists the subcommands the CLI generates from the registry; no test renders the help text |
+| PL-02 | Built-in decoders and resolvers listed by `list-handlers` and `playlist --help` | M | in progress | `src/cli/tests.rs`, `src/routes/handlers.rs`, `crates/handlers` tests | MOT, UVG-VCM, ONVIF XML and CVAT; both resolvers. ADF beta/v1 frame, consolidated and payload decoders remain. CLI help is generated; no test renders it |
 | PL-03 | Install, update, remove, list from CLI and Plugins view | M | todo |  |  |
 | PL-04 | Load failures never stop the app and are listed | M | todo |  |  |
 | PL-05 | Unchanged third-party Python plugins run (bridge); not planned by default | S | todo |  |  |
@@ -123,7 +123,7 @@ The decisions taken with the owner, with their reasons, are in
 | ST-02 | Quick Setup on first start | M | done | `frontend/src/shell/QuickSetupDialog.test.tsx`, `Shell.test.tsx` | Built from the rows marked `quick_setup` (the theme; the camera protocol joins in M5), opens on the first run and from Help, and each pick is stored live |
 | ST-03 | Theme (light, dark, auto), applied live; no text-size setting, zoom is the browser's | M | done | `crates/settings` tests, `App.test.tsx` | Stored through `/api/settings`; the frontend applies the theme live |
 | ST-04 | `$VARIABLE` references | M | in progress | `crates/settings` tests | Backend done: rows with `env` store the reference and expand it where used; no setting takes one yet |
-| ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog and live key handling |
+| ST-05 | Keyboard shortcuts, dialog, override persistence | M | done | `crates/settings` tests, `frontend/src/shell/ShortcutsDialog.test.tsx`, `Shell.test.tsx` | Command table, override-only storage, conflict and reserved-key checks, the Shortcuts dialog and live key handling; action coverage follows each feature row (image zoom is still IN-05) |
 | ST-06 | Workspace credential references expand only for their bound host or a confirmed one; warn before saving a literal password (new) | M | in progress | `frontend/src/shell/SettingsDialog.test.tsx` | The Settings dialog warns under a secret field holding a literal (tested against a mocked secret row). Left: the first real secret row, `defaults.device.password`, and the workspace half, both in M5 |
 | AP-01 | Uncaught errors logged; continue or close | M | todo |  |  |
 | AP-02 | Restart from inside the app | M | todo |  |  |
@@ -137,6 +137,15 @@ The decisions taken with the owner, with their reasons, are in
 | Row | Deviation | Reason |
 |-----|-----------|--------|
 | ST-01 | `storage.cache_dir` takes no `$NAME` reference; [08](rebuild/08-settings-cli.md) asked for references in storage fields | Settings are personal to the user and Browse yields an absolute path; a reference would have to resolve before the first window opens |
+
+## Sharing and remote use (new)
+
+| ID | Feature | P | Status | Test | Notes |
+|----|---------|---|--------|------|-------|
+| SH-01 | Join, reconnect and revoke access | M | in progress | `crates/sessions/tests/session/`, `tests/session_socket.rs`, `tests/playback_ws.rs` | Lifecycle, leases and tickets implemented; real-network interruption evidence remains |
+| SH-02 | Follow or explore independently | M | in progress | `frontend/src/viewer/PlaylistFollower.test.tsx`, `desktop/smoke-sharing.cjs` | Video and playlist following/exploration; inspection and live policies land with those features |
+| SH-03 | Audience privacy and settings scope | M | in progress | `tests/access.rs`, `src/session/project.rs`, `crates/settings/src/scope_tests.rs` | Host-path projections and personal/server settings implemented; future inspection data needs its own disclosure acceptance |
+| SH-04 | Browser and remote Electron connection | M | in progress | `desktop/smoke-remote.cjs`, `frontend/src/session/Notice.test.tsx` | Server frontend and password recovery implemented; LAN failure feedback, running-app launch delivery and packaged protocol registration remain |
 
 ## Developer tooling
 

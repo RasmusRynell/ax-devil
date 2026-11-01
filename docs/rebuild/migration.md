@@ -17,7 +17,7 @@ recreate for the new stack using the old as reference; Drop = do not bring over.
 | Write-plugin example package | `.agents/skills/write-plugin/reference.md` | Port | Contract test for the plugin runtime |
 | ONVIF sample payload | `tests/plugins/decoders/onvif_xml/data/sample_frame.xml` | Carried to new-tree `fixtures/decoders/onvif_xml/` | The only committed decoder sample file |
 | Other decoder sample inputs | inline in tests, e.g. `tests/plugins/decoders/cvat/sample_data.py` (CVAT, MOT, ADF, UVG-VCM) | Generate | Extract into small sample files |
-| Oracle fixtures | generated in a reference worktree | Generate | [09](09-testing.md#oracle-policy), [14](14-build-order.md#fixtures-from-the-reference-commit) |
+| Oracle fixtures | generated in a reference worktree | Generate | [09](09-testing.md#oracle-policy) |
 | Glossary, invariants | `CONTEXT.md`, `docs/domain/invariants.md` | Ported by the foundation | [04](04-domain-rules.md) |
 | Other docs, agent files, skills | see [11](11-docs-structure.md#docs-map), [12](12-agent-setup.md#inventory) | Per those tables | — |
 | Dataset docs | `docs/datasets/` | Port | Commands change |

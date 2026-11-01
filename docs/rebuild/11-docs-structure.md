@@ -30,7 +30,7 @@ decisions with lasting rules go to the doc that owns the rule.
 | `docs/installation.md` | Prerequisites, source build, packages | Users | same | Rewrite for D6 |
 | `docs/datasets/*.md` | Dataset preparation, decoder behavior, attribution | Users | same | Port: content stays, commands change |
 | `docs/runbooks/testing.md` | Commands, isolation, fixtures, CI | Developers, agents | same | Rewrite from [09](09-testing.md) |
-| `docs/parity.md` | Parity tracker | Developers, agents | new | Create day one ([14](14-build-order.md#parity-tracking)) |
+| `docs/parity.md` | Parity tracker | Developers, agents | new | Create day one ([01](01-product-scope.md)) |
 | Module `README.md` files | One module's rules | Developers, agents | 10 under `src/ax_devil/modules/` and `src/ax_devil/plugins/` | Recreate only where a new module has rules its code does not show |
 | `tools/README.md` and tool READMEs | Developer tools | Developers, agents | `tools/README.md`, `tools/bench/README.md`, `tools/demo_recorder/README.md` | Rewrite with each tool |
 | `docs/media/` | Demo images for README | Users | `demo-catalogs.webp`, `demo-compare.webp` | Drop; re-record with DT-06 |

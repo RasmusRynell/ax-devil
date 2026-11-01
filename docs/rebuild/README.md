@@ -65,6 +65,7 @@ marks the rule as deliberately changed; raise the conflict instead of guessing.
 ## Ground rules
 
 - **MUST** keep the vocabulary of `CONTEXT.md` in code, docs and UI.
-- **MUST** port behavior from the referenced docs and tests, not by translating implementation line by line; the docs
-  hold the rules, the code holds Python and Qt workarounds.
+- **MUST** preserve end use cases and consequential outcomes, not Python classes, APIs or implementation details.
+  Architecture and interactions may improve; acceptance scenarios establish what users can accomplish. Reference
+  docs and tests supply behavioral evidence, and deliberate workflow reductions stay explicit.
 - **SHOULD** treat old tests as requirement candidates, filtered through [09](09-testing.md#philosophy-must).
